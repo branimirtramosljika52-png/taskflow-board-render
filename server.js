@@ -70,6 +70,7 @@ import {
   PRIORITY_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   doesAbsenceTypeRequireApproval,
+  normalizeWorkOrderMeasurementSheet,
 } from "./src/safetyModel.js";
 
 const port = Number(process.env.PORT || 3000);
@@ -78,7 +79,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.26.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.27.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9782,35 +9783,460 @@ function getMobileWorkOrderServiceTemplateIds(service = {}, scopedSnapshot = {})
     .filter(Boolean);
 }
 
-function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, scopedSnapshot = {}) {
+function normalizeMobileDocumentWizardArray(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+  return Array.from(new Set(source.map((entry) => normalizeInputValue(entry)).filter(Boolean)));
+}
+
+function normalizeMobileDocumentSignatureMode(value = "") {
+  const normalized = normalizeInputValue(value).toLowerCase();
+  if (normalized === "scan" || normalized === "manual" || normalized === "none") {
+    return normalized;
+  }
+  return "digital";
+}
+
+function normalizeMobileDocumentValidityMonths(value = "", fallback = "") {
+  const raw = normalizeInputValue(value);
+  if (!raw) {
+    return normalizeInputValue(fallback);
+  }
+  const number = Number.parseInt(raw, 10);
+  return Number.isFinite(number) && number > 0 ? String(number) : normalizeInputValue(fallback);
+}
+
+function addMonthsToMobileDate(value = "", monthsValue = "") {
+  const normalizedDate = normalizeDateOnlyValue(value);
+  const months = Number.parseInt(String(monthsValue ?? "").trim(), 10);
+  if (!normalizedDate || !Number.isFinite(months) || months <= 0) {
+    return "";
+  }
+
+  const [year, month, day] = normalizedDate.split("-").map((part) => Number.parseInt(part, 10));
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  const originalDay = date.getDate();
+  date.setMonth(date.getMonth() + months);
+  if (date.getDate() !== originalDay) {
+    date.setDate(0);
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
+  const source = input?.common && typeof input.common === "object" && !Array.isArray(input.common)
+    ? input.common
+    : (input && typeof input === "object" && !Array.isArray(input) ? input : {});
   const todayIso = new Date().toISOString().slice(0, 10);
-  const todayLabel = formatOfferDocumentDate(todayIso);
+  const inspectorUserIds = normalizeMobileDocumentWizardArray(source.inspectorUserIds);
+  const electricalInspectorUserIds = normalizeMobileDocumentWizardArray(source.electricalInspectorUserIds);
+  const tipkaloInspectorUserIds = normalizeMobileDocumentWizardArray(source.tipkaloInspectorUserIds);
+  return {
+    inspectionDate: normalizeDateOnlyValue(source.inspectionDate) || todayIso,
+    issuedDate: normalizeDateOnlyValue(source.issuedDate) || normalizeDateOnlyValue(source.inspectionDate) || todayIso,
+    issuedPlace: normalizeInputValue(source.issuedPlace),
+    note: normalizeInputValue(source.note),
+    inspectionType: normalizeInputValue(source.inspectionType),
+    outsideTemperature: normalizeInputValue(source.outsideTemperature),
+    relativeHumidity: normalizeInputValue(source.relativeHumidity),
+    airflowSpeed: normalizeInputValue(source.airflowSpeed),
+    weather: normalizeInputValue(source.weather),
+    groundCondition: normalizeInputValue(source.groundCondition),
+    groundResistance: normalizeInputValue(source.groundResistance),
+    measurementEquipmentGroup: normalizeInputValue(source.measurementEquipmentGroup),
+    signatureMode: normalizeMobileDocumentSignatureMode(source.signatureMode),
+    validityMonths: normalizeMobileDocumentValidityMonths(source.validityMonths, "12"),
+    electricalValidityMonths: normalizeMobileDocumentValidityMonths(source.electricalValidityMonths, source.validityMonths || "12"),
+    tipkaloValidityMonths: normalizeMobileDocumentValidityMonths(source.tipkaloValidityMonths, source.validityMonths || "12"),
+    serviceValidityMonths: source.serviceValidityMonths && typeof source.serviceValidityMonths === "object" && !Array.isArray(source.serviceValidityMonths)
+      ? Object.fromEntries(Object.entries(source.serviceValidityMonths)
+        .map(([key, value]) => [normalizeInputValue(key), normalizeMobileDocumentValidityMonths(value)])
+        .filter(([key, value]) => key && value))
+      : {},
+    inspectorUserIds,
+    inspectorUserId: normalizeInputValue(source.inspectorUserId) || inspectorUserIds[0] || "",
+    authorizationHolderUserId: normalizeInputValue(source.authorizationHolderUserId),
+    electricalInspectorUserIds,
+    electricalInspectorUserId: normalizeInputValue(source.electricalInspectorUserId) || electricalInspectorUserIds[0] || "",
+    electricalAuthorizationHolderUserId: normalizeInputValue(source.electricalAuthorizationHolderUserId),
+    tipkaloInspectorUserIds,
+    tipkaloInspectorUserId: normalizeInputValue(source.tipkaloInspectorUserId) || tipkaloInspectorUserIds[0] || "",
+    tipkaloAuthorizationHolderUserId: normalizeInputValue(source.tipkaloAuthorizationHolderUserId),
+  };
+}
+
+function findMobileScopedUserById(scopedSnapshot = {}, userId = "") {
+  const normalizedId = normalizeInputValue(userId);
+  if (!normalizedId) {
+    return null;
+  }
+  return (scopedSnapshot.users ?? []).find((user) => String(user?.id || "") === normalizedId) || null;
+}
+
+function getMobileUserDocumentName(user = {}) {
+  return normalizeInputValue(
+    user?.fullName
+    || [user?.firstName, user?.lastName].filter(Boolean).join(" ")
+    || user?.displayName
+    || user?.username
+    || user?.email,
+  );
+}
+
+function getMobileUserDocumentTitle(user = {}) {
+  return normalizeInputValue(
+    user?.professionalTitle
+    || user?.title
+    || user?.jobTitle
+    || user?.role
+    || user?.electricalQualification?.title
+    || user?.electricalQualification?.type,
+  );
+}
+
+function formatMobileUserWithTitle(user = {}) {
+  const name = getMobileUserDocumentName(user);
+  const title = getMobileUserDocumentTitle(user);
+  return [title, name].filter(Boolean).join(" ").trim();
+}
+
+function getMobileUserQualificationValue(user = {}, field = "") {
+  const qualification = user?.electricalQualification && typeof user.electricalQualification === "object"
+    ? user.electricalQualification
+    : {};
+  const normalizedField = normalizeInputValue(field);
+  return normalizeInputValue(user?.[normalizedField] || qualification?.[normalizedField]);
+}
+
+function buildMobileQualifiedUserPlaceholders(prefix = "", user = null) {
+  if (!prefix || !user) {
+    return {};
+  }
+  return {
+    [`${prefix}_NAME`]: getMobileUserDocumentName(user),
+    [`${prefix}_TYPE`]: getMobileUserQualificationValue(user, "type"),
+    [`${prefix}_DATA_1`]: getMobileUserQualificationValue(user, "data1"),
+    [`${prefix}_DATA_2`]: getMobileUserQualificationValue(user, "data2"),
+    [`${prefix}_DATA_3`]: getMobileUserQualificationValue(user, "data3"),
+    [`${prefix}_PASSED_ON`]: formatOfferDocumentDate(getMobileUserQualificationValue(user, "passedOn")),
+    [`${prefix}_CLASS_CODE`]: getMobileUserQualificationValue(user, "classCode"),
+    [`${prefix}_URBROJ`]: getMobileUserQualificationValue(user, "urbroj"),
+    [`${prefix}_E_BROJ`]: getMobileUserQualificationValue(user, "eBroj"),
+    [`${prefix}_SUMMARY`]: [
+      getMobileUserQualificationValue(user, "type"),
+      getMobileUserQualificationValue(user, "data1"),
+      getMobileUserQualificationValue(user, "data2"),
+      getMobileUserQualificationValue(user, "data3"),
+    ].filter(Boolean).join(", "),
+  };
+}
+
+function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {}) {
+  const inspectorUsers = normalizeMobileDocumentWizardArray(common.inspectorUserIds.length > 0
+    ? common.inspectorUserIds
+    : [common.inspectorUserId])
+    .map((id) => findMobileScopedUserById(scopedSnapshot, id))
+    .filter(Boolean);
+  const primaryInspector = inspectorUsers[0] || findMobileScopedUserById(scopedSnapshot, common.inspectorUserId);
+  const authorizationHolder = findMobileScopedUserById(scopedSnapshot, common.authorizationHolderUserId);
+  const electricalInspector = findMobileScopedUserById(scopedSnapshot, common.electricalInspectorUserId);
+  const electricalAuthorizationHolder = findMobileScopedUserById(scopedSnapshot, common.electricalAuthorizationHolderUserId);
+  const tipkaloInspector = findMobileScopedUserById(scopedSnapshot, common.tipkaloInspectorUserId);
+  const tipkaloAuthorizationHolder = findMobileScopedUserById(scopedSnapshot, common.tipkaloAuthorizationHolderUserId);
+  const inspectorNames = inspectorUsers.map(getMobileUserDocumentName).filter(Boolean).join(", ");
+  const inspectorNamesWithTitles = inspectorUsers.map(formatMobileUserWithTitle).filter(Boolean).join(", ");
+
+  return {
+    WORK_ORDER_EXECUTORS: inspectorNames,
+    QUALIFIED_INSPECTORS_LIST: inspectorNamesWithTitles || inspectorNames,
+    QUALIFIED_INSPECTORS_LIST_WITH_TITLES: inspectorNamesWithTitles || inspectorNames,
+    QUALIFIED_INSPECTORS_NAMES: inspectorNames,
+    QUALIFIED_INSPECTORS_LIST_NAMES: inspectorNames,
+    ISPITIVAC: getMobileUserDocumentName(primaryInspector),
+    ISPITIVAC_S_TITULOM: formatMobileUserWithTitle(primaryInspector),
+    ISPITIVACI_POPIS: inspectorNames,
+    ISPITIVACI_POPIS_S_TITULAMA: inspectorNamesWithTitles || inspectorNames,
+    ISPITIVACI_POPIS_IMENA: inspectorNames,
+    OVLASTENIK: getMobileUserDocumentName(authorizationHolder),
+    NOSITELJ_OVLASTENJA: getMobileUserDocumentName(authorizationHolder),
+    ELEKTRO_ISPITIVAC: getMobileUserDocumentName(electricalInspector),
+    ELEKTRO_OVLASTENIK: getMobileUserDocumentName(electricalAuthorizationHolder),
+    TIPKALO_ISPITIVAC: getMobileUserDocumentName(tipkaloInspector),
+    TIPKALO_OVLASTENIK: getMobileUserDocumentName(tipkaloAuthorizationHolder),
+    ...buildMobileQualifiedUserPlaceholders("QUALIFIED_INSPECTOR", primaryInspector),
+    ...buildMobileQualifiedUserPlaceholders("QUALIFIED_AUTHORIZATION_HOLDER", authorizationHolder),
+  };
+}
+
+function findMobileServiceCatalogItem(service = {}, scopedSnapshot = {}) {
+  const serviceId = normalizeInputValue(service?.serviceId || service?.catalogItemId || service?.catalogId || service?.id);
+  const serviceCode = normalizeInputValue(service?.serviceCode || service?.code).toLowerCase();
+  const serviceName = normalizeInputValue(service?.name || service?.serviceName || service?.title).toLowerCase();
+  return (scopedSnapshot.serviceCatalog ?? []).find((catalogItem) => {
+    const catalogId = normalizeInputValue(catalogItem?.id);
+    const catalogCode = normalizeInputValue(catalogItem?.serviceCode || catalogItem?.code).toLowerCase();
+    const catalogName = normalizeInputValue(catalogItem?.name || catalogItem?.title).toLowerCase();
+    return (serviceId && catalogId === serviceId)
+      || (serviceCode && catalogCode === serviceCode)
+      || (serviceName && catalogName === serviceName);
+  }) || null;
+}
+
+function resolveMobileServiceValidityMonths(service = {}, scopedSnapshot = {}, common = {}) {
+  const catalogItem = findMobileServiceCatalogItem(service, scopedSnapshot);
+  const validityMap = common.serviceValidityMonths || {};
+  const candidateKeys = [
+    service?.serviceId,
+    service?.catalogItemId,
+    service?.catalogId,
+    service?.id,
+    service?.serviceCode,
+    service?.code,
+    service?.name,
+    service?.serviceName,
+    catalogItem?.id,
+    catalogItem?.serviceCode,
+    catalogItem?.code,
+    catalogItem?.name,
+  ].map(normalizeInputValue).filter(Boolean);
+  const mappedValue = candidateKeys
+    .map((key) => validityMap[key])
+    .map((value) => normalizeMobileDocumentValidityMonths(value))
+    .find(Boolean);
+  return mappedValue
+    || normalizeMobileDocumentValidityMonths(service?.validityMonths || catalogItem?.validityMonths, common.validityMonths)
+    || common.validityMonths
+    || "12";
+}
+
+function buildMobileDocumentTemplateFieldSheets(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}) {
+  const catalogItem = findMobileServiceCatalogItem(service, scopedSnapshot);
+  const serviceSheet = normalizeWorkOrderMeasurementSheet(
+    service?.measurementSheet
+    || service?.sheet
+    || catalogItem?.measurementSheet
+    || catalogItem?.sheet,
+  );
+  const workOrderSheet = normalizeWorkOrderMeasurementSheet(workOrder?.measurementSheet);
+  return Object.fromEntries(
+    (Array.isArray(template?.customFields) ? template.customFields : [])
+      .map((field) => {
+        if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
+          return null;
+        }
+        const fieldKey = normalizeInputValue(field?.key || field?.id);
+        if (!fieldKey) {
+          return null;
+        }
+        const sheet = normalizeWorkOrderMeasurementSheet(field?.sheet || field?.measurementSheet)
+          || serviceSheet
+          || workOrderSheet;
+        return sheet ? [fieldKey, sheet] : null;
+      })
+      .filter(Boolean),
+  );
+}
+
+function normalizeMobileDocumentTemplateFieldTokenKey(value = "", fallback = "FIELD_1") {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || fallback;
+}
+
+function getMobileDocumentTemplateFieldTokenKey(field = {}, index = 0) {
+  return normalizeMobileDocumentTemplateFieldTokenKey(
+    field?.key || field?.wordLabel || field?.label,
+    `FIELD_${index + 1}`,
+  );
+}
+
+function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {}, index = 0) {
+  const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
+  const fallbackColumns = Array.isArray(field?.columns) && field.columns.length > 0
+    ? field.columns
+    : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+
+  if (!normalizedSheet?.columns?.length) {
+    return {
+      __docxBlockType: "table",
+      columns: fallbackColumns.map((column, columnIndex) => {
+        const label = column && typeof column === "object" && !Array.isArray(column)
+          ? normalizeInputValue(column.label || column.id)
+          : normalizeInputValue(column);
+        return {
+          id: `column-${columnIndex + 1}`,
+          label: label || `Kolona ${columnIndex + 1}`,
+          width: 140,
+        };
+      }),
+      rows: [{
+        id: "row-1",
+        header: true,
+        cells: fallbackColumns.map((column, columnIndex) => {
+          const label = column && typeof column === "object" && !Array.isArray(column)
+            ? normalizeInputValue(column.label || column.id)
+            : normalizeInputValue(column);
+          return {
+            text: label || `Kolona ${columnIndex + 1}`,
+            format: {
+              bold: true,
+              fillColor: "#F1F7F4",
+              border: "all",
+            },
+          };
+        }),
+      }],
+      headerRows: ["row-1"],
+      merges: [],
+    };
+  }
+
+  const columns = normalizedSheet.columns.map((column, columnIndex) => ({
+    id: normalizeInputValue(column?.id) || `column-${columnIndex + 1}`,
+    label: normalizeInputValue(column?.label || column?.id) || `Kolona ${columnIndex + 1}`,
+    width: Math.max(32, Number(column?.width) || 140),
+  }));
+  const sourceRows = Array.isArray(normalizedSheet.rows) && normalizedSheet.rows.length > 0
+    ? normalizedSheet.rows
+    : [{ id: "row-1", cells: {} }];
+  const headerRows = Array.isArray(normalizedSheet.headerRows)
+    ? normalizedSheet.headerRows.map(normalizeInputValue).filter(Boolean)
+    : [];
+  const rows = sourceRows.slice(0, 120).map((row, rowIndex) => ({
+    id: normalizeInputValue(row?.id) || `row-${rowIndex + 1}`,
+    header: headerRows.includes(normalizeInputValue(row?.id)),
+    cells: columns.map((column) => ({
+      text: normalizeInputValue(row?.cells?.[column.id]),
+      format: row?.formats?.[column.id] && typeof row.formats[column.id] === "object"
+        ? row.formats[column.id]
+        : {},
+    })),
+  }));
+
+  return {
+    __docxBlockType: "table",
+    columns,
+    rows,
+    headerRows,
+    merges: (Array.isArray(normalizedSheet.merges) ? normalizedSheet.merges : []).map((merge) => ({
+      rowId: normalizeInputValue(merge?.rowId),
+      columnId: normalizeInputValue(merge?.columnId),
+      rowSpan: Math.max(1, Number(merge?.rowSpan) || 1),
+      colSpan: Math.max(1, Number(merge?.colSpan) || 1),
+    })).filter((merge) => merge.rowId && merge.columnId),
+    title: normalizeInputValue(field?.label || field?.wordLabel) || `Excel tablica ${index + 1}`,
+  };
+}
+
+function buildMobileDocumentTemplateMeasurementPlaceholders(template = {}, fieldSheets = {}) {
+  const placeholders = {};
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
+    if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
+      return;
+    }
+    const recordKey = normalizeInputValue(field?.key || field?.id);
+    const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+    const sheet = recordKey ? fieldSheets[recordKey] : null;
+    const placeholder = buildMobileMeasurementTablePlaceholderFromSheet(sheet, field, index);
+    [recordKey, tokenKey, normalizeInputValue(field?.id)]
+      .filter(Boolean)
+      .forEach((key) => {
+        placeholders[key] = placeholder;
+      });
+  });
+  return placeholders;
+}
+
+function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, scopedSnapshot = {}, common = {}) {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const inspectionDateIso = normalizeDateOnlyValue(common.inspectionDate) || todayIso;
+  const issuedDateIso = normalizeDateOnlyValue(common.issuedDate) || inspectionDateIso;
+  const inspectionDateLabel = formatOfferDocumentDate(inspectionDateIso);
+  const issuedDateLabel = formatOfferDocumentDate(issuedDateIso);
+  const validityMonths = resolveMobileServiceValidityMonths(service, scopedSnapshot, common);
+  const validUntilIso = addMonthsToMobileDate(inspectionDateIso, validityMonths);
+  const electricalValidUntilIso = addMonthsToMobileDate(inspectionDateIso, common.electricalValidityMonths);
+  const tipkaloValidUntilIso = addMonthsToMobileDate(inspectionDateIso, common.tipkaloValidityMonths);
   const basePlaceholders = buildWorkOrderTemplatePlaceholderPayload({
     ...workOrder,
-    issuedDate: todayIso,
-    inspectionDate: todayIso,
+    issuedDate: issuedDateIso,
+    inspectionDate: inspectionDateIso,
+    issuedPlace: common.issuedPlace,
   }, scopedSnapshot);
   const serviceName = normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode);
   const serviceCode = normalizeInputValue(service?.serviceCode || service?.code || service?.shortCode);
   const serviceLabel = serviceName || serviceCode || normalizeInputValue(workOrder.serviceLine);
+  const inspectionType = common.inspectionType || serviceLabel;
 
   return {
     ...basePlaceholders,
-    WORK_ORDER_INSPECTION_DATE: todayLabel,
-    DATUM_ISPITIVANJA: todayLabel,
-    INSPECTION_DATE: todayLabel,
-    WORK_ORDER_ISSUED_DATE: todayLabel,
-    DATUM_IZDAVANJA: todayLabel,
-    ISSUED_DATE: todayLabel,
+    WORK_ORDER_INSPECTION_DATE: inspectionDateLabel,
+    DATUM_ISPITIVANJA: inspectionDateLabel,
+    INSPECTION_DATE: inspectionDateLabel,
+    WORK_ORDER_ISSUED_DATE: issuedDateLabel,
+    DATUM_IZDAVANJA: issuedDateLabel,
+    ISSUED_DATE: issuedDateLabel,
+    WORK_ORDER_ISSUED_PLACE: common.issuedPlace,
+    MJESTO_IZDAVANJA: common.issuedPlace,
+    WORK_ORDER_DOCUMENT_NOTE: common.note,
+    NAPOMENA_ZAPISNIKA: common.note,
+    WORK_ORDER_INSPECTION_TYPE: inspectionType,
+    INSPECTION_TYPE: inspectionType,
+    VRSTA_ISPITIVANJA: inspectionType,
     SERVICE_SUMMARY: serviceLabel,
     USLUGA: serviceLabel,
     NAZIV_USLUGE: serviceLabel,
     SERVICE_CODE: serviceCode,
     SIFRA_USLUGE: serviceCode,
+    WORK_ORDER_OUTSIDE_TEMPERATURE: common.outsideTemperature,
+    TEMPERATURA: common.outsideTemperature,
+    VANJSKA_TEMPERATURA: common.outsideTemperature,
+    WORK_ORDER_RELATIVE_HUMIDITY: common.relativeHumidity,
+    VLAGA: common.relativeHumidity,
+    RELATIVNA_VLAZNOST: common.relativeHumidity,
+    WORK_ORDER_AIRFLOW_SPEED: common.airflowSpeed,
+    STRUJANJE_ZRAKA: common.airflowSpeed,
+    WORK_ORDER_WEATHER: common.weather,
+    VRIJEME: common.weather,
+    WORK_ORDER_GROUND_CONDITION: common.groundCondition,
+    STANJE_TLA: common.groundCondition,
+    WORK_ORDER_GROUND_RESISTANCE: common.groundResistance,
+    OTPOR_TLA: common.groundResistance,
+    MEASUREMENT_EQUIPMENT_GROUP: common.measurementEquipmentGroup,
+    MJERNA_OPREMA_GRUPA: common.measurementEquipmentGroup,
+    SIGNATURE_MODE: common.signatureMode,
+    NACIN_POTPISA: common.signatureMode === "digital"
+      ? "Digitalni potpis"
+      : common.signatureMode === "scan"
+        ? "Sken potpisa"
+        : "Ručni potpis",
+    WORK_ORDER_VALIDITY_MONTHS: validityMonths,
+    WORK_ORDER_SERVICE_VALIDITY_MONTHS: validityMonths,
+    VRIJEDI_MJESECI: validityMonths,
+    WORK_ORDER_VALID_UNTIL: formatOfferDocumentDate(validUntilIso),
+    WORK_ORDER_SERVICE_VALID_UNTIL: formatOfferDocumentDate(validUntilIso),
+    VRIJEDI_DO: formatOfferDocumentDate(validUntilIso),
+    DATUM_VRIJEDI_DO: formatOfferDocumentDate(validUntilIso),
+    WORK_ORDER_PANIC_VALID_UNTIL: formatOfferDocumentDate(electricalValidUntilIso),
+    WORK_ORDER_PANIC_VALIDITY_MONTHS: common.electricalValidityMonths,
+    WORK_ORDER_TIPKALO_VALID_UNTIL: formatOfferDocumentDate(tipkaloValidUntilIso),
+    WORK_ORDER_TIPKALO_VALIDITY_MONTHS: common.tipkaloValidityMonths,
+    ...buildMobileInspectionPersonPlaceholders(common, scopedSnapshot),
   };
 }
 
-function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnapshot = {}) {
+function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnapshot = {}, wizardInput = {}) {
+  const common = normalizeMobileWorkOrderDocumentWizardInput(wizardInput);
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
   const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
@@ -9830,7 +10256,27 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         return;
       }
       seenPairs.add(pairKey);
-      const placeholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot);
+      const basePlaceholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common);
+      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot);
+      const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
+      const placeholders = {
+        ...basePlaceholders,
+        ...measurementPlaceholders,
+      };
+      const validityMonths = resolveMobileServiceValidityMonths(service, scopedSnapshot, common);
+      const validUntilIso = addMonthsToMobileDate(common.inspectionDate, validityMonths);
+      const trackedDates = validUntilIso
+        ? [{
+          fieldId: "WORK_ORDER_VALID_UNTIL",
+          fieldKey: "WORK_ORDER_VALID_UNTIL",
+          label: "Vrijedi do",
+          value: validUntilIso,
+        }]
+        : [];
+      const fieldValues = {
+        ...placeholders,
+        ...(trackedDates.length > 0 ? { [GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY]: trackedDates } : {}),
+      };
       entries.push({
         templateId: String(template.id),
         workOrderId: String(workOrder.id),
@@ -9839,12 +10285,18 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         companyName: normalizeInputValue(workOrder.companyName),
         locationName: normalizeInputValue(workOrder.locationName),
         placeholders,
+        signatureMode: common.signatureMode,
+        inspectionDate: common.inspectionDate,
+        issuedDate: common.issuedDate,
+        expirationDate: validUntilIso,
         documentRecord: {
           templateTitle: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
           workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
-          inspectionDate: new Date().toISOString().slice(0, 10),
-          issuedDate: new Date().toISOString().slice(0, 10),
-          fieldValues: placeholders,
+          inspectionDate: common.inspectionDate,
+          issuedDate: common.issuedDate,
+          expirationDate: validUntilIso,
+          fieldValues,
+          fieldSheets,
         },
       });
     });
@@ -10784,14 +11236,14 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await readJsonBody(request).catch(() => ({}));
+      const body = await readJsonBody(request).catch(() => ({}));
       const { scopedSnapshot } = await getScopedState(user, request);
       const workOrder = assertInScope(
         scopedSnapshot.workOrders ?? [],
         mobileWorkOrderGenerateDocumentsMatch[1],
         "Radni nalog nije pronađen.",
       );
-      const entries = buildMobileWorkOrderGeneratedDocumentEntries(workOrder, scopedSnapshot);
+      const entries = buildMobileWorkOrderGeneratedDocumentEntries(workOrder, scopedSnapshot, body);
       if (entries.length === 0) {
         sendError(response, 400, "Ovaj RN nema uslugu s povezanim templateom za izradu dokumentacije.");
         return true;

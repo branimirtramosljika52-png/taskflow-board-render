@@ -201,13 +201,49 @@ class SafeNexusApi(
         }
     }
 
-    suspend fun generateWorkOrderDocumentation(workOrderId: String): Result<List<WorkOrderDocument>> = withContext(Dispatchers.IO) {
+    suspend fun generateWorkOrderDocumentation(
+        workOrderId: String,
+        draft: WorkOrderDocumentationDraft,
+    ): Result<List<WorkOrderDocument>> = withContext(Dispatchers.IO) {
         runCatching {
+            val inspectorIds = JSONArray()
+            draft.inspectorUserIds.forEach { inspectorIds.put(it) }
+            val electricalInspectorIds = JSONArray()
+            draft.electricalInspectorUserIds.forEach { electricalInspectorIds.put(it) }
+            val tipkaloInspectorIds = JSONArray()
+            draft.tipkaloInspectorUserIds.forEach { tipkaloInspectorIds.put(it) }
+            val payload = JSONObject()
+                .put("inspectionDate", draft.inspectionDate)
+                .put("issuedDate", draft.issuedDate)
+                .put("issuedPlace", draft.issuedPlace)
+                .put("note", draft.note)
+                .put("inspectionType", draft.inspectionType)
+                .put("outsideTemperature", draft.outsideTemperature)
+                .put("relativeHumidity", draft.relativeHumidity)
+                .put("airflowSpeed", draft.airflowSpeed)
+                .put("weather", draft.weather)
+                .put("groundCondition", draft.groundCondition)
+                .put("groundResistance", draft.groundResistance)
+                .put("measurementEquipmentGroup", draft.measurementEquipmentGroup)
+                .put("signatureMode", draft.signatureMode)
+                .put("validityMonths", draft.validityMonths)
+                .put("electricalValidityMonths", draft.electricalValidityMonths)
+                .put("tipkaloValidityMonths", draft.tipkaloValidityMonths)
+                .put("inspectorUserIds", inspectorIds)
+                .put("inspectorUserId", draft.inspectorUserId)
+                .put("authorizationHolderUserId", draft.authorizationHolderUserId)
+                .put("electricalInspectorUserIds", electricalInspectorIds)
+                .put("electricalInspectorUserId", draft.electricalInspectorUserId)
+                .put("electricalAuthorizationHolderUserId", draft.electricalAuthorizationHolderUserId)
+                .put("tipkaloInspectorUserIds", tipkaloInspectorIds)
+                .put("tipkaloInspectorUserId", draft.tipkaloInspectorUserId)
+                .put("tipkaloAuthorizationHolderUserId", draft.tipkaloAuthorizationHolderUserId)
+                .toString()
             val json = JSONObject(
                 request(
                     "/api/mobile/work-orders/${workOrderId.pathSegment()}/generate-documents",
                     method = "POST",
-                    body = "{}",
+                    body = payload,
                 ),
             )
             json.optJSONArray("items").toWorkOrderDocuments()

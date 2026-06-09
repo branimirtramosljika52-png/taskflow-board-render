@@ -97,6 +97,34 @@ data class WorkOrderCreateDraft(
     val department: String,
 )
 
+data class WorkOrderDocumentationDraft(
+    val inspectionDate: String,
+    val issuedDate: String,
+    val issuedPlace: String,
+    val note: String,
+    val inspectionType: String,
+    val outsideTemperature: String,
+    val relativeHumidity: String,
+    val airflowSpeed: String,
+    val weather: String,
+    val groundCondition: String,
+    val groundResistance: String,
+    val measurementEquipmentGroup: String,
+    val signatureMode: String,
+    val validityMonths: String,
+    val electricalValidityMonths: String,
+    val tipkaloValidityMonths: String,
+    val inspectorUserIds: List<String>,
+    val inspectorUserId: String,
+    val authorizationHolderUserId: String,
+    val electricalInspectorUserIds: List<String>,
+    val electricalInspectorUserId: String,
+    val electricalAuthorizationHolderUserId: String,
+    val tipkaloInspectorUserIds: List<String>,
+    val tipkaloInspectorUserId: String,
+    val tipkaloAuthorizationHolderUserId: String,
+)
+
 data class DashboardStats(
     val workOrdersTotal: Int = 0,
     val activeWorkOrders: Int = 0,

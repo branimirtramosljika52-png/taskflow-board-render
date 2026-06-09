@@ -172,6 +172,7 @@ import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.WorkOrderCompanyOption
 import com.safenexus.app.data.WorkOrderCreateDraft
+import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocument
 import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderServiceOption
@@ -586,7 +587,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         loadWorkOrderDocuments(workOrderId)
     }
 
-    fun generateWorkOrderDocumentation(workOrder: WorkOrder) {
+    fun generateWorkOrderDocumentation(workOrder: WorkOrder, draft: WorkOrderDocumentationDraft) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za izradu dokumentacije.")
             return
@@ -594,7 +595,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
 
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
-            api.generateWorkOrderDocumentation(workOrder.id)
+            api.generateWorkOrderDocumentation(workOrder.id, draft)
                 .onSuccess { documents ->
                     state = state.copy(
                         isLoading = false,
@@ -856,6 +857,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
         viewModel.registerPushToken()
     }
     var documentationActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
+    var documentationWizardTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var signatureActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
@@ -1015,7 +1017,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                     onBack = { viewModel.selectWorkOrder(null) },
                     onStatusChange = viewModel::updateWorkOrderStatus,
-                    onGenerateDocumentation = viewModel::generateWorkOrderDocumentation,
+                    onGenerateDocumentation = { workOrder -> documentationWizardTarget = workOrder },
                     onAddDocumentation = openDocumentationActions,
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
                     onSignWorkOrder = { workOrder -> signatureActionTarget = workOrder },
@@ -1042,6 +1044,19 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             workOrder = workOrder,
             onDismiss = { documentationActionTarget = null },
             onSelect = { mode -> startDocumentationFlow(workOrder, mode) },
+        )
+    }
+    documentationWizardTarget?.let { workOrder ->
+        WorkOrderDocumentationWizardDialog(
+            workOrder = workOrder,
+            users = state.data.workOrderUsers,
+            services = state.data.workOrderServices,
+            isLoading = state.isLoading,
+            onDismiss = { documentationWizardTarget = null },
+            onConfirm = { draft ->
+                documentationWizardTarget = null
+                viewModel.generateWorkOrderDocumentation(workOrder, draft)
+            },
         )
     }
     signatureActionTarget?.let { workOrder ->
@@ -5195,6 +5210,296 @@ private fun WorkOrderDocumentationActionDialog(
                 Text("Odustani")
             }
         },
+    )
+}
+
+@Composable
+private fun WorkOrderDocumentationWizardDialog(
+    workOrder: WorkOrder,
+    users: List<WorkOrderUserOption>,
+    services: List<WorkOrderServiceOption>,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (WorkOrderDocumentationDraft) -> Unit,
+) {
+    val today = remember { LocalDate.now().toString() }
+    val userOptions = remember(users) {
+        listOf("" to "Nije odabrano") + users.map { user ->
+            user.id to user.label.ifBlank { user.fullName.ifBlank { user.email } }
+        }
+    }
+    val inspectionOptions = remember(workOrder, services) {
+        val rnServices = buildList {
+            workOrder.serviceItems.forEach { item ->
+                val label = item.trim()
+                if (label.isNotBlank()) add(label)
+            }
+            if (workOrder.serviceLine.isNotBlank()) add(workOrder.serviceLine)
+        }
+        val catalogServices = services
+            .filter { it.type.equals("inspection", ignoreCase = true) || it.type.isBlank() }
+            .map { service -> service.name.ifBlank { service.serviceCode } }
+            .filter { it.isNotBlank() }
+        (rnServices + catalogServices)
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .take(60)
+            .map { it to it }
+    }
+    val defaultInspectionType = remember(workOrder) { workOrder.displayService.takeIf { it != "Bez upisane usluge" } ?: "" }
+    var inspectionDate by remember(workOrder.id) { mutableStateOf(today) }
+    var issuedDate by remember(workOrder.id) { mutableStateOf(today) }
+    var issuedPlace by remember(workOrder.id) { mutableStateOf("") }
+    var note by remember(workOrder.id) { mutableStateOf("") }
+    var inspectionType by remember(workOrder.id) { mutableStateOf(defaultInspectionType) }
+    var outsideTemperature by remember(workOrder.id) { mutableStateOf("") }
+    var relativeHumidity by remember(workOrder.id) { mutableStateOf("") }
+    var airflowSpeed by remember(workOrder.id) { mutableStateOf("") }
+    var weather by remember(workOrder.id) { mutableStateOf("") }
+    var groundCondition by remember(workOrder.id) { mutableStateOf("") }
+    var groundResistance by remember(workOrder.id) { mutableStateOf("") }
+    var measurementEquipmentGroup by remember(workOrder.id) { mutableStateOf("") }
+    var signatureMode by remember(workOrder.id) { mutableStateOf("digital") }
+    var validityMonths by remember(workOrder.id) { mutableStateOf("12") }
+    var electricalValidityMonths by remember(workOrder.id) { mutableStateOf("12") }
+    var tipkaloValidityMonths by remember(workOrder.id) { mutableStateOf("12") }
+    var inspectorUserId by remember(workOrder.id) { mutableStateOf("") }
+    var authorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
+    var electricalInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
+    var electricalAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
+    var tipkaloInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
+    var tipkaloAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Izrada dokumentacije", fontWeight = FontWeight.Black)
+                Text(
+                    text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
+                    WorkOrderTextField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !isLoading)
+                    WorkOrderTextField("Datum izdavanja", issuedDate, { issuedDate = it }, !isLoading)
+                    WorkOrderTextField("Mjesto izdavanja", issuedPlace, { issuedPlace = it }, !isLoading)
+                    WorkOrderSelectField(
+                        label = "Vrsta ispitivanja",
+                        value = inspectionType,
+                        valueLabel = inspectionType.ifBlank { "Odaberi vrstu ispitivanja" },
+                        options = inspectionOptions,
+                        enabled = !isLoading,
+                        onSelect = { inspectionType = it },
+                    )
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Napomena za zapisnik") },
+                        minLines = 2,
+                        maxLines = 4,
+                        enabled = !isLoading,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                }
+
+                WizardSection(title = "Uvjeti mjerenja", icon = Icons.Rounded.Map) {
+                    WorkOrderTextField("Vanjska temperatura", outsideTemperature, { outsideTemperature = it }, !isLoading)
+                    WorkOrderTextField("Relativna vlažnost", relativeHumidity, { relativeHumidity = it }, !isLoading)
+                    WorkOrderTextField("Brzina strujanja", airflowSpeed, { airflowSpeed = it }, !isLoading)
+                    WorkOrderTextField("Vrijeme", weather, { weather = it }, !isLoading)
+                    WorkOrderTextField("Stanje tla", groundCondition, { groundCondition = it }, !isLoading)
+                    WorkOrderTextField("Otpor tla", groundResistance, { groundResistance = it }, !isLoading)
+                }
+
+                WizardSection(title = "Osobe i potpis", icon = Icons.Rounded.Fingerprint) {
+                    WorkOrderSelectField(
+                        label = "Ispitivao",
+                        value = inspectorUserId,
+                        valueLabel = userOptions.firstOrNull { it.first == inspectorUserId }?.second.orEmpty(),
+                        options = userOptions,
+                        enabled = !isLoading,
+                        onSelect = { inspectorUserId = it },
+                    )
+                    WorkOrderSelectField(
+                        label = "Nositelj ovlaštenja",
+                        value = authorizationHolderUserId,
+                        valueLabel = userOptions.firstOrNull { it.first == authorizationHolderUserId }?.second.orEmpty(),
+                        options = userOptions,
+                        enabled = !isLoading,
+                        onSelect = { authorizationHolderUserId = it },
+                    )
+                    WorkOrderSelectField(
+                        label = "Elektro ispitivač",
+                        value = electricalInspectorUserId,
+                        valueLabel = userOptions.firstOrNull { it.first == electricalInspectorUserId }?.second.orEmpty(),
+                        options = userOptions,
+                        enabled = !isLoading,
+                        onSelect = { electricalInspectorUserId = it },
+                    )
+                    WorkOrderSelectField(
+                        label = "Elektro nositelj ovlaštenja",
+                        value = electricalAuthorizationHolderUserId,
+                        valueLabel = userOptions.firstOrNull { it.first == electricalAuthorizationHolderUserId }?.second.orEmpty(),
+                        options = userOptions,
+                        enabled = !isLoading,
+                        onSelect = { electricalAuthorizationHolderUserId = it },
+                    )
+                    WorkOrderSelectField(
+                        label = "Tipkalo / isklop ispitivač",
+                        value = tipkaloInspectorUserId,
+                        valueLabel = userOptions.firstOrNull { it.first == tipkaloInspectorUserId }?.second.orEmpty(),
+                        options = userOptions,
+                        enabled = !isLoading,
+                        onSelect = { tipkaloInspectorUserId = it },
+                    )
+                    WorkOrderSelectField(
+                        label = "Tipkalo / isklop nositelj",
+                        value = tipkaloAuthorizationHolderUserId,
+                        valueLabel = userOptions.firstOrNull { it.first == tipkaloAuthorizationHolderUserId }?.second.orEmpty(),
+                        options = userOptions,
+                        enabled = !isLoading,
+                        onSelect = { tipkaloAuthorizationHolderUserId = it },
+                    )
+                    Text("Način potpisa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SignatureModeChip("digital", "Digitalni", signatureMode, !isLoading) { signatureMode = it }
+                        SignatureModeChip("scan", "Sken", signatureMode, !isLoading) { signatureMode = it }
+                        SignatureModeChip("manual", "Ručni", signatureMode, !isLoading) { signatureMode = it }
+                    }
+                }
+
+                WizardSection(title = "Rokovi i mjerenja", icon = Icons.Rounded.CalendarMonth) {
+                    NumberTextField("Vrijedi mjeseci", validityMonths, { validityMonths = it }, !isLoading)
+                    NumberTextField("Panik rasvjeta vrijedi mjeseci", electricalValidityMonths, { electricalValidityMonths = it }, !isLoading)
+                    NumberTextField("Tipkalo vrijedi mjeseci", tipkaloValidityMonths, { tipkaloValidityMonths = it }, !isLoading)
+                    WorkOrderTextField(
+                        "Grupa mjerne opreme",
+                        measurementEquipmentGroup,
+                        { measurementEquipmentGroup = it },
+                        !isLoading,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val draft = WorkOrderDocumentationDraft(
+                        inspectionDate = inspectionDate.trim(),
+                        issuedDate = issuedDate.trim(),
+                        issuedPlace = issuedPlace.trim(),
+                        note = note.trim(),
+                        inspectionType = inspectionType.trim(),
+                        outsideTemperature = outsideTemperature.trim(),
+                        relativeHumidity = relativeHumidity.trim(),
+                        airflowSpeed = airflowSpeed.trim(),
+                        weather = weather.trim(),
+                        groundCondition = groundCondition.trim(),
+                        groundResistance = groundResistance.trim(),
+                        measurementEquipmentGroup = measurementEquipmentGroup.trim(),
+                        signatureMode = signatureMode,
+                        validityMonths = validityMonths.trim(),
+                        electricalValidityMonths = electricalValidityMonths.trim(),
+                        tipkaloValidityMonths = tipkaloValidityMonths.trim(),
+                        inspectorUserIds = listOf(inspectorUserId).filter { it.isNotBlank() },
+                        inspectorUserId = inspectorUserId,
+                        authorizationHolderUserId = authorizationHolderUserId,
+                        electricalInspectorUserIds = listOf(electricalInspectorUserId).filter { it.isNotBlank() },
+                        electricalInspectorUserId = electricalInspectorUserId,
+                        electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+                        tipkaloInspectorUserIds = listOf(tipkaloInspectorUserId).filter { it.isNotBlank() },
+                        tipkaloInspectorUserId = tipkaloInspectorUserId,
+                        tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                    )
+                    onConfirm(draft)
+                },
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text("Izradi dokumentaciju", fontWeight = FontWeight.Black)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
+@Composable
+private fun WizardSection(
+    title: String,
+    icon: ImageVector,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+    ) {
+        Column(
+            modifier = Modifier.padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Text(title, fontWeight = FontWeight.Black)
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun NumberTextField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input -> onChange(input.filter { it.isDigit() }.take(3)) },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        singleLine = true,
+        enabled = enabled,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        shape = RoundedCornerShape(16.dp),
+    )
+}
+
+@Composable
+private fun SignatureModeChip(
+    value: String,
+    label: String,
+    selectedValue: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    FilterChip(
+        selected = selectedValue == value,
+        onClick = { onSelect(value) },
+        enabled = enabled,
+        label = { Text(label) },
     )
 }
 
