@@ -7149,6 +7149,9 @@ private fun TemplateBlockOverview(
     enabled: Boolean,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
 ) {
+    val sections = remember(template.fieldBlocks) {
+        buildTemplateBlockSections(template.fieldBlocks)
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -7170,29 +7173,280 @@ private fun TemplateBlockOverview(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                 )
             }
-            template.fieldBlocks
-                .groupBy { it.group.ifBlank { "Predložak" } }
-                .forEach { (group, blocks) ->
-                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text(
-                            group,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.primary,
+            sections.forEach { section ->
+                TemplateBlockSectionCard(
+                    template = template,
+                    section = section,
+                    values = values,
+                    enabled = enabled,
+                    onChange = onChange,
+                )
+            }
+        }
+    }
+}
+
+private data class TemplateBlockSection(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val header: WorkOrderDocumentationTemplateBlock?,
+    val blocks: List<WorkOrderDocumentationTemplateBlock>,
+)
+
+private fun buildTemplateBlockSections(blocks: List<WorkOrderDocumentationTemplateBlock>): List<TemplateBlockSection> {
+    if (blocks.isEmpty()) return emptyList()
+    val sections = mutableListOf<TemplateBlockSection>()
+    var currentHeader: WorkOrderDocumentationTemplateBlock? = null
+    val currentBlocks = mutableListOf<WorkOrderDocumentationTemplateBlock>()
+
+    fun flushSection() {
+        if (currentHeader == null && currentBlocks.isEmpty()) return
+        val index = sections.size + 1
+        val title = currentHeader?.label?.trim().orEmpty()
+            .ifBlank { currentBlocks.firstOrNull()?.group?.trim().orEmpty() }
+            .ifBlank { "Blok $index" }
+        val id = listOf(currentHeader?.id, currentHeader?.key, currentHeader?.tokenKey, title)
+            .map { it?.trim().orEmpty() }
+            .firstOrNull { it.isNotBlank() }
+            ?: "section-$index"
+        sections.add(
+            TemplateBlockSection(
+                id = "$index::$id",
+                title = title,
+                subtitle = currentHeader?.typeLabel?.ifBlank { currentBlocks.firstOrNull()?.group }.orEmpty(),
+                header = currentHeader,
+                blocks = currentBlocks.toList(),
+            ),
+        )
+        currentBlocks.clear()
+    }
+
+    blocks.forEach { block ->
+        if (block.type.equals("chapter", ignoreCase = true)) {
+            flushSection()
+            currentHeader = block
+        } else {
+            currentBlocks.add(block)
+        }
+    }
+    flushSection()
+
+    return sections
+}
+
+@Composable
+private fun TemplateBlockSectionCard(
+    template: WorkOrderDocumentationTemplate,
+    section: TemplateBlockSection,
+    values: Map<String, String>,
+    enabled: Boolean,
+    onChange: (WorkOrderDocumentationField, String) -> Unit,
+) {
+    var expanded by remember(template.id, section.id) { mutableStateOf(false) }
+    val canExpand = section.blocks.isNotEmpty() || section.header?.summary?.isNotBlank() == true || section.header?.helpText?.isNotBlank() == true
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(enabled = canExpand) { expanded = !expanded },
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                    Icon(
+                        templateBlockIcon(section.header?.type ?: section.blocks.firstOrNull()?.type.orEmpty()),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(9.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        section.title,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        listOf(
+                            section.subtitle,
+                            if (section.blocks.isNotEmpty()) "${section.blocks.size} polja" else "Nema dodatnih polja",
+                        ).filter { it.isNotBlank() }.joinToString(" - "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+                Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f)) {
+                    Text(
+                        if (expanded) "sažmi" else "detalji",
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    )
+                }
+            }
+            if (!expanded) {
+                Text(
+                    if (canExpand) "Dodirni karticu ili Raširi blok za unos i detalje." else "Template nema dodatnih polja u ovom poglavlju.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                )
+            }
+            if (expanded) {
+                val header = section.header
+                if (header?.summary?.isNotBlank() == true) {
+                    Text(
+                        header.summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    )
+                }
+                if (header?.helpText?.isNotBlank() == true) {
+                    Text(
+                        header.helpText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                    )
+                }
+                if (section.blocks.isEmpty()) {
+                    Text(
+                        "Nema dodatnih polja u ovom poglavlju.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                } else {
+                    section.blocks.forEach { block ->
+                        val editableField = findTemplateFieldForBlock(template, block)
+                        TemplateBlockDetailRow(
+                            template = template,
+                            block = block,
+                            editableField = editableField,
+                            value = editableField?.let { values[templateFieldStateKey(template, it)] }.orEmpty(),
+                            enabled = enabled,
+                            onChange = onChange,
                         )
-                        blocks.forEach { block ->
-                            val editableField = findTemplateFieldForBlock(template, block)
-                            TemplateBlockRow(
-                                template = template,
-                                block = block,
-                                editableField = editableField,
-                                value = editableField?.let { values[templateFieldStateKey(template, it)] }.orEmpty(),
-                                enabled = enabled,
-                                onChange = { field, value -> onChange(field, value) },
-                            )
-                        }
                     }
                 }
+            }
+            TextButton(
+                onClick = { if (canExpand) expanded = !expanded },
+                enabled = canExpand,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(if (expanded) "Sažmi blok" else "Raširi blok")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemplateBlockDetailRow(
+    template: WorkOrderDocumentationTemplate,
+    block: WorkOrderDocumentationTemplateBlock,
+    editableField: WorkOrderDocumentationField?,
+    value: String,
+    enabled: Boolean,
+    onChange: (WorkOrderDocumentationField, String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    templateBlockIcon(block.type),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (block.required) "${block.label} *" else block.label,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        block.typeLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                    )
+                }
+            }
+            if (editableField != null) {
+                TemplateFieldInput(
+                    field = editableField,
+                    value = value,
+                    enabled = enabled,
+                    onChange = { onChange(editableField, it) },
+                )
+            } else {
+                Text(
+                    block.summary.ifBlank {
+                        when (block.type.lowercase(Locale.getDefault())) {
+                            "measurement_table" -> "Excel tablica se uređuje u bloku Excel / mjerenja."
+                            "equipment_list" -> "Oprema se bira u bloku Mjerna i ispitna oprema."
+                            "legal_list" -> "Propisi i pravilnici se biraju u bloku Pravilnici i propisi."
+                            "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" ->
+                                "Osobe i potpis se popunjavaju u bloku Osobe i potpis."
+                            "sketch_upload", "image_upload" -> "Prilozi se dodaju kroz dokumentaciju radnog naloga."
+                            else -> block.typeLabel
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+            }
+            if (block.helpText.isNotBlank()) {
+                Text(
+                    block.helpText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (block.options.isNotEmpty() && editableField == null) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    block.options.take(6).forEach { option ->
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    option.label.ifBlank { option.value },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
+                    if (block.options.size > 6) {
+                        AssistChip(onClick = {}, label = { Text("+${block.options.size - 6}") })
+                    }
+                }
+            }
         }
     }
 }
