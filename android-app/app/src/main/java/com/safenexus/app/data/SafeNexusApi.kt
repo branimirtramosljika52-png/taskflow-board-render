@@ -712,6 +712,10 @@ private fun JSONArray?.toWorkOrderDocumentationFields(): List<WorkOrderDocumenta
                     helpText = item.firstClean("helpText"),
                     defaultValue = item.firstClean("defaultValue"),
                     options = item.optJSONArray("options").toDocumentationFieldOptions(),
+                    signatureArea = item.firstClean("signatureArea"),
+                    signatureRole = item.firstClean("signatureRole"),
+                    signatureMultiple = item.optBoolean("signatureMultiple", true),
+                    signatureMetaFields = item.optJSONArray("signatureMetaFields").toStringList(),
                 ),
             )
         }
@@ -740,6 +744,10 @@ private fun JSONArray?.toWorkOrderDocumentationTemplateBlocks(): List<WorkOrderD
                         helpText = item.firstClean("helpText"),
                         summary = item.firstClean("summary"),
                         options = item.optJSONArray("options").toDocumentationFieldOptions(),
+                        signatureArea = item.firstClean("signatureArea"),
+                        signatureRole = item.firstClean("signatureRole"),
+                        signatureMultiple = item.optBoolean("signatureMultiple", true),
+                        signatureMetaFields = item.optJSONArray("signatureMetaFields").toStringList(),
                     ),
                 )
             }
@@ -906,6 +914,8 @@ private fun JSONArray?.toWorkOrderDocumentationSignatureAreaOptions(): List<Work
                     label = item.firstClean("label", "title", "name").ifBlank { key },
                     inspectorOptions = item.optJSONArray("inspectorOptions").toWorkOrderDocumentationOptions(),
                     authorizationOptions = item.optJSONArray("authorizationOptions").toWorkOrderDocumentationOptions(),
+                    defaultInspectorIds = item.optJSONArray("defaultInspectorIds").toStringList(),
+                    defaultAuthorizationHolderId = item.firstClean("defaultAuthorizationHolderId"),
                 ),
             )
         }

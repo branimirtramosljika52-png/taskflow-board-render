@@ -209,6 +209,8 @@ data class WorkOrderDocumentationSignatureAreaOptions(
     val label: String,
     val inspectorOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val authorizationOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val defaultInspectorIds: List<String> = emptyList(),
+    val defaultAuthorizationHolderId: String = "",
 )
 
 data class WorkOrderDocumentationTemplate(
@@ -240,6 +242,10 @@ data class WorkOrderDocumentationTemplateBlock(
     val helpText: String,
     val summary: String,
     val options: List<OptionItem>,
+    val signatureArea: String = "",
+    val signatureRole: String = "",
+    val signatureMultiple: Boolean = true,
+    val signatureMetaFields: List<String> = emptyList(),
 )
 
 data class WorkOrderDocumentationField(
@@ -252,6 +258,10 @@ data class WorkOrderDocumentationField(
     val helpText: String,
     val defaultValue: String,
     val options: List<OptionItem>,
+    val signatureArea: String = "",
+    val signatureRole: String = "",
+    val signatureMultiple: Boolean = true,
+    val signatureMetaFields: List<String> = emptyList(),
 )
 
 data class WorkOrderMeasurementTable(

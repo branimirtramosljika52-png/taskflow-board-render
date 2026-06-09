@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.51.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.52.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -10744,6 +10744,42 @@ function resolveMobileTemplatePromptDefaultValue(field = {}, index = 0, placehol
   return "";
 }
 
+const MOBILE_DOCUMENT_TEMPLATE_SIGNATURE_FIELD_TYPES = new Set([
+  "qualified_inspectors",
+  "inspector_signature",
+  "authorization_holder_signature",
+  "digital_signature",
+]);
+
+function normalizeMobileDocumentSignatureRole(value = "inspect") {
+  const normalized = normalizeInputValue(value || "inspect")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+  if (normalized.includes("company") || normalized.includes("klijent") || normalized.includes("narucitelj")) {
+    return "company_responsible";
+  }
+  if (normalized.includes("authorize") || normalized.includes("ovlast") || normalized.includes("nositelj") || normalized.includes("odgovorn")) {
+    return "authorize";
+  }
+  return "inspect";
+}
+
+function getMobileDocumentTemplateSignatureFieldConfig(field = {}) {
+  const type = normalizeInputValue(field?.type || "text").toLowerCase();
+  const role = normalizeMobileDocumentSignatureRole(
+    field?.signatureRole || (type === "authorization_holder_signature" ? "authorize" : "inspect"),
+  );
+  const allowMultiple = type === "authorization_holder_signature" || type === "inspector_signature"
+    ? false
+    : Boolean(field?.signatureMultiple ?? true);
+  return {
+    signatureArea: normalizeMobileQualificationAreaKey(field?.signatureArea || "elektro"),
+    signatureRole: role,
+    signatureMultiple: role === "authorize" || role === "company_responsible" ? false : allowMultiple,
+    signatureMetaFields: normalizeMobileDocumentWizardArray(field?.signatureMetaFields),
+  };
+}
+
 function buildMobileDocumentTemplatePromptFields(template = {}, placeholders = {}, common = {}) {
   return (Array.isArray(template?.customFields) ? template.customFields : [])
     .map((field, index) => {
@@ -10767,6 +10803,7 @@ function buildMobileDocumentTemplatePromptFields(template = {}, placeholders = {
         helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
         defaultValue: resolveMobileTemplatePromptDefaultValue(field, index, placeholders, template, common),
         options: buildMobileDocumentTemplateFieldOptions(field),
+        ...getMobileDocumentTemplateSignatureFieldConfig(field),
       };
     })
     .filter(Boolean);
@@ -10907,6 +10944,7 @@ function buildMobileDocumentTemplateFieldBlocks(template = {}, workOrder = {}, s
         helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
         summary: buildMobileDocumentTemplateFieldBlockSummary(field, template, scopedSnapshot, common, fieldSheets),
         options: buildMobileDocumentTemplateFieldOptions(field),
+        ...getMobileDocumentTemplateSignatureFieldConfig(field),
       };
     })
     .filter(Boolean);
@@ -11345,7 +11383,77 @@ function getMobileQualifiedUsersForArea(scopedSnapshot = {}, capability = "inspe
     .sort((left, right) => getMobileUserDocumentName(left).localeCompare(getMobileUserDocumentName(right), "hr"));
 }
 
-function buildMobileSignaturePersonOptions(scopedSnapshot = {}, signatureAreas = []) {
+function normalizeMobilePersonLookupValue(value = "") {
+  return normalizeInputValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getMobileWorkOrderExecutorLabels(workOrder = {}) {
+  const source = Array.isArray(workOrder?.executors)
+    ? workOrder.executors
+    : [workOrder?.executor1, workOrder?.executor2];
+  return Array.from(new Set(source
+    .map((entry) => {
+      if (entry && typeof entry === "object") {
+        return normalizeInputValue(
+          entry.fullName || entry.name || entry.label || entry.email || entry.username || entry.id,
+        );
+      }
+      return normalizeInputValue(entry);
+    })
+    .filter(Boolean)));
+}
+
+function getMobileUserLookupValues(user = {}) {
+  return [
+    getMobileUserDocumentName(user),
+    user?.fullName,
+    [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+    user?.displayName,
+    user?.username,
+    user?.legacyUsername,
+    user?.email,
+  ]
+    .map((value) => normalizeMobilePersonLookupValue(value))
+    .filter(Boolean);
+}
+
+function getMobileQualifiedExecutorUsers(scopedSnapshot = {}, workOrder = {}, capability = "inspect", signatureArea = "elektro") {
+  const executorNames = getMobileWorkOrderExecutorLabels(workOrder)
+    .map((value) => normalizeMobilePersonLookupValue(value))
+    .filter(Boolean);
+  if (executorNames.length === 0) {
+    return [];
+  }
+  const executorSet = new Set(executorNames);
+  return getMobileQualifiedUsersForArea(scopedSnapshot, capability, signatureArea)
+    .filter((user) => getMobileUserLookupValues(user).some((candidate) => executorSet.has(candidate)));
+}
+
+function findMobilePreferredSignatureUser(scopedSnapshot = {}, workOrder = {}, capability = "inspect", signatureArea = "elektro", fallbackIds = []) {
+  const executorMatch = getMobileQualifiedExecutorUsers(scopedSnapshot, workOrder, capability, signatureArea)[0];
+  if (executorMatch) {
+    return executorMatch;
+  }
+  const fallbackMatch = normalizeMobileDocumentWizardArray(fallbackIds)
+    .map((id) => findMobileScopedUserById(scopedSnapshot, id))
+    .find((user) => {
+      if (!user) return false;
+      const qualification = getMobileUserQualificationForArea(user, signatureArea);
+      return capability === "authorize" ? qualification.canAuthorize : qualification.canInspect;
+    });
+  if (fallbackMatch) {
+    return fallbackMatch;
+  }
+  return getMobileQualifiedUsersForArea(scopedSnapshot, capability, signatureArea)[0] || null;
+}
+
+function buildMobileSignaturePersonOptions(scopedSnapshot = {}, signatureAreas = [], workOrder = {}) {
   const areaSet = new Set(normalizeMobileQualificationKeyList(signatureAreas));
   (scopedSnapshot.users ?? []).forEach((user) => {
     const rootQualification = user?.electricalQualification && typeof user.electricalQualification === "object"
@@ -11364,16 +11472,30 @@ function buildMobileSignaturePersonOptions(scopedSnapshot = {}, signatureAreas =
     areaSet.add("elektro");
   }
 
-  return [...areaSet].map((area) => ({
-    key: area,
-    label: getMobileQualificationAreaLabel(area),
-    inspectorOptions: getMobileQualifiedUsersForArea(scopedSnapshot, "inspect", area)
-      .map((user) => buildMobileQualifiedUserOption(user, "inspect", area))
-      .filter(Boolean),
-    authorizationOptions: getMobileQualifiedUsersForArea(scopedSnapshot, "authorize", area)
-      .map((user) => buildMobileQualifiedUserOption(user, "authorize", area))
-      .filter(Boolean),
-  }));
+  return [...areaSet].map((area) => {
+    const defaultInspectorIds = getMobileQualifiedExecutorUsers(scopedSnapshot, workOrder, "inspect", area)
+      .map((user) => normalizeInputValue(user?.id))
+      .filter(Boolean);
+    const defaultAuthorizationUser = findMobilePreferredSignatureUser(
+      scopedSnapshot,
+      workOrder,
+      "authorize",
+      area,
+      defaultInspectorIds,
+    );
+    return {
+      key: area,
+      label: getMobileQualificationAreaLabel(area),
+      inspectorOptions: getMobileQualifiedUsersForArea(scopedSnapshot, "inspect", area)
+        .map((user) => buildMobileQualifiedUserOption(user, "inspect", area))
+        .filter(Boolean),
+      authorizationOptions: getMobileQualifiedUsersForArea(scopedSnapshot, "authorize", area)
+        .map((user) => buildMobileQualifiedUserOption(user, "authorize", area))
+        .filter(Boolean),
+      defaultInspectorIds,
+      defaultAuthorizationHolderId: normalizeInputValue(defaultAuthorizationUser?.id),
+    };
+  });
 }
 
 function buildMobileMeasurementEquipmentOptions(scopedSnapshot = {}) {
@@ -11518,7 +11640,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     measurementEquipmentOptions: buildMobileMeasurementEquipmentOptions(scopedSnapshot),
     legalFrameworkOptions: buildMobileLegalFrameworkOptions(scopedSnapshot),
     rulebookOptions: buildMobileRulebookOptions(scopedSnapshot),
-    signaturePersonOptions: buildMobileSignaturePersonOptions(scopedSnapshot, [...signatureAreaKeys]),
+    signaturePersonOptions: buildMobileSignaturePersonOptions(scopedSnapshot, [...signatureAreaKeys], workOrder),
   };
 }
 

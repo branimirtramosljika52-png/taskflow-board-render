@@ -98,6 +98,7 @@ import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -5852,6 +5853,132 @@ private fun List<WorkOrderDocumentationSignatureAreaOptions>.areaOptions(key: St
         )
 }
 
+private val documentationSignatureFieldTypes = setOf(
+    "qualified_inspectors",
+    "inspector_signature",
+    "authorization_holder_signature",
+    "digital_signature",
+)
+
+private data class DocumentationPersonFieldRule(
+    val id: String,
+    val label: String,
+    val signatureArea: String,
+    val role: String,
+    val multiple: Boolean,
+    val required: Boolean,
+    val helpText: String,
+    val priority: Int,
+)
+
+private fun normalizeDocumentationSignatureRole(value: String, type: String = ""): String {
+    val normalized = value.trim()
+        .lowercase(Locale.getDefault())
+        .replace("_", " ")
+        .replace("-", " ")
+    return when {
+        normalized.contains("company") || normalized.contains("klijent") || normalized.contains("narucitelj") -> "company_responsible"
+        normalized.contains("authorize") || normalized.contains("ovlast") || normalized.contains("nositelj") || normalized.contains("odgovorn") -> "authorize"
+        type.equals("authorization_holder_signature", ignoreCase = true) -> "authorize"
+        else -> "inspect"
+    }
+}
+
+private fun isDocumentationSignatureFieldType(type: String): Boolean =
+    documentationSignatureFieldTypes.contains(type.lowercase(Locale.getDefault()))
+
+private fun WorkOrderDocumentationField.toPersonFieldRule(template: WorkOrderDocumentationTemplate): DocumentationPersonFieldRule? {
+    if (!isDocumentationSignatureFieldType(type)) return null
+    val role = normalizeDocumentationSignatureRole(signatureRole, type)
+    return DocumentationPersonFieldRule(
+        id = "${template.id}::${id.ifBlank { key.ifBlank { tokenKey } }}",
+        label = label.ifBlank { if (role == "authorize") "Odgovorna osoba" else "Ispitivanje obavili" },
+        signatureArea = normalizeDocumentationSignatureAreaKey(signatureArea),
+        role = role,
+        multiple = role == "inspect" && signatureMultiple,
+        required = required,
+        helpText = helpText,
+        priority = if (type.equals("qualified_inspectors", ignoreCase = true)) 0 else 1,
+    )
+}
+
+private fun WorkOrderDocumentationTemplateBlock.toPersonFieldRule(template: WorkOrderDocumentationTemplate): DocumentationPersonFieldRule? {
+    if (!isDocumentationSignatureFieldType(type)) return null
+    val role = normalizeDocumentationSignatureRole(signatureRole, type)
+    return DocumentationPersonFieldRule(
+        id = "${template.id}::${id.ifBlank { key.ifBlank { tokenKey } }}",
+        label = label.ifBlank { if (role == "authorize") "Odgovorna osoba" else "Ispitivanje obavili" },
+        signatureArea = normalizeDocumentationSignatureAreaKey(signatureArea),
+        role = role,
+        multiple = role == "inspect" && signatureMultiple,
+        required = required,
+        helpText = helpText,
+        priority = if (type.equals("qualified_inspectors", ignoreCase = true)) 0 else 1,
+    )
+}
+
+private fun buildDocumentationPersonFieldRules(templates: List<WorkOrderDocumentationTemplate>): List<DocumentationPersonFieldRule> {
+    val rules = templates.flatMap { template ->
+        template.fieldBlocks.mapNotNull { block -> block.toPersonFieldRule(template) } +
+            template.fields.mapNotNull { field -> field.toPersonFieldRule(template) }
+    }
+    return rules
+        .sortedWith(compareBy<DocumentationPersonFieldRule> { it.priority }.thenBy { it.label.lowercase(Locale.getDefault()) })
+        .groupBy { "${it.signatureArea}::${it.role}" }
+        .map { (_, areaRules) ->
+            areaRules.reduce { current, next ->
+                current.copy(
+                    required = current.required || next.required,
+                    helpText = listOf(current.helpText, next.helpText)
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                        .joinToString(" "),
+                    multiple = current.multiple || next.multiple,
+                )
+            }
+        }
+}
+
+private data class DocumentationEnvironmentVisibility(
+    val outsideTemperature: Boolean = false,
+    val relativeHumidity: Boolean = false,
+    val airflowSpeed: Boolean = false,
+    val weather: Boolean = false,
+    val groundCondition: Boolean = false,
+    val groundResistance: Boolean = false,
+) {
+    val any: Boolean
+        get() = outsideTemperature || relativeHumidity || airflowSpeed || weather || groundCondition || groundResistance
+}
+
+private fun buildDocumentationEnvironmentVisibility(templates: List<WorkOrderDocumentationTemplate>): DocumentationEnvironmentVisibility {
+    val lookup = normalizeTemplateFieldLookup(
+        templates.joinToString(" ") { template ->
+            listOf(
+                template.title,
+                template.documentType,
+                template.fields.joinToString(" ") { field ->
+                    listOf(field.id, field.key, field.tokenKey, field.label, field.helpText).joinToString(" ")
+                },
+                template.fieldBlocks.joinToString(" ") { block ->
+                    listOf(block.id, block.key, block.tokenKey, block.label, block.typeLabel, block.group, block.helpText, block.summary).joinToString(" ")
+                },
+            ).joinToString(" ")
+        },
+    )
+    fun hasAny(vararg aliases: String): Boolean =
+        aliases.any { alias -> lookup.contains(normalizeTemplateFieldLookup(alias)) }
+    return DocumentationEnvironmentVisibility(
+        outsideTemperature = hasAny("vanjska temperatura", "outside temperature"),
+        relativeHumidity = hasAny("relativna vlaga", "relative humidity", "humidity"),
+        airflowSpeed = hasAny("strujanje zraka", "brzina zraka", "airflow", "air flow"),
+        weather = hasAny("vremenski uvjeti", "weather"),
+        groundCondition = hasAny("stanje tla", "ground condition"),
+        groundResistance = hasAny("otpor tla", "ground resistance"),
+    )
+}
+
 private fun WorkOrderDocumentationTemplate.documentationServiceKey(): String {
     val indexKey = serviceIndex.takeIf { it >= 0 }?.let { "service-$it" }.orEmpty()
     val fallback = listOf(serviceCode, serviceName, documentType, title)
@@ -5975,10 +6102,32 @@ private data class DocumentationStandardValues(
 )
 
 private fun WorkOrderDocumentationField.lookupText(): String =
-    normalizeTemplateFieldLookup(listOf(id, key, tokenKey, label, type).joinToString(" "))
+    normalizeTemplateFieldLookup(listOf(id, key, tokenKey, label, type, signatureArea, signatureRole).joinToString(" "))
 
 private fun WorkOrderDocumentationTemplateBlock.lookupText(): String =
-    normalizeTemplateFieldLookup(listOf(id, key, tokenKey, label, type, typeLabel, group).joinToString(" "))
+    normalizeTemplateFieldLookup(listOf(id, key, tokenKey, label, type, typeLabel, group, signatureArea, signatureRole).joinToString(" "))
+
+private fun standardDocumentationSignatureValue(
+    signatureArea: String,
+    role: String,
+    type: String = "",
+    standard: DocumentationStandardValues,
+): String {
+    val area = normalizeDocumentationSignatureAreaKey(signatureArea)
+    val normalizedRole = normalizeDocumentationSignatureRole(role, type)
+    if (normalizedRole == "authorize") {
+        return when (area) {
+            "tipkalo", "tzin" -> standard.tipkaloAuthorizationHolderLabel.ifBlank { standard.tipkaloAuthorizationHolderUserId }
+            "elektro" -> standard.electricalAuthorizationHolderLabel.ifBlank { standard.electricalAuthorizationHolderUserId }
+            else -> standard.authorizationHolderLabel.ifBlank { standard.authorizationHolderUserId }
+        }
+    }
+    return when (area) {
+        "tipkalo", "tzin" -> standard.tipkaloInspectorLabel.ifBlank { standard.tipkaloInspectorUserId }
+        "elektro" -> standard.electricalInspectorLabel.ifBlank { standard.electricalInspectorUserId }
+        else -> standard.inspectorLabel.ifBlank { standard.inspectorUserId }
+    }
+}
 
 private fun standardDocumentationValueForLookup(lookup: String, standard: DocumentationStandardValues): String? =
     when {
@@ -6027,15 +6176,15 @@ private fun standardDocumentationValueForField(
     standard: DocumentationStandardValues,
 ): String? {
     if (field.type.equals("qualified_inspectors", ignoreCase = true)) {
-        return standard.inspectorLabel.ifBlank { standard.inspectorUserId }
+        return standardDocumentationSignatureValue(field.signatureArea, field.signatureRole, field.type, standard)
     }
     if (field.type.equals("inspector_signature", ignoreCase = true)) {
-        return standard.inspectorLabel.ifBlank { standard.inspectorUserId }
+        return standardDocumentationSignatureValue(field.signatureArea, field.signatureRole, field.type, standard)
     }
     if (field.type.equals("authorization_holder_signature", ignoreCase = true) ||
         field.type.equals("digital_signature", ignoreCase = true)
     ) {
-        return standard.authorizationHolderLabel.ifBlank { standard.authorizationHolderUserId }
+        return standardDocumentationSignatureValue(field.signatureArea, field.signatureRole, field.type, standard)
     }
     return standardDocumentationValueForLookup(field.lookupText(), standard)
 }
@@ -6089,12 +6238,20 @@ private fun findMissingRequiredDocumentationFields(
         template.fieldBlocks.filter { it.required }.forEach { block ->
             val lookup = block.lookupText()
             val standardValue = standardDocumentationValueForLookup(lookup, standard).orEmpty()
+            val matchingField = findTemplateFieldForBlock(template, block)
+            val matchingValue = matchingField?.let { field ->
+                values[templateFieldStateKey(template, field)]
+                    ?: standardDocumentationValueForField(field, standard)
+                    ?: ""
+            }.orEmpty()
             val complete = when (block.type.lowercase(Locale.getDefault())) {
                 "equipment_list" -> standard.selectedEquipmentCount > 0
                 "legal_list" -> standard.selectedLegalCount > 0 || standard.selectedRulebookCount > 0
                 "measurement_table" -> true
                 "chapter" -> true
-                else -> standardValue.isNotBlank()
+                "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" ->
+                    standardDocumentationSignatureValue(block.signatureArea, block.signatureRole, block.type, standard).isNotBlank()
+                else -> matchingValue.isNotBlank() || standardValue.isNotBlank()
             }
             if (!complete) {
                 val label = listOf(template.serviceCode, block.label)
@@ -6294,8 +6451,11 @@ private fun WorkOrderDocumentationWizardDialog(
     val blockTemplates = remember(activeTemplates) {
         activeTemplates.filter { template -> template.fieldBlocks.isNotEmpty() }
     }
-    val activeSignatureAreas = remember(activeTemplates, selectedFlowItem?.serviceKey) {
-        inferDocumentationSignatureAreas(activeTemplates, selectedFlowItem)
+    val activePersonRules = remember(activeTemplates) {
+        buildDocumentationPersonFieldRules(activeTemplates)
+    }
+    val environmentVisibility = remember(context.templates) {
+        buildDocumentationEnvironmentVisibility(context.templates)
     }
     val templateDefaultsKey = remember(context) {
         context.templates.joinToString("|") { template ->
@@ -6304,6 +6464,45 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     var templateFieldValues by remember(workOrder.id, templateDefaultsKey) {
         mutableStateOf(defaultTemplateFieldValues(allPromptTemplates))
+    }
+    LaunchedEffect(workOrder.id, context.signaturePersonOptions) {
+        context.signaturePersonOptions.forEach { options ->
+            val area = normalizeDocumentationSignatureAreaKey(options.key)
+            val defaultInspectors = options.defaultInspectorIds
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .toSet()
+            val defaultAuthorization = options.defaultAuthorizationHolderId.trim()
+            when (area) {
+                "tipkalo", "tzin" -> {
+                    if (tipkaloInspectorUserIds.isEmpty() && defaultInspectors.isNotEmpty()) {
+                        tipkaloInspectorUserIds = defaultInspectors
+                        tipkaloInspectorUserId = defaultInspectors.firstOrNull().orEmpty()
+                    }
+                    if (tipkaloAuthorizationHolderUserId.isBlank() && defaultAuthorization.isNotBlank()) {
+                        tipkaloAuthorizationHolderUserId = defaultAuthorization
+                    }
+                }
+                "elektro" -> {
+                    if (electricalInspectorUserIds.isEmpty() && defaultInspectors.isNotEmpty()) {
+                        electricalInspectorUserIds = defaultInspectors
+                        electricalInspectorUserId = defaultInspectors.firstOrNull().orEmpty()
+                    }
+                    if (electricalAuthorizationHolderUserId.isBlank() && defaultAuthorization.isNotBlank()) {
+                        electricalAuthorizationHolderUserId = defaultAuthorization
+                    }
+                }
+                else -> {
+                    if (inspectorUserIds.isEmpty() && defaultInspectors.isNotEmpty()) {
+                        inspectorUserIds = defaultInspectors
+                        inspectorUserId = defaultInspectors.firstOrNull().orEmpty()
+                    }
+                    if (authorizationHolderUserId.isBlank() && defaultAuthorization.isNotBlank()) {
+                        authorizationHolderUserId = defaultAuthorization
+                    }
+                }
+            }
+        }
     }
     val allMeasurementTemplates = remember(context) {
         context.templates
@@ -6389,7 +6588,7 @@ private fun WorkOrderDocumentationWizardDialog(
         buildStandardTemplateFieldValues(allPromptTemplates, standardValues)
     }
     val effectiveTemplateFieldValues = remember(templateFieldValues, standardTemplateFieldValues) {
-        templateFieldValues + standardTemplateFieldValues
+        standardTemplateFieldValues + templateFieldValues
     }
     val missingRequiredFields = remember(allPromptTemplates, effectiveTemplateFieldValues, standardValues) {
         findMissingRequiredDocumentationFields(allPromptTemplates, effectiveTemplateFieldValues, standardValues)
@@ -6493,6 +6692,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         documentNumber = currentDocumentNumber,
                         serviceName = selectedFlowItem?.serviceName ?: inspectionType,
                         showDocumentNumber = false,
+                        executors = workOrder.executors,
                         inspectionDate = inspectionDate,
                         onInspectionDateChange = { inspectionDate = it },
                         issuedDate = issuedDate,
@@ -6514,6 +6714,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         onWeatherChange = { weather = it },
                         onGroundConditionChange = { groundCondition = it },
                         onGroundResistanceChange = { groundResistance = it },
+                        environmentVisibility = environmentVisibility,
                         enabled = !formLoading,
                     )
                 }
@@ -6550,7 +6751,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     )
                 }
                 DocumentationServicePeopleSection(
-                    signatureAreas = activeSignatureAreas,
+                    personRules = activePersonRules,
                     areaOptions = context.signaturePersonOptions,
                     inspectorUserIds = inspectorUserIds,
                     onInspectorUserIdsChange = {
@@ -8457,7 +8658,7 @@ private fun DocumentationCoreBasicsLauncherCard(
 
 @Composable
 private fun DocumentationServicePeopleSection(
-    signatureAreas: List<String>,
+    personRules: List<DocumentationPersonFieldRule>,
     areaOptions: List<WorkOrderDocumentationSignatureAreaOptions>,
     inspectorUserIds: Set<String>,
     onInspectorUserIdsChange: (Set<String>) -> Unit,
@@ -8473,13 +8674,13 @@ private fun DocumentationServicePeopleSection(
     onTipkaloAuthorizationHolderUserIdChange: (String) -> Unit,
     enabled: Boolean,
 ) {
-    val normalizedAreas = signatureAreas
-        .map(::normalizeDocumentationSignatureAreaKey)
-        .distinct()
-        .ifEmpty { listOf("elektro") }
+    if (personRules.isEmpty()) {
+        return
+    }
+    val rulesByArea = personRules.groupBy { normalizeDocumentationSignatureAreaKey(it.signatureArea) }
 
     WizardSection(title = "Osobe i ovlaštenja", icon = Icons.Rounded.CheckCircle) {
-        normalizedAreas.forEach { area ->
+        rulesByArea.forEach { (area, rules) ->
             val options = areaOptions.areaOptions(area)
             val inspectorSelection = when (area) {
                 "tipkalo", "tzin" -> tipkaloInspectorUserIds
@@ -8501,10 +8702,6 @@ private fun DocumentationServicePeopleSection(
                 "elektro" -> onElectricalAuthorizationHolderUserIdChange
                 else -> onAuthorizationHolderUserIdChange
             }
-            val authorizationOptions = listOf(
-                WorkOrderDocumentationOption("", "Odaberi odgovornu osobu"),
-            ) + options.authorizationOptions
-            val authorizationLabel = authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -8516,22 +8713,64 @@ private fun DocumentationServicePeopleSection(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(options.label, fontWeight = FontWeight.Black)
-                    DocumentationMultiSelectField(
-                        label = "Ispitivači",
-                        options = options.inspectorOptions,
-                        selectedIds = inspectorSelection,
-                        enabled = enabled,
-                        emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
-                        onChange = onInspectorChange,
-                    )
-                    WorkOrderSelectField(
-                        label = "Odgovorna osoba",
-                        value = authorizationSelection,
-                        valueLabel = authorizationLabel.ifBlank { "Odaberi odgovornu osobu" },
-                        options = authorizationOptions.map { it.id to it.label },
-                        enabled = enabled,
-                        onSelect = onAuthorizationChange,
-                    )
+                    rules.forEach { rule ->
+                        when (rule.role) {
+                            "company_responsible" -> {
+                                Text(
+                                    "${rule.label}: osoba naručitelja popunjava se iz podataka tvrtke/lokacije.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                                )
+                            }
+                            "authorize" -> {
+                                val authorizationOptions = listOf(
+                                    WorkOrderDocumentationOption("", "Odaberi odgovornu osobu"),
+                                ) + options.authorizationOptions
+                                val authorizationLabel = authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
+                                WorkOrderSelectField(
+                                    label = if (rule.required) "${rule.label} *" else rule.label,
+                                    value = authorizationSelection,
+                                    valueLabel = authorizationLabel.ifBlank { "Odaberi odgovornu osobu" },
+                                    options = authorizationOptions.map { it.id to it.label },
+                                    enabled = enabled,
+                                    onSelect = onAuthorizationChange,
+                                )
+                            }
+                            else -> {
+                                if (rule.multiple) {
+                                    DocumentationMultiSelectField(
+                                        label = if (rule.required) "${rule.label} *" else rule.label,
+                                        options = options.inspectorOptions,
+                                        selectedIds = inspectorSelection,
+                                        enabled = enabled,
+                                        emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                                        onChange = onInspectorChange,
+                                    )
+                                } else {
+                                    val inspectorOptions = listOf(
+                                        WorkOrderDocumentationOption("", "Odaberi ispitivača"),
+                                    ) + options.inspectorOptions
+                                    val selectedInspectorId = inspectorSelection.firstOrNull().orEmpty()
+                                    val inspectorLabel = inspectorOptions.firstOrNull { it.id == selectedInspectorId }?.label.orEmpty()
+                                    WorkOrderSelectField(
+                                        label = if (rule.required) "${rule.label} *" else rule.label,
+                                        value = selectedInspectorId,
+                                        valueLabel = inspectorLabel.ifBlank { "Odaberi ispitivača" },
+                                        options = inspectorOptions.map { it.id to it.label },
+                                        enabled = enabled,
+                                        onSelect = { next -> onInspectorChange(if (next.isBlank()) emptySet() else setOf(next)) },
+                                    )
+                                }
+                            }
+                        }
+                        if (rule.helpText.isNotBlank()) {
+                            Text(
+                                rule.helpText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -8543,6 +8782,7 @@ private fun DocumentationCoreBasicsContent(
     documentNumber: String,
     serviceName: String,
     showDocumentNumber: Boolean = true,
+    executors: List<String>,
     inspectionDate: String,
     onInspectionDateChange: (String) -> Unit,
     issuedDate: String,
@@ -8564,16 +8804,39 @@ private fun DocumentationCoreBasicsContent(
     onWeatherChange: (String) -> Unit,
     onGroundConditionChange: (String) -> Unit,
     onGroundResistanceChange: (String) -> Unit,
+    environmentVisibility: DocumentationEnvironmentVisibility,
     enabled: Boolean,
 ) {
     if (showDocumentNumber) {
         DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
     }
+    if (executors.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Izvršitelji RN-a", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                executors.forEach { executor ->
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                executor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                    )
+                }
+            }
+        }
+    }
     WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
     WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
     WorkOrderTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
 
-    Text("Mjerna oprema i uvjeti", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+    Text("Mjerna oprema", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
     WorkOrderSelectField(
         label = "Grupa mjerne opreme",
         value = measurementEquipmentGroup,
@@ -8582,12 +8845,27 @@ private fun DocumentationCoreBasicsContent(
         enabled = enabled,
         onSelect = onMeasurementEquipmentGroupChange,
     )
-    WorkOrderTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
-    WorkOrderTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
-    WorkOrderTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
-    WorkOrderTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
-    WorkOrderTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
-    WorkOrderTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
+    if (environmentVisibility.any) {
+        Text("Vanjski utjecaji", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+        if (environmentVisibility.outsideTemperature) {
+            WorkOrderTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
+        }
+        if (environmentVisibility.relativeHumidity) {
+            WorkOrderTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
+        }
+        if (environmentVisibility.airflowSpeed) {
+            WorkOrderTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
+        }
+        if (environmentVisibility.weather) {
+            WorkOrderTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
+        }
+        if (environmentVisibility.groundCondition) {
+            WorkOrderTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
+        }
+        if (environmentVisibility.groundResistance) {
+            WorkOrderTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
+        }
+    }
 }
 
 @Composable
