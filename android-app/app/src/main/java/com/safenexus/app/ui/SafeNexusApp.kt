@@ -43,9 +43,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -182,6 +184,7 @@ import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.WorkOrderCompanyOption
 import com.safenexus.app.data.WorkOrderCreateDraft
 import com.safenexus.app.data.WorkOrderDocumentationContext
+import com.safenexus.app.data.WorkOrderDocumentationAdditionalRecord
 import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocumentationField
 import com.safenexus.app.data.WorkOrderDocumentationOption
@@ -674,6 +677,44 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                             error = error.message ?: "Ne mogu učitati polja predloška za RN.",
                         )
                     }
+                }
+        }
+    }
+
+    fun updateWorkOrderExecutors(workOrder: WorkOrder, executors: List<String>) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za spremanje izvršitelja.")
+            return
+        }
+        val normalized = executors.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.updateWorkOrderExecutors(workOrder.id, normalized)
+                .onSuccess {
+                    val updatedOrders = state.workOrders.map { item ->
+                        if (item.id == workOrder.id) {
+                            item.copy(executors = normalized)
+                        } else {
+                            item
+                        }
+                    }
+                    val updatedSelected = state.selectedWorkOrder?.let { selected ->
+                        if (selected.id == workOrder.id) selected.copy(executors = normalized) else selected
+                    }
+                    state = state.copy(
+                        data = state.data.copy(workOrders = updatedOrders),
+                        workOrders = updatedOrders,
+                        selectedWorkOrder = updatedSelected,
+                        isLoading = false,
+                        notice = "Izvršitelji RN-a su spremljeni.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu spremiti izvršitelje RN-a.",
+                    )
                 }
         }
     }
@@ -1222,6 +1263,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     documentationWizardObjectId = createdObject.id
                     viewModel.loadWorkOrderDocumentationContext(workOrder, createdObject.id)
                 }
+            },
+            onExecutorsChange = { executors ->
+                viewModel.updateWorkOrderExecutors(workOrder, executors)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -5806,8 +5850,22 @@ private data class DocumentationServiceFlowItem(
     val templateCount: Int,
 )
 
+private data class DocumentationAdditionalObjectRecord(
+    val serviceKey: String,
+    val serviceIndex: Int,
+    val serviceCode: String,
+    val serviceName: String,
+    val objectId: String,
+    val objectName: String,
+)
+
 private const val DOCUMENTATION_BASICS_FLOW_KEY = "__basics__"
 private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
+
+private fun DocumentationServiceFlowItem.serviceValidityKey(): String =
+    listOf(serviceCode, serviceName, serviceKey)
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
 
 private fun normalizeDocumentationSignatureAreaKey(value: String): String =
     value.trim()
@@ -6279,6 +6337,7 @@ private fun WorkOrderDocumentationWizardDialog(
     onDismiss: () -> Unit,
     onObjectSelectionChange: (String) -> Unit,
     onCreateObject: (String) -> Unit,
+    onExecutorsChange: (List<String>) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val today = remember { LocalDate.now().toString() }
@@ -6288,6 +6347,19 @@ private fun WorkOrderDocumentationWizardDialog(
         }
     }
     val userLabelById = remember(userOptions) { userOptions.toMap() }
+    val executorOptions = remember(users, workOrder.executors) {
+        (
+            users.map { user -> user.label.ifBlank { user.fullName.ifBlank { user.email } } } +
+                workOrder.executors
+            )
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .map { it to it }
+    }
+    var editableExecutors by remember(workOrder.id, workOrder.executors) {
+        mutableStateOf(workOrder.executors.map { it.trim() }.filter { it.isNotBlank() }.distinct())
+    }
     val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
         buildDocumentationServiceFlowItems(context.templates, workOrder)
     }
@@ -6423,6 +6495,18 @@ private fun WorkOrderDocumentationWizardDialog(
     var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
     var includeHandoverProtocol by remember(workOrder.id) { mutableStateOf(true) }
     var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
+    var serviceValidityMonths by remember(workOrder.id, serviceFlowItems, defaults.serviceValidityMonths) {
+        mutableStateOf(
+            serviceFlowItems.associate { item ->
+                item.serviceValidityKey() to (
+                    defaults.serviceValidityMonths[item.serviceValidityKey()]
+                        ?: defaults.serviceValidityMonths[item.serviceCode]
+                        ?: defaults.serviceValidityMonths[item.serviceName]
+                        ?: validityMonths.ifBlank { "12" }
+                    )
+            },
+        )
+    }
     var electricalValidityMonths by remember(workOrder.id, defaults.electricalValidityMonths) {
         mutableStateOf(defaults.electricalValidityMonths.ifBlank { validityMonths.ifBlank { "12" } })
     }
@@ -6451,12 +6535,19 @@ private fun WorkOrderDocumentationWizardDialog(
     val blockTemplates = remember(activeTemplates) {
         activeTemplates.filter { template -> template.fieldBlocks.isNotEmpty() }
     }
-    val activePersonRules = remember(activeTemplates) {
-        buildDocumentationPersonFieldRules(activeTemplates)
+    val allPersonRules = remember(context.templates) {
+        buildDocumentationPersonFieldRules(context.templates)
     }
     val environmentVisibility = remember(context.templates) {
         buildDocumentationEnvironmentVisibility(context.templates)
     }
+    var additionalRecords by remember(workOrder.id, serviceFlowItems) {
+        mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
+    }
+    var additionalRecordTarget by remember(workOrder.id) {
+        mutableStateOf<DocumentationServiceFlowItem?>(null)
+    }
+    var additionalRecordObjectId by remember(workOrder.id) { mutableStateOf("") }
     val templateDefaultsKey = remember(context) {
         context.templates.joinToString("|") { template ->
             "${template.id}:${template.fields.joinToString(",") { field -> "${field.id}:${field.defaultValue}" }}"
@@ -6640,6 +6731,80 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
+    additionalRecordTarget?.let { target ->
+        val usedObjectIds = additionalRecords
+            .filter { it.serviceKey == target.serviceKey }
+            .map { it.objectId }
+            .toSet() + selectedObjectId
+        val selectableObjects = availableLocationObjects.filter { it.id !in usedObjectIds }
+        AlertDialog(
+            onDismissRequest = { additionalRecordTarget = null },
+            title = { Text("Novi zapisnik za objekt", fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "${target.serviceCode} - ${target.serviceName}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (selectableObjects.isEmpty()) {
+                        Text(
+                            "Nema slobodnog objekta za ovu uslugu. Dodaj novi objekt na lokaciji pa ponovno dugo pritisni uslugu.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                    } else {
+                        WorkOrderSelectField(
+                            label = "Objekt za dodatni zapisnik",
+                            value = additionalRecordObjectId,
+                            valueLabel = selectableObjects.firstOrNull { it.id == additionalRecordObjectId }?.name ?: "Odaberi objekt",
+                            options = selectableObjects.map { item ->
+                                item.id to listOf(item.name, item.code.takeIf { it.isNotBlank() }?.let { "($it)" })
+                                    .filterNotNull()
+                                    .joinToString(" ")
+                            },
+                            enabled = !formLoading,
+                            onSelect = { additionalRecordObjectId = it },
+                        )
+                    }
+                    Text(
+                        "Dodatni zapisnik ulazi i u primopredajni zapisnik.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val selected = selectableObjects.firstOrNull { it.id == additionalRecordObjectId }
+                        if (selected != null) {
+                            additionalRecords = additionalRecords + DocumentationAdditionalObjectRecord(
+                                serviceKey = target.serviceKey,
+                                serviceIndex = target.serviceIndex,
+                                serviceCode = target.serviceCode,
+                                serviceName = target.serviceName,
+                                objectId = selected.id,
+                                objectName = selected.name,
+                            )
+                            additionalRecordTarget = null
+                            additionalRecordObjectId = ""
+                        }
+                    },
+                    enabled = !formLoading && additionalRecordObjectId.isNotBlank() && selectableObjects.isNotEmpty(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text("Dodaj zapisnik", fontWeight = FontWeight.Black)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { additionalRecordTarget = null }, enabled = !formLoading) {
+                    Text("Odustani")
+                }
+            },
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.fillMaxWidth(0.96f),
@@ -6666,8 +6831,18 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationProcessToolbar(
                         flowItems = serviceFlowItems,
                         selectedService = selectedFlowService,
+                        additionalRecords = additionalRecords,
                         enabled = !formLoading,
                         onSelectService = { selectedFlowService = it },
+                        onLongPressService = { item ->
+                            val usedObjectIds = additionalRecords
+                                .filter { it.serviceKey == item.serviceKey }
+                                .map { it.objectId }
+                                .toSet() + selectedObjectId
+                            val nextObject = availableLocationObjects.firstOrNull { it.id !in usedObjectIds }
+                            additionalRecordTarget = item
+                            additionalRecordObjectId = nextObject?.id.orEmpty()
+                        },
                     )
                 }
                 if (requiredWarning.isNotBlank()) {
@@ -6692,7 +6867,6 @@ private fun WorkOrderDocumentationWizardDialog(
                         documentNumber = currentDocumentNumber,
                         serviceName = selectedFlowItem?.serviceName ?: inspectionType,
                         showDocumentNumber = false,
-                        executors = workOrder.executors,
                         inspectionDate = inspectionDate,
                         onInspectionDateChange = { inspectionDate = it },
                         issuedDate = issuedDate,
@@ -6715,6 +6889,55 @@ private fun WorkOrderDocumentationWizardDialog(
                         onGroundConditionChange = { groundCondition = it },
                         onGroundResistanceChange = { groundResistance = it },
                         environmentVisibility = environmentVisibility,
+                        enabled = !formLoading,
+                    )
+                    DocumentationExecutorsEditor(
+                        executorOptions = executorOptions,
+                        selectedExecutors = editableExecutors,
+                        originalExecutors = workOrder.executors,
+                        enabled = !formLoading,
+                        onChange = { editableExecutors = it },
+                        onSave = { onExecutorsChange(editableExecutors) },
+                    )
+                    DocumentationServiceValiditySection(
+                        flowItems = serviceFlowItems,
+                        validityMonths = validityMonths,
+                        onValidityMonthsChange = { value ->
+                            validityMonths = value
+                            if (serviceValidityMonths.isEmpty()) {
+                                serviceValidityMonths = serviceFlowItems.associate { it.serviceValidityKey() to value }
+                            }
+                        },
+                        serviceValidityMonths = serviceValidityMonths,
+                        onServiceValidityMonthsChange = { key, value ->
+                            serviceValidityMonths = serviceValidityMonths + (key to value)
+                        },
+                        enabled = !formLoading,
+                    )
+                    DocumentationServicePeopleSection(
+                        personRules = allPersonRules,
+                        areaOptions = context.signaturePersonOptions,
+                        inspectorUserIds = inspectorUserIds,
+                        onInspectorUserIdsChange = {
+                            inspectorUserIds = it
+                            inspectorUserId = it.firstOrNull().orEmpty()
+                        },
+                        authorizationHolderUserId = authorizationHolderUserId,
+                        onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
+                        electricalInspectorUserIds = electricalInspectorUserIds,
+                        onElectricalInspectorUserIdsChange = {
+                            electricalInspectorUserIds = it
+                            electricalInspectorUserId = it.firstOrNull().orEmpty()
+                        },
+                        electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+                        onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
+                        tipkaloInspectorUserIds = tipkaloInspectorUserIds,
+                        onTipkaloInspectorUserIdsChange = {
+                            tipkaloInspectorUserIds = it
+                            tipkaloInspectorUserId = it.firstOrNull().orEmpty()
+                        },
+                        tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                        onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
                         enabled = !formLoading,
                     )
                 }
@@ -6750,32 +6973,6 @@ private fun WorkOrderDocumentationWizardDialog(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
                 }
-                DocumentationServicePeopleSection(
-                    personRules = activePersonRules,
-                    areaOptions = context.signaturePersonOptions,
-                    inspectorUserIds = inspectorUserIds,
-                    onInspectorUserIdsChange = {
-                        inspectorUserIds = it
-                        inspectorUserId = it.firstOrNull().orEmpty()
-                    },
-                    authorizationHolderUserId = authorizationHolderUserId,
-                    onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
-                    electricalInspectorUserIds = electricalInspectorUserIds,
-                    onElectricalInspectorUserIdsChange = {
-                        electricalInspectorUserIds = it
-                        electricalInspectorUserId = it.firstOrNull().orEmpty()
-                    },
-                    electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
-                    onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
-                    tipkaloInspectorUserIds = tipkaloInspectorUserIds,
-                    onTipkaloInspectorUserIdsChange = {
-                        tipkaloInspectorUserIds = it
-                        tipkaloInspectorUserId = it.firstOrNull().orEmpty()
-                    },
-                    tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
-                    onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
-                    enabled = !formLoading,
-                )
                 val templateControls = DocumentationTemplateStandardControls(
                     documentNumber = currentDocumentNumber,
                     serviceName = selectedFlowItem?.serviceName ?: inspectionType,
@@ -6941,12 +7138,6 @@ private fun WorkOrderDocumentationWizardDialog(
 
                 }
                 if (summaryFlowSelected) {
-                WizardSection(title = "Rokovi i mjerenja", icon = Icons.Rounded.CalendarMonth) {
-                    NumberTextField("Vrijedi mjeseci", validityMonths, { validityMonths = it }, !formLoading)
-                    NumberTextField("Panik rasvjeta vrijedi mjeseci", electricalValidityMonths, { electricalValidityMonths = it }, !formLoading)
-                    NumberTextField("Tipkalo vrijedi mjeseci", tipkaloValidityMonths, { tipkaloValidityMonths = it }, !formLoading)
-                }
-
                 DocumentationSummarySection(
                     workOrder = workOrder,
                     flowItems = serviceFlowItems,
@@ -6980,6 +7171,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     requiredWarning = ""
                     val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
                     val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
+                    val serviceValidityPayload = buildServiceValidityPayload(serviceFlowItems, serviceValidityMonths, validityMonths)
                     val draft = WorkOrderDocumentationDraft(
                         objectId = selectedObject?.id.orEmpty(),
                         objectName = selectedObject?.name.orEmpty(),
@@ -7003,6 +7195,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         validityMonths = validityMonths.trim(),
                         electricalValidityMonths = electricalValidityMonths.trim(),
                         tipkaloValidityMonths = tipkaloValidityMonths.trim(),
+                        serviceValidityMonths = serviceValidityPayload,
+                        executors = editableExecutors,
                         inspectorUserIds = inspectorUserIds.toList(),
                         inspectorUserId = inspectorUserId.ifBlank { inspectorUserIds.firstOrNull().orEmpty() },
                         authorizationHolderUserId = authorizationHolderUserId,
@@ -7016,6 +7210,16 @@ private fun WorkOrderDocumentationWizardDialog(
                         templateFieldValues = templatePayload.second,
                         fieldSheets = sheetPayload.first,
                         templateFieldSheets = sheetPayload.second,
+                        additionalRecords = additionalRecords.map { record ->
+                            WorkOrderDocumentationAdditionalRecord(
+                                serviceKey = record.serviceKey,
+                                serviceIndex = record.serviceIndex,
+                                serviceCode = record.serviceCode,
+                                serviceName = record.serviceName,
+                                objectId = record.objectId,
+                                objectName = record.objectName,
+                            )
+                        },
                         includeHandoverProtocol = includeHandoverProtocol,
                     )
                     onConfirm(draft)
@@ -7135,6 +7339,24 @@ private fun buildTemplateFieldPayload(
 
     return flatValues to templateValues.mapValues { it.value.toMap() }
 }
+
+private fun buildServiceValidityPayload(
+    flowItems: List<DocumentationServiceFlowItem>,
+    values: Map<String, String>,
+    fallback: String,
+): Map<String, String> =
+    buildMap {
+        flowItems.forEach { item ->
+            val value = values[item.serviceValidityKey()].orEmpty().ifBlank { fallback }.trim()
+            if (value.isNotBlank()) {
+                listOf(item.serviceValidityKey(), item.serviceKey, item.serviceCode, item.serviceName)
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinctBy { it.lowercase(Locale.getDefault()) }
+                    .forEach { key -> put(key, value) }
+            }
+        }
+    }
 
 private fun measurementSheetStateKey(
     template: WorkOrderDocumentationTemplate,
@@ -7902,12 +8124,15 @@ private fun DocumentationSummaryRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DocumentationProcessToolbar(
     flowItems: List<DocumentationServiceFlowItem>,
     selectedService: String,
+    additionalRecords: List<DocumentationAdditionalObjectRecord>,
     enabled: Boolean,
     onSelectService: (String) -> Unit,
+    onLongPressService: (DocumentationServiceFlowItem) -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -7936,13 +8161,19 @@ private fun DocumentationProcessToolbar(
                     },
                 )
                 flowItems.forEachIndexed { index, item ->
+                    val extraCount = additionalRecords.count { it.serviceKey == item.serviceKey }
                     FilterChip(
                         selected = item.serviceKey.equals(selectedService, ignoreCase = true),
-                        onClick = { onSelectService(item.serviceKey) },
+                        onClick = {},
+                        modifier = Modifier.combinedClickable(
+                            enabled = enabled,
+                            onClick = { onSelectService(item.serviceKey) },
+                            onLongClick = { onLongPressService(item) },
+                        ),
                         enabled = enabled,
                         label = {
                             Text(
-                                "${index + 1}. ${item.serviceCode}",
+                                "${index + 1}. ${item.serviceCode}${if (extraCount > 0) " +$extraCount" else ""}",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -8657,6 +8888,77 @@ private fun DocumentationCoreBasicsLauncherCard(
 }
 
 @Composable
+private fun DocumentationExecutorsEditor(
+    executorOptions: List<Pair<String, String>>,
+    selectedExecutors: List<String>,
+    originalExecutors: List<String>,
+    enabled: Boolean,
+    onChange: (List<String>) -> Unit,
+    onSave: () -> Unit,
+) {
+    WizardSection(title = "Izvršitelji RN-a", icon = Icons.Rounded.Person) {
+        WorkOrderMultiSelectChips(
+            options = executorOptions,
+            selected = selectedExecutors,
+            enabled = enabled,
+            emptyText = "Nema dostupnih korisnika za odabir izvršitelja.",
+            onToggle = { value -> onChange(selectedExecutors.toggleValue(value)) },
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                if (selectedExecutors.isEmpty()) "Nije dodijeljeno" else selectedExecutors.joinToString(", "),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TextButton(
+                onClick = onSave,
+                enabled = enabled && selectedExecutors != originalExecutors,
+            ) {
+                Text("Spremi", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationServiceValiditySection(
+    flowItems: List<DocumentationServiceFlowItem>,
+    validityMonths: String,
+    onValidityMonthsChange: (String) -> Unit,
+    serviceValidityMonths: Map<String, String>,
+    onServiceValidityMonthsChange: (String, String) -> Unit,
+    enabled: Boolean,
+) {
+    WizardSection(title = "Rok važenja usluge", icon = Icons.Rounded.CalendarMonth) {
+        NumberTextField("Osnovni rok važenja mjeseci", validityMonths, onValidityMonthsChange, enabled)
+        if (flowItems.isEmpty()) {
+            Text(
+                "Nema povezanih usluga za pojedinačni rok.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+        } else {
+            flowItems.forEach { item ->
+                val key = item.serviceValidityKey()
+                NumberTextField(
+                    "${item.serviceCode} - ${item.serviceName}".trim(' ', '-'),
+                    serviceValidityMonths[key].orEmpty().ifBlank { validityMonths },
+                    { value -> onServiceValidityMonthsChange(key, value) },
+                    enabled,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun DocumentationServicePeopleSection(
     personRules: List<DocumentationPersonFieldRule>,
     areaOptions: List<WorkOrderDocumentationSignatureAreaOptions>,
@@ -8782,7 +9084,6 @@ private fun DocumentationCoreBasicsContent(
     documentNumber: String,
     serviceName: String,
     showDocumentNumber: Boolean = true,
-    executors: List<String>,
     inspectionDate: String,
     onInspectionDateChange: (String) -> Unit,
     issuedDate: String,
@@ -8809,28 +9110,6 @@ private fun DocumentationCoreBasicsContent(
 ) {
     if (showDocumentNumber) {
         DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
-    }
-    if (executors.isNotEmpty()) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Izvršitelji RN-a", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                executors.forEach { executor ->
-                    AssistChip(
-                        onClick = {},
-                        label = {
-                            Text(
-                                executor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(16.dp))
-                        },
-                    )
-                }
-            }
-        }
     }
     WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
     WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)

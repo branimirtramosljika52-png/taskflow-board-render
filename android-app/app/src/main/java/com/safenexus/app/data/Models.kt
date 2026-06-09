@@ -142,6 +142,8 @@ data class WorkOrderDocumentationDraft(
     val validityMonths: String,
     val electricalValidityMonths: String,
     val tipkaloValidityMonths: String,
+    val serviceValidityMonths: Map<String, String> = emptyMap(),
+    val executors: List<String> = emptyList(),
     val inspectorUserIds: List<String>,
     val inspectorUserId: String,
     val authorizationHolderUserId: String,
@@ -155,7 +157,17 @@ data class WorkOrderDocumentationDraft(
     val templateFieldValues: Map<String, Map<String, String>> = emptyMap(),
     val fieldSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
     val templateFieldSheets: Map<String, Map<String, WorkOrderMeasurementSheet>> = emptyMap(),
+    val additionalRecords: List<WorkOrderDocumentationAdditionalRecord> = emptyList(),
     val includeHandoverProtocol: Boolean = true,
+)
+
+data class WorkOrderDocumentationAdditionalRecord(
+    val serviceKey: String,
+    val serviceIndex: Int,
+    val serviceCode: String,
+    val serviceName: String,
+    val objectId: String,
+    val objectName: String,
 )
 
 data class WorkOrderDocumentationContext(
@@ -194,6 +206,7 @@ data class WorkOrderDocumentationDefaults(
     val validityMonths: String = "",
     val electricalValidityMonths: String = "",
     val tipkaloValidityMonths: String = "",
+    val serviceValidityMonths: Map<String, String> = emptyMap(),
 )
 
 data class WorkOrderDocumentationOption(

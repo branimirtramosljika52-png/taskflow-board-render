@@ -153,6 +153,19 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun updateWorkOrderExecutors(workOrderId: String, executors: List<String>): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalized = executors.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            val payload = JSONObject()
+                .put("executors", JSONArray(normalized))
+                .put("executor1", normalized.getOrNull(0).orEmpty())
+                .put("executor2", normalized.getOrNull(1).orEmpty())
+                .toString()
+            request("/api/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload)
+            Unit
+        }
+    }
+
     suspend fun createWorkOrderLocationObject(
         workOrder: WorkOrder,
         name: String,
@@ -256,6 +269,20 @@ class SafeNexusApi(
             draft.selectedLegalFrameworkIds.forEach { selectedLegalFrameworkIds.put(it) }
             val selectedRulebookIds = JSONArray()
             draft.selectedRulebookIds.forEach { selectedRulebookIds.put(it) }
+            val executors = JSONArray()
+            draft.executors.forEach { executors.put(it) }
+            val additionalRecords = JSONArray()
+            draft.additionalRecords.forEach { record ->
+                additionalRecords.put(
+                    JSONObject()
+                        .put("serviceKey", record.serviceKey)
+                        .put("serviceIndex", record.serviceIndex)
+                        .put("serviceCode", record.serviceCode)
+                        .put("serviceName", record.serviceName)
+                        .put("objectId", record.objectId)
+                        .put("objectName", record.objectName),
+                )
+            }
             val payload = JSONObject()
                 .put("objectId", draft.objectId)
                 .put("objectName", draft.objectName)
@@ -279,6 +306,8 @@ class SafeNexusApi(
                 .put("validityMonths", draft.validityMonths)
                 .put("electricalValidityMonths", draft.electricalValidityMonths)
                 .put("tipkaloValidityMonths", draft.tipkaloValidityMonths)
+                .put("serviceValidityMonths", draft.serviceValidityMonths.toJsonObject())
+                .put("executors", executors)
                 .put("inspectorUserIds", inspectorIds)
                 .put("inspectorUserId", draft.inspectorUserId)
                 .put("authorizationHolderUserId", draft.authorizationHolderUserId)
@@ -292,6 +321,7 @@ class SafeNexusApi(
                 .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())
                 .put("fieldSheets", draft.fieldSheets.toMeasurementSheetJsonObject())
                 .put("templateFieldSheets", draft.templateFieldSheets.toNestedMeasurementSheetJsonObject())
+                .put("additionalRecords", additionalRecords)
                 .put("includeHandoverProtocol", draft.includeHandoverProtocol)
                 .toString()
             val json = JSONObject(
@@ -961,6 +991,7 @@ private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentati
         validityMonths = firstClean("validityMonths"),
         electricalValidityMonths = firstClean("electricalValidityMonths"),
         tipkaloValidityMonths = firstClean("tipkaloValidityMonths"),
+        serviceValidityMonths = optJSONObject("serviceValidityMonths").toStringMap(),
     )
 }
 

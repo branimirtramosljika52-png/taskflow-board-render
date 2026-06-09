@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.52.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.53.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9865,6 +9865,18 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
   const selectedEquipmentIds = normalizeMobileDocumentWizardArray(source.selectedEquipmentIds || source.measurementEquipmentIds);
   const selectedLegalFrameworkIds = normalizeMobileDocumentWizardArray(source.selectedLegalFrameworkIds || source.legalFrameworkIds);
   const selectedRulebookIds = normalizeMobileDocumentWizardArray(source.selectedRulebookIds || source.rulebookIds);
+  const executors = normalizeMobileDocumentWizardArray(source.executors);
+  const additionalRecords = Array.isArray(source.additionalRecords)
+    ? source.additionalRecords.map((entry, index) => ({
+      serviceKey: normalizeInputValue(entry?.serviceKey),
+      serviceIndex: Number.isFinite(Number(entry?.serviceIndex)) ? Number(entry.serviceIndex) : -1,
+      serviceCode: normalizeInputValue(entry?.serviceCode),
+      serviceName: normalizeInputValue(entry?.serviceName),
+      objectId: normalizeInputValue(entry?.objectId || entry?.locationObjectId),
+      objectName: normalizeInputValue(entry?.objectName || entry?.locationObjectName),
+      objectSequence: Number.isFinite(Number(entry?.objectSequence)) ? Number(entry.objectSequence) : index + 2,
+    })).filter((entry) => entry.objectId || entry.objectName)
+    : [];
   const fieldValues = source.fieldValues && typeof source.fieldValues === "object" && !Array.isArray(source.fieldValues)
     ? Object.fromEntries(Object.entries(source.fieldValues)
       .map(([key, value]) => [normalizeInputValue(key), value])
@@ -9934,6 +9946,8 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
         .map(([key, value]) => [normalizeInputValue(key), normalizeMobileDocumentValidityMonths(value)])
         .filter(([key, value]) => key && value))
       : {},
+    executors,
+    additionalRecords,
     inspectorUserIds,
     inspectorUserId: normalizeInputValue(source.inspectorUserId) || inspectorUserIds[0] || "",
     authorizationHolderUserId: normalizeInputValue(source.authorizationHolderUserId),
@@ -11037,25 +11051,36 @@ function applyMobileSelectedObjectToWorkOrder(workOrder = {}, scopedSnapshot = {
     || normalizedSource.locationObjectId
     || normalizedSource.selectedObjectId,
   );
+  const executors = normalizeMobileDocumentWizardArray(normalizedSource.executors);
+  let nextWorkOrder = workOrder;
 
-  if (!requestedObjectId) {
-    return workOrder;
+  if (requestedObjectId) {
+    const locationObject = assertLocationObjectPayloadInScope(scopedSnapshot, {
+      companyId: workOrder.companyId,
+      locationId: workOrder.locationId,
+      objectId: requestedObjectId,
+    });
+
+    nextWorkOrder = {
+      ...nextWorkOrder,
+      objectId: normalizeInputValue(locationObject?.id || requestedObjectId),
+      locationObjectId: normalizeInputValue(locationObject?.id || requestedObjectId),
+      objectName: normalizeInputValue(locationObject?.name || normalizedSource.objectName),
+      locationObjectName: normalizeInputValue(locationObject?.name || normalizedSource.objectName),
+      locationObject,
+    };
   }
 
-  const locationObject = assertLocationObjectPayloadInScope(scopedSnapshot, {
-    companyId: workOrder.companyId,
-    locationId: workOrder.locationId,
-    objectId: requestedObjectId,
-  });
+  if (executors.length > 0) {
+    nextWorkOrder = {
+      ...nextWorkOrder,
+      executors,
+      executor1: executors[0] || "",
+      executor2: executors[1] || "",
+    };
+  }
 
-  return {
-    ...workOrder,
-    objectId: normalizeInputValue(locationObject?.id || requestedObjectId),
-    locationObjectId: normalizeInputValue(locationObject?.id || requestedObjectId),
-    objectName: normalizeInputValue(locationObject?.name || normalizedSource.objectName),
-    locationObjectName: normalizeInputValue(locationObject?.name || normalizedSource.objectName),
-    locationObject,
-  };
+  return nextWorkOrder;
 }
 
 function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
@@ -12130,7 +12155,7 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
     organization.address || "",
     [organization.postalCode, organization.city].filter(Boolean).join(" "),
   ].filter(Boolean).join(", ");
-  const rows = buildWorkOrderTemplateServiceRows(workOrder).map((row, index) => ({
+  const baseRows = buildWorkOrderTemplateServiceRows(workOrder).map((row, index) => ({
     id: normalizeInputValue(row.id) || `handover-service-${index + 1}`,
     service: normalizeInputValue(row.USLUGA || row.NAZIV),
     documentNumber: normalizeInputValue(row.BROJ_DOKUMENTA) || [workOrderNumber, normalizeInputValue(row.SIFRA)].filter(Boolean).join("-"),
@@ -12138,6 +12163,47 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
     note: normalizeInputValue(row.NAPOMENA || row.NAPOMENA_USLUGE),
     objectName: normalizeInputValue(row.OBJEKT || row.USLUGA_OBJEKT || workOrder.objectName),
   })).filter((row) => row.service || row.documentNumber || row.note);
+  const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
+    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
+    : [{ name: workOrder.serviceLine || "" }];
+  const additionalRows = (common.additionalRecords || []).map((record, index) => {
+    const serviceIndex = Number.isFinite(Number(record.serviceIndex)) ? Number(record.serviceIndex) : -1;
+    const service = services[serviceIndex] || services.find((item) => (
+      normalizeInputValue(item?.serviceCode || item?.code).toLowerCase() === normalizeInputValue(record.serviceCode).toLowerCase()
+      || normalizeInputValue(item?.name || item?.serviceName || item?.title).toLowerCase() === normalizeInputValue(record.serviceName).toLowerCase()
+    )) || {};
+    const serviceName = normalizeInputValue(
+      record.serviceName
+      || service?.name
+      || service?.serviceName
+      || service?.title
+      || service?.serviceCode
+      || `Usluga ${serviceIndex + 1 || index + 1}`,
+    );
+    let objectName = normalizeInputValue(record.objectName);
+    if (record.objectId) {
+      try {
+        const objectWorkOrder = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, {
+          objectId: record.objectId,
+          objectName: record.objectName,
+        });
+        objectName = normalizeInputValue(objectWorkOrder.objectName || objectWorkOrder.locationObjectName || objectName);
+      } catch (error) {
+        objectName = objectName || "";
+      }
+    }
+    const sequence = Number.isFinite(Number(record.objectSequence)) ? Number(record.objectSequence) : index + 2;
+    const serviceCode = normalizeInputValue(record.serviceCode || service?.serviceCode || service?.code);
+    return {
+      id: `handover-extra-${serviceIndex >= 0 ? serviceIndex : index}-${sequence}`,
+      service: serviceName,
+      documentNumber: [workOrderNumber, serviceCode || serviceName, sequence].filter(Boolean).join("-"),
+      quantity: "1",
+      note: objectName ? "Dodatni zapisnik za drugi objekt" : "Dodatni zapisnik",
+      objectName,
+    };
+  }).filter((row) => row.service || row.documentNumber || row.objectName);
+  const rows = [...baseRows, ...additionalRows];
 
   return {
     type: "handover_protocol",
@@ -12338,19 +12404,21 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const entries = [];
   const seenPairs = new Set();
 
-  services.forEach((service, serviceIndex) => {
+  const appendEntriesForService = (service, serviceIndex, generationWorkOrder = workOrder, options = {}) => {
     getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
       const template = templateById.get(String(templateId));
       if (!template || String(template.status || "active").toLowerCase() === "archived") {
         return;
       }
-      const pairKey = `${String(workOrder.id)}::${serviceIndex}::${String(template.id)}`;
+      const objectId = getMobileWorkOrderLocationObjectId(generationWorkOrder);
+      const objectSequence = Number.isFinite(Number(options.objectSequence)) ? Number(options.objectSequence) : 1;
+      const pairKey = `${String(workOrder.id)}::${serviceIndex}::${String(template.id)}::${objectId || "no-object"}::${objectSequence}`;
       if (seenPairs.has(pairKey)) {
         return;
       }
       seenPairs.add(pairKey);
-      const basePlaceholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common);
-      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
+      const basePlaceholders = buildMobileGeneratedDocumentPlaceholders(generationWorkOrder, service, scopedSnapshot, common);
+      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, generationWorkOrder, service, scopedSnapshot, common);
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
       const customFieldPayload = buildMobileDocumentTemplateCustomFieldPayload(template, common);
       const listPayload = buildMobileDocumentTemplateListPayload(template, scopedSnapshot, common);
@@ -12360,14 +12428,16 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         ...measurementPlaceholders,
         ...listPayload.placeholders,
       };
-      const documentNumber = buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex);
-      const baseFileName = buildMobileDocumentTemplateFileBaseName(template, workOrder, documentNumber);
+      const baseDocumentNumber = buildMobileDocumentTemplateDocumentNumber(service, generationWorkOrder, template, serviceIndex);
+      const documentNumber = objectSequence > 1
+        ? `${baseDocumentNumber}-${objectSequence}`
+        : baseDocumentNumber;
+      const baseFileName = buildMobileDocumentTemplateFileBaseName(template, generationWorkOrder, documentNumber);
       const outputFileName = `${baseFileName}.pdf`;
-      const objectId = getMobileWorkOrderLocationObjectId(workOrder);
       const objectName = normalizeInputValue(
-        workOrder.objectName
-        || workOrder.locationObjectName
-        || workOrder.locationObject?.name,
+        generationWorkOrder.objectName
+        || generationWorkOrder.locationObjectName
+        || generationWorkOrder.locationObject?.name,
       );
       Object.assign(placeholders, {
         WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
@@ -12402,9 +12472,9 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         baseFileName,
         documentNumber,
         templateTitle: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
-        workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
-        companyName: normalizeInputValue(workOrder.companyName),
-        locationName: normalizeInputValue(workOrder.locationName),
+        workOrderNumber: normalizeInputValue(generationWorkOrder.workOrderNumber || generationWorkOrder.number),
+        companyName: normalizeInputValue(generationWorkOrder.companyName),
+        locationName: normalizeInputValue(generationWorkOrder.locationName),
         objectId,
         objectName,
         placeholders,
@@ -12414,11 +12484,11 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         expirationDate: validUntilIso,
         documentRecord: {
           templateTitle: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
-          workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+          workOrderNumber: normalizeInputValue(generationWorkOrder.workOrderNumber || generationWorkOrder.number),
           documentNumber,
           fileName: outputFileName,
-          companyId: normalizeInputValue(workOrder.companyId),
-          locationId: normalizeInputValue(workOrder.locationId),
+          companyId: normalizeInputValue(generationWorkOrder.companyId),
+          locationId: normalizeInputValue(generationWorkOrder.locationId),
           objectId,
           objectName,
           inspectionDate: common.inspectionDate,
@@ -12429,6 +12499,33 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         },
       });
     });
+  };
+
+  services.forEach((service, serviceIndex) => {
+    appendEntriesForService(service, serviceIndex, workOrder);
+  });
+
+  (common.additionalRecords || []).forEach((record, index) => {
+    const serviceIndex = Number.isFinite(Number(record.serviceIndex)) ? Number(record.serviceIndex) : -1;
+    const service = services[serviceIndex] || services.find((item) => (
+      normalizeInputValue(item?.serviceCode || item?.code).toLowerCase() === normalizeInputValue(record.serviceCode).toLowerCase()
+      || normalizeInputValue(item?.name || item?.serviceName || item?.title).toLowerCase() === normalizeInputValue(record.serviceName).toLowerCase()
+    ));
+    if (!service) {
+      return;
+    }
+    try {
+      const generationWorkOrder = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, {
+        objectId: record.objectId,
+        objectName: record.objectName,
+        executors: common.executors,
+      });
+      appendEntriesForService(service, serviceIndex >= 0 ? serviceIndex : services.indexOf(service), generationWorkOrder, {
+        objectSequence: Number.isFinite(Number(record.objectSequence)) ? Number(record.objectSequence) : index + 2,
+      });
+    } catch (error) {
+      console.warn("Preskačem dodatni mobilni zapisnik za objekt.", error?.message || error);
+    }
   });
 
   const handoverEntry = buildMobileHandoverExportEntry(workOrder, scopedSnapshot, common);
