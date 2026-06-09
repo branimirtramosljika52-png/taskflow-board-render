@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.44.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.45.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9630,9 +9630,14 @@ function buildMobileWorkOrderItem(item = {}) {
     ? item.serviceItems.map((entry) => (
       entry && typeof entry === "object"
         ? {
+          id: normalizeInputValue(entry.id || entry.serviceId || entry.serviceCatalogId || entry.catalogServiceId),
+          serviceId: normalizeInputValue(entry.serviceId || entry.id || entry.serviceCatalogId || entry.catalogServiceId),
           name: normalizeInputValue(entry.name),
           serviceCode: normalizeInputValue(entry.serviceCode),
           serviceStatus: normalizeInputValue(entry.serviceStatus),
+          quantity: normalizeInputValue(entry.quantity || entry.measurementQuantity || entry.count || "1") || "1",
+          linkedTemplateIds: normalizeMobileDocumentWizardArray(entry.linkedTemplateIds),
+          linkedTemplateTitles: normalizeMobileDocumentWizardArray(entry.linkedTemplateTitles),
           isCompleted: Boolean(entry.isCompleted),
         }
         : normalizeInputValue(entry)
@@ -9647,8 +9652,11 @@ function buildMobileWorkOrderItem(item = {}) {
     companyId: normalizeInputValue(item.companyId),
     companyName: normalizeInputValue(item.companyName),
     companyOib: normalizeInputValue(item.companyOib),
+    headquarters: normalizeInputValue(item.headquarters),
     locationId: normalizeInputValue(item.locationId),
     locationName: normalizeInputValue(item.locationName),
+    objectId: normalizeInputValue(item.objectId || item.locationObjectId),
+    objectName: normalizeInputValue(item.objectName || item.locationObjectName),
     serviceLine: normalizeInputValue(item.serviceLine),
     serviceItems,
     openedDate: normalizeInputValue(item.openedDate || item.createdAt),
@@ -9898,6 +9906,8 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
       .filter(Boolean))
     : {};
   return {
+    objectId: normalizeInputValue(source.objectId || source.locationObjectId || source.selectedObjectId),
+    objectName: normalizeInputValue(source.objectName || source.locationObjectName),
     inspectionDate: normalizeDateOnlyValue(source.inspectionDate) || todayIso,
     issuedDate: normalizeDateOnlyValue(source.issuedDate) || normalizeDateOnlyValue(source.inspectionDate) || todayIso,
     issuedPlace: normalizeInputValue(source.issuedPlace),
@@ -9918,6 +9928,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     validityMonths: normalizeMobileDocumentValidityMonths(source.validityMonths, "12"),
     electricalValidityMonths: normalizeMobileDocumentValidityMonths(source.electricalValidityMonths, source.validityMonths || "12"),
     tipkaloValidityMonths: normalizeMobileDocumentValidityMonths(source.tipkaloValidityMonths, source.validityMonths || "12"),
+    includeHandoverProtocol: source.includeHandoverProtocol !== false,
     serviceValidityMonths: source.serviceValidityMonths && typeof source.serviceValidityMonths === "object" && !Array.isArray(source.serviceValidityMonths)
       ? Object.fromEntries(Object.entries(source.serviceValidityMonths)
         .map(([key, value]) => [normalizeInputValue(key), normalizeMobileDocumentValidityMonths(value)])
@@ -10040,6 +10051,81 @@ function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {
     ...buildMobileQualifiedUserPlaceholders("QUALIFIED_INSPECTOR", primaryInspector),
     ...buildMobileQualifiedUserPlaceholders("QUALIFIED_AUTHORIZATION_HOLDER", authorizationHolder),
   };
+}
+
+function getMobileUserSignatureScanDataUrl(user = {}) {
+  const qualification = user?.electricalQualification && typeof user.electricalQualification === "object"
+    ? user.electricalQualification
+    : {};
+  return normalizeInputValue(
+    user?.signatureDataUrl
+    || user?.signatureImageUrl
+    || qualification.signatureDataUrl
+    || qualification.signatureImageUrl
+    || "",
+  );
+}
+
+function buildMobileSignatureGroup(common = {}, scopedSnapshot = {}) {
+  const mode = normalizeMobileDocumentSignatureMode(common.signatureMode);
+  if (mode === "none" || mode === "manual") {
+    return "";
+  }
+
+  const candidateIds = normalizeMobileDocumentWizardArray([
+    ...(common.inspectorUserIds || []),
+    common.inspectorUserId,
+    common.authorizationHolderUserId,
+    ...(common.electricalInspectorUserIds || []),
+    common.electricalInspectorUserId,
+    common.electricalAuthorizationHolderUserId,
+    ...(common.tipkaloInspectorUserIds || []),
+    common.tipkaloInspectorUserId,
+    common.tipkaloAuthorizationHolderUserId,
+  ]);
+  const users = candidateIds
+    .map((id) => findMobileScopedUserById(scopedSnapshot, id))
+    .filter(Boolean);
+  const seen = new Set();
+  const items = users
+    .filter((user) => {
+      const key = normalizeInputValue(user?.id || user?.email || user?.oib);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((user, index) => {
+      const signerOib = normalizeInputValue(user?.oib).replace(/\D/g, "");
+      const signatureImageUrl = mode === "scan" ? getMobileUserSignatureScanDataUrl(user) : "";
+      return {
+        name: getMobileUserDocumentName(user),
+        signerUserId: normalizeInputValue(user?.id),
+        signerEmail: normalizeInputValue(user?.email),
+        signerOib,
+        signerTitle: getMobileUserDocumentTitle(user),
+        signerOrganization: normalizeInputValue(scopedSnapshot.currentOrganization?.name || ""),
+        signatureMode: mode,
+        signatureFieldRole: index === 0 ? "ZNR" : `ZNR_${index + 1}`,
+        signatureFieldOib: signerOib,
+        signatureImageUrl,
+        preferredField: buildSignatureFieldName(index === 0 ? "ZNR" : `ZNR_${index + 1}`, signerOib),
+        role: index === 0 ? "Ovlaštena osoba" : "Potpisnik",
+      };
+    })
+    .filter((item) => (
+      mode === "digital"
+        ? item.signerOib && item.preferredField
+        : item.signatureImageUrl
+    ));
+
+  return items.length > 0
+    ? {
+      type: "signature_group",
+      __docxBlockType: "signature_group",
+      title: "Potpisi",
+      items,
+    }
+    : "";
 }
 
 function findMobileServiceCatalogItem(service = {}, scopedSnapshot = {}) {
@@ -10904,6 +10990,36 @@ function getMobileWorkOrderLocationObjectId(workOrder = {}) {
   );
 }
 
+function applyMobileSelectedObjectToWorkOrder(workOrder = {}, scopedSnapshot = {}, source = {}) {
+  const normalizedSource = source?.common && typeof source.common === "object" && !Array.isArray(source.common)
+    ? source.common
+    : (source && typeof source === "object" && !Array.isArray(source) ? source : {});
+  const requestedObjectId = normalizeInputValue(
+    normalizedSource.objectId
+    || normalizedSource.locationObjectId
+    || normalizedSource.selectedObjectId,
+  );
+
+  if (!requestedObjectId) {
+    return workOrder;
+  }
+
+  const locationObject = assertLocationObjectPayloadInScope(scopedSnapshot, {
+    companyId: workOrder.companyId,
+    locationId: workOrder.locationId,
+    objectId: requestedObjectId,
+  });
+
+  return {
+    ...workOrder,
+    objectId: normalizeInputValue(locationObject?.id || requestedObjectId),
+    locationObjectId: normalizeInputValue(locationObject?.id || requestedObjectId),
+    objectName: normalizeInputValue(locationObject?.name || normalizedSource.objectName),
+    locationObjectName: normalizeInputValue(locationObject?.name || normalizedSource.objectName),
+    locationObject,
+  };
+}
+
 function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
   const templateId = normalizeInputValue(template?.id);
   if (!templateId) {
@@ -11630,6 +11746,7 @@ function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, 
   const serviceLabel = serviceName || serviceCode || normalizeInputValue(workOrder.serviceLine);
   const inspectionType = common.inspectionType || serviceLabel;
   const testingLocation = resolveMobileWorkOrderTestingLocation(workOrder, common);
+  const signatureGroup = buildMobileSignatureGroup(common, scopedSnapshot);
 
   return {
     ...basePlaceholders,
@@ -11691,7 +11808,232 @@ function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, 
     WORK_ORDER_PANIC_VALIDITY_MONTHS: common.electricalValidityMonths,
     WORK_ORDER_TIPKALO_VALID_UNTIL: formatOfferDocumentDate(tipkaloValidUntilIso),
     WORK_ORDER_TIPKALO_VALIDITY_MONTHS: common.tipkaloValidityMonths,
+    SIGNATURES: signatureGroup,
+    POTPISI: signatureGroup,
+    DIGITAL_SIGNATURES: signatureGroup,
+    DIGITALNI_POTPISI: signatureGroup,
     ...buildMobileInspectionPersonPlaceholders(common, scopedSnapshot),
+  };
+}
+
+function isMobileHandoverTemplate(template = {}) {
+  const title = normalizeInputValue(template?.title || template?.documentType).toLowerCase();
+  const status = normalizeInputValue(template?.status || "active").toLowerCase();
+  return status !== "archived"
+    && status !== "inactive"
+    && isWordTemplateFile(template?.referenceDocument)
+    && (title.includes("primopredaj") || title.includes("handover"));
+}
+
+function findMobileHandoverTemplate(scopedSnapshot = {}) {
+  return (Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [])
+    .filter(isMobileHandoverTemplate)
+    .sort((left, right) => getTemplateTimestampValue(right) - getTemplateTimestampValue(left))
+    .at(0) || null;
+}
+
+function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common = {}) {
+  const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number);
+  const organization = getWorkOrderTemplateOrganization(scopedSnapshot);
+  const organizationAddress = [
+    organization.address || "",
+    [organization.postalCode, organization.city].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const rows = buildWorkOrderTemplateServiceRows(workOrder).map((row, index) => ({
+    id: normalizeInputValue(row.id) || `handover-service-${index + 1}`,
+    service: normalizeInputValue(row.USLUGA || row.NAZIV),
+    documentNumber: normalizeInputValue(row.BROJ_DOKUMENTA) || [workOrderNumber, normalizeInputValue(row.SIFRA)].filter(Boolean).join("-"),
+    quantity: normalizeInputValue(row.KOLICINA || "1") || "1",
+    note: normalizeInputValue(row.NAPOMENA || row.NAPOMENA_USLUGE),
+    objectName: normalizeInputValue(row.OBJEKT || row.USLUGA_OBJEKT || workOrder.objectName),
+  })).filter((row) => row.service || row.documentNumber || row.note);
+
+  return {
+    type: "handover_protocol",
+    __docxBlockType: "handover_protocol",
+    title: "PRIMOPREDAJNI ZAPISNIK",
+    subtitle: "O OBAVLJENIM USLUGAMA IZ PODRUČJA ZAŠTITE NA RADU I ZAŠTITE OD POŽARA",
+    workOrderNumber,
+    customerName: normalizeInputValue(workOrder.companyName),
+    customerAddress: normalizeInputValue(workOrder.headquarters),
+    customerOib: normalizeInputValue(workOrder.companyOib),
+    executorName: normalizeInputValue(organization.name || "SafeNexus"),
+    executorAddress: normalizeInputValue(organizationAddress),
+    executorOib: normalizeInputValue(organization.oib),
+    location: resolveMobileWorkOrderTestingLocation(workOrder, common),
+    objectName: normalizeInputValue(workOrder.objectName),
+    contractType: normalizeInputValue(workOrder.contractType),
+    issuedDate: normalizeDateOnlyValue(common.issuedDate || common.inspectionDate) || new Date().toISOString().slice(0, 10),
+    issuedPlace: normalizeInputValue(common.issuedPlace),
+    rows,
+    customerSignatureLabel: "Ovjerio naručitelj:",
+    executorSignatureLabel: "Ovjerio izvršitelj:",
+  };
+}
+
+function buildMobileHandoverSpecificationPlaceholder(protocol = {}) {
+  const rows = (Array.isArray(protocol.rows) ? protocol.rows : [])
+    .map((row, index) => ({
+      id: normalizeInputValue(row.id) || `specifikacija-${index + 1}`,
+      service: normalizeInputValue(row.service),
+      objectName: normalizeInputValue(row.objectName || protocol.objectName),
+      documentNumber: normalizeInputValue(row.documentNumber),
+      quantity: normalizeInputValue(row.quantity || "1") || "1",
+      note: normalizeInputValue(row.note),
+    }))
+    .filter((row) => row.service || row.documentNumber || row.note);
+  return rows.length > 0
+    ? {
+      type: "handover_specification",
+      __docxBlockType: "handover_specification",
+      rows,
+    }
+    : "";
+}
+
+function buildMobileHandoverTemplateRows(protocol = {}) {
+  return (Array.isArray(protocol.rows) ? protocol.rows : []).map((row, index) => {
+    const service = normalizeInputValue(row.service) || "Usluga";
+    const objectName = normalizeInputValue(row.objectName || protocol.objectName);
+    return {
+      id: normalizeInputValue(row.id) || `handover-service-${index + 1}`,
+      USLUGA: service,
+      NAZIV: service,
+      SIFRA: "",
+      BROJ_DOKUMENTA: normalizeInputValue(row.documentNumber),
+      KOLICINA: normalizeInputValue(row.quantity || "1") || "1",
+      NAPOMENA: normalizeInputValue(row.note),
+      NAPOMENA_USLUGE: normalizeInputValue(row.note),
+      OBJEKT: objectName,
+      USLUGA_OBJEKT: objectName,
+      USLUGA_S_OBJEKTOM: formatWorkOrderTemplateServiceWithObject(service, objectName),
+    };
+  });
+}
+
+function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, common = {}) {
+  if (common.includeHandoverProtocol === false) {
+    return null;
+  }
+  const template = findMobileHandoverTemplate(scopedSnapshot);
+  if (!template) {
+    return null;
+  }
+  const handoverProtocol = buildMobileHandoverProtocol(workOrder, scopedSnapshot, common);
+  if (!handoverProtocol.rows.length) {
+    return null;
+  }
+  const specificationPlaceholder = buildMobileHandoverSpecificationPlaceholder(handoverProtocol);
+  const rows = buildMobileHandoverTemplateRows(handoverProtocol);
+  const issuedDate = formatOfferDocumentDate(handoverProtocol.issuedDate);
+  const servicesTableText = rows
+    .map((row) => [row.USLUGA_S_OBJEKTOM || row.USLUGA, row.BROJ_DOKUMENTA, row.KOLICINA, row.NAPOMENA].filter(Boolean).join(" | "))
+    .join("\n");
+  const workOrderNumber = normalizeInputValue(handoverProtocol.workOrderNumber || workOrder.workOrderNumber || workOrder.number);
+  const baseFileName = sanitizeGeneratedDocumentFileName(
+    `Primopredaja ${workOrderNumber || workOrder.id || "RN"}`,
+    { fallback: "primopredaja", extension: "" },
+  ).replace(/\.$/, "");
+  const signatureGroup = buildMobileSignatureGroup(common, scopedSnapshot);
+  const placeholders = {
+    ...buildWorkOrderTemplatePlaceholderPayload({
+      ...workOrder,
+      issuedDate: handoverProtocol.issuedDate,
+      issuedPlace: handoverProtocol.issuedPlace,
+    }, scopedSnapshot),
+    PRIMOPREDAJNI_ZAPISNIK: handoverProtocol,
+    SPECIFIKACIJA: specificationPlaceholder,
+    Specifikacija: specificationPlaceholder,
+    specifikacija: specificationPlaceholder,
+    PRIMOPREDAJA_RN_BROJ: workOrderNumber,
+    RN_BROJ: workOrderNumber,
+    BROJ_RADNOG_NALOGA: workOrderNumber,
+    NARUCITELJ_NAZIV: handoverProtocol.customerName,
+    NARUCITELJ_SJEDISTE: handoverProtocol.customerAddress,
+    NARUCITELJ_OIB: handoverProtocol.customerOib,
+    TVRTKA_NAZIV: handoverProtocol.customerName,
+    TVRTKA: handoverProtocol.customerName,
+    TVRTKA_SJEDISTE: handoverProtocol.customerAddress,
+    SJEDISTE: handoverProtocol.customerAddress,
+    TVRTKA_OIB: handoverProtocol.customerOib,
+    OIB: handoverProtocol.customerOib,
+    IZVRSITELJ_NAZIV: handoverProtocol.executorName,
+    IZVRSITELJ_SJEDISTE: handoverProtocol.executorAddress,
+    IZVRSITELJ_OIB: handoverProtocol.executorOib,
+    LOKACIJA_ISPITIVANJA: handoverProtocol.location,
+    LOKACIJA: handoverProtocol.location,
+    OBJEKT: handoverProtocol.objectName,
+    OBJEKT_ISPITIVANJA: handoverProtocol.objectName,
+    OBJECT_NAME: handoverProtocol.objectName,
+    VRSTA_UGOVORA: handoverProtocol.contractType,
+    UGOVOR: handoverProtocol.contractType,
+    DATUM_IZDAVANJA: issuedDate,
+    MJESTO_IZDAVANJA: handoverProtocol.issuedPlace,
+    USLUGE_REDOVI: rows,
+    USLUGE_TABLICA: servicesTableText,
+    USLUGE: rows.map((row, index) => `${index + 1}. ${row.USLUGA}`).join("\n"),
+    OVJERIO_NARUCITELJ: handoverProtocol.customerSignatureLabel,
+    OVJERIO_IZVRSITELJ: handoverProtocol.executorSignatureLabel,
+    MJESTO_DATUM: `${handoverProtocol.issuedPlace ? `U ${handoverProtocol.issuedPlace}, ` : "U Zagrebu, "}${issuedDate}`.trim(),
+    SIGNATURES: signatureGroup,
+    POTPISI: signatureGroup,
+    DIGITAL_SIGNATURES: signatureGroup,
+    DIGITALNI_POTPISI: signatureGroup,
+  };
+  const outputFileName = `${baseFileName}.pdf`;
+  const objectId = getMobileWorkOrderLocationObjectId(workOrder);
+  const objectName = normalizeInputValue(handoverProtocol.objectName || workOrder.objectName || workOrder.locationObjectName);
+
+  return {
+    templateId: normalizeInputValue(template.id),
+    workOrderId: normalizeInputValue(workOrder.id),
+    exportKind: "handover",
+    forceRenderModel: false,
+    baseFileName,
+    fileName: baseFileName,
+    templateReferenceKind: "word",
+    htmlFileName: `${baseFileName}.html`,
+    pdfFileName: outputFileName,
+    placeholders,
+    appendBlocks: [],
+    documentRecord: {
+      templateId: normalizeInputValue(template.id),
+      templateTitle: "Primopredajni zapisnik",
+      documentType: "Primopredajni zapisnik",
+      workOrderNumber,
+      documentNumber: `${workOrderNumber}-PRIMOPREDAJA`,
+      fileName: outputFileName,
+      companyId: normalizeInputValue(workOrder.companyId),
+      locationId: normalizeInputValue(workOrder.locationId),
+      objectId,
+      objectName,
+      inspectionDate: common.inspectionDate,
+      issuedDate: common.issuedDate,
+      fieldValues: placeholders,
+    },
+    renderModel: {
+      title: "PRIMOPREDAJNI ZAPISNIK",
+      documentType: "Primopredajni zapisnik",
+      workOrderNumber,
+      serviceCode: "PRIMOPREDAJA",
+      status: normalizeInputValue(workOrder.status),
+      company: {
+        name: handoverProtocol.customerName,
+        headquarters: handoverProtocol.customerAddress,
+        oib: handoverProtocol.customerOib,
+      },
+      location: {
+        name: handoverProtocol.location,
+        region: normalizeInputValue(workOrder.region),
+        coordinates: normalizeInputValue(workOrder.coordinates),
+      },
+      object: {
+        name: handoverProtocol.objectName,
+        code: "",
+        description: "",
+      },
+      blocks: [handoverProtocol],
+    },
   };
 }
 
@@ -11730,6 +12072,12 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       const documentNumber = buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex);
       const baseFileName = buildMobileDocumentTemplateFileBaseName(template, workOrder, documentNumber);
       const outputFileName = `${baseFileName}.pdf`;
+      const objectId = getMobileWorkOrderLocationObjectId(workOrder);
+      const objectName = normalizeInputValue(
+        workOrder.objectName
+        || workOrder.locationObjectName
+        || workOrder.locationObject?.name,
+      );
       Object.assign(placeholders, {
         WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
         DOCUMENT_NUMBER: documentNumber,
@@ -11766,6 +12114,8 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
         companyName: normalizeInputValue(workOrder.companyName),
         locationName: normalizeInputValue(workOrder.locationName),
+        objectId,
+        objectName,
         placeholders,
         signatureMode: common.signatureMode,
         inspectionDate: common.inspectionDate,
@@ -11776,6 +12126,10 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
           workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
           documentNumber,
           fileName: outputFileName,
+          companyId: normalizeInputValue(workOrder.companyId),
+          locationId: normalizeInputValue(workOrder.locationId),
+          objectId,
+          objectName,
           inspectionDate: common.inspectionDate,
           issuedDate: common.issuedDate,
           expirationDate: validUntilIso,
@@ -11786,7 +12140,18 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
     });
   });
 
-  return entries.sort((left, right) => left.templateTitle.localeCompare(right.templateTitle, "hr"));
+  const handoverEntry = buildMobileHandoverExportEntry(workOrder, scopedSnapshot, common);
+  if (handoverEntry) {
+    entries.push(handoverEntry);
+  }
+
+  return entries.sort((left, right) => (
+    normalizeInputValue(left.templateTitle || left.documentRecord?.templateTitle || left.exportKind || "")
+      .localeCompare(
+        normalizeInputValue(right.templateTitle || right.documentRecord?.templateTitle || right.exportKind || ""),
+        "hr",
+      )
+  ));
 }
 
 function normalizePushLookupKey(value = "") {
@@ -12246,6 +12611,21 @@ function buildMobileWorkOrderLocationOptions(locations = []) {
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
 }
 
+function buildMobileWorkOrderLocationObjectOptions(locationObjects = []) {
+  return (locationObjects ?? [])
+    .filter((object) => object?.isActive !== false)
+    .map((object) => ({
+      id: normalizeInputValue(object.id),
+      companyId: normalizeInputValue(object.companyId),
+      locationId: normalizeInputValue(object.locationId),
+      name: normalizeInputValue(object.name || object.objectName || object.title),
+      code: normalizeInputValue(object.code),
+      description: normalizeInputValue(object.description),
+    }))
+    .filter((object) => object.id && object.locationId && object.name)
+    .sort((left, right) => left.name.localeCompare(right.name, "hr", { numeric: true, sensitivity: "base" }));
+}
+
 function buildMobileWorkOrderUserOptions(users = []) {
   return (users ?? [])
     .filter((user) => user?.isActive !== false)
@@ -12355,6 +12735,7 @@ async function writeMobileBootstrap(response, user, request) {
       priorities: PRIORITY_OPTIONS,
       workOrderCompanies: buildMobileWorkOrderCompanyOptions(scopedSnapshot.companies),
       workOrderLocations: buildMobileWorkOrderLocationOptions(scopedSnapshot.locations),
+      workOrderLocationObjects: buildMobileWorkOrderLocationObjectOptions(scopedSnapshot.locationObjects),
       workOrderUsers: buildMobileWorkOrderUserOptions(scopedSnapshot.users),
       workOrderServices: buildMobileWorkOrderServiceOptions(scopedSnapshot.serviceCatalog),
     },
@@ -12713,6 +13094,35 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/mobile/location-objects") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dodavati objekte lokacije.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const location = assertInScope(
+        scopedSnapshot.locations ?? [],
+        body.locationId,
+        "Lokacija nije dostupna za odabranu organizaciju.",
+      );
+      if (body.companyId && String(location.companyId) !== String(body.companyId)) {
+        sendError(response, 400, "Lokacija ne pripada odabranoj tvrtki.");
+        return true;
+      }
+
+      const item = await domainRepository.createLocationObject({
+        ...body,
+        companyId: body.companyId || location.companyId,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      sendJson(response, 201, { ok: true, item });
+      return true;
+    }
+
     const mobileWorkOrderDocumentationContextMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/documentation-context$/);
     if (mobileWorkOrderDocumentationContextMatch && request.method === "GET") {
       if (!canManageWorkOrders(user)) {
@@ -12726,7 +13136,10 @@ async function handleApiRequest(request, response, url) {
         mobileWorkOrderDocumentationContextMatch[1],
         "Radni nalog nije pronađen.",
       );
-      sendJson(response, 200, buildMobileWorkOrderDocumentationContext(workOrder, scopedSnapshot));
+      const workOrderForContext = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, {
+        objectId: url.searchParams.get("objectId") ?? "",
+      });
+      sendJson(response, 200, buildMobileWorkOrderDocumentationContext(workOrderForContext, scopedSnapshot));
       return true;
     }
 
@@ -12744,7 +13157,8 @@ async function handleApiRequest(request, response, url) {
         mobileWorkOrderGenerateDocumentsMatch[1],
         "Radni nalog nije pronađen.",
       );
-      const entries = buildMobileWorkOrderGeneratedDocumentEntries(workOrder, scopedSnapshot, body);
+      const workOrderForGeneration = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
+      const entries = buildMobileWorkOrderGeneratedDocumentEntries(workOrderForGeneration, scopedSnapshot, body);
       if (entries.length === 0) {
         sendError(response, 400, "Ovaj RN nema uslugu s povezanim templateom za izradu dokumentacije.");
         return true;

@@ -18,6 +18,7 @@ data class BootstrapData(
     val workOrderLocations: List<WorkOrderLocationOption> = emptyList(),
     val workOrderUsers: List<WorkOrderUserOption> = emptyList(),
     val workOrderServices: List<WorkOrderServiceOption> = emptyList(),
+    val workOrderLocationObjects: List<WorkOrderLocationObjectOption> = emptyList(),
     val vehicles: List<MobileRecord> = emptyList(),
     val documentRecords: List<MobileRecord> = emptyList(),
     val peopleTrainingRecords: List<MobileRecord> = emptyList(),
@@ -75,6 +76,26 @@ data class WorkOrderServiceOption(
     val note: String,
 )
 
+data class WorkOrderLocationObjectOption(
+    val id: String,
+    val companyId: String,
+    val locationId: String,
+    val name: String,
+    val code: String,
+    val description: String,
+)
+
+data class WorkOrderServiceItem(
+    val serviceId: String,
+    val name: String,
+    val serviceCode: String,
+    val serviceStatus: String,
+    val quantity: String,
+) {
+    val displayLabel: String
+        get() = listOf(serviceCode, name).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Usluga" }
+}
+
 data class WorkOrderCreateDraft(
     val companyId: String,
     val locationId: String,
@@ -99,6 +120,8 @@ data class WorkOrderCreateDraft(
 )
 
 data class WorkOrderDocumentationDraft(
+    val objectId: String,
+    val objectName: String,
     val inspectionDate: String,
     val issuedDate: String,
     val issuedPlace: String,
@@ -132,6 +155,7 @@ data class WorkOrderDocumentationDraft(
     val templateFieldValues: Map<String, Map<String, String>> = emptyMap(),
     val fieldSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
     val templateFieldSheets: Map<String, Map<String, WorkOrderMeasurementSheet>> = emptyMap(),
+    val includeHandoverProtocol: Boolean = true,
 )
 
 data class WorkOrderDocumentationContext(
@@ -301,12 +325,19 @@ data class WorkOrder(
     val id: String,
     val number: String,
     val status: String,
+    val companyId: String,
     val companyName: String,
+    val companyOib: String,
+    val headquarters: String,
+    val locationId: String,
     val locationName: String,
+    val objectId: String,
+    val objectName: String,
     val coordinates: String,
     val region: String,
     val serviceLine: String,
     val serviceItems: List<String>,
+    val serviceDetails: List<WorkOrderServiceItem>,
     val openedDate: String,
     val dueDate: String,
     val executionDate: String,

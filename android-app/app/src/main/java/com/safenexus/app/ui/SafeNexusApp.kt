@@ -94,12 +94,14 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material3.AlertDialog
@@ -185,6 +187,7 @@ import com.safenexus.app.data.WorkOrderDocumentationOption
 import com.safenexus.app.data.WorkOrderDocumentationTemplate
 import com.safenexus.app.data.WorkOrderDocumentationTemplateBlock
 import com.safenexus.app.data.WorkOrderDocument
+import com.safenexus.app.data.WorkOrderLocationObjectOption
 import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderMeasurementColumn
 import com.safenexus.app.data.WorkOrderMeasurementSheet
@@ -429,7 +432,14 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                             authStore.save(user, api.currentAccessToken(), api.currentAuthCookieHeader())
                         }
                     }
-                    state = state.copy(data = data, workOrders = data.workOrders, isLoading = false, error = "")
+                    val selectedId = state.selectedWorkOrder?.id
+                    state = state.copy(
+                        data = data,
+                        workOrders = data.workOrders,
+                        selectedWorkOrder = selectedId?.let { id -> data.workOrders.firstOrNull { it.id == id } } ?: state.selectedWorkOrder,
+                        isLoading = false,
+                        error = "",
+                    )
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Ne mogu učitati mobilne podatke."
@@ -570,6 +580,31 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun updateWorkOrderServices(workOrder: WorkOrder, selectedServiceIds: List<String>) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za spremanje usluga.")
+            return
+        }
+        val normalizedIds = selectedServiceIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.updateWorkOrderServices(workOrder.id, normalizedIds)
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        notice = "Usluge RN-a su spremljene.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu spremiti usluge RN-a.",
+                    )
+                }
+        }
+    }
+
     private fun loadWorkOrderDocuments(workOrderId: String) {
         if (workOrderId.isBlank()) return
 
@@ -605,7 +640,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         loadWorkOrderDocuments(workOrderId)
     }
 
-    fun loadWorkOrderDocumentationContext(workOrder: WorkOrder) {
+    fun loadWorkOrderDocumentationContext(workOrder: WorkOrder, objectId: String = "") {
         val workOrderId = workOrder.id.trim()
         if (workOrderId.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za izradu dokumentacije.")
@@ -620,7 +655,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             notice = "",
         )
         viewModelScope.launch {
-            api.workOrderDocumentationContext(workOrderId)
+            api.workOrderDocumentationContext(workOrderId, objectId)
                 .onSuccess { context ->
                     if (state.documentationContextWorkOrderId == workOrderId) {
                         state = state.copy(
@@ -637,6 +672,47 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                             error = error.message ?: "Ne mogu učitati polja predloška za RN.",
                         )
                     }
+                }
+        }
+    }
+
+    fun createWorkOrderLocationObject(
+        workOrder: WorkOrder,
+        name: String,
+        onCreated: (WorkOrderLocationObjectOption) -> Unit,
+    ) {
+        val normalizedName = name.trim()
+        if (normalizedName.isBlank()) {
+            state = state.copy(error = "Upiši naziv objekta.")
+            return
+        }
+        if (workOrder.companyId.isBlank() || workOrder.locationId.isBlank()) {
+            state = state.copy(error = "RN mora imati tvrtku i lokaciju za dodavanje objekta.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createWorkOrderLocationObject(workOrder, normalizedName)
+                .onSuccess { createdObject ->
+                    val nextObjects = (
+                        state.data.workOrderLocationObjects.filter { it.id != createdObject.id } + createdObject
+                    ).sortedWith(
+                        compareBy<WorkOrderLocationObjectOption> { it.name.lowercase(Locale.getDefault()) }
+                            .thenBy { it.code.lowercase(Locale.getDefault()) },
+                    )
+                    state = state.copy(
+                        data = state.data.copy(workOrderLocationObjects = nextObjects),
+                        isLoading = false,
+                        notice = "Objekt je dodan i odabran za zapisnik.",
+                    )
+                    onCreated(createdObject)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu dodati objekt lokacije.",
+                    )
                 }
         }
     }
@@ -912,7 +988,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     }
     var documentationActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var documentationWizardTarget by remember { mutableStateOf<WorkOrder?>(null) }
+    var documentationWizardObjectId by remember { mutableStateOf("") }
     var signatureActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
+    var serviceManagementTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
     val confirmDocumentSelection: (WorkOrderDocumentCategory) -> Unit = { category ->
@@ -1063,6 +1141,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             } else {
                 WorkOrderDetailScreen(
                     workOrder = selected,
+                    services = state.data.workOrderServices,
                     isLoading = state.isLoading,
                     error = state.error,
                     notice = state.notice,
@@ -1071,9 +1150,11 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                     onBack = { viewModel.selectWorkOrder(null) },
                     onStatusChange = viewModel::updateWorkOrderStatus,
+                    onManageServices = { workOrder -> serviceManagementTarget = workOrder },
                     onGenerateDocumentation = { workOrder ->
                         documentationWizardTarget = workOrder
-                        viewModel.loadWorkOrderDocumentationContext(workOrder)
+                        documentationWizardObjectId = workOrder.objectId
+                        viewModel.loadWorkOrderDocumentationContext(workOrder, documentationWizardObjectId)
                     },
                     onAddDocumentation = openDocumentationActions,
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
@@ -1103,11 +1184,25 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             onSelect = { mode -> startDocumentationFlow(workOrder, mode) },
         )
     }
+    serviceManagementTarget?.let { workOrder ->
+        WorkOrderServiceManagementDialog(
+            workOrder = workOrder,
+            services = state.data.workOrderServices,
+            isLoading = state.isLoading,
+            onDismiss = { serviceManagementTarget = null },
+            onConfirm = { selectedServiceIds ->
+                serviceManagementTarget = null
+                viewModel.updateWorkOrderServices(workOrder, selectedServiceIds)
+            },
+        )
+    }
     documentationWizardTarget?.let { workOrder ->
         WorkOrderDocumentationWizardDialog(
             workOrder = workOrder,
             users = state.data.workOrderUsers,
             services = state.data.workOrderServices,
+            locationObjects = state.data.workOrderLocationObjects,
+            selectedObjectId = documentationWizardObjectId,
             context = if (state.documentationContextWorkOrderId == workOrder.id) {
                 state.documentationContext
             } else {
@@ -1116,6 +1211,16 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             contextLoading = state.documentationContextLoading && state.documentationContextWorkOrderId == workOrder.id,
             isLoading = state.isLoading,
             onDismiss = { documentationWizardTarget = null },
+            onObjectSelectionChange = { objectId ->
+                documentationWizardObjectId = objectId
+                viewModel.loadWorkOrderDocumentationContext(workOrder, objectId)
+            },
+            onCreateObject = { name ->
+                viewModel.createWorkOrderLocationObject(workOrder, name) { createdObject ->
+                    documentationWizardObjectId = createdObject.id
+                    viewModel.loadWorkOrderDocumentationContext(workOrder, createdObject.id)
+                }
+            },
             onConfirm = { draft ->
                 documentationWizardTarget = null
                 viewModel.generateWorkOrderDocumentation(workOrder, draft)
@@ -4626,12 +4731,19 @@ private fun RnStatusMenuChip(
         id = "",
         number = "",
         status = currentStatus,
+        companyId = "",
         companyName = "",
+        companyOib = "",
+        headquarters = "",
+        locationId = "",
         locationName = "",
+        objectId = "",
+        objectName = "",
         coordinates = "",
         region = "",
         serviceLine = "",
         serviceItems = emptyList(),
+        serviceDetails = emptyList(),
         openedDate = "",
         dueDate = "",
         executionDate = "",
@@ -5057,6 +5169,7 @@ private fun MobileRecordDetailScreen(
 @Composable
 private fun WorkOrderDetailScreen(
     workOrder: WorkOrder,
+    services: List<WorkOrderServiceOption>,
     isLoading: Boolean,
     error: String,
     notice: String,
@@ -5065,6 +5178,7 @@ private fun WorkOrderDetailScreen(
     statusOptions: List<String>,
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
+    onManageServices: (WorkOrder) -> Unit,
     onGenerateDocumentation: (WorkOrder) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
     onDownloadPdf: (WorkOrder) -> Unit,
@@ -5124,6 +5238,15 @@ private fun WorkOrderDetailScreen(
                             enabled = !isLoading,
                             onStatusSelected = { status -> onStatusChange(workOrder, status) },
                         )
+                        OutlinedButton(
+                            onClick = { onManageServices(workOrder) },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Usluge")
+                        }
                         OutlinedButton(
                             onClick = { onGenerateDocumentation(workOrder) },
                             enabled = !isLoading,
@@ -5186,6 +5309,13 @@ private fun WorkOrderDetailScreen(
                 onRefreshDocuments = onRefreshDocuments,
             )
 
+            WorkOrderServicesDetailSection(
+                workOrder = workOrder,
+                services = services,
+                isBusy = isLoading,
+                onManageServices = { onManageServices(workOrder) },
+            )
+
             DetailSection("Lokacija i kontakt") {
                 DetailRow(Icons.Rounded.LocationOn, "Lokacija", workOrder.locationName.ifBlank { "Nije upisano" })
                 if (workOrder.coordinates.isNotBlank()) {
@@ -5219,6 +5349,247 @@ private fun WorkOrderDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun WorkOrderServicesDetailSection(
+    workOrder: WorkOrder,
+    services: List<WorkOrderServiceOption>,
+    isBusy: Boolean,
+    onManageServices: () -> Unit,
+) {
+    val selectedIds = remember(workOrder.serviceDetails, workOrder.serviceItems, services) {
+        resolveWorkOrderSelectedServiceIds(workOrder, services)
+    }
+    DetailSection("Usluge RN-a") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "${workOrder.serviceDetails.size.takeIf { it > 0 } ?: selectedIds.size} odabrano",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    "Dodaj, ukloni ili promijeni usluge na radnom nalogu.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+            OutlinedButton(onClick = onManageServices, enabled = !isBusy, shape = RoundedCornerShape(14.dp)) {
+                Icon(Icons.Rounded.Tune, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Upravljaj")
+            }
+        }
+        if (workOrder.serviceDetails.isEmpty() && workOrder.serviceItems.isEmpty()) {
+            Text(
+                "Nema upisanih usluga.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+            )
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (workOrder.serviceDetails.isNotEmpty()) {
+                    workOrder.serviceDetails.forEach { service ->
+                        AssistChip(
+                            onClick = {},
+                            leadingIcon = {
+                                Text(
+                                    service.serviceCode.ifBlank { "#" },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Black,
+                                )
+                            },
+                            label = {
+                                Text(
+                                    service.name.ifBlank { service.serviceCode.ifBlank { "Usluga" } },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
+                } else {
+                    workOrder.serviceItems.forEach { service ->
+                        AssistChip(onClick = {}, label = { Text(service, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun normalizeServiceMatch(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace(Regex("\\s+"), " ")
+
+private fun resolveWorkOrderSelectedServiceIds(
+    workOrder: WorkOrder,
+    services: List<WorkOrderServiceOption>,
+): List<String> {
+    val ids = workOrder.serviceDetails.map { it.serviceId }.filter { it.isNotBlank() }
+    if (ids.isNotEmpty()) return ids.distinct()
+
+    val serviceLookup = services.flatMap { service ->
+        listOf(service.id, service.name, service.serviceCode)
+            .map { normalizeServiceMatch(it) }
+            .filter { it.isNotBlank() }
+            .map { key -> key to service.id }
+    }.toMap()
+
+    return workOrder.serviceItems
+        .mapNotNull { label -> serviceLookup[normalizeServiceMatch(label)] }
+        .distinct()
+}
+
+@Composable
+private fun WorkOrderServiceManagementDialog(
+    workOrder: WorkOrder,
+    services: List<WorkOrderServiceOption>,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit,
+) {
+    var query by remember(workOrder.id) { mutableStateOf("") }
+    var selectedIds by remember(workOrder.id, workOrder.serviceDetails, services) {
+        mutableStateOf(resolveWorkOrderSelectedServiceIds(workOrder, services).toSet())
+    }
+    val filteredServices = remember(services, query) {
+        val normalizedQuery = normalizeServiceMatch(query)
+        if (normalizedQuery.isBlank()) {
+            services
+        } else {
+            services.filter { service ->
+                listOf(service.name, service.serviceCode, service.type, service.note)
+                    .any { value -> normalizeServiceMatch(value).contains(normalizedQuery) }
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxWidth(0.96f),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        title = {
+            Column {
+                Text("Usluge radnog naloga", fontWeight = FontWeight.Black)
+                Text(
+                    "${workOrder.displayNumber} · ${selectedIds.size} odabrano",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Pretraži usluge") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 430.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                ) {
+                    LazyColumn(
+                        modifier = Modifier.padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        if (filteredServices.isEmpty()) {
+                            item {
+                                Text(
+                                    "Nema usluga za ovaj filter.",
+                                    modifier = Modifier.padding(12.dp),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                                )
+                            }
+                        }
+                        items(filteredServices, key = { it.id }) { service ->
+                            val selected = service.id in selectedIds
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !isLoading) {
+                                        selectedIds = if (selected) {
+                                            selectedIds - service.id
+                                        } else {
+                                            selectedIds + service.id
+                                        }
+                                    },
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                tonalElevation = if (selected) 2.dp else 0.dp,
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Checkbox(
+                                        checked = selected,
+                                        onCheckedChange = { checked ->
+                                            selectedIds = if (checked) selectedIds + service.id else selectedIds - service.id
+                                        },
+                                        enabled = !isLoading,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            service.name.ifBlank { service.serviceCode.ifBlank { "Usluga" } },
+                                            fontWeight = FontWeight.Black,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            listOf(service.serviceCode, service.type, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." })
+                                                .filterNotNull()
+                                                .filter { it.isNotBlank() }
+                                                .joinToString(" · "),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(selectedIds.toList()) },
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text("Spremi usluge", fontWeight = FontWeight.Black)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Odustani")
+            }
+        },
+    )
 }
 
 @Composable
@@ -5544,10 +5915,14 @@ private fun WorkOrderDocumentationWizardDialog(
     workOrder: WorkOrder,
     users: List<WorkOrderUserOption>,
     services: List<WorkOrderServiceOption>,
+    locationObjects: List<WorkOrderLocationObjectOption>,
+    selectedObjectId: String,
     context: WorkOrderDocumentationContext,
     contextLoading: Boolean,
     isLoading: Boolean,
     onDismiss: () -> Unit,
+    onObjectSelectionChange: (String) -> Unit,
+    onCreateObject: (String) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val today = remember { LocalDate.now().toString() }
@@ -5686,6 +6061,7 @@ private fun WorkOrderDocumentationWizardDialog(
         }
     }
     var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
+    var includeHandoverProtocol by remember(workOrder.id) { mutableStateOf(true) }
     var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
     var electricalValidityMonths by remember(workOrder.id, defaults.electricalValidityMonths) {
         mutableStateOf(defaults.electricalValidityMonths.ifBlank { validityMonths.ifBlank { "12" } })
@@ -5738,7 +6114,79 @@ private fun WorkOrderDocumentationWizardDialog(
     var measurementSheets by remember(workOrder.id, measurementDefaultsKey) {
         mutableStateOf(defaultMeasurementSheetValues(allMeasurementTemplates))
     }
+    val availableLocationObjects = remember(workOrder.companyId, workOrder.locationId, locationObjects) {
+        locationObjects
+            .filter { item ->
+                item.locationId == workOrder.locationId &&
+                    (item.companyId == workOrder.companyId || item.companyId.isBlank() || workOrder.companyId.isBlank())
+            }
+            .sortedWith(
+                compareBy<WorkOrderLocationObjectOption> { it.name.lowercase(Locale.getDefault()) }
+                    .thenBy { it.code.lowercase(Locale.getDefault()) },
+            )
+    }
+    val selectedObject = remember(selectedObjectId, availableLocationObjects) {
+        availableLocationObjects.firstOrNull { it.id == selectedObjectId }
+    }
+    val objectOptions = remember(availableLocationObjects) {
+        listOf("" to "Nema objekta") +
+            availableLocationObjects.map { item ->
+                item.id to listOf(item.name, item.code.takeIf { it.isNotBlank() }?.let { "($it)" })
+                    .filterNotNull()
+                    .joinToString(" ")
+            } +
+            listOf("__add_new__" to "+ Dodaj novi objekt")
+    }
+    var newObjectDialogOpen by remember(workOrder.id) { mutableStateOf(false) }
+    var newObjectName by remember(workOrder.id, availableLocationObjects.size) {
+        mutableStateOf("Objekt ${availableLocationObjects.size + 1}")
+    }
     val formLoading = isLoading || contextLoading
+
+    if (newObjectDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { newObjectDialogOpen = false },
+            title = { Text("Novi objekt", fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        workOrder.locationName.ifBlank { "Lokacija nije upisana" },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                    OutlinedTextField(
+                        value = newObjectName,
+                        onValueChange = { newObjectName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Naziv objekta") },
+                        singleLine = true,
+                        enabled = !formLoading,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val name = newObjectName.trim()
+                        if (name.isNotBlank()) {
+                            newObjectDialogOpen = false
+                            onCreateObject(name)
+                        }
+                    },
+                    enabled = !formLoading && newObjectName.isNotBlank(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text("Dodaj objekt", fontWeight = FontWeight.Black)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { newObjectDialogOpen = false }, enabled = !formLoading) {
+                    Text("Odustani")
+                }
+            },
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -5779,6 +6227,35 @@ private fun WorkOrderDocumentationWizardDialog(
                 ) {
 
                 if (!summaryFlowSelected) {
+                WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
+                    WorkOrderSelectField(
+                        label = "Objekt / oprema",
+                        value = selectedObjectId,
+                        valueLabel = selectedObject?.name ?: if (selectedObjectId.isBlank()) "Nema objekta" else "Odabrani objekt nije više dostupan",
+                        options = objectOptions,
+                        enabled = !formLoading,
+                        onSelect = { value ->
+                            if (value == "__add_new__") {
+                                newObjectName = "Objekt ${availableLocationObjects.size + 1}"
+                                newObjectDialogOpen = true
+                            } else {
+                                onObjectSelectionChange(value)
+                            }
+                        },
+                    )
+                    Text(
+                        if (selectedObject != null) {
+                            listOf(
+                                selectedObject.code.takeIf { it.isNotBlank() }?.let { "Šifra: $it" },
+                                selectedObject.description.takeIf { it.isNotBlank() },
+                            ).filterNotNull().joinToString(" · ").ifBlank { "Zapisnik će koristiti ovaj objekt i njegove stare vrijednosti ako postoje." }
+                        } else {
+                            "Ako nema objekta, zapisnik se vodi samo po lokaciji."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                }
                 if (blockTemplates.isEmpty()) {
                     WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
                         DocumentationNumberPreview(
@@ -6028,6 +6505,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     flowItems = serviceFlowItems,
                     selectedService = summaryServiceLabel,
                     documentNumber = summaryDocumentNumbers,
+                    objectName = selectedObject?.name.orEmpty(),
                     inspectionDate = inspectionDate,
                     issuedDate = issuedDate,
                     testingLocation = testingLocation,
@@ -6035,8 +6513,10 @@ private fun WorkOrderDocumentationWizardDialog(
                     selectedLegalCount = selectedLegalFrameworkIds.size,
                     selectedRulebookCount = selectedRulebookIds.size,
                     signatureMode = signatureMode,
+                    includeHandoverProtocol = includeHandoverProtocol,
                     enabled = !formLoading,
                     onSignatureMode = { signatureMode = it },
+                    onIncludeHandoverProtocol = { includeHandoverProtocol = it },
                 )
                 }
                 }
@@ -6048,6 +6528,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     val templatePayload = buildTemplateFieldPayload(allPromptTemplates, templateFieldValues)
                     val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
                     val draft = WorkOrderDocumentationDraft(
+                        objectId = selectedObject?.id.orEmpty(),
+                        objectName = selectedObject?.name.orEmpty(),
                         inspectionDate = inspectionDate.trim(),
                         issuedDate = issuedDate.trim(),
                         issuedPlace = "",
@@ -6081,6 +6563,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         templateFieldValues = templatePayload.second,
                         fieldSheets = sheetPayload.first,
                         templateFieldSheets = sheetPayload.second,
+                        includeHandoverProtocol = includeHandoverProtocol,
                     )
                     onConfirm(draft)
                 },
@@ -6852,6 +7335,7 @@ private fun DocumentationSummarySection(
     flowItems: List<DocumentationServiceFlowItem>,
     selectedService: String,
     documentNumber: String,
+    objectName: String,
     inspectionDate: String,
     issuedDate: String,
     testingLocation: String,
@@ -6859,13 +7343,16 @@ private fun DocumentationSummarySection(
     selectedLegalCount: Int,
     selectedRulebookCount: Int,
     signatureMode: String,
+    includeHandoverProtocol: Boolean,
     enabled: Boolean,
     onSignatureMode: (String) -> Unit,
+    onIncludeHandoverProtocol: (Boolean) -> Unit,
 ) {
     WizardSection(title = "Sažetak", icon = Icons.Rounded.CheckCircle) {
         DocumentationSummaryRow("RN", workOrder.displayNumber)
         DocumentationSummaryRow("Broj zapisnika", documentNumber.ifBlank { "Automatski kod izrade" })
         DocumentationSummaryRow("Usluga", selectedService.ifBlank { "Nije odabrano" })
+        DocumentationSummaryRow("Objekt", objectName.ifBlank { "Samo lokacija" })
         DocumentationSummaryRow("Datum ispitivanja", formatDatePickerLabel(inspectionDate))
         DocumentationSummaryRow("Datum izdavanja", formatDatePickerLabel(issuedDate))
         DocumentationSummaryRow("Mjesto ispitivanja", testingLocation.ifBlank { "Nije upisano" })
@@ -6891,6 +7378,37 @@ private fun DocumentationSummarySection(
             SignatureModeChip("digital", "Digitalni", signatureMode, enabled, onSignatureMode)
             SignatureModeChip("scan", "Sken", signatureMode, enabled, onSignatureMode)
             SignatureModeChip("manual", "Ručni", signatureMode, enabled, onSignatureMode)
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onIncludeHandoverProtocol(!includeHandoverProtocol) },
+            shape = RoundedCornerShape(16.dp),
+            color = if (includeHandoverProtocol) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            },
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(
+                    checked = includeHandoverProtocol,
+                    onCheckedChange = onIncludeHandoverProtocol,
+                    enabled = enabled,
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Primopredajni zapisnik", fontWeight = FontWeight.Black)
+                    Text(
+                        "Generiraj posebnu primopredaju za ovaj RN i spremi je u dokumentaciju.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                }
+            }
         }
         if (flowItems.size > 1) {
             Text(

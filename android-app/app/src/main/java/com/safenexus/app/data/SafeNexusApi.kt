@@ -73,6 +73,7 @@ class SafeNexusApi(
                 workOrderLocations = json.optJSONObject("options")?.optJSONArray("workOrderLocations").toWorkOrderLocations(),
                 workOrderUsers = json.optJSONObject("options")?.optJSONArray("workOrderUsers").toWorkOrderUsers(),
                 workOrderServices = json.optJSONObject("options")?.optJSONArray("workOrderServices").toWorkOrderServices(),
+                workOrderLocationObjects = json.optJSONObject("options")?.optJSONArray("workOrderLocationObjects").toWorkOrderLocationObjects(),
                 vehicles = json.optJSONArray("vehicles").toRecords(),
                 documentRecords = json.optJSONArray("documentRecords").toRecords(),
                 peopleTrainingRecords = json.optJSONArray("peopleTrainingRecords").toRecords(),
@@ -135,6 +136,43 @@ class SafeNexusApi(
                 .toString()
             request("/api/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload)
             Unit
+        }
+    }
+
+    suspend fun updateWorkOrderServices(workOrderId: String, serviceIds: List<String>): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val serviceItems = JSONArray()
+            serviceIds.distinct().forEach { serviceId ->
+                serviceItems.put(JSONObject().put("serviceId", serviceId))
+            }
+            val payload = JSONObject()
+                .put("serviceItems", serviceItems)
+                .toString()
+            request("/api/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload)
+            Unit
+        }
+    }
+
+    suspend fun createWorkOrderLocationObject(
+        workOrder: WorkOrder,
+        name: String,
+    ): Result<WorkOrderLocationObjectOption> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("companyId", workOrder.companyId)
+                .put("locationId", workOrder.locationId)
+                .put("name", name)
+                .toString()
+            val json = JSONObject(request("/api/mobile/location-objects", method = "POST", body = payload))
+            val item = json.optJSONObject("item") ?: JSONObject()
+            WorkOrderLocationObjectOption(
+                id = item.firstClean("id"),
+                companyId = item.firstClean("companyId"),
+                locationId = item.firstClean("locationId"),
+                name = item.firstClean("name").ifBlank { name },
+                code = item.firstClean("code"),
+                description = item.firstClean("description"),
+            )
         }
     }
 
@@ -219,6 +257,8 @@ class SafeNexusApi(
             val selectedRulebookIds = JSONArray()
             draft.selectedRulebookIds.forEach { selectedRulebookIds.put(it) }
             val payload = JSONObject()
+                .put("objectId", draft.objectId)
+                .put("objectName", draft.objectName)
                 .put("inspectionDate", draft.inspectionDate)
                 .put("issuedDate", draft.issuedDate)
                 .put("issuedPlace", draft.issuedPlace)
@@ -252,6 +292,7 @@ class SafeNexusApi(
                 .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())
                 .put("fieldSheets", draft.fieldSheets.toMeasurementSheetJsonObject())
                 .put("templateFieldSheets", draft.templateFieldSheets.toNestedMeasurementSheetJsonObject())
+                .put("includeHandoverProtocol", draft.includeHandoverProtocol)
                 .toString()
             val json = JSONObject(
                 request(
@@ -264,9 +305,13 @@ class SafeNexusApi(
         }
     }
 
-    suspend fun workOrderDocumentationContext(workOrderId: String): Result<WorkOrderDocumentationContext> = withContext(Dispatchers.IO) {
+    suspend fun workOrderDocumentationContext(
+        workOrderId: String,
+        objectId: String = "",
+    ): Result<WorkOrderDocumentationContext> = withContext(Dispatchers.IO) {
         runCatching {
-            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}/documentation-context"))
+            val query = if (objectId.isBlank()) "" else "?objectId=${objectId.pathSegment()}"
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}/documentation-context$query"))
             json.toWorkOrderDocumentationContext()
         }
     }
@@ -1009,6 +1054,51 @@ private fun JSONArray?.toWorkOrderServices(): List<WorkOrderServiceOption> {
     }.filter { it.id.isNotBlank() && (it.name.isNotBlank() || it.serviceCode.isNotBlank()) }
 }
 
+private fun JSONArray?.toWorkOrderLocationObjects(): List<WorkOrderLocationObjectOption> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderLocationObjectOption(
+                    id = item.firstClean("id"),
+                    companyId = item.firstClean("companyId"),
+                    locationId = item.firstClean("locationId"),
+                    name = item.firstClean("name").ifBlank { "Objekt" },
+                    code = item.firstClean("code"),
+                    description = item.firstClean("description"),
+                ),
+            )
+        }
+    }.filter { it.id.isNotBlank() && it.locationId.isNotBlank() && it.name.isNotBlank() }
+        .sortedWith(compareBy<WorkOrderLocationObjectOption> { it.name.lowercase() }.thenBy { it.code.lowercase() })
+}
+
+private fun JSONArray?.toWorkOrderServiceDetails(): List<WorkOrderServiceItem> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = opt(index)
+            if (item is JSONObject) {
+                add(
+                    WorkOrderServiceItem(
+                        serviceId = item.firstClean("serviceId", "id", "serviceCatalogId", "catalogServiceId"),
+                        name = item.firstClean("name", "serviceName", "title"),
+                        serviceCode = item.firstClean("serviceCode", "code", "shortLabel"),
+                        serviceStatus = item.firstClean("serviceStatus", "progressStatus", "workStatus"),
+                        quantity = item.firstClean("quantity", "measurementQuantity", "count").ifBlank { "1" },
+                    ),
+                )
+            } else {
+                val value = item?.toString()?.trim().orEmpty()
+                if (value.isNotBlank() && value != "null") {
+                    add(WorkOrderServiceItem("", value, "", "", "1"))
+                }
+            }
+        }
+    }.filter { it.name.isNotBlank() || it.serviceCode.isNotBlank() || it.serviceId.isNotBlank() }
+}
+
 private fun JSONArray?.toWorkOrderDocuments(): List<WorkOrderDocument> {
     if (this == null) return emptyList()
     return buildList {
@@ -1059,18 +1149,29 @@ private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
     return buildList {
         for (index in 0 until length()) {
             val item = optJSONObject(index) ?: continue
-            val serviceItems = item.optJSONArray("serviceItems").toStringList("name", "serviceCode")
+            val serviceDetails = item.optJSONArray("serviceItems").toWorkOrderServiceDetails()
+            val serviceItems = serviceDetails
+                .map { service -> service.name.ifBlank { service.serviceCode.ifBlank { service.serviceId } } }
+                .filter { it.isNotBlank() }
+                .ifEmpty { item.optJSONArray("serviceItems").toStringList("name", "serviceCode") }
             add(
                 WorkOrder(
                     id = item.firstClean("id"),
                     number = item.firstClean("workOrderNumber", "number"),
                     status = item.firstClean("status").ifBlank { "Otvoreni RN" },
+                    companyId = item.firstClean("companyId"),
                     companyName = item.firstClean("companyName", "company"),
+                    companyOib = item.firstClean("companyOib", "oib"),
+                    headquarters = item.firstClean("headquarters", "companyHeadquarters"),
+                    locationId = item.firstClean("locationId"),
                     locationName = item.firstClean("locationName", "location"),
+                    objectId = item.firstClean("objectId", "locationObjectId"),
+                    objectName = item.firstClean("objectName", "locationObjectName"),
                     coordinates = item.firstClean("coordinates"),
                     region = item.firstClean("region"),
                     serviceLine = item.firstClean("serviceLine"),
                     serviceItems = serviceItems,
+                    serviceDetails = serviceDetails,
                     openedDate = item.firstClean("openedDate", "createdAt"),
                     dueDate = item.firstClean("dueDate"),
                     executionDate = item.firstClean("executionDate"),
