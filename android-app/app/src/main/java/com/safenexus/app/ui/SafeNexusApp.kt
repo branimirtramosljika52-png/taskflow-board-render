@@ -123,7 +123,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
@@ -6300,7 +6299,6 @@ private fun WorkOrderDocumentationWizardDialog(
     var newObjectName by remember(workOrder.id, availableLocationObjects.size) {
         mutableStateOf("Objekt ${availableLocationObjects.size + 1}")
     }
-    var basicsSheetOpen by remember(workOrder.id) { mutableStateOf(false) }
     var requiredWarning by remember(workOrder.id) { mutableStateOf("") }
     val standardValues = DocumentationStandardValues(
         inspectionDate = inspectionDate.trim(),
@@ -6412,18 +6410,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationProcessToolbar(
                         flowItems = serviceFlowItems,
                         selectedService = selectedFlowService,
-                        documentNumber = currentDocumentNumber,
-                        serviceName = selectedFlowItem?.serviceName ?: inspectionType,
-                        inspectionDate = inspectionDate,
-                        issuedDate = issuedDate,
-                        inspectionType = inspectionType,
-                        testingLocation = testingLocation,
-                        measurementEquipmentGroup = measurementEquipmentGroup,
-                        outsideTemperature = outsideTemperature,
-                        relativeHumidity = relativeHumidity,
                         enabled = !formLoading,
                         onSelectService = { selectedFlowService = it },
-                        onOpenBasics = { basicsSheetOpen = true },
                     )
                 }
                 if (requiredWarning.isNotBlank()) {
@@ -6436,6 +6424,58 @@ private fun WorkOrderDocumentationWizardDialog(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
+
+                if (basicsFlowSelected) {
+                WizardSection(title = "Osnovno", icon = Icons.Rounded.Description) {
+                    Text(
+                        "Podaci vrijede za sve zapisnike u ovom RN-u i automatski popunjavaju povezana polja iz web predložaka.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                    DocumentationCoreBasicsContent(
+                        documentNumber = currentDocumentNumber,
+                        serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                        inspectionDate = inspectionDate,
+                        onInspectionDateChange = { inspectionDate = it },
+                        issuedDate = issuedDate,
+                        onIssuedDateChange = { issuedDate = it },
+                        inspectionType = inspectionType,
+                        inspectionOptions = inspectionOptions,
+                        onInspectionTypeChange = { inspectionType = it },
+                        testingLocation = testingLocation,
+                        onTestingLocationChange = { testingLocation = it },
+                        inspectorUserId = inspectorUserId,
+                        authorizationHolderUserId = authorizationHolderUserId,
+                        electricalInspectorUserId = electricalInspectorUserId,
+                        electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+                        tipkaloInspectorUserId = tipkaloInspectorUserId,
+                        tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                        userOptions = userOptions,
+                        onInspectorUserIdChange = { inspectorUserId = it },
+                        onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
+                        onElectricalInspectorUserIdChange = { electricalInspectorUserId = it },
+                        onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
+                        onTipkaloInspectorUserIdChange = { tipkaloInspectorUserId = it },
+                        onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
+                        measurementEquipmentGroup = measurementEquipmentGroup,
+                        measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
+                        onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
+                        outsideTemperature = outsideTemperature,
+                        relativeHumidity = relativeHumidity,
+                        airflowSpeed = airflowSpeed,
+                        weather = weather,
+                        groundCondition = groundCondition,
+                        groundResistance = groundResistance,
+                        onOutsideTemperatureChange = { outsideTemperature = it },
+                        onRelativeHumidityChange = { relativeHumidity = it },
+                        onAirflowSpeedChange = { airflowSpeed = it },
+                        onWeatherChange = { weather = it },
+                        onGroundConditionChange = { groundCondition = it },
+                        onGroundResistanceChange = { groundResistance = it },
+                        enabled = !formLoading,
+                    )
+                }
+                }
 
                 if (!summaryFlowSelected && !basicsFlowSelected) {
                 WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
@@ -6728,79 +6768,6 @@ private fun WorkOrderDocumentationWizardDialog(
         },
     )
 
-    if (basicsSheetOpen) {
-        ModalBottomSheet(
-            onDismissRequest = { basicsSheetOpen = false },
-            containerColor = MaterialTheme.colorScheme.surface,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 680.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Text("Osnovno", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                Text(
-                    "Podaci vrijede za ovaj zapisnik i popunjavaju povezana polja iz web predloška.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                )
-                DocumentationCoreBasicsContent(
-                    documentNumber = currentDocumentNumber,
-                    serviceName = selectedFlowItem?.serviceName ?: inspectionType,
-                    inspectionDate = inspectionDate,
-                    onInspectionDateChange = { inspectionDate = it },
-                    issuedDate = issuedDate,
-                    onIssuedDateChange = { issuedDate = it },
-                    inspectionType = inspectionType,
-                    inspectionOptions = inspectionOptions,
-                    onInspectionTypeChange = { inspectionType = it },
-                    testingLocation = testingLocation,
-                    onTestingLocationChange = { testingLocation = it },
-                    inspectorUserId = inspectorUserId,
-                    authorizationHolderUserId = authorizationHolderUserId,
-                    electricalInspectorUserId = electricalInspectorUserId,
-                    electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
-                    tipkaloInspectorUserId = tipkaloInspectorUserId,
-                    tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
-                    userOptions = userOptions,
-                    onInspectorUserIdChange = { inspectorUserId = it },
-                    onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
-                    onElectricalInspectorUserIdChange = { electricalInspectorUserId = it },
-                    onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
-                    onTipkaloInspectorUserIdChange = { tipkaloInspectorUserId = it },
-                    onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
-                    measurementEquipmentGroup = measurementEquipmentGroup,
-                    measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
-                    onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
-                    outsideTemperature = outsideTemperature,
-                    relativeHumidity = relativeHumidity,
-                    airflowSpeed = airflowSpeed,
-                    weather = weather,
-                    groundCondition = groundCondition,
-                    groundResistance = groundResistance,
-                    onOutsideTemperatureChange = { outsideTemperature = it },
-                    onRelativeHumidityChange = { relativeHumidity = it },
-                    onAirflowSpeedChange = { airflowSpeed = it },
-                    onWeatherChange = { weather = it },
-                    onGroundConditionChange = { groundCondition = it },
-                    onGroundResistanceChange = { groundResistance = it },
-                    enabled = !formLoading,
-                )
-                Button(
-                    onClick = { basicsSheetOpen = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !formLoading,
-                    shape = RoundedCornerShape(16.dp),
-                ) {
-                    Text("Spremi osnovno", fontWeight = FontWeight.Black)
-                }
-                Spacer(Modifier.height(18.dp))
-            }
-        }
-    }
 }
 
 private fun templateFieldPayloadKey(field: WorkOrderDocumentationField): String =
@@ -7670,18 +7637,8 @@ private fun DocumentationSummaryRow(
 private fun DocumentationProcessToolbar(
     flowItems: List<DocumentationServiceFlowItem>,
     selectedService: String,
-    documentNumber: String,
-    serviceName: String,
-    inspectionDate: String,
-    issuedDate: String,
-    inspectionType: String,
-    testingLocation: String,
-    measurementEquipmentGroup: String,
-    outsideTemperature: String,
-    relativeHumidity: String,
     enabled: Boolean,
     onSelectService: (String) -> Unit,
-    onOpenBasics: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -7734,20 +7691,6 @@ private fun DocumentationProcessToolbar(
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
-                )
-            }
-            if (selectedService == DOCUMENTATION_BASICS_FLOW_KEY) {
-                DocumentationCoreBasicsLauncherCard(
-                    documentNumber = documentNumber,
-                    serviceName = serviceName,
-                    inspectionDate = inspectionDate,
-                    issuedDate = issuedDate,
-                    inspectionType = inspectionType,
-                    testingLocation = testingLocation,
-                    measurementEquipmentGroup = measurementEquipmentGroup,
-                    outsideTemperature = outsideTemperature,
-                    relativeHumidity = relativeHumidity,
-                    onOpen = onOpenBasics,
                 )
             }
         }
