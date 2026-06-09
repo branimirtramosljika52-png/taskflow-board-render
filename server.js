@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.31.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.32.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -10564,6 +10564,33 @@ function buildMobileDocumentTemplateFieldOptions(field = {}) {
     .filter(Boolean);
 }
 
+function normalizeMobileTemplateFieldLookup(value = "") {
+  return normalizeInputValue(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isMobileInspectionTypeTemplateField(field = {}, index = 0) {
+  const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+  return [
+    field?.id,
+    field?.key,
+    field?.wordLabel,
+    field?.label,
+    tokenKey,
+  ]
+    .map(normalizeMobileTemplateFieldLookup)
+    .some((value) => (
+      value === "vrsta ispitivanja"
+      || value === "inspection type"
+      || value === "work order inspection type"
+      || value.includes("vrsta ispitivanja")
+      || value.includes("inspection type")
+    ));
+}
+
 function getMobileDocumentTemplateFieldDefaultValue(field = {}) {
   const candidate = field?.defaultValue
     ?? field?.value
@@ -10878,10 +10905,13 @@ function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {
     if (!isMobileDocumentTemplatePromptField(field)) {
       return;
     }
+    const isInspectionTypeField = isMobileInspectionTypeTemplateField(field, index);
     const submittedValue = getMobileDocumentTemplateSubmittedFieldValue(field, template, common, index);
     const value = submittedValue !== undefined
       ? submittedValue
-      : getMobileDocumentTemplateFieldDefaultValue(field);
+      : isInspectionTypeField && common.inspectionType
+        ? common.inspectionType
+        : getMobileDocumentTemplateFieldDefaultValue(field);
     const placeholderValue = formatMobileTemplateFieldPlaceholderValue(value, field);
     const documentValue = coerceMobileTemplateFieldDocumentValue(value, field);
     const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);

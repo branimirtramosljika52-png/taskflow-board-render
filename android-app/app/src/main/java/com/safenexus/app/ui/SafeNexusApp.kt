@@ -5361,7 +5361,13 @@ private fun WorkOrderDocumentationWizardDialog(
             user.id to user.label.ifBlank { user.fullName.ifBlank { user.email } }
         }
     }
-    val inspectionOptions = remember(workOrder, services) {
+    val templateInspectionOptions = remember(context) {
+        buildTemplateInspectionTypeOptions(context.templates)
+    }
+    val templateInspectionDefault = remember(context) {
+        getTemplateInspectionTypeDefault(context.templates)
+    }
+    val workOrderInspectionOptions = remember(workOrder, services) {
         val rnServices = buildList {
             workOrder.serviceItems.forEach { item ->
                 val label = item.trim()
@@ -5378,7 +5384,18 @@ private fun WorkOrderDocumentationWizardDialog(
             .take(60)
             .map { it to it }
     }
-    val defaultInspectionType = remember(workOrder) { workOrder.displayService.takeIf { it != "Bez upisane usluge" } ?: "" }
+    val inspectionOptions = remember(templateInspectionOptions, workOrderInspectionOptions) {
+        templateInspectionOptions.ifEmpty { workOrderInspectionOptions }
+    }
+    val defaultInspectionType = remember(workOrder, templateInspectionOptions, templateInspectionDefault) {
+        templateInspectionDefault.ifBlank {
+            if (templateInspectionOptions.isEmpty()) {
+                workOrder.displayService.takeIf { it != "Bez upisane usluge" } ?: ""
+            } else {
+                ""
+            }
+        }
+    }
     val defaults = context.defaults
     var inspectionDate by remember(workOrder.id, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
     var issuedDate by remember(workOrder.id, defaults.issuedDate) { mutableStateOf(defaults.issuedDate.ifBlank { inspectionDate.ifBlank { today } }) }
@@ -5387,8 +5404,18 @@ private fun WorkOrderDocumentationWizardDialog(
         mutableStateOf(defaults.testingLocation.ifBlank { workOrder.locationName })
     }
     var note by remember(workOrder.id, defaults.note) { mutableStateOf(defaults.note) }
-    var inspectionType by remember(workOrder.id, defaults.inspectionType, defaultInspectionType) {
-        mutableStateOf(defaults.inspectionType.ifBlank { defaultInspectionType })
+    val initialInspectionType = remember(defaults.inspectionType, defaultInspectionType, inspectionOptions) {
+        val saved = defaults.inspectionType.trim()
+        if (saved.isNotBlank() && (inspectionOptions.isEmpty() || inspectionOptions.any {
+                it.first.equals(saved, ignoreCase = true) || it.second.equals(saved, ignoreCase = true)
+            })) {
+            saved
+        } else {
+            defaultInspectionType
+        }
+    }
+    var inspectionType by remember(workOrder.id, initialInspectionType) {
+        mutableStateOf(initialInspectionType)
     }
     var outsideTemperature by remember(workOrder.id, defaults.outsideTemperature) { mutableStateOf(defaults.outsideTemperature) }
     var relativeHumidity by remember(workOrder.id, defaults.relativeHumidity) { mutableStateOf(defaults.relativeHumidity) }
@@ -5706,6 +5733,44 @@ private fun templateFieldStateKey(
     field: WorkOrderDocumentationField,
 ): String = "${template.id}::${templateFieldPayloadKey(field)}"
 
+private fun normalizeTemplateFieldLookup(value: String): String =
+    value.trim()
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace(Regex("\\s+"), " ")
+        .lowercase(Locale.getDefault())
+
+private fun isInspectionTypeTemplateField(field: WorkOrderDocumentationField): Boolean {
+    return listOf(field.id, field.key, field.tokenKey, field.label)
+        .map(::normalizeTemplateFieldLookup)
+        .any { value ->
+            value == "vrsta ispitivanja" ||
+                value == "inspection type" ||
+                value == "work order inspection type" ||
+                value.contains("vrsta ispitivanja") ||
+                value.contains("inspection type")
+        }
+}
+
+private fun getInspectionTypeTemplateFields(templates: List<WorkOrderDocumentationTemplate>): List<WorkOrderDocumentationField> =
+    templates.flatMap { template -> template.fields }.filter(::isInspectionTypeTemplateField)
+
+private fun buildTemplateInspectionTypeOptions(templates: List<WorkOrderDocumentationTemplate>): List<Pair<String, String>> =
+    getInspectionTypeTemplateFields(templates)
+        .flatMap { field ->
+            field.options.mapNotNull { option ->
+                val value = option.value.ifBlank { option.label }.trim()
+                val label = option.label.ifBlank { option.value }.trim()
+                if (value.isBlank() && label.isBlank()) null else value.ifBlank { label } to label.ifBlank { value }
+            }
+        }
+        .distinctBy { it.first.lowercase(Locale.getDefault()) }
+
+private fun getTemplateInspectionTypeDefault(templates: List<WorkOrderDocumentationTemplate>): String =
+    getInspectionTypeTemplateFields(templates)
+        .firstNotNullOfOrNull { field -> field.defaultValue.trim().takeIf { it.isNotBlank() } }
+        .orEmpty()
+
 private fun defaultTemplateFieldValues(templates: List<WorkOrderDocumentationTemplate>): Map<String, String> =
     buildMap {
         templates.forEach { template ->
@@ -5882,7 +5947,7 @@ private fun WorkOrderMeasurementSheet.measurementCellDisplay(rowIndex: Int, colu
         return raw
     }
     return runCatching {
-        formatMeasurementNumberMobile(evaluateMeasurementFormulaMobile(raw, this, rowIndex, columnIndex, stack))
+        evaluateMeasurementFormulaValueMobile(raw, this, rowIndex, columnIndex, stack).displayText()
     }.getOrElse { "#ERROR" }
 }
 
@@ -5903,6 +5968,20 @@ private class MobileMeasurementFormulaParser(
     }
 
     private fun parseExpression(): MobileFormulaValue {
+        return parseComparison()
+    }
+
+    private fun parseComparison(): MobileFormulaValue {
+        var value = parseAddition()
+        while (true) {
+            skipWhitespace()
+            val operator = consumeComparisonOperator() ?: return value
+            val right = parseAddition()
+            value = MobileFormulaValue.scalar(compareFormulaValues(value.value, right.value, operator))
+        }
+    }
+
+    private fun parseAddition(): MobileFormulaValue {
         var value = parseTerm()
         while (true) {
             skipWhitespace()
@@ -5939,6 +6018,7 @@ private class MobileMeasurementFormulaParser(
             requireClosing(')')
             return value
         }
+        if (peek() == '"') return MobileFormulaValue.scalar(parseString())
         if (peek()?.isDigit() == true || peek() == '.') return MobileFormulaValue.scalar(parseNumber())
         if (peek()?.isLetter() == true || peek() == '$') return parseIdentifierOrCell()
         error("Nepoznat simbol.")
@@ -5953,38 +6033,88 @@ private class MobileMeasurementFormulaParser(
         while (peek()?.isDigit() == true) index += 1
         val token = expression.substring(start, index)
         if (hasDigits) {
-            val first = readCellValues(token)
+            val first = readCellValue(token)
             skipWhitespace()
-            if (!consume(':')) return MobileFormulaValue.values(first)
+            if (!consume(':')) return first
             val end = readCellToken()
-            return MobileFormulaValue.values(readRangeValues(token, end))
+            return MobileFormulaValue.matrix(readRangeValues(token, end))
         }
 
         skipWhitespace()
-        if (!consume('(')) error("Nepoznata oznaka: $token")
-        val args = mutableListOf<MobileFormulaValue>()
-        skipWhitespace()
-        if (!consume(')')) {
-            while (true) {
-                args += parseExpression()
-                skipWhitespace()
-                if (consume(')')) break
-                if (!consume(',') && !consume(';')) error("Neispravni argumenti funkcije.")
+        val normalizedToken = token.uppercase(Locale.getDefault())
+        if (!consume('(')) {
+            return when (normalizedToken) {
+                "TRUE" -> MobileFormulaValue.scalar(true)
+                "FALSE" -> MobileFormulaValue.scalar(false)
+                else -> error("Nepoznata oznaka: $token")
             }
         }
-        return evaluateFunction(token.uppercase(Locale.getDefault()), args)
+        return evaluateFunction(normalizedToken, readFunctionArgumentExpressions())
     }
 
-    private fun evaluateFunction(name: String, args: List<MobileFormulaValue>): MobileFormulaValue {
-        val values = args.flatMap { it.values }.filter { it.isFinite() }
+    private fun evaluateFunction(name: String, args: List<String>): MobileFormulaValue {
+        fun evaluate(argument: String): MobileFormulaValue =
+            MobileMeasurementFormulaParser(argument, sheet, currentRowIndex, currentColumnIndex, stack).parse()
+
+        fun numericValues(): List<Double> =
+            args.flatMap { evaluate(it).flatten() }
+                .filter { String.format(Locale.ROOT, "%s", it ?: "").trim().isNotEmpty() }
+                .map { coerceFormulaNumber(it) }
+
         return when (name) {
-            "SUM" -> MobileFormulaValue.scalar(values.sum())
-            "AVERAGE" -> MobileFormulaValue.scalar(values.ifEmpty { listOf(0.0) }.average())
-            "MIN" -> MobileFormulaValue.scalar(values.minOrNull() ?: 0.0)
-            "MAX" -> MobileFormulaValue.scalar(values.maxOrNull() ?: 0.0)
-            "COUNT" -> MobileFormulaValue.scalar(values.size.toDouble())
+            "IF" -> {
+                if (args.size != 3) error("IF trazi 3 argumenta.")
+                if (evaluate(args[0]).asBoolean()) evaluate(args[1]) else evaluate(args[2])
+            }
+            "IFERROR" -> {
+                if (args.size != 2) error("IFERROR trazi 2 argumenta.")
+                runCatching { evaluate(args[0]) }.getOrElse { evaluate(args[1]) }
+            }
+            "SUM" -> MobileFormulaValue.scalar(numericValues().sum())
+            "AVERAGE" -> {
+                val values = numericValues()
+                if (values.isEmpty()) error("AVERAGE trazi barem jednu brojcanu vrijednost.")
+                MobileFormulaValue.scalar(values.average())
+            }
+            "MIN" -> {
+                val values = numericValues()
+                if (values.isEmpty()) error("MIN trazi barem jednu brojcanu vrijednost.")
+                MobileFormulaValue.scalar(values.minOrNull() ?: 0.0)
+            }
+            "MAX" -> {
+                val values = numericValues()
+                if (values.isEmpty()) error("MAX trazi barem jednu brojcanu vrijednost.")
+                MobileFormulaValue.scalar(values.maxOrNull() ?: 0.0)
+            }
+            "COUNT" -> MobileFormulaValue.scalar(numericValues().size.toDouble())
+            "ROWS" -> MobileFormulaValue.scalar(evaluateRowsFunction(args))
+            "RANDBETWEEN" -> {
+                if (args.size != 2) error("RANDBETWEEN trazi 2 argumenta.")
+                val min = kotlin.math.floor(evaluate(args[0]).asNumber()).toInt()
+                val max = kotlin.math.floor(evaluate(args[1]).asNumber()).toInt()
+                if (max < min) error("RANDBETWEEN trazi da je drugi broj veci ili jednak prvom.")
+                MobileFormulaValue.scalar((min..max).random().toDouble())
+            }
             else -> error("Nepodržana funkcija: $name")
         }
+    }
+
+    private fun evaluateRowsFunction(args: List<String>): Double {
+        if (args.size != 1) error("ROWS trazi 1 argument.")
+        val argument = args[0].trim()
+        val parts = argument.split(":", limit = 2)
+        if (parts.size == 1) {
+            val cell = parseMeasurementCellReferenceMobile(parts[0])
+            if (cell != null) return (cell.rowIndex + 1).toDouble()
+        } else {
+            val start = parseMeasurementCellReferenceMobile(parts[0])
+            val end = parseMeasurementCellReferenceMobile(parts[1])
+            if (start != null && end != null) {
+                return (kotlin.math.abs(end.rowIndex - start.rowIndex) + 1).toDouble()
+            }
+        }
+        val evaluated = MobileMeasurementFormulaParser(argument, sheet, currentRowIndex, currentColumnIndex, stack).parse()
+        return if (evaluated.isMatrix()) evaluated.matrixRows().size.toDouble() else 1.0
     }
 
     private fun readCellToken(): String {
@@ -5999,18 +6129,18 @@ private class MobileMeasurementFormulaParser(
         return token
     }
 
-    private fun readCellValues(reference: String): List<Double> {
+    private fun readCellValue(reference: String): MobileFormulaValue {
         val address = parseMeasurementCellReferenceMobile(reference) ?: error("Neispravna referenca.")
-        return listOf(sheet.measurementCellNumeric(address.rowIndex, address.columnIndex, stack))
+        return MobileFormulaValue.scalar(sheet.measurementCellValue(address.rowIndex, address.columnIndex, stack))
     }
 
-    private fun readRangeValues(startReference: String, endReference: String): List<Double> {
+    private fun readRangeValues(startReference: String, endReference: String): List<List<Any?>> {
         val start = parseMeasurementCellReferenceMobile(startReference) ?: error("Neispravna referenca.")
         val end = parseMeasurementCellReferenceMobile(endReference) ?: error("Neispravna referenca.")
         val rowRange = minOf(start.rowIndex, end.rowIndex)..maxOf(start.rowIndex, end.rowIndex)
         val columnRange = minOf(start.columnIndex, end.columnIndex)..maxOf(start.columnIndex, end.columnIndex)
-        return rowRange.flatMap { rowIndex ->
-            columnRange.map { columnIndex -> sheet.measurementCellNumeric(rowIndex, columnIndex, stack) }
+        return rowRange.map { rowIndex ->
+            columnRange.map { columnIndex -> sheet.measurementCellValue(rowIndex, columnIndex, stack) }
         }
     }
 
@@ -6022,6 +6152,101 @@ private class MobileMeasurementFormulaParser(
             while (peek()?.isDigit() == true) index += 1
         }
         return expression.substring(start, index).toDoubleOrNull() ?: error("Neispravan broj.")
+    }
+
+    private fun parseString(): String {
+        if (!consume('"')) error("Nedostaje navodnik.")
+        val builder = StringBuilder()
+        while (index < expression.length) {
+            val current = expression[index]
+            if (current == '"') {
+                if (expression.getOrNull(index + 1) == '"') {
+                    builder.append('"')
+                    index += 2
+                    continue
+                }
+                index += 1
+                return builder.toString()
+            }
+            builder.append(current)
+            index += 1
+        }
+        error("Nedostaje zatvaranje teksta.")
+    }
+
+    private fun readFunctionArgumentExpressions(): List<String> {
+        val args = mutableListOf<String>()
+        val current = StringBuilder()
+        var depth = 0
+        var inString = false
+        var hasContent = false
+        while (index < expression.length) {
+            val char = expression[index]
+            if (inString) {
+                current.append(char)
+                if (char == '"') {
+                    if (expression.getOrNull(index + 1) == '"') {
+                        current.append('"')
+                        index += 2
+                        continue
+                    }
+                    inString = false
+                }
+                index += 1
+                continue
+            }
+            when {
+                char == '"' -> {
+                    inString = true
+                    current.append(char)
+                    hasContent = true
+                    index += 1
+                }
+                char == '(' -> {
+                    depth += 1
+                    current.append(char)
+                    hasContent = true
+                    index += 1
+                }
+                char == ')' && depth > 0 -> {
+                    depth -= 1
+                    current.append(char)
+                    hasContent = true
+                    index += 1
+                }
+                char == ')' -> {
+                    if (hasContent || current.isNotEmpty()) args += current.toString()
+                    index += 1
+                    return args
+                }
+                (char == ';' || char == ',') && depth == 0 -> {
+                    args += current.toString()
+                    current.clear()
+                    hasContent = false
+                    index += 1
+                }
+                else -> {
+                    current.append(char)
+                    if (!char.isWhitespace()) hasContent = true
+                    index += 1
+                }
+            }
+        }
+        error("Nedostaje zatvaranje funkcije.")
+    }
+
+    private fun consumeComparisonOperator(): String? {
+        val two = expression.substring(index, minOf(expression.length, index + 2))
+        if (two == "<=" || two == ">=" || two == "<>") {
+            index += 2
+            return two
+        }
+        val one = peek()
+        if (one == '=' || one == '<' || one == '>') {
+            index += 1
+            return one.toString()
+        }
+        return null
     }
 
     private fun skipWhitespace() {
@@ -6042,12 +6267,101 @@ private class MobileMeasurementFormulaParser(
     }
 }
 
-private data class MobileFormulaValue(val values: List<Double>) {
-    fun asNumber(): Double = values.firstOrNull() ?: 0.0
+private data class MobileFormulaValue(val value: Any?) {
+    fun asNumber(): Double = coerceFormulaNumber(value)
+
+    fun asBoolean(): Boolean = when (val source = firstScalarValue()) {
+        is Boolean -> source
+        is Number -> source.toDouble() != 0.0
+        else -> source?.toString()?.trim()?.isNotEmpty() == true
+    }
+
+    fun displayText(): String = when (val source = firstScalarValue()) {
+        null -> ""
+        is String -> source
+        is Boolean -> if (source) "TRUE" else "FALSE"
+        is Number -> formatMeasurementNumberMobile(source.toDouble())
+        else -> source.toString()
+    }
+
+    fun flatten(): List<Any?> = when (value) {
+        is List<*> -> value.flatMap { row ->
+            if (row is List<*>) row else listOf(row)
+        }
+        else -> listOf(value)
+    }
+
+    fun isMatrix(): Boolean = value is List<*> && value.all { it is List<*> }
+
+    fun matrixRows(): List<List<Any?>> =
+        if (isMatrix()) {
+            @Suppress("UNCHECKED_CAST")
+            value as List<List<Any?>>
+        } else {
+            emptyList()
+        }
+
+    private fun firstScalarValue(): Any? =
+        if (isMatrix()) matrixRows().firstOrNull()?.firstOrNull() else value
 
     companion object {
-        fun scalar(value: Double): MobileFormulaValue = MobileFormulaValue(listOf(value))
-        fun values(value: List<Double>): MobileFormulaValue = MobileFormulaValue(value)
+        fun scalar(value: Any?): MobileFormulaValue = MobileFormulaValue(value)
+        fun matrix(value: List<List<Any?>>): MobileFormulaValue = MobileFormulaValue(value)
+    }
+}
+
+private fun coerceFormulaNumber(value: Any?): Double {
+    return when (value) {
+        null -> 0.0
+        is Number -> {
+            val number = value.toDouble()
+            if (number.isNaN() || number.isInfinite()) error("Brojcana vrijednost nije valjana.")
+            number
+        }
+        is Boolean -> if (value) 1.0 else 0.0
+        is List<*> -> coerceFormulaNumber(value.firstOrNull()?.let { row ->
+            if (row is List<*>) row.firstOrNull() else row
+        })
+        else -> {
+            val normalized = value.toString().trim().replace(",", ".")
+            if (normalized.isBlank()) 0.0 else normalized.toDoubleOrNull() ?: error("Ocekivana je brojcana vrijednost.")
+        }
+    }
+}
+
+private fun normalizeComparableFormulaValue(value: Any?): Any? {
+    val scalar = if (value is List<*>) value.firstOrNull()?.let { row ->
+        if (row is List<*>) row.firstOrNull() else row
+    } else {
+        value
+    }
+    if (scalar is String) {
+        val trimmed = scalar.trim()
+        val numeric = trimmed.replace(",", ".").toDoubleOrNull()
+        return if (trimmed.isNotBlank() && numeric != null) numeric else trimmed.uppercase(Locale.getDefault())
+    }
+    return scalar
+}
+
+private fun compareFormulaValues(left: Any?, right: Any?, operator: String): Boolean {
+    val normalizedLeft = normalizeComparableFormulaValue(left)
+    val normalizedRight = normalizeComparableFormulaValue(right)
+    val comparison = when {
+        normalizedLeft is Number && normalizedRight is Number ->
+            normalizedLeft.toDouble().compareTo(normalizedRight.toDouble())
+        normalizedLeft is Boolean && normalizedRight is Boolean ->
+            normalizedLeft.compareTo(normalizedRight)
+        else -> String.format(Locale.ROOT, "%s", normalizedLeft ?: "")
+            .compareTo(String.format(Locale.ROOT, "%s", normalizedRight ?: ""), ignoreCase = false)
+    }
+    return when (operator) {
+        "=" -> comparison == 0
+        "<>" -> comparison != 0
+        ">" -> comparison > 0
+        "<" -> comparison < 0
+        ">=" -> comparison >= 0
+        "<=" -> comparison <= 0
+        else -> false
     }
 }
 
@@ -6063,22 +6377,40 @@ private fun WorkOrderMeasurementSheet.measurementCellNumeric(
     if (column.computed.equals("average", ignoreCase = true)) return measurementAverage(rowIndex) ?: 0.0
     val raw = measurementRaw(rowIndex, columnIndex)
     return if (raw.trim().startsWith("=")) {
-        evaluateMeasurementFormulaMobile(raw, this, rowIndex, columnIndex, stack + key)
+        evaluateMeasurementFormulaValueMobile(raw, this, rowIndex, columnIndex, stack + key).asNumber()
     } else {
         parseMeasurementNumberMobile(raw) ?: 0.0
     }
 }
 
-private fun evaluateMeasurementFormulaMobile(
+private fun WorkOrderMeasurementSheet.measurementCellValue(
+    rowIndex: Int,
+    columnIndex: Int,
+    stack: Set<String>,
+): Any? {
+    if (rowIndex !in rows.indices || columnIndex !in columns.indices) return ""
+    val key = "$rowIndex:$columnIndex"
+    if (stack.contains(key)) error("Kružna referenca.")
+    val column = columns[columnIndex]
+    if (column.computed.equals("average", ignoreCase = true)) return measurementAverage(rowIndex) ?: ""
+    val raw = measurementRaw(rowIndex, columnIndex)
+    return if (raw.trim().startsWith("=")) {
+        evaluateMeasurementFormulaValueMobile(raw, this, rowIndex, columnIndex, stack + key).value
+    } else {
+        raw
+    }
+}
+
+private fun evaluateMeasurementFormulaValueMobile(
     rawFormula: String,
     sheet: WorkOrderMeasurementSheet,
     rowIndex: Int,
     columnIndex: Int,
     stack: Set<String>,
-): Double {
+): MobileFormulaValue {
     val expression = rawFormula.trim().removePrefix("=")
-    if (expression.isBlank()) return 0.0
-    return MobileMeasurementFormulaParser(expression, sheet, rowIndex, columnIndex, stack).parse().asNumber()
+    if (expression.isBlank()) return MobileFormulaValue.scalar(0.0)
+    return MobileMeasurementFormulaParser(expression, sheet, rowIndex, columnIndex, stack).parse()
 }
 
 @Composable
