@@ -79,6 +79,7 @@ class SafeNexusApi(
                 peopleTrainingRecords = json.optJSONArray("peopleTrainingRecords").toRecords(),
                 clientPortalRecords = json.optJSONArray("clientPortalRecords").toRecords(),
                 rulebooks = json.optJSONArray("rulebooks").toRecords(),
+                riskAssessmentRecords = json.optJSONArray("riskAssessmentRecords").toRecords(),
                 calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
                 dashboard = json.optJSONObject("dashboard").toDashboardStats(),
             )
@@ -645,6 +646,7 @@ private fun JSONObject?.toDashboardStats(): DashboardStats {
         trainingsTotal = optInt("trainingsTotal", 0),
         clientPortalTotal = optInt("clientPortalTotal", 0),
         rulebooksTotal = optInt("rulebooksTotal", 0),
+        riskAssessmentsTotal = optInt("riskAssessmentsTotal", 0),
     )
 }
 

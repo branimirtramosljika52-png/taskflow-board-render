@@ -24,6 +24,7 @@ data class BootstrapData(
     val peopleTrainingRecords: List<MobileRecord> = emptyList(),
     val clientPortalRecords: List<MobileRecord> = emptyList(),
     val rulebooks: List<MobileRecord> = emptyList(),
+    val riskAssessmentRecords: List<MobileRecord> = emptyList(),
     val calendarEvents: List<MobileRecord> = emptyList(),
     val dashboard: DashboardStats = DashboardStats(),
 )
@@ -328,6 +329,7 @@ data class DashboardStats(
     val trainingsTotal: Int = 0,
     val clientPortalTotal: Int = 0,
     val rulebooksTotal: Int = 0,
+    val riskAssessmentsTotal: Int = 0,
 )
 
 data class MobileRecord(

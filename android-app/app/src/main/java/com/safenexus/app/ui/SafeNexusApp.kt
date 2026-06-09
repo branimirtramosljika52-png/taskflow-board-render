@@ -1291,13 +1291,17 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             }
             }
         } else {
-            LoginScreen(
-                isLoading = state.isLoading,
-                error = state.error,
-                rememberedUser = state.rememberedUser,
-                onLogin = viewModel::login,
-                onUnlockRememberedSession = viewModel::unlockRememberedSession,
-            )
+            if (state.isLoading) {
+                SafeNexusLoadingScreen(rememberedUser = state.rememberedUser)
+            } else {
+                LoginScreen(
+                    isLoading = state.isLoading,
+                    error = state.error,
+                    rememberedUser = state.rememberedUser,
+                    onLogin = viewModel::login,
+                    onUnlockRememberedSession = viewModel::unlockRememberedSession,
+                )
+            }
         }
     }
 
@@ -1866,6 +1870,82 @@ private fun formatSignatureGpsLocation(location: Location): String {
         ).format(DateTimeFormatter.ofPattern("dd.MM.yyyy. HH:mm"))
     }.getOrDefault(LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy. HH:mm")))
     return "$provider: $latitude, $longitude · $accuracy · dohvaćeno $timestamp"
+}
+
+@Composable
+private fun SafeNexusLoadingScreen(
+    rememberedUser: SafeNexusUser?,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF071326), Color(0xFF123B7A), Color(0xFFF3F7FD)),
+                    startY = 0f,
+                    endY = 1450f,
+                ),
+            )
+            .padding(WindowInsets.safeDrawing.asPaddingValues())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(30.dp),
+            color = Color.White.copy(alpha = 0.96f),
+            shadowElevation = 18.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Surface(
+                    modifier = Modifier.size(68.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color(0xFFEAF2FF),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("SN", color = Color(0xFF1D4ED8), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    }
+                }
+                Text(
+                    "Učitavam SafeNexus",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color(0xFF0F172A),
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    rememberedUser?.displayName?.ifBlank { rememberedUser.email } ?: "Pripremam mobilni workspace",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF64748B),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFF2563EB), trackColor = Color(0xFFE2E8F0))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LoadingChip("RN statusi")
+                    LoadingChip("Dokumenti")
+                    LoadingChip("Periodika")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadingChip(text: String) {
+    Surface(shape = RoundedCornerShape(999.dp), color = Color(0xFFEFF6FF)) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            color = Color(0xFF1D4ED8),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+        )
+    }
 }
 
 @Composable
@@ -2963,7 +3043,8 @@ private fun WorkOrdersScreen(
             if (state.section == AppSection.Operations) {
                 item {
                     OperationsContent(
-                        stats = state.data.dashboard,
+                        data = state.data,
+                        user = state.user,
                         workOrders = state.workOrders,
                     )
                 }
@@ -3020,6 +3101,7 @@ private fun WorkOrdersScreen(
                 item {
                     MoreContent(
                         data = state.data,
+                        workOrders = state.workOrders,
                         query = normalizedQuery,
                         onOpenRecord = onOpenRecord,
                     )
@@ -3595,13 +3677,248 @@ private fun AppSection.icon(): ImageVector = when (this) {
 
 @Composable
 private fun OperationsContent(
-    stats: DashboardStats,
+    data: BootstrapData,
+    user: SafeNexusUser?,
     workOrders: List<WorkOrder>,
 ) {
+    val myWorkOrders = remember(workOrders, user?.displayName, user?.email) {
+        workOrders.filter { workOrder -> workOrder.isAssignedToUser(user) }
+    }
+    val organizationSummary = remember(workOrders) { workOrders.toStatusSummary() }
+    val personalSummary = remember(myWorkOrders) { myWorkOrders.toStatusSummary() }
+    val statusRows = remember(workOrders) { buildStatusBreakdown(workOrders) }
+
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        WorkOrderHero(workOrders)
-        DashboardMetricGrid(stats)
+        OperationsStatusCockpit(
+            user = user,
+            personal = personalSummary,
+            organization = organizationSummary,
+            statusRows = statusRows,
+        )
+        OperationsScopeComparison(
+            personal = personalSummary,
+            organization = organizationSummary,
+        )
+        DashboardMetricGrid(data.dashboard)
+        OperationsRegisterStrip(data)
         PriorityWorkOrders(workOrders)
+    }
+}
+
+private data class WorkOrderStatusSummary(
+    val total: Int,
+    val open: Int,
+    val inProgress: Int,
+    val overdue: Int,
+    val closed: Int,
+)
+
+private data class WorkOrderStatusCount(
+    val label: String,
+    val count: Int,
+)
+
+private fun List<WorkOrder>.toStatusSummary(): WorkOrderStatusSummary =
+    WorkOrderStatusSummary(
+        total = size,
+        open = count { it.isOpenRnStatus() },
+        inProgress = count { it.isInProgressRnStatus() },
+        overdue = count { it.isOverdue },
+        closed = count { it.isClosed },
+    )
+
+private fun buildStatusBreakdown(workOrders: List<WorkOrder>): List<WorkOrderStatusCount> =
+    workOrders
+        .groupBy { it.status.ifBlank { "Bez statusa" } }
+        .map { (status, items) -> WorkOrderStatusCount(status, items.size) }
+        .sortedWith(compareByDescending<WorkOrderStatusCount> { it.count }.thenBy { it.label.lowercase(Locale.getDefault()) })
+
+private fun WorkOrder.isAssignedToUser(user: SafeNexusUser?): Boolean {
+    if (user == null) return false
+    val needles = listOf(user.displayName, user.email)
+        .map { it.trim().lowercase(Locale.getDefault()) }
+        .filter { it.isNotBlank() }
+    if (needles.isEmpty()) return false
+    val haystack = (executors + completedBy)
+        .map { it.trim().lowercase(Locale.getDefault()) }
+        .filter { it.isNotBlank() }
+    return haystack.any { candidate ->
+        needles.any { needle -> candidate == needle || candidate.contains(needle) || needle.contains(candidate) }
+    }
+}
+
+@Composable
+private fun OperationsStatusCockpit(
+    user: SafeNexusUser?,
+    personal: WorkOrderStatusSummary,
+    organization: WorkOrderStatusSummary,
+    statusRows: List<WorkOrderStatusCount>,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+    ) {
+        Column(
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF0F2F66), Color(0xFF2563EB), Color(0xFF0F9F9A)),
+                    ),
+                )
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White.copy(alpha = 0.16f),
+                ) {
+                    Icon(Icons.Rounded.Work, contentDescription = null, modifier = Modifier.padding(12.dp), tint = Color.White)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Operativni pregled",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        user?.displayName?.ifBlank { user.email } ?: "SafeNexus organizacija",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFDDEBFF),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatusScopeTile("Moji RN", personal.total.toString(), "dodijeljeni nalozi", Color(0xFFE0F2FE))
+                StatusScopeTile("Organizacija", organization.total.toString(), "svi nalozi", Color(0xFFD1FAE5))
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                statusRows.take(5).forEach { row ->
+                    Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.14f)) {
+                        Text(
+                            "${row.label}: ${row.count}",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.StatusScopeTile(
+    label: String,
+    value: String,
+    caption: String,
+    tint: Color,
+) {
+    Surface(
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.15f),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = tint)
+            Text(label, style = MaterialTheme.typography.labelLarge, color = Color.White, fontWeight = FontWeight.Black)
+            Text(caption, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.74f))
+        }
+    }
+}
+
+@Composable
+private fun OperationsScopeComparison(
+    personal: WorkOrderStatusSummary,
+    organization: WorkOrderStatusSummary,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("RN po statusima", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            StatusComparisonRow("Moji nalozi", personal, Color(0xFF2563EB))
+            StatusComparisonRow("Cijela organizacija", organization, Color(0xFF0F766E))
+        }
+    }
+}
+
+@Composable
+private fun StatusComparisonRow(
+    title: String,
+    summary: WorkOrderStatusSummary,
+    accent: Color,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Black)
+            Text("${summary.total} ukupno", style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.Black)
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusCountPill("Otvoreni", summary.open, accent)
+            StatusCountPill("U tijeku", summary.inProgress, accent)
+            StatusCountPill("Kasne", summary.overdue, Color(0xFFDC2626))
+            StatusCountPill("Završeni", summary.closed, Color(0xFF059669))
+        }
+    }
+}
+
+@Composable
+private fun StatusCountPill(
+    label: String,
+    count: Int,
+    accent: Color,
+) {
+    Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.11f)) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(count.toString(), color = accent, fontWeight = FontWeight.Black)
+            Text(label, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f), style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun OperationsRegisterStrip(data: BootstrapData) {
+    val riskCount = data.dashboard.riskAssessmentsTotal.takeIf { it > 0 } ?: data.riskAssessmentRecords.size
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Registri", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            DashboardMetricTile("Tvrtke", data.companies.size.toString(), Icons.Rounded.Business)
+            DashboardMetricTile("Lokacije", data.locations.size.toString(), Icons.Rounded.LocationOn)
+            DashboardMetricTile("Procjene", riskCount.toString(), Icons.Rounded.Description)
+            DashboardMetricTile("Usluge", data.workOrderServices.size.toString(), Icons.Rounded.ListAlt)
+        }
     }
 }
 
@@ -3626,6 +3943,7 @@ private fun DashboardMetricGrid(stats: DashboardStats) {
             DashboardMetricTile("Osposobljavanja", stats.trainingsTotal.toString(), Icons.Rounded.Fingerprint)
             DashboardMetricTile("Klijentski portal", stats.clientPortalTotal.toString(), Icons.Rounded.Map)
             DashboardMetricTile("Pravilnici", stats.rulebooksTotal.toString(), Icons.Rounded.Lock)
+            DashboardMetricTile("Procjene rizika", stats.riskAssessmentsTotal.toString(), Icons.Rounded.Description)
         }
     }
 }
@@ -4304,18 +4622,573 @@ private fun RecordsContent(
 @Composable
 private fun MoreContent(
     data: BootstrapData,
+    workOrders: List<WorkOrder>,
     query: String,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
+    val filteredDocuments = remember(data.documentRecords, query) { data.documentRecords.filter { it.matchesSearch(query) } }
+    val filteredTraining = remember(data.peopleTrainingRecords, query) { data.peopleTrainingRecords.filter { it.matchesSearch(query) } }
+    val filteredRulebooks = remember(data.rulebooks, query) { data.rulebooks.filter { it.matchesSearch(query) } }
+    val filteredAssessments = remember(data.riskAssessmentRecords, query) { data.riskAssessmentRecords.filter { it.matchesSearch(query) } }
+    val periodicEntries = remember(data, workOrders, query) { buildPeriodicEntries(data, workOrders, query) }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ModuleGroup("Dokumenti i zapisnici", data.documentRecords, Icons.Rounded.Mail, query, onOpenRecord)
-        ModuleGroup("Osposobljavanja", data.peopleTrainingRecords, Icons.Rounded.Fingerprint, query, onOpenRecord)
-        ModuleGroup("Klijentski portal", data.clientPortalRecords, Icons.Rounded.Map, query, onOpenRecord)
-        ModuleGroup("Tvrtke", data.companies, Icons.Rounded.Business, query, onOpenRecord)
-        ModuleGroup("Lokacije", data.locations, Icons.Rounded.LocationOn, query, onOpenRecord)
-        ModuleGroup("Pravilnici", data.rulebooks, Icons.Rounded.Lock, query, onOpenRecord)
+        MoreOverviewHero(data)
+        CompanyLocationDirectory(
+            companies = data.companies,
+            locations = data.locations,
+            query = query,
+            onOpenRecord = onOpenRecord,
+        )
+        PeriodicsPreview(entries = periodicEntries)
+        DocumentRegisterPreview(
+            records = filteredDocuments,
+            onOpenRecord = onOpenRecord,
+        )
+        ServicesCatalogPreview(
+            services = data.workOrderServices,
+            query = query,
+        )
+        FoundationDocumentationPreview(
+            rulebooks = filteredRulebooks,
+            assessments = filteredAssessments,
+            documents = filteredDocuments,
+            onOpenRecord = onOpenRecord,
+        )
+        RecordsContent(
+            title = "Osposobljavanja",
+            records = filteredTraining,
+            emptyText = "Nema osposobljavanja za prikaz.",
+            icon = Icons.Rounded.Fingerprint,
+            onOpenRecord = onOpenRecord,
+        )
     }
 }
+
+@Composable
+private fun MoreOverviewHero(data: BootstrapData) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(
+                        Icons.Rounded.Map,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Svi moduli", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        "Tvrtke, lokacije, dokumenti, rokovi i temeljna dokumentacija.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusCountPill("Tvrtke", data.companies.size, Color(0xFF2563EB))
+                StatusCountPill("Lokacije", data.locations.size, Color(0xFF0F766E))
+                StatusCountPill("Dokumenti", data.documentRecords.size, Color(0xFF7C3AED))
+                StatusCountPill("Procjene", data.riskAssessmentRecords.size, Color(0xFFB45309))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompanyLocationDirectory(
+    companies: List<MobileRecord>,
+    locations: List<MobileRecord>,
+    query: String,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val filteredCompanies = remember(companies, query) { companies.filter { it.matchesSearch(query) } }
+    val filteredLocations = remember(locations, query) { locations.filter { it.matchesSearch(query) } }
+    val locationCountByCompany = remember(locations) {
+        locations.groupingBy { record ->
+            record.meta["companyName"].orEmpty().ifBlank { record.subtitle.substringBefore(" - ").trim() }
+        }.eachCount()
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SectionHeader(
+                title = "Tvrtke i lokacije",
+                subtitle = "${filteredCompanies.size} tvrtki · ${filteredLocations.size} lokacija",
+                icon = Icons.Rounded.Business,
+            )
+
+            filteredCompanies.take(8).forEach { company ->
+                DirectoryCompanyLine(
+                    company = company,
+                    locationCount = locationCountByCompany[company.title].orZero(),
+                    onClick = { onOpenRecord(company) },
+                )
+            }
+            if (filteredCompanies.size > 8) {
+                Text(
+                    "Prikazano je prvih 8 tvrtki. Koristi pretragu za sužavanje.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+
+            Text("Lokacije", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            filteredLocations.take(10).forEach { location ->
+                RecordLine(
+                    title = location.title,
+                    subtitle = location.subtitle.ifBlank { location.meta["region"].orEmpty() },
+                    status = location.status,
+                    date = "",
+                    icon = Icons.Rounded.LocationOn,
+                    onClick = { onOpenRecord(location) },
+                )
+            }
+            if (filteredLocations.isEmpty()) {
+                Text("Nema lokacija za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectoryCompanyLine(
+    company: MobileRecord,
+    locationCount: Int,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFFF8FAFC),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFEAF2FF)) {
+                Icon(
+                    Icons.Rounded.Business,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .padding(9.dp),
+                    tint = Color(0xFF2563EB),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(company.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    company.subtitle.ifBlank { company.meta["headquarters"].orEmpty() },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            StatusCountPill("Lok.", locationCount, Color(0xFF0F766E))
+        }
+    }
+}
+
+private data class PeriodicEntry(
+    val title: String,
+    val subtitle: String,
+    val status: String,
+    val date: String,
+    val kind: String,
+    val icon: ImageVector,
+) {
+    val parsedDate: LocalDate? = parseDateOrNull(date)
+}
+
+private fun buildPeriodicEntries(
+    data: BootstrapData,
+    workOrders: List<WorkOrder>,
+    query: String,
+): List<PeriodicEntry> {
+    val entries = mutableListOf<PeriodicEntry>()
+    fun addRecord(record: MobileRecord, fallbackKind: String, icon: ImageVector) {
+        if (record.date.isBlank()) return
+        if (query.isNotBlank() && !record.matchesSearch(query)) return
+        entries += PeriodicEntry(
+            title = record.title,
+            subtitle = record.subtitle.ifBlank { recordKindLabel(record.kind.ifBlank { fallbackKind }) },
+            status = record.status,
+            date = record.date,
+            kind = record.kind.ifBlank { fallbackKind },
+            icon = icon,
+        )
+    }
+
+    data.documentRecords.forEach { addRecord(it, "document", Icons.Rounded.Description) }
+    data.clientPortalRecords.forEach { addRecord(it, "client_portal", Icons.Rounded.Map) }
+    data.peopleTrainingRecords.forEach { addRecord(it, "training", Icons.Rounded.Fingerprint) }
+    data.rulebooks.forEach { addRecord(it, "rulebook", Icons.Rounded.Lock) }
+    data.vehicles.forEach { addRecord(it, "vehicle", Icons.Rounded.Business) }
+    workOrders.forEach { workOrder ->
+        if (workOrder.dueDate.isBlank()) return@forEach
+        val searchText = listOf(
+            workOrder.displayNumber,
+            workOrder.companyName,
+            workOrder.locationName,
+            workOrder.status,
+            workOrder.displayService,
+        ).joinToString(" ")
+        if (query.isNotBlank() && !searchText.contains(query, ignoreCase = true)) return@forEach
+        entries += PeriodicEntry(
+            title = workOrder.displayNumber,
+            subtitle = listOf(workOrder.companyName, workOrder.locationName, workOrder.displayService)
+                .filter { it.isNotBlank() }
+                .joinToString(" - "),
+            status = workOrder.status,
+            date = workOrder.dueDate,
+            kind = "work_order",
+            icon = Icons.Rounded.Work,
+        )
+    }
+
+    return entries
+        .distinctBy { "${it.kind}:${it.title}:${it.date}:${it.subtitle}" }
+        .sortedWith(compareBy<PeriodicEntry> { it.parsedDate ?: LocalDate.MAX }.thenBy { it.title.lowercase(Locale.getDefault()) })
+}
+
+@Composable
+private fun PeriodicsPreview(entries: List<PeriodicEntry>) {
+    val today = remember { LocalDate.now() }
+    val overdue = remember(entries, today) { entries.count { entry -> entry.parsedDate?.isBefore(today) == true } }
+    val next30 = remember(entries, today) {
+        entries.count { entry ->
+            val date = entry.parsedDate ?: return@count false
+            !date.isBefore(today) && !date.isAfter(today.plusDays(30))
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
+        ) {
+            SectionHeader(
+                title = "Periodika",
+                subtitle = "Rokovi po dokumentima, RN-ovima, vozilima i osposobljavanjima",
+                icon = Icons.Rounded.CalendarMonth,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PeriodicStatTile("Ukupno", entries.size, Color(0xFF2563EB), Modifier.weight(1f))
+                PeriodicStatTile("Kasni", overdue, Color(0xFFDC2626), Modifier.weight(1f))
+                PeriodicStatTile("30 dana", next30, Color(0xFFB45309), Modifier.weight(1f))
+            }
+            if (entries.isEmpty()) {
+                Text("Nema periodičkih rokova za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            } else {
+                entries.take(8).forEach { entry -> PeriodicLine(entry, today) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodicStatTile(
+    label: String,
+    count: Int,
+    accent: Color,
+    modifier: Modifier,
+) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = accent.copy(alpha = 0.1f)) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(count.toString(), color = accent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f))
+        }
+    }
+}
+
+@Composable
+private fun PeriodicLine(entry: PeriodicEntry, today: LocalDate) {
+    val parsedDate = entry.parsedDate
+    val accent = when {
+        parsedDate == null -> Color(0xFF475569)
+        parsedDate.isBefore(today) -> Color(0xFFDC2626)
+        !parsedDate.isAfter(today.plusDays(30)) -> Color(0xFFB45309)
+        else -> Color(0xFF059669)
+    }
+    val dueText = when {
+        parsedDate == null -> entry.date
+        parsedDate.isBefore(today) -> "Kasni ${today.toEpochDay() - parsedDate.toEpochDay()} dana"
+        parsedDate == today -> "Danas"
+        else -> "Za ${parsedDate.toEpochDay() - today.toEpochDay()} dana"
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = accent.copy(alpha = 0.08f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(entry.icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = accent)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(entry.title.ifBlank { recordKindLabel(entry.kind) }, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOf(entry.subtitle, formatDateLabel(entry.date).ifBlank { entry.date.take(10) }).filter { it.isNotBlank() }.joinToString(" - "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.12f)) {
+                Text(
+                    dueText,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                    color = accent,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentRegisterPreview(
+    records: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    RecordsContent(
+        title = "Dokumenti i zapisnici",
+        records = records,
+        emptyText = "Nema dokumenata za prikaz.",
+        icon = Icons.Rounded.Description,
+        onOpenRecord = onOpenRecord,
+    )
+}
+
+@Composable
+private fun ServicesCatalogPreview(
+    services: List<WorkOrderServiceOption>,
+    query: String,
+) {
+    val filtered = remember(services, query) {
+        services.filter { service ->
+            query.isBlank() ||
+                listOf(service.name, service.serviceCode, service.type, service.note).joinToString(" ").contains(query, ignoreCase = true)
+        }
+    }
+    val groups = remember(filtered) { filtered.groupBy { serviceCatalogMobileGroup(it) } }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
+        ) {
+            SectionHeader(
+                title = "Service liste",
+                subtitle = "Pravilnici, mjerna oprema, Safety Authorization i ostale usluge",
+                icon = Icons.Rounded.ListAlt,
+            )
+            if (filtered.isEmpty()) {
+                Text("Nema usluga za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            }
+            listOf("Pravilnici", "Mjerna oprema", "Safety Authorization", "Ostale usluge").forEach { groupTitle ->
+                val groupItems = groups[groupTitle].orEmpty()
+                ServiceGroupBlock(groupTitle, groupItems)
+            }
+        }
+    }
+}
+
+private fun serviceCatalogMobileGroup(service: WorkOrderServiceOption): String {
+    val text = listOf(service.name, service.serviceCode, service.type, service.note)
+        .joinToString(" ")
+        .lowercase(Locale.getDefault())
+        .replace("š", "s")
+        .replace("ž", "z")
+        .replace("č", "c")
+        .replace("ć", "c")
+    return when {
+        text.contains("pravilnik") || text.startsWith("pr-") -> "Pravilnici"
+        text.contains("mjer") || text.contains("measurement") || text.contains("oprema") -> "Mjerna oprema"
+        text.contains("authorization") || text.contains("ovlast") || text.contains("autoriz") -> "Safety Authorization"
+        else -> "Ostale usluge"
+    }
+}
+
+@Composable
+private fun ServiceGroupBlock(
+    title: String,
+    services: List<WorkOrderServiceOption>,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            Text("${services.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black)
+        }
+        if (services.isEmpty()) {
+            Text("Nema stavki u ovoj listi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
+        } else {
+            services.take(8).forEach { service ->
+                ServiceCatalogLine(service)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServiceCatalogLine(service: WorkOrderServiceOption) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)) {
+                Text(
+                    service.serviceCode.ifBlank { "SRV" }.take(8),
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(service.name.ifBlank { service.serviceCode.ifBlank { "Usluga" } }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOf(service.type, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." }).filterNotNull().filter { it.isNotBlank() }.joinToString(" - "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FoundationDocumentationPreview(
+    rulebooks: List<MobileRecord>,
+    assessments: List<MobileRecord>,
+    documents: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val foundationDocuments = remember(documents) {
+        documents.filter { record ->
+            val text = listOf(record.title, record.subtitle, record.status, record.meta.values.joinToString(" "))
+                .joinToString(" ")
+                .lowercase(Locale.getDefault())
+            text.contains("temelj") || text.contains("procjen") || text.contains("risk")
+        }
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
+        ) {
+            SectionHeader(
+                title = "Temeljna dokumentacija i procjene",
+                subtitle = "${rulebooks.size} pravilnika · ${assessments.size} procjena",
+                icon = Icons.Rounded.Lock,
+            )
+            rulebooks.take(6).forEach { record ->
+                RecordLine(record.title, record.subtitle, record.status, record.date, Icons.Rounded.Lock) { onOpenRecord(record) }
+            }
+            assessments.take(6).forEach { record ->
+                RecordLine(record.title, record.subtitle, record.status, record.date, Icons.Rounded.Description) { onOpenRecord(record) }
+            }
+            foundationDocuments.take(6).forEach { record ->
+                RecordLine(record.title, record.subtitle, record.status, record.date, Icons.Rounded.InsertDriveFile) { onOpenRecord(record) }
+            }
+            if (rulebooks.isEmpty() && assessments.isEmpty() && foundationDocuments.isEmpty()) {
+                Text("Nema temeljne dokumentacije za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(40.dp)
+                    .padding(10.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun Int?.orZero(): Int = this ?: 0
 
 @Composable
 private fun ModuleGroup(
@@ -4411,6 +5284,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
     "company" -> Icons.Rounded.Business
     "location" -> Icons.Rounded.LocationOn
     "rulebook" -> Icons.Rounded.Lock
+    "risk_assessment" -> Icons.Rounded.Description
     "client_portal" -> Icons.Rounded.Map
     else -> fallback
 }
@@ -4424,6 +5298,7 @@ private fun recordKindLabel(kind: String): String = when (kind) {
     "company" -> "Tvrtka"
     "location" -> "Lokacija"
     "rulebook" -> "Pravilnik"
+    "risk_assessment" -> "Procjena rizika"
     "client_portal" -> "Klijentski portal"
     else -> "Zapis"
 }

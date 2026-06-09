@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.57.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.58.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -12965,6 +12965,7 @@ function buildMobileDashboard(scopedSnapshot = {}, workOrders = []) {
     trainingsTotal: (scopedSnapshot.peopleTrainingRecords ?? []).length,
     clientPortalTotal: (scopedSnapshot.clientPortalRecords ?? []).length,
     rulebooksTotal: (scopedSnapshot.rulebooks ?? []).length,
+    riskAssessmentsTotal: (scopedSnapshot.riskAssessments ?? []).length,
   };
 }
 
@@ -13047,7 +13048,7 @@ function buildMobileWorkOrderServiceOptions(serviceCatalog = []) {
       id: normalizeInputValue(service.id),
       name: normalizeInputValue(service.name),
       serviceCode: normalizeInputValue(service.serviceCode || service.code),
-      type: normalizeInputValue(service.type || "inspection"),
+      type: normalizeInputValue(service.type || service.serviceType || "inspection"),
       validityMonths: normalizeInputValue(service.validityMonths),
       note: normalizeInputValue(service.note),
     }))
@@ -13123,6 +13124,16 @@ async function writeMobileBootstrap(response, user, request) {
     fallbackTitle: "Pravilnik",
   })));
 
+  const riskAssessmentRecords = limitMobileRecords((scopedSnapshot.riskAssessments ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "risk_assessment",
+    titleKeys: ["assessmentNumber", "title", "companyName"],
+    subtitleKeys: ["companyName", "locationName", "assessmentType"],
+    statusKeys: ["status"],
+    dateKeys: ["assessmentDate", "revisionDate", "completionDate", "updatedAt", "createdAt"],
+    metaKeys: ["companyName", "locationName", "workOrderNumber", "assessmentType", "teamLead", "revisionDate"],
+    fallbackTitle: "Procjena rizika",
+  })));
+
   sendJson(response, 200, {
     ok: true,
     user,
@@ -13144,6 +13155,7 @@ async function writeMobileBootstrap(response, user, request) {
     peopleTrainingRecords,
     clientPortalRecords,
     rulebooks,
+    riskAssessmentRecords,
     calendarEvents: buildMobileCalendarEvents(scopedSnapshot, workOrders),
     total: workOrders.length,
   });
