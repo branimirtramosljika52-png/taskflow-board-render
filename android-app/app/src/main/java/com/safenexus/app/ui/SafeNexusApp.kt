@@ -5660,9 +5660,50 @@ private fun WorkOrderDocumentationWizardDialog(
                         workOrder = workOrder,
                         templateCount = context.templates.size,
                         measurementCount = context.measurementTableCount,
+                        equipmentCount = context.measurementEquipmentOptions.size,
+                        legalFrameworkCount = context.legalFrameworkOptions.size,
+                        rulebookCount = context.rulebookOptions.size,
                         signatureMode = signatureMode,
                         enabled = !formLoading,
                         onSignatureMode = { signatureMode = it },
+                    )
+                }
+
+                WizardSection(title = "Mjerna i ispitna oprema", icon = Icons.Rounded.Work) {
+                    WorkOrderSelectField(
+                        label = "Grupa mjerne opreme",
+                        value = measurementEquipmentGroup,
+                        valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
+                        options = measurementEquipmentGroupOptions,
+                        enabled = !formLoading,
+                        onSelect = { measurementEquipmentGroup = it },
+                    )
+                    DocumentationMultiSelectField(
+                        label = "Uređaji za zapisnik",
+                        options = visibleMeasurementEquipmentOptions,
+                        selectedIds = selectedEquipmentIds,
+                        enabled = !formLoading,
+                        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                        onChange = { selectedEquipmentIds = it },
+                    )
+                }
+
+                WizardSection(title = "Pravilnici i propisi", icon = Icons.Rounded.Lock) {
+                    DocumentationMultiSelectField(
+                        label = "Propisi iz web predloška",
+                        options = context.legalFrameworkOptions,
+                        selectedIds = selectedLegalFrameworkIds,
+                        enabled = !formLoading,
+                        emptyText = "Nema propisa povezanih s predlošcima.",
+                        onChange = { selectedLegalFrameworkIds = it },
+                    )
+                    DocumentationMultiSelectField(
+                        label = "Interni pravilnici",
+                        options = context.rulebookOptions,
+                        selectedIds = selectedRulebookIds,
+                        enabled = !formLoading,
+                        emptyText = "Nema pravilnika za ovu organizaciju.",
+                        onChange = { selectedRulebookIds = it },
                     )
                 }
 
@@ -5734,44 +5775,6 @@ private fun WorkOrderDocumentationWizardDialog(
                     WorkOrderTextField("Vrijeme", weather, { weather = it }, !formLoading)
                     WorkOrderTextField("Stanje tla", groundCondition, { groundCondition = it }, !formLoading)
                     WorkOrderTextField("Otpor tla", groundResistance, { groundResistance = it }, !formLoading)
-                }
-
-                WizardSection(title = "Mjerna i ispitna oprema", icon = Icons.Rounded.Work) {
-                    WorkOrderSelectField(
-                        label = "Grupa mjerne opreme",
-                        value = measurementEquipmentGroup,
-                        valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
-                        options = measurementEquipmentGroupOptions,
-                        enabled = !formLoading,
-                        onSelect = { measurementEquipmentGroup = it },
-                    )
-                    DocumentationMultiSelectField(
-                        label = "Uređaji za zapisnik",
-                        options = visibleMeasurementEquipmentOptions,
-                        selectedIds = selectedEquipmentIds,
-                        enabled = !formLoading,
-                        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                        onChange = { selectedEquipmentIds = it },
-                    )
-                }
-
-                WizardSection(title = "Pravilnici i propisi", icon = Icons.Rounded.Lock) {
-                    DocumentationMultiSelectField(
-                        label = "Propisi iz web predloška",
-                        options = context.legalFrameworkOptions,
-                        selectedIds = selectedLegalFrameworkIds,
-                        enabled = !formLoading,
-                        emptyText = "Nema propisa povezanih s predlošcima.",
-                        onChange = { selectedLegalFrameworkIds = it },
-                    )
-                    DocumentationMultiSelectField(
-                        label = "Interni pravilnici",
-                        options = context.rulebookOptions,
-                        selectedIds = selectedRulebookIds,
-                        enabled = !formLoading,
-                        emptyText = "Nema pravilnika za ovu organizaciju.",
-                        onChange = { selectedRulebookIds = it },
-                    )
                 }
 
                 WizardSection(title = "Osobe i potpis", icon = Icons.Rounded.Fingerprint) {
@@ -6600,6 +6603,9 @@ private fun DocumentationRuntimeActionBar(
     workOrder: WorkOrder,
     templateCount: Int,
     measurementCount: Int,
+    equipmentCount: Int,
+    legalFrameworkCount: Int,
+    rulebookCount: Int,
     signatureMode: String,
     enabled: Boolean,
     onSignatureMode: (String) -> Unit,
@@ -6643,6 +6649,9 @@ private fun DocumentationRuntimeActionBar(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = {}, label = { Text("${templateCount.coerceAtLeast(0)} predložak") })
                 AssistChip(onClick = {}, label = { Text("${measurementCount.coerceAtLeast(0)} Excel") })
+                AssistChip(onClick = {}, label = { Text("${equipmentCount.coerceAtLeast(0)} oprema") })
+                AssistChip(onClick = {}, label = { Text("${legalFrameworkCount.coerceAtLeast(0)} propisi") })
+                AssistChip(onClick = {}, label = { Text("${rulebookCount.coerceAtLeast(0)} pravilnici") })
                 AssistChip(onClick = {}, label = { Text(workOrder.status.ifBlank { "Bez statusa" }) })
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

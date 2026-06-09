@@ -13,8 +13,8 @@ android {
         applicationId = "com.safenexus.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 35
-        versionName = "0.1.34"
+        versionCode = 36
+        versionName = "0.1.35"
 
         buildConfigField(
             "String",
