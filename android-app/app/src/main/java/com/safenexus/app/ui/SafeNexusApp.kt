@@ -6901,13 +6901,6 @@ private fun WorkOrderDocumentationWizardDialog(
                     )
                     DocumentationServiceValiditySection(
                         flowItems = serviceFlowItems,
-                        validityMonths = validityMonths,
-                        onValidityMonthsChange = { value ->
-                            validityMonths = value
-                            if (serviceValidityMonths.isEmpty()) {
-                                serviceValidityMonths = serviceFlowItems.associate { it.serviceValidityKey() to value }
-                            }
-                        },
                         serviceValidityMonths = serviceValidityMonths,
                         onServiceValidityMonthsChange = { key, value ->
                             serviceValidityMonths = serviceValidityMonths + (key to value)
@@ -7172,6 +7165,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
                     val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
                     val serviceValidityPayload = buildServiceValidityPayload(serviceFlowItems, serviceValidityMonths, validityMonths)
+                    val primaryValidityMonths = serviceValidityPayload.values.firstOrNull { it.isNotBlank() }
+                        ?: validityMonths.trim()
                     val draft = WorkOrderDocumentationDraft(
                         objectId = selectedObject?.id.orEmpty(),
                         objectName = selectedObject?.name.orEmpty(),
@@ -7192,7 +7187,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
                         selectedRulebookIds = selectedRulebookIds.toList(),
                         signatureMode = signatureMode,
-                        validityMonths = validityMonths.trim(),
+                        validityMonths = primaryValidityMonths,
                         electricalValidityMonths = electricalValidityMonths.trim(),
                         tipkaloValidityMonths = tipkaloValidityMonths.trim(),
                         serviceValidityMonths = serviceValidityPayload,
@@ -8148,52 +8143,75 @@ private fun DocumentationProcessToolbar(
                 Text("Proces izrade", fontWeight = FontWeight.Black)
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                DocumentationProcessChip(
+                    label = "Osnovno",
                     selected = selectedService == DOCUMENTATION_BASICS_FLOW_KEY,
                     onClick = { onSelectService(DOCUMENTATION_BASICS_FLOW_KEY) },
                     enabled = enabled,
-                    label = {
-                        Text(
-                            "Osnovno",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
                 )
                 flowItems.forEachIndexed { index, item ->
                     val extraCount = additionalRecords.count { it.serviceKey == item.serviceKey }
-                    FilterChip(
+                    DocumentationProcessChip(
+                        label = "${index + 1}. ${item.serviceCode}${if (extraCount > 0) " +$extraCount" else ""}",
                         selected = item.serviceKey.equals(selectedService, ignoreCase = true),
-                        onClick = {},
-                        modifier = Modifier.combinedClickable(
-                            enabled = enabled,
-                            onClick = { onSelectService(item.serviceKey) },
-                            onLongClick = { onLongPressService(item) },
-                        ),
+                        onClick = { onSelectService(item.serviceKey) },
+                        onLongClick = { onLongPressService(item) },
                         enabled = enabled,
-                        label = {
-                            Text(
-                                "${index + 1}. ${item.serviceCode}${if (extraCount > 0) " +$extraCount" else ""}",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
                     )
                 }
-                FilterChip(
+                DocumentationProcessChip(
+                    label = "Sažetak",
                     selected = selectedService == DOCUMENTATION_SUMMARY_FLOW_KEY,
                     onClick = { onSelectService(DOCUMENTATION_SUMMARY_FLOW_KEY) },
                     enabled = enabled,
-                    label = {
-                        Text(
-                            "Sažetak",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DocumentationProcessChip(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Surface(
+        modifier = Modifier.combinedClickable(
+            enabled = enabled,
+            onClick = onClick,
+            onLongClick = onLongClick,
+        ),
+        shape = shape,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)
+        },
+        tonalElevation = if (selected) 2.dp else 0.dp,
+    ) {
+        Text(
+            label,
+            modifier = Modifier
+                .border(
+                    width = 1.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                    } else {
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
+                    },
+                    shape = shape,
+                )
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -8930,17 +8948,14 @@ private fun DocumentationExecutorsEditor(
 @Composable
 private fun DocumentationServiceValiditySection(
     flowItems: List<DocumentationServiceFlowItem>,
-    validityMonths: String,
-    onValidityMonthsChange: (String) -> Unit,
     serviceValidityMonths: Map<String, String>,
     onServiceValidityMonthsChange: (String, String) -> Unit,
     enabled: Boolean,
 ) {
     WizardSection(title = "Rok važenja usluge", icon = Icons.Rounded.CalendarMonth) {
-        NumberTextField("Osnovni rok važenja mjeseci", validityMonths, onValidityMonthsChange, enabled)
         if (flowItems.isEmpty()) {
             Text(
-                "Nema povezanih usluga za pojedinačni rok.",
+                "Rok važenja se uzima iz starog zapisnika ili web predloška.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
@@ -8949,7 +8964,7 @@ private fun DocumentationServiceValiditySection(
                 val key = item.serviceValidityKey()
                 NumberTextField(
                     "${item.serviceCode} - ${item.serviceName}".trim(' ', '-'),
-                    serviceValidityMonths[key].orEmpty().ifBlank { validityMonths },
+                    serviceValidityMonths[key].orEmpty(),
                     { value -> onServiceValidityMonthsChange(key, value) },
                     enabled,
                 )
@@ -9018,50 +9033,77 @@ private fun DocumentationServicePeopleSection(
                     rules.forEach { rule ->
                         when (rule.role) {
                             "company_responsible" -> {
-                                Text(
-                                    "${rule.label}: osoba naručitelja popunjava se iz podataka tvrtke/lokacije.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                                )
+                                DocumentationPersonRoleCard(
+                                    label = if (rule.required) "${rule.label} *" else rule.label,
+                                    selectedSummary = "Automatski iz tvrtke/lokacije",
+                                    icon = Icons.Rounded.Business,
+                                ) {
+                                    Text(
+                                        "Osoba naručitelja popunjava se iz podataka tvrtke/lokacije.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                                    )
+                                }
                             }
                             "authorize" -> {
                                 val authorizationOptions = listOf(
                                     WorkOrderDocumentationOption("", "Odaberi odgovornu osobu"),
                                 ) + options.authorizationOptions
                                 val authorizationLabel = authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
-                                WorkOrderSelectField(
+                                DocumentationPersonRoleCard(
                                     label = if (rule.required) "${rule.label} *" else rule.label,
-                                    value = authorizationSelection,
-                                    valueLabel = authorizationLabel.ifBlank { "Odaberi odgovornu osobu" },
-                                    options = authorizationOptions.map { it.id to it.label },
-                                    enabled = enabled,
-                                    onSelect = onAuthorizationChange,
-                                )
+                                    selectedSummary = authorizationLabel.ifBlank { "Nije odabrano" },
+                                    icon = Icons.Rounded.Person,
+                                ) {
+                                    WorkOrderSelectField(
+                                        label = "Odabir osobe",
+                                        value = authorizationSelection,
+                                        valueLabel = authorizationLabel.ifBlank { "Odaberi odgovornu osobu" },
+                                        options = authorizationOptions.map { it.id to it.label },
+                                        enabled = enabled,
+                                        onSelect = onAuthorizationChange,
+                                    )
+                                }
                             }
                             else -> {
                                 if (rule.multiple) {
-                                    DocumentationMultiSelectField(
+                                    val selectedInspectorLabels = options.inspectorOptions
+                                        .filter { it.id in inspectorSelection }
+                                        .joinToString(", ") { it.label }
+                                    DocumentationPersonRoleCard(
                                         label = if (rule.required) "${rule.label} *" else rule.label,
-                                        options = options.inspectorOptions,
-                                        selectedIds = inspectorSelection,
-                                        enabled = enabled,
-                                        emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
-                                        onChange = onInspectorChange,
-                                    )
+                                        selectedSummary = selectedInspectorLabels.ifBlank { "Nije odabrano" },
+                                        icon = Icons.Rounded.CheckCircle,
+                                    ) {
+                                        DocumentationMultiSelectField(
+                                            label = "Odabir osoba",
+                                            options = options.inspectorOptions,
+                                            selectedIds = inspectorSelection,
+                                            enabled = enabled,
+                                            emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                                            onChange = onInspectorChange,
+                                        )
+                                    }
                                 } else {
                                     val inspectorOptions = listOf(
                                         WorkOrderDocumentationOption("", "Odaberi ispitivača"),
                                     ) + options.inspectorOptions
                                     val selectedInspectorId = inspectorSelection.firstOrNull().orEmpty()
                                     val inspectorLabel = inspectorOptions.firstOrNull { it.id == selectedInspectorId }?.label.orEmpty()
-                                    WorkOrderSelectField(
+                                    DocumentationPersonRoleCard(
                                         label = if (rule.required) "${rule.label} *" else rule.label,
-                                        value = selectedInspectorId,
-                                        valueLabel = inspectorLabel.ifBlank { "Odaberi ispitivača" },
-                                        options = inspectorOptions.map { it.id to it.label },
-                                        enabled = enabled,
-                                        onSelect = { next -> onInspectorChange(if (next.isBlank()) emptySet() else setOf(next)) },
-                                    )
+                                        selectedSummary = inspectorLabel.ifBlank { "Nije odabrano" },
+                                        icon = Icons.Rounded.CheckCircle,
+                                    ) {
+                                        WorkOrderSelectField(
+                                            label = "Odabir osobe",
+                                            value = selectedInspectorId,
+                                            valueLabel = inspectorLabel.ifBlank { "Odaberi ispitivača" },
+                                            options = inspectorOptions.map { it.id to it.label },
+                                            enabled = enabled,
+                                            onSelect = { next -> onInspectorChange(if (next.isBlank()) emptySet() else setOf(next)) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -9075,6 +9117,56 @@ private fun DocumentationServicePeopleSection(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationPersonRoleCard(
+    label: String,
+    selectedSummary: String,
+    icon: ImageVector,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(9.dp)
+                            .size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(label, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        selectedSummary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            content()
         }
     }
 }
