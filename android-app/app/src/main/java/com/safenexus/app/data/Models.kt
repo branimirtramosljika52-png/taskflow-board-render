@@ -125,6 +125,8 @@ data class WorkOrderDocumentationDraft(
     val tipkaloAuthorizationHolderUserId: String,
     val fieldValues: Map<String, String> = emptyMap(),
     val templateFieldValues: Map<String, Map<String, String>> = emptyMap(),
+    val fieldSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
+    val templateFieldSheets: Map<String, Map<String, WorkOrderMeasurementSheet>> = emptyMap(),
 )
 
 data class WorkOrderDocumentationContext(
@@ -133,6 +135,7 @@ data class WorkOrderDocumentationContext(
     val templates: List<WorkOrderDocumentationTemplate> = emptyList(),
     val hasTemplates: Boolean = false,
     val fieldCount: Int = 0,
+    val measurementTableCount: Int = 0,
 )
 
 data class WorkOrderDocumentationTemplate(
@@ -141,6 +144,7 @@ data class WorkOrderDocumentationTemplate(
     val documentType: String,
     val serviceName: String,
     val fields: List<WorkOrderDocumentationField>,
+    val measurementTables: List<WorkOrderMeasurementTable>,
 )
 
 data class WorkOrderDocumentationField(
@@ -153,6 +157,44 @@ data class WorkOrderDocumentationField(
     val helpText: String,
     val defaultValue: String,
     val options: List<OptionItem>,
+)
+
+data class WorkOrderMeasurementTable(
+    val id: String,
+    val key: String,
+    val tokenKey: String,
+    val label: String,
+    val helpText: String,
+    val summary: String,
+    val sheet: WorkOrderMeasurementSheet,
+)
+
+data class WorkOrderMeasurementSheet(
+    val columns: List<WorkOrderMeasurementColumn> = emptyList(),
+    val rows: List<WorkOrderMeasurementRow> = emptyList(),
+    val merges: List<WorkOrderMeasurementMerge> = emptyList(),
+    val headerRows: List<String> = emptyList(),
+)
+
+data class WorkOrderMeasurementColumn(
+    val id: String,
+    val label: String,
+    val placeholder: String,
+    val width: Int,
+    val computed: String,
+    val readonly: Boolean,
+)
+
+data class WorkOrderMeasurementRow(
+    val id: String,
+    val cells: Map<String, String>,
+)
+
+data class WorkOrderMeasurementMerge(
+    val rowId: String,
+    val columnId: String,
+    val rowSpan: Int,
+    val colSpan: Int,
 )
 
 data class DashboardStats(

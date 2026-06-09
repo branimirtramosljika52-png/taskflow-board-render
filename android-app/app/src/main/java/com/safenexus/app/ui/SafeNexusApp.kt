@@ -46,6 +46,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -178,6 +179,9 @@ import com.safenexus.app.data.WorkOrderDocumentationField
 import com.safenexus.app.data.WorkOrderDocumentationTemplate
 import com.safenexus.app.data.WorkOrderDocument
 import com.safenexus.app.data.WorkOrderLocationOption
+import com.safenexus.app.data.WorkOrderMeasurementColumn
+import com.safenexus.app.data.WorkOrderMeasurementSheet
+import com.safenexus.app.data.WorkOrderMeasurementTable
 import com.safenexus.app.data.WorkOrderServiceOption
 import com.safenexus.app.data.WorkOrderUploadFile
 import com.safenexus.app.data.WorkOrderUserOption
@@ -5334,6 +5338,19 @@ private fun WorkOrderDocumentationWizardDialog(
     var templateFieldValues by remember(workOrder.id, templateDefaultsKey) {
         mutableStateOf(defaultTemplateFieldValues(promptTemplates))
     }
+    val measurementTemplates = remember(context) {
+        context.templates
+            .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
+            .filter { it.measurementTables.isNotEmpty() }
+    }
+    val measurementDefaultsKey = remember(context) {
+        context.templates.joinToString("|") { template ->
+            "${template.id}:${template.measurementTables.joinToString(",") { table -> "${table.key}:${table.sheet.rows.size}:${table.sheet.columns.size}" }}"
+        }
+    }
+    var measurementSheets by remember(workOrder.id, measurementDefaultsKey) {
+        mutableStateOf(defaultMeasurementSheetValues(measurementTemplates))
+    }
     val formLoading = isLoading || contextLoading
 
     AlertDialog(
@@ -5382,6 +5399,17 @@ private fun WorkOrderDocumentationWizardDialog(
                     )
                 }
 
+                WizardSection(title = "Traka zapisnika", icon = Icons.Rounded.Work) {
+                    DocumentationRuntimeActionBar(
+                        workOrder = workOrder,
+                        templateCount = context.templates.size,
+                        measurementCount = context.measurementTableCount,
+                        signatureMode = signatureMode,
+                        enabled = !formLoading,
+                        onSignatureMode = { signatureMode = it },
+                    )
+                }
+
                 WizardSection(title = "Polja iz predloška", icon = Icons.Rounded.InsertDriveFile) {
                     when {
                         contextLoading -> Row(
@@ -5409,6 +5437,36 @@ private fun WorkOrderDocumentationWizardDialog(
                                     templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                                 },
                             )
+                        }
+                    }
+                }
+
+                WizardSection(title = "Excel / mjerenja", icon = Icons.Rounded.Description) {
+                    when {
+                        contextLoading -> Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("Učitavam Excel tablice...")
+                        }
+                        measurementTemplates.isEmpty() -> Text(
+                            "Povezani predlošci nemaju Excel tablicu za mjerenja.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                        else -> measurementTemplates.forEach { template ->
+                            template.measurementTables.forEach { table ->
+                                MeasurementTableEditor(
+                                    template = template,
+                                    table = table,
+                                    sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet,
+                                    enabled = !formLoading,
+                                    onSheetChange = { nextSheet ->
+                                        measurementSheets = measurementSheets + (measurementSheetStateKey(template, table) to nextSheet)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -5496,6 +5554,7 @@ private fun WorkOrderDocumentationWizardDialog(
             Button(
                 onClick = {
                     val templatePayload = buildTemplateFieldPayload(promptTemplates, templateFieldValues)
+                    val sheetPayload = buildMeasurementSheetPayload(measurementTemplates, measurementSheets)
                     val draft = WorkOrderDocumentationDraft(
                         inspectionDate = inspectionDate.trim(),
                         issuedDate = issuedDate.trim(),
@@ -5524,6 +5583,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
                         fieldValues = templatePayload.first,
                         templateFieldValues = templatePayload.second,
+                        fieldSheets = sheetPayload.first,
+                        templateFieldSheets = sheetPayload.second,
                     )
                     onConfirm(draft)
                 },
@@ -5601,6 +5662,261 @@ private fun buildTemplateFieldPayload(
     }
 
     return flatValues to templateValues.mapValues { it.value.toMap() }
+}
+
+private fun measurementSheetStateKey(
+    template: WorkOrderDocumentationTemplate,
+    table: WorkOrderMeasurementTable,
+): String = "${template.id}::${table.key.ifBlank { table.id.ifBlank { table.tokenKey } }}"
+
+private fun defaultMeasurementSheetValues(templates: List<WorkOrderDocumentationTemplate>): Map<String, WorkOrderMeasurementSheet> =
+    buildMap {
+        templates.forEach { template ->
+            template.measurementTables.forEach { table ->
+                put(measurementSheetStateKey(template, table), table.sheet)
+            }
+        }
+    }
+
+private fun buildMeasurementSheetPayload(
+    templates: List<WorkOrderDocumentationTemplate>,
+    sheets: Map<String, WorkOrderMeasurementSheet>,
+): Pair<Map<String, WorkOrderMeasurementSheet>, Map<String, Map<String, WorkOrderMeasurementSheet>>> {
+    val flatSheets = mutableMapOf<String, WorkOrderMeasurementSheet>()
+    val templateSheets = mutableMapOf<String, MutableMap<String, WorkOrderMeasurementSheet>>()
+
+    templates.forEach { template ->
+        template.measurementTables.forEach { table ->
+            val sheet = sheets[measurementSheetStateKey(template, table)] ?: table.sheet
+            listOf(table.id, table.key, table.tokenKey)
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .forEach { key -> flatSheets[key] = sheet }
+            val payloadKey = table.key.ifBlank { table.id.ifBlank { table.tokenKey } }
+            if (payloadKey.isNotBlank()) {
+                templateSheets.getOrPut(template.id) { mutableMapOf() }[payloadKey] = sheet
+                if (table.id.isNotBlank()) templateSheets.getOrPut(template.id) { mutableMapOf() }[table.id] = sheet
+                if (table.tokenKey.isNotBlank()) templateSheets.getOrPut(template.id) { mutableMapOf() }[table.tokenKey] = sheet
+            }
+        }
+    }
+
+    return flatSheets to templateSheets.mapValues { it.value.toMap() }
+}
+
+private fun updateMeasurementSheetCell(
+    sheet: WorkOrderMeasurementSheet,
+    rowId: String,
+    columnId: String,
+    value: String,
+): WorkOrderMeasurementSheet =
+    sheet.copy(
+        rows = sheet.rows.map { row ->
+            if (row.id == rowId) {
+                row.copy(cells = row.cells + (columnId to value))
+            } else {
+                row
+            }
+        },
+    )
+
+@Composable
+private fun DocumentationRuntimeActionBar(
+    workOrder: WorkOrder,
+    templateCount: Int,
+    measurementCount: Int,
+    signatureMode: String,
+    enabled: Boolean,
+    onSignatureMode: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
+                    Icon(
+                        Icons.Rounded.Description,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .padding(9.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("RN ${workOrder.displayNumber}", fontWeight = FontWeight.Black)
+                    Text(
+                        listOf(workOrder.companyName, workOrder.locationName).filter { it.isNotBlank() }.joinToString(" - ")
+                            .ifBlank { "Bez tvrtke / lokacije" },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = {}, label = { Text("${templateCount.coerceAtLeast(0)} predložak") })
+                AssistChip(onClick = {}, label = { Text("${measurementCount.coerceAtLeast(0)} Excel") })
+                AssistChip(onClick = {}, label = { Text(workOrder.status.ifBlank { "Bez statusa" }) })
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = signatureMode == "scan",
+                    onClick = { onSignatureMode("scan") },
+                    enabled = enabled,
+                    label = { Text("Potpis") },
+                )
+                FilterChip(
+                    selected = signatureMode == "digital",
+                    onClick = { onSignatureMode("digital") },
+                    enabled = enabled,
+                    label = { Text("Digitalni") },
+                )
+                FilterChip(
+                    selected = signatureMode == "manual",
+                    onClick = { onSignatureMode("manual") },
+                    enabled = enabled,
+                    label = { Text("Ručni") },
+                )
+                AssistChip(onClick = {}, label = { Text("PDF nakon spremanja") })
+            }
+            val services = (workOrder.serviceItems.ifEmpty { listOf(workOrder.serviceLine) })
+                .filter { it.isNotBlank() }
+            if (services.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    services.take(4).forEach { service ->
+                        AssistChip(onClick = {}, label = { Text(service, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                    }
+                    if (services.size > 4) {
+                        AssistChip(onClick = {}, label = { Text("+${services.size - 4}") })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeasurementTableEditor(
+    template: WorkOrderDocumentationTemplate,
+    table: WorkOrderMeasurementTable,
+    sheet: WorkOrderMeasurementSheet,
+    enabled: Boolean,
+    onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
+) {
+    val editableColumns = sheet.columns.filter { it.computed.isBlank() && !it.readonly }.take(10)
+    val visibleRows = sheet.rows.take(80)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(table.label, fontWeight = FontWeight.Black)
+                Text(
+                    listOf(template.title, table.summary).filter { it.isNotBlank() }.joinToString(" - "),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                )
+                if (table.helpText.isNotBlank()) {
+                    Text(
+                        table.helpText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                    )
+                }
+            }
+            if (editableColumns.isEmpty() || visibleRows.isEmpty()) {
+                Text("Excel tablica nema dostupnih ćelija za unos.")
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        MeasurementHeaderCell("#", 54)
+                        editableColumns.forEach { column ->
+                            MeasurementHeaderCell(column.label, column.width)
+                        }
+                    }
+                    visibleRows.forEachIndexed { rowIndex, row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                modifier = Modifier.width(54.dp).height(56.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("${rowIndex + 1}", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            editableColumns.forEach { column ->
+                                MeasurementCellField(
+                                    column = column,
+                                    value = row.cells[column.id].orEmpty(),
+                                    enabled = enabled,
+                                    onChange = { value ->
+                                        onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeasurementHeaderCell(label: String, width: Int) {
+    Surface(
+        modifier = Modifier.width(width.coerceIn(90, 220).dp).height(44.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f),
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 2)
+        }
+    }
+}
+
+@Composable
+private fun MeasurementCellField(
+    column: WorkOrderMeasurementColumn,
+    value: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = Modifier
+            .width(column.width.coerceIn(110, 220).dp)
+            .height(56.dp),
+        placeholder = { Text(column.placeholder.ifBlank { column.label }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        singleLine = true,
+        enabled = enabled,
+        textStyle = MaterialTheme.typography.bodySmall,
+        shape = RoundedCornerShape(12.dp),
+    )
 }
 
 @Composable

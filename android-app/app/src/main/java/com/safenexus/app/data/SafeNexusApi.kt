@@ -240,6 +240,8 @@ class SafeNexusApi(
                 .put("tipkaloAuthorizationHolderUserId", draft.tipkaloAuthorizationHolderUserId)
                 .put("fieldValues", draft.fieldValues.toJsonObject())
                 .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())
+                .put("fieldSheets", draft.fieldSheets.toMeasurementSheetJsonObject())
+                .put("templateFieldSheets", draft.templateFieldSheets.toNestedMeasurementSheetJsonObject())
                 .toString()
             val json = JSONObject(
                 request(
@@ -559,6 +561,59 @@ private fun Map<String, Map<String, String>>.toNestedJsonObject(): JSONObject {
     return json
 }
 
+private fun WorkOrderMeasurementSheet.toJsonObject(): JSONObject {
+    val columnArray = JSONArray()
+    columns.forEach { column ->
+        columnArray.put(
+            JSONObject()
+                .put("id", column.id)
+                .put("label", column.label)
+                .put("placeholder", column.placeholder)
+                .put("width", column.width)
+                .put("computed", if (column.computed.isBlank()) JSONObject.NULL else column.computed)
+                .put("readonly", column.readonly),
+        )
+    }
+    val rowArray = JSONArray()
+    rows.forEach { row ->
+        rowArray.put(
+            JSONObject()
+                .put("id", row.id)
+                .put("cells", row.cells.toJsonObject())
+                .put("formats", JSONObject()),
+        )
+    }
+    val mergeArray = JSONArray()
+    merges.forEach { merge ->
+        mergeArray.put(
+            JSONObject()
+                .put("rowId", merge.rowId)
+                .put("columnId", merge.columnId)
+                .put("rowSpan", merge.rowSpan)
+                .put("colSpan", merge.colSpan),
+        )
+    }
+    val headerArray = JSONArray()
+    headerRows.forEach { headerArray.put(it) }
+    return JSONObject()
+        .put("columns", columnArray)
+        .put("rows", rowArray)
+        .put("merges", mergeArray)
+        .put("headerRows", headerArray)
+}
+
+private fun Map<String, WorkOrderMeasurementSheet>.toMeasurementSheetJsonObject(): JSONObject {
+    val json = JSONObject()
+    forEach { (key, sheet) -> json.put(key, sheet.toJsonObject()) }
+    return json
+}
+
+private fun Map<String, Map<String, WorkOrderMeasurementSheet>>.toNestedMeasurementSheetJsonObject(): JSONObject {
+    val json = JSONObject()
+    forEach { (key, values) -> json.put(key, values.toMeasurementSheetJsonObject()) }
+    return json
+}
+
 private fun JSONArray?.toDocumentationFieldOptions(): List<OptionItem> {
     if (this == null) return emptyList()
     return buildList {
@@ -602,6 +657,95 @@ private fun JSONArray?.toWorkOrderDocumentationFields(): List<WorkOrderDocumenta
     }.filter { it.id.isNotBlank() || it.key.isNotBlank() || it.tokenKey.isNotBlank() }
 }
 
+private fun JSONArray?.toWorkOrderMeasurementColumns(): List<WorkOrderMeasurementColumn> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val id = item.firstClean("id").ifBlank { "measurement-column-${index + 1}" }
+            add(
+                WorkOrderMeasurementColumn(
+                    id = id,
+                    label = item.firstClean("label").ifBlank { "Kolona ${index + 1}" },
+                    placeholder = item.firstClean("placeholder"),
+                    width = item.optInt("width", 140).coerceIn(60, 260),
+                    computed = item.firstClean("computed"),
+                    readonly = item.optBoolean("readonly", false),
+                ),
+            )
+        }
+    }.filter { it.id.isNotBlank() && it.label.isNotBlank() }
+}
+
+private fun JSONArray?.toWorkOrderMeasurementRows(columns: List<WorkOrderMeasurementColumn>): List<WorkOrderMeasurementRow> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val sourceCells = item.optJSONObject("cells").toStringMap()
+            val cells = columns
+                .filter { it.computed.isBlank() && !it.readonly }
+                .associate { column -> column.id to sourceCells[column.id].orEmpty() }
+            add(
+                WorkOrderMeasurementRow(
+                    id = item.firstClean("id").ifBlank { "measurement-row-${index + 1}" },
+                    cells = cells,
+                ),
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toWorkOrderMeasurementMerges(): List<WorkOrderMeasurementMerge> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderMeasurementMerge(
+                    rowId = item.firstClean("rowId"),
+                    columnId = item.firstClean("columnId"),
+                    rowSpan = item.optInt("rowSpan", 1).coerceAtLeast(1),
+                    colSpan = item.optInt("colSpan", 1).coerceAtLeast(1),
+                ),
+            )
+        }
+    }.filter { it.rowId.isNotBlank() && it.columnId.isNotBlank() }
+}
+
+private fun JSONObject?.toWorkOrderMeasurementSheet(): WorkOrderMeasurementSheet {
+    if (this == null) return WorkOrderMeasurementSheet()
+    val columns = optJSONArray("columns").toWorkOrderMeasurementColumns()
+    val rows = optJSONArray("rows").toWorkOrderMeasurementRows(columns)
+    return WorkOrderMeasurementSheet(
+        columns = columns,
+        rows = rows,
+        merges = optJSONArray("merges").toWorkOrderMeasurementMerges(),
+        headerRows = optJSONArray("headerRows").toStringList(),
+    )
+}
+
+private fun JSONArray?.toWorkOrderMeasurementTables(): List<WorkOrderMeasurementTable> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val key = item.firstClean("key", "id", "tokenKey")
+            add(
+                WorkOrderMeasurementTable(
+                    id = item.firstClean("id").ifBlank { key },
+                    key = key,
+                    tokenKey = item.firstClean("tokenKey"),
+                    label = item.firstClean("label").ifBlank { "Excel tablica" },
+                    helpText = item.firstClean("helpText"),
+                    summary = item.firstClean("summary"),
+                    sheet = item.optJSONObject("sheet").toWorkOrderMeasurementSheet(),
+                ),
+            )
+        }
+    }.filter { it.key.isNotBlank() && it.sheet.columns.isNotEmpty() }
+}
+
 private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocumentationTemplate> {
     if (this == null) return emptyList()
     return buildList {
@@ -614,6 +758,7 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
                     documentType = item.firstClean("documentType"),
                     serviceName = item.firstClean("serviceName"),
                     fields = item.optJSONArray("fields").toWorkOrderDocumentationFields(),
+                    measurementTables = item.optJSONArray("measurementTables").toWorkOrderMeasurementTables(),
                 ),
             )
         }
@@ -627,6 +772,7 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         templates = optJSONArray("templates").toWorkOrderDocumentationTemplates(),
         hasTemplates = optBoolean("hasTemplates", false),
         fieldCount = optInt("fieldCount", 0),
+        measurementTableCount = optInt("measurementTableCount", 0),
     )
 
 private fun JSONArray?.toRecords(): List<MobileRecord> {

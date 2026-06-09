@@ -79,7 +79,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.28.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.29.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9856,6 +9856,26 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
       })
       .filter(Boolean))
     : {};
+  const fieldSheets = source.fieldSheets && typeof source.fieldSheets === "object" && !Array.isArray(source.fieldSheets)
+    ? Object.fromEntries(Object.entries(source.fieldSheets)
+      .map(([key, value]) => [normalizeInputValue(key), normalizeWorkOrderMeasurementSheet(value)])
+      .filter(([key, value]) => key && value))
+    : {};
+  const templateFieldSheets = source.templateFieldSheets
+    && typeof source.templateFieldSheets === "object"
+    && !Array.isArray(source.templateFieldSheets)
+    ? Object.fromEntries(Object.entries(source.templateFieldSheets)
+      .map(([templateId, values]) => {
+        if (!values || typeof values !== "object" || Array.isArray(values)) {
+          return null;
+        }
+        const normalizedValues = Object.fromEntries(Object.entries(values)
+          .map(([key, value]) => [normalizeInputValue(key), normalizeWorkOrderMeasurementSheet(value)])
+          .filter(([key, value]) => key && value));
+        return [normalizeInputValue(templateId), normalizedValues];
+      })
+      .filter(Boolean))
+    : {};
   return {
     inspectionDate: normalizeDateOnlyValue(source.inspectionDate) || todayIso,
     issuedDate: normalizeDateOnlyValue(source.issuedDate) || normalizeDateOnlyValue(source.inspectionDate) || todayIso,
@@ -9889,6 +9909,8 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     tipkaloAuthorizationHolderUserId: normalizeInputValue(source.tipkaloAuthorizationHolderUserId),
     fieldValues,
     templateFieldValues,
+    fieldSheets,
+    templateFieldSheets,
   };
 }
 
@@ -10036,7 +10058,74 @@ function resolveMobileServiceValidityMonths(service = {}, scopedSnapshot = {}, c
     || "12";
 }
 
-function buildMobileDocumentTemplateFieldSheets(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}) {
+function getMobileDocumentTemplateSubmittedFieldSheet(field = {}, template = {}, common = {}, index = 0) {
+  const templateId = normalizeInputValue(template?.id);
+  const templateSheets = templateId && common.templateFieldSheets?.[templateId]
+    ? common.templateFieldSheets[templateId]
+    : {};
+  const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+  const keys = [
+    field?.id,
+    field?.key,
+    field?.wordLabel,
+    field?.label,
+    tokenKey,
+  ].map(normalizeInputValue).filter(Boolean);
+
+  for (const key of keys) {
+    const sheet = normalizeWorkOrderMeasurementSheet(templateSheets?.[key]);
+    if (sheet) {
+      return sheet;
+    }
+  }
+  for (const key of keys) {
+    const sheet = normalizeWorkOrderMeasurementSheet(common.fieldSheets?.[key]);
+    if (sheet) {
+      return sheet;
+    }
+  }
+  return null;
+}
+
+function buildMobileFallbackMeasurementSheet(field = {}) {
+  const sourceColumns = Array.isArray(field?.columns) && field.columns.length > 0
+    ? field.columns
+    : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
+  const columns = sourceColumns.slice(0, 12).map((column, index) => {
+    const label = column && typeof column === "object" && !Array.isArray(column)
+      ? normalizeInputValue(column.label || column.id)
+      : normalizeInputValue(column);
+    return {
+      id: column && typeof column === "object" && !Array.isArray(column)
+        ? (normalizeInputValue(column.id) || `measurement-column-${index + 1}`)
+        : `measurement-column-${index + 1}`,
+      label: label || `Kolona ${index + 1}`,
+      placeholder: "",
+      width: index === 0 ? 180 : 140,
+      computed: null,
+      readonly: false,
+      validation: { type: "none", options: [], allowCustom: true },
+      aiMapping: {},
+    };
+  });
+  const rowCount = Math.max(6, Math.min(30, Number.parseInt(field?.rowCount || field?.rowsCount || "12", 10) || 12));
+  return {
+    columns,
+    rows: Array.from({ length: rowCount }, (_, index) => ({
+      id: `measurement-row-${index + 1}`,
+      cells: Object.fromEntries(columns.map((column) => [column.id, ""])),
+      formats: Object.fromEntries(columns.map((column) => [column.id, {}])),
+    })),
+    merges: [],
+    headerRows: [],
+  };
+}
+
+function resolveMobileDocumentTemplateFieldSheet(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}, field = {}, index = 0) {
+  const submittedSheet = getMobileDocumentTemplateSubmittedFieldSheet(field, template, common, index);
+  if (submittedSheet) {
+    return submittedSheet;
+  }
   const catalogItem = findMobileServiceCatalogItem(service, scopedSnapshot);
   const serviceSheet = normalizeWorkOrderMeasurementSheet(
     service?.measurementSheet
@@ -10045,9 +10134,16 @@ function buildMobileDocumentTemplateFieldSheets(template = {}, workOrder = {}, s
     || catalogItem?.sheet,
   );
   const workOrderSheet = normalizeWorkOrderMeasurementSheet(workOrder?.measurementSheet);
+  return normalizeWorkOrderMeasurementSheet(field?.sheet || field?.measurementSheet)
+    || serviceSheet
+    || workOrderSheet
+    || normalizeWorkOrderMeasurementSheet(buildMobileFallbackMeasurementSheet(field));
+}
+
+function buildMobileDocumentTemplateFieldSheets(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}) {
   return Object.fromEntries(
     (Array.isArray(template?.customFields) ? template.customFields : [])
-      .map((field) => {
+      .map((field, index) => {
         if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
           return null;
         }
@@ -10055,9 +10151,7 @@ function buildMobileDocumentTemplateFieldSheets(template = {}, workOrder = {}, s
         if (!fieldKey) {
           return null;
         }
-        const sheet = normalizeWorkOrderMeasurementSheet(field?.sheet || field?.measurementSheet)
-          || serviceSheet
-          || workOrderSheet;
+        const sheet = resolveMobileDocumentTemplateFieldSheet(template, workOrder, service, scopedSnapshot, common, field, index);
         return sheet ? [fieldKey, sheet] : null;
       })
       .filter(Boolean),
@@ -10237,7 +10331,39 @@ function getMobileDocumentTemplateFieldDefaultValue(field = {}) {
   return normalizeInputValue(candidate);
 }
 
-function buildMobileDocumentTemplatePromptFields(template = {}) {
+function resolveMobileTemplatePromptDefaultValue(field = {}, index = 0, placeholders = {}) {
+  const explicitValue = getMobileDocumentTemplateFieldDefaultValue(field);
+  if (explicitValue) {
+    return explicitValue;
+  }
+  const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+  const candidateKeys = [
+    field?.key,
+    field?.id,
+    field?.wordLabel,
+    field?.label,
+    tokenKey,
+    normalizeMobileDocumentTemplateFieldTokenKey(field?.label || field?.wordLabel || "", ""),
+  ].map(normalizeInputValue).filter(Boolean);
+  const normalizedLookup = new Map(Object.entries(placeholders || {}).map(([key, value]) => [
+    normalizeMobileDocumentTemplateFieldTokenKey(key, ""),
+    value,
+  ]));
+
+  for (const key of candidateKeys) {
+    const directValue = placeholders?.[key];
+    if (directValue !== undefined && directValue !== null && typeof directValue !== "object") {
+      return normalizeInputValue(directValue);
+    }
+    const normalizedValue = normalizedLookup.get(normalizeMobileDocumentTemplateFieldTokenKey(key, ""));
+    if (normalizedValue !== undefined && normalizedValue !== null && typeof normalizedValue !== "object") {
+      return normalizeInputValue(normalizedValue);
+    }
+  }
+  return "";
+}
+
+function buildMobileDocumentTemplatePromptFields(template = {}, placeholders = {}) {
   return (Array.isArray(template?.customFields) ? template.customFields : [])
     .map((field, index) => {
       if (!isMobileDocumentTemplatePromptField(field)) {
@@ -10258,8 +10384,49 @@ function buildMobileDocumentTemplatePromptFields(template = {}) {
         type: normalizeInputValue(field?.type || "text").toLowerCase(),
         required: Boolean(field?.required || field?.isRequired),
         helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
-        defaultValue: getMobileDocumentTemplateFieldDefaultValue(field),
+        defaultValue: resolveMobileTemplatePromptDefaultValue(field, index, placeholders),
         options: buildMobileDocumentTemplateFieldOptions(field),
+      };
+    })
+    .filter(Boolean);
+}
+
+function getMobileMeasurementSheetSummary(sheet = null) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalized?.columns?.length) {
+    return "Prazna Excel tablica";
+  }
+  const populatedRows = normalized.rows.filter((row) => (
+    normalized.columns
+      .filter((column) => !column.computed)
+      .some((column) => normalizeInputValue(row?.cells?.[column.id]))
+  )).length;
+  return [
+    `${normalized.columns.length} kolona`,
+    populatedRows > 0 ? `${populatedRows} popunjenih redova` : "spremno za unos",
+  ].join(" · ");
+}
+
+function buildMobileDocumentTemplateMeasurementTables(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}) {
+  return (Array.isArray(template?.customFields) ? template.customFields : [])
+    .map((field, index) => {
+      if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
+        return null;
+      }
+      const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+      const recordKey = normalizeInputValue(field?.key || field?.id || tokenKey);
+      const sheet = resolveMobileDocumentTemplateFieldSheet(template, workOrder, service, scopedSnapshot, common, field, index);
+      if (!recordKey || !sheet) {
+        return null;
+      }
+      return {
+        id: normalizeInputValue(field?.id || recordKey),
+        key: recordKey,
+        tokenKey,
+        label: normalizeInputValue(field?.label || field?.wordLabel || recordKey) || "Excel tablica",
+        helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
+        summary: getMobileMeasurementSheetSummary(sheet),
+        sheet,
       };
     })
     .filter(Boolean);
@@ -10285,12 +10452,15 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         return;
       }
       seenTemplateIds.add(normalizedTemplateId);
+      const common = normalizeMobileWorkOrderDocumentWizardInput({});
+      const placeholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common);
       templates.push({
         id: normalizedTemplateId,
         title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
         documentType: normalizeInputValue(template.documentType || "Zapisnik"),
         serviceName: normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode),
-        fields: buildMobileDocumentTemplatePromptFields(template),
+        fields: buildMobileDocumentTemplatePromptFields(template, placeholders),
+        measurementTables: buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common),
       });
     });
   });
@@ -10303,6 +10473,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     templates,
     hasTemplates: templates.length > 0,
     fieldCount: templates.reduce((sum, template) => sum + (template.fields?.length || 0), 0),
+    measurementTableCount: templates.reduce((sum, template) => sum + (template.measurementTables?.length || 0), 0),
   };
 }
 
@@ -10491,7 +10662,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       }
       seenPairs.add(pairKey);
       const basePlaceholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common);
-      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot);
+      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
       const customFieldPayload = buildMobileDocumentTemplateCustomFieldPayload(template, common);
       const placeholders = {
