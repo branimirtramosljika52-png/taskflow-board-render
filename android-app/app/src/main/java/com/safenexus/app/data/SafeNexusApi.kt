@@ -782,6 +782,8 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
                     title = item.firstClean("title").ifBlank { "Zapisnik" },
                     documentType = item.firstClean("documentType"),
                     serviceName = item.firstClean("serviceName"),
+                    documentNumber = item.firstClean("documentNumber"),
+                    documentName = item.firstClean("documentName", "fileName"),
                     fields = item.optJSONArray("fields").toWorkOrderDocumentationFields(),
                     measurementTables = item.optJSONArray("measurementTables").toWorkOrderMeasurementTables(),
                 ),

@@ -5433,6 +5433,41 @@ private fun WorkOrderDocumentationActionDialog(
     )
 }
 
+private data class DocumentationServiceFlowItem(
+    val serviceName: String,
+    val documentNumbers: List<String>,
+    val documentNames: List<String>,
+    val templateCount: Int,
+)
+
+private fun buildDocumentationServiceFlowItems(
+    templates: List<WorkOrderDocumentationTemplate>,
+    workOrder: WorkOrder,
+): List<DocumentationServiceFlowItem> {
+    if (templates.isEmpty()) {
+        val fallbackService = workOrder.displayService.takeIf { it != "Bez upisane usluge" }.orEmpty()
+        return listOf(
+            DocumentationServiceFlowItem(
+                serviceName = fallbackService.ifBlank { "Usluga" },
+                documentNumbers = listOf(workOrder.displayNumber).filter { it.isNotBlank() },
+                documentNames = emptyList(),
+                templateCount = 0,
+            ),
+        )
+    }
+    return templates
+        .groupBy { template -> template.serviceName.ifBlank { template.documentType.ifBlank { template.title } }.ifBlank { "Usluga" } }
+        .map { (serviceName, serviceTemplates) ->
+            DocumentationServiceFlowItem(
+                serviceName = serviceName,
+                documentNumbers = serviceTemplates.mapNotNull { template -> template.documentNumber.ifBlank { null } }.distinct(),
+                documentNames = serviceTemplates.mapNotNull { template -> template.documentName.ifBlank { null } }.distinct(),
+                templateCount = serviceTemplates.size,
+            )
+        }
+        .sortedBy { it.serviceName.lowercase(Locale.getDefault()) }
+}
+
 @Composable
 private fun WorkOrderDocumentationWizardDialog(
     workOrder: WorkOrder,
@@ -5488,11 +5523,9 @@ private fun WorkOrderDocumentationWizardDialog(
     val defaults = context.defaults
     var inspectionDate by remember(workOrder.id, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
     var issuedDate by remember(workOrder.id, defaults.issuedDate) { mutableStateOf(defaults.issuedDate.ifBlank { inspectionDate.ifBlank { today } }) }
-    var issuedPlace by remember(workOrder.id, defaults.issuedPlace) { mutableStateOf(defaults.issuedPlace) }
     var testingLocation by remember(workOrder.id, defaults.testingLocation) {
         mutableStateOf(defaults.testingLocation.ifBlank { workOrder.locationName })
     }
-    var note by remember(workOrder.id, defaults.note) { mutableStateOf(defaults.note) }
     val initialInspectionType = remember(defaults.inspectionType, defaultInspectionType, inspectionOptions) {
         val saved = defaults.inspectionType.trim()
         if (saved.isNotBlank() && (inspectionOptions.isEmpty() || inspectionOptions.any {
@@ -5564,6 +5597,17 @@ private fun WorkOrderDocumentationWizardDialog(
             }.ifEmpty { context.measurementEquipmentOptions }
         }
     }
+    val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
+        buildDocumentationServiceFlowItems(context.templates, workOrder)
+    }
+    val selectedFlowItem = remember(serviceFlowItems, inspectionType) {
+        serviceFlowItems.firstOrNull { item ->
+            item.serviceName.equals(inspectionType, ignoreCase = true)
+        } ?: serviceFlowItems.firstOrNull()
+    }
+    val currentDocumentNumber = selectedFlowItem?.documentNumbers?.firstOrNull()
+        ?: context.templates.firstOrNull()?.documentNumber
+        ?: workOrder.displayNumber
     var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
     var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
     var electricalValidityMonths by remember(workOrder.id, defaults.electricalValidityMonths) {
@@ -5630,34 +5674,11 @@ private fun WorkOrderDocumentationWizardDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
-                    WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
-                    WorkOrderDatePickerField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
-                    WorkOrderTextField("Mjesto izdavanja", issuedPlace, { issuedPlace = it }, !formLoading)
-                    WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
-                    WorkOrderSelectField(
-                        label = "Vrsta ispitivanja",
-                        value = inspectionType,
-                        valueLabel = inspectionType.ifBlank { "Odaberi vrstu ispitivanja" },
-                        options = inspectionOptions,
-                        enabled = !formLoading,
-                        onSelect = { inspectionType = it },
-                    )
-                    OutlinedTextField(
-                        value = note,
-                        onValueChange = { note = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Napomena za zapisnik") },
-                        minLines = 2,
-                        maxLines = 4,
-                        enabled = !formLoading,
-                        shape = RoundedCornerShape(16.dp),
-                    )
-                }
-
                 WizardSection(title = "Traka zapisnika", icon = Icons.Rounded.Work) {
                     DocumentationRuntimeActionBar(
                         workOrder = workOrder,
+                        flowItems = serviceFlowItems,
+                        selectedService = inspectionType,
                         templateCount = context.templates.size,
                         measurementCount = context.measurementTableCount,
                         equipmentCount = context.measurementEquipmentOptions.size,
@@ -5665,8 +5686,27 @@ private fun WorkOrderDocumentationWizardDialog(
                         rulebookCount = context.rulebookOptions.size,
                         signatureMode = signatureMode,
                         enabled = !formLoading,
+                        onSelectService = { inspectionType = it },
                         onSignatureMode = { signatureMode = it },
                     )
+                }
+
+                WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
+                    DocumentationNumberPreview(
+                        documentNumber = currentDocumentNumber,
+                        serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                    )
+                    WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
+                    WorkOrderDatePickerField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
+                    WorkOrderSelectField(
+                        label = "Vrsta usluge",
+                        value = inspectionType,
+                        valueLabel = inspectionType.ifBlank { "Odaberi vrstu usluge" },
+                        options = inspectionOptions,
+                        enabled = !formLoading,
+                        onSelect = { inspectionType = it },
+                    )
+                    WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
                 }
 
                 WizardSection(title = "Mjerna i ispitna oprema", icon = Icons.Rounded.Work) {
@@ -5839,6 +5879,20 @@ private fun WorkOrderDocumentationWizardDialog(
                     NumberTextField("Panik rasvjeta vrijedi mjeseci", electricalValidityMonths, { electricalValidityMonths = it }, !formLoading)
                     NumberTextField("Tipkalo vrijedi mjeseci", tipkaloValidityMonths, { tipkaloValidityMonths = it }, !formLoading)
                 }
+
+                DocumentationSummarySection(
+                    workOrder = workOrder,
+                    flowItems = serviceFlowItems,
+                    selectedService = selectedFlowItem?.serviceName ?: inspectionType,
+                    documentNumber = currentDocumentNumber,
+                    inspectionDate = inspectionDate,
+                    issuedDate = issuedDate,
+                    testingLocation = testingLocation,
+                    selectedEquipmentCount = selectedEquipmentIds.size,
+                    selectedLegalCount = selectedLegalFrameworkIds.size,
+                    selectedRulebookCount = selectedRulebookIds.size,
+                    signatureMode = signatureMode,
+                )
             }
         },
         confirmButton = {
@@ -5849,9 +5903,9 @@ private fun WorkOrderDocumentationWizardDialog(
                     val draft = WorkOrderDocumentationDraft(
                         inspectionDate = inspectionDate.trim(),
                         issuedDate = issuedDate.trim(),
-                        issuedPlace = issuedPlace.trim(),
+                        issuedPlace = "",
                         testingLocation = testingLocation.trim(),
-                        note = note.trim(),
+                        note = "",
                         inspectionType = inspectionType.trim(),
                         outsideTemperature = outsideTemperature.trim(),
                         relativeHumidity = relativeHumidity.trim(),
@@ -6599,8 +6653,132 @@ private fun evaluateMeasurementFormulaValueMobile(
 }
 
 @Composable
+private fun DocumentationNumberPreview(
+    documentNumber: String,
+    serviceName: String,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
+    ) {
+        Row(
+            modifier = Modifier.padding(13.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)) {
+                Text(
+                    "#",
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Broj zapisnika", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                Text(
+                    documentNumber.ifBlank { "Automatski kod izrade" },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (serviceName.isNotBlank()) {
+                    Text(
+                        serviceName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSummarySection(
+    workOrder: WorkOrder,
+    flowItems: List<DocumentationServiceFlowItem>,
+    selectedService: String,
+    documentNumber: String,
+    inspectionDate: String,
+    issuedDate: String,
+    testingLocation: String,
+    selectedEquipmentCount: Int,
+    selectedLegalCount: Int,
+    selectedRulebookCount: Int,
+    signatureMode: String,
+) {
+    WizardSection(title = "Sažetak", icon = Icons.Rounded.CheckCircle) {
+        DocumentationSummaryRow("RN", workOrder.displayNumber)
+        DocumentationSummaryRow("Broj zapisnika", documentNumber.ifBlank { "Automatski kod izrade" })
+        DocumentationSummaryRow("Usluga", selectedService.ifBlank { "Nije odabrano" })
+        DocumentationSummaryRow("Datum ispitivanja", formatDatePickerLabel(inspectionDate))
+        DocumentationSummaryRow("Datum izdavanja", formatDatePickerLabel(issuedDate))
+        DocumentationSummaryRow("Mjesto ispitivanja", testingLocation.ifBlank { "Nije upisano" })
+        DocumentationSummaryRow(
+            "Izvori",
+            listOf(
+                "$selectedEquipmentCount oprema",
+                "$selectedLegalCount propisi",
+                "$selectedRulebookCount pravilnici",
+            ).joinToString(" · "),
+        )
+        DocumentationSummaryRow(
+            "Potpis",
+            when (signatureMode) {
+                "digital" -> "Digitalni"
+                "scan" -> "Sken"
+                "manual" -> "Ručni"
+                else -> signatureMode.ifBlank { "Digitalni" }
+            },
+        )
+        if (flowItems.size > 1) {
+            Text(
+                "Izradit će se zapisnici za ${flowItems.size} usluge.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSummaryRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.width(118.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+        )
+        Text(
+            value,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun DocumentationRuntimeActionBar(
     workOrder: WorkOrder,
+    flowItems: List<DocumentationServiceFlowItem>,
+    selectedService: String,
     templateCount: Int,
     measurementCount: Int,
     equipmentCount: Int,
@@ -6608,83 +6786,106 @@ private fun DocumentationRuntimeActionBar(
     rulebookCount: Int,
     signatureMode: String,
     enabled: Boolean,
+    onSelectService: (String) -> Unit,
     onSignatureMode: (String) -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+        color = Color.Transparent,
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Box(
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f),
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f),
+                        ),
+                    ),
+                )
+                .padding(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
-                    Icon(
-                        Icons.Rounded.Description,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .padding(9.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
+                        Icon(
+                            Icons.Rounded.Description,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .padding(9.dp),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("RN ${workOrder.displayNumber}", fontWeight = FontWeight.Black)
+                        Text(
+                            listOf(workOrder.companyName, workOrder.locationName).filter { it.isNotBlank() }.joinToString(" - ")
+                                .ifBlank { "Bez tvrtke / lokacije" },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("RN ${workOrder.displayNumber}", fontWeight = FontWeight.Black)
-                    Text(
-                        listOf(workOrder.companyName, workOrder.locationName).filter { it.isNotBlank() }.joinToString(" - ")
-                            .ifBlank { "Bez tvrtke / lokacije" },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                if (flowItems.isNotEmpty()) {
+                    Text("Usluge i zapisnici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        flowItems.forEachIndexed { index, item ->
+                            val selected = item.serviceName.equals(selectedService, ignoreCase = true)
+                            FilterChip(
+                                selected = selected,
+                                onClick = { onSelectService(item.serviceName) },
+                                enabled = enabled,
+                                label = {
+                                    Text(
+                                        "${index + 1}. ${item.serviceName}",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
+                        AssistChip(onClick = {}, label = { Text("Sažetak") })
+                    }
                 }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text("${templateCount.coerceAtLeast(0)} predložak") })
-                AssistChip(onClick = {}, label = { Text("${measurementCount.coerceAtLeast(0)} Excel") })
-                AssistChip(onClick = {}, label = { Text("${equipmentCount.coerceAtLeast(0)} oprema") })
-                AssistChip(onClick = {}, label = { Text("${legalFrameworkCount.coerceAtLeast(0)} propisi") })
-                AssistChip(onClick = {}, label = { Text("${rulebookCount.coerceAtLeast(0)} pravilnici") })
-                AssistChip(onClick = {}, label = { Text(workOrder.status.ifBlank { "Bez statusa" }) })
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = signatureMode == "scan",
-                    onClick = { onSignatureMode("scan") },
-                    enabled = enabled,
-                    label = { Text("Potpis") },
-                )
-                FilterChip(
-                    selected = signatureMode == "digital",
-                    onClick = { onSignatureMode("digital") },
-                    enabled = enabled,
-                    label = { Text("Digitalni") },
-                )
-                FilterChip(
-                    selected = signatureMode == "manual",
-                    onClick = { onSignatureMode("manual") },
-                    enabled = enabled,
-                    label = { Text("Ručni") },
-                )
-                AssistChip(onClick = {}, label = { Text("PDF nakon spremanja") })
-            }
-            val services = (workOrder.serviceItems.ifEmpty { listOf(workOrder.serviceLine) })
-                .filter { it.isNotBlank() }
-            if (services.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    services.take(4).forEach { service ->
-                        AssistChip(onClick = {}, label = { Text(service, maxLines = 1, overflow = TextOverflow.Ellipsis) })
-                    }
-                    if (services.size > 4) {
-                        AssistChip(onClick = {}, label = { Text("+${services.size - 4}") })
-                    }
+                    AssistChip(onClick = {}, label = { Text("${templateCount.coerceAtLeast(0)} predložak") })
+                    AssistChip(onClick = {}, label = { Text("${measurementCount.coerceAtLeast(0)} Excel") })
+                    AssistChip(onClick = {}, label = { Text("${equipmentCount.coerceAtLeast(0)} oprema") })
+                    AssistChip(onClick = {}, label = { Text("${legalFrameworkCount.coerceAtLeast(0)} propisi") })
+                    AssistChip(onClick = {}, label = { Text("${rulebookCount.coerceAtLeast(0)} pravilnici") })
+                    AssistChip(onClick = {}, label = { Text(workOrder.status.ifBlank { "Bez statusa" }) })
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = signatureMode == "scan",
+                        onClick = { onSignatureMode("scan") },
+                        enabled = enabled,
+                        label = { Text("Potpis") },
+                    )
+                    FilterChip(
+                        selected = signatureMode == "digital",
+                        onClick = { onSignatureMode("digital") },
+                        enabled = enabled,
+                        label = { Text("Digitalni") },
+                    )
+                    FilterChip(
+                        selected = signatureMode == "manual",
+                        onClick = { onSignatureMode("manual") },
+                        enabled = enabled,
+                        label = { Text("Ručni") },
+                    )
+                    AssistChip(onClick = {}, label = { Text("PDF nakon spremanja") })
                 }
             }
         }

@@ -183,6 +183,8 @@ data class WorkOrderDocumentationTemplate(
     val title: String,
     val documentType: String,
     val serviceName: String,
+    val documentNumber: String = "",
+    val documentName: String = "",
     val fields: List<WorkOrderDocumentationField>,
     val measurementTables: List<WorkOrderMeasurementTable>,
 )
