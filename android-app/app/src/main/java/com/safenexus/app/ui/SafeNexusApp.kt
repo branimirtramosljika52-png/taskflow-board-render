@@ -123,6 +123,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
@@ -6295,6 +6296,7 @@ private fun WorkOrderDocumentationWizardDialog(
     var newObjectName by remember(workOrder.id, availableLocationObjects.size) {
         mutableStateOf("Objekt ${availableLocationObjects.size + 1}")
     }
+    var basicsSheetOpen by remember(workOrder.id) { mutableStateOf(false) }
     var requiredWarning by remember(workOrder.id) { mutableStateOf("") }
     val standardValues = DocumentationStandardValues(
         inspectionDate = inspectionDate.trim(),
@@ -6422,47 +6424,17 @@ private fun WorkOrderDocumentationWizardDialog(
                 ) {
 
                 if (!summaryFlowSelected) {
-                DocumentationCoreBasicsSection(
+                DocumentationCoreBasicsLauncherCard(
                     documentNumber = currentDocumentNumber,
                     serviceName = selectedFlowItem?.serviceName ?: inspectionType,
                     inspectionDate = inspectionDate,
-                    onInspectionDateChange = { inspectionDate = it },
                     issuedDate = issuedDate,
-                    onIssuedDateChange = { issuedDate = it },
                     inspectionType = inspectionType,
-                    inspectionOptions = inspectionOptions,
-                    onInspectionTypeChange = { inspectionType = it },
                     testingLocation = testingLocation,
-                    onTestingLocationChange = { testingLocation = it },
-                    inspectorUserId = inspectorUserId,
-                    authorizationHolderUserId = authorizationHolderUserId,
-                    electricalInspectorUserId = electricalInspectorUserId,
-                    electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
-                    tipkaloInspectorUserId = tipkaloInspectorUserId,
-                    tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
-                    userOptions = userOptions,
-                    onInspectorUserIdChange = { inspectorUserId = it },
-                    onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
-                    onElectricalInspectorUserIdChange = { electricalInspectorUserId = it },
-                    onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
-                    onTipkaloInspectorUserIdChange = { tipkaloInspectorUserId = it },
-                    onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
                     measurementEquipmentGroup = measurementEquipmentGroup,
-                    measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
-                    onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
                     outsideTemperature = outsideTemperature,
                     relativeHumidity = relativeHumidity,
-                    airflowSpeed = airflowSpeed,
-                    weather = weather,
-                    groundCondition = groundCondition,
-                    groundResistance = groundResistance,
-                    onOutsideTemperatureChange = { outsideTemperature = it },
-                    onRelativeHumidityChange = { relativeHumidity = it },
-                    onAirflowSpeedChange = { airflowSpeed = it },
-                    onWeatherChange = { weather = it },
-                    onGroundConditionChange = { groundCondition = it },
-                    onGroundResistanceChange = { groundResistance = it },
-                    enabled = !formLoading,
+                    onOpen = { basicsSheetOpen = true },
                 )
                 WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
                     WorkOrderSelectField(
@@ -6753,6 +6725,80 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         },
     )
+
+    if (basicsSheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { basicsSheetOpen = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 680.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text("Osnovno", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                Text(
+                    "Podaci vrijede za ovaj zapisnik i popunjavaju povezana polja iz web predloška.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+                DocumentationCoreBasicsContent(
+                    documentNumber = currentDocumentNumber,
+                    serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                    inspectionDate = inspectionDate,
+                    onInspectionDateChange = { inspectionDate = it },
+                    issuedDate = issuedDate,
+                    onIssuedDateChange = { issuedDate = it },
+                    inspectionType = inspectionType,
+                    inspectionOptions = inspectionOptions,
+                    onInspectionTypeChange = { inspectionType = it },
+                    testingLocation = testingLocation,
+                    onTestingLocationChange = { testingLocation = it },
+                    inspectorUserId = inspectorUserId,
+                    authorizationHolderUserId = authorizationHolderUserId,
+                    electricalInspectorUserId = electricalInspectorUserId,
+                    electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+                    tipkaloInspectorUserId = tipkaloInspectorUserId,
+                    tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                    userOptions = userOptions,
+                    onInspectorUserIdChange = { inspectorUserId = it },
+                    onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
+                    onElectricalInspectorUserIdChange = { electricalInspectorUserId = it },
+                    onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
+                    onTipkaloInspectorUserIdChange = { tipkaloInspectorUserId = it },
+                    onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
+                    measurementEquipmentGroup = measurementEquipmentGroup,
+                    measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
+                    onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
+                    outsideTemperature = outsideTemperature,
+                    relativeHumidity = relativeHumidity,
+                    airflowSpeed = airflowSpeed,
+                    weather = weather,
+                    groundCondition = groundCondition,
+                    groundResistance = groundResistance,
+                    onOutsideTemperatureChange = { outsideTemperature = it },
+                    onRelativeHumidityChange = { relativeHumidity = it },
+                    onAirflowSpeedChange = { airflowSpeed = it },
+                    onWeatherChange = { weather = it },
+                    onGroundConditionChange = { groundCondition = it },
+                    onGroundResistanceChange = { groundResistance = it },
+                    enabled = !formLoading,
+                )
+                Button(
+                    onClick = { basicsSheetOpen = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !formLoading,
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text("Spremi osnovno", fontWeight = FontWeight.Black)
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+        }
+    }
 }
 
 private fun templateFieldPayloadKey(field: WorkOrderDocumentationField): String =
@@ -8291,7 +8337,77 @@ private fun TemplateBlockSectionCard(
 }
 
 @Composable
-private fun DocumentationCoreBasicsSection(
+private fun DocumentationCoreBasicsLauncherCard(
+    documentNumber: String,
+    serviceName: String,
+    inspectionDate: String,
+    issuedDate: String,
+    inspectionType: String,
+    testingLocation: String,
+    measurementEquipmentGroup: String,
+    outsideTemperature: String,
+    relativeHumidity: String,
+    onOpen: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onOpen),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f),
+    ) {
+        Row(
+            modifier = Modifier.padding(13.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)) {
+                Icon(
+                    Icons.Rounded.Description,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .padding(9.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("Osnovno", fontWeight = FontWeight.Black)
+                Text(
+                    listOf(
+                        formatDatePickerLabel(inspectionDate),
+                        inspectionType,
+                        testingLocation,
+                    ).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Datumi, ispitivači, oprema i uvjeti" },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    listOf(
+                        "Broj: ${documentNumber.ifBlank { "auto" }}",
+                        formatDatePickerLabel(issuedDate).takeIf { it.isNotBlank() }?.let { "Izdano $it" },
+                        serviceName.takeIf { it.isNotBlank() },
+                        measurementEquipmentGroup.takeIf { it.isNotBlank() }?.let { "Oprema $it" },
+                        listOf(outsideTemperature, relativeHumidity).filter { it.isNotBlank() }.joinToString(" / ").takeIf { it.isNotBlank() },
+                    ).filterNotNull().joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            TextButton(onClick = onOpen) {
+                Text("Uredi", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationCoreBasicsContent(
     documentNumber: String,
     serviceName: String,
     inspectionDate: String,
@@ -8333,88 +8449,86 @@ private fun DocumentationCoreBasicsSection(
     onGroundResistanceChange: (String) -> Unit,
     enabled: Boolean,
 ) {
-    WizardSection(title = "Osnovno", icon = Icons.Rounded.Description) {
-        DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
-        WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
-        WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
-        WorkOrderSelectField(
-            label = "Vrsta ispitivanja",
-            value = inspectionType,
-            valueLabel = inspectionType.ifBlank {
-                if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
-            },
-            options = inspectionOptions,
-            enabled = enabled,
-            onSelect = onInspectionTypeChange,
-        )
-        WorkOrderTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
+    DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
+    WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
+    WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
+    WorkOrderSelectField(
+        label = "Vrsta ispitivanja",
+        value = inspectionType,
+        valueLabel = inspectionType.ifBlank {
+            if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
+        },
+        options = inspectionOptions,
+        enabled = enabled,
+        onSelect = onInspectionTypeChange,
+    )
+    WorkOrderTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
 
-        Text("Ispitivači i ovlaštenici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-        WorkOrderSelectField(
-            label = "Ispitivao",
-            value = inspectorUserId,
-            valueLabel = userOptions.firstOrNull { it.first == inspectorUserId }?.second.orEmpty(),
-            options = userOptions,
-            enabled = enabled,
-            onSelect = onInspectorUserIdChange,
-        )
-        WorkOrderSelectField(
-            label = "Nositelj ovlaštenja",
-            value = authorizationHolderUserId,
-            valueLabel = userOptions.firstOrNull { it.first == authorizationHolderUserId }?.second.orEmpty(),
-            options = userOptions,
-            enabled = enabled,
-            onSelect = onAuthorizationHolderUserIdChange,
-        )
-        WorkOrderSelectField(
-            label = "Elektro ispitivač",
-            value = electricalInspectorUserId,
-            valueLabel = userOptions.firstOrNull { it.first == electricalInspectorUserId }?.second.orEmpty(),
-            options = userOptions,
-            enabled = enabled,
-            onSelect = onElectricalInspectorUserIdChange,
-        )
-        WorkOrderSelectField(
-            label = "Elektro nositelj ovlaštenja",
-            value = electricalAuthorizationHolderUserId,
-            valueLabel = userOptions.firstOrNull { it.first == electricalAuthorizationHolderUserId }?.second.orEmpty(),
-            options = userOptions,
-            enabled = enabled,
-            onSelect = onElectricalAuthorizationHolderUserIdChange,
-        )
-        WorkOrderSelectField(
-            label = "Tipkalo / isklop ispitivač",
-            value = tipkaloInspectorUserId,
-            valueLabel = userOptions.firstOrNull { it.first == tipkaloInspectorUserId }?.second.orEmpty(),
-            options = userOptions,
-            enabled = enabled,
-            onSelect = onTipkaloInspectorUserIdChange,
-        )
-        WorkOrderSelectField(
-            label = "Tipkalo / isklop nositelj",
-            value = tipkaloAuthorizationHolderUserId,
-            valueLabel = userOptions.firstOrNull { it.first == tipkaloAuthorizationHolderUserId }?.second.orEmpty(),
-            options = userOptions,
-            enabled = enabled,
-            onSelect = onTipkaloAuthorizationHolderUserIdChange,
-        )
+    Text("Ispitivači i ovlaštenici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+    WorkOrderSelectField(
+        label = "Ispitivao",
+        value = inspectorUserId,
+        valueLabel = userOptions.firstOrNull { it.first == inspectorUserId }?.second.orEmpty(),
+        options = userOptions,
+        enabled = enabled,
+        onSelect = onInspectorUserIdChange,
+    )
+    WorkOrderSelectField(
+        label = "Nositelj ovlaštenja",
+        value = authorizationHolderUserId,
+        valueLabel = userOptions.firstOrNull { it.first == authorizationHolderUserId }?.second.orEmpty(),
+        options = userOptions,
+        enabled = enabled,
+        onSelect = onAuthorizationHolderUserIdChange,
+    )
+    WorkOrderSelectField(
+        label = "Elektro ispitivač",
+        value = electricalInspectorUserId,
+        valueLabel = userOptions.firstOrNull { it.first == electricalInspectorUserId }?.second.orEmpty(),
+        options = userOptions,
+        enabled = enabled,
+        onSelect = onElectricalInspectorUserIdChange,
+    )
+    WorkOrderSelectField(
+        label = "Elektro nositelj ovlaštenja",
+        value = electricalAuthorizationHolderUserId,
+        valueLabel = userOptions.firstOrNull { it.first == electricalAuthorizationHolderUserId }?.second.orEmpty(),
+        options = userOptions,
+        enabled = enabled,
+        onSelect = onElectricalAuthorizationHolderUserIdChange,
+    )
+    WorkOrderSelectField(
+        label = "Tipkalo / isklop ispitivač",
+        value = tipkaloInspectorUserId,
+        valueLabel = userOptions.firstOrNull { it.first == tipkaloInspectorUserId }?.second.orEmpty(),
+        options = userOptions,
+        enabled = enabled,
+        onSelect = onTipkaloInspectorUserIdChange,
+    )
+    WorkOrderSelectField(
+        label = "Tipkalo / isklop nositelj",
+        value = tipkaloAuthorizationHolderUserId,
+        valueLabel = userOptions.firstOrNull { it.first == tipkaloAuthorizationHolderUserId }?.second.orEmpty(),
+        options = userOptions,
+        enabled = enabled,
+        onSelect = onTipkaloAuthorizationHolderUserIdChange,
+    )
 
-        Text("Mjerna oprema i uvjeti", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-        WorkOrderSelectField(
-            label = "Grupa mjerne opreme",
-            value = measurementEquipmentGroup,
-            valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
-            options = measurementEquipmentGroupOptions,
-            enabled = enabled,
-            onSelect = onMeasurementEquipmentGroupChange,
-        )
-        WorkOrderTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
-        WorkOrderTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
-        WorkOrderTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
-        WorkOrderTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
-        WorkOrderTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
-        WorkOrderTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
-    }
+    Text("Mjerna oprema i uvjeti", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+    WorkOrderSelectField(
+        label = "Grupa mjerne opreme",
+        value = measurementEquipmentGroup,
+        valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
+        options = measurementEquipmentGroupOptions,
+        enabled = enabled,
+        onSelect = onMeasurementEquipmentGroupChange,
+    )
+    WorkOrderTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
+    WorkOrderTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
+    WorkOrderTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
+    WorkOrderTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
+    WorkOrderTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
+    WorkOrderTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
 }
 
 @Composable
