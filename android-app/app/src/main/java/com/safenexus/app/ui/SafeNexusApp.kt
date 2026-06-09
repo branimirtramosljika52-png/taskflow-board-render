@@ -5712,7 +5712,14 @@ private fun WorkOrderDocumentationWizardDialog(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                         )
                         else -> blockTemplates.forEach { template ->
-                            TemplateBlockOverview(template)
+                            TemplateBlockOverview(
+                                template = template,
+                                values = templateFieldValues,
+                                enabled = !formLoading,
+                                onChange = { field, value ->
+                                    templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                                },
+                            )
                         }
                     }
                 }
@@ -5755,33 +5762,35 @@ private fun WorkOrderDocumentationWizardDialog(
                     )
                 }
 
-                WizardSection(title = "Polja iz predloška", icon = Icons.Rounded.InsertDriveFile) {
-                    when {
-                        contextLoading -> Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text("Učitavam polja iz web predložaka...")
-                        }
-                        !context.hasTemplates -> Text(
-                            "Za ovaj RN nije pronađen povezani template.",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                        )
-                        promptTemplates.isEmpty() -> Text(
-                            "Povezani predlošci nemaju dodatnih ručnih polja.",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                        )
-                        else -> promptTemplates.forEach { template ->
-                            TemplateFieldGroup(
-                                template = template,
-                                values = templateFieldValues,
-                                enabled = !formLoading,
-                                onChange = { field, value ->
-                                    templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
-                                },
+                if (blockTemplates.isEmpty()) {
+                    WizardSection(title = "Polja iz predloška", icon = Icons.Rounded.InsertDriveFile) {
+                        when {
+                            contextLoading -> Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Text("Učitavam polja iz web predložaka...")
+                            }
+                            !context.hasTemplates -> Text(
+                                "Za ovaj RN nije pronađen povezani template.",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                             )
+                            promptTemplates.isEmpty() -> Text(
+                                "Povezani predlošci nemaju dodatnih ručnih polja.",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                            )
+                            else -> promptTemplates.forEach { template ->
+                                TemplateFieldGroup(
+                                    template = template,
+                                    values = templateFieldValues,
+                                    enabled = !formLoading,
+                                    onChange = { field, value ->
+                                        templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -7134,7 +7143,12 @@ private fun MeasurementGridCell(
 }
 
 @Composable
-private fun TemplateBlockOverview(template: WorkOrderDocumentationTemplate) {
+private fun TemplateBlockOverview(
+    template: WorkOrderDocumentationTemplate,
+    values: Map<String, String>,
+    enabled: Boolean,
+    onChange: (WorkOrderDocumentationField, String) -> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -7167,7 +7181,15 @@ private fun TemplateBlockOverview(template: WorkOrderDocumentationTemplate) {
                             color = MaterialTheme.colorScheme.primary,
                         )
                         blocks.forEach { block ->
-                            TemplateBlockRow(block)
+                            val editableField = findTemplateFieldForBlock(template, block)
+                            TemplateBlockRow(
+                                template = template,
+                                block = block,
+                                editableField = editableField,
+                                value = editableField?.let { values[templateFieldStateKey(template, it)] }.orEmpty(),
+                                enabled = enabled,
+                                onChange = { field, value -> onChange(field, value) },
+                            )
                         }
                     }
                 }
@@ -7176,7 +7198,15 @@ private fun TemplateBlockOverview(template: WorkOrderDocumentationTemplate) {
 }
 
 @Composable
-private fun TemplateBlockRow(block: WorkOrderDocumentationTemplateBlock) {
+private fun TemplateBlockRow(
+    template: WorkOrderDocumentationTemplate,
+    block: WorkOrderDocumentationTemplateBlock,
+    editableField: WorkOrderDocumentationField?,
+    value: String,
+    enabled: Boolean,
+    onChange: (WorkOrderDocumentationField, String) -> Unit,
+) {
+    var expanded by remember(template.id, block.id, block.key, block.tokenKey) { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -7222,16 +7252,26 @@ private fun TemplateBlockRow(block: WorkOrderDocumentationTemplateBlock) {
                     if (block.editable) {
                         Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f)) {
                             Text(
-                                "unos",
+                                if (expanded) "zatvori" else "unos",
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold,
                             )
                         }
+                    } else {
+                        Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)) {
+                            Text(
+                                if (expanded) "manje" else "detalji",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
-                if (block.summary.isNotBlank()) {
+                if (block.summary.isNotBlank() && !expanded) {
                     Text(
                         block.summary,
                         style = MaterialTheme.typography.bodySmall,
@@ -7240,7 +7280,33 @@ private fun TemplateBlockRow(block: WorkOrderDocumentationTemplateBlock) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (block.helpText.isNotBlank()) {
+                if (expanded) {
+                    if (editableField != null) {
+                        TemplateFieldInput(
+                            field = editableField,
+                            value = value,
+                            enabled = enabled,
+                            onChange = { onChange(editableField, it) },
+                        )
+                    } else {
+                        Text(
+                            block.summary.ifBlank {
+                                when (block.type.lowercase(Locale.getDefault())) {
+                                    "measurement_table" -> "Excel tablica se uređuje u bloku Excel / mjerenja."
+                                    "equipment_list" -> "Oprema se bira u bloku Mjerna i ispitna oprema."
+                                    "legal_list" -> "Propisi i pravilnici se biraju u bloku Pravilnici i propisi."
+                                    "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" ->
+                                        "Osobe i potpis se popunjavaju u bloku Osobe i potpis."
+                                    "sketch_upload", "image_upload" -> "Prilozi se dodaju kroz dokumentaciju radnog naloga."
+                                    else -> block.typeLabel
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                        )
+                    }
+                }
+                if (block.helpText.isNotBlank() && expanded) {
                     Text(
                         block.helpText,
                         style = MaterialTheme.typography.labelSmall,
@@ -7249,7 +7315,7 @@ private fun TemplateBlockRow(block: WorkOrderDocumentationTemplateBlock) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (block.options.isNotEmpty()) {
+                if (block.options.isNotEmpty() && expanded && editableField == null) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         block.options.take(5).forEach { option ->
                             AssistChip(
@@ -7268,8 +7334,32 @@ private fun TemplateBlockRow(block: WorkOrderDocumentationTemplateBlock) {
                         }
                     }
                 }
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    enabled = enabled || !block.editable,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text(if (expanded) "Sažmi blok" else "Raširi blok")
+                }
             }
         }
+    }
+}
+
+private fun findTemplateFieldForBlock(
+    template: WorkOrderDocumentationTemplate,
+    block: WorkOrderDocumentationTemplateBlock,
+): WorkOrderDocumentationField? {
+    if (!block.editable) return null
+    val blockKeys = listOf(block.id, block.key, block.tokenKey, block.label)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .map { it.lowercase(Locale.getDefault()) }
+        .toSet()
+    return template.fields.firstOrNull { field ->
+        listOf(field.id, field.key, field.tokenKey, field.label)
+            .map { it.trim().lowercase(Locale.getDefault()) }
+            .any { it.isNotBlank() && blockKeys.contains(it) }
     }
 }
 
@@ -7390,6 +7480,7 @@ private fun TemplateFieldInput(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(16.dp),
             )
+            "date" -> WorkOrderDatePickerField(label, value, onChange, enabled)
             else -> WorkOrderTextField(label, value, onChange, enabled)
         }
         if (field.helpText.isNotBlank()) {
