@@ -10609,11 +10609,28 @@ function getMobileDocumentTemplateFieldDefaultValue(field = {}) {
   return normalizeInputValue(candidate);
 }
 
-function resolveMobileTemplatePromptDefaultValue(field = {}, index = 0, placeholders = {}) {
+function normalizeMobileTemplatePromptInputValue(value, field = {}) {
+  const type = normalizeInputValue(field?.type || "text").toLowerCase();
+  if (type === "checkbox" || type === "toggle") {
+    return coerceMobileTemplateFieldDocumentValue(value, field) ? "true" : "false";
+  }
+  if (type === "date") {
+    return normalizeDateOnlyValue(value) || normalizeInputValue(value);
+  }
+  return normalizeInputValue(value);
+}
+
+function resolveMobileTemplatePromptDefaultValue(field = {}, index = 0, placeholders = {}, template = {}, common = {}) {
+  const submittedValue = getMobileDocumentTemplateSubmittedFieldValue(field, template, common, index);
+  if (submittedValue !== undefined && submittedValue !== null && typeof submittedValue !== "object") {
+    return normalizeMobileTemplatePromptInputValue(submittedValue, field);
+  }
+
   const explicitValue = getMobileDocumentTemplateFieldDefaultValue(field);
   if (explicitValue) {
     return explicitValue;
   }
+
   const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
   const candidateKeys = [
     field?.key,
@@ -10631,17 +10648,17 @@ function resolveMobileTemplatePromptDefaultValue(field = {}, index = 0, placehol
   for (const key of candidateKeys) {
     const directValue = placeholders?.[key];
     if (directValue !== undefined && directValue !== null && typeof directValue !== "object") {
-      return normalizeInputValue(directValue);
+      return normalizeMobileTemplatePromptInputValue(directValue, field);
     }
     const normalizedValue = normalizedLookup.get(normalizeMobileDocumentTemplateFieldTokenKey(key, ""));
     if (normalizedValue !== undefined && normalizedValue !== null && typeof normalizedValue !== "object") {
-      return normalizeInputValue(normalizedValue);
+      return normalizeMobileTemplatePromptInputValue(normalizedValue, field);
     }
   }
   return "";
 }
 
-function buildMobileDocumentTemplatePromptFields(template = {}, placeholders = {}) {
+function buildMobileDocumentTemplatePromptFields(template = {}, placeholders = {}, common = {}) {
   return (Array.isArray(template?.customFields) ? template.customFields : [])
     .map((field, index) => {
       if (!isMobileDocumentTemplatePromptField(field)) {
@@ -10662,7 +10679,7 @@ function buildMobileDocumentTemplatePromptFields(template = {}, placeholders = {
         type: normalizeInputValue(field?.type || "text").toLowerCase(),
         required: Boolean(field?.required || field?.isRequired),
         helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
-        defaultValue: resolveMobileTemplatePromptDefaultValue(field, index, placeholders),
+        defaultValue: resolveMobileTemplatePromptDefaultValue(field, index, placeholders, template, common),
         options: buildMobileDocumentTemplateFieldOptions(field),
       };
     })
@@ -10873,22 +10890,33 @@ function buildMobileDocumentTemplateMeasurementTables(template = {}, workOrder =
 function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
   const templateId = normalizeInputValue(template?.id);
   const workOrderNumber = normalizeInputValue(workOrder?.workOrderNumber || workOrder?.number);
-  if (!templateId || !workOrderNumber) {
+  if (!templateId) {
     return null;
   }
+  const companyId = normalizeInputValue(workOrder?.companyId);
+  const locationId = normalizeInputValue(workOrder?.locationId);
+  const objectId = normalizeInputValue(workOrder?.objectId || workOrder?.locationObjectId);
   const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
   return records
     .filter((record) => {
-      const recordWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(record, {});
       return (
         normalizeInputValue(record?.templateId) === templateId
-        && (!workOrder?.companyId || normalizeInputValue(record?.companyId) === normalizeInputValue(workOrder.companyId))
-        && (!workOrder?.locationId || normalizeInputValue(record?.locationId) === normalizeInputValue(workOrder.locationId))
-        && recordWorkOrderNumber
-        && recordWorkOrderNumber === workOrderNumber
+        && (!companyId || normalizeInputValue(record?.companyId) === companyId)
+        && (!locationId || normalizeInputValue(record?.locationId) === locationId)
+        && (!objectId || normalizeInputValue(record?.objectId) === objectId)
       );
     })
-    .sort((left, right) => String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || "")))
+    .sort((left, right) => {
+      const leftWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(left, {});
+      const rightWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(right, {});
+      const leftSameWorkOrder = workOrderNumber && leftWorkOrderNumber === workOrderNumber ? 1 : 0;
+      const rightSameWorkOrder = workOrderNumber && rightWorkOrderNumber === workOrderNumber ? 1 : 0;
+      if (leftSameWorkOrder !== rightSameWorkOrder) {
+        return rightSameWorkOrder - leftSameWorkOrder;
+      }
+      return String(right.updatedAt || right.inspectionDate || right.issuedDate || right.createdAt || "")
+        .localeCompare(String(left.updatedAt || left.inspectionDate || left.issuedDate || left.createdAt || ""));
+    })
     [0] || null;
 }
 
@@ -11171,7 +11199,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
           workOrder,
           buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
         )}.pdf`,
-        fields: buildMobileDocumentTemplatePromptFields(template, placeholders),
+        fields: buildMobileDocumentTemplatePromptFields(template, placeholders, common),
         fieldBlocks: buildMobileDocumentTemplateFieldBlocks(template, workOrder, service, scopedSnapshot, common, fieldSheets),
         inspectionTypeOptions: buildMobileDocumentTemplateInspectionTypeOptions(template),
         measurementTables: buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common),
