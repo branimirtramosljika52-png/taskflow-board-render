@@ -5685,63 +5685,52 @@ private fun WorkOrderDocumentCard(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
     ) {
-        Column(
-            modifier = Modifier.padding(13.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = RoundedCornerShape(14.dp), color = workOrderDocumentAccent(document).copy(alpha = 0.13f)) {
-                    Icon(
-                        imageVector = workOrderDocumentIcon(document),
-                        contentDescription = null,
-                        tint = workOrderDocumentAccent(document),
-                        modifier = Modifier
-                            .size(42.dp)
-                            .padding(10.dp),
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = document.displayName,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Black,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = listOf(
-                            document.documentCategory,
-                            formatFileSizeLabel(document.fileSize),
-                            formatDateLabel(document.createdAt),
-                        ).filter { it.isNotBlank() }.joinToString(" · "),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+            Surface(shape = RoundedCornerShape(12.dp), color = workOrderDocumentAccent(document).copy(alpha = 0.13f)) {
+                Icon(
+                    imageVector = workOrderDocumentIcon(document),
+                    contentDescription = null,
+                    tint = workOrderDocumentAccent(document),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .padding(9.dp),
+                )
             }
-
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onOpen, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
-                    Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Pregled")
-                }
-                OutlinedButton(onClick = onDownload, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
-                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Preuzmi")
-                }
-                OutlinedButton(onClick = onDelete, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
-                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(17.dp), tint = Color(0xFFDC2626))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Briši", color = Color(0xFFDC2626))
-                }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = document.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = listOf(
+                        document.documentCategory,
+                        formatFileSizeLabel(document.fileSize),
+                        formatDateLabel(document.createdAt),
+                    ).filter { it.isNotBlank() }.joinToString(" · "),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(onClick = onOpen, enabled = enabled) {
+                Icon(Icons.Rounded.Visibility, contentDescription = "Pregled", tint = MaterialTheme.colorScheme.primary)
+            }
+            IconButton(onClick = onDownload, enabled = enabled) {
+                Icon(Icons.Rounded.Download, contentDescription = "Preuzmi", tint = MaterialTheme.colorScheme.primary)
+            }
+            IconButton(onClick = onDelete, enabled = enabled) {
+                Icon(Icons.Rounded.Delete, contentDescription = "Briši", tint = Color(0xFFDC2626))
             }
         }
     }
@@ -5910,6 +5899,170 @@ private fun chooseInspectionTypeValue(
     return options.firstOrNull()?.first.orEmpty()
 }
 
+private data class DocumentationStandardValues(
+    val inspectionDate: String,
+    val issuedDate: String,
+    val inspectionType: String,
+    val testingLocation: String,
+    val outsideTemperature: String,
+    val relativeHumidity: String,
+    val airflowSpeed: String,
+    val weather: String,
+    val groundCondition: String,
+    val groundResistance: String,
+    val measurementEquipmentGroup: String,
+    val inspectorUserId: String,
+    val inspectorLabel: String,
+    val authorizationHolderUserId: String,
+    val authorizationHolderLabel: String,
+    val electricalInspectorUserId: String,
+    val electricalInspectorLabel: String,
+    val electricalAuthorizationHolderUserId: String,
+    val electricalAuthorizationHolderLabel: String,
+    val tipkaloInspectorUserId: String,
+    val tipkaloInspectorLabel: String,
+    val tipkaloAuthorizationHolderUserId: String,
+    val tipkaloAuthorizationHolderLabel: String,
+    val selectedEquipmentCount: Int,
+    val selectedLegalCount: Int,
+    val selectedRulebookCount: Int,
+)
+
+private fun WorkOrderDocumentationField.lookupText(): String =
+    normalizeTemplateFieldLookup(listOf(id, key, tokenKey, label, type).joinToString(" "))
+
+private fun WorkOrderDocumentationTemplateBlock.lookupText(): String =
+    normalizeTemplateFieldLookup(listOf(id, key, tokenKey, label, type, typeLabel, group).joinToString(" "))
+
+private fun standardDocumentationValueForLookup(lookup: String, standard: DocumentationStandardValues): String? =
+    when {
+        lookup.contains("datum ispitivanja") || lookup.contains("inspection date") || lookup.contains("date of inspection") ->
+            standard.inspectionDate
+        lookup.contains("datum izdavanja") || lookup.contains("issued date") || lookup.contains("date issued") ->
+            standard.issuedDate
+        lookup.contains("vrsta ispitivanja") || lookup.contains("inspection type") ->
+            standard.inspectionType
+        lookup.contains("mjesto ispitivanja") ||
+            lookup.contains("lokacija ispitivanja") ||
+            lookup.contains("testing location") ||
+            lookup.contains("inspection location") ->
+            standard.testingLocation
+        lookup.contains("temperatura") || lookup.contains("outside temperature") || lookup.contains("vanjska temperatura") ->
+            standard.outsideTemperature
+        lookup.contains("relativna vlaga") || lookup.contains("vlaga") || lookup.contains("humidity") ->
+            standard.relativeHumidity
+        lookup.contains("strujanje zraka") || lookup.contains("brzina zraka") || lookup.contains("airflow") || lookup.contains("air flow") ->
+            standard.airflowSpeed
+        lookup.contains("vrijeme") || lookup.contains("weather") ->
+            standard.weather
+        lookup.contains("stanje tla") || lookup.contains("ground condition") ->
+            standard.groundCondition
+        lookup.contains("otpor tla") || lookup.contains("ground resistance") ->
+            standard.groundResistance
+        lookup.contains("grupa mjerne") || lookup.contains("measurement equipment group") || lookup.contains("mjerna oprema grupa") ->
+            standard.measurementEquipmentGroup
+        lookup.contains("elektro") && (lookup.contains("nositelj") || lookup.contains("holder") || lookup.contains("ovlast")) ->
+            standard.electricalAuthorizationHolderLabel
+        lookup.contains("tipkalo") && (lookup.contains("nositelj") || lookup.contains("holder") || lookup.contains("ovlast")) ->
+            standard.tipkaloAuthorizationHolderLabel
+        lookup.contains("elektro") && (lookup.contains("ispitivac") || lookup.contains("ispitivao") || lookup.contains("inspector")) ->
+            standard.electricalInspectorLabel
+        lookup.contains("tipkalo") && (lookup.contains("ispitivac") || lookup.contains("ispitivao") || lookup.contains("inspector")) ->
+            standard.tipkaloInspectorLabel
+        lookup.contains("nositelj") || lookup.contains("authorization holder") || lookup.contains("holder") ->
+            standard.authorizationHolderLabel
+        lookup.contains("ispitivac") || lookup.contains("ispitivao") || lookup.contains("inspector") ->
+            standard.inspectorLabel
+        else -> null
+    }?.trim()
+
+private fun standardDocumentationValueForField(
+    field: WorkOrderDocumentationField,
+    standard: DocumentationStandardValues,
+): String? {
+    if (field.type.equals("qualified_inspectors", ignoreCase = true)) {
+        return standard.inspectorLabel.ifBlank { standard.inspectorUserId }
+    }
+    if (field.type.equals("inspector_signature", ignoreCase = true)) {
+        return standard.inspectorLabel.ifBlank { standard.inspectorUserId }
+    }
+    if (field.type.equals("authorization_holder_signature", ignoreCase = true) ||
+        field.type.equals("digital_signature", ignoreCase = true)
+    ) {
+        return standard.authorizationHolderLabel.ifBlank { standard.authorizationHolderUserId }
+    }
+    return standardDocumentationValueForLookup(field.lookupText(), standard)
+}
+
+private fun buildStandardTemplateFieldValues(
+    templates: List<WorkOrderDocumentationTemplate>,
+    standard: DocumentationStandardValues,
+): Map<String, String> =
+    buildMap {
+        templates.forEach { template ->
+            template.fields.forEach { field ->
+                val value = standardDocumentationValueForField(field, standard).orEmpty()
+                if (value.isNotBlank()) {
+                    put(templateFieldStateKey(template, field), value)
+                }
+            }
+        }
+    }
+
+private fun isDocumentationRequiredValueFilled(field: WorkOrderDocumentationField, value: String): Boolean {
+    val normalized = value.trim()
+    return when (field.type.lowercase(Locale.getDefault())) {
+        "checkbox", "toggle" -> normalized.equals("true", ignoreCase = true) ||
+            normalized == "1" ||
+            normalized.equals("da", ignoreCase = true)
+        else -> normalized.isNotBlank()
+    }
+}
+
+private fun findMissingRequiredDocumentationFields(
+    templates: List<WorkOrderDocumentationTemplate>,
+    values: Map<String, String>,
+    standard: DocumentationStandardValues,
+): List<String> {
+    val missing = mutableListOf<String>()
+    val seen = mutableSetOf<String>()
+
+    templates.forEach { template ->
+        template.fields.filter { it.required }.forEach { field ->
+            val value = values[templateFieldStateKey(template, field)]
+                ?: standardDocumentationValueForField(field, standard)
+                ?: ""
+            if (!isDocumentationRequiredValueFilled(field, value)) {
+                val label = listOf(template.serviceCode, field.label)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" - ")
+                    .ifBlank { field.label.ifBlank { "Obavezno polje" } }
+                if (seen.add(label)) missing.add(label)
+            }
+        }
+        template.fieldBlocks.filter { it.required }.forEach { block ->
+            val lookup = block.lookupText()
+            val standardValue = standardDocumentationValueForLookup(lookup, standard).orEmpty()
+            val complete = when (block.type.lowercase(Locale.getDefault())) {
+                "equipment_list" -> standard.selectedEquipmentCount > 0
+                "legal_list" -> standard.selectedLegalCount > 0 || standard.selectedRulebookCount > 0
+                "measurement_table" -> true
+                "chapter" -> true
+                else -> standardValue.isNotBlank()
+            }
+            if (!complete) {
+                val label = listOf(template.serviceCode, block.label)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" - ")
+                    .ifBlank { block.label.ifBlank { "Obavezni blok" } }
+                if (seen.add(label)) missing.add(label)
+            }
+        }
+    }
+
+    return missing
+}
+
 @Composable
 private fun WorkOrderDocumentationWizardDialog(
     workOrder: WorkOrder,
@@ -5931,6 +6084,7 @@ private fun WorkOrderDocumentationWizardDialog(
             user.id to user.label.ifBlank { user.fullName.ifBlank { user.email } }
         }
     }
+    val userLabelById = remember(userOptions) { userOptions.toMap() }
     val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
         buildDocumentationServiceFlowItems(context.templates, workOrder)
     }
@@ -6141,6 +6295,44 @@ private fun WorkOrderDocumentationWizardDialog(
     var newObjectName by remember(workOrder.id, availableLocationObjects.size) {
         mutableStateOf("Objekt ${availableLocationObjects.size + 1}")
     }
+    var requiredWarning by remember(workOrder.id) { mutableStateOf("") }
+    val standardValues = DocumentationStandardValues(
+        inspectionDate = inspectionDate.trim(),
+        issuedDate = issuedDate.trim(),
+        inspectionType = inspectionType.trim(),
+        testingLocation = testingLocation.trim(),
+        outsideTemperature = outsideTemperature.trim(),
+        relativeHumidity = relativeHumidity.trim(),
+        airflowSpeed = airflowSpeed.trim(),
+        weather = weather.trim(),
+        groundCondition = groundCondition.trim(),
+        groundResistance = groundResistance.trim(),
+        measurementEquipmentGroup = measurementEquipmentGroup.trim(),
+        inspectorUserId = inspectorUserId,
+        inspectorLabel = userLabelById[inspectorUserId].orEmpty().takeIf { inspectorUserId.isNotBlank() }.orEmpty(),
+        authorizationHolderUserId = authorizationHolderUserId,
+        authorizationHolderLabel = userLabelById[authorizationHolderUserId].orEmpty().takeIf { authorizationHolderUserId.isNotBlank() }.orEmpty(),
+        electricalInspectorUserId = electricalInspectorUserId,
+        electricalInspectorLabel = userLabelById[electricalInspectorUserId].orEmpty().takeIf { electricalInspectorUserId.isNotBlank() }.orEmpty(),
+        electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+        electricalAuthorizationHolderLabel = userLabelById[electricalAuthorizationHolderUserId].orEmpty().takeIf { electricalAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
+        tipkaloInspectorUserId = tipkaloInspectorUserId,
+        tipkaloInspectorLabel = userLabelById[tipkaloInspectorUserId].orEmpty().takeIf { tipkaloInspectorUserId.isNotBlank() }.orEmpty(),
+        tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+        tipkaloAuthorizationHolderLabel = userLabelById[tipkaloAuthorizationHolderUserId].orEmpty().takeIf { tipkaloAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
+        selectedEquipmentCount = selectedEquipmentIds.size,
+        selectedLegalCount = selectedLegalFrameworkIds.size,
+        selectedRulebookCount = selectedRulebookIds.size,
+    )
+    val standardTemplateFieldValues = remember(allPromptTemplates, standardValues) {
+        buildStandardTemplateFieldValues(allPromptTemplates, standardValues)
+    }
+    val effectiveTemplateFieldValues = remember(templateFieldValues, standardTemplateFieldValues) {
+        templateFieldValues + standardTemplateFieldValues
+    }
+    val missingRequiredFields = remember(allPromptTemplates, effectiveTemplateFieldValues, standardValues) {
+        findMissingRequiredDocumentationFields(allPromptTemplates, effectiveTemplateFieldValues, standardValues)
+    }
     val formLoading = isLoading || contextLoading
 
     if (newObjectDialogOpen) {
@@ -6218,6 +6410,9 @@ private fun WorkOrderDocumentationWizardDialog(
                         onSelectService = { selectedFlowService = it },
                     )
                 }
+                if (requiredWarning.isNotBlank()) {
+                    MessageCard(text = requiredWarning, isError = true)
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -6227,6 +6422,48 @@ private fun WorkOrderDocumentationWizardDialog(
                 ) {
 
                 if (!summaryFlowSelected) {
+                DocumentationCoreBasicsSection(
+                    documentNumber = currentDocumentNumber,
+                    serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                    inspectionDate = inspectionDate,
+                    onInspectionDateChange = { inspectionDate = it },
+                    issuedDate = issuedDate,
+                    onIssuedDateChange = { issuedDate = it },
+                    inspectionType = inspectionType,
+                    inspectionOptions = inspectionOptions,
+                    onInspectionTypeChange = { inspectionType = it },
+                    testingLocation = testingLocation,
+                    onTestingLocationChange = { testingLocation = it },
+                    inspectorUserId = inspectorUserId,
+                    authorizationHolderUserId = authorizationHolderUserId,
+                    electricalInspectorUserId = electricalInspectorUserId,
+                    electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+                    tipkaloInspectorUserId = tipkaloInspectorUserId,
+                    tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                    userOptions = userOptions,
+                    onInspectorUserIdChange = { inspectorUserId = it },
+                    onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
+                    onElectricalInspectorUserIdChange = { electricalInspectorUserId = it },
+                    onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
+                    onTipkaloInspectorUserIdChange = { tipkaloInspectorUserId = it },
+                    onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
+                    measurementEquipmentGroup = measurementEquipmentGroup,
+                    measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
+                    onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
+                    outsideTemperature = outsideTemperature,
+                    relativeHumidity = relativeHumidity,
+                    airflowSpeed = airflowSpeed,
+                    weather = weather,
+                    groundCondition = groundCondition,
+                    groundResistance = groundResistance,
+                    onOutsideTemperatureChange = { outsideTemperature = it },
+                    onRelativeHumidityChange = { relativeHumidity = it },
+                    onAirflowSpeedChange = { airflowSpeed = it },
+                    onWeatherChange = { weather = it },
+                    onGroundConditionChange = { groundCondition = it },
+                    onGroundResistanceChange = { groundResistance = it },
+                    enabled = !formLoading,
+                )
                 WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
                     WorkOrderSelectField(
                         label = "Objekt / oprema",
@@ -6256,28 +6493,6 @@ private fun WorkOrderDocumentationWizardDialog(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
                 }
-                if (blockTemplates.isEmpty()) {
-                    WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
-                        DocumentationNumberPreview(
-                            documentNumber = currentDocumentNumber,
-                            serviceName = selectedFlowItem?.serviceName ?: inspectionType,
-                        )
-                        WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
-                        WorkOrderDatePickerField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
-                        WorkOrderSelectField(
-                            label = "Vrsta ispitivanja",
-                            value = inspectionType,
-                            valueLabel = inspectionType.ifBlank {
-                                if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
-                            },
-                            options = inspectionOptions,
-                            enabled = !formLoading,
-                            onSelect = { inspectionType = it },
-                        )
-                        WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
-                    }
-                }
-
                 val templateControls = DocumentationTemplateStandardControls(
                     documentNumber = currentDocumentNumber,
                     serviceName = selectedFlowItem?.serviceName ?: inspectionType,
@@ -6327,7 +6542,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     else -> blockTemplates.forEach { template ->
                         TemplateBlockOverview(
                             template = template,
-                            values = templateFieldValues,
+                            values = effectiveTemplateFieldValues,
                             standardControls = templateControls,
                             onChange = { field, value ->
                                 templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
@@ -6398,7 +6613,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             else -> promptTemplates.forEach { template ->
                                 TemplateFieldGroup(
                                     template = template,
-                                    values = templateFieldValues,
+                                    values = effectiveTemplateFieldValues,
                                     enabled = !formLoading,
                                     onChange = { field, value ->
                                         templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
@@ -6443,57 +6658,6 @@ private fun WorkOrderDocumentationWizardDialog(
 
                 }
                 if (summaryFlowSelected) {
-                WizardSection(title = "Osobe i potpis", icon = Icons.Rounded.Fingerprint) {
-                    WorkOrderSelectField(
-                        label = "Ispitivao",
-                        value = inspectorUserId,
-                        valueLabel = userOptions.firstOrNull { it.first == inspectorUserId }?.second.orEmpty(),
-                        options = userOptions,
-                        enabled = !formLoading,
-                        onSelect = { inspectorUserId = it },
-                    )
-                    WorkOrderSelectField(
-                        label = "Nositelj ovlaštenja",
-                        value = authorizationHolderUserId,
-                        valueLabel = userOptions.firstOrNull { it.first == authorizationHolderUserId }?.second.orEmpty(),
-                        options = userOptions,
-                        enabled = !formLoading,
-                        onSelect = { authorizationHolderUserId = it },
-                    )
-                    WorkOrderSelectField(
-                        label = "Elektro ispitivač",
-                        value = electricalInspectorUserId,
-                        valueLabel = userOptions.firstOrNull { it.first == electricalInspectorUserId }?.second.orEmpty(),
-                        options = userOptions,
-                        enabled = !formLoading,
-                        onSelect = { electricalInspectorUserId = it },
-                    )
-                    WorkOrderSelectField(
-                        label = "Elektro nositelj ovlaštenja",
-                        value = electricalAuthorizationHolderUserId,
-                        valueLabel = userOptions.firstOrNull { it.first == electricalAuthorizationHolderUserId }?.second.orEmpty(),
-                        options = userOptions,
-                        enabled = !formLoading,
-                        onSelect = { electricalAuthorizationHolderUserId = it },
-                    )
-                    WorkOrderSelectField(
-                        label = "Tipkalo / isklop ispitivač",
-                        value = tipkaloInspectorUserId,
-                        valueLabel = userOptions.firstOrNull { it.first == tipkaloInspectorUserId }?.second.orEmpty(),
-                        options = userOptions,
-                        enabled = !formLoading,
-                        onSelect = { tipkaloInspectorUserId = it },
-                    )
-                    WorkOrderSelectField(
-                        label = "Tipkalo / isklop nositelj",
-                        value = tipkaloAuthorizationHolderUserId,
-                        valueLabel = userOptions.firstOrNull { it.first == tipkaloAuthorizationHolderUserId }?.second.orEmpty(),
-                        options = userOptions,
-                        enabled = !formLoading,
-                        onSelect = { tipkaloAuthorizationHolderUserId = it },
-                    )
-                }
-
                 WizardSection(title = "Rokovi i mjerenja", icon = Icons.Rounded.CalendarMonth) {
                     NumberTextField("Vrijedi mjeseci", validityMonths, { validityMonths = it }, !formLoading)
                     NumberTextField("Panik rasvjeta vrijedi mjeseci", electricalValidityMonths, { electricalValidityMonths = it }, !formLoading)
@@ -6525,7 +6689,13 @@ private fun WorkOrderDocumentationWizardDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val templatePayload = buildTemplateFieldPayload(allPromptTemplates, templateFieldValues)
+                    if (missingRequiredFields.isNotEmpty()) {
+                        requiredWarning = "Popuni obavezno: ${missingRequiredFields.take(5).joinToString(", ")}${if (missingRequiredFields.size > 5) "..." else ""}."
+                        selectedFlowService = serviceFlowItems.firstOrNull()?.serviceKey.orEmpty()
+                        return@Button
+                    }
+                    requiredWarning = ""
+                    val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
                     val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
                     val draft = WorkOrderDocumentationDraft(
                         objectId = selectedObject?.id.orEmpty(),
@@ -8067,7 +8237,11 @@ private fun TemplateBlockSectionCard(
                     }
                 }
                 if (includeBasics) {
-                    TemplateBasicControls(standardControls)
+                    Text(
+                        "Osnovni podaci uređuju se u glavnom bloku Osnovno na početku izrade.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
                 }
                 if (includeEquipment) {
                     TemplateEquipmentControls(standardControls)
@@ -8117,6 +8291,133 @@ private fun TemplateBlockSectionCard(
 }
 
 @Composable
+private fun DocumentationCoreBasicsSection(
+    documentNumber: String,
+    serviceName: String,
+    inspectionDate: String,
+    onInspectionDateChange: (String) -> Unit,
+    issuedDate: String,
+    onIssuedDateChange: (String) -> Unit,
+    inspectionType: String,
+    inspectionOptions: List<Pair<String, String>>,
+    onInspectionTypeChange: (String) -> Unit,
+    testingLocation: String,
+    onTestingLocationChange: (String) -> Unit,
+    inspectorUserId: String,
+    authorizationHolderUserId: String,
+    electricalInspectorUserId: String,
+    electricalAuthorizationHolderUserId: String,
+    tipkaloInspectorUserId: String,
+    tipkaloAuthorizationHolderUserId: String,
+    userOptions: List<Pair<String, String>>,
+    onInspectorUserIdChange: (String) -> Unit,
+    onAuthorizationHolderUserIdChange: (String) -> Unit,
+    onElectricalInspectorUserIdChange: (String) -> Unit,
+    onElectricalAuthorizationHolderUserIdChange: (String) -> Unit,
+    onTipkaloInspectorUserIdChange: (String) -> Unit,
+    onTipkaloAuthorizationHolderUserIdChange: (String) -> Unit,
+    measurementEquipmentGroup: String,
+    measurementEquipmentGroupOptions: List<Pair<String, String>>,
+    onMeasurementEquipmentGroupChange: (String) -> Unit,
+    outsideTemperature: String,
+    relativeHumidity: String,
+    airflowSpeed: String,
+    weather: String,
+    groundCondition: String,
+    groundResistance: String,
+    onOutsideTemperatureChange: (String) -> Unit,
+    onRelativeHumidityChange: (String) -> Unit,
+    onAirflowSpeedChange: (String) -> Unit,
+    onWeatherChange: (String) -> Unit,
+    onGroundConditionChange: (String) -> Unit,
+    onGroundResistanceChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    WizardSection(title = "Osnovno", icon = Icons.Rounded.Description) {
+        DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
+        WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
+        WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
+        WorkOrderSelectField(
+            label = "Vrsta ispitivanja",
+            value = inspectionType,
+            valueLabel = inspectionType.ifBlank {
+                if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
+            },
+            options = inspectionOptions,
+            enabled = enabled,
+            onSelect = onInspectionTypeChange,
+        )
+        WorkOrderTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
+
+        Text("Ispitivači i ovlaštenici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+        WorkOrderSelectField(
+            label = "Ispitivao",
+            value = inspectorUserId,
+            valueLabel = userOptions.firstOrNull { it.first == inspectorUserId }?.second.orEmpty(),
+            options = userOptions,
+            enabled = enabled,
+            onSelect = onInspectorUserIdChange,
+        )
+        WorkOrderSelectField(
+            label = "Nositelj ovlaštenja",
+            value = authorizationHolderUserId,
+            valueLabel = userOptions.firstOrNull { it.first == authorizationHolderUserId }?.second.orEmpty(),
+            options = userOptions,
+            enabled = enabled,
+            onSelect = onAuthorizationHolderUserIdChange,
+        )
+        WorkOrderSelectField(
+            label = "Elektro ispitivač",
+            value = electricalInspectorUserId,
+            valueLabel = userOptions.firstOrNull { it.first == electricalInspectorUserId }?.second.orEmpty(),
+            options = userOptions,
+            enabled = enabled,
+            onSelect = onElectricalInspectorUserIdChange,
+        )
+        WorkOrderSelectField(
+            label = "Elektro nositelj ovlaštenja",
+            value = electricalAuthorizationHolderUserId,
+            valueLabel = userOptions.firstOrNull { it.first == electricalAuthorizationHolderUserId }?.second.orEmpty(),
+            options = userOptions,
+            enabled = enabled,
+            onSelect = onElectricalAuthorizationHolderUserIdChange,
+        )
+        WorkOrderSelectField(
+            label = "Tipkalo / isklop ispitivač",
+            value = tipkaloInspectorUserId,
+            valueLabel = userOptions.firstOrNull { it.first == tipkaloInspectorUserId }?.second.orEmpty(),
+            options = userOptions,
+            enabled = enabled,
+            onSelect = onTipkaloInspectorUserIdChange,
+        )
+        WorkOrderSelectField(
+            label = "Tipkalo / isklop nositelj",
+            value = tipkaloAuthorizationHolderUserId,
+            valueLabel = userOptions.firstOrNull { it.first == tipkaloAuthorizationHolderUserId }?.second.orEmpty(),
+            options = userOptions,
+            enabled = enabled,
+            onSelect = onTipkaloAuthorizationHolderUserIdChange,
+        )
+
+        Text("Mjerna oprema i uvjeti", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+        WorkOrderSelectField(
+            label = "Grupa mjerne opreme",
+            value = measurementEquipmentGroup,
+            valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
+            options = measurementEquipmentGroupOptions,
+            enabled = enabled,
+            onSelect = onMeasurementEquipmentGroupChange,
+        )
+        WorkOrderTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
+        WorkOrderTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
+        WorkOrderTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
+        WorkOrderTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
+        WorkOrderTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
+        WorkOrderTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
+    }
+}
+
+@Composable
 private fun TemplateBasicControls(controls: DocumentationTemplateStandardControls) {
     DocumentationNumberPreview(
         documentNumber = controls.documentNumber,
@@ -8154,14 +8455,6 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
 
 @Composable
 private fun TemplateEquipmentControls(controls: DocumentationTemplateStandardControls) {
-    WorkOrderSelectField(
-        label = "Grupa mjerne opreme",
-        value = controls.measurementEquipmentGroup,
-        valueLabel = controls.measurementEquipmentGroup.ifBlank { "Bez odabira" },
-        options = controls.measurementEquipmentGroupOptions,
-        enabled = controls.enabled,
-        onSelect = controls.onMeasurementEquipmentGroupChange,
-    )
     DocumentationMultiSelectField(
         label = "Uređaji za zapisnik",
         options = controls.measurementEquipmentOptions,
