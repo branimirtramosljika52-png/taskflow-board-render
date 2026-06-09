@@ -72,6 +72,15 @@ import {
   doesAbsenceTypeRequireApproval,
   normalizeWorkOrderMeasurementSheet,
 } from "./src/safetyModel.js";
+import {
+  evaluateMeasurementFormula,
+  isMeasurementFormula,
+  parseMeasurementCellReference,
+} from "./src/measurementFormula.js";
+import {
+  formatMeasurementComputedDisplayValue,
+  formatMeasurementLiteralDisplayValue,
+} from "./src/measurementFormatting.js";
 
 const port = Number(process.env.PORT || 3000);
 const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
@@ -79,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.29.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.30.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9880,6 +9889,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     inspectionDate: normalizeDateOnlyValue(source.inspectionDate) || todayIso,
     issuedDate: normalizeDateOnlyValue(source.issuedDate) || normalizeDateOnlyValue(source.inspectionDate) || todayIso,
     issuedPlace: normalizeInputValue(source.issuedPlace),
+    testingLocation: normalizeInputValue(source.testingLocation || source.inspectionPlace || source.inspectionLocation),
     note: normalizeInputValue(source.note),
     inspectionType: normalizeInputValue(source.inspectionType),
     outsideTemperature: normalizeInputValue(source.outsideTemperature),
@@ -10176,7 +10186,224 @@ function getMobileDocumentTemplateFieldTokenKey(field = {}, index = 0) {
   );
 }
 
-function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {}, index = 0) {
+function getMobileMeasurementSheetFormulaLookupKey(value = "") {
+  return normalizeInputValue(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getMobileMeasurementFormulaReferenceSheetName(reference = "") {
+  if (reference && typeof reference === "object" && !Array.isArray(reference)) {
+    return normalizeInputValue(reference.sheetName || reference.sheet);
+  }
+  return "";
+}
+
+function buildMobileMeasurementSheetFormulaEntries(template = {}, fieldSheets = {}) {
+  const entries = [];
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
+    if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
+      return;
+    }
+    const recordKey = normalizeInputValue(field?.key || field?.id);
+    const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+    const sheet = recordKey ? normalizeWorkOrderMeasurementSheet(fieldSheets[recordKey]) : null;
+    if (!sheet) {
+      return;
+    }
+    entries.push({
+      key: recordKey || tokenKey || `measurement-${index + 1}`,
+      sheet,
+      aliases: [
+        recordKey,
+        tokenKey,
+        field?.id,
+        field?.key,
+        field?.label,
+        field?.wordLabel,
+      ].map(normalizeInputValue).filter(Boolean),
+    });
+  });
+  const lookup = new Map();
+  entries.forEach((entry) => {
+    entry.aliases.forEach((alias) => {
+      const lookupKey = getMobileMeasurementSheetFormulaLookupKey(alias);
+      if (lookupKey && !lookup.has(lookupKey)) {
+        lookup.set(lookupKey, entry);
+      }
+    });
+  });
+  return { entries, lookup };
+}
+
+function parseMobileMeasurementNumber(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const normalized = String(value ?? "").trim().replace(",", ".");
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getMobileMeasurementAverageValue(row = {}) {
+  const preferredKeys = ["reading1", "reading2", "reading3"];
+  const preferredValues = preferredKeys
+    .map((key) => parseMobileMeasurementNumber(row?.cells?.[key]))
+    .filter((value) => value !== null);
+  const values = preferredValues.length > 0
+    ? preferredValues
+    : Object.entries(row?.cells ?? {})
+      .filter(([key]) => !String(key || "").toLowerCase().includes("average"))
+      .map(([, value]) => parseMobileMeasurementNumber(value))
+      .filter((value) => value !== null)
+      .slice(0, 3);
+  if (values.length === 0) {
+    return "";
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function resolveMobileMeasurementFormulaSheetEntry(reference = "", formulaContext = null, currentEntry = null) {
+  const sheetName = getMobileMeasurementFormulaReferenceSheetName(reference);
+  if (!sheetName) {
+    return currentEntry || formulaContext?.current || null;
+  }
+  const lookupKey = getMobileMeasurementSheetFormulaLookupKey(sheetName);
+  return formulaContext?.lookup?.get(lookupKey) || currentEntry || formulaContext?.current || null;
+}
+
+function getMobileMeasurementCellComputedRawValue(
+  sheet = null,
+  rowIndex = 0,
+  columnIndex = 0,
+  stack = new Set(),
+  formulaContext = null,
+  sheetEntry = null,
+) {
+  const currentSheet = sheet || sheetEntry?.sheet || null;
+  const currentEntry = sheetEntry || formulaContext?.current || { key: "current", sheet: currentSheet };
+  const row = currentSheet?.rows?.[rowIndex];
+  const column = currentSheet?.columns?.[columnIndex];
+  if (!row || !column) {
+    return "";
+  }
+
+  if (column.computed === "average") {
+    return getMobileMeasurementAverageValue(row);
+  }
+
+  const rawValue = row.cells?.[column.id] ?? "";
+  if (!isMeasurementFormula(rawValue)) {
+    return rawValue;
+  }
+
+  const cellKey = `${currentEntry?.key || "current"}:${rowIndex}:${columnIndex}`;
+  if (stack.has(cellKey)) {
+    throw new Error("Kruzna referenca u formuli.");
+  }
+  stack.add(cellKey);
+
+  try {
+    return evaluateMeasurementFormula(rawValue, {
+      resolveCellReference(reference) {
+        const targetEntry = resolveMobileMeasurementFormulaSheetEntry(reference, formulaContext, currentEntry);
+        const targetSheet = targetEntry?.sheet || currentSheet;
+        const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } =
+          parseMeasurementCellReference(reference);
+        if (
+          referenceRowIndex < 0
+          || referenceColumnIndex < 0
+          || referenceRowIndex >= (targetSheet?.rows?.length || 0)
+          || referenceColumnIndex >= (targetSheet?.columns?.length || 0)
+        ) {
+          throw new Error("Referenca nije valjana.");
+        }
+        return getMobileMeasurementCellComputedRawValue(
+          targetSheet,
+          referenceRowIndex,
+          referenceColumnIndex,
+          stack,
+          formulaContext,
+          targetEntry || currentEntry,
+        );
+      },
+      resolveRange(startReference, endReference) {
+        const startEntry = resolveMobileMeasurementFormulaSheetEntry(startReference, formulaContext, currentEntry);
+        const endEntry = resolveMobileMeasurementFormulaSheetEntry(endReference, formulaContext, currentEntry);
+        const targetEntry = startEntry || currentEntry;
+        if ((startEntry?.key || currentEntry?.key) !== (endEntry?.key || currentEntry?.key)) {
+          throw new Error("Raspon kroz vise Excel tablica nije podrzan.");
+        }
+        const targetSheet = targetEntry?.sheet || currentSheet;
+        const start = parseMeasurementCellReference(startReference);
+        const end = parseMeasurementCellReference(endReference);
+        const startRowIndex = Math.max(0, Math.min(start.rowIndex, end.rowIndex));
+        const endRowIndex = Math.max(start.rowIndex, end.rowIndex);
+        const startColumnIndex = Math.max(0, Math.min(start.columnIndex, end.columnIndex));
+        const endColumnIndex = Math.max(start.columnIndex, end.columnIndex);
+        const matrix = [];
+        for (let referenceRowIndex = startRowIndex; referenceRowIndex <= endRowIndex; referenceRowIndex += 1) {
+          const rowValues = [];
+          for (let referenceColumnIndex = startColumnIndex; referenceColumnIndex <= endColumnIndex; referenceColumnIndex += 1) {
+            if (
+              referenceRowIndex < 0
+              || referenceColumnIndex < 0
+              || referenceRowIndex >= (targetSheet?.rows?.length || 0)
+              || referenceColumnIndex >= (targetSheet?.columns?.length || 0)
+            ) {
+              rowValues.push("");
+              continue;
+            }
+            rowValues.push(getMobileMeasurementCellComputedRawValue(
+              targetSheet,
+              referenceRowIndex,
+              referenceColumnIndex,
+              stack,
+              formulaContext,
+              targetEntry,
+            ));
+          }
+          matrix.push(rowValues);
+        }
+        return matrix;
+      },
+    });
+  } finally {
+    stack.delete(cellKey);
+  }
+}
+
+function getMobileMeasurementCellDisplayText(sheet = null, rowIndex = 0, columnIndex = 0, formulaContext = null, sheetEntry = null) {
+  const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
+  const row = normalizedSheet?.rows?.[rowIndex];
+  const column = normalizedSheet?.columns?.[columnIndex];
+  if (!row || !column) {
+    return "";
+  }
+  const rawValue = row.cells?.[column.id] ?? "";
+  const format = row?.formats?.[column.id] && typeof row.formats[column.id] === "object"
+    ? row.formats[column.id]
+    : {};
+  if (column.computed === "average" || isMeasurementFormula(rawValue)) {
+    try {
+      return formatMeasurementComputedDisplayValue(
+        getMobileMeasurementCellComputedRawValue(normalizedSheet, rowIndex, columnIndex, new Set(), formulaContext, sheetEntry),
+        format,
+      );
+    } catch {
+      return "#ERROR";
+    }
+  }
+  return formatMeasurementLiteralDisplayValue(rawValue, format);
+}
+
+function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {}, index = 0, formulaContext = null, sheetEntry = null) {
   const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
   const fallbackColumns = Array.isArray(field?.columns) && field.columns.length > 0
     ? field.columns
@@ -10231,8 +10458,8 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
   const rows = sourceRows.slice(0, 120).map((row, rowIndex) => ({
     id: normalizeInputValue(row?.id) || `row-${rowIndex + 1}`,
     header: headerRows.includes(normalizeInputValue(row?.id)),
-    cells: columns.map((column) => ({
-      text: normalizeInputValue(row?.cells?.[column.id]),
+    cells: columns.map((column, columnIndex) => ({
+      text: getMobileMeasurementCellDisplayText(normalizedSheet, rowIndex, columnIndex, formulaContext, sheetEntry),
       format: row?.formats?.[column.id] && typeof row.formats[column.id] === "object"
         ? row.formats[column.id]
         : {},
@@ -10256,6 +10483,7 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
 
 function buildMobileDocumentTemplateMeasurementPlaceholders(template = {}, fieldSheets = {}) {
   const placeholders = {};
+  const formulaContextBase = buildMobileMeasurementSheetFormulaEntries(template, fieldSheets);
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
     if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
       return;
@@ -10263,7 +10491,15 @@ function buildMobileDocumentTemplateMeasurementPlaceholders(template = {}, field
     const recordKey = normalizeInputValue(field?.key || field?.id);
     const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
     const sheet = recordKey ? fieldSheets[recordKey] : null;
-    const placeholder = buildMobileMeasurementTablePlaceholderFromSheet(sheet, field, index);
+    const sheetEntry = formulaContextBase.entries.find((entry) => entry.key === recordKey)
+      || { key: recordKey || tokenKey || `measurement-${index + 1}`, sheet: normalizeWorkOrderMeasurementSheet(sheet) };
+    const placeholder = buildMobileMeasurementTablePlaceholderFromSheet(
+      sheet,
+      field,
+      index,
+      { ...formulaContextBase, current: sheetEntry },
+      sheetEntry,
+    );
     [recordKey, tokenKey, normalizeInputValue(field?.id)]
       .filter(Boolean)
       .forEach((key) => {
@@ -10441,7 +10677,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   const templates = [];
   const seenTemplateIds = new Set();
 
-  services.forEach((service) => {
+  services.forEach((service, serviceIndex) => {
     getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
       const template = templateById.get(String(templateId));
       if (!template || String(template.status || "active").toLowerCase() === "archived") {
@@ -10562,6 +10798,60 @@ function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {
   return { placeholders, fieldValues };
 }
 
+function resolveMobileWorkOrderTestingLocation(workOrder = {}, common = {}) {
+  return normalizeInputValue(
+    common.testingLocation
+    || workOrder.testingLocation
+    || workOrder.inspectionLocation
+    || workOrder.inspectionPlace
+    || [
+      workOrder.locationName,
+      workOrder.locationAddressSnapshot && workOrder.locationAddressSnapshot !== workOrder.locationName
+        ? workOrder.locationAddressSnapshot
+        : "",
+      workOrder.locationAddress,
+      workOrder.address,
+      workOrder.region,
+    ].map(normalizeInputValue).filter(Boolean).join(", "),
+  );
+}
+
+function getMobileDocumentTemplateServiceCode(service = {}, fallbackIndex = 0) {
+  const raw = normalizeInputValue(
+    service.serviceCode
+    || service.code
+    || service.shortLabel
+    || service.name
+    || service.serviceName
+    || `USLUGA-${fallbackIndex + 1}`,
+  );
+  const slug = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || `USLUGA-${fallbackIndex + 1}`;
+}
+
+function buildMobileDocumentTemplateDocumentNumber(service = {}, workOrder = {}, template = {}, index = 0) {
+  const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number);
+  const serviceCode = getMobileDocumentTemplateServiceCode(service, index)
+    || normalizeMobileDocumentTemplateFieldTokenKey(template?.title || template?.documentType || "", "");
+  return [workOrderNumber, serviceCode].filter(Boolean).join("-");
+}
+
+function buildMobileDocumentTemplateFileBaseName(template = {}, workOrder = {}, documentNumber = "") {
+  const baseName = normalizeInputValue(documentNumber);
+  if (baseName) {
+    return baseName;
+  }
+  const fallbackName = [
+    normalizeInputValue(template.outputFileName || template.title || template.documentType || "zapisnik"),
+    normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+  ].filter(Boolean).join(" ") || "zapisnik";
+  return fallbackName.replace(/\.(pdf|docx?|dotx|html?)$/i, "");
+}
+
 function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, scopedSnapshot = {}, common = {}) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const inspectionDateIso = normalizeDateOnlyValue(common.inspectionDate) || todayIso;
@@ -10582,12 +10872,20 @@ function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, 
   const serviceCode = normalizeInputValue(service?.serviceCode || service?.code || service?.shortCode);
   const serviceLabel = serviceName || serviceCode || normalizeInputValue(workOrder.serviceLine);
   const inspectionType = common.inspectionType || serviceLabel;
+  const testingLocation = resolveMobileWorkOrderTestingLocation(workOrder, common);
 
   return {
     ...basePlaceholders,
     WORK_ORDER_INSPECTION_DATE: inspectionDateLabel,
     DATUM_ISPITIVANJA: inspectionDateLabel,
     INSPECTION_DATE: inspectionDateLabel,
+    WORK_ORDER_TESTING_LOCATION: testingLocation,
+    TESTING_LOCATION: testingLocation,
+    WORK_ORDER_INSPECTION_LOCATION: testingLocation,
+    INSPECTION_LOCATION: testingLocation,
+    MJESTO_ISPITIVANJA: testingLocation,
+    LOKACIJA_ISPITIVANJA: testingLocation,
+    MJESTO_PREGLEDA: testingLocation,
     WORK_ORDER_ISSUED_DATE: issuedDateLabel,
     DATUM_IZDAVANJA: issuedDateLabel,
     ISSUED_DATE: issuedDateLabel,
@@ -10670,6 +10968,19 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         ...customFieldPayload.placeholders,
         ...measurementPlaceholders,
       };
+      const documentNumber = buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex);
+      const baseFileName = buildMobileDocumentTemplateFileBaseName(template, workOrder, documentNumber);
+      const outputFileName = `${baseFileName}.pdf`;
+      Object.assign(placeholders, {
+        WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
+        DOCUMENT_NUMBER: documentNumber,
+        BROJ_DOKUMENTA: documentNumber,
+        BROJ_ZAPISNIKA: documentNumber,
+        ZAPISNIK_BROJ: documentNumber,
+        WORK_ORDER_DOCUMENT_NAME: outputFileName,
+        DOCUMENT_NAME: outputFileName,
+        NAZIV_DOKUMENTA: outputFileName,
+      });
       const validityMonths = resolveMobileServiceValidityMonths(service, scopedSnapshot, common);
       const validUntilIso = addMonthsToMobileDate(common.inspectionDate, validityMonths);
       const trackedDates = validUntilIso
@@ -10688,6 +10999,9 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       entries.push({
         templateId: String(template.id),
         workOrderId: String(workOrder.id),
+        fileName: baseFileName,
+        baseFileName,
+        documentNumber,
         templateTitle: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
         workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
         companyName: normalizeInputValue(workOrder.companyName),
@@ -10700,6 +11014,8 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         documentRecord: {
           templateTitle: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
           workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+          documentNumber,
+          fileName: outputFileName,
           inspectionDate: common.inspectionDate,
           issuedDate: common.issuedDate,
           expirationDate: validUntilIso,

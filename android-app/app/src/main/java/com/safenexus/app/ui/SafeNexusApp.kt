@@ -197,6 +197,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.ByteArrayOutputStream
+import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -5306,6 +5307,7 @@ private fun WorkOrderDocumentationWizardDialog(
     var inspectionDate by remember(workOrder.id) { mutableStateOf(today) }
     var issuedDate by remember(workOrder.id) { mutableStateOf(today) }
     var issuedPlace by remember(workOrder.id) { mutableStateOf("") }
+    var testingLocation by remember(workOrder.id) { mutableStateOf(workOrder.locationName) }
     var note by remember(workOrder.id) { mutableStateOf("") }
     var inspectionType by remember(workOrder.id) { mutableStateOf(defaultInspectionType) }
     var outsideTemperature by remember(workOrder.id) { mutableStateOf("") }
@@ -5379,6 +5381,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     WorkOrderTextField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
                     WorkOrderTextField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
                     WorkOrderTextField("Mjesto izdavanja", issuedPlace, { issuedPlace = it }, !formLoading)
+                    WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
                     WorkOrderSelectField(
                         label = "Vrsta ispitivanja",
                         value = inspectionType,
@@ -5559,6 +5562,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         inspectionDate = inspectionDate.trim(),
                         issuedDate = issuedDate.trim(),
                         issuedPlace = issuedPlace.trim(),
+                        testingLocation = testingLocation.trim(),
                         note = note.trim(),
                         inspectionType = inspectionType.trim(),
                         outsideTemperature = outsideTemperature.trim(),
@@ -5720,6 +5724,275 @@ private fun updateMeasurementSheetCell(
         },
     )
 
+private data class MeasurementCellSelection(
+    val rowIndex: Int,
+    val columnIndex: Int,
+)
+
+private fun measurementColumnLabel(index: Int): String {
+    var value = index + 1
+    var label = ""
+    while (value > 0) {
+        val remainder = (value - 1) % 26
+        label = ('A'.code + remainder).toChar().toString() + label
+        value = (value - 1) / 26
+    }
+    return label
+}
+
+private fun measurementCellReference(rowIndex: Int, columnIndex: Int): String =
+    "${measurementColumnLabel(columnIndex)}${rowIndex + 1}"
+
+private fun parseMeasurementCellReferenceMobile(reference: String): MeasurementCellSelection? {
+    val match = Regex("^\\$?([A-Za-z]+)\\$?(\\d+)$").matchEntire(reference.trim()) ?: return null
+    val letters = match.groupValues[1].uppercase(Locale.getDefault())
+    val rowIndex = match.groupValues[2].toIntOrNull()?.minus(1) ?: return null
+    var columnIndex = 0
+    letters.forEach { char ->
+        columnIndex = (columnIndex * 26) + (char.code - 'A'.code + 1)
+    }
+    columnIndex -= 1
+    return if (rowIndex >= 0 && columnIndex >= 0) MeasurementCellSelection(rowIndex, columnIndex) else null
+}
+
+private fun parseMeasurementNumberMobile(value: String): Double? =
+    value.trim().replace(",", ".").toDoubleOrNull()
+
+private fun WorkOrderMeasurementSheet.measurementRaw(rowIndex: Int, columnIndex: Int): String {
+    val row = rows.getOrNull(rowIndex) ?: return ""
+    val column = columns.getOrNull(columnIndex) ?: return ""
+    return row.cells[column.id].orEmpty()
+}
+
+private fun WorkOrderMeasurementSheet.measurementAverage(rowIndex: Int): Double? {
+    val row = rows.getOrNull(rowIndex) ?: return null
+    val preferredValues = listOf("reading1", "reading2", "reading3")
+        .mapNotNull { key -> parseMeasurementNumberMobile(row.cells[key].orEmpty()) }
+    val values = preferredValues.ifEmpty {
+        columns
+            .filter { it.computed.isBlank() }
+            .mapNotNull { column -> parseMeasurementNumberMobile(row.cells[column.id].orEmpty()) }
+            .take(3)
+    }
+    return values.takeIf { it.isNotEmpty() }?.average()
+}
+
+private fun formatMeasurementNumberMobile(value: Double): String {
+    val formatter = NumberFormat.getNumberInstance(Locale("hr", "HR"))
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = 6
+    return formatter.format(value)
+}
+
+private fun WorkOrderMeasurementSheet.measurementCellDisplay(rowIndex: Int, columnIndex: Int, stack: Set<String> = emptySet()): String {
+    val column = columns.getOrNull(columnIndex) ?: return ""
+    if (column.computed.equals("average", ignoreCase = true)) {
+        return measurementAverage(rowIndex)?.let(::formatMeasurementNumberMobile).orEmpty()
+    }
+    val raw = measurementRaw(rowIndex, columnIndex)
+    if (!raw.trim().startsWith("=")) {
+        return raw
+    }
+    return runCatching {
+        formatMeasurementNumberMobile(evaluateMeasurementFormulaMobile(raw, this, rowIndex, columnIndex, stack))
+    }.getOrElse { "#ERROR" }
+}
+
+private class MobileMeasurementFormulaParser(
+    private val expression: String,
+    private val sheet: WorkOrderMeasurementSheet,
+    private val currentRowIndex: Int,
+    private val currentColumnIndex: Int,
+    private val stack: Set<String>,
+) {
+    private var index = 0
+
+    fun parse(): MobileFormulaValue {
+        val value = parseExpression()
+        skipWhitespace()
+        if (index < expression.length) error("Višak znakova u formuli.")
+        return value
+    }
+
+    private fun parseExpression(): MobileFormulaValue {
+        var value = parseTerm()
+        while (true) {
+            skipWhitespace()
+            value = when {
+                consume('+') -> MobileFormulaValue.scalar(value.asNumber() + parseTerm().asNumber())
+                consume('-') -> MobileFormulaValue.scalar(value.asNumber() - parseTerm().asNumber())
+                else -> return value
+            }
+        }
+    }
+
+    private fun parseTerm(): MobileFormulaValue {
+        var value = parseFactor()
+        while (true) {
+            skipWhitespace()
+            value = when {
+                consume('*') -> MobileFormulaValue.scalar(value.asNumber() * parseFactor().asNumber())
+                consume('/') -> {
+                    val divisor = parseFactor().asNumber()
+                    if (divisor == 0.0) error("Dijeljenje s nulom.")
+                    MobileFormulaValue.scalar(value.asNumber() / divisor)
+                }
+                else -> return value
+            }
+        }
+    }
+
+    private fun parseFactor(): MobileFormulaValue {
+        skipWhitespace()
+        if (consume('+')) return parseFactor()
+        if (consume('-')) return MobileFormulaValue.scalar(-parseFactor().asNumber())
+        if (consume('(')) {
+            val value = parseExpression()
+            requireClosing(')')
+            return value
+        }
+        if (peek()?.isDigit() == true || peek() == '.') return MobileFormulaValue.scalar(parseNumber())
+        if (peek()?.isLetter() == true || peek() == '$') return parseIdentifierOrCell()
+        error("Nepoznat simbol.")
+    }
+
+    private fun parseIdentifierOrCell(): MobileFormulaValue {
+        val start = index
+        if (peek() == '$') index += 1
+        while (peek()?.isLetter() == true) index += 1
+        if (peek() == '$') index += 1
+        val hasDigits = peek()?.isDigit() == true
+        while (peek()?.isDigit() == true) index += 1
+        val token = expression.substring(start, index)
+        if (hasDigits) {
+            val first = readCellValues(token)
+            skipWhitespace()
+            if (!consume(':')) return MobileFormulaValue.values(first)
+            val end = readCellToken()
+            return MobileFormulaValue.values(readRangeValues(token, end))
+        }
+
+        skipWhitespace()
+        if (!consume('(')) error("Nepoznata oznaka: $token")
+        val args = mutableListOf<MobileFormulaValue>()
+        skipWhitespace()
+        if (!consume(')')) {
+            while (true) {
+                args += parseExpression()
+                skipWhitespace()
+                if (consume(')')) break
+                if (!consume(',') && !consume(';')) error("Neispravni argumenti funkcije.")
+            }
+        }
+        return evaluateFunction(token.uppercase(Locale.getDefault()), args)
+    }
+
+    private fun evaluateFunction(name: String, args: List<MobileFormulaValue>): MobileFormulaValue {
+        val values = args.flatMap { it.values }.filter { it.isFinite() }
+        return when (name) {
+            "SUM" -> MobileFormulaValue.scalar(values.sum())
+            "AVERAGE" -> MobileFormulaValue.scalar(values.ifEmpty { listOf(0.0) }.average())
+            "MIN" -> MobileFormulaValue.scalar(values.minOrNull() ?: 0.0)
+            "MAX" -> MobileFormulaValue.scalar(values.maxOrNull() ?: 0.0)
+            "COUNT" -> MobileFormulaValue.scalar(values.size.toDouble())
+            else -> error("Nepodržana funkcija: $name")
+        }
+    }
+
+    private fun readCellToken(): String {
+        skipWhitespace()
+        val start = index
+        if (peek() == '$') index += 1
+        while (peek()?.isLetter() == true) index += 1
+        if (peek() == '$') index += 1
+        while (peek()?.isDigit() == true) index += 1
+        val token = expression.substring(start, index)
+        if (parseMeasurementCellReferenceMobile(token) == null) error("Neispravna referenca.")
+        return token
+    }
+
+    private fun readCellValues(reference: String): List<Double> {
+        val address = parseMeasurementCellReferenceMobile(reference) ?: error("Neispravna referenca.")
+        return listOf(sheet.measurementCellNumeric(address.rowIndex, address.columnIndex, stack))
+    }
+
+    private fun readRangeValues(startReference: String, endReference: String): List<Double> {
+        val start = parseMeasurementCellReferenceMobile(startReference) ?: error("Neispravna referenca.")
+        val end = parseMeasurementCellReferenceMobile(endReference) ?: error("Neispravna referenca.")
+        val rowRange = minOf(start.rowIndex, end.rowIndex)..maxOf(start.rowIndex, end.rowIndex)
+        val columnRange = minOf(start.columnIndex, end.columnIndex)..maxOf(start.columnIndex, end.columnIndex)
+        return rowRange.flatMap { rowIndex ->
+            columnRange.map { columnIndex -> sheet.measurementCellNumeric(rowIndex, columnIndex, stack) }
+        }
+    }
+
+    private fun parseNumber(): Double {
+        val start = index
+        while (peek()?.isDigit() == true) index += 1
+        if (peek() == '.') {
+            index += 1
+            while (peek()?.isDigit() == true) index += 1
+        }
+        return expression.substring(start, index).toDoubleOrNull() ?: error("Neispravan broj.")
+    }
+
+    private fun skipWhitespace() {
+        while (peek()?.isWhitespace() == true) index += 1
+    }
+
+    private fun peek(): Char? = expression.getOrNull(index)
+
+    private fun consume(char: Char): Boolean {
+        if (peek() != char) return false
+        index += 1
+        return true
+    }
+
+    private fun requireClosing(char: Char) {
+        skipWhitespace()
+        if (!consume(char)) error("Nedostaje zatvaranje formule.")
+    }
+}
+
+private data class MobileFormulaValue(val values: List<Double>) {
+    fun asNumber(): Double = values.firstOrNull() ?: 0.0
+
+    companion object {
+        fun scalar(value: Double): MobileFormulaValue = MobileFormulaValue(listOf(value))
+        fun values(value: List<Double>): MobileFormulaValue = MobileFormulaValue(value)
+    }
+}
+
+private fun WorkOrderMeasurementSheet.measurementCellNumeric(
+    rowIndex: Int,
+    columnIndex: Int,
+    stack: Set<String>,
+): Double {
+    if (rowIndex !in rows.indices || columnIndex !in columns.indices) return 0.0
+    val key = "$rowIndex:$columnIndex"
+    if (stack.contains(key)) error("Kružna referenca.")
+    val column = columns[columnIndex]
+    if (column.computed.equals("average", ignoreCase = true)) return measurementAverage(rowIndex) ?: 0.0
+    val raw = measurementRaw(rowIndex, columnIndex)
+    return if (raw.trim().startsWith("=")) {
+        evaluateMeasurementFormulaMobile(raw, this, rowIndex, columnIndex, stack + key)
+    } else {
+        parseMeasurementNumberMobile(raw) ?: 0.0
+    }
+}
+
+private fun evaluateMeasurementFormulaMobile(
+    rawFormula: String,
+    sheet: WorkOrderMeasurementSheet,
+    rowIndex: Int,
+    columnIndex: Int,
+    stack: Set<String>,
+): Double {
+    val expression = rawFormula.trim().removePrefix("=")
+    if (expression.isBlank()) return 0.0
+    return MobileMeasurementFormulaParser(expression, sheet, rowIndex, columnIndex, stack).parse().asNumber()
+}
+
 @Composable
 private fun DocumentationRuntimeActionBar(
     workOrder: WorkOrder,
@@ -5815,8 +6088,18 @@ private fun MeasurementTableEditor(
     enabled: Boolean,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
-    val editableColumns = sheet.columns.filter { it.computed.isBlank() && !it.readonly }.take(10)
-    val visibleRows = sheet.rows.take(80)
+    val visibleColumns = sheet.columns.take(16)
+    val visibleRows = sheet.rows.take(120)
+    val initialSelection = remember(table.key, sheet.columns.size, sheet.rows.size) {
+        val columnIndex = sheet.columns.indexOfFirst { it.computed.isBlank() && !it.readonly }.takeIf { it >= 0 } ?: 0
+        MeasurementCellSelection(0, columnIndex)
+    }
+    var selectedCell by remember(table.key, sheet.columns.size, sheet.rows.size) { mutableStateOf(initialSelection) }
+    val selectedRow = sheet.rows.getOrNull(selectedCell.rowIndex)
+    val selectedColumn = sheet.columns.getOrNull(selectedCell.columnIndex)
+    val selectedRaw = selectedRow?.cells?.get(selectedColumn?.id.orEmpty()).orEmpty()
+    val selectedEditable = selectedColumn != null && selectedColumn.computed.isBlank() && !selectedColumn.readonly
+    val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -5841,9 +6124,46 @@ private fun MeasurementTableEditor(
                     )
                 }
             }
-            if (editableColumns.isEmpty() || visibleRows.isEmpty()) {
+            if (visibleColumns.isEmpty() || visibleRows.isEmpty()) {
                 Text("Excel tablica nema dostupnih ćelija za unos.")
             } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        modifier = Modifier.width(58.dp).height(56.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("fx", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    OutlinedTextField(
+                        value = selectedRaw,
+                        onValueChange = { value ->
+                            val row = selectedRow
+                            val column = selectedColumn
+                            if (row != null && column != null && selectedEditable) {
+                                onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        label = {
+                            Text(
+                                "${measurementCellReference(selectedCell.rowIndex, selectedCell.columnIndex)}" +
+                                    if (selectedDisplay.isNotBlank()) " = $selectedDisplay" else "",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        singleLine = true,
+                        enabled = enabled && selectedEditable,
+                        shape = RoundedCornerShape(14.dp),
+                    )
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -5851,9 +6171,9 @@ private fun MeasurementTableEditor(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        MeasurementHeaderCell("#", 54)
-                        editableColumns.forEach { column ->
-                            MeasurementHeaderCell(column.label, column.width)
+                        MeasurementHeaderCell("", 54, subtle = true)
+                        visibleColumns.forEachIndexed { columnIndex, column ->
+                            MeasurementHeaderCell("${measurementColumnLabel(columnIndex)} · ${column.label}", column.width)
                         }
                     }
                     visibleRows.forEachIndexed { rowIndex, row ->
@@ -5867,13 +6187,15 @@ private fun MeasurementTableEditor(
                                     Text("${rowIndex + 1}", fontWeight = FontWeight.Bold)
                                 }
                             }
-                            editableColumns.forEach { column ->
-                                MeasurementCellField(
+                            visibleColumns.forEachIndexed { columnIndex, column ->
+                                MeasurementGridCell(
                                     column = column,
-                                    value = row.cells[column.id].orEmpty(),
+                                    displayValue = sheet.measurementCellDisplay(rowIndex, columnIndex),
+                                    rawValue = row.cells[column.id].orEmpty(),
+                                    selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == columnIndex,
                                     enabled = enabled,
-                                    onChange = { value ->
-                                        onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                    onClick = {
+                                        selectedCell = MeasurementCellSelection(rowIndex, columnIndex)
                                     },
                                 )
                             }
@@ -5886,11 +6208,15 @@ private fun MeasurementTableEditor(
 }
 
 @Composable
-private fun MeasurementHeaderCell(label: String, width: Int) {
+private fun MeasurementHeaderCell(label: String, width: Int, subtle: Boolean = false) {
     Surface(
-        modifier = Modifier.width(width.coerceIn(90, 220).dp).height(44.dp),
+        modifier = Modifier.width(width.coerceIn(54, 220).dp).height(44.dp),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f),
+        color = if (subtle) {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        } else {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+        },
     ) {
         Box(modifier = Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
             Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 2)
@@ -5899,24 +6225,58 @@ private fun MeasurementHeaderCell(label: String, width: Int) {
 }
 
 @Composable
-private fun MeasurementCellField(
+private fun MeasurementGridCell(
     column: WorkOrderMeasurementColumn,
-    value: String,
+    displayValue: String,
+    rawValue: String,
+    selected: Boolean,
     enabled: Boolean,
-    onChange: (String) -> Unit,
+    onClick: () -> Unit,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
+    val editable = column.computed.isBlank() && !column.readonly
+    val value = displayValue.ifBlank { if (rawValue.trim().startsWith("=")) "#ERROR" else rawValue }
+    Surface(
         modifier = Modifier
             .width(column.width.coerceIn(110, 220).dp)
-            .height(56.dp),
-        placeholder = { Text(column.placeholder.ifBlank { column.label }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        singleLine = true,
-        enabled = enabled,
-        textStyle = MaterialTheme.typography.bodySmall,
+            .height(56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled) { onClick() },
         shape = RoundedCornerShape(12.dp),
-    )
+        color = when {
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            !editable -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+            rawValue.trim().startsWith("=") -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+            else -> MaterialTheme.colorScheme.surface
+        },
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                value.ifBlank { column.placeholder.ifBlank { column.label } },
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (value.isBlank()) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f) else MaterialTheme.colorScheme.onSurface,
+            )
+            val meta = when {
+                column.computed.isNotBlank() -> "auto"
+                rawValue.trim().startsWith("=") -> "formula"
+                !editable -> "readonly"
+                else -> ""
+            }
+            if (meta.isNotBlank()) {
+                Text(
+                    meta,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
 }
 
 @Composable

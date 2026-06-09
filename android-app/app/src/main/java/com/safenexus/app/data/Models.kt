@@ -101,6 +101,7 @@ data class WorkOrderDocumentationDraft(
     val inspectionDate: String,
     val issuedDate: String,
     val issuedPlace: String,
+    val testingLocation: String,
     val note: String,
     val inspectionType: String,
     val outsideTemperature: String,

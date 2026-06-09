@@ -216,6 +216,7 @@ class SafeNexusApi(
                 .put("inspectionDate", draft.inspectionDate)
                 .put("issuedDate", draft.issuedDate)
                 .put("issuedPlace", draft.issuedPlace)
+                .put("testingLocation", draft.testingLocation)
                 .put("note", draft.note)
                 .put("inspectionType", draft.inspectionType)
                 .put("outsideTemperature", draft.outsideTemperature)
@@ -683,9 +684,7 @@ private fun JSONArray?.toWorkOrderMeasurementRows(columns: List<WorkOrderMeasure
         for (index in 0 until length()) {
             val item = optJSONObject(index) ?: continue
             val sourceCells = item.optJSONObject("cells").toStringMap()
-            val cells = columns
-                .filter { it.computed.isBlank() && !it.readonly }
-                .associate { column -> column.id to sourceCells[column.id].orEmpty() }
+            val cells = columns.associate { column -> column.id to sourceCells[column.id].orEmpty() }
             add(
                 WorkOrderMeasurementRow(
                     id = item.firstClean("id").ifBlank { "measurement-row-${index + 1}" },
