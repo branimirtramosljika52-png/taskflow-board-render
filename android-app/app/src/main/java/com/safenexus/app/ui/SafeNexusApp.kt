@@ -219,6 +219,7 @@ import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -2521,17 +2522,50 @@ private fun formatDatePickerLabel(value: String): String =
         ?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
         ?: value
 
+private val reservationTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+private val reservationTimeOptions: List<Pair<String, String>> = (0 until 24)
+    .flatMap { hour -> (0 until 60 step 15).map { minute -> "%02d:%02d".format(hour, minute) } }
+    .map { value -> value to value }
+
+private fun defaultReservationStartTime(): String {
+    val now = LocalTime.now()
+    val roundedTotalMinutes = ((now.hour * 60 + now.minute + 14) / 15) * 15
+    val normalizedTotalMinutes = roundedTotalMinutes % (24 * 60)
+    return LocalTime.of(normalizedTotalMinutes / 60, normalizedTotalMinutes % 60)
+        .format(reservationTimeFormatter)
+}
+
+private fun parseReservationDateTime(date: String, time: String): LocalDateTime? =
+    runCatching { LocalDateTime.parse("${date}T${time}:00") }.getOrNull()
+
+private fun formatReservationDateTime(date: String, time: String): String =
+    "${date}T${time}:00"
+
+private fun addReservationMinutes(date: String, time: String, minutes: Long): Pair<String, String> {
+    val start = parseReservationDateTime(date, time) ?: LocalDate.now().atTime(8, 0)
+    val next = start.plusMinutes(minutes)
+    return next.toLocalDate().toString() to next.toLocalTime().format(reservationTimeFormatter)
+}
+
+private fun isReservationRangeValid(startDate: String, startTime: String, endDate: String, endTime: String): Boolean {
+    val start = parseReservationDateTime(startDate, startTime) ?: return false
+    val end = parseReservationDateTime(endDate, endTime) ?: return false
+    return end.isAfter(start)
+}
+
 @Composable
 private fun WorkOrderDatePickerField(
     label: String,
     value: String,
     onChange: (String) -> Unit,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     var openPicker by remember { mutableStateOf(false) }
     OutlinedButton(
         onClick = { openPicker = true },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         shape = RoundedCornerShape(16.dp),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
@@ -2579,9 +2613,10 @@ private fun WorkOrderSelectField(
     options: List<Pair<String, String>>,
     enabled: Boolean,
     onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
+    Box(modifier = modifier) {
         OutlinedButton(
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
@@ -5331,8 +5366,12 @@ private fun VehicleReservationDialog(
     onConfirm: (String, String, String, String, String, String, String) -> Unit,
 ) {
     val today = remember { LocalDate.now().toString() }
+    val initialStartTime = remember(vehicle.id) { defaultReservationStartTime() }
+    val initialEnd = remember(vehicle.id, today, initialStartTime) { addReservationMinutes(today, initialStartTime, 60) }
     var startDate by remember(vehicle.id) { mutableStateOf(today) }
-    var endDate by remember(vehicle.id) { mutableStateOf(today) }
+    var startTime by remember(vehicle.id) { mutableStateOf(initialStartTime) }
+    var endDate by remember(vehicle.id) { mutableStateOf(initialEnd.first) }
+    var endTime by remember(vehicle.id) { mutableStateOf(initialEnd.second) }
     var purpose by remember(vehicle.id) { mutableStateOf("Službeni put") }
     var destination by remember(vehicle.id) { mutableStateOf("") }
     val userOptions = remember(users) {
@@ -5355,6 +5394,9 @@ private fun VehicleReservationDialog(
     var fuelOk by remember(vehicle.id) { mutableStateOf(true) }
     var damageNoted by remember(vehicle.id) { mutableStateOf(false) }
     var note by remember(vehicle.id) { mutableStateOf("") }
+    val reservationRangeValid = remember(startDate, startTime, endDate, endTime) {
+        isReservationRangeValid(startDate, startTime, endDate, endTime)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -5380,8 +5422,80 @@ private fun VehicleReservationDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                WorkOrderDatePickerField("Početak rezervacije", startDate, { startDate = it }, !isLoading)
-                WorkOrderDatePickerField("Kraj rezervacije", endDate, { endDate = it }, !isLoading)
+                Text("Termin rezervacije", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WorkOrderDatePickerField(
+                        label = "Početak",
+                        value = startDate,
+                        onChange = { startDate = it },
+                        enabled = !isLoading,
+                        modifier = Modifier.weight(1.28f),
+                    )
+                    WorkOrderSelectField(
+                        label = "Vrijeme",
+                        value = startTime,
+                        valueLabel = startTime,
+                        options = reservationTimeOptions,
+                        enabled = !isLoading,
+                        onSelect = { nextTime -> startTime = nextTime },
+                        modifier = Modifier.weight(0.88f),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WorkOrderDatePickerField(
+                        label = "Kraj",
+                        value = endDate,
+                        onChange = { endDate = it },
+                        enabled = !isLoading,
+                        modifier = Modifier.weight(1.28f),
+                    )
+                    WorkOrderSelectField(
+                        label = "Vrijeme",
+                        value = endTime,
+                        valueLabel = endTime,
+                        options = reservationTimeOptions,
+                        enabled = !isLoading,
+                        onSelect = { nextTime -> endTime = nextTime },
+                        modifier = Modifier.weight(0.88f),
+                    )
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("1 h" to 60L, "2 h" to 120L, "4 h" to 240L).forEach { (label, minutes) ->
+                        FilterChip(
+                            selected = false,
+                            enabled = !isLoading,
+                            onClick = {
+                                val next = addReservationMinutes(startDate, startTime, minutes)
+                                endDate = next.first
+                                endTime = next.second
+                            },
+                            label = { Text(label, fontWeight = FontWeight.Bold) },
+                        )
+                    }
+                    FilterChip(
+                        selected = false,
+                        enabled = !isLoading,
+                        onClick = {
+                            startTime = "08:00"
+                            endDate = startDate
+                            endTime = "17:00"
+                        },
+                        label = { Text("Radni dan", fontWeight = FontWeight.Bold) },
+                    )
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("Korak 15 min") },
+                    )
+                }
+                AnimatedVisibility(!reservationRangeValid) {
+                    Text(
+                        "Kraj rezervacije mora biti nakon početka.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
                 WorkOrderTextField("Svrha rezervacije", purpose, { purpose = it }, !isLoading)
                 WorkOrderTextField("Odredište", destination, { destination = it }, !isLoading)
                 WorkOrderSelectField(
@@ -5431,7 +5545,10 @@ private fun VehicleReservationDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val reservationTermLabel =
+                        "${formatDatePickerLabel(startDate)} $startTime - ${formatDatePickerLabel(endDate)} $endTime"
                     val checklist = listOf(
+                        "Termin rezervacije: $reservationTermLabel",
                         "Početni km: ${startKm.ifBlank { "-" }}",
                         "Krajnji km: ${endKm.ifBlank { "-" }}",
                         "Vozilo čisto: ${if (vehicleClean) "da" else "ne"}",
@@ -5442,15 +5559,15 @@ private fun VehicleReservationDialog(
                     ).filterNotNull().joinToString("\n")
                     onConfirm(
                         purpose.trim(),
-                        "${startDate}T08:00:00",
-                        "${endDate}T17:00:00",
+                        formatReservationDateTime(startDate, startTime),
+                        formatReservationDateTime(endDate, endTime),
                         destination.trim(),
                         reservedForUserId.trim(),
                         reservedForLabel.trim(),
                         checklist,
                     )
                 },
-                enabled = !isLoading && purpose.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank(),
+                enabled = !isLoading && purpose.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank() && reservationRangeValid,
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Text("Spremi rezervaciju", fontWeight = FontWeight.Black)
