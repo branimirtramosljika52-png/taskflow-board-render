@@ -128,6 +128,7 @@ data class WorkOrderDocumentationDraft(
     val testingLocation: String,
     val note: String,
     val inspectionType: String,
+    val completedBy: String = "",
     val outsideTemperature: String,
     val relativeHumidity: String,
     val airflowSpeed: String,
@@ -379,6 +380,7 @@ data class WorkOrder(
     val contactEmail: String,
     val description: String,
     val executors: List<String>,
+    val completedBy: String = "",
 ) {
     val parsedDueDate: LocalDate? = parseDateOrNull(dueDate)
 

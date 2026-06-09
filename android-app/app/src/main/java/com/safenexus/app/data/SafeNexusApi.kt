@@ -166,6 +166,34 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun createVehicleReservation(
+        vehicleId: String,
+        purpose: String,
+        startAt: String,
+        endAt: String,
+        destination: String,
+        reservedForUserId: String,
+        reservedForLabel: String,
+        note: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("status", "reserved")
+                .put("purpose", purpose)
+                .put("startAt", startAt)
+                .put("endAt", endAt)
+                .put("destination", destination)
+                .put("reservedForUserId", reservedForUserId)
+                .put("reservedForUserIds", JSONArray().put(reservedForUserId).takeIf { reservedForUserId.isNotBlank() } ?: JSONArray())
+                .put("reservedForLabel", reservedForLabel)
+                .put("reservedForLabels", JSONArray().put(reservedForLabel).takeIf { reservedForLabel.isNotBlank() } ?: JSONArray())
+                .put("note", note)
+                .toString()
+            request("/api/vehicles/${vehicleId.pathSegment()}/reservations", method = "POST", body = payload)
+            Unit
+        }
+    }
+
     suspend fun createWorkOrderLocationObject(
         workOrder: WorkOrder,
         name: String,
@@ -292,6 +320,7 @@ class SafeNexusApi(
                 .put("testingLocation", draft.testingLocation)
                 .put("note", draft.note)
                 .put("inspectionType", draft.inspectionType)
+                .put("completedBy", draft.completedBy)
                 .put("outsideTemperature", draft.outsideTemperature)
                 .put("relativeHumidity", draft.relativeHumidity)
                 .put("airflowSpeed", draft.airflowSpeed)
@@ -1243,6 +1272,7 @@ private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
                     contactEmail = item.firstClean("contactEmail"),
                     description = item.firstClean("description", "note"),
                     executors = item.optJSONArray("executors").toStringList("fullName", "name", "label", "email"),
+                    completedBy = item.firstClean("completedBy", "completedByLabel", "createdByLabel"),
                 ),
             )
         }

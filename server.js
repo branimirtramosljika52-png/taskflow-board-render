@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.54.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.55.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -3546,7 +3546,7 @@ async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSna
     const template = assertInScope(
       documentTemplates,
       entry?.templateId,
-      "Template nije pronaÄ‘en.",
+      "Template nije pronađen.",
     );
 
     if (isHandoverTemplateExportEntry(entry)) {
@@ -7661,7 +7661,7 @@ function normalizeLookupKey(value = "") {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/Ä‘/g, "d")
+    .replace(/đ/g, "d")
     .replace(/[^a-z0-9]+/g, "");
 }
 
@@ -7835,14 +7835,14 @@ function buildPeopleTrainingImportDetailFromRow(row = {}) {
     oib: normalizeInputValue(getImportRowValue(row, ["oib osobe", "oib"])),
     fullName: normalizeInputValue(getImportRowValue(row, ["ime i prezime", "osoba"])),
     workOrderNumber: normalizeInputValue(getImportRowValue(row, ["broj rn", "rn", "radni nalog"])),
-    serviceCode: normalizeInputValue(getImportRowValue(row, ["sifra usluge", "šifra usluge", "Ĺˇifra usluge", "usluga"])),
+    serviceCode: normalizeInputValue(getImportRowValue(row, ["sifra usluge", "šifra usluge", "usluga"])),
     recordNumber: normalizeInputValue(getImportRowValue(row, ["broj zapisnika", "broj potvrde", "broj uvjerenja"])),
     jobTitle: normalizeInputValue(getImportRowValue(row, ["naziv radnog mjesta", "radno mjesto"])),
     jobDescription: normalizeInputValue(getImportRowValue(row, ["opis poslova i aktivnosti", "opis poslova", "aktivnosti"])),
     theoryPlace: normalizeInputValue(getImportRowValue(row, [
       "mjesto provodenja osposobljavanja radnika teorijsko",
       "mjesto provođenja osposobljavanja radnika teorijsko",
-      "mjesto provoÄ‘enja teorijsko",
+      "mjesto provođenja teorijsko",
       "mjesto provodenja teorijsko",
       "teorijsko",
     ])),
@@ -7850,21 +7850,21 @@ function buildPeopleTrainingImportDetailFromRow(row = {}) {
     theoryMethod: normalizeInputValue(getImportRowValue(row, [
       "nacin provodenja teorijskog dijela",
       "način provođenja teorijskog dijela",
-      "naÄŤin provoÄ‘enja teorijskog dijela",
+      "način provođenja teorijskog dijela",
       "nacin teorije",
     ])),
     employerRepresentativeName: normalizeInputValue(getImportRowValue(row, [
       "ime i prezime poslodavca ovlastenika poslodavca",
       "ime i prezime poslodavca ovlaštenika poslodavca",
       "ime i prezime poslodavca",
-      "ovlaĹˇtenika",
+      "ovlaštenika",
       "ovlastenika",
     ])),
     employerRepresentativeOib: normalizeInputValue(getImportRowValue(row, [
       "oib poslodavca ovlastenika poslodavca",
       "oib poslodavca ovlaštenika poslodavca",
       "oib poslodavca",
-      "oib ovlaĹˇtenika",
+      "oib ovlaštenika",
       "oib ovlastenika",
     ])),
     additionalPersonName: normalizeInputValue(getImportRowValue(row, [
@@ -7882,23 +7882,23 @@ function buildPeopleTrainingImportDetailFromRow(row = {}) {
     practicalPlace: normalizeInputValue(getImportRowValue(row, [
       "mjesto provodenja osposobljavanja radnika prakticno",
       "mjesto provođenja osposobljavanja radnika praktično",
-      "mjesto provoÄ‘enja praktiÄŤno",
+      "mjesto provođenja praktično",
       "mjesto provodenja prakticno",
       "prakticno",
     ])),
     safeWorkPeriodFrom: normalizePersonTrainingImportDate(getImportRowValue(row, [
       "razdoblje pracenja sigurnog nacina rada od",
       "razdoblje praćenja sigurnog načina rada od",
-      "razdoblje praÄ‡enja od",
+      "razdoblje praćenja od",
       "razdoblje pracenja od",
     ])),
     safeWorkPeriodTo: normalizePersonTrainingImportDate(getImportRowValue(row, [
       "razdoblje pracenja sigurnog nacina rada do",
       "razdoblje praćenja sigurnog načina rada do",
-      "razdoblje praÄ‡enja do",
+      "razdoblje praćenja do",
       "razdoblje pracenja do",
     ])),
-    firePassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["pgp datum polaganja", "poĹľar datum polaganja", "pozar datum polaganja"])),
+    firePassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["pgp datum polaganja", "požar datum polaganja", "pozar datum polaganja"])),
     flammablePassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["spztp datum polaganja", "zapaljive datum polaganja"])),
     flammableValidUntil: normalizePersonTrainingImportDate(getImportRowValue(row, ["spztp vrijedi do", "zapaljive vrijedi do"])),
     adrPassedOn: normalizePersonTrainingImportDate(getImportRowValue(row, ["adr datum polaganja"])),
@@ -9672,6 +9672,7 @@ function buildMobileWorkOrderItem(item = {}) {
       : [item.executor1, item.executor2].map(normalizeInputValue).filter(Boolean),
     executor1: normalizeInputValue(item.executor1),
     executor2: normalizeInputValue(item.executor2),
+    completedBy: normalizeInputValue(item.completedBy || item.completedByLabel || item.createdByLabel),
     teamLabel: normalizeInputValue(item.teamLabel),
     tagText: normalizeInputValue(item.tagText),
     coordinates: normalizeInputValue(item.coordinates),
@@ -9926,6 +9927,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     testingLocation: normalizeInputValue(source.testingLocation || source.inspectionPlace || source.inspectionLocation),
     note: normalizeInputValue(source.note),
     inspectionType: normalizeInputValue(source.inspectionType),
+    completedBy: normalizeInputValue(source.completedBy || source.completedByLabel),
     outsideTemperature: normalizeInputValue(source.outsideTemperature),
     relativeHumidity: normalizeInputValue(source.relativeHumidity),
     airflowSpeed: normalizeInputValue(source.airflowSpeed),
@@ -11380,7 +11382,7 @@ function buildMobileQualifiedUserOption(user = {}, capability = "inspect", signa
     qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
     qualification.passedOn ? `Položeno ${formatOfferDocumentDate(qualification.passedOn)}` : "",
     qualification.validUntil ? `Vrijedi do ${formatOfferDocumentDate(qualification.validUntil)}` : "",
-  ].filter(Boolean).join(" Â· ");
+  ].filter(Boolean).join(" · ");
   return buildMobileDocumentationOption(
     user?.id,
     label,
@@ -12220,6 +12222,7 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
     location: resolveMobileWorkOrderTestingLocation(workOrder, common),
     objectName: normalizeInputValue(workOrder.objectName),
     contractType: normalizeInputValue(workOrder.contractType),
+    completedBy: normalizeInputValue(common.completedBy || workOrder.completedBy || workOrder.completedByLabel || workOrder.createdByLabel),
     issuedDate: normalizeDateOnlyValue(common.issuedDate || common.inspectionDate) || new Date().toISOString().slice(0, 10),
     issuedPlace: normalizeInputValue(common.issuedPlace),
     rows,
@@ -12295,6 +12298,7 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
   const placeholders = {
     ...buildWorkOrderTemplatePlaceholderPayload({
       ...workOrder,
+      completedBy: handoverProtocol.completedBy,
       issuedDate: handoverProtocol.issuedDate,
       issuedPlace: handoverProtocol.issuedPlace,
     }, scopedSnapshot),
@@ -12326,6 +12330,10 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
     UGOVOR: handoverProtocol.contractType,
     DATUM_IZDAVANJA: issuedDate,
     MJESTO_IZDAVANJA: handoverProtocol.issuedPlace,
+    ZAVRSIO_IME: handoverProtocol.completedBy,
+    ZAVRSIO_RADNI_NALOG: handoverProtocol.completedBy,
+    RN_ZAVRSIO: handoverProtocol.completedBy,
+    IZRADIO_IME: handoverProtocol.completedBy,
     USLUGE_REDOVI: rows,
     USLUGE_TABLICA: servicesTableText,
     USLUGE: rows.map((row, index) => `${index + 1}. ${row.USLUGA}`).join("\n"),
@@ -13448,7 +13456,7 @@ async function handleApiRequest(request, response, url) {
       );
 
       if (!updatedUser) {
-        sendError(response, 404, "Korisnik nije pronaÄ‘en.");
+        sendError(response, 404, "Korisnik nije pronađen.");
         return true;
       }
 
@@ -15359,7 +15367,7 @@ async function handleApiRequest(request, response, url) {
       const updated = await tenantRepository.sendUserPasswordReset(mutationActor, userPasswordResetMatch[1]);
 
       if (!updated) {
-        sendError(response, 404, "Korisnik nije pronaÄ‘en.");
+        sendError(response, 404, "Korisnik nije pronađen.");
         return true;
       }
 
@@ -16439,6 +16447,16 @@ async function handleApiRequest(request, response, url) {
         ...body,
         ...reservationUserPayload,
       }, user);
+      if (reservationUserPayload.reservedForUserIds?.length) {
+        void sendPushToUserIds(reservationUserPayload.reservedForUserIds, {
+          title: "Rezervacija vozila",
+          body: `Rezervirano je vozilo ${vehicle.plateNumber || vehicle.name || "vozilo"} od ${body.startAt || "-"} do ${body.endAt || "-"}.`,
+          data: {
+            type: "vehicle_reservation",
+            vehicleId: String(vehicle.id),
+          },
+        });
+      }
       await writeSnapshot(response, user, request, 201);
       return true;
     }
