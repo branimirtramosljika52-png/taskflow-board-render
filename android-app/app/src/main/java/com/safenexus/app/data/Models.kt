@@ -112,6 +112,9 @@ data class WorkOrderDocumentationDraft(
     val groundCondition: String,
     val groundResistance: String,
     val measurementEquipmentGroup: String,
+    val selectedEquipmentIds: List<String> = emptyList(),
+    val selectedLegalFrameworkIds: List<String> = emptyList(),
+    val selectedRulebookIds: List<String> = emptyList(),
     val signatureMode: String,
     val validityMonths: String,
     val electricalValidityMonths: String,
@@ -139,6 +142,9 @@ data class WorkOrderDocumentationContext(
     val fieldCount: Int = 0,
     val measurementTableCount: Int = 0,
     val defaults: WorkOrderDocumentationDefaults = WorkOrderDocumentationDefaults(),
+    val measurementEquipmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val legalFrameworkOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val rulebookOptions: List<WorkOrderDocumentationOption> = emptyList(),
 )
 
 data class WorkOrderDocumentationDefaults(
@@ -155,10 +161,21 @@ data class WorkOrderDocumentationDefaults(
     val groundCondition: String = "",
     val groundResistance: String = "",
     val measurementEquipmentGroup: String = "",
+    val selectedEquipmentIds: List<String> = emptyList(),
+    val selectedLegalFrameworkIds: List<String> = emptyList(),
+    val selectedRulebookIds: List<String> = emptyList(),
     val signatureMode: String = "",
     val validityMonths: String = "",
     val electricalValidityMonths: String = "",
     val tipkaloValidityMonths: String = "",
+)
+
+data class WorkOrderDocumentationOption(
+    val id: String,
+    val label: String,
+    val subtitle: String = "",
+    val status: String = "",
+    val meta: Map<String, String> = emptyMap(),
 )
 
 data class WorkOrderDocumentationTemplate(

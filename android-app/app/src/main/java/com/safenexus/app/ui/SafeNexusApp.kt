@@ -181,6 +181,7 @@ import com.safenexus.app.data.WorkOrderCreateDraft
 import com.safenexus.app.data.WorkOrderDocumentationContext
 import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocumentationField
+import com.safenexus.app.data.WorkOrderDocumentationOption
 import com.safenexus.app.data.WorkOrderDocumentationTemplate
 import com.safenexus.app.data.WorkOrderDocument
 import com.safenexus.app.data.WorkOrderLocationOption
@@ -2412,6 +2413,93 @@ private fun WorkOrderMultiSelectChips(
                 label = {
                     Text(option.second, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocumentationMultiSelectField(
+    label: String,
+    options: List<WorkOrderDocumentationOption>,
+    selectedIds: Set<String>,
+    enabled: Boolean,
+    emptyText: String,
+    onChange: (Set<String>) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            if (selectedIds.isNotEmpty()) {
+                Text(
+                    "${selectedIds.size} odabrano",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        if (options.isEmpty()) {
+            Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            return
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.take(96).forEach { option ->
+                val selected = option.id in selectedIds
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        onChange(
+                            if (selected) {
+                                selectedIds - option.id
+                            } else {
+                                selectedIds + option.id
+                            },
+                        )
+                    },
+                    enabled = enabled,
+                    leadingIcon = if (selected) {
+                        {
+                            Icon(
+                                Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    label = {
+                        Column {
+                            Text(option.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val subtitle = listOf(option.subtitle, option.status)
+                                .map { it.trim() }
+                                .filter { it.isNotBlank() }
+                                .distinct()
+                                .joinToString(" · ")
+                            if (subtitle.isNotBlank()) {
+                                Text(
+                                    subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        if (options.size > 96) {
+            Text(
+                "Prikazano prvih 96 stavki. Za kraći prikaz koristi grupu opreme ili pretraživanje u webu.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
             )
         }
     }
@@ -5427,6 +5515,55 @@ private fun WorkOrderDocumentationWizardDialog(
     var measurementEquipmentGroup by remember(workOrder.id, defaults.measurementEquipmentGroup) {
         mutableStateOf(defaults.measurementEquipmentGroup)
     }
+    val measurementEquipmentOptionIds = remember(context.measurementEquipmentOptions) {
+        context.measurementEquipmentOptions.map { it.id }.toSet()
+    }
+    val legalFrameworkOptionIds = remember(context.legalFrameworkOptions) {
+        context.legalFrameworkOptions.map { it.id }.toSet()
+    }
+    val rulebookOptionIds = remember(context.rulebookOptions) {
+        context.rulebookOptions.map { it.id }.toSet()
+    }
+    var selectedEquipmentIds by remember(workOrder.id, defaults.selectedEquipmentIds, measurementEquipmentOptionIds) {
+        mutableStateOf(defaults.selectedEquipmentIds.filter { measurementEquipmentOptionIds.contains(it) }.toSet())
+    }
+    var selectedLegalFrameworkIds by remember(workOrder.id, defaults.selectedLegalFrameworkIds, legalFrameworkOptionIds) {
+        mutableStateOf(defaults.selectedLegalFrameworkIds.filter { legalFrameworkOptionIds.contains(it) }.toSet())
+    }
+    var selectedRulebookIds by remember(workOrder.id, defaults.selectedRulebookIds, rulebookOptionIds) {
+        mutableStateOf(defaults.selectedRulebookIds.filter { rulebookOptionIds.contains(it) }.toSet())
+    }
+    val measurementEquipmentGroupOptions = remember(context.measurementEquipmentOptions, measurementEquipmentGroup) {
+        val standardGroups = ('A'..'M').map { "Grupa $it" }
+        val equipmentGroups = context.measurementEquipmentOptions.mapNotNull { option ->
+            option.meta["deviceCode"]
+                ?: option.meta["device_code"]
+                ?: option.meta["code"]
+                ?: option.meta["oznaka"]
+        }
+        (listOf("") + standardGroups + equipmentGroups + listOf(measurementEquipmentGroup))
+            .map { it.trim() }
+            .filter { it.isBlank() || it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .sortedWith(compareBy<String> { it.isNotBlank() }.thenBy { it.lowercase(Locale.getDefault()) })
+            .map { value -> value to value.ifBlank { "Bez odabira" } }
+    }
+    val visibleMeasurementEquipmentOptions = remember(context.measurementEquipmentOptions, measurementEquipmentGroup, selectedEquipmentIds) {
+        val selectedGroup = measurementEquipmentGroup.trim()
+        if (selectedGroup.isBlank()) {
+            context.measurementEquipmentOptions
+        } else {
+            context.measurementEquipmentOptions.filter { option ->
+                option.id in selectedEquipmentIds ||
+                    listOf(
+                        option.meta["deviceCode"],
+                        option.meta["device_code"],
+                        option.meta["code"],
+                        option.meta["oznaka"],
+                    ).any { value -> value?.trim()?.equals(selectedGroup, ignoreCase = true) == true }
+            }.ifEmpty { context.measurementEquipmentOptions }
+        }
+    }
     var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
     var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
     var electricalValidityMonths by remember(workOrder.id, defaults.electricalValidityMonths) {
@@ -5599,6 +5736,44 @@ private fun WorkOrderDocumentationWizardDialog(
                     WorkOrderTextField("Otpor tla", groundResistance, { groundResistance = it }, !formLoading)
                 }
 
+                WizardSection(title = "Mjerna i ispitna oprema", icon = Icons.Rounded.Work) {
+                    WorkOrderSelectField(
+                        label = "Grupa mjerne opreme",
+                        value = measurementEquipmentGroup,
+                        valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
+                        options = measurementEquipmentGroupOptions,
+                        enabled = !formLoading,
+                        onSelect = { measurementEquipmentGroup = it },
+                    )
+                    DocumentationMultiSelectField(
+                        label = "Uređaji za zapisnik",
+                        options = visibleMeasurementEquipmentOptions,
+                        selectedIds = selectedEquipmentIds,
+                        enabled = !formLoading,
+                        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                        onChange = { selectedEquipmentIds = it },
+                    )
+                }
+
+                WizardSection(title = "Pravilnici i propisi", icon = Icons.Rounded.Lock) {
+                    DocumentationMultiSelectField(
+                        label = "Propisi iz web predloška",
+                        options = context.legalFrameworkOptions,
+                        selectedIds = selectedLegalFrameworkIds,
+                        enabled = !formLoading,
+                        emptyText = "Nema propisa povezanih s predlošcima.",
+                        onChange = { selectedLegalFrameworkIds = it },
+                    )
+                    DocumentationMultiSelectField(
+                        label = "Interni pravilnici",
+                        options = context.rulebookOptions,
+                        selectedIds = selectedRulebookIds,
+                        enabled = !formLoading,
+                        emptyText = "Nema pravilnika za ovu organizaciju.",
+                        onChange = { selectedRulebookIds = it },
+                    )
+                }
+
                 WizardSection(title = "Osobe i potpis", icon = Icons.Rounded.Fingerprint) {
                     WorkOrderSelectField(
                         label = "Ispitivao",
@@ -5660,12 +5835,6 @@ private fun WorkOrderDocumentationWizardDialog(
                     NumberTextField("Vrijedi mjeseci", validityMonths, { validityMonths = it }, !formLoading)
                     NumberTextField("Panik rasvjeta vrijedi mjeseci", electricalValidityMonths, { electricalValidityMonths = it }, !formLoading)
                     NumberTextField("Tipkalo vrijedi mjeseci", tipkaloValidityMonths, { tipkaloValidityMonths = it }, !formLoading)
-                    WorkOrderTextField(
-                        "Grupa mjerne opreme",
-                        measurementEquipmentGroup,
-                        { measurementEquipmentGroup = it },
-                        !formLoading,
-                    )
                 }
             }
         },
@@ -5688,6 +5857,9 @@ private fun WorkOrderDocumentationWizardDialog(
                         groundCondition = groundCondition.trim(),
                         groundResistance = groundResistance.trim(),
                         measurementEquipmentGroup = measurementEquipmentGroup.trim(),
+                        selectedEquipmentIds = selectedEquipmentIds.toList(),
+                        selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
+                        selectedRulebookIds = selectedRulebookIds.toList(),
                         signatureMode = signatureMode,
                         validityMonths = validityMonths.trim(),
                         electricalValidityMonths = electricalValidityMonths.trim(),

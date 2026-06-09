@@ -212,6 +212,12 @@ class SafeNexusApi(
             draft.electricalInspectorUserIds.forEach { electricalInspectorIds.put(it) }
             val tipkaloInspectorIds = JSONArray()
             draft.tipkaloInspectorUserIds.forEach { tipkaloInspectorIds.put(it) }
+            val selectedEquipmentIds = JSONArray()
+            draft.selectedEquipmentIds.forEach { selectedEquipmentIds.put(it) }
+            val selectedLegalFrameworkIds = JSONArray()
+            draft.selectedLegalFrameworkIds.forEach { selectedLegalFrameworkIds.put(it) }
+            val selectedRulebookIds = JSONArray()
+            draft.selectedRulebookIds.forEach { selectedRulebookIds.put(it) }
             val payload = JSONObject()
                 .put("inspectionDate", draft.inspectionDate)
                 .put("issuedDate", draft.issuedDate)
@@ -226,6 +232,9 @@ class SafeNexusApi(
                 .put("groundCondition", draft.groundCondition)
                 .put("groundResistance", draft.groundResistance)
                 .put("measurementEquipmentGroup", draft.measurementEquipmentGroup)
+                .put("selectedEquipmentIds", selectedEquipmentIds)
+                .put("selectedLegalFrameworkIds", selectedLegalFrameworkIds)
+                .put("selectedRulebookIds", selectedRulebookIds)
                 .put("signatureMode", draft.signatureMode)
                 .put("validityMonths", draft.validityMonths)
                 .put("electricalValidityMonths", draft.electricalValidityMonths)
@@ -781,6 +790,28 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
     }.filter { it.id.isNotBlank() }
 }
 
+private fun JSONArray?.toWorkOrderDocumentationOptions(): List<WorkOrderDocumentationOption> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val id = item.firstClean("id", "value", "key")
+            val label = item.firstClean("label", "title", "name").ifBlank { id }
+            if (id.isNotBlank() && label.isNotBlank()) {
+                add(
+                    WorkOrderDocumentationOption(
+                        id = id,
+                        label = label,
+                        subtitle = item.firstClean("subtitle", "description", "metaLabel"),
+                        status = item.firstClean("status"),
+                        meta = item.optJSONObject("meta").toStringMap(),
+                    ),
+                )
+            }
+        }
+    }.distinctBy { it.id }
+}
+
 private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentationContext =
     WorkOrderDocumentationContext(
         workOrderId = firstClean("workOrderId"),
@@ -790,6 +821,9 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         fieldCount = optInt("fieldCount", 0),
         measurementTableCount = optInt("measurementTableCount", 0),
         defaults = optJSONObject("defaults").toWorkOrderDocumentationDefaults(),
+        measurementEquipmentOptions = optJSONArray("measurementEquipmentOptions").toWorkOrderDocumentationOptions(),
+        legalFrameworkOptions = optJSONArray("legalFrameworkOptions").toWorkOrderDocumentationOptions(),
+        rulebookOptions = optJSONArray("rulebookOptions").toWorkOrderDocumentationOptions(),
     )
 
 private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentationDefaults {
@@ -808,6 +842,9 @@ private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentati
         groundCondition = firstClean("groundCondition"),
         groundResistance = firstClean("groundResistance"),
         measurementEquipmentGroup = firstClean("measurementEquipmentGroup"),
+        selectedEquipmentIds = optJSONArray("selectedEquipmentIds").toStringList(),
+        selectedLegalFrameworkIds = optJSONArray("selectedLegalFrameworkIds").toStringList(),
+        selectedRulebookIds = optJSONArray("selectedRulebookIds").toStringList(),
         signatureMode = firstClean("signatureMode"),
         validityMonths = firstClean("validityMonths"),
         electricalValidityMonths = firstClean("electricalValidityMonths"),

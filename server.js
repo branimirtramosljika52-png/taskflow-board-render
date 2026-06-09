@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.33.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.34.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9854,6 +9854,9 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
   const inspectorUserIds = normalizeMobileDocumentWizardArray(source.inspectorUserIds);
   const electricalInspectorUserIds = normalizeMobileDocumentWizardArray(source.electricalInspectorUserIds);
   const tipkaloInspectorUserIds = normalizeMobileDocumentWizardArray(source.tipkaloInspectorUserIds);
+  const selectedEquipmentIds = normalizeMobileDocumentWizardArray(source.selectedEquipmentIds || source.measurementEquipmentIds);
+  const selectedLegalFrameworkIds = normalizeMobileDocumentWizardArray(source.selectedLegalFrameworkIds || source.legalFrameworkIds);
+  const selectedRulebookIds = normalizeMobileDocumentWizardArray(source.selectedRulebookIds || source.rulebookIds);
   const fieldValues = source.fieldValues && typeof source.fieldValues === "object" && !Array.isArray(source.fieldValues)
     ? Object.fromEntries(Object.entries(source.fieldValues)
       .map(([key, value]) => [normalizeInputValue(key), value])
@@ -9908,6 +9911,9 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     groundCondition: normalizeInputValue(source.groundCondition),
     groundResistance: normalizeInputValue(source.groundResistance),
     measurementEquipmentGroup: normalizeInputValue(source.measurementEquipmentGroup),
+    selectedEquipmentIds,
+    selectedLegalFrameworkIds,
+    selectedRulebookIds,
     signatureMode: normalizeMobileDocumentSignatureMode(source.signatureMode),
     validityMonths: normalizeMobileDocumentValidityMonths(source.validityMonths, "12"),
     electricalValidityMonths: normalizeMobileDocumentValidityMonths(source.electricalValidityMonths, source.validityMonths || "12"),
@@ -10733,6 +10739,35 @@ function getMobileDocumentRecordFieldValue(record = {}, keys = []) {
   return normalizeInputValue(getGeneratedDocumentRecordValue(fieldValues, keys));
 }
 
+function getMobileDocumentRecordArrayValue(record = {}, keys = []) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  const normalizedKeys = keys.map((key) => normalizeLookupKey(key)).filter(Boolean);
+  const candidates = [];
+
+  keys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(fieldValues, key)) {
+      candidates.push(fieldValues[key]);
+    }
+  });
+
+  Object.entries(fieldValues).forEach(([key, value]) => {
+    if (normalizedKeys.includes(normalizeLookupKey(key))) {
+      candidates.push(value);
+    }
+  });
+
+  for (const value of candidates) {
+    const normalized = normalizeMobileDocumentWizardArray(value);
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+
+  return [];
+}
+
 function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) {
   if (!record) {
     return {};
@@ -10777,6 +10812,9 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
     groundCondition: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_GROUND_CONDITION", "STANJE_TLA"]),
     groundResistance: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_GROUND_RESISTANCE", "OTPOR_TLA"]),
     measurementEquipmentGroup: getMobileDocumentRecordFieldValue(record, ["MEASUREMENT_EQUIPMENT_GROUP", "MJERNA_OPREMA_GRUPA"]),
+    selectedEquipmentIds: getMobileDocumentRecordArrayValue(record, ["MEASUREMENT_EQUIPMENT_IDS", "MJERNA_OPREMA_IDS", "selectedEquipmentIds"]),
+    selectedLegalFrameworkIds: getMobileDocumentRecordArrayValue(record, ["LEGAL_FRAMEWORK_IDS", "PROPISI_IDS", "selectedLegalFrameworkIds"]),
+    selectedRulebookIds: getMobileDocumentRecordArrayValue(record, ["RULEBOOK_IDS", "PRAVILNICI_IDS", "selectedRulebookIds"]),
     signatureMode: normalizeMobileDocumentSignatureMode(getMobileDocumentRecordFieldValue(record, ["SIGNATURE_MODE", "NACIN_POTPISA"])),
     validityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_VALIDITY_MONTHS", "WORK_ORDER_SERVICE_VALIDITY_MONTHS", "VRIJEDI_MJESECI"]),
     electricalValidityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_PANIC_VALIDITY_MONTHS"]),
@@ -10784,6 +10822,147 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
     fieldValues,
     fieldSheets,
   };
+}
+
+function getMobileLinkedServiceIdsFromItem(item = {}) {
+  const sources = [
+    item?.linkedServiceIds,
+    item?.serviceIds,
+    item?.serviceCatalogIds,
+    item?.linkedServices,
+    item?.services,
+  ];
+  return Array.from(new Set(sources.flatMap((source) => {
+    if (!Array.isArray(source)) {
+      return [];
+    }
+    return source.map((entry) => {
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        return normalizeInputValue(entry.id || entry.serviceId || entry.catalogItemId || entry.value);
+      }
+      return normalizeInputValue(entry);
+    });
+  }).filter(Boolean)));
+}
+
+function getMobileTemplateLinkedServiceCatalogIds(templateId = "", scopedSnapshot = {}) {
+  const normalizedTemplateId = normalizeInputValue(templateId);
+  if (!normalizedTemplateId) {
+    return [];
+  }
+  return (scopedSnapshot.serviceCatalog ?? [])
+    .filter((service) => normalizeMobileDocumentWizardArray(service?.linkedTemplateIds).includes(normalizedTemplateId))
+    .map((service) => normalizeInputValue(service?.id))
+    .filter(Boolean);
+}
+
+function getMobileServiceDerivedLegalFrameworkIdsForTemplate(templateId = "", scopedSnapshot = {}) {
+  const linkedServiceIds = new Set(getMobileTemplateLinkedServiceCatalogIds(templateId, scopedSnapshot));
+  if (linkedServiceIds.size === 0) {
+    return [];
+  }
+  return (scopedSnapshot.legalFrameworks ?? [])
+    .filter((item) => getMobileLinkedServiceIdsFromItem(item).some((serviceId) => linkedServiceIds.has(serviceId)))
+    .map((item) => normalizeInputValue(item?.id))
+    .filter(Boolean);
+}
+
+function getMobileServiceDerivedMeasurementEquipmentItemsForTemplate(templateId = "", scopedSnapshot = {}) {
+  const linkedServiceIds = new Set(getMobileTemplateLinkedServiceCatalogIds(templateId, scopedSnapshot));
+  if (linkedServiceIds.size === 0) {
+    return [];
+  }
+  return (scopedSnapshot.measurementEquipment ?? [])
+    .filter((item) => getMobileLinkedServiceIdsFromItem(item).some((serviceId) => linkedServiceIds.has(serviceId)));
+}
+
+function getMobileDocumentTemplateEquipmentDeviceCode(item = {}) {
+  return normalizeInputValue(item?.deviceCode || item?.device_code || item?.oznaka || item?.code);
+}
+
+function buildMobileDocumentationOption(id = "", label = "", subtitle = "", status = "", meta = {}) {
+  const normalizedId = normalizeInputValue(id);
+  const normalizedLabel = normalizeInputValue(label);
+  if (!normalizedId || !normalizedLabel) {
+    return null;
+  }
+  return {
+    id: normalizedId,
+    label: normalizedLabel,
+    subtitle: normalizeInputValue(subtitle),
+    status: normalizeInputValue(status),
+    meta: Object.fromEntries(Object.entries(meta)
+      .map(([key, value]) => [key, normalizeInputValue(value)])
+      .filter(([, value]) => value)),
+  };
+}
+
+function buildMobileMeasurementEquipmentOptions(scopedSnapshot = {}) {
+  return (scopedSnapshot.measurementEquipment ?? [])
+    .map((item) => {
+      const code = getMobileDocumentTemplateEquipmentDeviceCode(item);
+      const name = normalizeInputValue(item?.name || item?.title || item?.deviceName || "Mjerna oprema");
+      const inventoryNumber = normalizeInputValue(item?.inventoryNumber || item?.inventoryNo || item?.serialNumber);
+      const validUntil = normalizeDateOnlyValue(item?.validUntil || item?.calibrationValidUntil || item?.calibrationDueDate);
+      return buildMobileDocumentationOption(
+        item?.id,
+        code ? `${code} - ${name}` : name,
+        [
+          item?.deviceType || item?.type || item?.kind,
+          inventoryNumber ? `Inv. ${inventoryNumber}` : "",
+          validUntil ? `Vrijedi do ${formatOfferDocumentDate(validUntil)}` : "",
+        ].map(normalizeInputValue).filter(Boolean).join(" · "),
+        item?.status,
+        {
+          deviceCode: code,
+          code,
+          deviceType: item?.deviceType || item?.type,
+          inventoryNumber,
+          serialNumber: item?.serialNumber,
+          manufacturer: item?.manufacturer,
+          validUntil,
+        },
+      );
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
+}
+
+function buildMobileLegalFrameworkOptions(scopedSnapshot = {}) {
+  return (scopedSnapshot.legalFrameworks ?? [])
+    .map((item) => buildMobileDocumentationOption(
+      item?.id,
+      item?.referenceCode
+        ? `${normalizeInputValue(item?.title || "Propis")} | ${normalizeInputValue(item.referenceCode)}`
+        : normalizeInputValue(item?.title || "Propis"),
+      [item?.category, item?.source, item?.scope].map(normalizeInputValue).filter(Boolean).join(" · "),
+      item?.status,
+      {
+        referenceCode: item?.referenceCode,
+        category: item?.category,
+        source: item?.source,
+      },
+    ))
+    .filter(Boolean)
+    .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
+}
+
+function buildMobileRulebookOptions(scopedSnapshot = {}) {
+  return (scopedSnapshot.rulebooks ?? [])
+    .map((item) => buildMobileDocumentationOption(
+      item?.id,
+      item?.title || "Pravilnik",
+      [item?.rulebookType, item?.scope, item?.owner].map(normalizeInputValue).filter(Boolean).join(" · "),
+      item?.status,
+      {
+        rulebookType: item?.rulebookType,
+        effectiveFrom: item?.effectiveFrom,
+        reviewDate: item?.reviewDate,
+        owner: item?.owner,
+      },
+    ))
+    .filter(Boolean)
+    .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
 }
 
 function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot = {}) {
@@ -10840,6 +11019,9 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     defaults: primaryDefaults || {
       testingLocation: resolveMobileWorkOrderTestingLocation(workOrder, {}),
     },
+    measurementEquipmentOptions: buildMobileMeasurementEquipmentOptions(scopedSnapshot),
+    legalFrameworkOptions: buildMobileLegalFrameworkOptions(scopedSnapshot),
+    rulebookOptions: buildMobileRulebookOptions(scopedSnapshot),
   };
 }
 
@@ -10925,6 +11107,236 @@ function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {
     });
     if (recordKey && documentValue !== "" && documentValue !== undefined && documentValue !== null) {
       fieldValues[recordKey] = documentValue;
+    }
+  });
+
+  return { placeholders, fieldValues };
+}
+
+function getMobileDocumentTemplateLinkedEquipmentItems(template = {}, scopedSnapshot = {}) {
+  const templateId = normalizeInputValue(template?.id);
+  const derivedItems = templateId
+    ? getMobileServiceDerivedMeasurementEquipmentItemsForTemplate(templateId, scopedSnapshot)
+    : [];
+  if (derivedItems.length > 0) {
+    return derivedItems;
+  }
+
+  const linkedItems = (scopedSnapshot.measurementEquipment ?? []).filter((item) => (
+    templateId && normalizeMobileDocumentWizardArray(item?.linkedTemplateIds).includes(templateId)
+  ));
+  if (linkedItems.length > 0) {
+    return linkedItems;
+  }
+
+  return Array.isArray(template?.equipmentItems) ? template.equipmentItems : [];
+}
+
+function findMobileMeasurementEquipmentByIds(scopedSnapshot = {}, ids = [], template = {}) {
+  const selectedIds = new Set(normalizeMobileDocumentWizardArray(ids));
+  if (selectedIds.size === 0) {
+    return [];
+  }
+  return [
+    ...(scopedSnapshot.measurementEquipment ?? []),
+    ...(Array.isArray(template?.equipmentItems) ? template.equipmentItems : []),
+  ].filter((item) => selectedIds.has(normalizeInputValue(item?.id)));
+}
+
+function getMobileDocumentTemplateEquipmentItemsForField(template = {}, field = {}, scopedSnapshot = {}, common = {}) {
+  const selectedItems = findMobileMeasurementEquipmentByIds(scopedSnapshot, common.selectedEquipmentIds, template);
+  if (selectedItems.length > 0) {
+    return selectedItems;
+  }
+
+  const availableItems = getMobileDocumentTemplateLinkedEquipmentItems(template, scopedSnapshot);
+  const selectedGroup = normalizeInputValue(common.measurementEquipmentGroup);
+  if (selectedGroup) {
+    const matchingItems = availableItems.filter((item) => getMobileDocumentTemplateEquipmentDeviceCode(item) === selectedGroup);
+    if (matchingItems.length > 0) {
+      return matchingItems;
+    }
+  }
+
+  return availableItems;
+}
+
+function formatMobileMeasurementEquipmentLine(item = {}) {
+  return [
+    normalizeInputValue(item?.name || item?.title || "Mjerna oprema"),
+    normalizeInputValue(item?.deviceType || item?.type || item?.code),
+    normalizeInputValue(item?.inventoryNumber || item?.inventoryNo)
+      ? `Inv. broj: ${normalizeInputValue(item?.inventoryNumber || item?.inventoryNo)}`
+      : "",
+    normalizeInputValue(item?.note || item?.description),
+  ].filter(Boolean).join(" · ");
+}
+
+function buildMobileMeasurementEquipmentTableBlock(items = []) {
+  const columns = [
+    { id: "equipment", label: "Oprema", width: 180 },
+    { id: "type", label: "Tip", width: 120 },
+    { id: "inventory", label: "Inv. broj", width: 110 },
+    { id: "note", label: "Napomena", width: 160 },
+  ];
+  const headerRow = {
+    id: "header",
+    header: true,
+    cells: columns.map((column) => ({
+      text: column.label,
+      format: { bold: true, fillColor: "#EAF2FF", border: "all" },
+    })),
+  };
+  const dataRows = (Array.isArray(items) ? items : []).map((item, index) => ({
+    id: `equipment-${index + 1}`,
+    cells: [
+      normalizeInputValue(item?.name || item?.title || "Mjerna oprema"),
+      normalizeInputValue(item?.deviceType || item?.type || item?.code),
+      normalizeInputValue(item?.inventoryNumber || item?.inventoryNo),
+      normalizeInputValue(item?.note || item?.description),
+    ],
+  }));
+
+  return {
+    __docxBlockType: "table",
+    columns,
+    rows: dataRows.length > 0
+      ? [headerRow, ...dataRows]
+      : [
+        headerRow,
+        {
+          id: "empty",
+          cells: ["Nema odabrane mjerne i ispitne opreme.", "", "", ""],
+        },
+      ],
+    headerRows: ["header"],
+    merges: [],
+  };
+}
+
+function getMobileDocumentTemplateLegalFrameworkCandidates(template = {}, field = {}, scopedSnapshot = {}) {
+  const allItems = scopedSnapshot.legalFrameworks ?? [];
+  const templateId = normalizeInputValue(template?.id);
+  const derivedIds = templateId ? getMobileServiceDerivedLegalFrameworkIdsForTemplate(templateId, scopedSnapshot) : [];
+  const templateSelectedIds = normalizeMobileDocumentWizardArray(template?.selectedLegalFrameworkIds);
+  const linkedTemplateIds = allItems
+    .filter((item) => templateId && normalizeMobileDocumentWizardArray(item?.linkedTemplateIds).includes(templateId))
+    .map((item) => normalizeInputValue(item?.id))
+    .filter(Boolean);
+  const baseIds = new Set([
+    ...(derivedIds.length > 0 ? derivedIds : templateSelectedIds),
+    ...(derivedIds.length > 0 ? [] : linkedTemplateIds),
+  ]);
+  const visibleIds = new Set(normalizeMobileDocumentWizardArray(field?.legalFrameworkIds));
+  const baseItems = baseIds.size > 0
+    ? allItems.filter((item) => baseIds.has(normalizeInputValue(item?.id)))
+    : (visibleIds.size > 0 ? allItems : []);
+  return visibleIds.size > 0
+    ? baseItems.filter((item) => visibleIds.has(normalizeInputValue(item?.id)))
+    : baseItems;
+}
+
+function getMobileDocumentTemplateLegalFrameworksForField(template = {}, field = {}, scopedSnapshot = {}, common = {}) {
+  const allItems = scopedSnapshot.legalFrameworks ?? [];
+  const visibleIds = new Set(normalizeMobileDocumentWizardArray(field?.legalFrameworkIds));
+  const explicitIds = new Set(normalizeMobileDocumentWizardArray(common.selectedLegalFrameworkIds));
+  const defaultIds = new Set(normalizeMobileDocumentWizardArray(field?.defaultLegalFrameworkIds));
+  const filterVisible = (items) => visibleIds.size > 0
+    ? items.filter((item) => visibleIds.has(normalizeInputValue(item?.id)))
+    : items;
+
+  if (explicitIds.size > 0) {
+    return filterVisible(allItems.filter((item) => explicitIds.has(normalizeInputValue(item?.id))));
+  }
+  if (defaultIds.size > 0) {
+    return filterVisible(allItems.filter((item) => defaultIds.has(normalizeInputValue(item?.id))));
+  }
+  return getMobileDocumentTemplateLegalFrameworkCandidates(template, field, scopedSnapshot);
+}
+
+function formatMobileLegalFrameworkLine(item = {}) {
+  const title = normalizeInputValue(item?.title || "Propis");
+  const referenceCode = normalizeInputValue(item?.referenceCode);
+  return referenceCode ? `${title} | ${referenceCode}` : title;
+}
+
+function findMobileRulebooksByIds(scopedSnapshot = {}, ids = []) {
+  const selectedIds = new Set(normalizeMobileDocumentWizardArray(ids));
+  if (selectedIds.size === 0) {
+    return [];
+  }
+  return (scopedSnapshot.rulebooks ?? []).filter((item) => selectedIds.has(normalizeInputValue(item?.id)));
+}
+
+function formatMobileRulebookLine(item = {}) {
+  return [
+    normalizeInputValue(item?.title || "Pravilnik"),
+    normalizeInputValue(item?.rulebookType),
+    normalizeInputValue(item?.status),
+  ].filter(Boolean).join(" · ");
+}
+
+function putMobileTemplateListPlaceholder(placeholders = {}, field = {}, index = 0, value = "") {
+  const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+  [
+    tokenKey,
+    normalizeInputValue(field?.key),
+    normalizeInputValue(field?.id),
+  ].filter(Boolean).forEach((key) => {
+    placeholders[key] = value;
+  });
+}
+
+function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = {}, common = {}) {
+  const placeholders = {};
+  const fieldValues = {};
+  const selectedRulebooks = findMobileRulebooksByIds(scopedSnapshot, common.selectedRulebookIds);
+  const rulebookLines = selectedRulebooks.map(formatMobileRulebookLine).filter(Boolean);
+  const globalSelectedEquipment = findMobileMeasurementEquipmentByIds(scopedSnapshot, common.selectedEquipmentIds, template);
+  const globalEquipmentLines = globalSelectedEquipment.map(formatMobileMeasurementEquipmentLine).filter(Boolean);
+  const globalSelectedLegal = getMobileDocumentTemplateLegalFrameworksForField(template, {}, scopedSnapshot, common);
+  const globalLegalLines = globalSelectedLegal.map(formatMobileLegalFrameworkLine).filter(Boolean);
+
+  Object.assign(placeholders, {
+    MEASUREMENT_EQUIPMENT_LIST: globalEquipmentLines.join("\n"),
+    MJERNA_OPREMA_POPIS: globalEquipmentLines.join("\n"),
+    LEGAL_REFERENCES_LIST: globalLegalLines.join("\n"),
+    LEGAL_REFERENCES_INLINE: globalLegalLines.join("; "),
+    PROPISI_POPIS: globalLegalLines.join("\n"),
+    PRAVILNICI_POPIS: rulebookLines.join("\n"),
+    RULEBOOKS_LIST: rulebookLines.join("\n"),
+  });
+
+  fieldValues.MEASUREMENT_EQUIPMENT_IDS = normalizeMobileDocumentWizardArray(common.selectedEquipmentIds);
+  fieldValues.LEGAL_FRAMEWORK_IDS = normalizeMobileDocumentWizardArray(common.selectedLegalFrameworkIds);
+  fieldValues.RULEBOOK_IDS = normalizeMobileDocumentWizardArray(common.selectedRulebookIds);
+
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
+    const fieldType = normalizeInputValue(field?.type).toLowerCase();
+    const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+    const recordKey = normalizeInputValue(field?.key || field?.id || tokenKey);
+
+    if (fieldType === "legal_list") {
+      const legalItems = getMobileDocumentTemplateLegalFrameworksForField(template, field, scopedSnapshot, common);
+      const legalLines = legalItems.map(formatMobileLegalFrameworkLine).filter(Boolean);
+      putMobileTemplateListPlaceholder(placeholders, field, index, legalLines.join("\n"));
+      if (recordKey) {
+        fieldValues[recordKey] = legalItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
+      }
+      return;
+    }
+
+    if (fieldType === "equipment_list") {
+      const equipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, field, scopedSnapshot, common);
+      putMobileTemplateListPlaceholder(placeholders, field, index, buildMobileMeasurementEquipmentTableBlock(equipmentItems));
+      const equipmentIds = equipmentItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
+      if (recordKey) {
+        fieldValues[recordKey] = equipmentIds;
+        fieldValues[`${recordKey}::equipmentDeviceCode`] = normalizeInputValue(common.measurementEquipmentGroup);
+      }
+      fieldValues.MEASUREMENT_EQUIPMENT_IDS = equipmentIds.length > 0
+        ? equipmentIds
+        : fieldValues.MEASUREMENT_EQUIPMENT_IDS;
     }
   });
 
@@ -11096,10 +11508,12 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
       const customFieldPayload = buildMobileDocumentTemplateCustomFieldPayload(template, common);
+      const listPayload = buildMobileDocumentTemplateListPayload(template, scopedSnapshot, common);
       const placeholders = {
         ...basePlaceholders,
         ...customFieldPayload.placeholders,
         ...measurementPlaceholders,
+        ...listPayload.placeholders,
       };
       const documentNumber = buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex);
       const baseFileName = buildMobileDocumentTemplateFileBaseName(template, workOrder, documentNumber);
@@ -11127,6 +11541,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       const fieldValues = {
         ...placeholders,
         ...customFieldPayload.fieldValues,
+        ...listPayload.fieldValues,
         ...(trackedDates.length > 0 ? { [GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY]: trackedDates } : {}),
       };
       entries.push({
