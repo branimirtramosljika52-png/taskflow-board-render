@@ -170,6 +170,7 @@ data class WorkOrderDocumentationContext(
     val measurementEquipmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val legalFrameworkOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val rulebookOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val signaturePersonOptions: List<WorkOrderDocumentationSignatureAreaOptions> = emptyList(),
 )
 
 data class WorkOrderDocumentationDefaults(
@@ -203,6 +204,13 @@ data class WorkOrderDocumentationOption(
     val meta: Map<String, String> = emptyMap(),
 )
 
+data class WorkOrderDocumentationSignatureAreaOptions(
+    val key: String,
+    val label: String,
+    val inspectorOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val authorizationOptions: List<WorkOrderDocumentationOption> = emptyList(),
+)
+
 data class WorkOrderDocumentationTemplate(
     val id: String,
     val title: String,
@@ -210,6 +218,7 @@ data class WorkOrderDocumentationTemplate(
     val serviceName: String,
     val serviceCode: String = "",
     val serviceIndex: Int = -1,
+    val signatureAreas: List<String> = emptyList(),
     val documentNumber: String = "",
     val documentName: String = "",
     val fields: List<WorkOrderDocumentationField>,

@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.50.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.51.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -11212,6 +11212,170 @@ function buildMobileDocumentationOption(id = "", label = "", subtitle = "", stat
   };
 }
 
+function normalizeMobileQualificationAreaKey(value = "") {
+  const normalized = normalizeInputValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "elektro";
+}
+
+function normalizeMobileQualificationKeyList(value = []) {
+  const entries = Array.isArray(value)
+    ? value
+    : normalizeInputValue(value).split(",");
+  return Array.from(new Set(entries
+    .map((entry) => normalizeMobileQualificationAreaKey(entry))
+    .filter(Boolean)));
+}
+
+function getMobileQualificationAreaLabel(signatureArea = "elektro") {
+  const key = normalizeMobileQualificationAreaKey(signatureArea);
+  if (key === "elektro") {
+    return "Sigurnosna panik rasvjeta";
+  }
+  if (key === "tipkalo" || key === "tzin") {
+    return "Tipkalo za isklop napona";
+  }
+  return key
+    .split(/[_-]+/g)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ") || key;
+}
+
+function getMobileServiceQualificationKeys(service = {}, scopedSnapshot = {}) {
+  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
+  const keys = new Set([
+    ...normalizeMobileQualificationKeyList(service?.linkedQualificationKeys ?? service?.linkedQualificationExamKeys ?? service?.qualificationKeys ?? []),
+    ...normalizeMobileQualificationKeyList(catalogItem?.linkedQualificationKeys ?? catalogItem?.linkedQualificationExamKeys ?? catalogItem?.qualificationKeys ?? []),
+  ]);
+  const text = normalizeInputValue([
+    service?.serviceCode,
+    service?.code,
+    service?.name,
+    service?.serviceName,
+    service?.title,
+    catalogItem?.serviceCode,
+    catalogItem?.name,
+  ].filter(Boolean).join(" ")).toLowerCase();
+
+  if (/\b(tzin|tipkalo)\b/.test(text) || text.includes("isklop napona")) {
+    keys.add("tipkalo");
+  }
+  if (/\b(spr|panik)\b/.test(text) || text.includes("panik rasvjet") || text.includes("panic")) {
+    keys.add("elektro");
+  }
+
+  return [...keys].filter(Boolean);
+}
+
+function getMobileDocumentTemplateSignatureAreas(template = {}, service = {}, scopedSnapshot = {}) {
+  const areas = new Set(getMobileServiceQualificationKeys(service, scopedSnapshot));
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field) => {
+    const type = normalizeInputValue(field?.type).toLowerCase();
+    if (!["qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature"].includes(type)) {
+      return;
+    }
+    areas.add(normalizeMobileQualificationAreaKey(field?.signatureArea || "elektro"));
+  });
+  return areas.size > 0 ? [...areas] : ["elektro"];
+}
+
+function getMobileUserQualificationForArea(user = {}, signatureArea = "elektro") {
+  const area = normalizeMobileQualificationAreaKey(signatureArea);
+  const rootQualification = user?.electricalQualification && typeof user.electricalQualification === "object"
+    ? user.electricalQualification
+    : {};
+  const qualification = area === "elektro"
+    ? rootQualification
+    : (rootQualification.additionalAreas && typeof rootQualification.additionalAreas === "object"
+      ? rootQualification.additionalAreas[area]
+      : null) || {};
+  return {
+    discipline: normalizeMobileQualificationAreaKey(qualification.discipline || area),
+    type: normalizeInputValue(qualification.examType || qualification.type || qualification.equipmentType || qualification.kind),
+    data1: normalizeInputValue(qualification.data1 || qualification.classCode),
+    data2: normalizeInputValue(qualification.data2 || qualification.urbroj),
+    data3: normalizeInputValue(qualification.data3 || qualification.eBroj),
+    passedOn: normalizeDateOnlyValue(qualification.passedOn || qualification.examDate),
+    validUntil: normalizeDateOnlyValue(qualification.validUntil),
+    canInspect: Boolean(qualification.canInspect),
+    canAuthorize: Boolean(qualification.canAuthorize),
+  };
+}
+
+function buildMobileQualifiedUserOption(user = {}, capability = "inspect", signatureArea = "elektro") {
+  const qualification = getMobileUserQualificationForArea(user, signatureArea);
+  const label = getMobileUserDocumentName(user) || normalizeInputValue(user?.email);
+  const subtitle = [
+    qualification.type ? `Vrsta ispita ${qualification.type}` : "",
+    qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
+    qualification.data2 ? `Podatak 2 ${qualification.data2}` : "",
+    qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
+    qualification.passedOn ? `Položeno ${formatOfferDocumentDate(qualification.passedOn)}` : "",
+    qualification.validUntil ? `Vrijedi do ${formatOfferDocumentDate(qualification.validUntil)}` : "",
+  ].filter(Boolean).join(" Â· ");
+  return buildMobileDocumentationOption(
+    user?.id,
+    label,
+    subtitle || getMobileQualificationAreaLabel(signatureArea),
+    capability === "authorize" ? "Odgovorna osoba" : "Ispitivač",
+    {
+      signatureArea: normalizeMobileQualificationAreaKey(signatureArea),
+      capability,
+      email: user?.email,
+    },
+  );
+}
+
+function getMobileQualifiedUsersForArea(scopedSnapshot = {}, capability = "inspect", signatureArea = "elektro") {
+  const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
+  const area = normalizeMobileQualificationAreaKey(signatureArea);
+  return (scopedSnapshot.users ?? [])
+    .filter((user) => user && user.isActive !== false && normalizeInputValue(user.status).toLowerCase() !== "inactive")
+    .filter((user) => {
+      const qualification = getMobileUserQualificationForArea(user, area);
+      return normalizedCapability === "authorize"
+        ? qualification.canAuthorize
+        : qualification.canInspect;
+    })
+    .sort((left, right) => getMobileUserDocumentName(left).localeCompare(getMobileUserDocumentName(right), "hr"));
+}
+
+function buildMobileSignaturePersonOptions(scopedSnapshot = {}, signatureAreas = []) {
+  const areaSet = new Set(normalizeMobileQualificationKeyList(signatureAreas));
+  (scopedSnapshot.users ?? []).forEach((user) => {
+    const rootQualification = user?.electricalQualification && typeof user.electricalQualification === "object"
+      ? user.electricalQualification
+      : {};
+    if (rootQualification.canInspect || rootQualification.canAuthorize) {
+      areaSet.add("elektro");
+    }
+    Object.entries(rootQualification.additionalAreas || {}).forEach(([area, qualification]) => {
+      if (qualification?.canInspect || qualification?.canAuthorize) {
+        areaSet.add(normalizeMobileQualificationAreaKey(area));
+      }
+    });
+  });
+  if (areaSet.size === 0) {
+    areaSet.add("elektro");
+  }
+
+  return [...areaSet].map((area) => ({
+    key: area,
+    label: getMobileQualificationAreaLabel(area),
+    inspectorOptions: getMobileQualifiedUsersForArea(scopedSnapshot, "inspect", area)
+      .map((user) => buildMobileQualifiedUserOption(user, "inspect", area))
+      .filter(Boolean),
+    authorizationOptions: getMobileQualifiedUsersForArea(scopedSnapshot, "authorize", area)
+      .map((user) => buildMobileQualifiedUserOption(user, "authorize", area))
+      .filter(Boolean),
+  }));
+}
+
 function buildMobileMeasurementEquipmentOptions(scopedSnapshot = {}) {
   return (scopedSnapshot.measurementEquipment ?? [])
     .map((item) => {
@@ -11288,6 +11452,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     : [{ name: workOrder.serviceLine || "" }];
   const templates = [];
   const seenTemplateKeys = new Set();
+  const signatureAreaKeys = new Set();
   let primaryDefaults = null;
 
   services.forEach((service, serviceIndex) => {
@@ -11313,6 +11478,8 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         ...(common.fieldValues || {}),
       };
       const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
+      const signatureAreas = getMobileDocumentTemplateSignatureAreas(template, service, scopedSnapshot);
+      signatureAreas.forEach((area) => signatureAreaKeys.add(area));
       templates.push({
         id: normalizedTemplateId,
         title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
@@ -11320,6 +11487,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         serviceName: normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode),
         serviceCode: getMobileDocumentTemplateServiceCode(service, serviceIndex),
         serviceIndex,
+        signatureAreas,
         documentNumber: buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
         documentName: `${buildMobileDocumentTemplateFileBaseName(
           template,
@@ -11350,6 +11518,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     measurementEquipmentOptions: buildMobileMeasurementEquipmentOptions(scopedSnapshot),
     legalFrameworkOptions: buildMobileLegalFrameworkOptions(scopedSnapshot),
     rulebookOptions: buildMobileRulebookOptions(scopedSnapshot),
+    signaturePersonOptions: buildMobileSignaturePersonOptions(scopedSnapshot, [...signatureAreaKeys]),
   };
 }
 

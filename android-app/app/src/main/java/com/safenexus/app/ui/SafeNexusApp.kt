@@ -184,6 +184,7 @@ import com.safenexus.app.data.WorkOrderDocumentationContext
 import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocumentationField
 import com.safenexus.app.data.WorkOrderDocumentationOption
+import com.safenexus.app.data.WorkOrderDocumentationSignatureAreaOptions
 import com.safenexus.app.data.WorkOrderDocumentationTemplate
 import com.safenexus.app.data.WorkOrderDocumentationTemplateBlock
 import com.safenexus.app.data.WorkOrderDocument
@@ -5807,6 +5808,50 @@ private data class DocumentationServiceFlowItem(
 private const val DOCUMENTATION_BASICS_FLOW_KEY = "__basics__"
 private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
 
+private fun normalizeDocumentationSignatureAreaKey(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace(Regex("[^a-z0-9_-]+"), "_")
+        .trim('_')
+        .ifBlank { "elektro" }
+
+private fun inferDocumentationSignatureAreas(
+    templates: List<WorkOrderDocumentationTemplate>,
+    flowItem: DocumentationServiceFlowItem?,
+): List<String> {
+    val explicitAreas = templates
+        .flatMap { template -> template.signatureAreas }
+        .map(::normalizeDocumentationSignatureAreaKey)
+        .filter { it.isNotBlank() }
+        .distinct()
+    if (explicitAreas.isNotEmpty()) {
+        return explicitAreas
+    }
+
+    val text = listOf(flowItem?.serviceCode, flowItem?.serviceName)
+        .filterNotNull()
+        .joinToString(" ")
+        .lowercase(Locale.getDefault())
+    return when {
+        Regex("\\b(tzin|tipkalo)\\b").containsMatchIn(text) || text.contains("isklop napona") -> listOf("tipkalo")
+        Regex("\\b(spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("elektro")
+        else -> listOf("elektro")
+    }
+}
+
+private fun List<WorkOrderDocumentationSignatureAreaOptions>.areaOptions(key: String): WorkOrderDocumentationSignatureAreaOptions {
+    val normalizedKey = normalizeDocumentationSignatureAreaKey(key)
+    return firstOrNull { normalizeDocumentationSignatureAreaKey(it.key) == normalizedKey }
+        ?: WorkOrderDocumentationSignatureAreaOptions(
+            key = normalizedKey,
+            label = when (normalizedKey) {
+                "tipkalo", "tzin" -> "Tipkalo za isklop napona"
+                "elektro" -> "Sigurnosna panik rasvjeta"
+                else -> normalizedKey.replace('_', ' ').replaceFirstChar { it.titlecase(Locale.getDefault()) }
+            },
+        )
+}
+
 private fun WorkOrderDocumentationTemplate.documentationServiceKey(): String {
     val indexKey = serviceIndex.takeIf { it >= 0 }?.let { "service-$it" }.orEmpty()
     val fallback = listOf(serviceCode, serviceName, documentType, title)
@@ -6229,9 +6274,12 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     var inspectorUserId by remember(workOrder.id) { mutableStateOf("") }
     var authorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
+    var inspectorUserIds by remember(workOrder.id) { mutableStateOf(emptySet<String>()) }
     var electricalInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
+    var electricalInspectorUserIds by remember(workOrder.id) { mutableStateOf(emptySet<String>()) }
     var electricalAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
     var tipkaloInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
+    var tipkaloInspectorUserIds by remember(workOrder.id) { mutableStateOf(emptySet<String>()) }
     var tipkaloAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
     val allPromptTemplates = remember(context) {
         context.templates
@@ -6245,6 +6293,9 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val blockTemplates = remember(activeTemplates) {
         activeTemplates.filter { template -> template.fieldBlocks.isNotEmpty() }
+    }
+    val activeSignatureAreas = remember(activeTemplates, selectedFlowItem?.serviceKey) {
+        inferDocumentationSignatureAreas(activeTemplates, selectedFlowItem)
     }
     val templateDefaultsKey = remember(context) {
         context.templates.joinToString("|") { template ->
@@ -6317,11 +6368,17 @@ private fun WorkOrderDocumentationWizardDialog(
         authorizationHolderUserId = authorizationHolderUserId,
         authorizationHolderLabel = userLabelById[authorizationHolderUserId].orEmpty().takeIf { authorizationHolderUserId.isNotBlank() }.orEmpty(),
         electricalInspectorUserId = electricalInspectorUserId,
-        electricalInspectorLabel = userLabelById[electricalInspectorUserId].orEmpty().takeIf { electricalInspectorUserId.isNotBlank() }.orEmpty(),
+        electricalInspectorLabel = electricalInspectorUserIds
+            .ifEmpty { setOf(electricalInspectorUserId).filter { it.isNotBlank() }.toSet() }
+            .mapNotNull { userLabelById[it] }
+            .joinToString(", "),
         electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
         electricalAuthorizationHolderLabel = userLabelById[electricalAuthorizationHolderUserId].orEmpty().takeIf { electricalAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
         tipkaloInspectorUserId = tipkaloInspectorUserId,
-        tipkaloInspectorLabel = userLabelById[tipkaloInspectorUserId].orEmpty().takeIf { tipkaloInspectorUserId.isNotBlank() }.orEmpty(),
+        tipkaloInspectorLabel = tipkaloInspectorUserIds
+            .ifEmpty { setOf(tipkaloInspectorUserId).filter { it.isNotBlank() }.toSet() }
+            .mapNotNull { userLabelById[it] }
+            .joinToString(", "),
         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
         tipkaloAuthorizationHolderLabel = userLabelById[tipkaloAuthorizationHolderUserId].orEmpty().takeIf { tipkaloAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
         selectedEquipmentCount = selectedEquipmentIds.size,
@@ -6440,24 +6497,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         onInspectionDateChange = { inspectionDate = it },
                         issuedDate = issuedDate,
                         onIssuedDateChange = { issuedDate = it },
-                        inspectionType = inspectionType,
-                        inspectionOptions = inspectionOptions,
-                        onInspectionTypeChange = { inspectionType = it },
                         testingLocation = testingLocation,
                         onTestingLocationChange = { testingLocation = it },
-                        inspectorUserId = inspectorUserId,
-                        authorizationHolderUserId = authorizationHolderUserId,
-                        electricalInspectorUserId = electricalInspectorUserId,
-                        electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
-                        tipkaloInspectorUserId = tipkaloInspectorUserId,
-                        tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
-                        userOptions = userOptions,
-                        onInspectorUserIdChange = { inspectorUserId = it },
-                        onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
-                        onElectricalInspectorUserIdChange = { electricalInspectorUserId = it },
-                        onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
-                        onTipkaloInspectorUserIdChange = { tipkaloInspectorUserId = it },
-                        onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
                         measurementEquipmentGroup = measurementEquipmentGroup,
                         measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
                         onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
@@ -6508,6 +6549,32 @@ private fun WorkOrderDocumentationWizardDialog(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
                 }
+                DocumentationServicePeopleSection(
+                    signatureAreas = activeSignatureAreas,
+                    areaOptions = context.signaturePersonOptions,
+                    inspectorUserIds = inspectorUserIds,
+                    onInspectorUserIdsChange = {
+                        inspectorUserIds = it
+                        inspectorUserId = it.firstOrNull().orEmpty()
+                    },
+                    authorizationHolderUserId = authorizationHolderUserId,
+                    onAuthorizationHolderUserIdChange = { authorizationHolderUserId = it },
+                    electricalInspectorUserIds = electricalInspectorUserIds,
+                    onElectricalInspectorUserIdsChange = {
+                        electricalInspectorUserIds = it
+                        electricalInspectorUserId = it.firstOrNull().orEmpty()
+                    },
+                    electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+                    onElectricalAuthorizationHolderUserIdChange = { electricalAuthorizationHolderUserId = it },
+                    tipkaloInspectorUserIds = tipkaloInspectorUserIds,
+                    onTipkaloInspectorUserIdsChange = {
+                        tipkaloInspectorUserIds = it
+                        tipkaloInspectorUserId = it.firstOrNull().orEmpty()
+                    },
+                    tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                    onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
+                    enabled = !formLoading,
+                )
                 val templateControls = DocumentationTemplateStandardControls(
                     documentNumber = currentDocumentNumber,
                     serviceName = selectedFlowItem?.serviceName ?: inspectionType,
@@ -6735,14 +6802,14 @@ private fun WorkOrderDocumentationWizardDialog(
                         validityMonths = validityMonths.trim(),
                         electricalValidityMonths = electricalValidityMonths.trim(),
                         tipkaloValidityMonths = tipkaloValidityMonths.trim(),
-                        inspectorUserIds = listOf(inspectorUserId).filter { it.isNotBlank() },
-                        inspectorUserId = inspectorUserId,
+                        inspectorUserIds = inspectorUserIds.toList(),
+                        inspectorUserId = inspectorUserId.ifBlank { inspectorUserIds.firstOrNull().orEmpty() },
                         authorizationHolderUserId = authorizationHolderUserId,
-                        electricalInspectorUserIds = listOf(electricalInspectorUserId).filter { it.isNotBlank() },
-                        electricalInspectorUserId = electricalInspectorUserId,
+                        electricalInspectorUserIds = electricalInspectorUserIds.toList(),
+                        electricalInspectorUserId = electricalInspectorUserId.ifBlank { electricalInspectorUserIds.firstOrNull().orEmpty() },
                         electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
-                        tipkaloInspectorUserIds = listOf(tipkaloInspectorUserId).filter { it.isNotBlank() },
-                        tipkaloInspectorUserId = tipkaloInspectorUserId,
+                        tipkaloInspectorUserIds = tipkaloInspectorUserIds.toList(),
+                        tipkaloInspectorUserId = tipkaloInspectorUserId.ifBlank { tipkaloInspectorUserIds.firstOrNull().orEmpty() },
                         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
                         fieldValues = templatePayload.first,
                         templateFieldValues = templatePayload.second,
@@ -8389,6 +8456,89 @@ private fun DocumentationCoreBasicsLauncherCard(
 }
 
 @Composable
+private fun DocumentationServicePeopleSection(
+    signatureAreas: List<String>,
+    areaOptions: List<WorkOrderDocumentationSignatureAreaOptions>,
+    inspectorUserIds: Set<String>,
+    onInspectorUserIdsChange: (Set<String>) -> Unit,
+    authorizationHolderUserId: String,
+    onAuthorizationHolderUserIdChange: (String) -> Unit,
+    electricalInspectorUserIds: Set<String>,
+    onElectricalInspectorUserIdsChange: (Set<String>) -> Unit,
+    electricalAuthorizationHolderUserId: String,
+    onElectricalAuthorizationHolderUserIdChange: (String) -> Unit,
+    tipkaloInspectorUserIds: Set<String>,
+    onTipkaloInspectorUserIdsChange: (Set<String>) -> Unit,
+    tipkaloAuthorizationHolderUserId: String,
+    onTipkaloAuthorizationHolderUserIdChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    val normalizedAreas = signatureAreas
+        .map(::normalizeDocumentationSignatureAreaKey)
+        .distinct()
+        .ifEmpty { listOf("elektro") }
+
+    WizardSection(title = "Osobe i ovlaštenja", icon = Icons.Rounded.CheckCircle) {
+        normalizedAreas.forEach { area ->
+            val options = areaOptions.areaOptions(area)
+            val inspectorSelection = when (area) {
+                "tipkalo", "tzin" -> tipkaloInspectorUserIds
+                "elektro" -> electricalInspectorUserIds
+                else -> inspectorUserIds
+            }
+            val authorizationSelection = when (area) {
+                "tipkalo", "tzin" -> tipkaloAuthorizationHolderUserId
+                "elektro" -> electricalAuthorizationHolderUserId
+                else -> authorizationHolderUserId
+            }
+            val onInspectorChange: (Set<String>) -> Unit = when (area) {
+                "tipkalo", "tzin" -> onTipkaloInspectorUserIdsChange
+                "elektro" -> onElectricalInspectorUserIdsChange
+                else -> onInspectorUserIdsChange
+            }
+            val onAuthorizationChange: (String) -> Unit = when (area) {
+                "tipkalo", "tzin" -> onTipkaloAuthorizationHolderUserIdChange
+                "elektro" -> onElectricalAuthorizationHolderUserIdChange
+                else -> onAuthorizationHolderUserIdChange
+            }
+            val authorizationOptions = listOf(
+                WorkOrderDocumentationOption("", "Odaberi odgovornu osobu"),
+            ) + options.authorizationOptions
+            val authorizationLabel = authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(options.label, fontWeight = FontWeight.Black)
+                    DocumentationMultiSelectField(
+                        label = "Ispitivači",
+                        options = options.inspectorOptions,
+                        selectedIds = inspectorSelection,
+                        enabled = enabled,
+                        emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                        onChange = onInspectorChange,
+                    )
+                    WorkOrderSelectField(
+                        label = "Odgovorna osoba",
+                        value = authorizationSelection,
+                        valueLabel = authorizationLabel.ifBlank { "Odaberi odgovornu osobu" },
+                        options = authorizationOptions.map { it.id to it.label },
+                        enabled = enabled,
+                        onSelect = onAuthorizationChange,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DocumentationCoreBasicsContent(
     documentNumber: String,
     serviceName: String,
@@ -8397,24 +8547,8 @@ private fun DocumentationCoreBasicsContent(
     onInspectionDateChange: (String) -> Unit,
     issuedDate: String,
     onIssuedDateChange: (String) -> Unit,
-    inspectionType: String,
-    inspectionOptions: List<Pair<String, String>>,
-    onInspectionTypeChange: (String) -> Unit,
     testingLocation: String,
     onTestingLocationChange: (String) -> Unit,
-    inspectorUserId: String,
-    authorizationHolderUserId: String,
-    electricalInspectorUserId: String,
-    electricalAuthorizationHolderUserId: String,
-    tipkaloInspectorUserId: String,
-    tipkaloAuthorizationHolderUserId: String,
-    userOptions: List<Pair<String, String>>,
-    onInspectorUserIdChange: (String) -> Unit,
-    onAuthorizationHolderUserIdChange: (String) -> Unit,
-    onElectricalInspectorUserIdChange: (String) -> Unit,
-    onElectricalAuthorizationHolderUserIdChange: (String) -> Unit,
-    onTipkaloInspectorUserIdChange: (String) -> Unit,
-    onTipkaloAuthorizationHolderUserIdChange: (String) -> Unit,
     measurementEquipmentGroup: String,
     measurementEquipmentGroupOptions: List<Pair<String, String>>,
     onMeasurementEquipmentGroupChange: (String) -> Unit,
@@ -8437,67 +8571,7 @@ private fun DocumentationCoreBasicsContent(
     }
     WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
     WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
-    WorkOrderSelectField(
-        label = "Vrsta ispitivanja",
-        value = inspectionType,
-        valueLabel = inspectionType.ifBlank {
-            if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
-        },
-        options = inspectionOptions,
-        enabled = enabled,
-        onSelect = onInspectionTypeChange,
-    )
     WorkOrderTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
-
-    Text("Ispitivači i ovlaštenici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-    WorkOrderSelectField(
-        label = "Ispitivao",
-        value = inspectorUserId,
-        valueLabel = userOptions.firstOrNull { it.first == inspectorUserId }?.second.orEmpty(),
-        options = userOptions,
-        enabled = enabled,
-        onSelect = onInspectorUserIdChange,
-    )
-    WorkOrderSelectField(
-        label = "Nositelj ovlaštenja",
-        value = authorizationHolderUserId,
-        valueLabel = userOptions.firstOrNull { it.first == authorizationHolderUserId }?.second.orEmpty(),
-        options = userOptions,
-        enabled = enabled,
-        onSelect = onAuthorizationHolderUserIdChange,
-    )
-    WorkOrderSelectField(
-        label = "Elektro ispitivač",
-        value = electricalInspectorUserId,
-        valueLabel = userOptions.firstOrNull { it.first == electricalInspectorUserId }?.second.orEmpty(),
-        options = userOptions,
-        enabled = enabled,
-        onSelect = onElectricalInspectorUserIdChange,
-    )
-    WorkOrderSelectField(
-        label = "Elektro nositelj ovlaštenja",
-        value = electricalAuthorizationHolderUserId,
-        valueLabel = userOptions.firstOrNull { it.first == electricalAuthorizationHolderUserId }?.second.orEmpty(),
-        options = userOptions,
-        enabled = enabled,
-        onSelect = onElectricalAuthorizationHolderUserIdChange,
-    )
-    WorkOrderSelectField(
-        label = "Tipkalo / isklop ispitivač",
-        value = tipkaloInspectorUserId,
-        valueLabel = userOptions.firstOrNull { it.first == tipkaloInspectorUserId }?.second.orEmpty(),
-        options = userOptions,
-        enabled = enabled,
-        onSelect = onTipkaloInspectorUserIdChange,
-    )
-    WorkOrderSelectField(
-        label = "Tipkalo / isklop nositelj",
-        value = tipkaloAuthorizationHolderUserId,
-        valueLabel = userOptions.firstOrNull { it.first == tipkaloAuthorizationHolderUserId }?.second.orEmpty(),
-        options = userOptions,
-        enabled = enabled,
-        onSelect = onTipkaloAuthorizationHolderUserIdChange,
-    )
 
     Text("Mjerna oprema i uvjeti", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
     WorkOrderSelectField(

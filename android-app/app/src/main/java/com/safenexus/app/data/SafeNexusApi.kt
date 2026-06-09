@@ -858,6 +858,7 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
                     serviceName = item.firstClean("serviceName"),
                     serviceCode = item.firstClean("serviceCode", "code", "shortCode"),
                     serviceIndex = item.optInt("serviceIndex", -1),
+                    signatureAreas = item.optJSONArray("signatureAreas").toStringList(),
                     documentNumber = item.firstClean("documentNumber"),
                     documentName = item.firstClean("documentName", "fileName"),
                     fields = item.optJSONArray("fields").toWorkOrderDocumentationFields(),
@@ -892,6 +893,25 @@ private fun JSONArray?.toWorkOrderDocumentationOptions(): List<WorkOrderDocument
     }.distinctBy { it.id }
 }
 
+private fun JSONArray?.toWorkOrderDocumentationSignatureAreaOptions(): List<WorkOrderDocumentationSignatureAreaOptions> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val key = item.firstClean("key", "id", "value")
+            if (key.isBlank()) continue
+            add(
+                WorkOrderDocumentationSignatureAreaOptions(
+                    key = key,
+                    label = item.firstClean("label", "title", "name").ifBlank { key },
+                    inspectorOptions = item.optJSONArray("inspectorOptions").toWorkOrderDocumentationOptions(),
+                    authorizationOptions = item.optJSONArray("authorizationOptions").toWorkOrderDocumentationOptions(),
+                ),
+            )
+        }
+    }.distinctBy { it.key }
+}
+
 private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentationContext =
     WorkOrderDocumentationContext(
         workOrderId = firstClean("workOrderId"),
@@ -905,6 +925,7 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         measurementEquipmentOptions = optJSONArray("measurementEquipmentOptions").toWorkOrderDocumentationOptions(),
         legalFrameworkOptions = optJSONArray("legalFrameworkOptions").toWorkOrderDocumentationOptions(),
         rulebookOptions = optJSONArray("rulebookOptions").toWorkOrderDocumentationOptions(),
+        signaturePersonOptions = optJSONArray("signaturePersonOptions").toWorkOrderDocumentationSignatureAreaOptions(),
     )
 
 private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentationDefaults {
