@@ -6435,6 +6435,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationCoreBasicsContent(
                         documentNumber = currentDocumentNumber,
                         serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                        showDocumentNumber = false,
                         inspectionDate = inspectionDate,
                         onInspectionDateChange = { inspectionDate = it },
                         issuedDate = issuedDate,
@@ -8391,6 +8392,7 @@ private fun DocumentationCoreBasicsLauncherCard(
 private fun DocumentationCoreBasicsContent(
     documentNumber: String,
     serviceName: String,
+    showDocumentNumber: Boolean = true,
     inspectionDate: String,
     onInspectionDateChange: (String) -> Unit,
     issuedDate: String,
@@ -8430,7 +8432,9 @@ private fun DocumentationCoreBasicsContent(
     onGroundResistanceChange: (String) -> Unit,
     enabled: Boolean,
 ) {
-    DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
+    if (showDocumentNumber) {
+        DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
+    }
     WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
     WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
     WorkOrderSelectField(
