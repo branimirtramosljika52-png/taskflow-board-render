@@ -3338,15 +3338,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
-            MainMenuShortcut("Svi moduli", "Dokumenti, periodika, portal i pravilnici", AppSection.More, Icons.Rounded.Map),
-            MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Mail),
-            MainMenuShortcut("Zapisnici", "Pregled, statusi i potpisani zapisi", AppSection.More, Icons.Rounded.CheckCircle),
-            MainMenuShortcut("Periodika", "Rokovi, pregledi i isteci", AppSection.More, Icons.Rounded.CalendarMonth),
-            MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint),
-            MainMenuShortcut("Klijentski portal", "Dokumentacija i klijentski pregled", AppSection.More, Icons.Rounded.Map),
-            MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business),
-            MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn),
-            MainMenuShortcut("Pravilnici", "Temeljna dokumentacija i aktivni pravilnici", AppSection.More, Icons.Rounded.Lock),
+            MainMenuShortcut("Više", "Dokumenti, periodika, tvrtke i lokacije", AppSection.More, Icons.Rounded.Map),
         )
     }
 
@@ -3356,14 +3348,7 @@ private fun MainMenuDropdown(
         modifier = Modifier.width(318.dp),
     ) {
         shortcuts.forEach { shortcut ->
-            val selected = when (shortcut.label) {
-                "Operativa" -> currentSection == AppSection.Operations
-                "Radni nalozi" -> currentSection == AppSection.WorkOrders
-                "Kalendar" -> currentSection == AppSection.Calendar
-                "Vozila" -> currentSection == AppSection.Vehicles
-                "Svi moduli" -> currentSection == AppSection.More
-                else -> false
-            }
+            val selected = currentSection == shortcut.section
             DropdownMenuItem(
                 text = {
                     Column {
@@ -3684,16 +3669,17 @@ private fun OperationsContent(
     val myWorkOrders = remember(workOrders, user?.displayName, user?.email) {
         workOrders.filter { workOrder -> workOrder.isAssignedToUser(user) }
     }
-    val organizationSummary = remember(workOrders) { workOrders.toStatusSummary() }
-    val personalSummary = remember(myWorkOrders) { myWorkOrders.toStatusSummary() }
-    val statusRows = remember(workOrders) { buildStatusBreakdown(workOrders) }
+    val statusLabels = remember(data.workOrderStatuses, workOrders) {
+        buildWorkOrderStatusLabels(data.workOrderStatuses.map { option -> option.value.ifBlank { option.label } }, workOrders)
+    }
+    val organizationSummary = remember(workOrders, statusLabels) { workOrders.toStatusDashboard(statusLabels) }
+    val personalSummary = remember(myWorkOrders, statusLabels) { myWorkOrders.toStatusDashboard(statusLabels) }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         OperationsStatusCockpit(
             user = user,
             personal = personalSummary,
             organization = organizationSummary,
-            statusRows = statusRows,
         )
         OperationsScopeComparison(
             personal = personalSummary,
@@ -3705,12 +3691,10 @@ private fun OperationsContent(
     }
 }
 
-private data class WorkOrderStatusSummary(
+private data class WorkOrderStatusDashboard(
     val total: Int,
-    val open: Int,
-    val inProgress: Int,
     val overdue: Int,
-    val closed: Int,
+    val statuses: List<WorkOrderStatusCount>,
 )
 
 private data class WorkOrderStatusCount(
@@ -3718,20 +3702,48 @@ private data class WorkOrderStatusCount(
     val count: Int,
 )
 
-private fun List<WorkOrder>.toStatusSummary(): WorkOrderStatusSummary =
-    WorkOrderStatusSummary(
+private fun List<WorkOrder>.toStatusDashboard(statusLabels: List<String>): WorkOrderStatusDashboard =
+    WorkOrderStatusDashboard(
         total = size,
-        open = count { it.isOpenRnStatus() },
-        inProgress = count { it.isInProgressRnStatus() },
         overdue = count { it.isOverdue },
-        closed = count { it.isClosed },
+        statuses = buildStatusBreakdown(this, statusLabels),
     )
 
-private fun buildStatusBreakdown(workOrders: List<WorkOrder>): List<WorkOrderStatusCount> =
-    workOrders
-        .groupBy { it.status.ifBlank { "Bez statusa" } }
-        .map { (status, items) -> WorkOrderStatusCount(status, items.size) }
-        .sortedWith(compareByDescending<WorkOrderStatusCount> { it.count }.thenBy { it.label.lowercase(Locale.getDefault()) })
+private fun buildWorkOrderStatusLabels(
+    optionLabels: List<String>,
+    workOrders: List<WorkOrder>,
+): List<String> {
+    val fromOptions = optionLabels
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    val fallback = workOrderStatusOptions
+    val observed = workOrders
+        .map { it.status.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.statusKey() }
+    return (fromOptions.ifEmpty { fallback } + observed)
+        .distinctBy { it.statusKey() }
+}
+
+private fun buildStatusBreakdown(
+    workOrders: List<WorkOrder>,
+    statusLabels: List<String>,
+): List<WorkOrderStatusCount> {
+    val counts = workOrders
+        .groupingBy { it.status.ifBlank { "Bez statusa" }.statusKey() }
+        .eachCount()
+    val ordered = statusLabels.map { status -> WorkOrderStatusCount(status, counts[status.statusKey()] ?: 0) }
+    val knownKeys = statusLabels.map { it.statusKey() }.toSet()
+    val extra = workOrders
+        .map { it.status.ifBlank { "Bez statusa" } }
+        .distinctBy { it.statusKey() }
+        .filter { it.statusKey() !in knownKeys }
+        .map { status -> WorkOrderStatusCount(status, counts[status.statusKey()] ?: 0) }
+        .sortedBy { it.label.lowercase(Locale.getDefault()) }
+    return ordered + extra
+}
+
+private fun String.statusKey(): String = trim().lowercase(Locale.getDefault())
 
 private fun WorkOrder.isAssignedToUser(user: SafeNexusUser?): Boolean {
     if (user == null) return false
@@ -3750,9 +3762,8 @@ private fun WorkOrder.isAssignedToUser(user: SafeNexusUser?): Boolean {
 @Composable
 private fun OperationsStatusCockpit(
     user: SafeNexusUser?,
-    personal: WorkOrderStatusSummary,
-    organization: WorkOrderStatusSummary,
-    statusRows: List<WorkOrderStatusCount>,
+    personal: WorkOrderStatusDashboard,
+    organization: WorkOrderStatusDashboard,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -3805,7 +3816,7 @@ private fun OperationsStatusCockpit(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                statusRows.take(5).forEach { row ->
+                organization.statuses.forEach { row ->
                     Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.14f)) {
                         Text(
                             "${row.label}: ${row.count}",
@@ -3845,8 +3856,8 @@ private fun RowScope.StatusScopeTile(
 
 @Composable
 private fun OperationsScopeComparison(
-    personal: WorkOrderStatusSummary,
-    organization: WorkOrderStatusSummary,
+    personal: WorkOrderStatusDashboard,
+    organization: WorkOrderStatusDashboard,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -3869,7 +3880,7 @@ private fun OperationsScopeComparison(
 @Composable
 private fun StatusComparisonRow(
     title: String,
-    summary: WorkOrderStatusSummary,
+    summary: WorkOrderStatusDashboard,
     accent: Color,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3878,11 +3889,26 @@ private fun StatusComparisonRow(
             Text("${summary.total} ukupno", style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.Black)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusCountPill("Otvoreni", summary.open, accent)
-            StatusCountPill("U tijeku", summary.inProgress, accent)
-            StatusCountPill("Kasne", summary.overdue, Color(0xFFDC2626))
-            StatusCountPill("Završeni", summary.closed, Color(0xFF059669))
+            summary.statuses.forEach { status ->
+                StatusCountPill(status.label, status.count, workOrderStatusAccentColor(status.label, accent))
+            }
+            StatusCountPill("Kasne po roku", summary.overdue, Color(0xFFDC2626))
         }
+    }
+}
+
+private fun workOrderStatusAccentColor(status: String, fallback: Color): Color {
+    val normalized = status
+        .lowercase(Locale.getDefault())
+        .replace("š", "s")
+        .replace("ž", "z")
+    return when {
+        normalized.contains("otvoren") -> Color(0xFF2563EB)
+        normalized.contains("gotov") -> Color(0xFFDB2777)
+        normalized.contains("ovjeren") -> Color(0xFF059669)
+        normalized.contains("faktur") -> Color(0xFFB45309)
+        normalized.contains("storno") || normalized.contains("storniran") -> Color(0xFF7C3AED)
+        else -> fallback
     }
 }
 
@@ -4691,7 +4717,7 @@ private fun MoreOverviewHero(data: BootstrapData) {
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Svi moduli", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text("Pregled evidencija", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
                         "Tvrtke, lokacije, dokumenti, rokovi i temeljna dokumentacija.",
                         style = MaterialTheme.typography.bodySmall,
