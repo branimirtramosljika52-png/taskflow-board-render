@@ -183,6 +183,7 @@ import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocumentationField
 import com.safenexus.app.data.WorkOrderDocumentationOption
 import com.safenexus.app.data.WorkOrderDocumentationTemplate
+import com.safenexus.app.data.WorkOrderDocumentationTemplateBlock
 import com.safenexus.app.data.WorkOrderDocument
 import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderMeasurementColumn
@@ -5491,34 +5492,9 @@ private fun WorkOrderDocumentationWizardDialog(
     val templateInspectionDefault = remember(context) {
         getTemplateInspectionTypeDefault(context.templates)
     }
-    val workOrderInspectionOptions = remember(workOrder, services) {
-        val rnServices = buildList {
-            workOrder.serviceItems.forEach { item ->
-                val label = item.trim()
-                if (label.isNotBlank()) add(label)
-            }
-            if (workOrder.serviceLine.isNotBlank()) add(workOrder.serviceLine)
-        }
-        val catalogServices = services
-            .filter { it.type.equals("inspection", ignoreCase = true) || it.type.isBlank() }
-            .map { service -> service.name.ifBlank { service.serviceCode } }
-            .filter { it.isNotBlank() }
-        (rnServices + catalogServices)
-            .distinctBy { it.lowercase(Locale.getDefault()) }
-            .take(60)
-            .map { it to it }
-    }
-    val inspectionOptions = remember(templateInspectionOptions, workOrderInspectionOptions) {
-        templateInspectionOptions.ifEmpty { workOrderInspectionOptions }
-    }
-    val defaultInspectionType = remember(workOrder, templateInspectionOptions, templateInspectionDefault) {
-        templateInspectionDefault.ifBlank {
-            if (templateInspectionOptions.isEmpty()) {
-                workOrder.displayService.takeIf { it != "Bez upisane usluge" } ?: ""
-            } else {
-                ""
-            }
-        }
+    val inspectionOptions = templateInspectionOptions
+    val defaultInspectionType = remember(templateInspectionDefault) {
+        templateInspectionDefault
     }
     val defaults = context.defaults
     var inspectionDate by remember(workOrder.id, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
@@ -5600,9 +5576,12 @@ private fun WorkOrderDocumentationWizardDialog(
     val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
         buildDocumentationServiceFlowItems(context.templates, workOrder)
     }
-    val selectedFlowItem = remember(serviceFlowItems, inspectionType) {
+    var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
+        mutableStateOf(serviceFlowItems.firstOrNull()?.serviceName.orEmpty())
+    }
+    val selectedFlowItem = remember(serviceFlowItems, selectedFlowService) {
         serviceFlowItems.firstOrNull { item ->
-            item.serviceName.equals(inspectionType, ignoreCase = true)
+            item.serviceName.equals(selectedFlowService, ignoreCase = true)
         } ?: serviceFlowItems.firstOrNull()
     }
     val currentDocumentNumber = selectedFlowItem?.documentNumbers?.firstOrNull()
@@ -5626,6 +5605,9 @@ private fun WorkOrderDocumentationWizardDialog(
         context.templates
             .map { template -> template.copy(fields = template.fields.filter { it.label.isNotBlank() }) }
             .filter { it.fields.isNotEmpty() }
+    }
+    val blockTemplates = remember(context) {
+        context.templates.filter { template -> template.fieldBlocks.isNotEmpty() }
     }
     val templateDefaultsKey = remember(context) {
         context.templates.joinToString("|") { template ->
@@ -5678,7 +5660,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationRuntimeActionBar(
                         workOrder = workOrder,
                         flowItems = serviceFlowItems,
-                        selectedService = inspectionType,
+                        selectedService = selectedFlowService,
                         templateCount = context.templates.size,
                         measurementCount = context.measurementTableCount,
                         equipmentCount = context.measurementEquipmentOptions.size,
@@ -5686,7 +5668,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         rulebookCount = context.rulebookOptions.size,
                         signatureMode = signatureMode,
                         enabled = !formLoading,
-                        onSelectService = { inspectionType = it },
+                        onSelectService = { selectedFlowService = it },
                         onSignatureMode = { signatureMode = it },
                     )
                 }
@@ -5699,14 +5681,40 @@ private fun WorkOrderDocumentationWizardDialog(
                     WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
                     WorkOrderDatePickerField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
                     WorkOrderSelectField(
-                        label = "Vrsta usluge",
+                        label = "Vrsta ispitivanja",
                         value = inspectionType,
-                        valueLabel = inspectionType.ifBlank { "Odaberi vrstu usluge" },
+                        valueLabel = inspectionType.ifBlank {
+                            if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
+                        },
                         options = inspectionOptions,
                         enabled = !formLoading,
                         onSelect = { inspectionType = it },
                     )
                     WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
+                }
+
+                WizardSection(title = "Blokovi web predloška", icon = Icons.Rounded.Folder) {
+                    when {
+                        contextLoading -> Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("Učitavam blokove iz templatea...")
+                        }
+                        !context.hasTemplates -> Text(
+                            "Za ovaj RN nije pronađen povezani template.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                        blockTemplates.isEmpty() -> Text(
+                            "Template nema dodatnih blokova za mobilni prikaz.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                        else -> blockTemplates.forEach { template ->
+                            TemplateBlockOverview(template)
+                        }
+                    }
                 }
 
                 WizardSection(title = "Mjerna i ispitna oprema", icon = Icons.Rounded.Work) {
@@ -5986,13 +5994,14 @@ private fun getInspectionTypeTemplateFields(templates: List<WorkOrderDocumentati
     templates.flatMap { template -> template.fields }.filter(::isInspectionTypeTemplateField)
 
 private fun buildTemplateInspectionTypeOptions(templates: List<WorkOrderDocumentationTemplate>): List<Pair<String, String>> =
-    getInspectionTypeTemplateFields(templates)
+    (
+        templates.flatMap { template -> template.inspectionTypeOptions } +
+            getInspectionTypeTemplateFields(templates).flatMap { field -> field.options }
+        )
         .flatMap { field ->
-            field.options.mapNotNull { option ->
-                val value = option.value.ifBlank { option.label }.trim()
-                val label = option.label.ifBlank { option.value }.trim()
-                if (value.isBlank() && label.isBlank()) null else value.ifBlank { label } to label.ifBlank { value }
-            }
+            val value = field.value.ifBlank { field.label }.trim()
+            val label = field.label.ifBlank { field.value }.trim()
+            if (value.isBlank() && label.isBlank()) emptyList() else listOf(value.ifBlank { label } to label.ifBlank { value })
         }
         .distinctBy { it.first.lowercase(Locale.getDefault()) }
 
@@ -7123,6 +7132,158 @@ private fun MeasurementGridCell(
         )
     }
 }
+
+@Composable
+private fun TemplateBlockOverview(template: WorkOrderDocumentationTemplate) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(template.title, fontWeight = FontWeight.Black)
+                Text(
+                    listOf(
+                        template.documentType,
+                        "${template.fieldBlocks.size} blokova",
+                        "${template.measurementTables.size} Excel",
+                    ).filter { it.isNotBlank() }.joinToString(" - "),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                )
+            }
+            template.fieldBlocks
+                .groupBy { it.group.ifBlank { "Predložak" } }
+                .forEach { (group, blocks) ->
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text(
+                            group,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        blocks.forEach { block ->
+                            TemplateBlockRow(block)
+                        }
+                    }
+                }
+        }
+    }
+}
+
+@Composable
+private fun TemplateBlockRow(block: WorkOrderDocumentationTemplateBlock) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                Icon(
+                    templateBlockIcon(block.type),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .padding(8.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            if (block.required) "${block.label} *" else block.label,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            block.typeLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        )
+                    }
+                    if (block.editable) {
+                        Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f)) {
+                            Text(
+                                "unos",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+                if (block.summary.isNotBlank()) {
+                    Text(
+                        block.summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (block.helpText.isNotBlank()) {
+                    Text(
+                        block.helpText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (block.options.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        block.options.take(5).forEach { option ->
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        option.label.ifBlank { option.value },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
+                        if (block.options.size > 5) {
+                            AssistChip(onClick = {}, label = { Text("+${block.options.size - 5}") })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun templateBlockIcon(type: String): ImageVector =
+    when (type.lowercase(Locale.getDefault())) {
+        "measurement_table" -> Icons.Rounded.Description
+        "equipment_list" -> Icons.Rounded.Work
+        "legal_list" -> Icons.Rounded.Lock
+        "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" -> Icons.Rounded.Fingerprint
+        "sketch_upload" -> Icons.Rounded.PictureAsPdf
+        "image_upload" -> Icons.Rounded.Image
+        "system_description" -> Icons.Rounded.InsertDriveFile
+        else -> Icons.Rounded.Description
+    }
 
 @Composable
 private fun TemplateFieldGroup(

@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.36.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.37.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -10669,6 +10669,166 @@ function buildMobileDocumentTemplatePromptFields(template = {}, placeholders = {
     .filter(Boolean);
 }
 
+const MOBILE_DOCUMENT_TEMPLATE_FIELD_TYPE_LABELS = {
+  chapter: "Poglavlje",
+  system_description: "Opis sustava",
+  page_break: "Nova A4 stranica",
+  text: "Tekst",
+  longtext: "Dugi tekst",
+  dropdown: "Padajuci izbor",
+  date: "Datum",
+  number: "Broj",
+  checkbox: "Checkbox",
+  toggle: "Toggle",
+  qualified_inspectors: "Ispitivaci",
+  sketch_upload: "Dodaj dokumente",
+  image_upload: "Slika",
+  legal_list: "Popis propisa",
+  equipment_list: "Popis opreme",
+  measurement_table: "Excel tablica",
+  inspector_signature: "Potpis ispitivaca",
+  authorization_holder_signature: "Potpis nositelja",
+  digital_signature: "Digitalni potpis",
+};
+
+function getMobileDocumentTemplateFieldTypeLabel(type = "text") {
+  const normalizedType = normalizeInputValue(type || "text").toLowerCase();
+  return MOBILE_DOCUMENT_TEMPLATE_FIELD_TYPE_LABELS[normalizedType] || normalizedType || "Polje";
+}
+
+function getMobileDocumentTemplateFieldBlockGroup(type = "text") {
+  const normalizedType = normalizeInputValue(type || "text").toLowerCase();
+  if (MOBILE_DOCUMENT_TEMPLATE_PROMPT_FIELD_TYPES.has(normalizedType)) {
+    return "Rucna polja";
+  }
+  if (normalizedType === "measurement_table") {
+    return "Excel / mjerenja";
+  }
+  if (normalizedType === "equipment_list") {
+    return "Mjerna i ispitna oprema";
+  }
+  if (normalizedType === "legal_list") {
+    return "Pravilnici i propisi";
+  }
+  if (
+    normalizedType === "qualified_inspectors"
+    || normalizedType === "inspector_signature"
+    || normalizedType === "authorization_holder_signature"
+    || normalizedType === "digital_signature"
+  ) {
+    return "Osobe i potpisi";
+  }
+  if (normalizedType === "sketch_upload" || normalizedType === "image_upload") {
+    return "Prilozi";
+  }
+  if (normalizedType === "system_description") {
+    return "Opis sustava";
+  }
+  return "Struktura predloska";
+}
+
+function buildMobileDocumentTemplateFieldBlockSummary(field = {}, template = {}, scopedSnapshot = {}, common = {}, fieldSheets = {}) {
+  const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+  const options = buildMobileDocumentTemplateFieldOptions(field);
+  if (fieldType === "dropdown") {
+    return options.length > 0
+      ? `${options.length} opcija iz predloska`
+      : "Padajuci izbor bez upisanih opcija";
+  }
+  if (fieldType === "measurement_table") {
+    const recordKey = normalizeInputValue(field?.key || field?.id || getMobileDocumentTemplateFieldTokenKey(field, 0));
+    const sheet = normalizeWorkOrderMeasurementSheet(fieldSheets?.[recordKey] || field?.sheet || field?.measurementSheet);
+    return getMobileMeasurementSheetSummary(sheet);
+  }
+  if (fieldType === "legal_list") {
+    const legalItems = getMobileDocumentTemplateLegalFrameworksForField(template, field, scopedSnapshot, common);
+    return legalItems.length > 0 ? `${legalItems.length} propisa iz web predloska` : "Propisi se biraju u bloku Pravilnici i propisi";
+  }
+  if (fieldType === "equipment_list") {
+    const equipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, field, scopedSnapshot, common);
+    return equipmentItems.length > 0 ? `${equipmentItems.length} uredaja dostupno` : "Oprema se bira u bloku Mjerna i ispitna oprema";
+  }
+  if (fieldType === "system_description") {
+    const rows = Array.isArray(field?.systemRows) ? field.systemRows : [];
+    const sectionSubtitle = normalizeInputValue(field?.sectionSubtitle);
+    return [sectionSubtitle, rows.length > 0 ? `${rows.length} redova opisa` : "Opis sustava iz predloska"]
+      .filter(Boolean)
+      .join(" | ");
+  }
+  if (fieldType === "qualified_inspectors") {
+    return "Ispitivaci i nositelji ovlastenja popunjavaju se u bloku Osobe i potpis";
+  }
+  if (fieldType === "inspector_signature" || fieldType === "authorization_holder_signature" || fieldType === "digital_signature") {
+    return "Potpisni blok iz web templatea";
+  }
+  if (fieldType === "sketch_upload") {
+    return "Dokumenti i prilozi uz zapisnik";
+  }
+  if (fieldType === "image_upload") {
+    return "Fotografije uz zapisnik";
+  }
+  if (fieldType === "chapter") {
+    return normalizeInputValue(field?.sectionSubtitle || field?.defaultValue || field?.helpText) || "Naslovni blok";
+  }
+  if (fieldType === "page_break") {
+    return "Prekid stranice iz web templatea";
+  }
+  const defaultValue = getMobileDocumentTemplateFieldDefaultValue(field);
+  return defaultValue ? `Zadano: ${defaultValue}` : getMobileDocumentTemplateFieldTypeLabel(fieldType);
+}
+
+function buildMobileDocumentTemplateFieldBlocks(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}, fieldSheets = {}) {
+  return (Array.isArray(template?.customFields) ? template.customFields : [])
+    .map((field, index) => {
+      if (!field || typeof field !== "object") {
+        return null;
+      }
+      const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+      const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+      const id = normalizeInputValue(field?.id || field?.key || tokenKey || `field-${index + 1}`);
+      const key = normalizeInputValue(field?.key);
+      const label = normalizeInputValue(field?.label || field?.wordLabel || key || tokenKey || `Polje ${index + 1}`);
+      if (!id || !label) {
+        return null;
+      }
+      return {
+        id,
+        key,
+        tokenKey,
+        label,
+        type: fieldType,
+        typeLabel: getMobileDocumentTemplateFieldTypeLabel(fieldType),
+        group: getMobileDocumentTemplateFieldBlockGroup(fieldType),
+        required: Boolean(field?.required || field?.isRequired),
+        editable: isMobileDocumentTemplatePromptField(field),
+        helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
+        summary: buildMobileDocumentTemplateFieldBlockSummary(field, template, scopedSnapshot, common, fieldSheets),
+        options: buildMobileDocumentTemplateFieldOptions(field),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildMobileDocumentTemplateInspectionTypeOptions(template = {}) {
+  return (Array.isArray(template?.customFields) ? template.customFields : [])
+    .flatMap((field, index) => {
+      if (!isMobileInspectionTypeTemplateField(field, index)) {
+        return [];
+      }
+      const options = buildMobileDocumentTemplateFieldOptions(field);
+      if (options.length > 0) {
+        return options;
+      }
+      const defaultValue = getMobileDocumentTemplateFieldDefaultValue(field);
+      return defaultValue ? [{ value: defaultValue, label: defaultValue }] : [];
+    })
+    .filter((option) => normalizeInputValue(option?.value || option?.label))
+    .filter((option, index, items) => {
+      const value = normalizeInputValue(option?.value || option?.label).toLowerCase();
+      return items.findIndex((item) => normalizeInputValue(item?.value || item?.label).toLowerCase() === value) === index;
+    });
+}
+
 function getMobileMeasurementSheetSummary(sheet = null) {
   const normalized = normalizeWorkOrderMeasurementSheet(sheet);
   if (!normalized?.columns?.length) {
@@ -10996,6 +11156,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         ...buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common),
         ...(common.fieldValues || {}),
       };
+      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
       templates.push({
         id: normalizedTemplateId,
         title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
@@ -11008,6 +11169,8 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
           buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
         )}.pdf`,
         fields: buildMobileDocumentTemplatePromptFields(template, placeholders),
+        fieldBlocks: buildMobileDocumentTemplateFieldBlocks(template, workOrder, service, scopedSnapshot, common, fieldSheets),
+        inspectionTypeOptions: buildMobileDocumentTemplateInspectionTypeOptions(template),
         measurementTables: buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common),
       });
     });
@@ -11021,6 +11184,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     templates,
     hasTemplates: templates.length > 0,
     fieldCount: templates.reduce((sum, template) => sum + (template.fields?.length || 0), 0),
+    templateBlockCount: templates.reduce((sum, template) => sum + (template.fieldBlocks?.length || 0), 0),
     measurementTableCount: templates.reduce((sum, template) => sum + (template.measurementTables?.length || 0), 0),
     defaults: primaryDefaults || {
       testingLocation: resolveMobileWorkOrderTestingLocation(workOrder, {}),

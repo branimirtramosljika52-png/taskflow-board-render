@@ -673,6 +673,35 @@ private fun JSONArray?.toWorkOrderDocumentationFields(): List<WorkOrderDocumenta
     }.filter { it.id.isNotBlank() || it.key.isNotBlank() || it.tokenKey.isNotBlank() }
 }
 
+private fun JSONArray?.toWorkOrderDocumentationTemplateBlocks(): List<WorkOrderDocumentationTemplateBlock> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val id = item.firstClean("id", "key", "tokenKey")
+            val label = item.firstClean("label", "typeLabel", "key").ifBlank { id }
+            if (id.isNotBlank() && label.isNotBlank()) {
+                add(
+                    WorkOrderDocumentationTemplateBlock(
+                        id = id,
+                        key = item.firstClean("key"),
+                        tokenKey = item.firstClean("tokenKey"),
+                        label = label,
+                        type = item.firstClean("type").ifBlank { "text" },
+                        typeLabel = item.firstClean("typeLabel").ifBlank { item.firstClean("type").ifBlank { "Polje" } },
+                        group = item.firstClean("group").ifBlank { "Predložak" },
+                        required = item.optBoolean("required", false),
+                        editable = item.optBoolean("editable", false),
+                        helpText = item.firstClean("helpText"),
+                        summary = item.firstClean("summary"),
+                        options = item.optJSONArray("options").toDocumentationFieldOptions(),
+                    ),
+                )
+            }
+        }
+    }.distinctBy { "${it.id}::${it.type}" }
+}
+
 private fun JSONArray?.toWorkOrderMeasurementColumns(): List<WorkOrderMeasurementColumn> {
     if (this == null) return emptyList()
     return buildList {
@@ -785,6 +814,8 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
                     documentNumber = item.firstClean("documentNumber"),
                     documentName = item.firstClean("documentName", "fileName"),
                     fields = item.optJSONArray("fields").toWorkOrderDocumentationFields(),
+                    fieldBlocks = item.optJSONArray("fieldBlocks").toWorkOrderDocumentationTemplateBlocks(),
+                    inspectionTypeOptions = item.optJSONArray("inspectionTypeOptions").toDocumentationFieldOptions(),
                     measurementTables = item.optJSONArray("measurementTables").toWorkOrderMeasurementTables(),
                 ),
             )
@@ -821,6 +852,7 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         templates = optJSONArray("templates").toWorkOrderDocumentationTemplates(),
         hasTemplates = optBoolean("hasTemplates", false),
         fieldCount = optInt("fieldCount", 0),
+        templateBlockCount = optInt("templateBlockCount", 0),
         measurementTableCount = optInt("measurementTableCount", 0),
         defaults = optJSONObject("defaults").toWorkOrderDocumentationDefaults(),
         measurementEquipmentOptions = optJSONArray("measurementEquipmentOptions").toWorkOrderDocumentationOptions(),

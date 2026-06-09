@@ -140,6 +140,7 @@ data class WorkOrderDocumentationContext(
     val templates: List<WorkOrderDocumentationTemplate> = emptyList(),
     val hasTemplates: Boolean = false,
     val fieldCount: Int = 0,
+    val templateBlockCount: Int = 0,
     val measurementTableCount: Int = 0,
     val defaults: WorkOrderDocumentationDefaults = WorkOrderDocumentationDefaults(),
     val measurementEquipmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
@@ -186,7 +187,24 @@ data class WorkOrderDocumentationTemplate(
     val documentNumber: String = "",
     val documentName: String = "",
     val fields: List<WorkOrderDocumentationField>,
+    val fieldBlocks: List<WorkOrderDocumentationTemplateBlock> = emptyList(),
+    val inspectionTypeOptions: List<OptionItem> = emptyList(),
     val measurementTables: List<WorkOrderMeasurementTable>,
+)
+
+data class WorkOrderDocumentationTemplateBlock(
+    val id: String,
+    val key: String,
+    val tokenKey: String,
+    val label: String,
+    val type: String,
+    val typeLabel: String,
+    val group: String,
+    val required: Boolean,
+    val editable: Boolean,
+    val helpText: String,
+    val summary: String,
+    val options: List<OptionItem>,
 )
 
 data class WorkOrderDocumentationField(
