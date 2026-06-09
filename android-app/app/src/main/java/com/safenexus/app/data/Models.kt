@@ -1,5 +1,6 @@
 package com.safenexus.app.data
 
+import org.json.JSONObject
 import java.time.LocalDate
 
 data class SafeNexusUser(
@@ -137,6 +138,27 @@ data class WorkOrderDocumentationContext(
     val hasTemplates: Boolean = false,
     val fieldCount: Int = 0,
     val measurementTableCount: Int = 0,
+    val defaults: WorkOrderDocumentationDefaults = WorkOrderDocumentationDefaults(),
+)
+
+data class WorkOrderDocumentationDefaults(
+    val inspectionDate: String = "",
+    val issuedDate: String = "",
+    val issuedPlace: String = "",
+    val testingLocation: String = "",
+    val note: String = "",
+    val inspectionType: String = "",
+    val outsideTemperature: String = "",
+    val relativeHumidity: String = "",
+    val airflowSpeed: String = "",
+    val weather: String = "",
+    val groundCondition: String = "",
+    val groundResistance: String = "",
+    val measurementEquipmentGroup: String = "",
+    val signatureMode: String = "",
+    val validityMonths: String = "",
+    val electricalValidityMonths: String = "",
+    val tipkaloValidityMonths: String = "",
 )
 
 data class WorkOrderDocumentationTemplate(
@@ -189,6 +211,7 @@ data class WorkOrderMeasurementColumn(
 data class WorkOrderMeasurementRow(
     val id: String,
     val cells: Map<String, String>,
+    val formats: Map<String, JSONObject> = emptyMap(),
 )
 
 data class WorkOrderMeasurementMerge(

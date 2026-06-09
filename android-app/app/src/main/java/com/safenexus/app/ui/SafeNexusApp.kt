@@ -1,4 +1,4 @@
-﻿@file:OptIn(ExperimentalLayoutApi::class)
+﻿@file:OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 
 package com.safenexus.app.ui
 
@@ -109,6 +109,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -129,6 +131,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -156,6 +159,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
@@ -2263,6 +2267,75 @@ private fun WorkOrderTextField(
         enabled = enabled,
         shape = RoundedCornerShape(16.dp),
     )
+}
+
+private fun isoDateToMillis(value: String): Long? =
+    parseDateOrNull(value)
+        ?.atStartOfDay(ZoneId.systemDefault())
+        ?.toInstant()
+        ?.toEpochMilli()
+
+private fun millisToIsoDate(value: Long?): String =
+    value?.let {
+        Instant.ofEpochMilli(it)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+            .toString()
+    }.orEmpty()
+
+private fun formatDatePickerLabel(value: String): String =
+    parseDateOrNull(value)
+        ?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+        ?: value
+
+@Composable
+private fun WorkOrderDatePickerField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    var openPicker by remember { mutableStateOf(false) }
+    OutlinedButton(
+        onClick = { openPicker = true },
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            Text(
+                formatDatePickerLabel(value).ifBlank { "Odaberi datum" },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Icon(Icons.Rounded.CalendarMonth, contentDescription = null)
+    }
+    if (openPicker) {
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = isoDateToMillis(value))
+        DatePickerDialog(
+            onDismissRequest = { openPicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onChange(millisToIsoDate(pickerState.selectedDateMillis))
+                        openPicker = false
+                    },
+                ) {
+                    Text("Spremi")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { openPicker = false }) {
+                    Text("Odustani")
+                }
+            },
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 }
 
 @Composable
@@ -5221,6 +5294,8 @@ private fun WorkOrderDocumentationActionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxWidth(0.96f),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
             Column {
                 Text("Dodaj dokumentaciju", fontWeight = FontWeight.Black)
@@ -5304,23 +5379,34 @@ private fun WorkOrderDocumentationWizardDialog(
             .map { it to it }
     }
     val defaultInspectionType = remember(workOrder) { workOrder.displayService.takeIf { it != "Bez upisane usluge" } ?: "" }
-    var inspectionDate by remember(workOrder.id) { mutableStateOf(today) }
-    var issuedDate by remember(workOrder.id) { mutableStateOf(today) }
-    var issuedPlace by remember(workOrder.id) { mutableStateOf("") }
-    var testingLocation by remember(workOrder.id) { mutableStateOf(workOrder.locationName) }
-    var note by remember(workOrder.id) { mutableStateOf("") }
-    var inspectionType by remember(workOrder.id) { mutableStateOf(defaultInspectionType) }
-    var outsideTemperature by remember(workOrder.id) { mutableStateOf("") }
-    var relativeHumidity by remember(workOrder.id) { mutableStateOf("") }
-    var airflowSpeed by remember(workOrder.id) { mutableStateOf("") }
-    var weather by remember(workOrder.id) { mutableStateOf("") }
-    var groundCondition by remember(workOrder.id) { mutableStateOf("") }
-    var groundResistance by remember(workOrder.id) { mutableStateOf("") }
-    var measurementEquipmentGroup by remember(workOrder.id) { mutableStateOf("") }
-    var signatureMode by remember(workOrder.id) { mutableStateOf("digital") }
-    var validityMonths by remember(workOrder.id) { mutableStateOf("12") }
-    var electricalValidityMonths by remember(workOrder.id) { mutableStateOf("12") }
-    var tipkaloValidityMonths by remember(workOrder.id) { mutableStateOf("12") }
+    val defaults = context.defaults
+    var inspectionDate by remember(workOrder.id, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
+    var issuedDate by remember(workOrder.id, defaults.issuedDate) { mutableStateOf(defaults.issuedDate.ifBlank { inspectionDate.ifBlank { today } }) }
+    var issuedPlace by remember(workOrder.id, defaults.issuedPlace) { mutableStateOf(defaults.issuedPlace) }
+    var testingLocation by remember(workOrder.id, defaults.testingLocation) {
+        mutableStateOf(defaults.testingLocation.ifBlank { workOrder.locationName })
+    }
+    var note by remember(workOrder.id, defaults.note) { mutableStateOf(defaults.note) }
+    var inspectionType by remember(workOrder.id, defaults.inspectionType, defaultInspectionType) {
+        mutableStateOf(defaults.inspectionType.ifBlank { defaultInspectionType })
+    }
+    var outsideTemperature by remember(workOrder.id, defaults.outsideTemperature) { mutableStateOf(defaults.outsideTemperature) }
+    var relativeHumidity by remember(workOrder.id, defaults.relativeHumidity) { mutableStateOf(defaults.relativeHumidity) }
+    var airflowSpeed by remember(workOrder.id, defaults.airflowSpeed) { mutableStateOf(defaults.airflowSpeed) }
+    var weather by remember(workOrder.id, defaults.weather) { mutableStateOf(defaults.weather) }
+    var groundCondition by remember(workOrder.id, defaults.groundCondition) { mutableStateOf(defaults.groundCondition) }
+    var groundResistance by remember(workOrder.id, defaults.groundResistance) { mutableStateOf(defaults.groundResistance) }
+    var measurementEquipmentGroup by remember(workOrder.id, defaults.measurementEquipmentGroup) {
+        mutableStateOf(defaults.measurementEquipmentGroup)
+    }
+    var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
+    var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
+    var electricalValidityMonths by remember(workOrder.id, defaults.electricalValidityMonths) {
+        mutableStateOf(defaults.electricalValidityMonths.ifBlank { validityMonths.ifBlank { "12" } })
+    }
+    var tipkaloValidityMonths by remember(workOrder.id, defaults.tipkaloValidityMonths) {
+        mutableStateOf(defaults.tipkaloValidityMonths.ifBlank { validityMonths.ifBlank { "12" } })
+    }
     var inspectorUserId by remember(workOrder.id) { mutableStateOf("") }
     var authorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
     var electricalInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
@@ -5357,6 +5443,8 @@ private fun WorkOrderDocumentationWizardDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxWidth(0.96f),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
             Column {
                 Text("Izrada dokumentacije", fontWeight = FontWeight.Black)
@@ -5378,8 +5466,8 @@ private fun WorkOrderDocumentationWizardDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
-                    WorkOrderTextField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
-                    WorkOrderTextField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
+                    WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
+                    WorkOrderDatePickerField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
                     WorkOrderTextField("Mjesto izdavanja", issuedPlace, { issuedPlace = it }, !formLoading)
                     WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
                     WorkOrderSelectField(
@@ -6197,6 +6285,9 @@ private fun MeasurementTableEditor(
                                     onClick = {
                                         selectedCell = MeasurementCellSelection(rowIndex, columnIndex)
                                     },
+                                    onChange = { value ->
+                                        onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                    },
                                 )
                             }
                         }
@@ -6232,9 +6323,25 @@ private fun MeasurementGridCell(
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    onChange: (String) -> Unit,
 ) {
     val editable = column.computed.isBlank() && !column.readonly
     val value = displayValue.ifBlank { if (rawValue.trim().startsWith("=")) "#ERROR" else rawValue }
+    if (selected && editable) {
+        OutlinedTextField(
+            value = rawValue,
+            onValueChange = onChange,
+            modifier = Modifier
+                .width(column.width.coerceIn(110, 220).dp)
+                .height(56.dp),
+            singleLine = true,
+            enabled = enabled,
+            textStyle = MaterialTheme.typography.bodySmall,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            shape = RoundedCornerShape(12.dp),
+        )
+        return
+    }
     Surface(
         modifier = Modifier
             .width(column.width.coerceIn(110, 220).dp)

@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.30.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.31.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -2080,6 +2080,15 @@ function normalizeDateOnlyValue(value = "") {
   const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
   if (match?.[1]) {
     return match[1];
+  }
+  const localMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (localMatch) {
+    const [, day, month, year] = localMatch;
+    const normalized = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    const parsedLocal = Date.parse(`${normalized}T00:00:00Z`);
+    if (Number.isFinite(parsedLocal)) {
+      return new Date(parsedLocal).toISOString().slice(0, 10);
+    }
   }
   const parsed = Date.parse(trimmed);
   if (!Number.isFinite(parsed)) {
@@ -10668,6 +10677,88 @@ function buildMobileDocumentTemplateMeasurementTables(template = {}, workOrder =
     .filter(Boolean);
 }
 
+function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
+  const templateId = normalizeInputValue(template?.id);
+  const workOrderNumber = normalizeInputValue(workOrder?.workOrderNumber || workOrder?.number);
+  if (!templateId || !workOrderNumber) {
+    return null;
+  }
+  const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
+  return records
+    .filter((record) => {
+      const recordWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(record, {});
+      return (
+        normalizeInputValue(record?.templateId) === templateId
+        && (!workOrder?.companyId || normalizeInputValue(record?.companyId) === normalizeInputValue(workOrder.companyId))
+        && (!workOrder?.locationId || normalizeInputValue(record?.locationId) === normalizeInputValue(workOrder.locationId))
+        && recordWorkOrderNumber
+        && recordWorkOrderNumber === workOrderNumber
+      );
+    })
+    .sort((left, right) => String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || "")))
+    [0] || null;
+}
+
+function getMobileDocumentRecordFieldValue(record = {}, keys = []) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  return normalizeInputValue(getGeneratedDocumentRecordValue(fieldValues, keys));
+}
+
+function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) {
+  if (!record) {
+    return {};
+  }
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
+    ? record.fieldSheets
+    : {};
+  const inspectionDate = normalizeDateOnlyValue(
+    record.inspectionDate
+    || getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_INSPECTION_DATE", "DATUM_ISPITIVANJA", "INSPECTION_DATE"]),
+  );
+  const issuedDate = normalizeDateOnlyValue(
+    record.issuedDate
+    || getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_ISSUED_DATE", "DATUM_IZDAVANJA", "ISSUED_DATE"]),
+  );
+  const testingLocation = getMobileDocumentRecordFieldValue(record, [
+    "WORK_ORDER_TESTING_LOCATION",
+    "TESTING_LOCATION",
+    "WORK_ORDER_INSPECTION_LOCATION",
+    "INSPECTION_LOCATION",
+    "MJESTO_ISPITIVANJA",
+    "LOKACIJA_ISPITIVANJA",
+    "MJESTO_PREGLEDA",
+    "LOCATION_NAME",
+    "LOKACIJA",
+  ]);
+
+  return {
+    inspectionDate,
+    issuedDate,
+    issuedPlace: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_ISSUED_PLACE", "MJESTO_IZDAVANJA"]),
+    testingLocation: testingLocation || resolveMobileWorkOrderTestingLocation(workOrder, {}),
+    note: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_DOCUMENT_NOTE", "NAPOMENA_ZAPISNIKA"]),
+    inspectionType: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_INSPECTION_TYPE", "INSPECTION_TYPE", "VRSTA_ISPITIVANJA"]),
+    outsideTemperature: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_OUTSIDE_TEMPERATURE", "TEMPERATURA", "VANJSKA_TEMPERATURA"]),
+    relativeHumidity: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_RELATIVE_HUMIDITY", "VLAGA", "RELATIVNA_VLAZNOST"]),
+    airflowSpeed: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_AIRFLOW_SPEED", "STRUJANJE_ZRAKA"]),
+    weather: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_WEATHER", "VRIJEME"]),
+    groundCondition: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_GROUND_CONDITION", "STANJE_TLA"]),
+    groundResistance: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_GROUND_RESISTANCE", "OTPOR_TLA"]),
+    measurementEquipmentGroup: getMobileDocumentRecordFieldValue(record, ["MEASUREMENT_EQUIPMENT_GROUP", "MJERNA_OPREMA_GRUPA"]),
+    signatureMode: normalizeMobileDocumentSignatureMode(getMobileDocumentRecordFieldValue(record, ["SIGNATURE_MODE", "NACIN_POTPISA"])),
+    validityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_VALIDITY_MONTHS", "WORK_ORDER_SERVICE_VALIDITY_MONTHS", "VRIJEDI_MJESECI"]),
+    electricalValidityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_PANIC_VALIDITY_MONTHS"]),
+    tipkaloValidityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_TIPKALO_VALIDITY_MONTHS"]),
+    fieldValues,
+    fieldSheets,
+  };
+}
+
 function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot = {}) {
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
@@ -10676,6 +10767,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     : [{ name: workOrder.serviceLine || "" }];
   const templates = [];
   const seenTemplateIds = new Set();
+  let primaryDefaults = null;
 
   services.forEach((service, serviceIndex) => {
     getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
@@ -10688,8 +10780,16 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         return;
       }
       seenTemplateIds.add(normalizedTemplateId);
-      const common = normalizeMobileWorkOrderDocumentWizardInput({});
-      const placeholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common);
+      const latestRecord = findLatestMobileDocumentRecordForTemplate(template, workOrder, scopedSnapshot);
+      const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
+      if (!primaryDefaults && Object.keys(recordDefaults).length > 0) {
+        primaryDefaults = recordDefaults;
+      }
+      const common = normalizeMobileWorkOrderDocumentWizardInput(recordDefaults);
+      const placeholders = {
+        ...buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common),
+        ...(common.fieldValues || {}),
+      };
       templates.push({
         id: normalizedTemplateId,
         title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
@@ -10710,6 +10810,9 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     hasTemplates: templates.length > 0,
     fieldCount: templates.reduce((sum, template) => sum + (template.fields?.length || 0), 0),
     measurementTableCount: templates.reduce((sum, template) => sum + (template.measurementTables?.length || 0), 0),
+    defaults: primaryDefaults || {
+      testingLocation: resolveMobileWorkOrderTestingLocation(workOrder, {}),
+    },
   };
 }
 
@@ -10948,7 +11051,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const entries = [];
   const seenPairs = new Set();
 
-  services.forEach((service) => {
+  services.forEach((service, serviceIndex) => {
     getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
       const template = templateById.get(String(templateId));
       if (!template || String(template.status || "active").toLowerCase() === "archived") {

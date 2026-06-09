@@ -581,7 +581,7 @@ private fun WorkOrderMeasurementSheet.toJsonObject(): JSONObject {
             JSONObject()
                 .put("id", row.id)
                 .put("cells", row.cells.toJsonObject())
-                .put("formats", JSONObject()),
+                .put("formats", row.formats.toMeasurementFormatsJsonObject()),
         )
     }
     val mergeArray = JSONArray()
@@ -612,6 +612,12 @@ private fun Map<String, WorkOrderMeasurementSheet>.toMeasurementSheetJsonObject(
 private fun Map<String, Map<String, WorkOrderMeasurementSheet>>.toNestedMeasurementSheetJsonObject(): JSONObject {
     val json = JSONObject()
     forEach { (key, values) -> json.put(key, values.toMeasurementSheetJsonObject()) }
+    return json
+}
+
+private fun Map<String, JSONObject>.toMeasurementFormatsJsonObject(): JSONObject {
+    val json = JSONObject()
+    forEach { (key, value) -> json.put(key, value) }
     return json
 }
 
@@ -685,12 +691,23 @@ private fun JSONArray?.toWorkOrderMeasurementRows(columns: List<WorkOrderMeasure
             val item = optJSONObject(index) ?: continue
             val sourceCells = item.optJSONObject("cells").toStringMap()
             val cells = columns.associate { column -> column.id to sourceCells[column.id].orEmpty() }
+            val sourceFormats = item.optJSONObject("formats").toMeasurementFormatMap()
             add(
                 WorkOrderMeasurementRow(
                     id = item.firstClean("id").ifBlank { "measurement-row-${index + 1}" },
                     cells = cells,
+                    formats = sourceFormats,
                 ),
             )
+        }
+    }
+}
+
+private fun JSONObject?.toMeasurementFormatMap(): Map<String, JSONObject> {
+    if (this == null) return emptyMap()
+    return buildMap {
+        keys().forEach { key ->
+            put(key, optJSONObject(key) ?: JSONObject())
         }
     }
 }
@@ -772,7 +789,31 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         hasTemplates = optBoolean("hasTemplates", false),
         fieldCount = optInt("fieldCount", 0),
         measurementTableCount = optInt("measurementTableCount", 0),
+        defaults = optJSONObject("defaults").toWorkOrderDocumentationDefaults(),
     )
+
+private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentationDefaults {
+    if (this == null) return WorkOrderDocumentationDefaults()
+    return WorkOrderDocumentationDefaults(
+        inspectionDate = firstClean("inspectionDate"),
+        issuedDate = firstClean("issuedDate"),
+        issuedPlace = firstClean("issuedPlace"),
+        testingLocation = firstClean("testingLocation"),
+        note = firstClean("note"),
+        inspectionType = firstClean("inspectionType"),
+        outsideTemperature = firstClean("outsideTemperature"),
+        relativeHumidity = firstClean("relativeHumidity"),
+        airflowSpeed = firstClean("airflowSpeed"),
+        weather = firstClean("weather"),
+        groundCondition = firstClean("groundCondition"),
+        groundResistance = firstClean("groundResistance"),
+        measurementEquipmentGroup = firstClean("measurementEquipmentGroup"),
+        signatureMode = firstClean("signatureMode"),
+        validityMonths = firstClean("validityMonths"),
+        electricalValidityMonths = firstClean("electricalValidityMonths"),
+        tipkaloValidityMonths = firstClean("tipkaloValidityMonths"),
+    )
+}
 
 private fun JSONArray?.toRecords(): List<MobileRecord> {
     if (this == null) return emptyList()
