@@ -4937,7 +4937,72 @@ function normalizeGeneratedDocumentRecordExpirationFromPayload(payload = {}) {
     ? payload.fieldValues
     : {};
   return normalizeGeneratedDocumentExpirationDate(payload?.expirationDate ?? payload?.expiration_date)
-    || getGeneratedDocumentRecordTrackedExpirationDate(fieldValues);
+    || getGeneratedDocumentRecordTrackedExpirationDate(fieldValues)
+    || normalizeGeneratedDocumentExpirationDate(getGeneratedDocumentRecordValue(fieldValues, [
+      "WORK_ORDER_SERVICE_VALID_UNTIL",
+      "WORK_ORDER_VALID_UNTIL",
+      "VRIJEDI_DO",
+      "DATUM_VRIJEDI_DO",
+      "VALID_UNTIL",
+      "VALID_TO",
+    ]));
+}
+
+function getGeneratedDocumentRecordValidityMonths(fieldValues = {}) {
+  return normalizeMobileDocumentValidityMonths(getGeneratedDocumentRecordValue(fieldValues, [
+    "WORK_ORDER_SERVICE_VALIDITY_MONTHS",
+    "WORK_ORDER_VALIDITY_MONTHS",
+    "VRIJEDI_MJESECI",
+    "VALIDITY_MONTHS",
+  ]));
+}
+
+function ensureGeneratedDocumentRecordPeriodicsFields(fieldValues = {}, {
+  inspectionDate = "",
+  issuedDate = "",
+  expirationDate = "",
+} = {}) {
+  const source = fieldValues && typeof fieldValues === "object" && !Array.isArray(fieldValues)
+    ? fieldValues
+    : {};
+  const currentExpirationDate = normalizeGeneratedDocumentExpirationDate(expirationDate);
+  const validityMonths = getGeneratedDocumentRecordValidityMonths(source);
+  const baseDate = normalizeGeneratedDocumentRecordDate(inspectionDate || issuedDate);
+  const computedExpirationDate = currentExpirationDate || addMonthsToMobileDate(baseDate, validityMonths);
+
+  if (!computedExpirationDate) {
+    return {
+      fieldValues: source,
+      expirationDate: "",
+    };
+  }
+
+  const nextFieldValues = {
+    ...source,
+  };
+  if (!getGeneratedDocumentRecordTrackedExpirationDate(nextFieldValues)) {
+    nextFieldValues[GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY] = [{
+      fieldId: "WORK_ORDER_VALID_UNTIL",
+      fieldKey: "WORK_ORDER_VALID_UNTIL",
+      label: "Vrijedi do",
+      value: computedExpirationDate,
+    }];
+  }
+  [
+    "WORK_ORDER_VALID_UNTIL",
+    "WORK_ORDER_SERVICE_VALID_UNTIL",
+    "VRIJEDI_DO",
+    "DATUM_VRIJEDI_DO",
+  ].forEach((key) => {
+    if (!String(nextFieldValues[key] ?? "").trim()) {
+      nextFieldValues[key] = computedExpirationDate;
+    }
+  });
+
+  return {
+    fieldValues: nextFieldValues,
+    expirationDate: computedExpirationDate,
+  };
 }
 
 function buildGeneratedDocumentTemplateRecordPayload({
@@ -4958,7 +5023,7 @@ function buildGeneratedDocumentTemplateRecordPayload({
   const renderModel = entry?.renderModel && typeof entry.renderModel === "object" && !Array.isArray(entry.renderModel)
     ? entry.renderModel
     : {};
-  const fieldValues = {
+  let fieldValues = {
     ...placeholders,
     ...suppliedFieldValues,
   };
@@ -5002,10 +5067,17 @@ function buildGeneratedDocumentTemplateRecordPayload({
     || entry.issuedDate
     || getGeneratedDocumentRecordValue(fieldValues, ["WORK_ORDER_ISSUED_DATE", "DATUM_IZDAVANJA"]),
   );
-  const expirationDate = normalizeGeneratedDocumentRecordExpirationFromPayload({
+  let expirationDate = normalizeGeneratedDocumentRecordExpirationFromPayload({
     expirationDate: suppliedRecord.expirationDate || entry.expirationDate,
     fieldValues,
   });
+  const periodicsPayload = ensureGeneratedDocumentRecordPeriodicsFields(fieldValues, {
+    inspectionDate,
+    issuedDate,
+    expirationDate,
+  });
+  expirationDate = periodicsPayload.expirationDate || expirationDate;
+  fieldValues = periodicsPayload.fieldValues;
   const objectName = String(
     suppliedRecord.objectName
     || entry.objectName
@@ -5201,9 +5273,20 @@ function cleanupMobileDocumentGenerationJobs() {
   }
 }
 
+function flattenGeneratedDocumentSaveItems(items = []) {
+  return (Array.isArray(items) ? items : []).flatMap((item) => {
+    if (Array.isArray(item?.documents) && item.documents.length > 0) {
+      return item.documents;
+    }
+    return item?.item ? [item.item] : [];
+  }).filter(Boolean);
+}
+
 function buildMobileDocumentGenerationJobResponse(job = {}) {
   const status = String(job.status || "pending").trim() || "pending";
   const items = Array.isArray(job.items) ? job.items : [];
+  const documents = flattenGeneratedDocumentSaveItems(items);
+  const records = items.map((item) => item?.record).filter(Boolean);
   return {
     ok: status === "completed",
     jobId: String(job.id || "").trim(),
@@ -5211,7 +5294,11 @@ function buildMobileDocumentGenerationJobResponse(job = {}) {
     workOrderId: String(job.workOrderId || "").trim(),
     entriesCount: Number(job.entriesCount || 0) || 0,
     generatedCount: items.length,
-    items: items.map((item) => stripStoredDocumentPayloadForResponse(item)),
+    documentCount: documents.length,
+    recordCount: records.length,
+    items: documents.map((item) => stripStoredDocumentPayloadForResponse(item)),
+    entries: items.map((item) => stripStoredDocumentPayloadForResponse(item)),
+    records,
     error: String(job.error || "").trim(),
     createdAt: job.createdAt || "",
     startedAt: job.startedAt || "",
@@ -14280,11 +14367,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      sendJson(response, 200, {
-        ok: true,
-        generatedCount: waitedJob.items.length,
-        items: waitedJob.items.map((item) => stripStoredDocumentPayloadForResponse(item)),
-      });
+      sendJson(response, 200, buildMobileDocumentGenerationJobResponse(waitedJob));
       return true;
     }
 

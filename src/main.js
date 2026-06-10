@@ -108507,7 +108507,7 @@ async function saveGeneratedWorkOrderPdf(workOrderId = "", { refreshDocuments = 
 
   try {
     const templateId = getSelectedWorkOrderTemplateId("rn");
-    await apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}/save-pdf`, {
+    const payload = await apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}/save-pdf`, {
       method: "POST",
       body: {
         ...(templateId ? { templateId } : {}),
@@ -108515,9 +108515,16 @@ async function saveGeneratedWorkOrderPdf(workOrderId = "", { refreshDocuments = 
       },
     });
 
+    if (payload?.item) {
+      upsertDocumentsExplorerWorkOrderDocuments([payload.item]);
+      state.documentsExplorer.loaded = true;
+    }
+
     if (refreshDocuments && String(state.workOrderDocuments.workOrderId || workOrderIdInput?.value || "") === normalizedId) {
       await loadWorkOrderDocuments(normalizedId);
     }
+
+    renderNotifications();
 
     return true;
   } catch (error) {
@@ -136960,6 +136967,9 @@ async function queueRiskAssessmentForDigitalSignature() {
 
   if (payload?.item) {
     upsertDocumentsExplorerWorkOrderDocuments([payload.item]);
+  }
+  if (payload?.record) {
+    upsertDocumentsExplorerRecord(payload.record);
   }
   state.documentsExplorer.loaded = true;
   renderNotifications();
