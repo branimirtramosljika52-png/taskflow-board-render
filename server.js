@@ -5085,6 +5085,13 @@ function buildGeneratedDocumentTemplateRecordPayload({
     || entry.objectName
     || renderModel?.object?.name
     || getGeneratedDocumentRecordValue(fieldValues, ["OBJECT_NAME", "OBJEKT"])
+    || getMobileWorkOrderLocationObjectName(workOrder)
+    || "",
+  ).trim();
+  const objectId = String(
+    suppliedRecord.objectId
+    || entry.objectId
+    || getMobileWorkOrderLocationObjectId(workOrder)
     || "",
   ).trim();
 
@@ -5100,7 +5107,7 @@ function buildGeneratedDocumentTemplateRecordPayload({
     documentType: String(suppliedRecord.documentType || template.documentType || renderModel.documentType || "Zapisnik").trim(),
     companyId: String(suppliedRecord.companyId || workOrder.companyId || "").trim(),
     locationId: String(suppliedRecord.locationId || workOrder.locationId || "").trim(),
-    objectId: String(suppliedRecord.objectId || entry.objectId || "").trim(),
+    objectId,
     objectName,
     inspectionDate,
     issuedDate,
@@ -12504,6 +12511,22 @@ function getMobileWorkOrderLocationObjectId(workOrder = {}) {
   );
 }
 
+function getMobileWorkOrderLocationObjectName(workOrder = {}) {
+  const locationObject = workOrder?.locationObject && typeof workOrder.locationObject === "object" && !Array.isArray(workOrder.locationObject)
+    ? workOrder.locationObject
+    : {};
+  const object = workOrder?.object && typeof workOrder.object === "object" && !Array.isArray(workOrder.object)
+    ? workOrder.object
+    : {};
+  return normalizeInputValue(
+    workOrder?.objectName
+    || workOrder?.locationObjectName
+    || locationObject?.name
+    || locationObject?.objectName
+    || object?.name,
+  );
+}
+
 function applyMobileSelectedObjectToWorkOrder(workOrder = {}, scopedSnapshot = {}, source = {}) {
   const normalizedSource = source?.common && typeof source.common === "object" && !Array.isArray(source.common)
     ? source.common
@@ -12545,31 +12568,86 @@ function applyMobileSelectedObjectToWorkOrder(workOrder = {}, scopedSnapshot = {
   return nextWorkOrder;
 }
 
-function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
+function getMobileDocumentRecordTemplateScore(record = {}, template = {}) {
   const templateId = normalizeInputValue(template?.id);
-  if (!templateId) {
-    return null;
+  const recordTemplateId = normalizeInputValue(record?.templateId);
+  if (templateId && recordTemplateId === templateId) {
+    return 100;
   }
+
+  const genericKeys = new Set(["zapisnik", "izvjestaj", "izvještaj", "document", "template"]);
+  const templateKeys = [
+    template?.title,
+    template?.documentType,
+  ]
+    .map(normalizeMobileTemplateLookupKey)
+    .filter((value) => value && !genericKeys.has(value));
+  if (templateKeys.length === 0) {
+    return 0;
+  }
+
+  const recordKeys = [
+    record?.templateTitle,
+    record?.documentType,
+    record?.title,
+    record?.documentTitle,
+  ]
+    .map(normalizeMobileTemplateLookupKey)
+    .filter(Boolean);
+
+  return templateKeys.some((key) => recordKeys.includes(key)) ? 60 : 0;
+}
+
+function getMobileDocumentRecordObjectScore(record = {}, workOrder = {}) {
+  const objectId = getMobileWorkOrderLocationObjectId(workOrder);
+  const objectName = normalizeMobileTemplateLookupKey(getMobileWorkOrderLocationObjectName(workOrder));
+  const recordObjectId = normalizeInputValue(record?.objectId || record?.locationObjectId);
+  const recordObjectName = normalizeMobileTemplateLookupKey(record?.objectName || record?.locationObjectName);
+
+  if (objectId) {
+    if (recordObjectId) {
+      return recordObjectId === objectId ? 100 : 0;
+    }
+    return objectName && recordObjectName && recordObjectName === objectName ? 80 : 0;
+  }
+
+  if (objectName && recordObjectName) {
+    return recordObjectName === objectName ? 80 : 0;
+  }
+
+  return !recordObjectId && !recordObjectName ? 60 : 0;
+}
+
+function getMobileDocumentRecordSortKey(record = {}) {
+  return String(record?.updatedAt || record?.inspectionDate || record?.issuedDate || record?.createdAt || "");
+}
+
+function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
   const companyId = normalizeInputValue(workOrder?.companyId);
   const locationId = normalizeInputValue(workOrder?.locationId);
-  const objectId = getMobileWorkOrderLocationObjectId(workOrder);
   if (!locationId) {
     return null;
   }
   const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
   return records
-    .filter((record) => {
-      const recordObjectId = normalizeInputValue(record?.objectId || record?.locationObjectId);
-      return (
-        normalizeInputValue(record?.templateId) === templateId
+    .map((record) => ({
+      record,
+      templateScore: getMobileDocumentRecordTemplateScore(record, template),
+      objectScore: getMobileDocumentRecordObjectScore(record, workOrder),
+    }))
+    .filter((candidate) => {
+      const record = candidate.record;
+      return candidate.templateScore > 0
+        && candidate.objectScore > 0
         && (!companyId || normalizeInputValue(record?.companyId) === companyId)
-        && normalizeInputValue(record?.locationId) === locationId
-        && (objectId ? recordObjectId === objectId : !recordObjectId)
-      );
+        && normalizeInputValue(record?.locationId) === locationId;
     })
-    .sort((left, right) => String(right.updatedAt || right.inspectionDate || right.issuedDate || right.createdAt || "")
-      .localeCompare(String(left.updatedAt || left.inspectionDate || left.issuedDate || left.createdAt || "")))
-    [0] || null;
+    .sort((left, right) => (
+      right.templateScore - left.templateScore
+      || right.objectScore - left.objectScore
+      || getMobileDocumentRecordSortKey(right.record).localeCompare(getMobileDocumentRecordSortKey(left.record))
+    ))
+    [0]?.record || null;
 }
 
 function getMobileDocumentRecordFieldValue(record = {}, keys = []) {
