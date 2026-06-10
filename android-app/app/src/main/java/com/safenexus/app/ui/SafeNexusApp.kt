@@ -242,18 +242,18 @@ enum class AppSection(val label: String) {
     WorkOrders("RN"),
     Calendar("Kalendar"),
     Vehicles("Vozila"),
-    More("Više"),
+    More("Evidencije"),
 }
 
-private enum class MoreSectionFocus(val listIndex: Int) {
-    Overview(0),
-    Companies(2),
-    Locations(2),
-    Periodics(3),
-    Documents(4),
-    Services(5),
-    Foundation(6),
-    Training(7),
+private enum class MoreSectionFocus(val listIndex: Int, val title: String) {
+    Overview(0, "Evidencije"),
+    Companies(2, "Tvrtke"),
+    Locations(2, "Lokacije"),
+    Periodics(3, "Periodika"),
+    Documents(4, "Dokumenti"),
+    Services(5, "Service liste"),
+    Foundation(6, "Pravilnici"),
+    Training(7, "Osposobljavanja"),
 }
 
 enum class CalendarViewMode(val label: String) {
@@ -3281,7 +3281,10 @@ private fun MainAppTopBar(
         },
         title = {
             Column {
-                Text(currentSection.label, fontWeight = FontWeight.Bold)
+                Text(
+                    if (currentSection == AppSection.More) currentMoreFocus.title else currentSection.label,
+                    fontWeight = FontWeight.Bold,
+                )
                 Text(
                     text = displayName,
                     style = MaterialTheme.typography.labelMedium,
@@ -3421,7 +3424,6 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
-            MainMenuShortcut("Više", "Pregled evidencija", AppSection.More, Icons.Rounded.Map, MoreSectionFocus.Overview),
             MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business, MoreSectionFocus.Companies),
             MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn, MoreSectionFocus.Locations),
             MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
@@ -3730,7 +3732,7 @@ private fun MainBottomBar(
     onSectionChange: (AppSection) -> Unit,
 ) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-        AppSection.entries.forEach { section ->
+        AppSection.entries.filter { section -> section != AppSection.More }.forEach { section ->
             NavigationBarItem(
                 selected = selected == section,
                 onClick = { onSectionChange(section) },
