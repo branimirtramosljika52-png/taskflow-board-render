@@ -5664,8 +5664,9 @@ async function buildSignatureBridgeCandidateDocuments(scopedSnapshot = {}, reque
     ? await domainRepository.listWorkOrderDocuments(workOrderIds, {
       sourceType: "pdf",
       limit: 5000,
+      includeDataUrl: false,
     })
-    : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId))))
+    : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId, { includeDataUrl: false }))))
       .flat()
       .filter((document) => (
         SIGNATURE_PDF_DOCUMENT_CATEGORIES.includes(String(document?.documentCategory || "").trim())
@@ -17540,8 +17541,8 @@ async function handleApiRequest(request, response, url) {
       const limit = Number(url.searchParams.get("limit") || 5000);
       const safeLimit = Math.max(1, Math.min(limit || 5000, 10000));
       const items = typeof domainRepository.listWorkOrderDocuments === "function"
-        ? await domainRepository.listWorkOrderDocuments(workOrderIds, { documentCategory, sourceType, limit: safeLimit })
-        : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId))))
+        ? await domainRepository.listWorkOrderDocuments(workOrderIds, { documentCategory, sourceType, limit: safeLimit, includeDataUrl: false })
+        : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId, { includeDataUrl: false }))))
           .flat()
           .filter((document) => (
             (!documentCategory || String(document.documentCategory || "") === documentCategory)
@@ -17556,7 +17557,7 @@ async function handleApiRequest(request, response, url) {
     if (workOrderDocumentsMatch && request.method === "GET") {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronađen.");
-      const items = await domainRepository.getWorkOrderDocuments(workOrderDocumentsMatch[1]);
+      const items = await domainRepository.getWorkOrderDocuments(workOrderDocumentsMatch[1], { includeDataUrl: false });
       sendJson(response, 200, { items: items.map((item) => stripStoredDocumentPayloadForResponse(item)) });
       return true;
     }

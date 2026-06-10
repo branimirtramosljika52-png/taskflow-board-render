@@ -9396,8 +9396,11 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
-      const workOrder = snapshot.workOrders.find((item) => String(item.id) === String(workOrderId));
+      const [workOrderRows] = await connection.query(
+        "SELECT id FROM radni_nalozi WHERE id = ? LIMIT 1",
+        [Number(workOrderId)],
+      );
+      const workOrder = workOrderRows[0] || null;
 
       if (!workOrder) {
         await connection.rollback();
@@ -9421,7 +9424,7 @@ export class MySqlSafetyRepository {
       const [existingRows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, document_category, file_size, data_url,
+                 file_extension, file_type, file_description, document_category, file_size, NULL AS data_url,
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
                  signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
@@ -9587,14 +9590,15 @@ export class MySqlSafetyRepository {
     }
   }
 
-  async getWorkOrderDocuments(id) {
+  async getWorkOrderDocuments(id, { includeDataUrl = true } = {}) {
     const connection = await this.pool.getConnection();
+    const dataUrlSelect = includeDataUrl ? "data_url" : "NULL AS data_url";
 
     try {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, document_category, file_size, data_url,
+                 file_extension, file_type, file_description, document_category, file_size, ${dataUrlSelect},
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
                  signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
@@ -9618,6 +9622,7 @@ export class MySqlSafetyRepository {
     documentCategory = "",
     sourceType = "",
     limit = 5000,
+    includeDataUrl = true,
   } = {}) {
     const numericIds = Array.from(new Set(
       (Array.isArray(workOrderIds) ? workOrderIds : [])
@@ -9646,12 +9651,13 @@ export class MySqlSafetyRepository {
     }
 
     const connection = await this.pool.getConnection();
+    const dataUrlSelect = includeDataUrl ? "data_url" : "NULL AS data_url";
 
     try {
       const [rows] = await connection.query(
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
-                 file_extension, file_type, file_description, document_category, file_size, data_url,
+                 file_extension, file_type, file_description, document_category, file_size, ${dataUrlSelect},
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
                  signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
