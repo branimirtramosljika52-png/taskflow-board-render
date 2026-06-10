@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.68.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.69.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -4663,6 +4663,7 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
         signatureFieldRole,
         signatureFieldOib,
         preferredField,
+        anchorText: cleanSignatureExportText(item.anchorText || item.signatureAnchorText || item.anchorLabel),
         role: cleanSignatureExportText(item.role),
       });
     });
@@ -4741,6 +4742,7 @@ function resolveGeneratedDocumentTemplateSignatureMetadata(entry = {}) {
       y: Number.isFinite(Number(field.y)) ? Number(field.y) : null,
       width: Number.isFinite(Number(field.width)) ? Number(field.width) : null,
       height: Number.isFinite(Number(field.height)) ? Number(field.height) : null,
+      anchorText: field.anchorText || "",
       role: field.signatureFieldRole || "ZNR",
       oib: field.signatureFieldOib || "",
       status: "available",
@@ -5268,9 +5270,15 @@ function startMobileDocumentGenerationJob({
       job.status = "running";
       job.startedAt = new Date().toISOString();
       try {
+        const effectiveWizardInput = {
+          ...(wizardInput && typeof wizardInput === "object" && !Array.isArray(wizardInput) ? wizardInput : {}),
+          currentUserId: normalizeInputValue(wizardInput?.currentUserId) || normalizeInputValue(user?.id),
+          currentUserLabel: normalizeInputValue(wizardInput?.currentUserLabel)
+            || normalizeInputValue(user?.displayName || user?.fullName || user?.username || user?.email),
+        };
         const jobEntries = Array.isArray(entries)
           ? entries
-          : buildMobileWorkOrderGeneratedDocumentEntries(workOrder || {}, scopedSnapshot, wizardInput || {});
+          : buildMobileWorkOrderGeneratedDocumentEntries(workOrder || {}, scopedSnapshot, effectiveWizardInput);
         job.entriesCount = jobEntries.length;
         if (jobEntries.length === 0) {
           throw new Error("Ovaj RN nema uslugu s povezanim templateom za izradu dokumentacije.");
@@ -10068,6 +10076,18 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     note: normalizeInputValue(source.note),
     inspectionType: normalizeInputValue(source.inspectionType),
     completedBy: normalizeInputValue(source.completedBy || source.completedByLabel),
+    handoverVerifierUserId: normalizeInputValue(
+      source.handoverVerifierUserId
+        || source.handoverExecutorVerifierUserId
+        || source.handoverPreparedByUserId
+        || source.currentUserId,
+    ),
+    handoverVerifierLabel: normalizeInputValue(
+      source.handoverVerifierLabel
+        || source.handoverExecutorVerifierLabel
+        || source.handoverPreparedByLabel
+        || source.currentUserLabel,
+    ),
     outsideTemperature: normalizeInputValue(source.outsideTemperature),
     relativeHumidity: normalizeInputValue(source.relativeHumidity),
     airflowSpeed: normalizeInputValue(source.airflowSpeed),
@@ -10560,6 +10580,76 @@ function buildMobileSignatureGroup(common = {}, scopedSnapshot = {}) {
       items,
     }
     : "";
+}
+
+function findMobileHandoverVerifierUser(common = {}, scopedSnapshot = {}) {
+  const explicitUser = findMobileScopedUserById(scopedSnapshot, common.handoverVerifierUserId);
+  if (explicitUser) {
+    return explicitUser;
+  }
+  const label = normalizeLookupKey(common.handoverVerifierLabel);
+  if (!label) {
+    return null;
+  }
+  return (scopedSnapshot.users ?? []).find((user) => {
+    const candidates = [
+      user?.displayName,
+      user?.fullName,
+      [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+      user?.username,
+      user?.email,
+    ];
+    return candidates.some((candidate) => normalizeLookupKey(candidate) === label);
+  }) || null;
+}
+
+function buildMobileHandoverSignatureGroup(common = {}, scopedSnapshot = {}) {
+  const mode = normalizeMobileDocumentSignatureMode(common.signatureMode);
+  if (mode === "none" || mode === "manual") {
+    return "";
+  }
+
+  const user = findMobileHandoverVerifierUser(common, scopedSnapshot);
+  if (!user) {
+    return "";
+  }
+
+  const signerOib = getMobileUserDocumentOib(user, "elektro", scopedSnapshot);
+  const signatureImageUrl = mode === "scan" ? getMobileUserSignatureScanDataUrl(user) : "";
+  const signatureFieldRole = "IZVRSITELJ";
+  const item = {
+    name: getMobileUserDocumentName(user),
+    signerUserId: normalizeInputValue(user?.id),
+    signerEmail: normalizeInputValue(user?.email),
+    signerOib,
+    signerTitle: getMobileUserDocumentTitle(user),
+    signerOrganization: normalizeInputValue(scopedSnapshot.currentOrganization?.name || ""),
+    signatureMode: mode,
+    signatureFieldRole,
+    signatureFieldOib: signerOib,
+    signatureImageUrl,
+    preferredField: signerOib ? buildSignatureFieldName(signatureFieldRole, signerOib) : "",
+    role: "Ovjerio izvršitelj",
+    roleLabel: "Ovjerio izvršitelj",
+    anchorText: "Ovjerio izvršitelj",
+    positioning: {
+      anchor: "bottom",
+      offsetY: -10,
+      width: 180,
+      height: 52,
+    },
+  };
+
+  if (mode !== "digital" && !item.signatureImageUrl) {
+    return "";
+  }
+
+  return {
+    type: "signature_group",
+    __docxBlockType: "signature_group",
+    title: "Ovjerio izvršitelj",
+    items: [item],
+  };
 }
 
 function findMobileServiceCatalogItem(service = {}, scopedSnapshot = {}) {
@@ -12711,6 +12801,10 @@ function findMobileHandoverTemplate(scopedSnapshot = {}) {
 function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common = {}) {
   const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number);
   const organization = getWorkOrderTemplateOrganization(scopedSnapshot);
+  const verifierUser = findMobileHandoverVerifierUser(common, scopedSnapshot);
+  const verifierName = getMobileUserDocumentName(verifierUser)
+    || normalizeInputValue(common.handoverVerifierLabel)
+    || normalizeInputValue(common.completedBy || workOrder.completedBy || workOrder.completedByLabel || workOrder.createdByLabel);
   const organizationAddress = [
     organization.address || "",
     [organization.postalCode, organization.city].filter(Boolean).join(" "),
@@ -12781,6 +12875,8 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
     objectName: normalizeInputValue(workOrder.objectName),
     contractType: normalizeInputValue(workOrder.contractType),
     completedBy: normalizeInputValue(common.completedBy || workOrder.completedBy || workOrder.completedByLabel || workOrder.createdByLabel),
+    preparedBy: verifierName,
+    executorVerifierName: verifierName,
     issuedDate: normalizeDateOnlyValue(common.issuedDate || common.inspectionDate) || new Date().toISOString().slice(0, 10),
     issuedPlace: normalizeInputValue(common.issuedPlace),
     rows,
@@ -12852,7 +12948,8 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
     `Primopredaja ${workOrderNumber || workOrder.id || "RN"}`,
     { fallback: "primopredaja", extension: "" },
   ).replace(/\.$/, "");
-  const signatureGroup = buildMobileSignatureGroup(common, scopedSnapshot);
+  const signatureGroup = buildMobileHandoverSignatureGroup(common, scopedSnapshot)
+    || buildMobileSignatureGroup(common, scopedSnapshot);
   const placeholders = {
     ...buildWorkOrderTemplatePlaceholderPayload({
       ...workOrder,
@@ -12891,7 +12988,10 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
     ZAVRSIO_IME: handoverProtocol.completedBy,
     ZAVRSIO_RADNI_NALOG: handoverProtocol.completedBy,
     RN_ZAVRSIO: handoverProtocol.completedBy,
-    IZRADIO_IME: handoverProtocol.completedBy,
+    IZRADIO_IME: handoverProtocol.preparedBy || handoverProtocol.completedBy,
+    IZRADIO_ZAPISNIK: handoverProtocol.preparedBy || handoverProtocol.completedBy,
+    PRIMOPREDAJU_IZRADIO: handoverProtocol.preparedBy || handoverProtocol.completedBy,
+    OVJERIO_IZVRSITELJ_IME: handoverProtocol.executorVerifierName || handoverProtocol.preparedBy || handoverProtocol.completedBy,
     USLUGE_REDOVI: rows,
     USLUGE_TABLICA: servicesTableText,
     USLUGE: rows.map((row, index) => `${index + 1}. ${row.USLUGA}`).join("\n"),

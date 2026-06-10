@@ -155,6 +155,7 @@ data class WorkOrderDocumentationDraft(
     val tipkaloInspectorUserIds: List<String>,
     val tipkaloInspectorUserId: String,
     val tipkaloAuthorizationHolderUserId: String,
+    val handoverVerifierUserId: String = "",
     val fieldValues: Map<String, String> = emptyMap(),
     val templateFieldValues: Map<String, Map<String, String>> = emptyMap(),
     val fieldSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),

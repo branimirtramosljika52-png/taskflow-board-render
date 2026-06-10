@@ -389,6 +389,7 @@ function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
     signerOrganization: clean(item.signerOrganization || item.organization || item.organizationName || item.companyName),
     signerUserId: clean(item.signerUserId || item.userId),
     signerEmail: clean(item.signerEmail || item.email),
+    anchorText: clean(item.anchorText || item.signatureAnchorText || item.anchorLabel || options.anchorText),
     positioning: normalizePdfSignaturePositionSettings(item.positioning || item.signaturePosition || item.signaturePositioning),
     appearance: normalizePdfSignatureAppearanceSettings(item.appearance || item.signatureAppearance || options.appearance),
     page: Number.isFinite(Number(item.page))
@@ -1497,6 +1498,8 @@ function normalizeDocxSpecialPlaceholderValue(value) {
           signatureFieldRole: normalizePdfSignatureFieldRole(item.signatureFieldRole || item.signatureRole || item.roleCode || DEFAULT_PDF_SIGNATURE_FIELD_ROLE),
           signatureFieldOib: normalizePdfSignatureFieldOib(item.signatureFieldOib || item.signerOib || item.oib),
           preferredField: clean(item.preferredField || item.fieldName),
+          anchorText: clean(item.anchorText || item.signatureAnchorText || item.anchorLabel),
+          positioning: item.positioning || item.signaturePosition || item.signaturePositioning || null,
           digitalAnchor: clean(item.digitalAnchor || item.signerOib || item.oib || item.signerEmail || item.email),
         };
       })
@@ -8380,6 +8383,68 @@ function collectPdfSignatureOibAnchorCandidates(textAnchors = [], signatureField
   return candidates;
 }
 
+function normalizePdfSignatureTextAnchorNeedle(value = "") {
+  return normalizePdfSignatureAnchorText(value)
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isPdfSignatureTextAnchorMatch(candidate = {}, anchorText = "") {
+  const target = normalizePdfSignatureTextAnchorNeedle(anchorText);
+  const text = normalizePdfSignatureTextAnchorNeedle(candidate.str || "");
+  if (!target || !text) {
+    return false;
+  }
+  return text === target || text.includes(target);
+}
+
+function collectPdfSignatureTextAnchorCandidates(textAnchors = [], anchorText = "") {
+  const target = clean(anchorText);
+  if (!target) {
+    return [];
+  }
+  const candidates = [];
+  for (let pageIndex = textAnchors.length - 1; pageIndex >= 0; pageIndex -= 1) {
+    const page = textAnchors[pageIndex];
+    const pageCandidates = [
+      ...(Array.isArray(page.lines) ? page.lines : []).map((line) => ({ ...line, pageNumber: page.pageNumber, source: "text_line" })),
+      ...(Array.isArray(page.items) ? page.items : []).map((item) => ({ ...item, pageNumber: page.pageNumber, source: "text" })),
+    ]
+      .filter((candidate) => isPdfSignatureTextAnchorMatch(candidate, target))
+      .map((candidate) => ({
+        ...candidate,
+        contextText: buildPdfSignatureAnchorContext(page, candidate),
+      }));
+    candidates.push(...pageCandidates.sort((left, right) => left.y - right.y || left.x - right.x));
+  }
+  return candidates;
+}
+
+function findPdfSignatureTextAnchor(textAnchors = [], field = {}, options = {}) {
+  const candidates = collectPdfSignatureTextAnchorCandidates(textAnchors, field.anchorText);
+  if (candidates.length === 0) {
+    return null;
+  }
+  const usedAnchorKeys = options.usedAnchorKeys instanceof Set ? options.usedAnchorKeys : new Set();
+  const scored = candidates.map((candidate, index) => {
+    const anchorKey = getPdfSignatureAnchorKey(candidate);
+    const unused = !usedAnchorKeys.has(anchorKey);
+    return {
+      candidate: {
+        ...candidate,
+        anchorKey,
+      },
+      index,
+      score: (candidate.source === "text_line" ? 40 : 0) + (unused ? 20 : 0),
+    };
+  }).sort((left, right) => (
+    right.score - left.score
+    || left.index - right.index
+  ));
+  return scored[0]?.candidate || null;
+}
+
 function findPdfSignatureOibAnchor(textAnchors = [], fieldOrOib = "", options = {}) {
   const field = fieldOrOib && typeof fieldOrOib === "object"
     ? fieldOrOib
@@ -8444,7 +8509,7 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
   const addedFieldNames = new Set();
   const needsTextAnchors = normalizedFields.some((field) => (
     !hasExplicitPdfSignatureFieldPosition(field)
-    && normalizePdfSignatureFieldOib(field.signatureFieldOib)
+    && (field.anchorText || normalizePdfSignatureFieldOib(field.signatureFieldOib))
   ));
   const textAnchors = needsTextAnchors ? await extractPdfSignatureTextAnchors(safeBuffer) : [];
   const usedTextAnchorKeys = new Set();
@@ -8457,7 +8522,8 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
     const explicitPageIndex = resolvePdfSignatureFieldPageIndex(field, pages.length);
     const oibAnchor = hasExplicitPdfSignatureFieldPosition(field)
       ? null
-      : findPdfSignatureOibAnchor(textAnchors, field, { usedAnchorKeys: usedTextAnchorKeys });
+      : (findPdfSignatureTextAnchor(textAnchors, field, { usedAnchorKeys: usedTextAnchorKeys })
+        || findPdfSignatureOibAnchor(textAnchors, field, { usedAnchorKeys: usedTextAnchorKeys }));
     const canUseAnchorPage = oibAnchor
       && (!hasExplicitPdfSignatureFieldPage(field) || Math.max(0, oibAnchor.pageNumber - 1) === explicitPageIndex);
     const pageIndex = canUseAnchorPage

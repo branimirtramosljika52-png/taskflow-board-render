@@ -1485,6 +1485,40 @@ test("PDF signature field is anchored below the last matching signer OIB", async
   assert.equal(Math.round(rect.height), 32);
 });
 
+test("PDF signature field can be anchored below a handover verifier label", async () => {
+  const sourceDoc = await PDFDocument.create();
+  const font = await sourceDoc.embedFont(StandardFonts.Helvetica);
+  const page = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  page.drawText("OIB 35649316156", { x: 410, y: 700, size: 9, font });
+  page.drawText("Ovjerio izvrsitelj:", { x: 232, y: 302, size: 11, font });
+
+  const outputBuffer = await addPdfSignatureFieldsToBuffer(
+    Buffer.from(await sourceDoc.save({ useObjectStreams: false })),
+    [{
+      signatureMode: "digital",
+      signatureFieldRole: "IZVRSITELJ",
+      signatureFieldOib: "35649316156",
+      fieldName: "SIGN_IZVRSITELJ_35649316156",
+      name: "Ana Savanovic",
+      anchorText: "Ovjerio izvr\u0161itelj",
+      positioning: {
+        anchor: "bottom",
+        offsetY: -10,
+        width: 180,
+        height: 52,
+      },
+    }],
+  );
+
+  const pdfDoc = await PDFDocument.load(outputBuffer);
+  const field = pdfDoc.getForm().getField("SIGN_IZVRSITELJ_35649316156");
+  const rect = field.acroField.getWidgets()[0].getRectangle();
+  assert.ok(rect.y > 230 && rect.y < 250, `expected field below verifier label, got y=${rect.y}`);
+  assert.ok(rect.y < 300, `expected field to avoid the OIB anchor, got y=${rect.y}`);
+  assert.equal(Math.round(rect.width), 180);
+  assert.equal(Math.round(rect.height), 52);
+});
+
 test("PDF signature fields for the same OIB use separate role anchors", async () => {
   const sourceDoc = await PDFDocument.create();
   const font = await sourceDoc.embedFont(StandardFonts.Helvetica);

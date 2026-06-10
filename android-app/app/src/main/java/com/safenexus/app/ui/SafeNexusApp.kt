@@ -1375,6 +1375,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
         WorkOrderDocumentationWizardDialog(
             workOrder = workOrder,
             users = state.data.workOrderUsers,
+            currentUser = state.user,
             services = state.data.workOrderServices,
             locationObjects = state.data.workOrderLocationObjects,
             selectedObjectId = documentationWizardObjectId,
@@ -7910,6 +7911,7 @@ private fun findMissingRequiredDocumentationFields(
 private fun WorkOrderDocumentationWizardDialog(
     workOrder: WorkOrder,
     users: List<WorkOrderUserOption>,
+    currentUser: SafeNexusUser?,
     services: List<WorkOrderServiceOption>,
     locationObjects: List<WorkOrderLocationObjectOption>,
     selectedObjectId: String,
@@ -7944,6 +7946,23 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     var completedBy by remember(workOrder.id, workOrder.completedBy, workOrder.executors) {
         mutableStateOf(workOrder.completedBy.ifBlank { workOrder.executors.firstOrNull().orEmpty() })
+    }
+    val defaultHandoverVerifierUserId = remember(users, currentUser?.displayName, currentUser?.email) {
+        val currentEmail = currentUser?.email.orEmpty()
+        val currentLabel = currentUser?.displayName.orEmpty()
+        users.firstOrNull { user ->
+            user.email.equals(currentEmail, ignoreCase = true) ||
+                listOf(user.label, user.fullName, user.email)
+                    .any { value -> value.equals(currentLabel, ignoreCase = true) }
+        }?.id.orEmpty()
+    }
+    var handoverVerifierUserId by remember(workOrder.id, defaultHandoverVerifierUserId) {
+        mutableStateOf(defaultHandoverVerifierUserId)
+    }
+    LaunchedEffect(defaultHandoverVerifierUserId) {
+        if (handoverVerifierUserId.isBlank() && defaultHandoverVerifierUserId.isNotBlank()) {
+            handoverVerifierUserId = defaultHandoverVerifierUserId
+        }
     }
     val completedByOptions = remember(editableExecutors, completedBy) {
         (listOf("") + editableExecutors + listOf(completedBy))
@@ -8783,10 +8802,14 @@ private fun WorkOrderDocumentationWizardDialog(
                     signatureMode = signatureMode,
                     completedBy = completedBy,
                     completedByOptions = completedByOptions,
+                    handoverVerifierUserId = handoverVerifierUserId,
+                    handoverVerifierOptions = userOptions,
+                    handoverVerifierLabelById = userLabelById,
                     includeHandoverProtocol = includeHandoverProtocol,
                     enabled = !formLoading,
                     onSignatureMode = { signatureMode = it },
                     onCompletedByChange = { completedBy = it },
+                    onHandoverVerifierChange = { handoverVerifierUserId = it },
                     onIncludeHandoverProtocol = {},
                 )
                 }
@@ -8846,6 +8869,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         tipkaloInspectorUserIds = tipkaloInspectorUserIds.toList(),
                         tipkaloInspectorUserId = tipkaloInspectorUserId.ifBlank { tipkaloInspectorUserIds.firstOrNull().orEmpty() },
                         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                        handoverVerifierUserId = handoverVerifierUserId,
                         fieldValues = templatePayload.first,
                         templateFieldValues = templatePayload.second,
                         fieldSheets = sheetPayload.first,
@@ -9674,10 +9698,14 @@ private fun DocumentationSummarySection(
     signatureMode: String,
     completedBy: String,
     completedByOptions: List<Pair<String, String>>,
+    handoverVerifierUserId: String,
+    handoverVerifierOptions: List<Pair<String, String>>,
+    handoverVerifierLabelById: Map<String, String>,
     includeHandoverProtocol: Boolean,
     enabled: Boolean,
     onSignatureMode: (String) -> Unit,
     onCompletedByChange: (String) -> Unit,
+    onHandoverVerifierChange: (String) -> Unit,
     onIncludeHandoverProtocol: (Boolean) -> Unit,
 ) {
     WizardSection(title = "Sažetak", icon = Icons.Rounded.CheckCircle) {
@@ -9703,6 +9731,14 @@ private fun DocumentationSummarySection(
             options = completedByOptions,
             enabled = enabled && completedByOptions.size > 1,
             onSelect = onCompletedByChange,
+        )
+        WorkOrderSelectField(
+            label = "Ovjerio izvršitelj",
+            value = handoverVerifierUserId,
+            valueLabel = handoverVerifierLabelById[handoverVerifierUserId].orEmpty().ifBlank { "Odaberi osobu" },
+            options = handoverVerifierOptions,
+            enabled = enabled && handoverVerifierOptions.size > 1,
+            onSelect = onHandoverVerifierChange,
         )
         DocumentationSummaryRow(
             "Izvori",

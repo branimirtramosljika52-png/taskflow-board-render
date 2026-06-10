@@ -357,6 +357,7 @@ class SafeNexusApi(
                 .put("tipkaloInspectorUserIds", tipkaloInspectorIds)
                 .put("tipkaloInspectorUserId", draft.tipkaloInspectorUserId)
                 .put("tipkaloAuthorizationHolderUserId", draft.tipkaloAuthorizationHolderUserId)
+                .put("handoverVerifierUserId", draft.handoverVerifierUserId)
                 .put("fieldValues", draft.fieldValues.toJsonObject())
                 .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())
                 .put("fieldSheets", draft.fieldSheets.toMeasurementSheetJsonObject())
