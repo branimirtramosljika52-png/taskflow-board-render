@@ -9990,9 +9990,9 @@ function findMobileScopedUserById(scopedSnapshot = {}, userId = "") {
 
 function getMobileUserDocumentName(user = {}) {
   return normalizeInputValue(
-    user?.fullName
+    user?.displayName
+    || user?.fullName
     || [user?.firstName, user?.lastName].filter(Boolean).join(" ")
-    || user?.displayName
     || user?.username
     || user?.email,
   );
@@ -10000,12 +10000,11 @@ function getMobileUserDocumentName(user = {}) {
 
 function getMobileUserDocumentTitle(user = {}) {
   return normalizeInputValue(
-    user?.professionalTitle
-    || user?.title
-    || user?.jobTitle
-    || user?.role
-    || user?.electricalQualification?.title
-    || user?.electricalQualification?.type,
+    user?.title
+    || user?.professionalTitle
+    || user?.academicTitle
+    || user?.degreeTitle
+    || user?.qualificationTitle,
   );
 }
 
@@ -11770,11 +11769,16 @@ function getMobileUserQualificationForArea(user = {}, signatureArea = "elektro")
       : null) || {};
   return {
     discipline: normalizeMobileQualificationAreaKey(qualification.discipline || area),
+    examTitle: normalizeInputValue(qualification.examTitle || qualification.title),
     type: normalizeInputValue(qualification.examType || qualification.type || qualification.equipmentType || qualification.kind),
+    examType: normalizeInputValue(qualification.examType || qualification.type || qualification.equipmentType || qualification.kind),
     oib: normalizeInputValue(qualification.oib || qualification.oibNumber || qualification.taxId),
     data1: normalizeInputValue(qualification.data1 || qualification.classCode),
     data2: normalizeInputValue(qualification.data2 || qualification.urbroj),
     data3: normalizeInputValue(qualification.data3 || qualification.eBroj),
+    classCode: normalizeInputValue(qualification.data1 || qualification.classCode),
+    urbroj: normalizeInputValue(qualification.data2 || qualification.urbroj),
+    eBroj: normalizeInputValue(qualification.data3 || qualification.eBroj),
     passedOn: normalizeDateOnlyValue(qualification.passedOn || qualification.examDate),
     validUntil: normalizeDateOnlyValue(qualification.validUntil),
     canInspect: Boolean(qualification.canInspect),
