@@ -5289,6 +5289,20 @@ function startMobileDocumentGenerationJob({
   return job;
 }
 
+function waitForMobileDocumentGenerationJob(job = {}, timeoutMs = 20_000) {
+  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+  return new Promise((resolve) => {
+    const poll = () => {
+      if (!job || job.status === "completed" || job.status === "failed" || Date.now() >= deadline) {
+        resolve(job);
+        return;
+      }
+      setTimeout(poll, 500);
+    };
+    poll();
+  });
+}
+
 function cleanupSignatureBridgeJobs() {
   const now = Date.now();
   for (const [token, job] of signatureBridgeJobs.entries()) {
@@ -14139,27 +14153,31 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      const job = startMobileDocumentGenerationJob({
+        workOrderId: workOrder.id,
+        entries,
+        scopedSnapshot,
+        user,
+      });
       if (body.async === true || body.generateAsync === true || request.headers["x-safenexus-async"] === "1") {
-        const job = startMobileDocumentGenerationJob({
-          workOrderId: workOrder.id,
-          entries,
-          scopedSnapshot,
-          user,
-        });
         sendJson(response, 202, buildMobileDocumentGenerationJobResponse(job));
         return true;
       }
 
-      const items = await saveGeneratedDocumentTemplatePdfDocuments(entries, scopedSnapshot, user, {});
-      if (items.length === 0) {
-        sendError(response, 400, "Nijedan zapisnik nije spremljen u dokumentaciju RN-a.");
+      const waitedJob = await waitForMobileDocumentGenerationJob(job, 20_000);
+      if (waitedJob.status === "failed") {
+        sendError(response, 400, waitedJob.error || "Ne mogu izraditi dokumentaciju RN-a.");
+        return true;
+      }
+      if (waitedJob.status !== "completed") {
+        sendJson(response, 202, buildMobileDocumentGenerationJobResponse(waitedJob));
         return true;
       }
 
       sendJson(response, 200, {
         ok: true,
-        generatedCount: items.length,
-        items,
+        generatedCount: waitedJob.items.length,
+        items: waitedJob.items,
       });
       return true;
     }
