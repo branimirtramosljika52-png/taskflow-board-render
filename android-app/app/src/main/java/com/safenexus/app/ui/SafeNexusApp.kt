@@ -227,9 +227,12 @@ import java.util.Locale
 
 enum class WorkOrderFilter(val label: String) {
     All("SVE"),
-    Active("OTVORENI"),
-    Overdue("U TIJEKU"),
-    Closed("ZAVRŠENI"),
+    Mine("MOJI RN"),
+    Open("OTVORENI"),
+    Done("GOTOV"),
+    Verified("OVJEREN"),
+    Invoiced("FAKTURIRAN"),
+    Cancelled("STORNO"),
 }
 
 enum class WorkOrderViewMode(val label: String) {
@@ -647,6 +650,32 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private fun markWorkOrderVerifiedAfterApproval(workOrder: WorkOrder, notice: String) {
+        val verifiedStatus = "Ovjeren RN"
+        if (workOrder.id.isBlank() || workOrder.hasRnStatus(verifiedStatus)) return
+
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(previousWorkOrder.copy(status = verifiedStatus), notice)
+        viewModelScope.launch {
+            api.updateWorkOrderStatus(workOrder.id, verifiedStatus)
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, notice)
+                    }
+                }
+                .onFailure { error ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(
+                            notice = notice,
+                            error = error.message ?: "Dokument je spremljen, ali status RN-a nije prebačen u Ovjeren RN.",
+                        )
+                    }
+                }
+        }
+    }
+
     fun updateWorkOrderServices(workOrder: WorkOrder, selectedServiceIds: List<String>) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za spremanje usluga.")
@@ -910,11 +939,19 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 ).getOrThrow()
             }
                 .onSuccess {
+                    val successNotice = if (category == WorkOrderDocumentCategory.VerifiedWorkOrder) {
+                        "Dokumentacija je spremljena i RN je prebačen u Ovjeren RN."
+                    } else {
+                        "Dokumentacija je spremljena."
+                    }
                     state = state.copy(
                         isLoading = false,
-                        notice = "Dokumentacija je spremljena.",
+                        notice = successNotice,
                     )
                     loadWorkOrderDocuments(workOrder.id)
+                    if (category == WorkOrderDocumentCategory.VerifiedWorkOrder) {
+                        markWorkOrderVerifiedAfterApproval(workOrder, successNotice)
+                    }
                 }
                 .onFailure { error ->
                     state = state.copy(
@@ -1078,16 +1115,14 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     runCatching { saveDownloadedDocument(context, downloaded) }
                         .onSuccess { uri ->
                             val opened = openCachedDocument(context, uri, downloaded.fileType)
+                            val successNotice = "Potpisani RN je spremljen, dodan u dokumentaciju i status je Ovjeren RN."
                             state = state.copy(
                                 isLoading = false,
-                                notice = if (opened) {
-                                    "Potpisani RN je spremljen, dodan u dokumentaciju i otvoren."
-                                } else {
-                                    "Potpisani RN je spremljen i dodan u dokumentaciju."
-                                },
+                                notice = successNotice,
                                 error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje PDF-a.",
                             )
                             loadWorkOrderDocuments(workOrder.id)
+                            markWorkOrderVerifiedAfterApproval(workOrder, successNotice)
                         }
                         .onFailure { error ->
                             state = state.copy(
@@ -2952,14 +2987,17 @@ private fun WorkOrdersScreen(
     onAddDocumentation: (WorkOrder) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
-    val filtered = remember(state.workOrders, normalizedQuery, state.filter) {
+    val filtered = remember(state.workOrders, normalizedQuery, state.filter, state.user?.displayName, state.user?.email) {
         state.workOrders
             .filter { workOrder ->
                 when (state.filter) {
                     WorkOrderFilter.All -> true
-                    WorkOrderFilter.Active -> workOrder.isOpenRnStatus()
-                    WorkOrderFilter.Overdue -> workOrder.isInProgressRnStatus()
-                    WorkOrderFilter.Closed -> workOrder.isClosed
+                    WorkOrderFilter.Mine -> workOrder.isAssignedToUser(state.user)
+                    WorkOrderFilter.Open -> workOrder.hasRnStatus("Otvoreni RN")
+                    WorkOrderFilter.Done -> workOrder.hasRnStatus("Gotov RN")
+                    WorkOrderFilter.Verified -> workOrder.hasRnStatus("Ovjeren RN")
+                    WorkOrderFilter.Invoiced -> workOrder.hasRnStatus("Fakturiran RN")
+                    WorkOrderFilter.Cancelled -> workOrder.isCancelledRnStatus()
                 }
             }
             .filter { workOrder -> normalizedQuery.isBlank() || workOrder.matchesSearch(normalizedQuery) }
@@ -3558,34 +3596,46 @@ private fun WorkOrderTabs(
     selected: WorkOrderFilter,
     onFilterChange: (WorkOrderFilter) -> Unit,
 ) {
+    val scrollState = rememberScrollState()
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom,
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         WorkOrderFilter.entries.forEach { filter ->
             val isSelected = selected == filter
-            Column(
+            val accent = workOrderFilterAccentColor(filter)
+            Surface(
                 modifier = Modifier
-                    .weight(1f)
                     .clickable { onFilterChange(filter) }
-                    .padding(top = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .heightIn(min = 38.dp),
+                shape = RoundedCornerShape(999.dp),
+                color = if (isSelected) accent.copy(alpha = 0.16f) else Color(0xFFF8FAFC),
+                tonalElevation = if (isSelected) 1.dp else 0.dp,
             ) {
-                Text(
-                    filter.label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Black,
-                    color = if (isSelected) Color(0xFF0B63E5) else Color(0xFF475569),
-                    maxLines = 1,
-                )
-                Spacer(Modifier.height(12.dp))
-                Box(
-                    modifier = Modifier
-                        .height(3.dp)
-                        .fillMaxWidth()
-                        .background(if (isSelected) Color(0xFF0B63E5) else Color.Transparent),
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    if (filter == WorkOrderFilter.Mine) {
+                        Icon(
+                            Icons.Rounded.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isSelected) accent else Color(0xFF64748B),
+                        )
+                    }
+                    Text(
+                        filter.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Black,
+                        color = if (isSelected) accent else Color(0xFF475569),
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -3637,10 +3687,9 @@ private fun WorkOrderQuickActionsFab(
                         onClick = onRefresh,
                     )
                     QuickActionDivider()
-                    QuickFilterAction("Svi RN", WorkOrderFilter.All, filter, onFilterChange)
-                    QuickFilterAction("Otvoreni", WorkOrderFilter.Active, filter, onFilterChange)
-                    QuickFilterAction("U tijeku", WorkOrderFilter.Overdue, filter, onFilterChange)
-                    QuickFilterAction("Završeni", WorkOrderFilter.Closed, filter, onFilterChange)
+                    WorkOrderFilter.entries.forEach { option ->
+                        QuickFilterAction(option.label, option, filter, onFilterChange)
+                    }
                 }
             }
         }
@@ -3667,7 +3716,11 @@ private fun QuickFilterAction(
 ) {
     QuickActionButton(
         label = label,
-        icon = if (selected == value) Icons.Rounded.CheckCircle else Icons.Rounded.FilterList,
+        icon = when {
+            selected == value -> Icons.Rounded.CheckCircle
+            value == WorkOrderFilter.Mine -> Icons.Rounded.Person
+            else -> Icons.Rounded.FilterList
+        },
         isSelected = selected == value,
         onClick = { onFilterChange(value) },
     )
@@ -3994,18 +4047,8 @@ private fun StatusComparisonRow(
 }
 
 private fun workOrderStatusAccentColor(status: String, fallback: Color): Color {
-    val normalized = status
-        .lowercase(Locale.getDefault())
-        .replace("š", "s")
-        .replace("ž", "z")
-    return when {
-        normalized.contains("otvoren") -> Color(0xFF2563EB)
-        normalized.contains("gotov") -> Color(0xFFDB2777)
-        normalized.contains("ovjeren") -> Color(0xFF059669)
-        normalized.contains("faktur") -> Color(0xFFB45309)
-        normalized.contains("storno") || normalized.contains("storniran") -> Color(0xFF7C3AED)
-        else -> fallback
-    }
+    val style = rnStatusStyle(status)
+    return if (style.isKnownStatus) style.accent else fallback
 }
 
 @Composable
@@ -5405,20 +5448,24 @@ private fun WorkOrder.matchesSearch(query: String): Boolean {
         description.contains(query, ignoreCase = true)
 }
 
-private fun WorkOrder.isOpenRnStatus(): Boolean {
-    val normalized = status
-        .lowercase()
+private fun String.normalizedRnStatus(): String =
+    lowercase(Locale.getDefault())
         .replace("š", "s")
         .replace("ž", "z")
-    return normalized.contains("otvoren")
+        .replace("č", "c")
+        .replace("ć", "c")
+        .trim()
+
+private fun WorkOrder.hasRnStatus(expectedStatus: String): Boolean =
+    status.normalizedRnStatus() == expectedStatus.normalizedRnStatus()
+
+private fun WorkOrder.isCancelledRnStatus(): Boolean {
+    val normalized = status.normalizedRnStatus()
+    return normalized.contains("storno") || normalized.contains("storniran")
 }
 
-private fun WorkOrder.isInProgressRnStatus(): Boolean {
-    val normalized = status
-        .lowercase()
-        .replace("š", "s")
-        .replace("ž", "z")
-    return (!isClosed && !isOpenRnStatus()) || normalized.contains("tijek")
+private fun WorkOrder.isOpenRnStatus(): Boolean {
+    return status.normalizedRnStatus().contains("otvoren")
 }
 
 private fun WorkOrder.primaryExecutorLabel(): String =
@@ -5820,14 +5867,31 @@ private data class RnStatusStyle(
     val label: String,
     val accent: Color,
     val background: Color,
+    val isKnownStatus: Boolean = true,
 )
 
-private fun rnStatusStyle(workOrder: WorkOrder): RnStatusStyle {
+private fun rnStatusStyle(workOrder: WorkOrder): RnStatusStyle = rnStatusStyle(workOrder.status)
+
+private fun rnStatusStyle(status: String): RnStatusStyle {
+    val normalized = status.normalizedRnStatus()
     return when {
-        workOrder.isClosed -> RnStatusStyle("ZAVRŠENI", Color(0xFF7C3AED), Color(0xFFF3E8FF))
-        workOrder.isInProgressRnStatus() -> RnStatusStyle("U TIJEKU", Color(0xFF2E7D32), Color(0xFFE8F5E9))
-        else -> RnStatusStyle("OTVORENI", Color(0xFF0B63E5), Color(0xFFEAF2FF))
+        normalized.contains("otvoren") -> RnStatusStyle("OTVORENI", Color(0xFF64748B), Color(0xFFF1F5F9))
+        normalized.contains("storno") || normalized.contains("storniran") -> RnStatusStyle("STORNO", Color(0xFF374151), Color(0xFFE5E7EB))
+        normalized.contains("ovjeren") -> RnStatusStyle("OVJEREN", Color(0xFFA16207), Color(0xFFFEF3C7))
+        normalized.contains("gotov") -> RnStatusStyle("GOTOV", Color(0xFF16A34A), Color(0xFFDCFCE7))
+        normalized.contains("faktur") -> RnStatusStyle("FAKTURIRAN", Color(0xFF166534), Color(0xFFBBF7D0))
+        else -> RnStatusStyle(status.ifBlank { "STATUS" }.uppercase(Locale.getDefault()), Color(0xFF64748B), Color(0xFFF1F5F9), false)
     }
+}
+
+private fun workOrderFilterAccentColor(filter: WorkOrderFilter): Color = when (filter) {
+    WorkOrderFilter.All -> Color(0xFF475569)
+    WorkOrderFilter.Mine -> Color(0xFF2563EB)
+    WorkOrderFilter.Open -> rnStatusStyle("Otvoreni RN").accent
+    WorkOrderFilter.Done -> rnStatusStyle("Gotov RN").accent
+    WorkOrderFilter.Verified -> rnStatusStyle("Ovjeren RN").accent
+    WorkOrderFilter.Invoiced -> rnStatusStyle("Fakturiran RN").accent
+    WorkOrderFilter.Cancelled -> rnStatusStyle("Storno RN").accent
 }
 
 @Composable
@@ -6015,6 +6079,7 @@ private fun WorkOrderCard(
     onStatusChange: (String) -> Unit,
     onAddDocumentation: () -> Unit,
 ) {
+    val statusStyle = rnStatusStyle(workOrder)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -6057,6 +6122,18 @@ private fun WorkOrderCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                IconButton(
+                    onClick = onAddDocumentation,
+                    enabled = !isLoading,
+                    modifier = Modifier.size(42.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Description,
+                        contentDescription = "Dodaj dokumentaciju",
+                        modifier = Modifier.size(21.dp),
+                        tint = if (isLoading) Color(0xFF94A3B8) else statusStyle.accent,
+                    )
+                }
                 Text(
                     "›",
                     modifier = Modifier.padding(start = 6.dp),
@@ -6069,7 +6146,7 @@ private fun WorkOrderCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(15.dp),
-                color = Color(0xFFEAF2FF).copy(alpha = 0.72f),
+                color = statusStyle.background.copy(alpha = 0.82f),
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -6079,7 +6156,7 @@ private fun WorkOrderCard(
                         Icons.Rounded.Business,
                         contentDescription = null,
                         modifier = Modifier.size(22.dp),
-                        tint = rnStatusStyle(workOrder).accent,
+                        tint = statusStyle.accent,
                     )
                     Spacer(Modifier.width(10.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -6101,14 +6178,14 @@ private fun WorkOrderCard(
                     icon = Icons.Rounded.LocationOn,
                     label = "Lokacija",
                     value = workOrder.locationName.ifBlank { "Lokacija nije upisana" },
-                    tint = rnStatusStyle(workOrder).accent,
+                    tint = statusStyle.accent,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 RnInfoBlock(
                     icon = Icons.Rounded.Business,
                     label = "Izvršitelj",
                     value = workOrder.primaryExecutorLabel(),
-                    tint = rnStatusStyle(workOrder).accent,
+                    tint = statusStyle.accent,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -6131,7 +6208,7 @@ private fun WorkOrderCard(
                 val services = workOrder.serviceBulletItems()
                 services.take(3).forEach { service ->
                     Row(verticalAlignment = Alignment.Top) {
-                        Text("•", color = rnStatusStyle(workOrder).accent, modifier = Modifier.padding(end = 7.dp))
+                        Text("•", color = statusStyle.accent, modifier = Modifier.padding(end = 7.dp))
                         Text(
                             service,
                             style = MaterialTheme.typography.bodySmall,
@@ -6149,19 +6226,6 @@ private fun WorkOrderCard(
                         fontWeight = FontWeight.Black,
                     )
                 }
-                }
-            }
-
-            if (!isLoading) {
-                OutlinedButton(
-                    onClick = onAddDocumentation,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(7.dp))
-                    Text("Dodaj dokumentaciju", fontWeight = FontWeight.Bold)
                 }
             }
         }
