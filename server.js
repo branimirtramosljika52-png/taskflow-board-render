@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.64.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.65.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -10046,29 +10046,83 @@ function buildMobileQualifiedUserPlaceholders(prefix = "", user = null) {
   };
 }
 
-function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {}) {
-  const inspectorUsers = normalizeMobileDocumentWizardArray(common.inspectorUserIds.length > 0
-    ? common.inspectorUserIds
-    : [common.inspectorUserId])
+function getMobileUsersByIds(scopedSnapshot = {}, ids = []) {
+  const seen = new Set();
+  return normalizeMobileDocumentWizardArray(ids)
     .map((id) => findMobileScopedUserById(scopedSnapshot, id))
-    .filter(Boolean);
-  const primaryInspector = inspectorUsers[0] || findMobileScopedUserById(scopedSnapshot, common.inspectorUserId);
+    .filter((user) => {
+      const key = normalizeInputValue(user?.id || user?.email || user?.oib || getMobileUserDocumentName(user));
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function getMobileUsersByExecutorLabels(scopedSnapshot = {}, executors = []) {
+  const executorLookup = new Set(
+    normalizeMobileDocumentWizardArray(executors)
+      .map((value) => normalizeMobilePersonLookupValue(value))
+      .filter(Boolean),
+  );
+  if (executorLookup.size === 0) {
+    return [];
+  }
+  return (Array.isArray(scopedSnapshot.users) ? scopedSnapshot.users : [])
+    .filter((user) => getMobileUserLookupValues(user).some((candidate) => executorLookup.has(candidate)));
+}
+
+function uniqueMobileUsers(users = []) {
+  const seen = new Set();
+  return (Array.isArray(users) ? users : [])
+    .filter((user) => {
+      const key = normalizeInputValue(user?.id || user?.email || user?.oib || getMobileUserDocumentName(user));
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {}) {
+  const executorLabels = normalizeMobileDocumentWizardArray(common.executors);
+  const executorNames = executorLabels.join(", ");
+  const generalInspectorUsers = getMobileUsersByIds(scopedSnapshot, common.inspectorUserIds?.length > 0
+    ? common.inspectorUserIds
+    : [common.inspectorUserId]);
+  const electricalInspectorUsers = getMobileUsersByIds(scopedSnapshot, common.electricalInspectorUserIds?.length > 0
+    ? common.electricalInspectorUserIds
+    : [common.electricalInspectorUserId]);
+  const tipkaloInspectorUsers = getMobileUsersByIds(scopedSnapshot, common.tipkaloInspectorUserIds?.length > 0
+    ? common.tipkaloInspectorUserIds
+    : [common.tipkaloInspectorUserId]);
+  const selectedInspectorUsers = uniqueMobileUsers([
+    ...generalInspectorUsers,
+    ...electricalInspectorUsers,
+    ...tipkaloInspectorUsers,
+  ]);
+  const inspectorUsers = selectedInspectorUsers.length > 0
+    ? selectedInspectorUsers
+    : getMobileUsersByExecutorLabels(scopedSnapshot, executorLabels);
+  const primaryInspector = generalInspectorUsers[0] || inspectorUsers[0] || findMobileScopedUserById(scopedSnapshot, common.inspectorUserId);
   const authorizationHolder = findMobileScopedUserById(scopedSnapshot, common.authorizationHolderUserId);
-  const electricalInspector = findMobileScopedUserById(scopedSnapshot, common.electricalInspectorUserId);
+  const electricalInspector = electricalInspectorUsers[0] || primaryInspector;
   const electricalAuthorizationHolder = findMobileScopedUserById(scopedSnapshot, common.electricalAuthorizationHolderUserId);
-  const tipkaloInspector = findMobileScopedUserById(scopedSnapshot, common.tipkaloInspectorUserId);
+  const tipkaloInspector = tipkaloInspectorUsers[0] || primaryInspector;
   const tipkaloAuthorizationHolder = findMobileScopedUserById(scopedSnapshot, common.tipkaloAuthorizationHolderUserId);
-  const inspectorNames = inspectorUsers.map(getMobileUserDocumentName).filter(Boolean).join(", ");
-  const inspectorNamesWithTitles = inspectorUsers.map(formatMobileUserWithTitle).filter(Boolean).join(", ");
+  const inspectorNames = inspectorUsers.map(getMobileUserDocumentName).filter(Boolean).join(", ") || executorNames;
+  const inspectorNamesWithTitles = inspectorUsers.map(formatMobileUserWithTitle).filter(Boolean).join(", ") || inspectorNames;
+  const firstInspectorName = getMobileUserDocumentName(primaryInspector)
+    || inspectorNames.split(",").map((item) => item.trim()).filter(Boolean)[0]
+    || "";
+  const firstInspectorWithTitle = formatMobileUserWithTitle(primaryInspector) || firstInspectorName;
 
   return {
-    WORK_ORDER_EXECUTORS: inspectorNames,
+    ...(executorNames ? { WORK_ORDER_EXECUTORS: executorNames, IZVRSITELJI: executorNames } : {}),
     QUALIFIED_INSPECTORS_LIST: inspectorNamesWithTitles || inspectorNames,
     QUALIFIED_INSPECTORS_LIST_WITH_TITLES: inspectorNamesWithTitles || inspectorNames,
     QUALIFIED_INSPECTORS_NAMES: inspectorNames,
     QUALIFIED_INSPECTORS_LIST_NAMES: inspectorNames,
-    ISPITIVAC: getMobileUserDocumentName(primaryInspector),
-    ISPITIVAC_S_TITULOM: formatMobileUserWithTitle(primaryInspector),
+    ISPITIVAC: firstInspectorName,
+    ISPITIVAC_S_TITULOM: firstInspectorWithTitle,
     ISPITIVACI_POPIS: inspectorNames,
     ISPITIVACI_POPIS_S_TITULAMA: inspectorNamesWithTitles || inspectorNames,
     ISPITIVACI_POPIS_IMENA: inspectorNames,
