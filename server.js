@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.63.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.64.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -12072,10 +12072,12 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
   const globalLegalLines = globalSelectedLegal.map(formatMobileLegalFrameworkLine).filter(Boolean);
 
   Object.assign(placeholders, {
-    MEASUREMENT_EQUIPMENT_LIST: globalEquipmentTable,
-    MJERNA_OPREMA_POPIS: globalEquipmentTable,
+    MEASUREMENT_EQUIPMENT_LIST: globalEquipmentLines.join("\n"),
+    MJERNA_OPREMA_POPIS: globalEquipmentLines.join("\n"),
     MEASUREMENT_EQUIPMENT_TEXT: globalEquipmentLines.join("\n"),
     MJERNA_OPREMA_TEKST: globalEquipmentLines.join("\n"),
+    MEASUREMENT_EQUIPMENT_TABLE: globalEquipmentTable,
+    MJERNA_OPREMA_TABLICA: globalEquipmentTable,
     LEGAL_REFERENCES_LIST: globalLegalLines.join("\n"),
     LEGAL_REFERENCES_INLINE: globalLegalLines.join("; "),
     PROPISI_POPIS: globalLegalLines.join("\n"),
@@ -12104,7 +12106,8 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
 
     if (fieldType === "equipment_list") {
       const equipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, field, scopedSnapshot, common);
-      putMobileTemplateListPlaceholder(placeholders, field, index, buildMobileMeasurementEquipmentTableBlock(equipmentItems));
+      const equipmentLines = equipmentItems.map(formatMobileMeasurementEquipmentLine).filter(Boolean);
+      putMobileTemplateListPlaceholder(placeholders, field, index, equipmentLines.join("\n"));
       const equipmentIds = equipmentItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
       if (recordKey) {
         fieldValues[recordKey] = equipmentIds;
