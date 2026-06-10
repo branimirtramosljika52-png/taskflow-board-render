@@ -434,10 +434,14 @@ function collectPdfSignatureFieldSpecsFromItems(items = [], options = {}) {
     .filter(Boolean);
 }
 
-export function collectPdfSignatureFieldSpecsFromValue(value = null, output = []) {
+export function collectPdfSignatureFieldSpecsFromValue(value = null, output = [], seen = new WeakSet()) {
   if (!value || typeof value !== "object") {
     return output;
   }
+  if (seen.has(value)) {
+    return output;
+  }
+  seen.add(value);
 
   const blockType = clean(value.__docxBlockType || value.type).toLowerCase();
   if (blockType === "signature_group") {
@@ -449,7 +453,7 @@ export function collectPdfSignatureFieldSpecsFromValue(value = null, output = []
 
   Object.values(value).forEach((entry) => {
     if (entry && typeof entry === "object") {
-      collectPdfSignatureFieldSpecsFromValue(entry, output);
+      collectPdfSignatureFieldSpecsFromValue(entry, output, seen);
     }
   });
 
@@ -458,11 +462,14 @@ export function collectPdfSignatureFieldSpecsFromValue(value = null, output = []
 
 export function collectPdfSignatureFieldSpecsFromEntry(entry = {}) {
   const referenceKind = clean(entry?.templateReferenceKind).toLowerCase();
-  const placeholderSpecs = collectPdfSignatureFieldSpecsFromValue(entry?.placeholders ?? {});
-  const renderModelSpecs = collectPdfSignatureFieldSpecsFromValue(entry?.renderModel ?? {});
-  const specs = ["word", "html"].includes(referenceKind)
+  const seen = new WeakSet();
+  const directSpecs = collectPdfSignatureFieldSpecsFromValue(entry?.signatureGroup ?? {}, [], seen);
+  const placeholderSpecs = collectPdfSignatureFieldSpecsFromValue(entry?.placeholders ?? {}, [], seen);
+  const renderModelSpecs = collectPdfSignatureFieldSpecsFromValue(entry?.renderModel ?? {}, [], seen);
+  const sourceSpecs = ["word", "html"].includes(referenceKind)
     ? placeholderSpecs
     : (renderModelSpecs.length > 0 ? renderModelSpecs : placeholderSpecs);
+  const specs = [...directSpecs, ...sourceSpecs];
   return ensureUniquePdfSignatureFieldSpecs(specs);
 }
 

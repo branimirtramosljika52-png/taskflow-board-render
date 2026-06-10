@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.62.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.63.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -4678,12 +4678,26 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
 
 function collectGeneratedDocumentTemplateSignatureItems(entry = {}) {
   const referenceKind = cleanSignatureExportText(entry?.templateReferenceKind).toLowerCase();
+  const directItems = collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.signatureGroup ?? {});
   const placeholderItems = collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.placeholders ?? {});
   const renderModelItems = collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.renderModel ?? {});
-  const items = ["word", "html"].includes(referenceKind)
+  const sourceItems = ["word", "html"].includes(referenceKind)
     ? placeholderItems
     : (renderModelItems.length > 0 ? renderModelItems : placeholderItems);
-  return items;
+  const seen = new Set();
+  return [...directItems, ...sourceItems].filter((item) => {
+    const key = [
+      cleanSignatureExportText(item?.preferredField),
+      cleanSignatureExportText(item?.signatureFieldRole),
+      cleanSignatureExportText(item?.signatureFieldOib),
+      cleanSignatureExportText(item?.name),
+    ].join("|");
+    if (!key.replace(/\|/g, "") || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildGeneratedDocumentTemplateSignatureDescription(entry = {}) {
@@ -10520,6 +10534,114 @@ function getMobileMeasurementCellDisplayText(sheet = null, rowIndex = 0, columnI
   return formatMeasurementLiteralDisplayValue(rawValue, format);
 }
 
+function normalizeMobileMeasurementColumnLookupText(column = {}, columnIndex = 0) {
+  return [
+    column?.label,
+    column?.placeholder,
+    column?.id,
+    `column-${columnIndex + 1}`,
+  ].map(normalizeInputValue)
+    .filter(Boolean)
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isMobileMeasurementIndexColumn(column = {}, columnIndex = 0) {
+  if (columnIndex !== 0) {
+    return false;
+  }
+  const lookup = normalizeMobileMeasurementColumnLookupText(column, columnIndex);
+  return lookup === "r br"
+    || lookup === "rbr"
+    || lookup.includes("redni broj")
+    || lookup.includes("r br")
+    || lookup === "pozicija"
+    || lookup === "broj";
+}
+
+function isMobileMeasurementDescriptorColumn(column = {}, columnIndex = 0) {
+  if (isMobileMeasurementIndexColumn(column, columnIndex)) {
+    return true;
+  }
+  const lookup = normalizeMobileMeasurementColumnLookupText(column, columnIndex);
+  return [
+    "opis",
+    "napomena",
+    "pozicija",
+    "lokacija",
+    "mjesto",
+    "oznaka",
+    "element",
+    "uredaj",
+    "prostor",
+  ].some((term) => lookup === term || lookup.includes(term));
+}
+
+function isMobileMeasurementResultColumn(column = {}, columnIndex = 0) {
+  if (!column || isMobileMeasurementDescriptorColumn(column, columnIndex)) {
+    return false;
+  }
+  if (column.computed) {
+    return true;
+  }
+  const lookup = normalizeMobileMeasurementColumnLookupText(column, columnIndex);
+  return [
+    "rezultat",
+    "result",
+    "vrijednost",
+    "value",
+    "izmjeren",
+    "mjeren",
+    "ocjena",
+    "status",
+    "stanje",
+    "ispravno",
+    "neispravno",
+    "napon",
+    "struja",
+    "otpor",
+    "impedanc",
+    "izolacij",
+    "kontinuitet",
+    "vrijeme",
+    "lux",
+    "ohm",
+    "mohm",
+    "ma",
+    "riso",
+  ].some((term) => lookup === term || lookup.includes(term));
+}
+
+function isMobileMeasurementPrintableValuePresent(value = "") {
+  const normalized = normalizeInputValue(value).replace(/\u00a0/g, " ").trim();
+  return Boolean(normalized && normalized !== "-" && normalized !== "—");
+}
+
+function doesMobileMeasurementTableRowHaveVisibleResult(row = {}, columns = []) {
+  const cells = Array.isArray(row?.cells) ? row.cells : [];
+  const resultColumnIndexes = columns
+    .map((column, columnIndex) => (isMobileMeasurementResultColumn(column, columnIndex) ? columnIndex : -1))
+    .filter((columnIndex) => columnIndex >= 0);
+  const candidateIndexes = resultColumnIndexes.length > 0
+    ? resultColumnIndexes
+    : columns
+      .map((column, columnIndex) => (!isMobileMeasurementIndexColumn(column, columnIndex) ? columnIndex : -1))
+      .filter((columnIndex) => columnIndex >= 0);
+
+  return candidateIndexes.some((columnIndex) => {
+    const cell = cells[columnIndex];
+    const value = cell && typeof cell === "object" && !Array.isArray(cell)
+      ? cell.text ?? cell.value ?? ""
+      : cell;
+    return isMobileMeasurementPrintableValuePresent(value);
+  });
+}
+
 function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {}, index = 0, formulaContext = null, sheetEntry = null) {
   const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
   const fallbackColumns = Array.isArray(field?.columns) && field.columns.length > 0
@@ -10565,6 +10687,7 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
     id: normalizeInputValue(column?.id) || `column-${columnIndex + 1}`,
     label: normalizeInputValue(column?.label || column?.id) || `Kolona ${columnIndex + 1}`,
     width: Math.max(32, Number(column?.width) || 140),
+    computed: column?.computed || null,
   }));
   const sourceRows = Array.isArray(normalizedSheet.rows) && normalizedSheet.rows.length > 0
     ? normalizedSheet.rows
@@ -10572,7 +10695,7 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
   const headerRows = Array.isArray(normalizedSheet.headerRows)
     ? normalizedSheet.headerRows.map(normalizeInputValue).filter(Boolean)
     : [];
-  const rows = sourceRows.slice(0, 120).map((row, rowIndex) => ({
+  const allRows = sourceRows.slice(0, 120).map((row, rowIndex) => ({
     id: normalizeInputValue(row?.id) || `row-${rowIndex + 1}`,
     header: headerRows.includes(normalizeInputValue(row?.id)),
     cells: columns.map((column, columnIndex) => ({
@@ -10582,6 +10705,10 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
         : {},
     })),
   }));
+  const rows = allRows.filter((row) => (
+    row.header || doesMobileMeasurementTableRowHaveVisibleResult(row, columns)
+  ));
+  const visibleRowIds = new Set(rows.map((row) => normalizeInputValue(row.id)).filter(Boolean));
 
   return {
     __docxBlockType: "table",
@@ -10593,7 +10720,7 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
       columnId: normalizeInputValue(merge?.columnId),
       rowSpan: Math.max(1, Number(merge?.rowSpan) || 1),
       colSpan: Math.max(1, Number(merge?.colSpan) || 1),
-    })).filter((merge) => merge.rowId && merge.columnId),
+    })).filter((merge) => merge.rowId && merge.columnId && visibleRowIds.has(merge.rowId)),
     title: normalizeInputValue(field?.label || field?.wordLabel) || `Excel tablica ${index + 1}`,
   };
 }
@@ -11938,14 +12065,17 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
   const fieldValues = {};
   const selectedRulebooks = findMobileRulebooksByIds(scopedSnapshot, common.selectedRulebookIds);
   const rulebookLines = selectedRulebooks.map(formatMobileRulebookLine).filter(Boolean);
-  const globalSelectedEquipment = findMobileMeasurementEquipmentByIds(scopedSnapshot, common.selectedEquipmentIds, template);
-  const globalEquipmentLines = globalSelectedEquipment.map(formatMobileMeasurementEquipmentLine).filter(Boolean);
+  const globalEquipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, {}, scopedSnapshot, common);
+  const globalEquipmentLines = globalEquipmentItems.map(formatMobileMeasurementEquipmentLine).filter(Boolean);
+  const globalEquipmentTable = buildMobileMeasurementEquipmentTableBlock(globalEquipmentItems);
   const globalSelectedLegal = getMobileDocumentTemplateLegalFrameworksForField(template, {}, scopedSnapshot, common);
   const globalLegalLines = globalSelectedLegal.map(formatMobileLegalFrameworkLine).filter(Boolean);
 
   Object.assign(placeholders, {
-    MEASUREMENT_EQUIPMENT_LIST: globalEquipmentLines.join("\n"),
-    MJERNA_OPREMA_POPIS: globalEquipmentLines.join("\n"),
+    MEASUREMENT_EQUIPMENT_LIST: globalEquipmentTable,
+    MJERNA_OPREMA_POPIS: globalEquipmentTable,
+    MEASUREMENT_EQUIPMENT_TEXT: globalEquipmentLines.join("\n"),
+    MJERNA_OPREMA_TEKST: globalEquipmentLines.join("\n"),
     LEGAL_REFERENCES_LIST: globalLegalLines.join("\n"),
     LEGAL_REFERENCES_INLINE: globalLegalLines.join("; "),
     PROPISI_POPIS: globalLegalLines.join("\n"),
@@ -11953,7 +12083,7 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
     RULEBOOKS_LIST: rulebookLines.join("\n"),
   });
 
-  fieldValues.MEASUREMENT_EQUIPMENT_IDS = normalizeMobileDocumentWizardArray(common.selectedEquipmentIds);
+  fieldValues.MEASUREMENT_EQUIPMENT_IDS = globalEquipmentItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
   fieldValues.LEGAL_FRAMEWORK_IDS = normalizeMobileDocumentWizardArray(common.selectedLegalFrameworkIds);
   fieldValues.RULEBOOK_IDS = normalizeMobileDocumentWizardArray(common.selectedRulebookIds);
 
@@ -12357,6 +12487,7 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
     baseFileName,
     fileName: baseFileName,
     templateReferenceKind: "word",
+    signatureGroup,
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: outputFileName,
     placeholders,
@@ -12436,6 +12567,14 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         ...measurementPlaceholders,
         ...listPayload.placeholders,
       };
+      const signatureGroup = basePlaceholders.SIGNATURES && typeof basePlaceholders.SIGNATURES === "object"
+        ? basePlaceholders.SIGNATURES
+        : null;
+      const templateReferenceKind = template.referenceDocument && isWordTemplateFile(template.referenceDocument)
+        ? "word"
+        : template.referenceDocument && isHtmlTemplateFile(template.referenceDocument)
+          ? "html"
+          : "";
       const baseDocumentNumber = buildMobileDocumentTemplateDocumentNumber(service, generationWorkOrder, template, serviceIndex);
       const documentNumber = objectSequence > 1
         ? `${baseDocumentNumber}-${objectSequence}`
@@ -12485,6 +12624,8 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         locationName: normalizeInputValue(generationWorkOrder.locationName),
         objectId,
         objectName,
+        templateReferenceKind,
+        signatureGroup,
         placeholders,
         signatureMode: common.signatureMode,
         inspectionDate: common.inspectionDate,

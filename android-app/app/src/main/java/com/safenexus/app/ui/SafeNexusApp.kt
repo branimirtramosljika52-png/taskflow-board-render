@@ -10559,39 +10559,113 @@ private fun DocumentationExecutorsEditor(
     enabled: Boolean,
     onChange: (List<String>) -> Unit,
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val selectedLabels = remember(executorOptions, selectedExecutors) {
+        val labelByValue = executorOptions.associate { it.first to it.second }
+        selectedExecutors
+            .map { value -> labelByValue[value] ?: value }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+    }
+    val filteredOptions = remember(executorOptions, query) {
+        val normalizedQuery = query.trim().lowercase(Locale.getDefault())
+        executorOptions
+            .filter { option ->
+                normalizedQuery.isBlank() ||
+                    option.second.lowercase(Locale.getDefault()).contains(normalizedQuery)
+            }
+            .take(36)
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
     ) {
-    Column(
-        modifier = Modifier.padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            Text("Izvršitelji RN-a", fontWeight = FontWeight.Black)
-        }
-        WorkOrderMultiSelectChips(
-            options = executorOptions,
-            selected = selectedExecutors,
-            enabled = enabled,
-            emptyText = "Nema dostupnih korisnika za odabir izvršitelja.",
-            onToggle = { value -> onChange(selectedExecutors.toggleValue(value)) },
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                if (selectedExecutors.isEmpty()) "Nije dodijeljeno" else selectedExecutors.joinToString(", "),
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Rounded.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Izvršitelji RN-a", fontWeight = FontWeight.Black)
+                    Text(
+                        if (selectedLabels.isEmpty()) "Nije dodijeljeno" else "${selectedLabels.size} odabrano",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                TextButton(onClick = { expanded = !expanded }, enabled = enabled || expanded) {
+                    Text(if (expanded) "Zatvori" else "Uredi", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (selectedLabels.isEmpty()) {
+                Text(
+                    "Nije dodijeljeno",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            } else {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    selectedLabels.take(3).forEach { label ->
+                        AssistChip(
+                            onClick = { expanded = true },
+                            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                    }
+                    if (selectedLabels.size > 3) {
+                        AssistChip(
+                            onClick = { expanded = true },
+                            label = { Text("+${selectedLabels.size - 3}") },
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        enabled = enabled,
+                        singleLine = true,
+                        label = { Text("Traži izvršitelja") },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 210.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        WorkOrderMultiSelectChips(
+                            options = filteredOptions,
+                            selected = selectedExecutors,
+                            enabled = enabled,
+                            emptyText = "Nema dostupnih korisnika za odabir izvršitelja.",
+                            onToggle = { value -> onChange(selectedExecutors.toggleValue(value)) },
+                        )
+                        if (executorOptions.size > filteredOptions.size) {
+                            Text(
+                                "Prikazano ${filteredOptions.size} od ${executorOptions.size}.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            )
+                        }
+                    }
+                }
+            }
+
             Text(
                 "Sprema se odmah nakon promjene.",
                 style = MaterialTheme.typography.labelSmall,
@@ -10599,7 +10673,6 @@ private fun DocumentationExecutorsEditor(
                 fontWeight = FontWeight.Bold,
             )
         }
-    }
     }
 }
 
