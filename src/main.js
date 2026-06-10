@@ -27519,8 +27519,10 @@ function renderWorkOrderEditorSummary() {
   const priorityLabel = getSelectedOptionText(workOrderPriorityInput) || workOrderPriorityInput.value || "Normal";
   const openedDateValue = getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput);
   const dueDateValue = getNormalizedWorkOrderDateInputValue(workOrderDueDateInput);
+  const executionDateValue = getNormalizedWorkOrderDateInputValue(workOrderExecutionDateInput);
   const openedDateLabel = formatCompactOpenedDate(openedDateValue);
   const dueDateLabel = formatCompactDueDate(dueDateValue);
+  const executionDateLabel = executionDateValue ? `Izvršenje ${formatCompactDate(executionDateValue)}` : "Bez izvršenja";
   const documentCount = Number(workOrderDocumentCount?.textContent || 0);
   const payload = buildWorkOrderPayload();
   const missingRequiredKeys = new Set(
@@ -27647,7 +27649,7 @@ function renderWorkOrderEditorSummary() {
     priorityLabel,
     companyName,
     locationName,
-    dateSummary: `${openedDateLabel} · ${dueDateLabel}`,
+    dateSummary: `${openedDateLabel} · ${dueDateLabel} · ${executionDateLabel}`,
     serviceSummary,
     contactSummary,
     executorValues,
@@ -83190,6 +83192,10 @@ function focusWorkOrderComposer(prefill = {}) {
     workOrderDueDateInput.dataset.autoDefaultDue = "false";
   }
 
+  if (Object.prototype.hasOwnProperty.call(prefill, "executionDate")) {
+    setWorkOrderDateInputValue(workOrderExecutionDateInput, prefill.executionDate || "");
+  }
+
   if (Object.prototype.hasOwnProperty.call(prefill, "teamLabel")) {
     workOrderTeamLabelInput.value = prefill.teamLabel || "";
   }
@@ -103645,16 +103651,22 @@ function createWorkOrderCalendarCard(workOrder) {
   const meta = document.createElement("span");
   meta.className = "work-order-calendar-card-meta";
   meta.textContent = workOrder.locationName || "Bez lokacije";
-  const due = document.createElement("span");
-  due.className = "work-order-calendar-card-due";
-  due.textContent = workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka";
+  const scheduleDate = getWorkOrderDateKey(workOrder.executionDate);
+  const schedule = document.createElement("span");
+  schedule.className = "work-order-calendar-card-due";
+  schedule.textContent = scheduleDate ? `Teren ${formatCompactDate(scheduleDate)}` : "Bez datuma izvršenja";
 
   const footer = document.createElement("div");
   footer.className = "work-order-calendar-card-footer";
-  footer.append(due);
+  footer.append(schedule);
+  if (workOrder.dueDate) {
+    const due = document.createElement("span");
+    due.className = "work-order-calendar-card-due";
+    due.textContent = `Rok ${formatCompactDate(workOrder.dueDate)}`;
+    footer.append(due);
+  }
 
-  const dueDateKey = String(workOrder?.dueDate || "").trim();
-  const executorAbsenceEntries = dueDateKey ? getExecutorAbsenceEntriesForWorkOrder(workOrder, dueDateKey) : [];
+  const executorAbsenceEntries = scheduleDate ? getExecutorAbsenceEntriesForWorkOrder(workOrder, scheduleDate) : [];
 
   const executors = getWorkOrderExecutors(workOrder);
   if (executors.length > 0) {
@@ -104271,7 +104283,7 @@ function createWorkOrderCalendarAddButton(dateKey) {
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    focusWorkOrderComposer({ dueDate: dateKey });
+    focusWorkOrderComposer({ executionDate: dateKey });
   });
   return button;
 }
@@ -104301,7 +104313,7 @@ function buildWorkOrderCalendarDropBody(workOrder, targetDate, laneTarget = null
   const nextTeamLabel = laneConfig.hasTeamLabel
     ? laneConfig.teamLabel
     : (workOrder.teamLabel ?? "");
-  const sameDate = String(workOrder.dueDate ?? "") === String(nextDate ?? "");
+  const sameDate = String(workOrder.executionDate ?? "") === String(nextDate ?? "");
   const sameExecutors = getWorkOrderExecutors(workOrder).join("||") === normalizeWorkOrderExecutorValues(nextExecutors).join("||");
   const sameTeamLabel = String(workOrder.teamLabel ?? "") === String(nextTeamLabel ?? "");
 
@@ -104310,7 +104322,7 @@ function buildWorkOrderCalendarDropBody(workOrder, targetDate, laneTarget = null
   }
 
   const body = {
-    dueDate: nextDate,
+    executionDate: nextDate,
   };
 
   if (laneConfig.hasExecutors) {
@@ -104403,7 +104415,7 @@ async function applyWorkOrderCalendarDropPayload(dragPayload, targetDate, laneTa
 function renderWorkOrderCalendarSidePanels({
   unscheduled = [],
   unassigned = [],
-  unscheduledMessage = "Povuci karticu na dan kako bi se dodijelila u raspored.",
+  unscheduledMessage = "Povuci karticu na dan kako bi se upisao datum izvršenja.",
   unassignedMessage = "Dodijeli izvršitelje pa će se RN pojaviti u rasporedu.",
 } = {}) {
   if (workOrderCalendarSidepanels) {
@@ -104419,7 +104431,7 @@ function renderWorkOrderCalendarSidePanels({
       head.className = "work-order-calendar-unscheduled-head";
 
       const label = document.createElement("strong");
-      label.textContent = "Bez datuma";
+      label.textContent = "Bez izvršenja";
 
       const meta = document.createElement("span");
       meta.textContent = unscheduledMessage;
@@ -104540,7 +104552,7 @@ function renderWorkOrderCalendarWeekMode(filtered) {
   }
 
   if (workOrderCalendarMeta) {
-    workOrderCalendarMeta.textContent = `${formatCalendarMonthLabel(firstVisibleDay)} · ${scheduledCount} raspoređenih · ${calendar.unscheduled.length} bez datuma · ${calendar.unassigned.length} bez izvršitelja`;
+    workOrderCalendarMeta.textContent = `${formatCalendarMonthLabel(firstVisibleDay)} · ${scheduledCount} raspoređenih · ${calendar.unscheduled.length} bez izvršenja · ${calendar.unassigned.length} bez izvršitelja`;
   }
 
   syncWorkOrderCalendarToolbar(calendar.unscheduled.length);
@@ -104583,8 +104595,8 @@ function renderWorkOrderCalendarMonthMode(filtered) {
   const calendar = buildWorkOrderCalendarMonthWeeks(filtered, state.workOrderCalendar.weekStart);
   const scheduledCount = calendar.weeks.reduce((sum, week) => sum + week.totalCount, 0);
   const visibleMonthItems = filtered.filter((item) => {
-    const dueDate = String(item?.dueDate ?? "").trim();
-    return dueDate && dueDate >= calendar.monthStart && dueDate <= calendar.monthEnd;
+    const scheduleDate = getWorkOrderDateKey(item?.executionDate);
+    return scheduleDate && scheduleDate >= calendar.monthStart && scheduleDate <= calendar.monthEnd;
   });
   const unassignedCount = visibleMonthItems.filter((item) => getWorkOrderExecutors(item).length === 0).length;
   const weekNumbers = calendar.weeks.map((week) => getCalendarIsoWeekNumber(week.weekStart)).filter(Boolean);
@@ -104597,7 +104609,7 @@ function renderWorkOrderCalendarMonthMode(filtered) {
   }
 
   if (workOrderCalendarMeta) {
-    workOrderCalendarMeta.textContent = `${weekNumberLabel} · ${scheduledCount} raspoređenih · ${calendar.unscheduled.length} bez datuma · ${unassignedCount} bez izvršitelja`;
+    workOrderCalendarMeta.textContent = `${weekNumberLabel} · ${scheduledCount} raspoređenih · ${calendar.unscheduled.length} bez izvršenja · ${unassignedCount} bez izvršitelja`;
   }
 
   syncWorkOrderCalendarToolbar(calendar.unscheduled.length);

@@ -2678,7 +2678,7 @@ private fun WorkOrderCreateScreen(
                                 value = openedDate,
                                 onValueChange = { openedDate = it },
                                 modifier = Modifier.weight(1f),
-                                label = { Text("Datum") },
+                                label = { Text("Otvaranje") },
                                 singleLine = true,
                                 enabled = !isLoading,
                                 shape = RoundedCornerShape(16.dp),
@@ -2693,6 +2693,15 @@ private fun WorkOrderCreateScreen(
                                 shape = RoundedCornerShape(16.dp),
                             )
                         }
+                        OutlinedTextField(
+                            value = executionDate,
+                            onValueChange = { executionDate = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Izvršenje (plan terena)") },
+                            singleLine = true,
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(16.dp),
+                        )
                         WorkOrderSelectField(
                             label = "Status",
                             value = status,
@@ -2794,7 +2803,6 @@ private fun WorkOrderCreateScreen(
                     WorkOrderTextField("Kontakt osoba", contactName, { contactName = it }, enabled = !isLoading)
                     WorkOrderTextField("Kontakt telefon", contactPhone, { contactPhone = it }, enabled = !isLoading)
                     WorkOrderTextField("Kontakt email", contactEmail, { contactEmail = it }, enabled = !isLoading)
-                    WorkOrderTextField("Datum izvršenja", executionDate, { executionDate = it }, enabled = !isLoading)
                     WorkOrderTextField("Odjel", department, { department = it }, enabled = !isLoading)
                     WorkOrderTextField("Tagovi", tagText, { tagText = it }, enabled = !isLoading)
                     WorkOrderTextField("Veza RN", linkReference, { linkReference = it }, enabled = !isLoading)
@@ -3601,6 +3609,7 @@ private fun WorkOrdersScreen(
                         data = state.data,
                         user = state.user,
                         workOrders = state.workOrders,
+                        onOpenWorkOrder = onOpenWorkOrder,
                     )
                 }
                 item {
@@ -4290,6 +4299,7 @@ private fun OperationsContent(
     data: BootstrapData,
     user: SafeNexusUser?,
     workOrders: List<WorkOrder>,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
 ) {
     val myWorkOrders = remember(workOrders, user?.displayName, user?.email) {
         workOrders.filter { workOrder -> workOrder.isAssignedToUser(user) }
@@ -4301,6 +4311,10 @@ private fun OperationsContent(
     val personalSummary = remember(myWorkOrders, statusLabels) { myWorkOrders.toStatusDashboard(statusLabels) }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        MyPlanSection(
+            workOrders = myWorkOrders,
+            onOpenWorkOrder = onOpenWorkOrder,
+        )
         OperationsStatusCockpit(
             user = user,
             personal = personalSummary,
@@ -4313,6 +4327,177 @@ private fun OperationsContent(
         DashboardMetricGrid(data.dashboard)
         OperationsRegisterStrip(data)
         PriorityWorkOrders(workOrders)
+    }
+}
+
+private enum class MyPlanKind(
+    val label: String,
+    val icon: ImageVector,
+    val accent: Color,
+) {
+    ExecutionOverdue("Teren kasni", Icons.Rounded.ErrorOutline, Color(0xFFDC2626)),
+    ExecutionSoon("Teren uskoro", Icons.Rounded.CalendarMonth, Color(0xFF2563EB)),
+    DueOverdue("Rok istekao", Icons.Rounded.ErrorOutline, Color(0xFFB91C1C)),
+    DueSoon("Rok uskoro", Icons.Rounded.CalendarMonth, Color(0xFFD97706)),
+}
+
+private data class MyPlanItem(
+    val workOrder: WorkOrder,
+    val date: LocalDate,
+    val kind: MyPlanKind,
+) {
+    val urgencyRank: Int
+        get() = when (kind) {
+            MyPlanKind.ExecutionOverdue -> 0
+            MyPlanKind.DueOverdue -> 1
+            MyPlanKind.ExecutionSoon -> 2
+            MyPlanKind.DueSoon -> 3
+        }
+}
+
+private fun buildMyPlanItems(
+    workOrders: List<WorkOrder>,
+    today: LocalDate = LocalDate.now(),
+    horizonDays: Long = 7,
+): List<MyPlanItem> {
+    val horizon = today.plusDays(horizonDays)
+    val items = mutableListOf<MyPlanItem>()
+
+    workOrders
+        .filter { workOrder -> !workOrder.isClosed }
+        .forEach { workOrder ->
+            workOrder.parsedExecutionDate?.let { executionDate ->
+                when {
+                    executionDate.isBefore(today) -> items += MyPlanItem(workOrder, executionDate, MyPlanKind.ExecutionOverdue)
+                    !executionDate.isAfter(horizon) -> items += MyPlanItem(workOrder, executionDate, MyPlanKind.ExecutionSoon)
+                }
+            }
+            workOrder.parsedDueDate?.let { dueDate ->
+                when {
+                    dueDate.isBefore(today) -> items += MyPlanItem(workOrder, dueDate, MyPlanKind.DueOverdue)
+                    !dueDate.isAfter(horizon) -> items += MyPlanItem(workOrder, dueDate, MyPlanKind.DueSoon)
+                }
+            }
+        }
+
+    return items
+        .sortedWith(compareBy<MyPlanItem> { it.urgencyRank }.thenBy { it.date }.thenBy { it.workOrder.displayNumber })
+        .take(8)
+}
+
+@Composable
+private fun MyPlanSection(
+    workOrders: List<WorkOrder>,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+) {
+    val today = remember { LocalDate.now() }
+    val items = remember(workOrders, today) { buildMyPlanItems(workOrders, today) }
+    val executionOverdue = items.count { it.kind == MyPlanKind.ExecutionOverdue }
+    val executionSoon = items.count { it.kind == MyPlanKind.ExecutionSoon }
+    val dueAlerts = items.count { it.kind == MyPlanKind.DueOverdue || it.kind == MyPlanKind.DueSoon }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(
+                        Icons.Rounded.CalendarMonth,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("MyPlan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        "Moji RN-ovi po izvršenju i rokovima",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusCountPill("Teren kasni", executionOverdue, Color(0xFFDC2626))
+                StatusCountPill("Teren uskoro", executionSoon, Color(0xFF2563EB))
+                StatusCountPill("Rokovi", dueAlerts, Color(0xFFD97706))
+            }
+            if (items.isEmpty()) {
+                Text(
+                    "Nema mojih RN-ova s izvršenjem ili rokom u sljedećih 7 dana.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                items.forEach { item ->
+                    MyPlanLine(item = item, onClick = { onOpenWorkOrder(item.workOrder) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MyPlanLine(
+    item: MyPlanItem,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = item.kind.accent.copy(alpha = 0.09f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = RoundedCornerShape(13.dp), color = item.kind.accent.copy(alpha = 0.14f)) {
+                Icon(
+                    item.kind.icon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .padding(9.dp),
+                    tint = item.kind.accent,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    item.workOrder.displayNumber,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    listOf(item.workOrder.companyName, item.workOrder.locationName).filter { it.isNotBlank() }.joinToString(" - "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(item.kind.label, style = MaterialTheme.typography.labelMedium, color = item.kind.accent, fontWeight = FontWeight.Black)
+                Text(formatDateLabel(item.date.toString()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            }
+        }
     }
 }
 

@@ -441,6 +441,8 @@ data class WorkOrder(
 ) {
     val parsedDueDate: LocalDate? = parseDateOrNull(dueDate)
 
+    val parsedExecutionDate: LocalDate? = parseDateOrNull(executionDate)
+
     val parsedOpenedDate: LocalDate? = parseDateOrNull(openedDate)
 
     val coordinatePoint: CoordinatePoint? = parseCoordinatePoint(coordinates)

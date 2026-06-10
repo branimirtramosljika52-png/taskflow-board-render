@@ -11130,6 +11130,10 @@ function sortWorkOrdersByCalendarKey(items = []) {
     .sort((left, right) => String(left.workOrderNumber ?? "").localeCompare(String(right.workOrderNumber ?? ""), "hr"));
 }
 
+function getWorkOrderCalendarDate(workOrder = {}) {
+  return normalizeOptionalDate(workOrder?.executionDate);
+}
+
 export function buildWorkOrderCalendarTeamWeeks(workOrders = [], anchorDateValue = todayString()) {
   const normalizedAnchor = normalizeOptionalDate(anchorDateValue) ?? todayString();
   const monthStart = `${normalizedAnchor.slice(0, 7)}-01`;
@@ -11202,9 +11206,9 @@ export function buildWorkOrderCalendarTeamWeeks(workOrders = [], anchorDateValue
 
   workOrders.forEach((workOrder) => {
     const group = getWorkOrderTeamGroup(workOrder);
-    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+    const calendarDate = getWorkOrderCalendarDate(workOrder);
 
-    if (!dueDate) {
+    if (!calendarDate) {
       const targetGroup = ensureUnscheduledGroup(group);
       targetGroup.items.push(workOrder);
 
@@ -11221,11 +11225,11 @@ export function buildWorkOrderCalendarTeamWeeks(workOrders = [], anchorDateValue
       return;
     }
 
-    if (!displayDaySet.has(dueDate)) {
+    if (!displayDaySet.has(calendarDate)) {
       return;
     }
 
-    const weekKey = formatLocalDateKey(startOfWeekDate(dueDate));
+    const weekKey = formatLocalDateKey(startOfWeekDate(calendarDate));
     const week = weekMap.get(weekKey);
 
     if (!week) {
@@ -11233,7 +11237,7 @@ export function buildWorkOrderCalendarTeamWeeks(workOrders = [], anchorDateValue
     }
 
     const targetGroup = ensureWeekGroup(week, group);
-    targetGroup.itemsByDate[dueDate].push(workOrder);
+    targetGroup.itemsByDate[calendarDate].push(workOrder);
     targetGroup.totalCount += 1;
     week.totalCount += 1;
 
@@ -11288,10 +11292,10 @@ export function buildWorkOrderCalendarLanes(workOrders = [], weekStartValue = to
 
   workOrders.forEach((workOrder) => {
     const lane = getWorkOrderExecutorGroup(workOrder);
-    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+    const calendarDate = getWorkOrderCalendarDate(workOrder);
 
-    if (!dueDate || !daySet.has(dueDate)) {
-      if (!dueDate) {
+    if (!calendarDate || !daySet.has(calendarDate)) {
+      if (!calendarDate) {
         unscheduled.push(workOrder);
       }
       return;
@@ -11304,7 +11308,7 @@ export function buildWorkOrderCalendarLanes(workOrders = [], weekStartValue = to
       });
     }
 
-    laneMap.get(lane.key).itemsByDate[dueDate].push(workOrder);
+    laneMap.get(lane.key).itemsByDate[calendarDate].push(workOrder);
   });
 
   const lanes = Array.from(laneMap.values())
@@ -11376,21 +11380,21 @@ export function buildWorkOrderCalendarMonthWeeks(workOrders = [], anchorDateValu
   }
 
   workOrders.forEach((workOrder) => {
-    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+    const calendarDate = getWorkOrderCalendarDate(workOrder);
 
-    if (!dueDate) {
+    if (!calendarDate) {
       unscheduled.push(workOrder);
       return;
     }
 
-    const day = dayMap.get(dueDate);
+    const day = dayMap.get(calendarDate);
     if (!day) {
       return;
     }
 
     day.items.push(workOrder);
 
-    const weekKey = formatLocalDateKey(startOfWeekDate(dueDate));
+    const weekKey = formatLocalDateKey(startOfWeekDate(calendarDate));
     const week = weekMap.get(weekKey);
     if (week) {
       week.totalCount += 1;
@@ -11427,15 +11431,15 @@ export function buildWorkOrderCalendarWeekColumns(workOrders = [], weekStartValu
   const unassigned = [];
 
   workOrders.forEach((workOrder) => {
-    const dueDate = normalizeOptionalDate(workOrder?.dueDate);
+    const calendarDate = getWorkOrderCalendarDate(workOrder);
     const executorGroup = getWorkOrderExecutorGroup(workOrder);
 
-    if (!dueDate) {
+    if (!calendarDate) {
       unscheduled.push(workOrder);
       return;
     }
 
-    const day = dayMap.get(dueDate);
+    const day = dayMap.get(calendarDate);
     if (!day) {
       return;
     }
