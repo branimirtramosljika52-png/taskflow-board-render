@@ -89,6 +89,8 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
 const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.71.apk";
+const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
+const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -11223,6 +11225,127 @@ function doesMobileMeasurementTableRowHaveVisibleResult(row = {}, columns = []) 
   });
 }
 
+function normalizeMobileMeasurementConclusionValue(value = "") {
+  return normalizeInputValue(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isMobileMeasurementConclusionNegativeValue(value = "") {
+  const normalized = normalizeMobileMeasurementConclusionValue(value);
+  if (!normalized) {
+    return false;
+  }
+  if ([
+    "ne",
+    "no",
+    "fail",
+    "failed",
+    "negativno",
+    "negativan",
+    "negativna",
+    "neispravno",
+    "neispravan",
+    "neispravna",
+  ].includes(normalized)) {
+    return true;
+  }
+  return normalized.includes("ne zadovoljava")
+    || normalized.includes("nije ispravno")
+    || normalized.includes("nije sukladno")
+    || normalized.includes("ne odgovara")
+    || normalized.includes("neisprav");
+}
+
+function isMobileMeasurementConclusionPositiveValue(value = "") {
+  const normalized = normalizeMobileMeasurementConclusionValue(value);
+  if (!normalized) {
+    return false;
+  }
+  return [
+    "da",
+    "yes",
+    "ok",
+    "pass",
+    "passed",
+    "pozitivno",
+    "pozitivan",
+    "pozitivna",
+    "ispravno",
+    "ispravan",
+    "ispravna",
+    "zadovoljava",
+    "sukladno",
+  ].includes(normalized);
+}
+
+function updateMobileMeasurementConclusionAnalysis(analysis = {}, table = null) {
+  if (!table?.columns?.length || !Array.isArray(table.rows)) {
+    return analysis;
+  }
+  const resultColumnIndexes = table.columns
+    .map((column, columnIndex) => (isMobileMeasurementResultColumn(column, columnIndex) ? columnIndex : -1))
+    .filter((columnIndex) => columnIndex >= 0);
+  const candidateIndexes = resultColumnIndexes.length > 0
+    ? resultColumnIndexes
+    : table.columns
+      .map((column, columnIndex) => (!isMobileMeasurementIndexColumn(column, columnIndex) ? columnIndex : -1))
+      .filter((columnIndex) => columnIndex >= 0);
+  const headerRowIds = new Set((Array.isArray(table.headerRows) ? table.headerRows : []).map(normalizeInputValue));
+
+  table.rows.forEach((row) => {
+    if (row?.header || headerRowIds.has(normalizeInputValue(row?.id))) {
+      return;
+    }
+    const cells = Array.isArray(row?.cells) ? row.cells : [];
+    candidateIndexes.forEach((columnIndex) => {
+      const cell = cells[columnIndex];
+      const value = cell && typeof cell === "object" && !Array.isArray(cell)
+        ? cell.text ?? cell.value ?? ""
+        : cell;
+      if (!isMobileMeasurementPrintableValuePresent(value)) {
+        return;
+      }
+      analysis.hasResult = true;
+      if (isMobileMeasurementConclusionNegativeValue(value)) {
+        analysis.hasNegative = true;
+      }
+      if (isMobileMeasurementConclusionPositiveValue(value)) {
+        analysis.hasPositive = true;
+      }
+    });
+  });
+  return analysis;
+}
+
+function buildMobileMeasurementConclusionPlaceholderValues(analysis = {}) {
+  const isNegative = Boolean(analysis.hasNegative);
+  const sentence = isNegative
+    ? DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE
+    : DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE;
+  const shortValue = isNegative ? "Ne zadovoljava" : "Zadovoljava";
+  const statusValue = isNegative ? "Negativno" : "Pozitivno";
+  const yesNoValue = isNegative ? "Ne" : "Da";
+
+  return {
+    ZAKLJUCNA_OCJENA: sentence,
+    ZAKLJUCNA_OCJENA_RECENICA: sentence,
+    ZAKLJUCAK_OCJENE: sentence,
+    ZAKLJUCAK_ISPITIVANJA: sentence,
+    OCJENA_REZULTATA_ISPITIVANJA: yesNoValue,
+    OCJENA_REZULTATA_ISPITIVANJA_STATUS: yesNoValue,
+    OCJENA_REZULTATA: statusValue,
+    OCJENA_REZULTATA_KRATKO: shortValue,
+    ZAKLJUCNA_OCJENA_STATUS: statusValue,
+    ZAKLJUCNA_OCJENA_KRATKO: shortValue,
+    ZAKLJUCNA_OCJENA_DA_NE: yesNoValue,
+  };
+}
+
 function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {}, index = 0, formulaContext = null, sheetEntry = null) {
   const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
   const fallbackColumns = Array.isArray(field?.columns) && field.columns.length > 0
@@ -11308,6 +11431,11 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
 
 function buildMobileDocumentTemplateMeasurementPlaceholders(template = {}, fieldSheets = {}) {
   const placeholders = {};
+  const conclusionAnalysis = {
+    hasResult: false,
+    hasPositive: false,
+    hasNegative: false,
+  };
   const formulaContextBase = buildMobileMeasurementSheetFormulaEntries(template, fieldSheets);
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
     if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
@@ -11325,12 +11453,14 @@ function buildMobileDocumentTemplateMeasurementPlaceholders(template = {}, field
       { ...formulaContextBase, current: sheetEntry },
       sheetEntry,
     );
+    updateMobileMeasurementConclusionAnalysis(conclusionAnalysis, placeholder);
     [recordKey, tokenKey, normalizeInputValue(field?.id)]
       .filter(Boolean)
       .forEach((key) => {
         placeholders[key] = placeholder;
       });
   });
+  Object.assign(placeholders, buildMobileMeasurementConclusionPlaceholderValues(conclusionAnalysis));
   return placeholders;
 }
 
@@ -12805,6 +12935,108 @@ function buildMobileDocumentTemplateFileBaseName(template = {}, workOrder = {}, 
   return fallbackName.replace(/\.(pdf|docx?|dotx|html?)$/i, "");
 }
 
+function setMobileGeneratedDocumentEntryNumber(entry = {}, documentNumber = "") {
+  const normalizedDocumentNumber = normalizeInputValue(documentNumber);
+  if (!entry || !normalizedDocumentNumber) {
+    return;
+  }
+  const baseFileName = buildMobileDocumentTemplateFileBaseName({}, {}, normalizedDocumentNumber);
+  const outputFileName = `${baseFileName}.pdf`;
+  entry.documentNumber = normalizedDocumentNumber;
+  entry.fileName = baseFileName;
+  entry.baseFileName = baseFileName;
+  if (entry.pdfFileName) {
+    entry.pdfFileName = outputFileName;
+  }
+  if (entry.htmlFileName) {
+    entry.htmlFileName = `${baseFileName}.html`;
+  }
+  if (entry.placeholders && typeof entry.placeholders === "object" && !Array.isArray(entry.placeholders)) {
+    Object.assign(entry.placeholders, {
+      WORK_ORDER_DOCUMENT_NUMBER: normalizedDocumentNumber,
+      DOCUMENT_NUMBER: normalizedDocumentNumber,
+      BROJ_DOKUMENTA: normalizedDocumentNumber,
+      BROJ_ZAPISNIKA: normalizedDocumentNumber,
+      ZAPISNIK_BROJ: normalizedDocumentNumber,
+      WORK_ORDER_DOCUMENT_NAME: outputFileName,
+      DOCUMENT_NAME: outputFileName,
+      NAZIV_DOKUMENTA: outputFileName,
+    });
+  }
+  if (entry.documentRecord && typeof entry.documentRecord === "object" && !Array.isArray(entry.documentRecord)) {
+    entry.documentRecord.documentNumber = normalizedDocumentNumber;
+    entry.documentRecord.fileName = outputFileName;
+    if (entry.documentRecord.fieldValues && typeof entry.documentRecord.fieldValues === "object" && !Array.isArray(entry.documentRecord.fieldValues)) {
+      Object.assign(entry.documentRecord.fieldValues, {
+        WORK_ORDER_DOCUMENT_NUMBER: normalizedDocumentNumber,
+        DOCUMENT_NUMBER: normalizedDocumentNumber,
+        BROJ_DOKUMENTA: normalizedDocumentNumber,
+        BROJ_ZAPISNIKA: normalizedDocumentNumber,
+        ZAPISNIK_BROJ: normalizedDocumentNumber,
+        WORK_ORDER_DOCUMENT_NAME: outputFileName,
+        DOCUMENT_NAME: outputFileName,
+        NAZIV_DOKUMENTA: outputFileName,
+      });
+    }
+  }
+}
+
+function applyMobileGeneratedDocumentNumberSequences(entries = []) {
+  const groupedEntries = new Map();
+  entries.forEach((entry, index) => {
+    const groupKey = normalizeInputValue(entry?.numberGroupKey);
+    const baseDocumentNumber = normalizeInputValue(entry?.baseDocumentNumber);
+    if (!groupKey || !baseDocumentNumber || entry?.exportKind === "handover") {
+      return;
+    }
+    if (!groupedEntries.has(groupKey)) {
+      groupedEntries.set(groupKey, []);
+    }
+    groupedEntries.get(groupKey).push({
+      entry,
+      index,
+      objectSequence: Math.max(0, Number.parseInt(entry?.objectSequence, 10) || 0),
+    });
+  });
+
+  groupedEntries.forEach((group) => {
+    if (group.length <= 1) {
+      return;
+    }
+    group
+      .slice()
+      .sort((left, right) => (left.objectSequence || 9999) - (right.objectSequence || 9999) || left.index - right.index)
+      .forEach((item, itemIndex) => {
+        const sequence = item.objectSequence > 0 ? item.objectSequence : itemIndex + 1;
+        setMobileGeneratedDocumentEntryNumber(item.entry, `${item.entry.baseDocumentNumber}-${sequence}`);
+      });
+  });
+
+  entries.forEach((entry) => {
+    if (!entry || entry.exportKind === "handover") {
+      return;
+    }
+    delete entry.numberGroupKey;
+    delete entry.baseDocumentNumber;
+    delete entry.objectSequence;
+  });
+}
+
+function isMobileAdditionalRecordForService(record = {}, service = {}, serviceIndex = -1) {
+  const recordServiceIndex = Number.isFinite(Number(record.serviceIndex)) ? Number(record.serviceIndex) : -1;
+  if (recordServiceIndex >= 0 && recordServiceIndex === serviceIndex) {
+    return true;
+  }
+  const recordServiceCode = normalizeInputValue(record.serviceCode).toLowerCase();
+  const recordServiceName = normalizeInputValue(record.serviceName).toLowerCase();
+  const serviceCode = normalizeInputValue(service?.serviceCode || service?.code).toLowerCase();
+  const serviceName = normalizeInputValue(service?.name || service?.serviceName || service?.title).toLowerCase();
+  return Boolean(
+    (recordServiceCode && serviceCode && recordServiceCode === serviceCode)
+    || (recordServiceName && serviceName && recordServiceName === serviceName),
+  );
+}
+
 function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, scopedSnapshot = {}, common = {}) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const inspectionDateIso = normalizeDateOnlyValue(common.inspectionDate) || todayIso;
@@ -12923,17 +13155,28 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
     organization.address || "",
     [organization.postalCode, organization.city].filter(Boolean).join(" "),
   ].filter(Boolean).join(", ");
-  const baseRows = buildWorkOrderTemplateServiceRows(workOrder).map((row, index) => ({
-    id: normalizeInputValue(row.id) || `handover-service-${index + 1}`,
-    service: normalizeInputValue(row.USLUGA || row.NAZIV),
-    documentNumber: normalizeInputValue(row.BROJ_DOKUMENTA) || [workOrderNumber, normalizeInputValue(row.SIFRA)].filter(Boolean).join("-"),
-    quantity: normalizeInputValue(row.KOLICINA || "1") || "1",
-    note: normalizeInputValue(row.NAPOMENA || row.NAPOMENA_USLUGE),
-    objectName: normalizeInputValue(row.OBJEKT || row.USLUGA_OBJEKT || workOrder.objectName),
-  })).filter((row) => row.service || row.documentNumber || row.note);
   const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
     ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
     : [{ name: workOrder.serviceLine || "" }];
+  const hasAdditionalRecordForService = (service, serviceIndex) => (
+    (common.additionalRecords || []).some((record) => isMobileAdditionalRecordForService(record, service, serviceIndex))
+  );
+  const baseRows = buildWorkOrderTemplateServiceRows(workOrder).map((row, index) => {
+    const service = services[index] || {};
+    const baseDocumentNumber = normalizeInputValue(row.BROJ_DOKUMENTA)
+      || [workOrderNumber, normalizeInputValue(row.SIFRA)].filter(Boolean).join("-");
+    const documentNumber = hasAdditionalRecordForService(service, index) && baseDocumentNumber
+      ? `${baseDocumentNumber}-1`
+      : baseDocumentNumber;
+    return {
+      id: normalizeInputValue(row.id) || `handover-service-${index + 1}`,
+      service: normalizeInputValue(row.USLUGA || row.NAZIV),
+      documentNumber,
+      quantity: normalizeInputValue(row.KOLICINA || "1") || "1",
+      note: normalizeInputValue(row.NAPOMENA || row.NAPOMENA_USLUGE),
+      objectName: normalizeInputValue(row.OBJEKT || row.USLUGA_OBJEKT || workOrder.objectName),
+    };
+  }).filter((row) => row.service || row.documentNumber || row.note);
   const additionalRows = (common.additionalRecords || []).map((record, index) => {
     const serviceIndex = Number.isFinite(Number(record.serviceIndex)) ? Number(record.serviceIndex) : -1;
     const service = services[serviceIndex] || services.find((item) => (
@@ -13257,6 +13500,9 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       entries.push({
         templateId: String(template.id),
         workOrderId: String(workOrder.id),
+        numberGroupKey: `${String(workOrder.id)}::${serviceIndex}::${String(template.id)}`,
+        baseDocumentNumber,
+        objectSequence,
         fileName: baseFileName,
         baseFileName,
         documentNumber,
@@ -13318,6 +13564,8 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       console.warn("Preskačem dodatni mobilni zapisnik za objekt.", error?.message || error);
     }
   });
+
+  applyMobileGeneratedDocumentNumberSequences(entries);
 
   const handoverEntry = buildMobileHandoverExportEntry(workOrder, scopedSnapshot, common);
   if (handoverEntry) {

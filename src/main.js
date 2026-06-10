@@ -455,6 +455,8 @@ const CHAT_DOCK_COLLAPSED_STORAGE_PREFIX = "safenexus.chat.dock-collapsed.v1";
 const SESSION_IDLE_TIMEOUT_MS = 1000 * 60 * 45;
 const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "touchstart"]);
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
+const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
+const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const COMPANY_EDITOR_RELATED_RENDER_DELAY_MS = 120;
 const COMPANY_EDITOR_ACTIVITY_IDLE_TIMEOUT_MS = 1200;
 const COMPANIES_COLUMN_LAYOUT_STORAGE_KEY = "safenexus.companies.column-widths.v3";
@@ -62320,6 +62322,7 @@ function buildDocumentTemplateSystemPlaceholderValues(template = buildDocumentTe
   const validityMonths = lookup("WORK_ORDER_SERVICE_VALIDITY_MONTHS") || lookup("WORK_ORDER_VALIDITY_MONTHS");
   const firstInspectorName = inspectorNameList.split(",").map((item) => item.trim()).filter(Boolean)[0] || "";
   const firstInspectorWithTitle = inspectorListWithTitles.split(",").map((item) => item.trim()).filter(Boolean)[0] || firstInspectorName;
+  const conclusionValues = buildDocumentTemplateMeasurementConclusionPlaceholderValues(template, context);
 
   return {
     DOCUMENT_TITLE: String(template.title || "").trim(),
@@ -62418,6 +62421,7 @@ function buildDocumentTemplateSystemPlaceholderValues(template = buildDocumentTe
     ISPITIVACI_POPIS: inspectorNameList,
     ISPITIVACI_POPIS_S_TITULAMA: inspectorListWithTitles,
     ISPITIVACI_POPIS_IMENA: inspectorNameList,
+    ...conclusionValues,
   };
 }
 
@@ -62489,6 +62493,26 @@ function getDocumentTemplateSystemPlaceholderDefinitions(template = buildDocumen
       token: "{{SIFRA_USLUGE}}",
       label: "Šifra usluge",
       value: values.SIFRA_USLUGE,
+    },
+    {
+      token: "{{ZAKLJUCNA_OCJENA}}",
+      label: "Zaključna ocjena - automatska rečenica",
+      value: values.ZAKLJUCNA_OCJENA,
+    },
+    {
+      token: "{{ZAKLJUCAK_ISPITIVANJA}}",
+      label: "Zaključak ispitivanja - automatska rečenica",
+      value: values.ZAKLJUCAK_ISPITIVANJA,
+    },
+    {
+      token: "{{OCJENA_REZULTATA_ISPITIVANJA}}",
+      label: "Ocjena rezultata - Da/Ne",
+      value: values.OCJENA_REZULTATA_ISPITIVANJA,
+    },
+    {
+      token: "{{ZAKLJUCNA_OCJENA_KRATKO}}",
+      label: "Zaključna ocjena - kratko",
+      value: values.ZAKLJUCNA_OCJENA_KRATKO,
     },
     {
       token: "{{SPECIFIKACIJA}}",
@@ -62577,6 +62601,195 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
     object,
     legalFrameworks,
     equipmentItems,
+  };
+}
+
+function isDocumentTemplateMeasurementConclusionPrintableValue(value = "") {
+  const normalized = String(value ?? "").replace(/\u00a0/g, " ").trim();
+  return Boolean(normalized && normalized !== "-" && normalized !== "—");
+}
+
+function normalizeDocumentTemplateMeasurementConclusionValue(value = "") {
+  return normalizeLooseName(value);
+}
+
+function isDocumentTemplateMeasurementConclusionNegativeValue(value = "") {
+  const normalized = normalizeDocumentTemplateMeasurementConclusionValue(value);
+  if (!normalized) {
+    return false;
+  }
+  if ([
+    "ne",
+    "no",
+    "fail",
+    "failed",
+    "negativno",
+    "negativan",
+    "negativna",
+    "neispravno",
+    "neispravan",
+    "neispravna",
+  ].includes(normalized)) {
+    return true;
+  }
+  return normalized.includes("ne zadovoljava")
+    || normalized.includes("nije ispravno")
+    || normalized.includes("nije sukladno")
+    || normalized.includes("ne odgovara")
+    || normalized.includes("neisprav");
+}
+
+function isDocumentTemplateMeasurementConclusionPositiveValue(value = "") {
+  const normalized = normalizeDocumentTemplateMeasurementConclusionValue(value);
+  if (!normalized) {
+    return false;
+  }
+  return [
+    "da",
+    "yes",
+    "ok",
+    "pass",
+    "passed",
+    "pozitivno",
+    "pozitivan",
+    "pozitivna",
+    "ispravno",
+    "ispravan",
+    "ispravna",
+    "zadovoljava",
+    "sukladno",
+  ].includes(normalized);
+}
+
+function normalizeDocumentTemplateMeasurementColumnLookupText(column = {}, columnIndex = 0) {
+  return normalizeLooseName([
+    column?.label,
+    column?.placeholder,
+    column?.id,
+    `column-${columnIndex + 1}`,
+  ].filter(Boolean).join(" "));
+}
+
+function isDocumentTemplateMeasurementDescriptorColumn(column = {}, columnIndex = 0) {
+  if (isMeasurementPreviewIndexColumn(column, columnIndex)) {
+    return true;
+  }
+  const lookup = normalizeDocumentTemplateMeasurementColumnLookupText(column, columnIndex);
+  return [
+    "opis",
+    "napomena",
+    "pozicija",
+    "lokacija",
+    "mjesto",
+    "oznaka",
+    "element",
+    "uredaj",
+    "prostor",
+  ].some((term) => lookup === term || lookup.includes(term));
+}
+
+function isDocumentTemplateMeasurementResultColumn(column = {}, columnIndex = 0) {
+  if (!column || isDocumentTemplateMeasurementDescriptorColumn(column, columnIndex)) {
+    return false;
+  }
+  if (column.computed) {
+    return true;
+  }
+  const lookup = normalizeDocumentTemplateMeasurementColumnLookupText(column, columnIndex);
+  return [
+    "rezultat",
+    "result",
+    "vrijednost",
+    "value",
+    "izmjeren",
+    "mjeren",
+    "ocjena",
+    "status",
+    "stanje",
+    "ispravno",
+    "neispravno",
+    "napon",
+    "struja",
+    "otpor",
+    "impedanc",
+    "izolacij",
+    "kontinuitet",
+    "vrijeme",
+    "lux",
+    "ohm",
+    "mohm",
+    "ma",
+    "riso",
+  ].some((term) => lookup === term || lookup.includes(term));
+}
+
+function updateDocumentTemplateMeasurementConclusionAnalysis(analysis = {}, previewTable = null) {
+  if (!previewTable?.columns?.length || !Array.isArray(previewTable.rows)) {
+    return analysis;
+  }
+  const resultColumnIndexes = previewTable.columns
+    .map((column, columnIndex) => (isDocumentTemplateMeasurementResultColumn(column, columnIndex) ? columnIndex : -1))
+    .filter((columnIndex) => columnIndex >= 0);
+  const candidateIndexes = resultColumnIndexes.length > 0
+    ? resultColumnIndexes
+    : previewTable.columns
+      .map((column, columnIndex) => (!isMeasurementPreviewIndexColumn(column, columnIndex) ? columnIndex : -1))
+      .filter((columnIndex) => columnIndex >= 0);
+  const headerRowIds = new Set((previewTable.headerRows ?? []).map((rowId) => String(rowId || "").trim()).filter(Boolean));
+
+  previewTable.rows.forEach((row, rowIndex) => {
+    if (headerRowIds.has(String(row?.id || "").trim())) {
+      return;
+    }
+    candidateIndexes.forEach((columnIndex) => {
+      const value = getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex, previewTable.formulaContext);
+      if (!isDocumentTemplateMeasurementConclusionPrintableValue(value)) {
+        return;
+      }
+      analysis.hasResult = true;
+      if (isDocumentTemplateMeasurementConclusionNegativeValue(value)) {
+        analysis.hasNegative = true;
+      }
+      if (isDocumentTemplateMeasurementConclusionPositiveValue(value)) {
+        analysis.hasPositive = true;
+      }
+    });
+  });
+  return analysis;
+}
+
+function buildDocumentTemplateMeasurementConclusionPlaceholderValues(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  const analysis = {
+    hasResult: false,
+    hasPositive: false,
+    hasNegative: false,
+  };
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field) => {
+    if (String(field?.type || "").trim().toLowerCase() !== "measurement_table") {
+      return;
+    }
+    updateDocumentTemplateMeasurementConclusionAnalysis(analysis, buildMeasurementSheetPreviewTable(field, context));
+  });
+  const isNegative = Boolean(analysis.hasNegative);
+  const sentence = isNegative
+    ? DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE
+    : DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE;
+  const shortValue = isNegative ? "Ne zadovoljava" : "Zadovoljava";
+  const statusValue = isNegative ? "Negativno" : "Pozitivno";
+  const yesNoValue = isNegative ? "Ne" : "Da";
+
+  return {
+    ZAKLJUCNA_OCJENA: sentence,
+    ZAKLJUCNA_OCJENA_RECENICA: sentence,
+    ZAKLJUCAK_OCJENE: sentence,
+    ZAKLJUCAK_ISPITIVANJA: sentence,
+    OCJENA_REZULTATA_ISPITIVANJA: yesNoValue,
+    OCJENA_REZULTATA_ISPITIVANJA_STATUS: yesNoValue,
+    OCJENA_REZULTATA: statusValue,
+    OCJENA_REZULTATA_KRATKO: shortValue,
+    ZAKLJUCNA_OCJENA_STATUS: statusValue,
+    ZAKLJUCNA_OCJENA_KRATKO: shortValue,
+    ZAKLJUCNA_OCJENA_DA_NE: yesNoValue,
   };
 }
 
