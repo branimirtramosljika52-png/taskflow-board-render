@@ -10009,6 +10009,39 @@ function getMobileUserDocumentTitle(user = {}) {
   );
 }
 
+function getMobileUserDocumentOib(user = {}, signatureArea = "elektro", scopedSnapshot = {}) {
+  const normalizeOib = (value = "") => {
+    const digits = normalizeInputValue(value).replace(/\D/g, "");
+    return /^\d{11}$/.test(digits) ? digits : "";
+  };
+  const qualification = getMobileUserQualificationForArea(user, signatureArea);
+  const directOib = normalizeOib(
+    user?.oib
+    || user?.oibNumber
+    || user?.taxId
+    || user?.personalOib
+    || user?.personalIdentificationNumber
+    || user?.identificationNumber
+    || user?.nationalId
+    || qualification.oib,
+  );
+  if (directOib) {
+    return directOib;
+  }
+
+  const lookupValues = new Set(getMobileUserLookupValues(user));
+  if (lookupValues.size === 0) {
+    return "";
+  }
+  const matchedRecord = (Array.isArray(scopedSnapshot.peopleTrainingRecords) ? scopedSnapshot.peopleTrainingRecords : [])
+    .find((record) => [
+      record?.fullName,
+      [record?.firstName, record?.lastName].filter(Boolean).join(" "),
+      record?.email,
+    ].some((value) => lookupValues.has(normalizeMobilePersonLookupValue(value))));
+  return normalizeOib(matchedRecord?.oib);
+}
+
 function formatMobileUserWithTitle(user = {}) {
   const name = getMobileUserDocumentName(user);
   const title = getMobileUserDocumentTitle(user);
@@ -10171,15 +10204,16 @@ function getMobileDocumentSignatureAuthorizationIds(common = {}, signatureArea =
   return normalizeMobileDocumentWizardArray([common.authorizationHolderUserId]);
 }
 
-function getMobileQualifiedUserDocumentMetaLines(user = null, signatureArea = "elektro", metaFields = undefined) {
+function getMobileQualifiedUserDocumentMetaLines(user = null, signatureArea = "elektro", metaFields = undefined, scopedSnapshot = {}) {
   if (!user) {
     return [];
   }
   const qualification = getMobileUserQualificationForArea(user, signatureArea);
   const visibleFields = new Set(normalizeMobileDocumentTemplateSignatureMetaFields(metaFields));
+  const userOib = getMobileUserDocumentOib(user, signatureArea, scopedSnapshot);
   return [
     visibleFields.has("title") ? getMobileUserDocumentTitle(user) : "",
-    visibleFields.has("oib") && normalizeInputValue(user?.oib) ? `OIB ${normalizeInputValue(user.oib)}` : "",
+    visibleFields.has("oib") && userOib ? `OIB ${userOib}` : "",
     visibleFields.has("type") ? qualification.type : "",
     (visibleFields.has("data1") || visibleFields.has("classCode")) ? qualification.data1 : "",
     (visibleFields.has("data2") || visibleFields.has("urbroj")) ? qualification.data2 : "",
@@ -10242,12 +10276,12 @@ function buildMobileDocumentTemplateSignatureEntries(field = {}, common = {}, sc
 
   return visibleEntries.map((entry, index) => {
     const user = entry.user;
-    const signerOib = normalizeInputValue(user?.oib).replace(/\D/g, "");
+    const signerOib = getMobileUserDocumentOib(user, config.signatureArea, scopedSnapshot);
     const signatureFieldRole = index === 0 ? "ZNR" : `ZNR_${index + 1}`;
     return {
       name: getMobileUserDocumentName(user),
       role: entry.role,
-      metaLines: getMobileQualifiedUserDocumentMetaLines(user, config.signatureArea, config.signatureMetaFields),
+      metaLines: getMobileQualifiedUserDocumentMetaLines(user, config.signatureArea, config.signatureMetaFields, scopedSnapshot),
       signatureImageUrl: mode === "scan" ? getMobileUserSignatureScanDataUrl(user) : "",
       signatureMode: mode,
       signerUserId: normalizeInputValue(user?.id),
@@ -10374,7 +10408,7 @@ function buildMobileSignatureGroup(common = {}, scopedSnapshot = {}) {
       return true;
     })
     .map((user, index) => {
-      const signerOib = normalizeInputValue(user?.oib).replace(/\D/g, "");
+      const signerOib = getMobileUserDocumentOib(user, "elektro", scopedSnapshot);
       const signatureImageUrl = mode === "scan" ? getMobileUserSignatureScanDataUrl(user) : "";
       return {
         name: getMobileUserDocumentName(user),
@@ -11737,6 +11771,7 @@ function getMobileUserQualificationForArea(user = {}, signatureArea = "elektro")
   return {
     discipline: normalizeMobileQualificationAreaKey(qualification.discipline || area),
     type: normalizeInputValue(qualification.examType || qualification.type || qualification.equipmentType || qualification.kind),
+    oib: normalizeInputValue(qualification.oib || qualification.oibNumber || qualification.taxId),
     data1: normalizeInputValue(qualification.data1 || qualification.classCode),
     data2: normalizeInputValue(qualification.data2 || qualification.urbroj),
     data3: normalizeInputValue(qualification.data3 || qualification.eBroj),

@@ -810,6 +810,34 @@ test("docx export renders digital signature signer names even when OIB is missin
   assert.equal(signatureSpecs.length, 0);
 });
 
+test("docx export creates digital signature field metadata when signer OIB is present", async () => {
+  const signatureGroup = {
+    __docxBlockType: "signature_group",
+    items: [
+      {
+        role: "Ispitivač",
+        name: "Ana Savanovic",
+        signatureMode: "digital",
+        signerOib: "12345678910",
+        signatureFieldOib: "12345678910",
+        signatureFieldRole: "ZNR",
+        preferredField: "SIGN_ZNR_12345678910",
+      },
+    ],
+  };
+
+  const signatureSpecs = collectPdfSignatureFieldSpecsFromEntry({
+    templateReferenceKind: "word",
+    placeholders: {
+      POTPISI: signatureGroup,
+    },
+  });
+
+  assert.equal(signatureSpecs.length, 1);
+  assert.equal(signatureSpecs[0].fieldName, "SIGN_ZNR_12345678910");
+  assert.equal(signatureSpecs[0].signatureFieldOib, "12345678910");
+});
+
 test("docx export preserves existing floating Word image anchors while inserting blocks", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml">
