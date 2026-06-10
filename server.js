@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.65.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.66.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -10046,6 +10046,43 @@ function buildMobileQualifiedUserPlaceholders(prefix = "", user = null) {
   };
 }
 
+const MOBILE_DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS = [
+  "title",
+  "oib",
+  "type",
+  "data1",
+  "data2",
+  "data3",
+  "passedOn",
+];
+
+const MOBILE_DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_ALIASES = new Map([
+  ["classcode", "data1"],
+  ["class_code", "data1"],
+  ["urbroj", "data2"],
+  ["e_broj", "data3"],
+  ["ebroj", "data3"],
+  ["passedon", "passedOn"],
+  ["passed_on", "passedOn"],
+  ["passed-on", "passedOn"],
+]);
+
+function normalizeMobileDocumentTemplateSignatureMetaFields(values = undefined) {
+  if (!Array.isArray(values)) {
+    return [...MOBILE_DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS];
+  }
+  const allowedValues = new Set(MOBILE_DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS);
+  return Array.from(new Set(values
+    .map((value) => {
+      const raw = normalizeInputValue(value);
+      if (allowedValues.has(raw)) {
+        return raw;
+      }
+      return MOBILE_DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_ALIASES.get(raw.toLowerCase()) || "";
+    })
+    .filter(Boolean)));
+}
+
 function getMobileUsersByIds(scopedSnapshot = {}, ids = []) {
   const seen = new Set();
   return normalizeMobileDocumentWizardArray(ids)
@@ -10080,6 +10117,163 @@ function uniqueMobileUsers(users = []) {
       seen.add(key);
       return true;
     });
+}
+
+function uniqueMobileSignatureEntries(entries = []) {
+  const seen = new Set();
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => {
+      const user = entry?.user;
+      const key = normalizeInputValue(user?.id || user?.email || user?.oib || getMobileUserDocumentName(user));
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function getMobileDocumentSignatureInspectorIds(common = {}, signatureArea = "elektro") {
+  const area = normalizeMobileQualificationAreaKey(signatureArea);
+  if (area === "tipkalo" || area === "tzin") {
+    const ids = normalizeMobileDocumentWizardArray(common.tipkaloInspectorUserIds?.length > 0
+      ? common.tipkaloInspectorUserIds
+      : [common.tipkaloInspectorUserId]);
+    if (ids.length > 0) {
+      return ids;
+    }
+  }
+  if (area === "elektro") {
+    const ids = normalizeMobileDocumentWizardArray(common.electricalInspectorUserIds?.length > 0
+      ? common.electricalInspectorUserIds
+      : [common.electricalInspectorUserId]);
+    if (ids.length > 0) {
+      return ids;
+    }
+  }
+  return normalizeMobileDocumentWizardArray(common.inspectorUserIds?.length > 0
+    ? common.inspectorUserIds
+    : [common.inspectorUserId]);
+}
+
+function getMobileDocumentSignatureAuthorizationIds(common = {}, signatureArea = "elektro") {
+  const area = normalizeMobileQualificationAreaKey(signatureArea);
+  if (area === "tipkalo" || area === "tzin") {
+    const id = normalizeInputValue(common.tipkaloAuthorizationHolderUserId);
+    if (id) {
+      return [id];
+    }
+  }
+  if (area === "elektro") {
+    const id = normalizeInputValue(common.electricalAuthorizationHolderUserId);
+    if (id) {
+      return [id];
+    }
+  }
+  return normalizeMobileDocumentWizardArray([common.authorizationHolderUserId]);
+}
+
+function getMobileQualifiedUserDocumentMetaLines(user = null, signatureArea = "elektro", metaFields = undefined) {
+  if (!user) {
+    return [];
+  }
+  const qualification = getMobileUserQualificationForArea(user, signatureArea);
+  const visibleFields = new Set(normalizeMobileDocumentTemplateSignatureMetaFields(metaFields));
+  return [
+    visibleFields.has("title") ? getMobileUserDocumentTitle(user) : "",
+    visibleFields.has("oib") && normalizeInputValue(user?.oib) ? `OIB ${normalizeInputValue(user.oib)}` : "",
+    visibleFields.has("type") ? qualification.type : "",
+    (visibleFields.has("data1") || visibleFields.has("classCode")) ? qualification.data1 : "",
+    (visibleFields.has("data2") || visibleFields.has("urbroj")) ? qualification.data2 : "",
+    (visibleFields.has("data3") || visibleFields.has("eBroj")) ? qualification.data3 : "",
+    visibleFields.has("passedOn") ? formatOfferDocumentDate(qualification.passedOn) : "",
+  ].map(normalizeInputValue).filter(Boolean);
+}
+
+function getMobileDocumentTemplateSignatureUsers(field = {}, common = {}, scopedSnapshot = {}, capability = "inspect") {
+  const { signatureArea } = getMobileDocumentTemplateSignatureFieldConfig(field);
+  const explicitIds = capability === "authorize"
+    ? getMobileDocumentSignatureAuthorizationIds(common, signatureArea)
+    : getMobileDocumentSignatureInspectorIds(common, signatureArea);
+  const explicitUsers = getMobileUsersByIds(scopedSnapshot, explicitIds);
+  if (explicitUsers.length > 0) {
+    return explicitUsers;
+  }
+  if (capability === "inspect") {
+    const qualifiedExecutorUsers = getMobileQualifiedExecutorUsers(
+      scopedSnapshot,
+      { executors: common.executors },
+      "inspect",
+      signatureArea,
+    );
+    if (qualifiedExecutorUsers.length > 0) {
+      return qualifiedExecutorUsers;
+    }
+    return getMobileUsersByExecutorLabels(scopedSnapshot, common.executors);
+  }
+  return [];
+}
+
+function buildMobileDocumentTemplateSignatureEntries(field = {}, common = {}, scopedSnapshot = {}) {
+  const config = getMobileDocumentTemplateSignatureFieldConfig(field);
+  const mode = normalizeMobileDocumentSignatureMode(common.signatureMode);
+  const entries = [];
+  const pushUsers = (capability) => {
+    const roleLabel = capability === "authorize" ? "Odgovorna osoba" : "Ispitivač";
+    getMobileDocumentTemplateSignatureUsers(field, common, scopedSnapshot, capability)
+      .forEach((user) => {
+        entries.push({
+          role: roleLabel,
+          capability,
+          user,
+        });
+      });
+  };
+
+  if (config.signatureRole === "authorize") {
+    pushUsers("authorize");
+  } else if (config.signatureRole === "all") {
+    pushUsers("inspect");
+    pushUsers("authorize");
+  } else if (config.signatureRole !== "company_responsible") {
+    pushUsers("inspect");
+  }
+
+  const uniqueEntries = uniqueMobileSignatureEntries(entries);
+  const visibleEntries = config.signatureMultiple ? uniqueEntries : uniqueEntries.slice(0, 1);
+
+  return visibleEntries.map((entry, index) => {
+    const user = entry.user;
+    const signerOib = normalizeInputValue(user?.oib).replace(/\D/g, "");
+    const signatureFieldRole = index === 0 ? "ZNR" : `ZNR_${index + 1}`;
+    return {
+      name: getMobileUserDocumentName(user),
+      role: entry.role,
+      metaLines: getMobileQualifiedUserDocumentMetaLines(user, config.signatureArea, config.signatureMetaFields),
+      signatureImageUrl: mode === "scan" ? getMobileUserSignatureScanDataUrl(user) : "",
+      signatureMode: mode,
+      signerUserId: normalizeInputValue(user?.id),
+      signerEmail: normalizeInputValue(user?.email),
+      signerOib,
+      signerTitle: getMobileUserDocumentTitle(user),
+      signerOrganization: normalizeInputValue(scopedSnapshot.currentOrganization?.name || ""),
+      signatureFieldRole,
+      signatureFieldOib: signerOib,
+      preferredField: signerOib ? buildSignatureFieldName(signatureFieldRole, signerOib) : "",
+      digitalAnchor: signerOib || normalizeInputValue(user?.email) || getMobileUserDocumentName(user),
+    };
+  });
+}
+
+function buildMobileDocumentTemplateSignaturePlaceholder(field = {}, common = {}, scopedSnapshot = {}) {
+  const entries = buildMobileDocumentTemplateSignatureEntries(field, common, scopedSnapshot);
+  if (entries.length === 0) {
+    return "";
+  }
+  return {
+    type: "signature_group",
+    __docxBlockType: "signature_group",
+    title: normalizeInputValue(field?.label || field?.wordLabel || "Potpisi"),
+    items: entries,
+  };
 }
 
 function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {}) {
@@ -10167,9 +10361,10 @@ function buildMobileSignatureGroup(common = {}, scopedSnapshot = {}) {
     common.tipkaloInspectorUserId,
     common.tipkaloAuthorizationHolderUserId,
   ]);
-  const users = candidateIds
-    .map((id) => findMobileScopedUserById(scopedSnapshot, id))
-    .filter(Boolean);
+  const selectedUsers = getMobileUsersByIds(scopedSnapshot, candidateIds);
+  const users = selectedUsers.length > 0
+    ? selectedUsers
+    : getMobileUsersByExecutorLabels(scopedSnapshot, common.executors);
   const seen = new Set();
   const items = users
     .filter((user) => {
@@ -10192,15 +10387,11 @@ function buildMobileSignatureGroup(common = {}, scopedSnapshot = {}) {
         signatureFieldRole: index === 0 ? "ZNR" : `ZNR_${index + 1}`,
         signatureFieldOib: signerOib,
         signatureImageUrl,
-        preferredField: buildSignatureFieldName(index === 0 ? "ZNR" : `ZNR_${index + 1}`, signerOib),
+        preferredField: signerOib ? buildSignatureFieldName(index === 0 ? "ZNR" : `ZNR_${index + 1}`, signerOib) : "",
         role: index === 0 ? "Ovlaštena osoba" : "Potpisnik",
       };
     })
-    .filter((item) => (
-      mode === "digital"
-        ? item.signerOib && item.preferredField
-        : item.signatureImageUrl
-    ));
+    .filter((item) => mode === "digital" || item.signatureImageUrl);
 
   return items.length > 0
     ? {
@@ -10952,6 +11143,9 @@ function normalizeMobileDocumentSignatureRole(value = "inspect") {
   const normalized = normalizeInputValue(value || "inspect")
     .toLowerCase()
     .replace(/[_-]+/g, " ");
+  if (normalized === "all" || normalized.includes("svi") || normalized.includes("ispitivaci + odgovorna")) {
+    return "all";
+  }
   if (normalized.includes("company") || normalized.includes("klijent") || normalized.includes("narucitelj")) {
     return "company_responsible";
   }
@@ -12170,6 +12364,18 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
       fieldValues.MEASUREMENT_EQUIPMENT_IDS = equipmentIds.length > 0
         ? equipmentIds
         : fieldValues.MEASUREMENT_EQUIPMENT_IDS;
+      return;
+    }
+
+    if (MOBILE_DOCUMENT_TEMPLATE_SIGNATURE_FIELD_TYPES.has(fieldType)) {
+      const signaturePlaceholder = buildMobileDocumentTemplateSignaturePlaceholder(field, common, scopedSnapshot);
+      putMobileTemplateListPlaceholder(placeholders, field, index, signaturePlaceholder);
+      const signatureEntries = signaturePlaceholder && typeof signaturePlaceholder === "object"
+        ? signaturePlaceholder.items || []
+        : [];
+      if (recordKey && signatureEntries.length > 0) {
+        fieldValues[recordKey] = signatureEntries.map((item) => normalizeInputValue(item.signerUserId)).filter(Boolean);
+      }
     }
   });
 
