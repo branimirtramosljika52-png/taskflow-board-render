@@ -61707,6 +61707,25 @@ function getDocumentTemplateBooleanDisplayValue(field = {}, value = false) {
   return truthy ? (trueLabel || "Da") : (falseLabel || "Ne");
 }
 
+function isDocumentTemplateConclusionAssessmentField(field = {}) {
+  const type = String(field?.type || "").trim().toLowerCase();
+  if (type !== "toggle" && type !== "checkbox") {
+    return false;
+  }
+  const lookup = normalizeLooseName([
+    field.key,
+    field.wordLabel,
+    field.label,
+    field.helpText,
+  ].filter(Boolean).join(" "));
+  return Boolean(
+    (lookup.includes("zakljuc") && lookup.includes("ocjen"))
+    || lookup.includes("ocjena rezultata")
+    || lookup.includes("ocjena ispitivanja")
+    || lookup.includes("zakljucak ispitivanja"),
+  );
+}
+
 function getDocumentTemplateToggleConditionalText(field = {}, value = false) {
   const truthy = Boolean(value);
   return String(
@@ -61755,7 +61774,9 @@ function buildDocumentTemplateInlinePlaceholderLookup(template = buildDocumentTe
     setDocumentTemplateInlinePlaceholderValue(
       lookup,
       getDocumentTemplateFieldTokenKey(field, index),
-      buildDocumentTemplateFieldExportText(field, context, index),
+      isDocumentTemplateConclusionAssessmentField(field)
+        ? (buildDocumentTemplateToggleDerivedValues(field, context, lookup).fullText || buildDocumentTemplateFieldExportText(field, context, index))
+        : buildDocumentTemplateFieldExportText(field, context, index),
     );
   });
 
@@ -61780,7 +61801,18 @@ function resolveDocumentTemplateInlinePlaceholders(text = "", lookup = new Map()
 function getDocumentTemplateTogglePreviewState(field = {}, context = {}) {
   const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
   if (runtimeWorkOrderId) {
+    const runtimeValue = getDocumentTemplateRuntimeFieldValue(runtimeWorkOrderId, field.id);
+    if (runtimeValue !== undefined) {
+      return Boolean(runtimeValue);
+    }
+    if (isDocumentTemplateConclusionAssessmentField(field)) {
+      return getDocumentTemplateMeasurementConclusionToggleValue(context.template, context);
+    }
     return Boolean(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId));
+  }
+
+  if (isDocumentTemplateConclusionAssessmentField(field)) {
+    return getDocumentTemplateMeasurementConclusionToggleValue(context.template, context);
   }
 
   const explicit = String(field.defaultValue ?? "").trim();
@@ -62549,13 +62581,16 @@ function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTempl
     ...getDocumentTemplateSystemPlaceholderDefinitions(template, context),
     ...(template.customFields ?? []).flatMap((field, index) => {
       const label = field.wordLabel || field.label || `Polje ${index + 1}`;
+      const baseValue = String(field?.type || "").trim().toLowerCase() === "toggle" && isDocumentTemplateConclusionAssessmentField(field)
+        ? (buildDocumentTemplateToggleDerivedValues(field, context, placeholderLookup).fullText || getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }))
+        : formatDocumentTemplateTextListValue(
+          field,
+          getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+        );
       const baseDefinition = {
         token: getDocumentTemplateFieldToken(field, index),
         label,
-        value: formatDocumentTemplateTextListValue(
-          field,
-          getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
-        ),
+        value: baseValue,
       };
 
       if (String(field?.type || "").trim().toLowerCase() !== "toggle") {
@@ -62758,7 +62793,7 @@ function updateDocumentTemplateMeasurementConclusionAnalysis(analysis = {}, prev
   return analysis;
 }
 
-function buildDocumentTemplateMeasurementConclusionPlaceholderValues(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+function buildDocumentTemplateMeasurementConclusionAnalysis(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
   const analysis = {
     hasResult: false,
     hasPositive: false,
@@ -62770,6 +62805,15 @@ function buildDocumentTemplateMeasurementConclusionPlaceholderValues(template = 
     }
     updateDocumentTemplateMeasurementConclusionAnalysis(analysis, buildMeasurementSheetPreviewTable(field, context));
   });
+  return analysis;
+}
+
+function getDocumentTemplateMeasurementConclusionToggleValue(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  return !buildDocumentTemplateMeasurementConclusionAnalysis(template, context).hasNegative;
+}
+
+function buildDocumentTemplateMeasurementConclusionPlaceholderValues(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  const analysis = buildDocumentTemplateMeasurementConclusionAnalysis(template, context);
   const isNegative = Boolean(analysis.hasNegative);
   const sentence = isNegative
     ? DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE
@@ -64259,6 +64303,9 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
     placeholders[fieldKey] = buildDocumentTemplateFieldWordPlaceholderValue(field, context, index);
     if (String(field.type || "").trim().toLowerCase() === "toggle") {
       const toggleValues = buildDocumentTemplateToggleDerivedValues(field, context, placeholderLookup);
+      if (isDocumentTemplateConclusionAssessmentField(field)) {
+        placeholders[fieldKey] = toggleValues.fullText || toggleValues.statusText;
+      }
       placeholders[`${fieldKey}_DODATNI_TEKST`] = toggleValues.extraText;
       placeholders[`${fieldKey}_PUNI_TEKST`] = toggleValues.fullText;
     }
@@ -75954,6 +76001,13 @@ function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
 
   if (workOrder && sourceId === "template") {
     return getDocumentTemplateFieldDefaultRuntimeValue(field);
+  }
+
+  if (workOrder && isDocumentTemplateConclusionAssessmentField(field)) {
+    return getDocumentTemplateMeasurementConclusionToggleValue(
+      template,
+      buildDocumentTemplatePreviewContext(template, { workOrder }),
+    );
   }
 
   if (workOrder && sourceId.startsWith("record:")) {

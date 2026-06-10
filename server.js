@@ -11518,6 +11518,101 @@ function normalizeMobileTemplateFieldLookup(value = "") {
     .toLowerCase();
 }
 
+function normalizeMobileTemplateConclusionLookup(value = "") {
+  return normalizeMobileTemplateFieldLookup(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isMobileDocumentTemplateConclusionAssessmentField(field = {}) {
+  const type = normalizeInputValue(field?.type || "text").toLowerCase();
+  if (type !== "toggle" && type !== "checkbox") {
+    return false;
+  }
+  const lookup = normalizeMobileTemplateConclusionLookup([
+    field?.key,
+    field?.wordLabel,
+    field?.label,
+    field?.helpText,
+  ].map(normalizeInputValue).filter(Boolean).join(" "));
+  return Boolean(
+    (lookup.includes("zakljuc") && lookup.includes("ocjen"))
+    || lookup.includes("ocjena rezultata")
+    || lookup.includes("ocjena ispitivanja")
+    || lookup.includes("zakljucak ispitivanja"),
+  );
+}
+
+function getMobileTemplateBooleanDisplayValue(field = {}, value = false) {
+  const selected = coerceMobileTemplateFieldDocumentValue(value, field);
+  return selected
+    ? (normalizeInputValue(field?.toggleTrueLabel) || "Da")
+    : (normalizeInputValue(field?.toggleFalseLabel) || "Ne");
+}
+
+function getMobileTemplateToggleConditionalText(field = {}, value = false) {
+  const selected = coerceMobileTemplateFieldDocumentValue(value, field);
+  return selected
+    ? normalizeInputValue(field?.toggleTrueText ?? field?.toggleTrueDetailText)
+    : normalizeInputValue(field?.toggleFalseText ?? field?.toggleFalseDetailText);
+}
+
+function resolveMobileTemplateInlinePlaceholders(text = "", placeholders = {}) {
+  const source = normalizeInputValue(text);
+  if (!source) {
+    return "";
+  }
+  const lookup = new Map(Object.entries(placeholders || {}).map(([key, value]) => [
+    normalizeMobileDocumentTemplateFieldTokenKey(key, ""),
+    value,
+  ]));
+  return source.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (match, tokenName) => {
+    const key = normalizeMobileDocumentTemplateFieldTokenKey(tokenName, "");
+    if (!key || !lookup.has(key)) {
+      return match;
+    }
+    const value = lookup.get(key);
+    if (value && typeof value === "object") {
+      return "";
+    }
+    return normalizeInputValue(value);
+  });
+}
+
+function buildMobileTemplateToggleDerivedValues(value, field = {}, placeholders = {}) {
+  const selected = coerceMobileTemplateFieldDocumentValue(value, field);
+  const statusText = getMobileTemplateBooleanDisplayValue(field, selected);
+  const extraText = resolveMobileTemplateInlinePlaceholders(
+    getMobileTemplateToggleConditionalText(field, selected),
+    placeholders,
+  );
+  const fullText = [statusText, extraText].filter(Boolean).join(" ");
+  return {
+    selected,
+    statusText,
+    extraText,
+    fullText,
+  };
+}
+
+function getMobileDocumentTemplateConclusionFieldAutoValue(field = {}, placeholders = {}) {
+  if (!isMobileDocumentTemplateConclusionAssessmentField(field)) {
+    return undefined;
+  }
+  const candidate = normalizeMobileTemplateConclusionLookup(
+    placeholders?.ZAKLJUCNA_OCJENA_DA_NE
+    || placeholders?.OCJENA_REZULTATA_ISPITIVANJA
+    || placeholders?.OCJENA_REZULTATA_ISPITIVANJA_STATUS
+    || "",
+  );
+  if (!candidate) {
+    return undefined;
+  }
+  return candidate === "ne" || candidate.includes("negativ") || candidate.includes("ne zadovoljava")
+    ? "false"
+    : "true";
+}
+
 function isMobileInspectionTypeTemplateField(field = {}, index = 0) {
   const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
   return [
@@ -11564,6 +11659,11 @@ function resolveMobileTemplatePromptDefaultValue(field = {}, index = 0, placehol
   const submittedValue = getMobileDocumentTemplateSubmittedFieldValue(field, template, common, index);
   if (submittedValue !== undefined && submittedValue !== null && typeof submittedValue !== "object") {
     return normalizeMobileTemplatePromptInputValue(submittedValue, field);
+  }
+
+  const conclusionAutoValue = getMobileDocumentTemplateConclusionFieldAutoValue(field, placeholders);
+  if (conclusionAutoValue !== undefined) {
+    return normalizeMobileTemplatePromptInputValue(conclusionAutoValue, field);
   }
 
   const explicitValue = getMobileDocumentTemplateFieldDefaultValue(field);
@@ -12469,11 +12569,13 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         primaryDefaults = recordDefaults;
       }
       const common = normalizeMobileWorkOrderDocumentWizardInput(recordDefaults);
+      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
+      const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
       const placeholders = {
         ...buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common),
+        ...measurementPlaceholders,
         ...(common.fieldValues || {}),
       };
-      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
       const signatureAreas = getMobileDocumentTemplateSignatureAreas(template, service, scopedSnapshot);
       signatureAreas.forEach((area) => signatureAreaKeys.add(area));
       templates.push({
@@ -12533,10 +12635,13 @@ function coerceMobileTemplateFieldDocumentValue(value, field = {}) {
   return normalizeInputValue(value);
 }
 
-function formatMobileTemplateFieldPlaceholderValue(value, field = {}) {
+function formatMobileTemplateFieldPlaceholderValue(value, field = {}, placeholders = {}, { preferFullToggleText = false } = {}) {
   const type = normalizeInputValue(field?.type || "text").toLowerCase();
   if (type === "checkbox" || type === "toggle") {
-    return coerceMobileTemplateFieldDocumentValue(value, field) ? "Da" : "Ne";
+    const toggleValues = buildMobileTemplateToggleDerivedValues(value, field, placeholders);
+    return preferFullToggleText
+      ? (toggleValues.fullText || toggleValues.statusText)
+      : toggleValues.statusText;
   }
   if (type === "date") {
     const normalizedDate = normalizeDateOnlyValue(value);
@@ -12572,7 +12677,7 @@ function getMobileDocumentTemplateSubmittedFieldValue(field = {}, template = {},
   return undefined;
 }
 
-function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {}) {
+function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {}, externalPlaceholders = {}) {
   const placeholders = {};
   const fieldValues = {};
 
@@ -12582,14 +12687,29 @@ function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {
     }
     const isInspectionTypeField = isMobileInspectionTypeTemplateField(field, index);
     const submittedValue = getMobileDocumentTemplateSubmittedFieldValue(field, template, common, index);
+    const conclusionAutoValue = getMobileDocumentTemplateConclusionFieldAutoValue(field, externalPlaceholders);
     const value = submittedValue !== undefined
       ? submittedValue
       : isInspectionTypeField && common.inspectionType
         ? common.inspectionType
+        : conclusionAutoValue !== undefined
+          ? conclusionAutoValue
         : getMobileDocumentTemplateFieldDefaultValue(field);
-    const placeholderValue = formatMobileTemplateFieldPlaceholderValue(value, field);
-    const documentValue = coerceMobileTemplateFieldDocumentValue(value, field);
     const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+    const placeholderContext = {
+      ...externalPlaceholders,
+      ...placeholders,
+    };
+    const preferFullToggleText = isMobileDocumentTemplateConclusionAssessmentField(field);
+    const placeholderValue = formatMobileTemplateFieldPlaceholderValue(value, field, placeholderContext, { preferFullToggleText });
+    const documentValue = coerceMobileTemplateFieldDocumentValue(value, field);
+    const isToggleField = normalizeInputValue(field?.type).toLowerCase() === "toggle";
+    const toggleValues = isToggleField
+      ? buildMobileTemplateToggleDerivedValues(value, field, {
+        ...placeholderContext,
+        [tokenKey]: placeholderValue,
+      })
+      : null;
     const recordKey = normalizeInputValue(field?.key || field?.id || tokenKey);
     [
       tokenKey,
@@ -12597,6 +12717,10 @@ function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {
       normalizeInputValue(field?.id),
     ].filter(Boolean).forEach((key) => {
       placeholders[key] = placeholderValue;
+      if (toggleValues) {
+        placeholders[`${key}_DODATNI_TEKST`] = toggleValues.extraText;
+        placeholders[`${key}_PUNI_TEKST`] = toggleValues.fullText;
+      }
     });
     if (recordKey && documentValue !== "" && documentValue !== undefined && documentValue !== null) {
       fieldValues[recordKey] = documentValue;
@@ -13444,12 +13568,15 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       const basePlaceholders = buildMobileGeneratedDocumentPlaceholders(generationWorkOrder, service, scopedSnapshot, common);
       const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, generationWorkOrder, service, scopedSnapshot, common);
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
-      const customFieldPayload = buildMobileDocumentTemplateCustomFieldPayload(template, common);
+      const customFieldPayload = buildMobileDocumentTemplateCustomFieldPayload(template, common, {
+        ...basePlaceholders,
+        ...measurementPlaceholders,
+      });
       const listPayload = buildMobileDocumentTemplateListPayload(template, scopedSnapshot, common);
       const placeholders = {
         ...basePlaceholders,
-        ...customFieldPayload.placeholders,
         ...measurementPlaceholders,
+        ...customFieldPayload.placeholders,
         ...listPayload.placeholders,
       };
       const signatureGroup = basePlaceholders.SIGNATURES && typeof basePlaceholders.SIGNATURES === "object"
