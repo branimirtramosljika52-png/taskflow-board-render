@@ -107,6 +107,38 @@ async function copyOptionalDirectory(sourcePath, targetPath) {
   }
 }
 
+async function copyOptionalFile(sourcePath, targetPath) {
+  try {
+    await mkdir(dirname(targetPath), { recursive: true });
+    await cp(sourcePath, targetPath);
+    return true;
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+    return false;
+  }
+}
+
+async function copyMobileAssets() {
+  const sourceDir = resolve(rootDir, "assets", "mobile");
+  const targetDir = resolve(distDir, "assets", "mobile");
+  const serverSource = await readFile(resolve(rootDir, "server.js"), "utf8");
+  const apkNameMatch = serverSource.match(/const\s+MOBILE_ANDROID_APK_FILE_NAME\s*=\s*"([^"]+)"/);
+  const currentApkName = apkNameMatch?.[1] || "";
+  const debugApkName = "SafeNexus-debug.apk";
+  const copiedDebug = await copyOptionalFile(resolve(sourceDir, debugApkName), resolve(targetDir, debugApkName));
+
+  if (!currentApkName || currentApkName === debugApkName) {
+    return;
+  }
+
+  const copiedCurrent = await copyOptionalFile(resolve(sourceDir, currentApkName), resolve(targetDir, currentApkName));
+  if (!copiedCurrent && copiedDebug) {
+    await cp(resolve(targetDir, debugApkName), resolve(targetDir, currentApkName));
+  }
+}
+
 async function buildOzoPanelBundle() {
   await esbuild.build({
     entryPoints: [resolve(rootDir, "src", "ozo", "index.jsx")],
@@ -164,7 +196,7 @@ await cp(resolve(rootDir, "browser-extension"), resolve(distDir, "browser-extens
 await cp(resolve(rootDir, "src", "styles"), resolve(distDir, "src", "styles"), { recursive: true });
 await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "assets", "safenexus-logo.png"));
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
-await copyOptionalDirectory(resolve(rootDir, "assets", "mobile"), resolve(distDir, "assets", "mobile"));
+await copyMobileAssets();
 await copyOptionalDirectory(resolve(rootDir, "assets", "ozo"), resolve(distDir, "assets", "ozo"));
 await cp(resolve(rootDir, "node_modules", "three", "build", "three.module.js"), resolve(distDir, "assets", "vendor", "three.module.js"));
 await cp(resolve(rootDir, "node_modules", "leaflet", "dist", "leaflet.js"), resolve(distDir, "assets", "vendor", "leaflet.js"));
