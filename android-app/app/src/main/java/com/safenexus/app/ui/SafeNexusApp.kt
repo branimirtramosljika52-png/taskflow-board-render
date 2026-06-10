@@ -164,6 +164,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -205,6 +206,7 @@ import com.safenexus.app.data.WorkOrderLocationCreateDraft
 import com.safenexus.app.data.WorkOrderLocationObjectOption
 import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderMeasurementColumn
+import com.safenexus.app.data.WorkOrderMeasurementMerge
 import com.safenexus.app.data.WorkOrderMeasurementRow
 import com.safenexus.app.data.WorkOrderMeasurementSheet
 import com.safenexus.app.data.WorkOrderMeasurementTable
@@ -10247,10 +10249,455 @@ private fun updateMeasurementSheetCell(
         },
     )
 
+private data class MeasurementQuickFillDraft(
+    val floor: String,
+    val room: String,
+    val itemsText: String,
+    val defaultCount: Int,
+    val columnModes: Map<String, String>,
+    val customValues: Map<String, String>,
+)
+
+private data class MeasurementQuickItemDraft(
+    val name: String,
+    val count: Int,
+)
+
 private data class MeasurementCellSelection(
     val rowIndex: Int,
     val columnIndex: Int,
 )
+
+private fun WorkOrderMeasurementColumn.isEditableMeasurementColumn(): Boolean =
+    computed.isBlank() && !readonly
+
+private fun JSONObject?.measurementFormatString(key: String): String {
+    val value = this?.optString(key, "").orEmpty().trim()
+    return if (value.equals("null", ignoreCase = true)) "" else value
+}
+
+private fun JSONObject?.measurementFormatBoolean(key: String): Boolean =
+    this?.optBoolean(key, false) == true
+
+private fun JSONObject?.measurementFormatInt(key: String, defaultValue: Int): Int =
+    this?.optInt(key, defaultValue) ?: defaultValue
+
+private fun normalizeMeasurementColorValueMobile(value: String): String {
+    val normalized = value.trim().lowercase(Locale.getDefault())
+    if (normalized.isBlank()) return ""
+    if (Regex("^#[0-9a-f]{3}$").matches(normalized)) {
+        return "#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}"
+    }
+    return if (Regex("^#[0-9a-f]{6}$").matches(normalized)) normalized else ""
+}
+
+private fun parseMeasurementColorMobile(value: String): Color? {
+    val normalized = normalizeMeasurementColorValueMobile(value)
+    if (normalized.isBlank()) return null
+    return runCatching { Color(AndroidColor.parseColor(normalized)) }.getOrNull()
+}
+
+private fun JSONObject?.measurementBorderCustomized(): Boolean {
+    val border = this?.optJSONObject("border") ?: return false
+    return border.optBoolean("top", false) ||
+        border.optBoolean("right", false) ||
+        border.optBoolean("bottom", false) ||
+        border.optBoolean("left", false)
+}
+
+private fun JSONObject?.measurementConditionalCustomized(): Boolean {
+    val conditional = this?.optJSONObject("conditional") ?: return false
+    return conditional.optBoolean("filled", false) &&
+        (
+            normalizeMeasurementColorValueMobile(conditional.optString("fillColor", "")).isNotBlank() ||
+                conditional.measurementBorderCustomized() ||
+                conditional.optBoolean("bold", false) ||
+                conditional.optBoolean("italic", false) ||
+                conditional.optBoolean("underline", false)
+            )
+}
+
+private fun JSONObject?.isMeasurementFormatCustomizedMobile(): Boolean {
+    val format = this ?: return false
+    return format.measurementFormatString("type").let { it.isNotBlank() && it != "general" } ||
+        format.measurementFormatInt("decimals", 2) != 2 ||
+        format.measurementFormatString("align").let { it.isNotBlank() && it != "auto" } ||
+        format.measurementFormatString("verticalAlign").let { it.isNotBlank() && it != "middle" } ||
+        format.measurementFormatString("fontFamily").let { it.isNotBlank() && it != "default" } ||
+        format.measurementFormatInt("fontSize", 14) != 14 ||
+        format.measurementFormatBoolean("bold") ||
+        format.measurementFormatBoolean("italic") ||
+        format.measurementFormatBoolean("underline") ||
+        normalizeMeasurementColorValueMobile(format.measurementFormatString("fillColor")).isNotBlank() ||
+        format.measurementBorderCustomized() ||
+        format.measurementConditionalCustomized()
+}
+
+private fun WorkOrderMeasurementRow.isMeasurementRowMeaningful(columns: List<WorkOrderMeasurementColumn>): Boolean =
+    columns
+        .filter { it.isEditableMeasurementColumn() }
+        .any { column ->
+            cells[column.id].orEmpty().trim().isNotBlank() ||
+                formats[column.id].isMeasurementFormatCustomizedMobile()
+        }
+
+private fun WorkOrderMeasurementSheet.lastMeaningfulMeasurementRowIndex(): Int =
+    rows.indexOfLast { row -> row.isMeasurementRowMeaningful(columns) || headerRows.contains(row.id) }
+
+private fun WorkOrderMeasurementSheet.nextMeasurementInsertionIndex(): Int =
+    (lastMeaningfulMeasurementRowIndex() + 1).coerceIn(0, rows.size)
+
+private fun measurementRowIdFactory(rows: List<WorkOrderMeasurementRow>): () -> String {
+    val used = rows.map { it.id }.filter { it.isNotBlank() }.toMutableSet()
+    var counter = rows.maxOfOrNull { row ->
+        Regex("^measurement-row-(\\d+)$").matchEntire(row.id)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+    } ?: 0
+    return {
+        var candidate: String
+        do {
+            counter += 1
+            candidate = "measurement-row-$counter"
+        } while (used.contains(candidate))
+        used.add(candidate)
+        candidate
+    }
+}
+
+private fun createBlankMeasurementRow(
+    sheet: WorkOrderMeasurementSheet,
+    id: String,
+    cells: Map<String, String> = emptyMap(),
+    formats: Map<String, JSONObject> = emptyMap(),
+): WorkOrderMeasurementRow =
+    WorkOrderMeasurementRow(
+        id = id,
+        cells = sheet.columns.associate { column -> column.id to cells[column.id].orEmpty() },
+        formats = formats,
+    )
+
+private fun cloneMeasurementFormat(format: JSONObject?): JSONObject =
+    format?.let { runCatching { JSONObject(it.toString()) }.getOrDefault(JSONObject()) } ?: JSONObject()
+
+private fun appendBlankMeasurementRows(
+    sheet: WorkOrderMeasurementSheet,
+    count: Int,
+): WorkOrderMeasurementSheet {
+    val safeCount = count.coerceIn(1, 50)
+    val nextId = measurementRowIdFactory(sheet.rows)
+    val insertionIndex = sheet.nextMeasurementInsertionIndex()
+    val nextRows = sheet.rows.toMutableList()
+    nextRows.addAll(
+        insertionIndex,
+        List(safeCount) { createBlankMeasurementRow(sheet, nextId()) },
+    )
+    return sheet.copy(rows = nextRows)
+}
+
+private fun duplicateLastMeasurementRow(sheet: WorkOrderMeasurementSheet): WorkOrderMeasurementSheet {
+    val source = sheet.rows
+        .take(sheet.nextMeasurementInsertionIndex())
+        .lastOrNull { row -> row.id !in sheet.headerRows && row.isMeasurementRowMeaningful(sheet.columns) }
+        ?: return appendBlankMeasurementRows(sheet, 1)
+    val nextId = measurementRowIdFactory(sheet.rows)
+    val nextRows = sheet.rows.toMutableList()
+    nextRows.add(
+        sheet.nextMeasurementInsertionIndex(),
+        createBlankMeasurementRow(
+            sheet = sheet,
+            id = nextId(),
+            cells = source.cells,
+            formats = source.formats.mapValues { (_, value) -> cloneMeasurementFormat(value) },
+        ),
+    )
+    return sheet.copy(rows = nextRows)
+}
+
+private fun normalizeMeasurementQuickLookup(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace("č", "c")
+        .replace("ć", "c")
+        .replace("š", "s")
+        .replace("ž", "z")
+        .replace("đ", "d")
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace(Regex("\\s+"), " ")
+
+private fun defaultMeasurementQuickFillColumnModeMobile(column: WorkOrderMeasurementColumn): String {
+    val label = normalizeMeasurementQuickLookup("${column.label} ${column.id}")
+    return when {
+        label.contains("mjerno mjesto") -> "itemIndex"
+        label.contains("redni") || label == "broj" || label.contains(" r br") || label.contains(" r.br") -> "itemIndex"
+        label.contains("etaza") || label.contains("kat") -> "floor"
+        label.contains("prostorija") || label.contains("lokacija") || label.contains("mjesto ispit") -> "room"
+        label.contains("opis") ||
+            label.contains("naziv") ||
+            label.contains("pozicija") ||
+            label.contains("element") ||
+            label.contains("oznaka") ||
+            label.contains("uredaj") ||
+            label.contains("tipkalo") ||
+            label.contains("svjetilj") -> "item"
+        label.contains("kolicina") || label.contains("kom") || label.contains("broj mjernih") -> "quantity"
+        else -> "custom"
+    }
+}
+
+private fun parseMeasurementQuickItems(text: String, defaultCount: Int): List<MeasurementQuickItemDraft> {
+    val fallbackCount = defaultCount.coerceIn(1, 500)
+    return text
+        .lines()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .map { line ->
+            val parts = line.split('\t', ';').map { it.trim() }
+            val name = parts.firstOrNull().orEmpty().ifBlank { line }
+            val count = parts.drop(1).firstNotNullOfOrNull { it.toIntOrNull() } ?: fallbackCount
+            MeasurementQuickItemDraft(name = name, count = count.coerceIn(1, 500))
+        }
+}
+
+private fun normalizeMeasurementQuickFormula(value: String): String {
+    val trimmed = value.trim().ifBlank { "=RANDBETWEEN(1;100)" }
+    return if (trimmed.startsWith("=")) trimmed else "=$trimmed"
+}
+
+private fun measurementQuickCellValue(
+    mode: String,
+    customValue: String,
+    floor: String,
+    room: String,
+    item: MeasurementQuickItemDraft,
+    itemIndex: Int,
+): String =
+    when (mode) {
+        "itemIndex" -> (itemIndex + 1).toString()
+        "floor" -> floor
+        "room" -> room
+        "item" -> item.name
+        "quantity" -> item.count.toString()
+        "formula" -> normalizeMeasurementQuickFormula(customValue)
+        "custom" -> customValue
+        else -> ""
+    }
+
+private fun applyMeasurementQuickFill(
+    sheet: WorkOrderMeasurementSheet,
+    draft: MeasurementQuickFillDraft,
+): WorkOrderMeasurementSheet {
+    val editableColumns = sheet.columns.filter { it.isEditableMeasurementColumn() }
+    if (editableColumns.isEmpty()) return sheet
+
+    val floor = draft.floor.trim()
+    val room = draft.room.trim()
+    val items = parseMeasurementQuickItems(draft.itemsText, draft.defaultCount)
+    if (items.isEmpty() && floor.isBlank() && room.isBlank()) return sheet
+
+    val nextId = measurementRowIdFactory(sheet.rows)
+    val rowsToInsert = mutableListOf<WorkOrderMeasurementRow>()
+    val headerRowsToAdd = mutableListOf<String>()
+    val mergesToAdd = mutableListOf<WorkOrderMeasurementMerge>()
+    val firstEditable = editableColumns.first()
+    val firstEditableIndex = sheet.columns.indexOfFirst { it.id == firstEditable.id }
+    val lastEditableIndex = sheet.columns.indexOfLast { it.isEditableMeasurementColumn() }
+
+    fun addHeader(label: String, fillColor: String) {
+        val rowId = nextId()
+        rowsToInsert.add(
+            createBlankMeasurementRow(
+                sheet = sheet,
+                id = rowId,
+                cells = mapOf(firstEditable.id to label),
+                formats = mapOf(
+                    firstEditable.id to JSONObject()
+                        .put("bold", true)
+                        .put("fillColor", fillColor)
+                        .put("align", "left"),
+                ),
+            ),
+        )
+        headerRowsToAdd.add(rowId)
+        if (firstEditableIndex >= 0 && lastEditableIndex > firstEditableIndex) {
+            mergesToAdd.add(
+                WorkOrderMeasurementMerge(
+                    rowId = rowId,
+                    columnId = firstEditable.id,
+                    rowSpan = 1,
+                    colSpan = lastEditableIndex - firstEditableIndex + 1,
+                ),
+            )
+        }
+    }
+
+    if (floor.isNotBlank()) addHeader("Etaža: $floor", "#eef7ff")
+    if (room.isNotBlank()) addHeader("Prostorija: $room", "#f0fbf4")
+
+    val rowsFromItems = if (items.isNotEmpty()) items else listOf(MeasurementQuickItemDraft(name = "", count = draft.defaultCount))
+    rowsFromItems.forEach { item ->
+        repeat(item.count.coerceIn(1, 500)) { index ->
+            val cells = sheet.columns.associate { column ->
+                val mode = draft.columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
+                val customValue = draft.customValues[column.id].orEmpty()
+                column.id to if (column.isEditableMeasurementColumn()) {
+                    measurementQuickCellValue(mode, customValue, floor, room, item, index)
+                } else {
+                    ""
+                }
+            }
+            rowsToInsert.add(createBlankMeasurementRow(sheet, nextId(), cells))
+        }
+    }
+
+    if (rowsToInsert.isEmpty()) return sheet
+    val insertionIndex = sheet.nextMeasurementInsertionIndex()
+    val nextRows = sheet.rows.toMutableList()
+    nextRows.addAll(insertionIndex, rowsToInsert)
+    return sheet.copy(
+        rows = nextRows,
+        merges = sheet.merges + mergesToAdd,
+        headerRows = (sheet.headerRows + headerRowsToAdd).distinct(),
+    )
+}
+
+private fun fillMeasurementRowNumbers(sheet: WorkOrderMeasurementSheet): WorkOrderMeasurementSheet {
+    val targetColumn = sheet.columns.firstOrNull { column ->
+        val label = normalizeMeasurementQuickLookup("${column.label} ${column.id}")
+        column.isEditableMeasurementColumn() &&
+            (label.contains("redni") || label.contains("r br") || label.contains("r.br") || label.contains("mjerno mjesto") || label == "broj")
+    } ?: sheet.columns.firstOrNull { it.isEditableMeasurementColumn() } ?: return sheet
+    val lastMeaningfulIndex = sheet.lastMeaningfulMeasurementRowIndex()
+    var counter = 1
+    val nextRows = sheet.rows.mapIndexed { index, row ->
+        val inTargetRange = if (lastMeaningfulIndex >= 0) index <= lastMeaningfulIndex else index < 10
+        if (!inTargetRange || row.id in sheet.headerRows) {
+            row
+        } else {
+            val hasContent = row.isMeasurementRowMeaningful(sheet.columns)
+            if (hasContent || lastMeaningfulIndex < 0) {
+                row.copy(cells = row.cells + (targetColumn.id to (counter++).toString()))
+            } else {
+                row
+            }
+        }
+    }
+    return sheet.copy(rows = nextRows)
+}
+
+private fun appendMeasurementColumn(sheet: WorkOrderMeasurementSheet): WorkOrderMeasurementSheet {
+    val usedIds = sheet.columns.map { it.id }.toMutableSet()
+    var index = sheet.columns.size + 1
+    var columnId: String
+    do {
+        columnId = "measurement-column-$index"
+        index += 1
+    } while (usedIds.contains(columnId))
+    val label = "Kolona ${sheet.columns.size + 1}"
+    val column = WorkOrderMeasurementColumn(
+        id = columnId,
+        label = label,
+        placeholder = "",
+        width = 140,
+        computed = "",
+        readonly = false,
+    )
+    return sheet.copy(
+        columns = sheet.columns + column,
+        rows = sheet.rows.map { row -> row.copy(cells = row.cells + (columnId to "")) },
+    )
+}
+
+private fun updateMeasurementCellFormat(
+    sheet: WorkOrderMeasurementSheet,
+    rowId: String,
+    columnId: String,
+    patch: Map<String, Any?>,
+): WorkOrderMeasurementSheet =
+    sheet.copy(
+        rows = sheet.rows.map { row ->
+            if (row.id != rowId) return@map row
+            val nextFormats = row.formats.toMutableMap()
+            val format = cloneMeasurementFormat(nextFormats[columnId])
+            patch.forEach { (key, value) ->
+                if (value == null) {
+                    format.remove(key)
+                } else {
+                    format.put(key, value)
+                }
+            }
+            if (format.isMeasurementFormatCustomizedMobile()) {
+                nextFormats[columnId] = format
+            } else {
+                nextFormats.remove(columnId)
+            }
+            row.copy(formats = nextFormats.toMap())
+        },
+    )
+
+private fun updateMeasurementCellFill(
+    sheet: WorkOrderMeasurementSheet,
+    rowId: String,
+    columnId: String,
+    fillColor: String?,
+): WorkOrderMeasurementSheet =
+    updateMeasurementCellFormat(sheet, rowId, columnId, mapOf("fillColor" to fillColor))
+
+private fun formatMeasurementNumberWithDecimalsMobile(value: Double, decimals: Int): String {
+    val safeDecimals = decimals.coerceIn(0, 6)
+    val formatter = NumberFormat.getNumberInstance(Locale("hr", "HR"))
+    formatter.minimumFractionDigits = safeDecimals
+    formatter.maximumFractionDigits = safeDecimals
+    return formatter.format(value)
+}
+
+private fun formatMeasurementCellDisplayMobile(
+    displayValue: String,
+    rawValue: String,
+    format: JSONObject?,
+): String {
+    val value = if (rawValue.trim().startsWith("=")) displayValue else displayValue.ifBlank { rawValue }
+    if (value.isBlank() || value == "#ERROR") return value
+    val type = format.measurementFormatString("type").ifBlank { "general" }
+    if (type == "general" || type == "text") return value
+    val numeric = parseMeasurementNumberMobile(value) ?: return value
+    val decimals = format.measurementFormatInt("decimals", 2)
+    return when (type) {
+        "integer" -> formatMeasurementNumberWithDecimalsMobile(kotlin.math.round(numeric), 0)
+        "percent" -> "${formatMeasurementNumberWithDecimalsMobile(numeric * 100.0, decimals)}%"
+        "number" -> formatMeasurementNumberWithDecimalsMobile(numeric, decimals)
+        else -> value
+    }
+}
+
+private fun measurementFormatFillColor(format: JSONObject?, value: String): Color? {
+    val conditional = format?.optJSONObject("conditional")
+    if (value.isNotBlank() && conditional?.optBoolean("filled", false) == true) {
+        parseMeasurementColorMobile(conditional.optString("fillColor", ""))?.let { return it }
+    }
+    return parseMeasurementColorMobile(format.measurementFormatString("fillColor"))
+}
+
+private fun measurementFormatTextColor(format: JSONObject?): Color? =
+    parseMeasurementColorMobile(
+        listOf(
+            format.measurementFormatString("textColor"),
+            format.measurementFormatString("fontColor"),
+            format.measurementFormatString("color"),
+        ).firstOrNull { it.isNotBlank() }.orEmpty(),
+    )
+
+private fun measurementFormatBold(format: JSONObject?, value: String): Boolean {
+    val conditional = format?.optJSONObject("conditional")
+    return format.measurementFormatBoolean("bold") ||
+        (value.isNotBlank() && conditional?.optBoolean("filled", false) == true && conditional.optBoolean("bold", false))
+}
+
+private fun measurementFormatTextAlign(format: JSONObject?): TextAlign =
+    when (format.measurementFormatString("align")) {
+        "center" -> TextAlign.Center
+        "right" -> TextAlign.Right
+        else -> TextAlign.Start
+    }
 
 private fun measurementColumnLabel(index: Int): String {
     var value = index + 1
@@ -11191,19 +11638,53 @@ private fun MeasurementTableEditor(
     enabled: Boolean,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
-    val visibleColumns = sheet.columns.take(16)
-    val visibleRows = sheet.rows.take(120)
-    val initialSelection = remember(table.key, sheet.columns.size, sheet.rows.size) {
-        val columnIndex = sheet.columns.indexOfFirst { it.computed.isBlank() && !it.readonly }.takeIf { it >= 0 } ?: 0
+    val visibleColumns = remember(sheet.columns) { sheet.columns.take(16) }
+    val lastMeaningfulRowIndex = remember(sheet.rows, sheet.columns, sheet.headerRows) {
+        sheet.lastMeaningfulMeasurementRowIndex()
+    }
+    var extraRowWindow by remember(table.key, table.id) { mutableStateOf(0) }
+    var quickFillOpen by remember(table.key, table.id) { mutableStateOf(false) }
+    val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex) {
+        if (sheet.rows.isEmpty()) {
+            0
+        } else if (lastMeaningfulRowIndex >= 0) {
+            maxOf(12, minOf(lastMeaningfulRowIndex + 4, 32)).coerceAtMost(sheet.rows.size)
+        } else {
+            minOf(12, sheet.rows.size)
+        }
+    }
+    val visibleRowCount = (baseVisibleRowCount + extraRowWindow).coerceAtMost(sheet.rows.size)
+    val visibleRows = remember(sheet.rows, visibleRowCount) { sheet.rows.take(visibleRowCount) }
+    val initialSelection = remember(table.key, table.id, sheet.columns.size) {
+        val columnIndex = sheet.columns.indexOfFirst { it.isEditableMeasurementColumn() }.takeIf { it >= 0 } ?: 0
         MeasurementCellSelection(0, columnIndex)
     }
-    var selectedCell by remember(table.key, sheet.columns.size, sheet.rows.size) { mutableStateOf(initialSelection) }
+    var selectedCell by remember(table.key, table.id) { mutableStateOf(initialSelection) }
+    LaunchedEffect(sheet.rows.size, sheet.columns.size) {
+        val safeRow = selectedCell.rowIndex.coerceIn(0, (sheet.rows.size - 1).coerceAtLeast(0))
+        val safeColumn = selectedCell.columnIndex.coerceIn(0, (sheet.columns.size - 1).coerceAtLeast(0))
+        if (safeRow != selectedCell.rowIndex || safeColumn != selectedCell.columnIndex) {
+            selectedCell = MeasurementCellSelection(safeRow, safeColumn)
+        }
+    }
     val selectedRow = sheet.rows.getOrNull(selectedCell.rowIndex)
     val selectedColumn = sheet.columns.getOrNull(selectedCell.columnIndex)
     val selectedRaw = selectedRow?.cells?.get(selectedColumn?.id.orEmpty()).orEmpty()
-    val selectedEditable = selectedColumn != null && selectedColumn.computed.isBlank() && !selectedColumn.readonly
+    val selectedEditable = selectedColumn?.isEditableMeasurementColumn() == true
     val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+    if (quickFillOpen) {
+        MeasurementQuickFillDialog(
+            columns = visibleColumns,
+            enabled = enabled,
+            onDismiss = { quickFillOpen = false },
+            onApply = { draft ->
+                onSheetChange(applyMeasurementQuickFill(sheet, draft))
+                extraRowWindow = extraRowWindow.coerceAtLeast(20)
+                quickFillOpen = false
+            },
+        )
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
@@ -11281,6 +11762,85 @@ private fun MeasurementTableEditor(
                         shape = RoundedCornerShape(6.dp),
                     )
                 }
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    AssistChip(
+                        onClick = { onSheetChange(appendBlankMeasurementRows(sheet, 1)) },
+                        enabled = enabled,
+                        label = { Text("+ Red") },
+                    )
+                    AssistChip(
+                        onClick = { onSheetChange(appendBlankMeasurementRows(sheet, 5)) },
+                        enabled = enabled,
+                        label = { Text("+ 5") },
+                    )
+                    AssistChip(
+                        onClick = { quickFillOpen = true },
+                        enabled = enabled && visibleColumns.any { it.isEditableMeasurementColumn() },
+                        label = { Text("Brzi unos") },
+                    )
+                    AssistChip(
+                        onClick = { onSheetChange(duplicateLastMeasurementRow(sheet)) },
+                        enabled = enabled,
+                        label = { Text("Kopiraj zadnji") },
+                    )
+                    AssistChip(
+                        onClick = { onSheetChange(fillMeasurementRowNumbers(sheet)) },
+                        enabled = enabled,
+                        label = { Text("R.br.") },
+                    )
+                    AssistChip(
+                        onClick = { onSheetChange(appendMeasurementColumn(sheet)) },
+                        enabled = enabled,
+                        label = { Text("+ Kolona") },
+                    )
+                }
+                if (selectedRow != null && selectedColumn != null && selectedEditable) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        listOf(
+                            "Da" to "#d9ead3",
+                            "Ne" to "#f4cccc",
+                            "-" to "#eeeeee",
+                        ).forEach { (value, color) ->
+                            AssistChip(
+                                onClick = {
+                                    onSheetChange(
+                                        updateMeasurementCellFill(
+                                            updateMeasurementSheetCell(sheet, selectedRow.id, selectedColumn.id, value),
+                                            selectedRow.id,
+                                            selectedColumn.id,
+                                            color,
+                                        ),
+                                    )
+                                },
+                                enabled = enabled,
+                                label = { Text(value) },
+                            )
+                        }
+                        MeasurementColorChip("Zelena", "#d9ead3", enabled) {
+                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#d9ead3"))
+                        }
+                        MeasurementColorChip("Žuta", "#fff2cc", enabled) {
+                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#fff2cc"))
+                        }
+                        MeasurementColorChip("Crvena", "#f4cccc", enabled) {
+                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#f4cccc"))
+                        }
+                        MeasurementColorChip("Siva", "#eeeeee", enabled) {
+                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#eeeeee"))
+                        }
+                        MeasurementColorChip("Bez", null, enabled) {
+                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, null))
+                        }
+                    }
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -11308,10 +11868,13 @@ private fun MeasurementTableEditor(
                                 }
                             }
                             visibleColumns.forEachIndexed { columnIndex, column ->
+                                val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 } ?: columnIndex
                                 MeasurementGridCell(
                                     column = column,
-                                    displayValue = sheet.measurementCellDisplay(rowIndex, columnIndex),
+                                    displayValue = sheet.measurementCellDisplay(rowIndex, absoluteColumnIndex),
                                     rawValue = row.cells[column.id].orEmpty(),
+                                    cellFormat = row.formats[column.id],
+                                    headerRow = sheet.headerRows.contains(row.id),
                                     selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == columnIndex,
                                     enabled = enabled,
                                     onClick = {
@@ -11325,7 +11888,207 @@ private fun MeasurementTableEditor(
                         }
                     }
                 }
+                if (visibleRowCount < sheet.rows.size) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Prikazano $visibleRowCount/${sheet.rows.size} redova",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        )
+                        OutlinedButton(onClick = { extraRowWindow += 20 }, enabled = enabled) {
+                            Text("Još 20")
+                        }
+                        TextButton(onClick = { extraRowWindow = sheet.rows.size }, enabled = enabled) {
+                            Text("Sve")
+                        }
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun MeasurementQuickFillDialog(
+    columns: List<WorkOrderMeasurementColumn>,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (MeasurementQuickFillDraft) -> Unit,
+) {
+    val editableColumns = remember(columns) { columns.filter { it.isEditableMeasurementColumn() } }
+    val columnSignature = remember(editableColumns) { editableColumns.joinToString("|") { "${it.id}:${it.label}" } }
+    var floor by remember { mutableStateOf("") }
+    var room by remember { mutableStateOf("") }
+    var itemsText by remember { mutableStateOf("") }
+    var defaultCount by remember { mutableStateOf("1") }
+    var columnModes by remember(columnSignature) {
+        mutableStateOf(editableColumns.associate { it.id to defaultMeasurementQuickFillColumnModeMobile(it) })
+    }
+    var customValues by remember(columnSignature) { mutableStateOf(emptyMap<String, String>()) }
+    val modeOptions = listOf(
+        "itemIndex" to "Redni broj",
+        "floor" to "Etaža",
+        "room" to "Prostorija",
+        "item" to "Stavka / naziv",
+        "quantity" to "Količina",
+        "formula" to "Formula",
+        "custom" to "Vrijednost",
+        "empty" to "Prazno",
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = {
+                    onApply(
+                        MeasurementQuickFillDraft(
+                            floor = floor,
+                            room = room,
+                            itemsText = itemsText,
+                            defaultCount = defaultCount.toIntOrNull()?.coerceIn(1, 500) ?: 1,
+                            columnModes = columnModes,
+                            customValues = customValues,
+                        ),
+                    )
+                },
+                enabled = enabled,
+            ) {
+                Text("Dodaj")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+        title = { Text("Brzi unos stavki") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 540.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "Svaki red je jedna stavka. Količinu možeš pisati kao: Stavka;3.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                )
+                OutlinedTextField(
+                    value = floor,
+                    onValueChange = { floor = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Etaža") },
+                    singleLine = true,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                OutlinedTextField(
+                    value = room,
+                    onValueChange = { room = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Prostorija") },
+                    singleLine = true,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                OutlinedTextField(
+                    value = itemsText,
+                    onValueChange = { itemsText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Stavke") },
+                    minLines = 4,
+                    maxLines = 7,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                OutlinedTextField(
+                    value = defaultCount,
+                    onValueChange = { value -> defaultCount = value.filter { it.isDigit() }.take(3) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Količina po stavci") },
+                    singleLine = true,
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    shape = RoundedCornerShape(14.dp),
+                )
+                Text("Vrijednosti po kolonama", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                editableColumns.take(10).forEach { column ->
+                    val mode = columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
+                    WorkOrderSelectField(
+                        label = column.label.ifBlank { column.id },
+                        value = mode,
+                        valueLabel = modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
+                        options = modeOptions,
+                        enabled = enabled,
+                        onSelect = { value -> columnModes = columnModes + (column.id to value) },
+                    )
+                    if (mode == "custom" || mode == "formula") {
+                        OutlinedTextField(
+                            value = customValues[column.id].orEmpty(),
+                            onValueChange = { value -> customValues = customValues + (column.id to value) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(if (mode == "formula") "Formula" else "Vrijednost") },
+                            singleLine = true,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                        )
+                    }
+                }
+                if (editableColumns.size > 10) {
+                    Text(
+                        "Prikazano je prvih 10 kolona za brzi unos. Ostale možeš urediti direktno u tablici.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+            }
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    )
+}
+
+@Composable
+private fun MeasurementColorChip(
+    label: String,
+    colorHex: String?,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val chipColor = colorHex?.let(::parseMeasurementColorMobile)
+    val shape = RoundedCornerShape(999.dp)
+    Surface(
+        modifier = Modifier
+            .clip(shape)
+            .clickable(enabled = enabled) { onClick() },
+        shape = shape,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f), shape)
+                .padding(horizontal = 9.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(13.dp),
+                shape = CircleShape,
+                color = chipColor ?: Color.Transparent,
+                border = if (chipColor == null) {
+                    androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f))
+                } else {
+                    null
+                },
+            ) {}
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -11357,17 +12120,27 @@ private fun MeasurementGridCell(
     column: WorkOrderMeasurementColumn,
     displayValue: String,
     rawValue: String,
+    cellFormat: JSONObject?,
+    headerRow: Boolean,
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
     onChange: (String) -> Unit,
 ) {
-    val editable = column.computed.isBlank() && !column.readonly
+    val editable = column.isEditableMeasurementColumn()
     val isFormula = rawValue.trim().startsWith("=")
-    val value = if (isFormula) displayValue else displayValue.ifBlank { rawValue }
+    val value = formatMeasurementCellDisplayMobile(
+        displayValue = if (isFormula) displayValue else displayValue.ifBlank { rawValue },
+        rawValue = rawValue,
+        format = cellFormat,
+    )
     val hasError = value == "#ERROR"
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
     val cellWidth = column.width.coerceIn(120, 260).dp
+    val fillColor = measurementFormatFillColor(cellFormat, value)
+    val textColor = measurementFormatTextColor(cellFormat)
+    val textAlign = measurementFormatTextAlign(cellFormat)
+    val bold = headerRow || measurementFormatBold(cellFormat, value)
     if (selected && editable) {
         OutlinedTextField(
             value = rawValue,
@@ -11392,6 +12165,8 @@ private fun MeasurementGridCell(
                 when {
                     hasError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.58f)
                     selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f)
+                    fillColor != null -> fillColor
+                    headerRow -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
                     !editable -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f)
                     else -> MaterialTheme.colorScheme.surface
                 },
@@ -11403,12 +12178,14 @@ private fun MeasurementGridCell(
             value.ifBlank { if (isFormula) "" else column.placeholder },
             modifier = Modifier.padding(horizontal = 8.dp),
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            fontWeight = if (selected || bold) FontWeight.Bold else FontWeight.Normal,
+            textAlign = textAlign,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             color = when {
                 hasError -> MaterialTheme.colorScheme.onErrorContainer
                 value.isBlank() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
+                textColor != null -> textColor
                 else -> MaterialTheme.colorScheme.onSurface
             },
         )
