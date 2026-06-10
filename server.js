@@ -5201,14 +5201,15 @@ function cleanupMobileDocumentGenerationJobs() {
 
 function buildMobileDocumentGenerationJobResponse(job = {}) {
   const status = String(job.status || "pending").trim() || "pending";
+  const items = Array.isArray(job.items) ? job.items : [];
   return {
     ok: status === "completed",
     jobId: String(job.id || "").trim(),
     status,
     workOrderId: String(job.workOrderId || "").trim(),
     entriesCount: Number(job.entriesCount || 0) || 0,
-    generatedCount: Array.isArray(job.items) ? job.items.length : 0,
-    items: Array.isArray(job.items) ? job.items : [],
+    generatedCount: items.length,
+    items: items.map((item) => stripStoredDocumentPayloadForResponse(item)),
     error: String(job.error || "").trim(),
     createdAt: job.createdAt || "",
     startedAt: job.startedAt || "",
@@ -14181,7 +14182,7 @@ async function handleApiRequest(request, response, url) {
       sendJson(response, 200, {
         ok: true,
         generatedCount: waitedJob.items.length,
-        items: waitedJob.items,
+        items: waitedJob.items.map((item) => stripStoredDocumentPayloadForResponse(item)),
       });
       return true;
     }
