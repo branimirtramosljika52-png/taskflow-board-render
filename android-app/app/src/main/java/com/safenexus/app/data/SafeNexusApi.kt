@@ -713,6 +713,18 @@ private fun JSONObject?.toStringMap(): Map<String, String> {
     }
 }
 
+private fun JSONObject?.toNestedStringMap(): Map<String, Map<String, String>> {
+    if (this == null) return emptyMap()
+    return buildMap {
+        keys().forEach { key ->
+            val values = optJSONObject(key).toStringMap()
+            if (values.isNotEmpty()) {
+                put(key, values)
+            }
+        }
+    }
+}
+
 private fun Map<String, String>.toJsonObject(): JSONObject {
     val json = JSONObject()
     forEach { (key, value) -> json.put(key, value) }
@@ -941,6 +953,30 @@ private fun JSONObject?.toWorkOrderMeasurementSheet(): WorkOrderMeasurementSheet
     )
 }
 
+private fun JSONObject?.toWorkOrderMeasurementSheetMap(): Map<String, WorkOrderMeasurementSheet> {
+    if (this == null) return emptyMap()
+    return buildMap {
+        keys().forEach { key ->
+            val sheet = optJSONObject(key).toWorkOrderMeasurementSheet()
+            if (sheet.columns.isNotEmpty()) {
+                put(key, sheet)
+            }
+        }
+    }
+}
+
+private fun JSONObject?.toNestedWorkOrderMeasurementSheetMap(): Map<String, Map<String, WorkOrderMeasurementSheet>> {
+    if (this == null) return emptyMap()
+    return buildMap {
+        keys().forEach { key ->
+            val sheets = optJSONObject(key).toWorkOrderMeasurementSheetMap()
+            if (sheets.isNotEmpty()) {
+                put(key, sheets)
+            }
+        }
+    }
+}
+
 private fun JSONArray?.toWorkOrderMeasurementTables(): List<WorkOrderMeasurementTable> {
     if (this == null) return emptyList()
     return buildList {
@@ -1071,6 +1107,10 @@ private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentati
         electricalValidityMonths = firstClean("electricalValidityMonths"),
         tipkaloValidityMonths = firstClean("tipkaloValidityMonths"),
         serviceValidityMonths = optJSONObject("serviceValidityMonths").toStringMap(),
+        fieldValues = optJSONObject("fieldValues").toStringMap(),
+        templateFieldValues = optJSONObject("templateFieldValues").toNestedStringMap(),
+        fieldSheets = optJSONObject("fieldSheets").toWorkOrderMeasurementSheetMap(),
+        templateFieldSheets = optJSONObject("templateFieldSheets").toNestedWorkOrderMeasurementSheetMap(),
     )
 }
 

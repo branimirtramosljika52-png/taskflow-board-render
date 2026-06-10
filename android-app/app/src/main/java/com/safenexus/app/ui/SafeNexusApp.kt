@@ -187,6 +187,7 @@ import com.safenexus.app.data.WorkOrderCompanyOption
 import com.safenexus.app.data.WorkOrderCreateDraft
 import com.safenexus.app.data.WorkOrderDocumentationContext
 import com.safenexus.app.data.WorkOrderDocumentationAdditionalRecord
+import com.safenexus.app.data.WorkOrderDocumentationDefaults
 import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocumentationField
 import com.safenexus.app.data.WorkOrderDocumentationOption
@@ -7907,6 +7908,27 @@ private fun findMissingRequiredDocumentationFields(
     return missing
 }
 
+private fun WorkOrderDocumentationDefaults.hasReusableDocumentationDefaults(): Boolean =
+    fieldValues.isNotEmpty() ||
+        fieldSheets.isNotEmpty() ||
+        templateFieldValues.values.any { it.isNotEmpty() } ||
+        templateFieldSheets.values.any { it.isNotEmpty() } ||
+        selectedEquipmentIds.isNotEmpty() ||
+        selectedLegalFrameworkIds.isNotEmpty() ||
+        selectedRulebookIds.isNotEmpty() ||
+        listOf(
+            inspectionDate,
+            issuedDate,
+            inspectionType,
+            outsideTemperature,
+            relativeHumidity,
+            airflowSpeed,
+            weather,
+            groundCondition,
+            groundResistance,
+            measurementEquipmentGroup,
+        ).any { it.isNotBlank() }
+
 @Composable
 private fun WorkOrderDocumentationWizardDialog(
     workOrder: WorkOrder,
@@ -8024,27 +8046,28 @@ private fun WorkOrderDocumentationWizardDialog(
         chooseInspectionTypeValue(templateInspectionDefault, inspectionOptions, "")
     }
     val defaults = context.defaults
-    var inspectionDate by remember(workOrder.id, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
-    var issuedDate by remember(workOrder.id, defaults.issuedDate) { mutableStateOf(defaults.issuedDate.ifBlank { inspectionDate.ifBlank { today } }) }
-    var testingLocation by remember(workOrder.id, defaults.testingLocation) {
+    val reusedDocumentationDefaultsLoaded = remember(defaults) { defaults.hasReusableDocumentationDefaults() }
+    var inspectionDate by remember(workOrder.id, selectedObjectId, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
+    var issuedDate by remember(workOrder.id, selectedObjectId, defaults.issuedDate) { mutableStateOf(defaults.issuedDate.ifBlank { inspectionDate.ifBlank { today } }) }
+    var testingLocation by remember(workOrder.id, selectedObjectId, defaults.testingLocation) {
         mutableStateOf(defaults.testingLocation.ifBlank { workOrder.locationName })
     }
     val initialInspectionType = remember(defaults.inspectionType, defaultInspectionType, inspectionOptions) {
         chooseInspectionTypeValue(defaults.inspectionType, inspectionOptions, defaultInspectionType)
     }
-    var inspectionType by remember(workOrder.id, initialInspectionType) {
+    var inspectionType by remember(workOrder.id, selectedObjectId, initialInspectionType) {
         mutableStateOf(initialInspectionType)
     }
     LaunchedEffect(selectedFlowService, defaultInspectionType, inspectionOptions) {
         inspectionType = chooseInspectionTypeValue(inspectionType, inspectionOptions, defaultInspectionType)
     }
-    var outsideTemperature by remember(workOrder.id, defaults.outsideTemperature) { mutableStateOf(defaults.outsideTemperature) }
-    var relativeHumidity by remember(workOrder.id, defaults.relativeHumidity) { mutableStateOf(defaults.relativeHumidity) }
-    var airflowSpeed by remember(workOrder.id, defaults.airflowSpeed) { mutableStateOf(defaults.airflowSpeed) }
-    var weather by remember(workOrder.id, defaults.weather) { mutableStateOf(defaults.weather) }
-    var groundCondition by remember(workOrder.id, defaults.groundCondition) { mutableStateOf(defaults.groundCondition) }
-    var groundResistance by remember(workOrder.id, defaults.groundResistance) { mutableStateOf(defaults.groundResistance) }
-    var measurementEquipmentGroup by remember(workOrder.id, defaults.measurementEquipmentGroup) {
+    var outsideTemperature by remember(workOrder.id, selectedObjectId, defaults.outsideTemperature) { mutableStateOf(defaults.outsideTemperature) }
+    var relativeHumidity by remember(workOrder.id, selectedObjectId, defaults.relativeHumidity) { mutableStateOf(defaults.relativeHumidity) }
+    var airflowSpeed by remember(workOrder.id, selectedObjectId, defaults.airflowSpeed) { mutableStateOf(defaults.airflowSpeed) }
+    var weather by remember(workOrder.id, selectedObjectId, defaults.weather) { mutableStateOf(defaults.weather) }
+    var groundCondition by remember(workOrder.id, selectedObjectId, defaults.groundCondition) { mutableStateOf(defaults.groundCondition) }
+    var groundResistance by remember(workOrder.id, selectedObjectId, defaults.groundResistance) { mutableStateOf(defaults.groundResistance) }
+    var measurementEquipmentGroup by remember(workOrder.id, selectedObjectId, defaults.measurementEquipmentGroup) {
         mutableStateOf(defaults.measurementEquipmentGroup)
     }
     val measurementEquipmentOptionIds = remember(context.measurementEquipmentOptions) {
@@ -8056,13 +8079,13 @@ private fun WorkOrderDocumentationWizardDialog(
     val rulebookOptionIds = remember(context.rulebookOptions) {
         context.rulebookOptions.map { it.id }.toSet()
     }
-    var selectedEquipmentIds by remember(workOrder.id, defaults.selectedEquipmentIds, measurementEquipmentOptionIds) {
+    var selectedEquipmentIds by remember(workOrder.id, selectedObjectId, defaults.selectedEquipmentIds, measurementEquipmentOptionIds) {
         mutableStateOf(defaults.selectedEquipmentIds.filter { measurementEquipmentOptionIds.contains(it) }.toSet())
     }
-    var selectedLegalFrameworkIds by remember(workOrder.id, defaults.selectedLegalFrameworkIds, legalFrameworkOptionIds) {
+    var selectedLegalFrameworkIds by remember(workOrder.id, selectedObjectId, defaults.selectedLegalFrameworkIds, legalFrameworkOptionIds) {
         mutableStateOf(defaults.selectedLegalFrameworkIds.filter { legalFrameworkOptionIds.contains(it) }.toSet())
     }
-    var selectedRulebookIds by remember(workOrder.id, defaults.selectedRulebookIds, rulebookOptionIds) {
+    var selectedRulebookIds by remember(workOrder.id, selectedObjectId, defaults.selectedRulebookIds, rulebookOptionIds) {
         mutableStateOf(defaults.selectedRulebookIds.filter { rulebookOptionIds.contains(it) }.toSet())
     }
     val measurementEquipmentGroupOptions = remember(context.measurementEquipmentOptions, measurementEquipmentGroup) {
@@ -8113,10 +8136,10 @@ private fun WorkOrderDocumentationWizardDialog(
             serviceFlowItems.firstOrNull()?.serviceName ?: workOrder.displayService
         }
     }
-    var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
+    var signatureMode by remember(workOrder.id, selectedObjectId, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
     val includeHandoverProtocol = true
-    var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
-    var serviceValidityMonths by remember(workOrder.id, serviceFlowItems, defaults.serviceValidityMonths) {
+    var validityMonths by remember(workOrder.id, selectedObjectId, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
+    var serviceValidityMonths by remember(workOrder.id, selectedObjectId, serviceFlowItems, defaults.serviceValidityMonths) {
         mutableStateOf(
             serviceFlowItems.associate { item ->
                 item.serviceValidityKey() to (
@@ -8128,10 +8151,10 @@ private fun WorkOrderDocumentationWizardDialog(
             },
         )
     }
-    var electricalValidityMonths by remember(workOrder.id, defaults.electricalValidityMonths) {
+    var electricalValidityMonths by remember(workOrder.id, selectedObjectId, defaults.electricalValidityMonths) {
         mutableStateOf(defaults.electricalValidityMonths.ifBlank { validityMonths.ifBlank { "12" } })
     }
-    var tipkaloValidityMonths by remember(workOrder.id, defaults.tipkaloValidityMonths) {
+    var tipkaloValidityMonths by remember(workOrder.id, selectedObjectId, defaults.tipkaloValidityMonths) {
         mutableStateOf(defaults.tipkaloValidityMonths.ifBlank { validityMonths.ifBlank { "12" } })
     }
     var inspectorUserId by remember(workOrder.id) { mutableStateOf("") }
@@ -8171,8 +8194,14 @@ private fun WorkOrderDocumentationWizardDialog(
             "${template.id}:${template.fields.joinToString(",") { field -> "${field.id}:${field.defaultValue}" }}"
         }
     }
-    var templateFieldValues by remember(workOrder.id, templateDefaultsKey) {
-        mutableStateOf(defaultTemplateFieldValues(allPromptTemplates))
+    var templateFieldValues by remember(
+        workOrder.id,
+        selectedObjectId,
+        templateDefaultsKey,
+        defaults.fieldValues,
+        defaults.templateFieldValues,
+    ) {
+        mutableStateOf(defaultTemplateFieldValues(allPromptTemplates, defaults))
     }
     LaunchedEffect(workOrder.id, context.signaturePersonOptions, editableExecutors) {
         context.signaturePersonOptions.forEach { options ->
@@ -8225,8 +8254,14 @@ private fun WorkOrderDocumentationWizardDialog(
             "${template.id}:${template.measurementTables.joinToString(",") { table -> "${table.key}:${table.sheet.rows.size}:${table.sheet.columns.size}" }}"
         }
     }
-    var measurementSheets by remember(workOrder.id, measurementDefaultsKey) {
-        mutableStateOf(defaultMeasurementSheetValues(allMeasurementTemplates))
+    var measurementSheets by remember(
+        workOrder.id,
+        selectedObjectId,
+        measurementDefaultsKey,
+        defaults.fieldSheets,
+        defaults.templateFieldSheets,
+    ) {
+        mutableStateOf(defaultMeasurementSheetValues(allMeasurementTemplates, defaults))
     }
     val availableLocationObjects = remember(workOrder.companyId, workOrder.locationId, locationObjects) {
         locationObjects
@@ -8497,6 +8532,31 @@ private fun WorkOrderDocumentationWizardDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
+                    if (reusedDocumentationDefaultsLoaded) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    "Učitane su zadnje vrijednosti za ovu lokaciju i objekt.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    }
                     DocumentationCoreBasicsContent(
                         documentNumber = currentDocumentNumber,
                         serviceName = selectedFlowItem?.serviceName ?: inspectionType,
@@ -8927,6 +8987,26 @@ private fun templateFieldStateKey(
     field: WorkOrderDocumentationField,
 ): String = "${template.id}::${templateFieldPayloadKey(field)}"
 
+private fun normalizedDocumentationMap(values: Map<String, String>): Map<String, String> =
+    buildMap {
+        values.forEach { (key, value) ->
+            val normalizedKey = normalizeTemplateFieldLookup(key)
+            if (normalizedKey.isNotBlank() && value.trim().isNotBlank() && !containsKey(normalizedKey)) {
+                put(normalizedKey, value)
+            }
+        }
+    }
+
+private fun normalizedMeasurementSheetMap(values: Map<String, WorkOrderMeasurementSheet>): Map<String, WorkOrderMeasurementSheet> =
+    buildMap {
+        values.forEach { (key, value) ->
+            val normalizedKey = normalizeTemplateFieldLookup(key)
+            if (normalizedKey.isNotBlank() && value.columns.isNotEmpty() && !containsKey(normalizedKey)) {
+                put(normalizedKey, value)
+            }
+        }
+    }
+
 private fun normalizeTemplateFieldLookup(value: String): String =
     value.trim()
         .replace("_", " ")
@@ -8966,15 +9046,50 @@ private fun getTemplateInspectionTypeDefault(templates: List<WorkOrderDocumentat
         .firstNotNullOfOrNull { field -> field.defaultValue.trim().takeIf { it.isNotBlank() } }
         .orEmpty()
 
-private fun defaultTemplateFieldValues(templates: List<WorkOrderDocumentationTemplate>): Map<String, String> =
+private fun templateFieldCandidateKeys(field: WorkOrderDocumentationField): List<String> =
+    listOf(templateFieldPayloadKey(field), field.id, field.key, field.tokenKey, field.label)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+
+private fun resolveSavedTemplateFieldValue(
+    defaults: WorkOrderDocumentationDefaults,
+    template: WorkOrderDocumentationTemplate,
+    field: WorkOrderDocumentationField,
+): String? {
+    val candidates = templateFieldCandidateKeys(field)
+    val templateValues = defaults.templateFieldValues[template.id].orEmpty()
+    for (key in candidates) {
+        templateValues[key]?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+    val normalizedTemplateValues = normalizedDocumentationMap(templateValues)
+    for (key in candidates) {
+        normalizedTemplateValues[normalizeTemplateFieldLookup(key)]?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+    for (key in candidates) {
+        defaults.fieldValues[key]?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+    val normalizedFieldValues = normalizedDocumentationMap(defaults.fieldValues)
+    for (key in candidates) {
+        normalizedFieldValues[normalizeTemplateFieldLookup(key)]?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+    return null
+}
+
+private fun defaultTemplateFieldValues(
+    templates: List<WorkOrderDocumentationTemplate>,
+    defaults: WorkOrderDocumentationDefaults = WorkOrderDocumentationDefaults(),
+): Map<String, String> =
     buildMap {
         templates.forEach { template ->
             template.fields.forEach { field ->
                 val key = templateFieldStateKey(template, field)
-                if (field.defaultValue.isNotBlank()) {
-                    put(key, field.defaultValue)
-                } else if (field.type.equals("checkbox", ignoreCase = true) || field.type.equals("toggle", ignoreCase = true)) {
-                    put(key, "false")
+                val savedValue = resolveSavedTemplateFieldValue(defaults, template, field)
+                when {
+                    savedValue != null -> put(key, savedValue)
+                    field.defaultValue.isNotBlank() -> put(key, field.defaultValue)
+                    field.type.equals("checkbox", ignoreCase = true) || field.type.equals("toggle", ignoreCase = true) ->
+                        put(key, "false")
                 }
             }
         }
@@ -9039,11 +9154,44 @@ private fun measurementSheetStateKey(
     table: WorkOrderMeasurementTable,
 ): String = "${template.id}::${table.key.ifBlank { table.id.ifBlank { table.tokenKey } }}"
 
-private fun defaultMeasurementSheetValues(templates: List<WorkOrderDocumentationTemplate>): Map<String, WorkOrderMeasurementSheet> =
+private fun measurementTableCandidateKeys(table: WorkOrderMeasurementTable): List<String> =
+    listOf(table.key, table.id, table.tokenKey, table.label)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+
+private fun resolveSavedMeasurementSheet(
+    defaults: WorkOrderDocumentationDefaults,
+    template: WorkOrderDocumentationTemplate,
+    table: WorkOrderMeasurementTable,
+): WorkOrderMeasurementSheet? {
+    val candidates = measurementTableCandidateKeys(table)
+    val templateSheets = defaults.templateFieldSheets[template.id].orEmpty()
+    for (key in candidates) {
+        templateSheets[key]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+    }
+    val normalizedTemplateSheets = normalizedMeasurementSheetMap(templateSheets)
+    for (key in candidates) {
+        normalizedTemplateSheets[normalizeTemplateFieldLookup(key)]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+    }
+    for (key in candidates) {
+        defaults.fieldSheets[key]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+    }
+    val normalizedFieldSheets = normalizedMeasurementSheetMap(defaults.fieldSheets)
+    for (key in candidates) {
+        normalizedFieldSheets[normalizeTemplateFieldLookup(key)]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+    }
+    return null
+}
+
+private fun defaultMeasurementSheetValues(
+    templates: List<WorkOrderDocumentationTemplate>,
+    defaults: WorkOrderDocumentationDefaults = WorkOrderDocumentationDefaults(),
+): Map<String, WorkOrderMeasurementSheet> =
     buildMap {
         templates.forEach { template ->
             template.measurementTables.forEach { table ->
-                put(measurementSheetStateKey(template, table), table.sheet)
+                put(measurementSheetStateKey(template, table), resolveSavedMeasurementSheet(defaults, template, table) ?: table.sheet)
             }
         }
     }

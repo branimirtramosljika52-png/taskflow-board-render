@@ -210,6 +210,10 @@ data class WorkOrderDocumentationDefaults(
     val electricalValidityMonths: String = "",
     val tipkaloValidityMonths: String = "",
     val serviceValidityMonths: Map<String, String> = emptyMap(),
+    val fieldValues: Map<String, String> = emptyMap(),
+    val templateFieldValues: Map<String, Map<String, String>> = emptyMap(),
+    val fieldSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
+    val templateFieldSheets: Map<String, Map<String, WorkOrderMeasurementSheet>> = emptyMap(),
 )
 
 data class WorkOrderDocumentationOption(
