@@ -84227,6 +84227,27 @@ function applySelectedLocationDefaults() {
   applySelectedContactDefaults();
 }
 
+function focusMissingWorkOrderLocationMetadata() {
+  if (!state.workOrderEditorOpen) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    const prompt = workOrderEditorMeta?.querySelector(".work-order-editor-location-missing");
+    if (!(prompt instanceof HTMLElement)) {
+      return;
+    }
+
+    const target = prompt.querySelector(".work-order-editor-location-region, .work-order-editor-location-coordinates");
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    prompt.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.focus({ preventScroll: true });
+  }, 0);
+}
+
 function buildWorkOrderPayload() {
   const executors = readWorkOrderExecutorSelection();
   const serviceItems = readWorkOrderServiceSelection();
@@ -118527,14 +118548,20 @@ window.addEventListener("resize", () => {
 workOrderCompanyIdInput.addEventListener("change", () => {
   const company = getCompany(workOrderCompanyIdInput.value);
   fillWorkOrderCompanySnapshot(company);
-  rebuildWorkOrderLocationOptions("");
+  const companyLocations = company?.id ? getLocationsForCompany(company.id) : [];
+  const nextLocationId = companyLocations.length === 1 ? companyLocations[0].id : "";
+  rebuildWorkOrderLocationOptions(nextLocationId);
   applySelectedLocationDefaults();
   renderWorkOrderEditorSummary();
+  if (nextLocationId) {
+    focusMissingWorkOrderLocationMetadata();
+  }
 });
 
 workOrderLocationIdInput.addEventListener("change", () => {
   applySelectedLocationDefaults();
   renderWorkOrderEditorSummary();
+  focusMissingWorkOrderLocationMetadata();
 });
 
 workOrderContactSlotInput.addEventListener("change", () => {

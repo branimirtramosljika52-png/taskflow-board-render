@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.72.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.73.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -15202,6 +15202,20 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/mobile/work-orders") {
       await writeMobileWorkOrders(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/mobile/locations") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "locations.create")) {
+        sendError(response, 403, "Nemate pravo dodavati lokacije.");
+        return true;
+      }
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      const createdLocation = await domainRepository.createLocation(body);
+      const item = buildMobileWorkOrderLocationOptions([createdLocation])[0] ?? createdLocation;
+      sendJson(response, 201, { ok: true, item });
       return true;
     }
 

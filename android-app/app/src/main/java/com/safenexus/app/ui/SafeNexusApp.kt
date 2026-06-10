@@ -201,6 +201,7 @@ import com.safenexus.app.data.WorkOrderDocumentationSignatureAreaOptions
 import com.safenexus.app.data.WorkOrderDocumentationTemplate
 import com.safenexus.app.data.WorkOrderDocumentationTemplateBlock
 import com.safenexus.app.data.WorkOrderDocument
+import com.safenexus.app.data.WorkOrderLocationCreateDraft
 import com.safenexus.app.data.WorkOrderLocationObjectOption
 import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderMeasurementColumn
@@ -571,6 +572,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             state = state.copy(error = "Odaberi naručitelja.")
             return
         }
+        if (draft.locationId.isBlank()) {
+            state = state.copy(error = "Odaberi ili dodaj lokaciju.")
+            return
+        }
 
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
@@ -588,6 +593,45 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         error = error.message ?: "Ne mogu otvoriti radni nalog.",
+                    )
+                }
+        }
+    }
+
+    fun createWorkOrderLocation(
+        draft: WorkOrderLocationCreateDraft,
+        onCreated: (WorkOrderLocationOption) -> Unit,
+    ) {
+        if (draft.companyId.isBlank()) {
+            state = state.copy(error = "Odaberi naručitelja prije dodavanja lokacije.")
+            return
+        }
+        if (draft.name.trim().isBlank()) {
+            state = state.copy(error = "Upiši naziv lokacije.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createWorkOrderLocation(draft)
+                .onSuccess { createdLocation ->
+                    val nextLocations = (
+                        state.data.workOrderLocations.filter { it.id != createdLocation.id } + createdLocation
+                    ).sortedWith(
+                        compareBy<WorkOrderLocationOption> { it.name.lowercase(Locale.getDefault()) }
+                            .thenBy { it.region.lowercase(Locale.getDefault()) },
+                    )
+                    state = state.copy(
+                        data = state.data.copy(workOrderLocations = nextLocations),
+                        isLoading = false,
+                        notice = "Lokacija je dodana i odabrana.",
+                    )
+                    onCreated(createdLocation)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu dodati lokaciju.",
                     )
                 }
         }
@@ -1337,6 +1381,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     error = state.error,
                     onBack = viewModel::closeWorkOrderCreate,
                     onSave = viewModel::createWorkOrder,
+                    onCreateLocation = viewModel::createWorkOrderLocation,
                 )
             } else {
             val selected = state.selectedWorkOrder
@@ -2347,6 +2392,7 @@ private fun WorkOrderCreateScreen(
     error: String,
     onBack: () -> Unit,
     onSave: (WorkOrderCreateDraft) -> Unit,
+    onCreateLocation: (WorkOrderLocationCreateDraft, (WorkOrderLocationOption) -> Unit) -> Unit,
 ) {
     var companyId by remember { mutableStateOf("") }
     var locationId by remember { mutableStateOf("") }
@@ -2368,11 +2414,47 @@ private fun WorkOrderCreateScreen(
     var invoiceNote by remember { mutableStateOf("") }
     var linkReference by remember { mutableStateOf("") }
     var department by remember { mutableStateOf("") }
+    var showNewLocationForm by remember { mutableStateOf(false) }
+    var newLocationName by remember { mutableStateOf("") }
+    var newLocationRegion by remember { mutableStateOf("") }
+    var newLocationCoordinates by remember { mutableStateOf("") }
+    var newLocationContactName by remember { mutableStateOf("") }
+    var newLocationContactPhone by remember { mutableStateOf("") }
+    var newLocationContactEmail by remember { mutableStateOf("") }
+    var newLocationNote by remember { mutableStateOf("") }
     val company = data.workOrderCompanies.firstOrNull { it.id == companyId }
     val availableLocations = remember(companyId, data.workOrderLocations) {
         data.workOrderLocations.filter { location -> companyId.isBlank() || location.companyId == companyId }
     }
     val selectedLocation = availableLocations.firstOrNull { it.id == locationId }
+    fun applyLocationSelection(location: WorkOrderLocationOption?) {
+        locationId = location?.id.orEmpty()
+        contactName = location?.contactName1.orEmpty()
+        contactPhone = location?.contactPhone1.orEmpty()
+        contactEmail = location?.contactEmail1.orEmpty()
+    }
+    fun clearNewLocationDraft() {
+        newLocationName = ""
+        newLocationRegion = ""
+        newLocationCoordinates = ""
+        newLocationContactName = ""
+        newLocationContactPhone = ""
+        newLocationContactEmail = ""
+        newLocationNote = ""
+    }
+
+    LaunchedEffect(companyId, availableLocations) {
+        if (companyId.isBlank()) return@LaunchedEffect
+        if (locationId.isNotBlank() && availableLocations.none { it.id == locationId }) {
+            applyLocationSelection(null)
+        }
+        if (locationId.isBlank() && availableLocations.size == 1) {
+            applyLocationSelection(availableLocations.first())
+        }
+        if (availableLocations.isEmpty()) {
+            showNewLocationForm = true
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -2408,35 +2490,178 @@ private fun WorkOrderCreateScreen(
                     Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Osnovni podaci", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                         DetailRow(Icons.Rounded.Work, "Broj radnog naloga", "Automatski nakon spremanja")
-                        WorkOrderSelectField(
+                        WorkOrderSearchSelectField(
                             label = "Naručitelj",
                             value = companyId,
                             valueLabel = company?.name.orEmpty(),
-                            options = data.workOrderCompanies.map { it.id to it.name },
+                            options = data.workOrderCompanies.map { companyOption ->
+                                WorkOrderPickerOption(
+                                    value = companyOption.id,
+                                    label = companyOption.name,
+                                    meta = listOf(
+                                        companyOption.headquarters.takeIf { it.isNotBlank() },
+                                        companyOption.oib.takeIf { it.isNotBlank() }?.let { "OIB $it" },
+                                    ).filterNotNull().joinToString(" · "),
+                                    searchText = listOf(companyOption.name, companyOption.headquarters, companyOption.oib)
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(" "),
+                                )
+                            },
                             enabled = !isLoading,
+                            icon = Icons.Rounded.Business,
+                            searchPlaceholder = "Traži tvrtku, sjedište ili OIB",
+                            emptyText = "Nema tvrtki za taj pojam.",
                             onSelect = { next ->
+                                val nextLocations = data.workOrderLocations.filter { location -> location.companyId == next }
                                 companyId = next
-                                locationId = ""
-                                contactName = ""
-                                contactPhone = ""
-                                contactEmail = ""
+                                clearNewLocationDraft()
+                                showNewLocationForm = next.isNotBlank() && nextLocations.isEmpty()
+                                applyLocationSelection(nextLocations.singleOrNull())
                             },
                         )
-                        WorkOrderSelectField(
+                        WorkOrderSearchSelectField(
                             label = "Lokacija",
                             value = locationId,
                             valueLabel = selectedLocation?.name.orEmpty(),
-                            options = availableLocations.map { it.id to it.name },
+                            options = availableLocations.map { location ->
+                                WorkOrderPickerOption(
+                                    value = location.id,
+                                    label = location.name,
+                                    meta = listOf(location.region, location.coordinates).filter { it.isNotBlank() }.joinToString(" · "),
+                                    searchText = listOf(
+                                        location.name,
+                                        location.region,
+                                        location.coordinates,
+                                        location.contactName1,
+                                        location.contactPhone1,
+                                        location.contactEmail1,
+                                    ).filter { it.isNotBlank() }.joinToString(" "),
+                                )
+                            },
                             enabled = !isLoading && companyId.isNotBlank(),
+                            icon = Icons.Rounded.LocationOn,
+                            searchPlaceholder = "Traži lokaciju, regiju ili koordinate",
+                            emptyText = if (companyId.isBlank()) "Prvo odaberi naručitelja." else "Nema lokacija za taj pojam.",
                             onSelect = { next ->
-                                locationId = next
-                                availableLocations.firstOrNull { it.id == next }?.let { location ->
-                                    contactName = location.contactName1
-                                    contactPhone = location.contactPhone1
-                                    contactEmail = location.contactEmail1
-                                }
+                                applyLocationSelection(availableLocations.firstOrNull { it.id == next })
+                                showNewLocationForm = false
                             },
                         )
+                        if (companyId.isNotBlank()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    if (availableLocations.size == 1 && locationId.isNotBlank()) {
+                                        "Jedina lokacija je automatski odabrana."
+                                    } else {
+                                        "${availableLocations.size} lokacija za naručitelja"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                )
+                                TextButton(
+                                    onClick = { showNewLocationForm = !showNewLocationForm },
+                                    enabled = !isLoading,
+                                ) {
+                                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(if (showNewLocationForm) "Sakrij" else "Nova lokacija")
+                                }
+                            }
+                        }
+                        AnimatedVisibility(companyId.isNotBlank() && (showNewLocationForm || availableLocations.isEmpty())) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Nova lokacija", fontWeight = FontWeight.Black)
+                                            Text(
+                                                "Spremi lokaciju i odmah je koristi za ovaj RN.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                            )
+                                        }
+                                    }
+                                    WorkOrderTextField("Naziv lokacije", newLocationName, { newLocationName = it }, enabled = !isLoading)
+                                    WorkOrderSearchSelectField(
+                                        label = "Regija",
+                                        value = newLocationRegion,
+                                        valueLabel = newLocationRegion,
+                                        options = workOrderRegionOptions.map { region ->
+                                            WorkOrderPickerOption(region, region)
+                                        },
+                                        enabled = !isLoading,
+                                        icon = Icons.Rounded.Map,
+                                        searchPlaceholder = "Traži regiju",
+                                        emptyText = "Nema regije za taj pojam.",
+                                        onSelect = { newLocationRegion = it },
+                                    )
+                                    WorkOrderTextField("Koordinate", newLocationCoordinates, { newLocationCoordinates = it }, enabled = !isLoading)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        OutlinedTextField(
+                                            value = newLocationContactName,
+                                            onValueChange = { newLocationContactName = it },
+                                            modifier = Modifier.weight(1f),
+                                            label = { Text("Kontakt") },
+                                            singleLine = true,
+                                            enabled = !isLoading,
+                                            shape = RoundedCornerShape(16.dp),
+                                        )
+                                        OutlinedTextField(
+                                            value = newLocationContactPhone,
+                                            onValueChange = { newLocationContactPhone = it },
+                                            modifier = Modifier.weight(1f),
+                                            label = { Text("Telefon") },
+                                            singleLine = true,
+                                            enabled = !isLoading,
+                                            shape = RoundedCornerShape(16.dp),
+                                        )
+                                    }
+                                    WorkOrderTextField("Kontakt email", newLocationContactEmail, { newLocationContactEmail = it }, enabled = !isLoading)
+                                    WorkOrderTextField("Napomena", newLocationNote, { newLocationNote = it }, enabled = !isLoading)
+                                    Button(
+                                        onClick = {
+                                            onCreateLocation(
+                                                WorkOrderLocationCreateDraft(
+                                                    companyId = companyId,
+                                                    name = newLocationName.trim(),
+                                                    region = newLocationRegion.trim(),
+                                                    coordinates = newLocationCoordinates.trim(),
+                                                    contactName = newLocationContactName.trim(),
+                                                    contactPhone = newLocationContactPhone.trim(),
+                                                    contactEmail = newLocationContactEmail.trim(),
+                                                    note = newLocationNote.trim(),
+                                                ),
+                                            ) { created ->
+                                                companyId = created.companyId.ifBlank { companyId }
+                                                applyLocationSelection(created)
+                                                showNewLocationForm = false
+                                                clearNewLocationDraft()
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        enabled = !isLoading && companyId.isNotBlank() && newLocationName.trim().isNotBlank(),
+                                        shape = RoundedCornerShape(16.dp),
+                                    ) {
+                                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Spremi i odaberi lokaciju", fontWeight = FontWeight.Black)
+                                    }
+                                }
+                            }
+                        }
                         if (company != null || selectedLocation != null) {
                             Text(
                                 listOfNotNull(
@@ -2623,7 +2848,7 @@ private fun WorkOrderCreateScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
-                    enabled = !isLoading && companyId.isNotBlank(),
+                    enabled = !isLoading && companyId.isNotBlank() && locationId.isNotBlank(),
                     shape = RoundedCornerShape(18.dp),
                 ) {
                     if (isLoading) {
@@ -2855,6 +3080,187 @@ private fun WorkOrderSelectField(
         }
     }
 }
+
+private data class WorkOrderPickerOption(
+    val value: String,
+    val label: String,
+    val meta: String = "",
+    val searchText: String = "",
+)
+
+private val workOrderRegionOptions = listOf(
+    "Zagreb - Centar",
+    "Zagreb - Zapad",
+    "Zagreb - Istok",
+    "Zagreb - Jug",
+    "Istra - Sjever",
+    "Istra - Jug",
+    "Dalmacija - Sjever",
+    "Dalmacija - Središnja",
+    "Dalmacija - Jug",
+    "Slavonija - Istok",
+    "Slavonija - Zapad",
+    "Sjeverozapadna Hrvatska",
+    "Sjeveroistočna Hrvatska",
+    "Središnja Hrvatska",
+    "Riječko područje",
+)
+
+@Composable
+private fun WorkOrderSearchSelectField(
+    label: String,
+    value: String,
+    valueLabel: String,
+    options: List<WorkOrderPickerOption>,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector = Icons.Rounded.Search,
+    searchPlaceholder: String = "Traži",
+    emptyText: String = "Nema rezultata.",
+) {
+    var open by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val filteredOptions = remember(options, query) {
+        val normalizedQuery = query.normalizedPickerText()
+        if (normalizedQuery.isBlank()) {
+            options
+        } else {
+            options.filter { option -> option.matchesPickerQuery(normalizedQuery) }
+        }
+    }
+    val visibleOptions = filteredOptions.take(120)
+
+    OutlinedButton(
+        onClick = {
+            query = ""
+            open = true
+        },
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled && options.isNotEmpty(),
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            Text(
+                valueLabel.ifBlank { "Odaberi" },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text(label, fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(searchPlaceholder) },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    if (visibleOptions.isEmpty()) {
+                        Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 420.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(visibleOptions, key = { option -> option.value }) { option ->
+                                val selected = option.value == value
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable {
+                                            onSelect(option.value)
+                                            open = false
+                                        },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.86f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f)
+                                    },
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            Text(
+                                                option.label.ifBlank { "Odaberi" },
+                                                fontWeight = if (selected) FontWeight.Black else FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            if (option.meta.isNotBlank()) {
+                                                Text(
+                                                    option.meta,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        }
+                                        if (selected) {
+                                            Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                }
+                            }
+                            if (filteredOptions.size > visibleOptions.size) {
+                                item {
+                                    Text(
+                                        "Prikazano ${visibleOptions.size} od ${filteredOptions.size}; suzi pretragu za ostatak.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { open = false }) {
+                    Text("Zatvori")
+                }
+            },
+        )
+    }
+}
+
+private fun WorkOrderPickerOption.matchesPickerQuery(normalizedQuery: String): Boolean {
+    val haystack = listOf(label, meta, searchText).joinToString(" ").normalizedPickerText()
+    return normalizedQuery.split(' ')
+        .filter { it.isNotBlank() }
+        .all { token -> haystack.contains(token) }
+}
+
+private fun String.normalizedPickerText(): String =
+    lowercase(Locale.getDefault())
+        .replace("š", "s")
+        .replace("ž", "z")
+        .replace("č", "c")
+        .replace("ć", "c")
+        .replace("đ", "d")
+        .trim()
 
 @Composable
 private fun WorkOrderMultiSelectChips(

@@ -61,6 +61,17 @@ data class WorkOrderLocationOption(
     val contactEmail3: String,
 )
 
+data class WorkOrderLocationCreateDraft(
+    val companyId: String,
+    val name: String,
+    val region: String,
+    val coordinates: String,
+    val contactName: String,
+    val contactPhone: String,
+    val contactEmail: String,
+    val note: String,
+)
+
 data class WorkOrderUserOption(
     val id: String,
     val label: String,

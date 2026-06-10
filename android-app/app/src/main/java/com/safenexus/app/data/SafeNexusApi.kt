@@ -132,6 +132,33 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun createWorkOrderLocation(draft: WorkOrderLocationCreateDraft): Result<WorkOrderLocationOption> = withContext(Dispatchers.IO) {
+        runCatching {
+            val contacts = JSONArray()
+            if (draft.contactName.isNotBlank() || draft.contactPhone.isNotBlank() || draft.contactEmail.isNotBlank()) {
+                contacts.put(
+                    JSONObject()
+                        .put("name", draft.contactName)
+                        .put("phone", draft.contactPhone)
+                        .put("email", draft.contactEmail),
+                )
+            }
+            val payload = JSONObject()
+                .put("companyId", draft.companyId)
+                .put("name", draft.name)
+                .put("region", draft.region)
+                .put("coordinates", draft.coordinates)
+                .put("contacts", contacts)
+                .put("contactName1", draft.contactName)
+                .put("contactPhone1", draft.contactPhone)
+                .put("contactEmail1", draft.contactEmail)
+                .put("note", draft.note)
+                .toString()
+            val json = JSONObject(request("/api/mobile/locations", method = "POST", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrderLocationOption()
+        }
+    }
+
     suspend fun workOrders(): Result<BootstrapData> = withContext(Dispatchers.IO) {
         runCatching {
             val json = JSONObject(request("/api/mobile/work-orders"))
@@ -1496,27 +1523,28 @@ private fun JSONArray?.toWorkOrderLocations(): List<WorkOrderLocationOption> {
     return buildList {
         for (index in 0 until length()) {
             val item = optJSONObject(index) ?: continue
-            add(
-                WorkOrderLocationOption(
-                    id = item.firstClean("id"),
-                    companyId = item.firstClean("companyId"),
-                    name = item.firstClean("name"),
-                    coordinates = item.firstClean("coordinates"),
-                    region = item.firstClean("region"),
-                    contactName1 = item.firstClean("contactName1"),
-                    contactPhone1 = item.firstClean("contactPhone1"),
-                    contactEmail1 = item.firstClean("contactEmail1"),
-                    contactName2 = item.firstClean("contactName2"),
-                    contactPhone2 = item.firstClean("contactPhone2"),
-                    contactEmail2 = item.firstClean("contactEmail2"),
-                    contactName3 = item.firstClean("contactName3"),
-                    contactPhone3 = item.firstClean("contactPhone3"),
-                    contactEmail3 = item.firstClean("contactEmail3"),
-                ),
-            )
+            add(item.toWorkOrderLocationOption())
         }
     }.filter { it.id.isNotBlank() && it.companyId.isNotBlank() && it.name.isNotBlank() }
 }
+
+private fun JSONObject.toWorkOrderLocationOption(): WorkOrderLocationOption =
+    WorkOrderLocationOption(
+        id = firstClean("id"),
+        companyId = firstClean("companyId"),
+        name = firstClean("name"),
+        coordinates = firstClean("coordinates"),
+        region = firstClean("region"),
+        contactName1 = firstClean("contactName1"),
+        contactPhone1 = firstClean("contactPhone1"),
+        contactEmail1 = firstClean("contactEmail1"),
+        contactName2 = firstClean("contactName2"),
+        contactPhone2 = firstClean("contactPhone2"),
+        contactEmail2 = firstClean("contactEmail2"),
+        contactName3 = firstClean("contactName3"),
+        contactPhone3 = firstClean("contactPhone3"),
+        contactEmail3 = firstClean("contactEmail3"),
+    )
 
 private fun JSONArray?.toWorkOrderUsers(): List<WorkOrderUserOption> {
     if (this == null) return emptyList()
