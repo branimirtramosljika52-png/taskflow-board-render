@@ -73,6 +73,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -244,6 +245,17 @@ enum class AppSection(val label: String) {
     More("Više"),
 }
 
+private enum class MoreSectionFocus(val listIndex: Int) {
+    Overview(0),
+    Companies(2),
+    Locations(2),
+    Periodics(3),
+    Documents(4),
+    Services(5),
+    Foundation(6),
+    Training(7),
+}
+
 enum class CalendarViewMode(val label: String) {
     Day("Dan"),
     Week("Tjedan"),
@@ -255,6 +267,7 @@ private data class MainMenuShortcut(
     val description: String,
     val section: AppSection,
     val icon: ImageVector,
+    val moreFocus: MoreSectionFocus? = null,
 )
 
 enum class WorkOrderDocumentInputMode(
@@ -2958,21 +2971,47 @@ private fun WorkOrdersScreen(
     val filteredVehicles = remember(state.data.vehicles, normalizedQuery) {
         state.data.vehicles.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredDocuments = remember(state.data.documentRecords, normalizedQuery) {
+        state.data.documentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
+    val filteredTraining = remember(state.data.peopleTrainingRecords, normalizedQuery) {
+        state.data.peopleTrainingRecords.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
+    val filteredRulebooks = remember(state.data.rulebooks, normalizedQuery) {
+        state.data.rulebooks.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
+    val filteredAssessments = remember(state.data.riskAssessmentRecords, normalizedQuery) {
+        state.data.riskAssessmentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
+    val periodicEntries = remember(state.data, state.workOrders, normalizedQuery) {
+        buildPeriodicEntries(state.data, state.workOrders, normalizedQuery)
+    }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
+    var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
+    val listState = rememberLazyListState()
+    val openMenuShortcut: (AppSection, MoreSectionFocus?) -> Unit = { section, focus ->
+        mainMenuExpanded = false
+        moreFocus = if (section == AppSection.More) focus ?: MoreSectionFocus.Overview else MoreSectionFocus.Overview
+        onSectionChange(section)
+    }
+
+    LaunchedEffect(state.section, moreFocus) {
+        if (state.section == AppSection.More) {
+            listState.animateScrollToItem(moreFocus.listIndex)
+        }
+    }
 
     Scaffold(
         topBar = {
             if (state.section == AppSection.WorkOrders) {
                 WorkOrdersTopBar(
                     currentSection = state.section,
+                    currentMoreFocus = moreFocus,
                     viewMode = state.viewMode,
                     mainMenuExpanded = mainMenuExpanded,
                     onMainMenuExpandedChange = { mainMenuExpanded = it },
-                    onSectionChange = { section ->
-                        mainMenuExpanded = false
-                        onSectionChange(section)
-                    },
+                    onSectionChange = openMenuShortcut,
                     onViewModeChange = onViewModeChange,
                     onRefresh = onRefresh,
                     onLogout = {
@@ -2984,13 +3023,11 @@ private fun WorkOrdersScreen(
             } else {
                 MainAppTopBar(
                     currentSection = state.section,
+                    currentMoreFocus = moreFocus,
                     displayName = state.user?.displayName.orEmpty(),
                     mainMenuExpanded = mainMenuExpanded,
                     onMainMenuExpandedChange = { mainMenuExpanded = it },
-                    onSectionChange = { section ->
-                        mainMenuExpanded = false
-                        onSectionChange(section)
-                    },
+                    onSectionChange = openMenuShortcut,
                     onRefresh = onRefresh,
                     onLogout = {
                         mainMenuExpanded = false
@@ -3028,12 +3065,16 @@ private fun WorkOrdersScreen(
         bottomBar = {
             MainBottomBar(
                 selected = state.section,
-                onSectionChange = onSectionChange,
+                onSectionChange = { section ->
+                    moreFocus = if (section == AppSection.More) MoreSectionFocus.Overview else MoreSectionFocus.Overview
+                    onSectionChange(section)
+                },
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize(),
@@ -3099,10 +3140,45 @@ private fun WorkOrdersScreen(
                     )
                 }
                 item {
-                    MoreContent(
-                        data = state.data,
-                        workOrders = state.workOrders,
+                    MoreOverviewHero(state.data)
+                }
+                item {
+                    CompanyLocationDirectory(
+                        companies = state.data.companies,
+                        locations = state.data.locations,
                         query = normalizedQuery,
+                        onOpenRecord = onOpenRecord,
+                    )
+                }
+                item {
+                    PeriodicsPreview(entries = periodicEntries)
+                }
+                item {
+                    DocumentRegisterPreview(
+                        records = filteredDocuments,
+                        onOpenRecord = onOpenRecord,
+                    )
+                }
+                item {
+                    ServicesCatalogPreview(
+                        services = state.data.workOrderServices,
+                        query = normalizedQuery,
+                    )
+                }
+                item {
+                    FoundationDocumentationPreview(
+                        rulebooks = filteredRulebooks,
+                        assessments = filteredAssessments,
+                        documents = filteredDocuments,
+                        onOpenRecord = onOpenRecord,
+                    )
+                }
+                item {
+                    RecordsContent(
+                        title = "Osposobljavanja",
+                        records = filteredTraining,
+                        emptyText = "Nema osposobljavanja za prikaz.",
+                        icon = Icons.Rounded.Fingerprint,
                         onOpenRecord = onOpenRecord,
                     )
                 }
@@ -3184,10 +3260,11 @@ private fun WorkOrdersScreen(
 @Composable
 private fun MainAppTopBar(
     currentSection: AppSection,
+    currentMoreFocus: MoreSectionFocus,
     displayName: String,
     mainMenuExpanded: Boolean,
     onMainMenuExpandedChange: (Boolean) -> Unit,
-    onSectionChange: (AppSection) -> Unit,
+    onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -3195,6 +3272,7 @@ private fun MainAppTopBar(
         navigationIcon = {
             MainMenuButton(
                 currentSection = currentSection,
+                currentMoreFocus = currentMoreFocus,
                 expanded = mainMenuExpanded,
                 onExpandedChange = onMainMenuExpandedChange,
                 onSectionChange = onSectionChange,
@@ -3226,10 +3304,11 @@ private fun MainAppTopBar(
 @Composable
 private fun WorkOrdersTopBar(
     currentSection: AppSection,
+    currentMoreFocus: MoreSectionFocus,
     viewMode: WorkOrderViewMode,
     mainMenuExpanded: Boolean,
     onMainMenuExpandedChange: (Boolean) -> Unit,
-    onSectionChange: (AppSection) -> Unit,
+    onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onViewModeChange: (WorkOrderViewMode) -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
@@ -3239,6 +3318,7 @@ private fun WorkOrdersTopBar(
         navigationIcon = {
             MainMenuButton(
                 currentSection = currentSection,
+                currentMoreFocus = currentMoreFocus,
                 expanded = mainMenuExpanded,
                 onExpandedChange = onMainMenuExpandedChange,
                 onSectionChange = onSectionChange,
@@ -3305,9 +3385,10 @@ private fun WorkOrdersTopBar(
 @Composable
 private fun MainMenuButton(
     currentSection: AppSection,
+    currentMoreFocus: MoreSectionFocus,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
-    onSectionChange: (AppSection) -> Unit,
+    onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onLogout: () -> Unit,
 ) {
     Box {
@@ -3317,6 +3398,7 @@ private fun MainMenuButton(
         MainMenuDropdown(
             expanded = expanded,
             currentSection = currentSection,
+            currentMoreFocus = currentMoreFocus,
             onDismiss = { onExpandedChange(false) },
             onSectionChange = onSectionChange,
             onLogout = onLogout,
@@ -3328,8 +3410,9 @@ private fun MainMenuButton(
 private fun MainMenuDropdown(
     expanded: Boolean,
     currentSection: AppSection,
+    currentMoreFocus: MoreSectionFocus,
     onDismiss: () -> Unit,
-    onSectionChange: (AppSection) -> Unit,
+    onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onLogout: () -> Unit,
 ) {
     val shortcuts = remember {
@@ -3338,7 +3421,14 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
-            MainMenuShortcut("Više", "Dokumenti, periodika, tvrtke i lokacije", AppSection.More, Icons.Rounded.Map),
+            MainMenuShortcut("Više", "Pregled evidencija", AppSection.More, Icons.Rounded.Map, MoreSectionFocus.Overview),
+            MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business, MoreSectionFocus.Companies),
+            MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn, MoreSectionFocus.Locations),
+            MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
+            MainMenuShortcut("Periodika", "Rokovi, pregledi i isteci", AppSection.More, Icons.Rounded.CalendarMonth, MoreSectionFocus.Periodics),
+            MainMenuShortcut("Service liste", "Pravilnici, mjerna oprema i autorizacije", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Services),
+            MainMenuShortcut("Pravilnici", "Temeljna dokumentacija i procjene", AppSection.More, Icons.Rounded.Lock, MoreSectionFocus.Foundation),
+            MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint, MoreSectionFocus.Training),
         )
     }
 
@@ -3348,7 +3438,11 @@ private fun MainMenuDropdown(
         modifier = Modifier.width(318.dp),
     ) {
         shortcuts.forEach { shortcut ->
-            val selected = currentSection == shortcut.section
+            val selected = if (shortcut.section == AppSection.More) {
+                currentSection == AppSection.More && currentMoreFocus == shortcut.moreFocus
+            } else {
+                currentSection == shortcut.section
+            }
             DropdownMenuItem(
                 text = {
                     Column {
@@ -3385,7 +3479,7 @@ private fun MainMenuDropdown(
                     }
                 },
                 onClick = {
-                    onSectionChange(shortcut.section)
+                    onSectionChange(shortcut.section, shortcut.moreFocus)
                     onDismiss()
                 },
             )
@@ -4642,52 +4736,6 @@ private fun RecordsContent(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun MoreContent(
-    data: BootstrapData,
-    workOrders: List<WorkOrder>,
-    query: String,
-    onOpenRecord: (MobileRecord) -> Unit,
-) {
-    val filteredDocuments = remember(data.documentRecords, query) { data.documentRecords.filter { it.matchesSearch(query) } }
-    val filteredTraining = remember(data.peopleTrainingRecords, query) { data.peopleTrainingRecords.filter { it.matchesSearch(query) } }
-    val filteredRulebooks = remember(data.rulebooks, query) { data.rulebooks.filter { it.matchesSearch(query) } }
-    val filteredAssessments = remember(data.riskAssessmentRecords, query) { data.riskAssessmentRecords.filter { it.matchesSearch(query) } }
-    val periodicEntries = remember(data, workOrders, query) { buildPeriodicEntries(data, workOrders, query) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        MoreOverviewHero(data)
-        CompanyLocationDirectory(
-            companies = data.companies,
-            locations = data.locations,
-            query = query,
-            onOpenRecord = onOpenRecord,
-        )
-        PeriodicsPreview(entries = periodicEntries)
-        DocumentRegisterPreview(
-            records = filteredDocuments,
-            onOpenRecord = onOpenRecord,
-        )
-        ServicesCatalogPreview(
-            services = data.workOrderServices,
-            query = query,
-        )
-        FoundationDocumentationPreview(
-            rulebooks = filteredRulebooks,
-            assessments = filteredAssessments,
-            documents = filteredDocuments,
-            onOpenRecord = onOpenRecord,
-        )
-        RecordsContent(
-            title = "Osposobljavanja",
-            records = filteredTraining,
-            emptyText = "Nema osposobljavanja za prikaz.",
-            icon = Icons.Rounded.Fingerprint,
-            onOpenRecord = onOpenRecord,
-        )
     }
 }
 
