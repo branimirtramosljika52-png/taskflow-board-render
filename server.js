@@ -11464,6 +11464,268 @@ function buildMobileDocumentTemplateMeasurementPlaceholders(template = {}, field
   return placeholders;
 }
 
+function normalizeMobileSystemDescriptionLineCount(value = 1) {
+  const numeric = Number(value);
+  return Math.max(1, Math.min(8, Math.round(Number.isFinite(numeric) ? numeric : 1)));
+}
+
+function isMobileSystemDescriptionValue(value = null) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && (Array.isArray(value.blocks) || Array.isArray(value.rows)),
+  );
+}
+
+function normalizeMobileSystemDescriptionRows(rows = []) {
+  const normalizedRows = (Array.isArray(rows) ? rows : [])
+    .slice(0, 16)
+    .map((row, index) => ({
+      id: normalizeInputValue(row?.id) || `system-description-row-${index + 1}`,
+      subtitle: normalizeInputValue(row?.subtitle ?? row?.label).slice(0, 160),
+      description: String(row?.description ?? row?.value ?? row?.text ?? row?.content ?? "")
+        .replace(/\r\n/g, "\n")
+        .trim()
+        .slice(0, 4000),
+      lineCount: normalizeMobileSystemDescriptionLineCount(row?.lineCount ?? row?.line_count ?? row?.rows),
+      placeholder: normalizeInputValue(row?.placeholder).slice(0, 220),
+    }));
+
+  return normalizedRows.length > 0
+    ? normalizedRows
+    : [{
+      id: "system-description-row-1",
+      subtitle: "",
+      description: "",
+      lineCount: 1,
+      placeholder: "",
+    }];
+}
+
+function getMobileSystemDescriptionTemplateRows(field = {}) {
+  return normalizeMobileSystemDescriptionRows(field?.systemRows ?? field?.rows ?? []);
+}
+
+function getMobileSystemDescriptionRowValueKeys(row = {}) {
+  const subtitle = normalizeInputValue(row?.subtitle || row?.label).toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const keys = [
+    row?.id,
+    row?.key,
+    row?.subtitle,
+    row?.label,
+    row?.placeholder,
+  ].map(normalizeInputValue).filter(Boolean);
+  if (subtitle.includes("proizvodac") || subtitle.includes("manufacturer")) {
+    keys.push("proizvodac", "proizvođač", "manufacturer", "producer", "make");
+  }
+  if (subtitle === "tip" || subtitle.includes("model")) {
+    keys.push("tip", "type", "model", "tipModel", "tip_model");
+  }
+  if (subtitle.includes("teh") || subtitle.includes("podat")) {
+    keys.push("tehPodaci", "teh_podaci", "tehnickiPodaci", "tehnički podaci", "technicalData", "technical_data");
+  }
+  if (!subtitle || subtitle.includes("opis")) {
+    keys.push("opis", "description", "systemDescription", "system_description", "napomena", "note");
+  }
+  return Array.from(new Set(keys.map(normalizeInputValue).filter(Boolean)));
+}
+
+function getMobileSystemDescriptionValueByKeys(source = {}, keys = []) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return "";
+  }
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      return source[key];
+    }
+  }
+  const normalizedLookup = new Map(Object.entries(source).map(([key, value]) => [
+    normalizeMobileTemplateFieldLookup(key),
+    value,
+  ]));
+  for (const key of keys) {
+    const value = normalizedLookup.get(normalizeMobileTemplateFieldLookup(key));
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function normalizeMobileSystemDescriptionRowsFromStructuredValue(field = {}, value = null) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    const objectRows = value
+      .filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry))
+      .map((entry, index) => ({
+        id: normalizeInputValue(entry?.id) || `system-description-row-${index + 1}`,
+        subtitle: normalizeInputValue(entry?.subtitle ?? entry?.label ?? entry?.title),
+        description: normalizeInputValue(entry?.description ?? entry?.value ?? entry?.text ?? entry?.content),
+        lineCount: normalizeMobileSystemDescriptionLineCount(entry?.lineCount ?? entry?.line_count ?? entry?.rows),
+        placeholder: normalizeInputValue(entry?.placeholder),
+      }))
+      .filter((row) => normalizeInputValue(row.subtitle || row.description));
+    if (objectRows.length > 0) {
+      return objectRows;
+    }
+
+    const textRows = value.map((entry) => normalizeInputValue(entry)).filter(Boolean);
+    return textRows.length > 0
+      ? [{
+        id: "system-description-row-1",
+        subtitle: "",
+        description: textRows.join("\n"),
+        lineCount: 2,
+        placeholder: "",
+      }]
+      : null;
+  }
+
+  const explicitRows = Array.isArray(value.rows)
+    ? value.rows
+    : Array.isArray(value.items)
+      ? value.items
+      : null;
+  if (explicitRows) {
+    return normalizeMobileSystemDescriptionRowsFromStructuredValue(field, explicitRows);
+  }
+
+  const templateRows = getMobileSystemDescriptionTemplateRows(field);
+  let hasMappedValue = false;
+  const rows = templateRows.map((row, index) => {
+    const rawValue = getMobileSystemDescriptionValueByKeys(value, getMobileSystemDescriptionRowValueKeys(row));
+    const description = Array.isArray(rawValue)
+      ? rawValue.map((entry) => normalizeInputValue(entry)).filter(Boolean).join("\n")
+      : rawValue && typeof rawValue === "object"
+        ? normalizeInputValue(rawValue.value ?? rawValue.text ?? rawValue.description ?? rawValue.content)
+        : normalizeInputValue(rawValue);
+    if (description) {
+      hasMappedValue = true;
+    }
+    return {
+      ...row,
+      id: row.id || `system-description-row-${index + 1}`,
+      description,
+    };
+  });
+
+  return hasMappedValue ? rows : null;
+}
+
+function normalizeMobileSystemDescriptionBlock(field = {}, block = {}, index = 0) {
+  const title = normalizeInputValue(block?.title || block?.label || field?.label || field?.wordLabel || "Opis sustava");
+  const sectionSubtitle = normalizeInputValue(
+    block?.sectionSubtitle
+    || block?.section_subtitle
+    || block?.subtitle
+    || (index === 0 ? field?.sectionSubtitle : ""),
+  );
+  return {
+    id: normalizeInputValue(block?.id) || `system-description-block-${index + 1}`,
+    title,
+    sectionSubtitle,
+    rows: normalizeMobileSystemDescriptionRows(block?.rows),
+  };
+}
+
+function normalizeMobileSystemDescriptionRuntimeValue(field = {}, value = null) {
+  if (!isMobileSystemDescriptionValue(value) && value && typeof value === "object") {
+    const mappedRows = normalizeMobileSystemDescriptionRowsFromStructuredValue(field, value);
+    if (mappedRows?.length) {
+      return {
+        blocks: [{
+          id: "system-description-block-1",
+          title: normalizeInputValue(value.title || value.label || field?.label || field?.wordLabel || "Opis sustava"),
+          sectionSubtitle: normalizeInputValue(value.sectionSubtitle || value.section_subtitle || value.subtitle),
+          rows: mappedRows,
+        }],
+      };
+    }
+  }
+
+  if (!isMobileSystemDescriptionValue(value) && normalizeInputValue(value)) {
+    const templateRows = getMobileSystemDescriptionTemplateRows(field);
+    const [firstRow = { id: "system-description-row-1", subtitle: "", lineCount: 1, placeholder: "" }, ...restRows] = templateRows;
+    return {
+      blocks: [{
+        id: "system-description-block-1",
+        title: normalizeInputValue(field?.label || field?.wordLabel || "Opis sustava"),
+        sectionSubtitle: normalizeInputValue(field?.sectionSubtitle),
+        rows: [
+          {
+            ...firstRow,
+            description: normalizeInputValue(value),
+          },
+          ...restRows,
+        ],
+      }],
+    };
+  }
+
+  if (isMobileSystemDescriptionValue(value) && Array.isArray(value.blocks)) {
+    return {
+      blocks: value.blocks.slice(0, 24).map((block, index) => normalizeMobileSystemDescriptionBlock(field, block, index)),
+    };
+  }
+
+  if (isMobileSystemDescriptionValue(value) && Array.isArray(value.rows)) {
+    return {
+      blocks: [normalizeMobileSystemDescriptionBlock(field, {
+        title: value.title || field?.label || field?.wordLabel || "Opis sustava",
+        sectionSubtitle: value.sectionSubtitle || value.section_subtitle || value.subtitle || field?.sectionSubtitle,
+        rows: value.rows,
+      }, 0)],
+    };
+  }
+
+  return {
+    blocks: [normalizeMobileSystemDescriptionBlock(field, {
+      title: field?.label || field?.wordLabel || "Opis sustava",
+      sectionSubtitle: field?.sectionSubtitle,
+      rows: getMobileSystemDescriptionTemplateRows(field),
+    }, 0)],
+  };
+}
+
+function buildMobileSystemDescriptionWordPlaceholder(field = {}, value = null) {
+  const model = normalizeMobileSystemDescriptionRuntimeValue(field, value);
+  return {
+    __docxBlockType: "system_description",
+    blocks: model.blocks.map((block, blockIndex) => ({
+      id: block.id || `system-description-block-${blockIndex + 1}`,
+      title: block.title || field?.label || field?.wordLabel || "Opis sustava",
+      subtitle: block.sectionSubtitle || "",
+      rows: (Array.isArray(block.rows) ? block.rows : []).map((row, rowIndex) => ({
+        id: row.id || `system-description-row-${blockIndex + 1}-${rowIndex + 1}`,
+        subtitle: row.subtitle || "",
+        description: row.description || "",
+        lineCount: normalizeMobileSystemDescriptionLineCount(row.lineCount),
+      })),
+    })),
+  };
+}
+
+function hasMobileSystemDescriptionContent(value = null) {
+  const model = isMobileSystemDescriptionValue(value)
+    ? normalizeMobileSystemDescriptionRuntimeValue({}, value)
+    : value;
+  return Boolean(
+    model
+    && typeof model === "object"
+    && Array.isArray(model.blocks)
+    && model.blocks.some((block) => (
+      normalizeInputValue(block?.sectionSubtitle)
+      || (Array.isArray(block?.rows) && block.rows.some((row) => normalizeInputValue(row?.description)))
+    )),
+  );
+}
+
 const MOBILE_DOCUMENT_TEMPLATE_PROMPT_FIELD_TYPES = new Set([
   "text",
   "longtext",
@@ -12135,7 +12397,6 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
     measurementEquipmentGroup: getMobileDocumentRecordFieldValue(record, ["MEASUREMENT_EQUIPMENT_GROUP", "MJERNA_OPREMA_GRUPA"]),
     selectedEquipmentIds: getMobileDocumentRecordArrayValue(record, ["MEASUREMENT_EQUIPMENT_IDS", "MJERNA_OPREMA_IDS", "selectedEquipmentIds"]),
     selectedLegalFrameworkIds: getMobileDocumentRecordArrayValue(record, ["LEGAL_FRAMEWORK_IDS", "PROPISI_IDS", "selectedLegalFrameworkIds"]),
-    selectedRulebookIds: getMobileDocumentRecordArrayValue(record, ["RULEBOOK_IDS", "PRAVILNICI_IDS", "selectedRulebookIds"]),
     signatureMode: normalizeMobileDocumentSignatureMode(getMobileDocumentRecordFieldValue(record, ["SIGNATURE_MODE", "NACIN_POTPISA"])),
     validityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_VALIDITY_MONTHS", "WORK_ORDER_SERVICE_VALIDITY_MONTHS", "VRIJEDI_MJESECI"]),
     electricalValidityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_PANIC_VALIDITY_MONTHS"]),
@@ -12615,7 +12876,6 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     },
     measurementEquipmentOptions: buildMobileMeasurementEquipmentOptions(scopedSnapshot),
     legalFrameworkOptions: buildMobileLegalFrameworkOptions(scopedSnapshot),
-    rulebookOptions: buildMobileRulebookOptions(scopedSnapshot),
     signaturePersonOptions: buildMobileSignaturePersonOptions(scopedSnapshot, [...signatureAreaKeys], workOrder),
   };
 }
@@ -12682,6 +12942,32 @@ function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {
   const fieldValues = {};
 
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
+    const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+    if (fieldType === "system_description") {
+      if (field.hidden === true || field.mobileHidden === true || field.excludeFromMobile === true) {
+        return;
+      }
+      const submittedValue = getMobileDocumentTemplateSubmittedFieldValue(field, template, common, index);
+      const value = submittedValue !== undefined
+        ? submittedValue
+        : (normalizeInputValue(field?.defaultValue) ? field.defaultValue : null);
+      const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+      const placeholderValue = buildMobileSystemDescriptionWordPlaceholder(field, value);
+      [
+        tokenKey,
+        normalizeInputValue(field?.key),
+        normalizeInputValue(field?.id),
+      ].filter(Boolean).forEach((key) => {
+        placeholders[key] = placeholderValue;
+      });
+      const recordKey = normalizeInputValue(field?.key || field?.id || tokenKey);
+      const documentValue = normalizeMobileSystemDescriptionRuntimeValue(field, value);
+      if (recordKey && hasMobileSystemDescriptionContent(documentValue)) {
+        fieldValues[recordKey] = documentValue;
+      }
+      return;
+    }
+
     if (!isMobileDocumentTemplatePromptField(field)) {
       return;
     }
