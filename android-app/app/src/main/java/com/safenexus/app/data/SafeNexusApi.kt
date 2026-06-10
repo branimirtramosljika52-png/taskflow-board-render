@@ -2,6 +2,7 @@ package com.safenexus.app.data
 
 import com.safenexus.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,6 +29,8 @@ class SafeNexusApi(
         const val DEFAULT_READ_TIMEOUT_MS = 24_000
         const val PDF_ACTION_READ_TIMEOUT_MS = 120_000
         const val DOCUMENT_GENERATION_READ_TIMEOUT_MS = 180_000
+        const val DOCUMENT_GENERATION_POLL_INTERVAL_MS = 2_000L
+        const val DOCUMENT_GENERATION_POLL_ATTEMPTS = 180
     }
 
     init {
@@ -360,8 +363,9 @@ class SafeNexusApi(
                 .put("templateFieldSheets", draft.templateFieldSheets.toNestedMeasurementSheetJsonObject())
                 .put("additionalRecords", additionalRecords)
                 .put("includeHandoverProtocol", draft.includeHandoverProtocol)
+                .put("async", true)
                 .toString()
-            val json = JSONObject(
+            var json = JSONObject(
                 request(
                     "/api/mobile/work-orders/${workOrderId.pathSegment()}/generate-documents",
                     method = "POST",
@@ -369,6 +373,33 @@ class SafeNexusApi(
                     readTimeoutMs = DOCUMENT_GENERATION_READ_TIMEOUT_MS,
                 ),
             )
+            val jobId = json.firstClean("jobId", "id")
+            var status = json.firstClean("status").lowercase()
+            if (jobId.isNotBlank() && (status == "pending" || status == "running")) {
+                var attempts = 0
+                while (attempts < DOCUMENT_GENERATION_POLL_ATTEMPTS) {
+                    delay(DOCUMENT_GENERATION_POLL_INTERVAL_MS)
+                    json = JSONObject(
+                        request(
+                            "/api/mobile/work-orders/${workOrderId.pathSegment()}/generate-documents/jobs/${jobId.pathSegment()}",
+                            readTimeoutMs = DEFAULT_READ_TIMEOUT_MS,
+                        ),
+                    )
+                    status = json.firstClean("status").lowercase()
+                    if (status == "completed") {
+                        break
+                    }
+                    if (status == "failed") {
+                        throw IllegalStateException(
+                            json.firstClean("error", "message").ifBlank { "Ne mogu izraditi dokumentaciju RN-a." },
+                        )
+                    }
+                    attempts += 1
+                }
+                if (status != "completed") {
+                    throw IllegalStateException("Izrada dokumentacije još traje. Osvježi dokumentaciju RN-a za nekoliko trenutaka.")
+                }
+            }
             json.optJSONArray("items").toWorkOrderDocuments()
         }
     }

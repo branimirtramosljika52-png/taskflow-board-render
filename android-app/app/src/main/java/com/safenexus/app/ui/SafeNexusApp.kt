@@ -7744,17 +7744,28 @@ private fun standardDocumentationSignatureValue(
 ): String {
     val area = normalizeDocumentationSignatureAreaKey(signatureArea)
     val normalizedRole = normalizeDocumentationSignatureRole(role, type)
-    if (normalizedRole == "authorize") {
-        return when (area) {
+    fun authorizationValue(): String =
+        when (area) {
             "tipkalo", "tzin" -> standard.tipkaloAuthorizationHolderLabel.ifBlank { standard.tipkaloAuthorizationHolderUserId }
             "elektro" -> standard.electricalAuthorizationHolderLabel.ifBlank { standard.electricalAuthorizationHolderUserId }
             else -> standard.authorizationHolderLabel.ifBlank { standard.authorizationHolderUserId }
         }
-    }
-    return when (area) {
-        "tipkalo", "tzin" -> standard.tipkaloInspectorLabel.ifBlank { standard.tipkaloInspectorUserId }
-        "elektro" -> standard.electricalInspectorLabel.ifBlank { standard.electricalInspectorUserId }
-        else -> standard.inspectorLabel.ifBlank { standard.inspectorUserId }
+
+    fun inspectorValue(): String =
+        when (area) {
+            "tipkalo", "tzin" -> standard.tipkaloInspectorLabel.ifBlank { standard.tipkaloInspectorUserId }
+            "elektro" -> standard.electricalInspectorLabel.ifBlank { standard.electricalInspectorUserId }
+            else -> standard.inspectorLabel.ifBlank { standard.inspectorUserId }
+        }
+
+    return when (normalizedRole) {
+        "authorize" -> authorizationValue()
+        "all" -> listOf(inspectorValue(), authorizationValue())
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .joinToString(", ")
+        else -> inspectorValue()
     }
 }
 
@@ -8616,6 +8627,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     onSelectedRulebookIdsChange = { selectedRulebookIds = it },
                     measurementSheets = measurementSheets,
                     onMeasurementSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
+                    standardValues = standardValues,
                     enabled = !formLoading,
                 )
 
@@ -10282,6 +10294,7 @@ private data class DocumentationTemplateStandardControls(
     val onSelectedRulebookIdsChange: (Set<String>) -> Unit,
     val measurementSheets: Map<String, WorkOrderMeasurementSheet>,
     val onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
+    val standardValues: DocumentationStandardValues,
     val enabled: Boolean,
 )
 
@@ -10472,6 +10485,7 @@ private fun TemplateBlockSectionCard(
                             block = block,
                             editableField = editableField,
                             value = editableField?.let { values[templateFieldStateKey(template, it)] }.orEmpty(),
+                            standardValues = standardControls.standardValues,
                             enabled = standardControls.enabled,
                             onChange = onChange,
                         )
@@ -11115,15 +11129,45 @@ private fun getMeasurementTablesForSection(
     }.ifEmpty { template.measurementTables }
 }
 
+private fun documentationSignatureBlockTypeLabel(block: WorkOrderDocumentationTemplateBlock): String {
+    if (!isDocumentationSignatureFieldType(block.type)) return ""
+    return when (normalizeDocumentationSignatureRole(block.signatureRole, block.type)) {
+        "authorize" -> "Ovlaštena osoba"
+        "company_responsible" -> "Odgovorna osoba naručitelja"
+        "all" -> "Ispitivači i ovlaštena osoba"
+        else -> "Ispitivači"
+    }
+}
+
+private fun documentationSignatureBlockSelectionSummary(
+    block: WorkOrderDocumentationTemplateBlock,
+    standard: DocumentationStandardValues,
+): String? {
+    if (!isDocumentationSignatureFieldType(block.type)) return null
+    val role = normalizeDocumentationSignatureRole(block.signatureRole, block.type)
+    if (role == "company_responsible") {
+        return "Automatski iz podataka tvrtke/lokacije."
+    }
+    return standardDocumentationSignatureValue(block.signatureArea, block.signatureRole, block.type, standard)
+        .ifBlank { "Odaberi osobu u bloku Osobe i ovlaštenja." }
+}
+
 @Composable
 private fun TemplateBlockDetailRow(
     template: WorkOrderDocumentationTemplate,
     block: WorkOrderDocumentationTemplateBlock,
     editableField: WorkOrderDocumentationField?,
     value: String,
+    standardValues: DocumentationStandardValues,
     enabled: Boolean,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
 ) {
+    val signatureSummary = remember(block, standardValues) {
+        documentationSignatureBlockSelectionSummary(block, standardValues)
+    }
+    val blockTypeLabel = remember(block) {
+        documentationSignatureBlockTypeLabel(block).ifBlank { block.typeLabel }
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -11152,7 +11196,7 @@ private fun TemplateBlockDetailRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        block.typeLabel,
+                        blockTypeLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                     )
@@ -11167,7 +11211,7 @@ private fun TemplateBlockDetailRow(
                 )
             } else {
                 Text(
-                    block.summary.ifBlank {
+                    signatureSummary ?: block.summary.ifBlank {
                         when (block.type.lowercase(Locale.getDefault())) {
                             "measurement_table" -> "Excel tablica se uređuje u bloku Excel / mjerenja."
                             "equipment_list" -> "Oprema se bira u bloku Mjerna i ispitna oprema."
@@ -11182,7 +11226,7 @@ private fun TemplateBlockDetailRow(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 )
             }
-            if (block.helpText.isNotBlank()) {
+            if (block.helpText.isNotBlank() && signatureSummary == null) {
                 Text(
                     block.helpText,
                     style = MaterialTheme.typography.labelSmall,

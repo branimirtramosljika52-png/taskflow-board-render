@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.67.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.68.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -1920,11 +1920,13 @@ const SIGNATURE_BRIDGE_JOB_TTL_MS = 10 * 60 * 1000;
 const SIGNATURE_BRIDGE_MAX_ITEMS = 80;
 const SIGNATURE_BRIDGE_CLAIM_TTL_MS = 20 * 60 * 1000;
 const SIGNATURE_BRIDGE_LOCK_TTL_MS = 10 * 60 * 1000;
+const MOBILE_DOCUMENT_GENERATION_JOB_TTL_MS = 30 * 60 * 1000;
 const signatureBridgeJobs = new Map();
 const signatureBridgeLocks = new Map();
 const signatureBridgeAuditLog = [];
 const signatureBridgeReviewLog = [];
 const signatureBridgeNotifications = [];
+const mobileDocumentGenerationJobs = new Map();
 
 function appendVaryHeader(response, value) {
   const normalizedValue = String(value ?? "").trim();
@@ -5186,6 +5188,105 @@ function stripStoredDocumentPayloadForResponse(document = null) {
   }
   const { dataUrl, ...rest } = document;
   return rest;
+}
+
+function cleanupMobileDocumentGenerationJobs() {
+  const now = Date.now();
+  for (const [jobId, job] of mobileDocumentGenerationJobs.entries()) {
+    if (!job || Number(job.expiresAtMs || 0) <= now) {
+      mobileDocumentGenerationJobs.delete(jobId);
+    }
+  }
+}
+
+function buildMobileDocumentGenerationJobResponse(job = {}) {
+  const status = String(job.status || "pending").trim() || "pending";
+  return {
+    ok: status === "completed",
+    jobId: String(job.id || "").trim(),
+    status,
+    workOrderId: String(job.workOrderId || "").trim(),
+    entriesCount: Number(job.entriesCount || 0) || 0,
+    generatedCount: Array.isArray(job.items) ? job.items.length : 0,
+    items: Array.isArray(job.items) ? job.items : [],
+    error: String(job.error || "").trim(),
+    createdAt: job.createdAt || "",
+    startedAt: job.startedAt || "",
+    completedAt: job.completedAt || "",
+    expiresAt: job.expiresAt || "",
+  };
+}
+
+function getMobileDocumentGenerationJob(jobId = "", user = null, workOrderId = "") {
+  cleanupMobileDocumentGenerationJobs();
+  const normalizedJobId = String(jobId || "").trim();
+  const job = mobileDocumentGenerationJobs.get(normalizedJobId);
+  if (!job) {
+    return null;
+  }
+  const expectedUserId = String(user?.id || "").trim();
+  if (expectedUserId && String(job.userId || "").trim() !== expectedUserId) {
+    return null;
+  }
+  const expectedWorkOrderId = String(workOrderId || "").trim();
+  if (expectedWorkOrderId && String(job.workOrderId || "").trim() !== expectedWorkOrderId) {
+    return null;
+  }
+  return job;
+}
+
+function startMobileDocumentGenerationJob({
+  workOrderId = "",
+  entries = [],
+  scopedSnapshot = {},
+  user = null,
+} = {}) {
+  cleanupMobileDocumentGenerationJobs();
+  const now = Date.now();
+  const expiresAtMs = now + MOBILE_DOCUMENT_GENERATION_JOB_TTL_MS;
+  const job = {
+    id: randomUUID(),
+    workOrderId: String(workOrderId || "").trim(),
+    userId: String(user?.id || "").trim(),
+    status: "pending",
+    entriesCount: Array.isArray(entries) ? entries.length : 0,
+    items: [],
+    error: "",
+    createdAt: new Date(now).toISOString(),
+    startedAt: "",
+    completedAt: "",
+    expiresAtMs,
+    expiresAt: new Date(expiresAtMs).toISOString(),
+  };
+  mobileDocumentGenerationJobs.set(job.id, job);
+
+  setTimeout(() => {
+    void (async () => {
+      job.status = "running";
+      job.startedAt = new Date().toISOString();
+      try {
+        const items = await saveGeneratedDocumentTemplatePdfDocuments(entries, scopedSnapshot, user, {});
+        job.items = items;
+        job.status = items.length > 0 ? "completed" : "failed";
+        job.error = items.length > 0 ? "" : "Nijedan zapisnik nije spremljen u dokumentaciju RN-a.";
+      } catch (error) {
+        job.status = "failed";
+        job.error = error?.message || "Ne mogu izraditi dokumentaciju RN-a.";
+        console.error("[mobile-document-generation-job] failed", {
+          jobId: job.id,
+          workOrderId: job.workOrderId,
+          entries: job.entriesCount,
+          error: job.error,
+        });
+      } finally {
+        job.completedAt = new Date().toISOString();
+        job.expiresAtMs = Date.now() + MOBILE_DOCUMENT_GENERATION_JOB_TTL_MS;
+        job.expiresAt = new Date(job.expiresAtMs).toISOString();
+      }
+    })();
+  }, 0);
+
+  return job;
 }
 
 function cleanupSignatureBridgeJobs() {
@@ -13994,6 +14095,29 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    const mobileWorkOrderGenerateDocumentsJobMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/generate-documents\/jobs\/([^/]+)$/);
+    if (mobileWorkOrderGenerateDocumentsJobMatch && request.method === "GET") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo izradivati dokumentaciju RN-a.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderGenerateDocumentsJobMatch[1],
+        "Radni nalog nije pronaÄ‘en.",
+      );
+      const job = getMobileDocumentGenerationJob(mobileWorkOrderGenerateDocumentsJobMatch[2], user, workOrder.id);
+      if (!job) {
+        sendError(response, 404, "Izrada dokumentacije je zavrsila, istekla ili nije pronadena.");
+        return true;
+      }
+
+      sendJson(response, 200, buildMobileDocumentGenerationJobResponse(job));
+      return true;
+    }
+
     const mobileWorkOrderGenerateDocumentsMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/generate-documents$/);
     if (mobileWorkOrderGenerateDocumentsMatch && request.method === "POST") {
       if (!canManageWorkOrders(user)) {
@@ -14012,6 +14136,17 @@ async function handleApiRequest(request, response, url) {
       const entries = buildMobileWorkOrderGeneratedDocumentEntries(workOrderForGeneration, scopedSnapshot, body);
       if (entries.length === 0) {
         sendError(response, 400, "Ovaj RN nema uslugu s povezanim templateom za izradu dokumentacije.");
+        return true;
+      }
+
+      if (body.async === true || body.generateAsync === true || request.headers["x-safenexus-async"] === "1") {
+        const job = startMobileDocumentGenerationJob({
+          workOrderId: workOrder.id,
+          entries,
+          scopedSnapshot,
+          user,
+        });
+        sendJson(response, 202, buildMobileDocumentGenerationJobResponse(job));
         return true;
       }
 
