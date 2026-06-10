@@ -23,6 +23,13 @@ class SafeNexusApi(
     private var authCookieHeader: String = ""
     private var accessToken: String = ""
 
+    private companion object {
+        const val DEFAULT_CONNECT_TIMEOUT_MS = 18_000
+        const val DEFAULT_READ_TIMEOUT_MS = 24_000
+        const val PDF_ACTION_READ_TIMEOUT_MS = 120_000
+        const val DOCUMENT_GENERATION_READ_TIMEOUT_MS = 180_000
+    }
+
     init {
         if (CookieHandler.getDefault() == null) {
             CookieHandler.setDefault(CookieManager(null, CookiePolicy.ACCEPT_ALL))
@@ -359,6 +366,7 @@ class SafeNexusApi(
                     "/api/mobile/work-orders/${workOrderId.pathSegment()}/generate-documents",
                     method = "POST",
                     body = payload,
+                    readTimeoutMs = DOCUMENT_GENERATION_READ_TIMEOUT_MS,
                 ),
             )
             json.optJSONArray("items").toWorkOrderDocuments()
@@ -414,7 +422,13 @@ class SafeNexusApi(
     suspend fun downloadWorkOrderPdf(workOrderId: String, fallbackFileName: String): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
         runCatching {
             val path = "/api/work-orders/${workOrderId.pathSegment()}/export-pdf"
-            val connection = openConnection(path, method = "POST", body = "{}", accept = "application/pdf")
+            val connection = openConnection(
+                path,
+                method = "POST",
+                body = "{}",
+                accept = "application/pdf",
+                readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
+            )
             val bytes = readBinaryResponse(connection)
             rememberAuthCookies(connection)
             if (connection.responseCode !in 200..299) {
@@ -461,6 +475,7 @@ class SafeNexusApi(
                     "/api/work-orders/${workOrderId.pathSegment()}/signature-pdf",
                     method = "POST",
                     body = payload,
+                    readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
                 ),
             )
             val fileContentBase64 = json.firstClean("fileContentBase64", "bytesBase64", "contentBase64")
@@ -488,11 +503,12 @@ class SafeNexusApi(
         method: String = "GET",
         body: String? = null,
         accept: String = "application/json",
+        readTimeoutMs: Int = DEFAULT_READ_TIMEOUT_MS,
     ): HttpURLConnection {
         return (URL("$baseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 18_000
-            readTimeout = 24_000
+            connectTimeout = DEFAULT_CONNECT_TIMEOUT_MS
+            readTimeout = readTimeoutMs
             setRequestProperty("Accept", accept)
             if (accept == "application/json") {
                 setRequestProperty("Accept-Encoding", "gzip")
@@ -514,8 +530,8 @@ class SafeNexusApi(
         }
     }
 
-    private fun request(path: String, method: String = "GET", body: String? = null): String {
-        val connection = openConnection(path, method, body)
+    private fun request(path: String, method: String = "GET", body: String? = null, readTimeoutMs: Int = DEFAULT_READ_TIMEOUT_MS): String {
+        val connection = openConnection(path, method, body, readTimeoutMs = readTimeoutMs)
         val responseText = readResponse(connection)
         rememberAuthCookies(connection)
         if (connection.responseCode !in 200..299) {
