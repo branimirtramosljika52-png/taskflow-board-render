@@ -247,6 +247,45 @@ data class WorkOrderDocumentationTemplate(
     val fieldBlocks: List<WorkOrderDocumentationTemplateBlock> = emptyList(),
     val inspectionTypeOptions: List<OptionItem> = emptyList(),
     val measurementTables: List<WorkOrderMeasurementTable>,
+    val aiFields: List<WorkOrderDocumentationAiField> = emptyList(),
+    val aiMeasurementColumns: List<WorkOrderDocumentationAiMeasurementColumn> = emptyList(),
+)
+
+data class WorkOrderDocumentationAiField(
+    val id: String,
+    val key: String,
+    val label: String,
+    val type: String,
+    val fieldType: String,
+    val required: Boolean,
+    val ai: JSONObject = JSONObject(),
+    val valueShape: String = "",
+    val sectionSubtitle: String = "",
+    val systemRows: List<WorkOrderDocumentationAiSystemRow> = emptyList(),
+)
+
+data class WorkOrderDocumentationAiSystemRow(
+    val id: String,
+    val subtitle: String,
+    val lineCount: Int,
+    val placeholder: String,
+)
+
+data class WorkOrderDocumentationAiMeasurementColumn(
+    val fieldId: String,
+    val fieldKey: String,
+    val fieldLabel: String,
+    val fieldDescription: String,
+    val columnId: String,
+    val columnIndex: Int,
+    val columnLetter: String,
+    val key: String,
+    val label: String,
+    val type: String,
+    val required: Boolean,
+    val placeholder: String,
+    val helpText: String,
+    val aiMapping: JSONObject = JSONObject(),
 )
 
 data class WorkOrderDocumentationTemplateBlock(
@@ -445,6 +484,50 @@ data class WorkOrderUploadFile(
     val documentCategory: String,
     val description: String,
     val bytes: ByteArray,
+)
+
+data class WorkOrderDocumentationAiFile(
+    val id: String,
+    val name: String,
+    val type: String,
+    val size: Long,
+    val contentDataUrl: String,
+)
+
+data class WorkOrderDocumentationAiResult(
+    val dryRun: Boolean = false,
+    val modelLabel: String = "",
+    val message: String = "",
+    val fieldSuggestions: List<WorkOrderDocumentationAiFieldSuggestion> = emptyList(),
+    val measurementSuggestions: List<WorkOrderDocumentationAiMeasurementSuggestion> = emptyList(),
+    val warnings: List<String> = emptyList(),
+)
+
+data class WorkOrderDocumentationAiFieldSuggestion(
+    val fieldId: String,
+    val fieldKey: String,
+    val fieldLabel: String,
+    val valueText: String,
+    val rawValueJson: String,
+    val confidence: String,
+    val reason: String,
+    val sourceFile: String,
+)
+
+data class WorkOrderDocumentationAiMeasurementSuggestion(
+    val fieldId: String,
+    val fieldKey: String,
+    val fieldLabel: String,
+    val rows: List<WorkOrderDocumentationAiMeasurementRowSuggestion> = emptyList(),
+    val confidence: String,
+    val sourceFile: String,
+)
+
+data class WorkOrderDocumentationAiMeasurementRowSuggestion(
+    val values: Map<String, String> = emptyMap(),
+    val orderedValues: List<String> = emptyList(),
+    val confidence: String,
+    val sourceFile: String,
 )
 
 data class DownloadedDocument(

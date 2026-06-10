@@ -29,6 +29,7 @@ class SafeNexusApi(
         const val DEFAULT_READ_TIMEOUT_MS = 24_000
         const val PDF_ACTION_READ_TIMEOUT_MS = 120_000
         const val DOCUMENT_GENERATION_READ_TIMEOUT_MS = 180_000
+        const val OPENAI_PREPARE_READ_TIMEOUT_MS = 180_000
         const val DOCUMENT_GENERATION_POLL_INTERVAL_MS = 2_000L
         const val DOCUMENT_GENERATION_POLL_ATTEMPTS = 180
     }
@@ -416,6 +417,38 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun prepareWorkOrderDocumentationAi(
+        workOrderId: String,
+        workOrderNumber: String,
+        template: WorkOrderDocumentationTemplate,
+        files: List<WorkOrderDocumentationAiFile>,
+        modelTier: String = "standard",
+    ): Result<WorkOrderDocumentationAiResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("purpose", "document-template-runtime-ai-prefill")
+                .put("templateId", template.id)
+                .put("workOrderId", workOrderId)
+                .put("workOrderNumber", workOrderNumber)
+                .put("files", files.toDocumentationAiFilesJsonArray())
+                .put("fields", template.aiFields.toDocumentationAiFieldsJsonArray())
+                .put("columns", template.aiMeasurementColumns.toDocumentationAiColumnsJsonArray())
+                .put("modelTier", modelTier.ifBlank { "standard" })
+                .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "standard" }))
+                .put("dryRun", false)
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/ai/openai/prepare",
+                    method = "POST",
+                    body = payload,
+                    readTimeoutMs = OPENAI_PREPARE_READ_TIMEOUT_MS,
+                ),
+            )
+            json.toWorkOrderDocumentationAiResult()
+        }
+    }
+
     suspend fun deleteWorkOrderDocument(workOrderId: String, documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request(
@@ -796,6 +829,72 @@ private fun Map<String, JSONObject>.toMeasurementFormatsJsonObject(): JSONObject
     return json
 }
 
+private fun List<WorkOrderDocumentationAiFile>.toDocumentationAiFilesJsonArray(): JSONArray =
+    JSONArray().also { array ->
+        forEach { file ->
+            array.put(
+                JSONObject()
+                    .put("id", file.id)
+                    .put("name", file.name)
+                    .put("type", file.type)
+                    .put("size", file.size)
+                    .put("contentDataUrl", file.contentDataUrl),
+            )
+        }
+    }
+
+private fun List<WorkOrderDocumentationAiField>.toDocumentationAiFieldsJsonArray(): JSONArray =
+    JSONArray().also { array ->
+        forEach { field ->
+            val rows = JSONArray()
+            field.systemRows.forEach { row ->
+                rows.put(
+                    JSONObject()
+                        .put("id", row.id)
+                        .put("subtitle", row.subtitle)
+                        .put("lineCount", row.lineCount)
+                        .put("placeholder", row.placeholder),
+                )
+            }
+            array.put(
+                JSONObject()
+                    .put("id", field.id)
+                    .put("key", field.key)
+                    .put("label", field.label)
+                    .put("type", field.type)
+                    .put("fieldType", field.fieldType)
+                    .put("required", field.required)
+                    .put("ai", field.ai)
+                    .put("valueShape", field.valueShape)
+                    .put("sectionSubtitle", field.sectionSubtitle)
+                    .put("systemRows", rows),
+            )
+        }
+    }
+
+private fun List<WorkOrderDocumentationAiMeasurementColumn>.toDocumentationAiColumnsJsonArray(): JSONArray =
+    JSONArray().also { array ->
+        forEach { column ->
+            array.put(
+                JSONObject()
+                    .put("fieldId", column.fieldId)
+                    .put("fieldKey", column.fieldKey)
+                    .put("fieldLabel", column.fieldLabel)
+                    .put("fieldDescription", column.fieldDescription)
+                    .put("columnId", column.columnId)
+                    .put("columnIndex", column.columnIndex)
+                    .put("columnLetter", column.columnLetter)
+                    .put("key", column.key)
+                    .put("label", column.label)
+                    .put("type", column.type)
+                    .put("required", column.required)
+                    .put("placeholder", column.placeholder)
+                    .put("helpText", column.helpText)
+                    .put("aiMapping", column.aiMapping),
+            )
+        }
+    }
+
 private fun JSONArray?.toDocumentationFieldOptions(): List<OptionItem> {
     if (this == null) return emptyList()
     return buildList {
@@ -998,6 +1097,80 @@ private fun JSONArray?.toWorkOrderMeasurementTables(): List<WorkOrderMeasurement
     }.filter { it.key.isNotBlank() && it.sheet.columns.isNotEmpty() }
 }
 
+private fun JSONArray?.toWorkOrderDocumentationAiSystemRows(): List<WorkOrderDocumentationAiSystemRow> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderDocumentationAiSystemRow(
+                    id = item.firstClean("id").ifBlank { "system-description-row-${index + 1}" },
+                    subtitle = item.firstClean("subtitle", "label"),
+                    lineCount = item.optInt("lineCount", 1).coerceIn(1, 8),
+                    placeholder = item.firstClean("placeholder"),
+                ),
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toWorkOrderDocumentationAiFields(): List<WorkOrderDocumentationAiField> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val id = item.firstClean("id").ifBlank { "ai-field-${index + 1}" }
+            val key = item.firstClean("key")
+            val label = item.firstClean("label").ifBlank { key.ifBlank { id } }
+            if (id.isBlank() && key.isBlank()) continue
+            add(
+                WorkOrderDocumentationAiField(
+                    id = id,
+                    key = key,
+                    label = label,
+                    type = item.firstClean("type").ifBlank { "text" },
+                    fieldType = item.firstClean("fieldType", "actualFieldType").ifBlank { item.firstClean("type").ifBlank { "text" } },
+                    required = item.optBoolean("required", false),
+                    ai = item.optJSONObject("ai") ?: item.optJSONObject("aiConfig") ?: JSONObject(),
+                    valueShape = item.firstClean("valueShape"),
+                    sectionSubtitle = item.firstClean("sectionSubtitle", "section_subtitle"),
+                    systemRows = item.optJSONArray("systemRows").toWorkOrderDocumentationAiSystemRows(),
+                ),
+            )
+        }
+    }.distinctBy { it.id.ifBlank { it.key } }
+}
+
+private fun JSONArray?.toWorkOrderDocumentationAiMeasurementColumns(): List<WorkOrderDocumentationAiMeasurementColumn> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val fieldId = item.firstClean("fieldId")
+            val columnId = item.firstClean("columnId")
+            if (fieldId.isBlank() || columnId.isBlank()) continue
+            add(
+                WorkOrderDocumentationAiMeasurementColumn(
+                    fieldId = fieldId,
+                    fieldKey = item.firstClean("fieldKey"),
+                    fieldLabel = item.firstClean("fieldLabel"),
+                    fieldDescription = item.firstClean("fieldDescription"),
+                    columnId = columnId,
+                    columnIndex = item.optInt("columnIndex", index),
+                    columnLetter = item.firstClean("columnLetter"),
+                    key = item.firstClean("key"),
+                    label = item.firstClean("label").ifBlank { columnId },
+                    type = item.firstClean("type").ifBlank { "text" },
+                    required = item.optBoolean("required", false),
+                    placeholder = item.firstClean("placeholder"),
+                    helpText = item.firstClean("helpText"),
+                    aiMapping = item.optJSONObject("aiMapping") ?: item.optJSONObject("ai") ?: JSONObject(),
+                ),
+            )
+        }
+    }
+}
+
 private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocumentationTemplate> {
     if (this == null) return emptyList()
     return buildList {
@@ -1018,6 +1191,8 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
                     fieldBlocks = item.optJSONArray("fieldBlocks").toWorkOrderDocumentationTemplateBlocks(),
                     inspectionTypeOptions = item.optJSONArray("inspectionTypeOptions").toDocumentationFieldOptions(),
                     measurementTables = item.optJSONArray("measurementTables").toWorkOrderMeasurementTables(),
+                    aiFields = item.optJSONArray("aiFields").toWorkOrderDocumentationAiFields(),
+                    aiMeasurementColumns = item.optJSONArray("aiMeasurementColumns").toWorkOrderDocumentationAiMeasurementColumns(),
                 ),
             )
         }
@@ -1112,6 +1287,150 @@ private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentati
         fieldSheets = optJSONObject("fieldSheets").toWorkOrderMeasurementSheetMap(),
         templateFieldSheets = optJSONObject("templateFieldSheets").toNestedWorkOrderMeasurementSheetMap(),
     )
+}
+
+private fun JSONObject.toWorkOrderDocumentationAiResult(): WorkOrderDocumentationAiResult {
+    val result = optJSONObject("result") ?: parseJsonObject(firstClean("outputText")) ?: JSONObject()
+    val dryRun = optBoolean("dryRun", false)
+    val fieldSuggestions = result.optJSONArray("fieldSuggestions")
+        ?: result.optJSONArray("field_suggestions")
+    val measurementSuggestions = result.optJSONArray("measurementSuggestions")
+        ?: result.optJSONArray("measurement_suggestions")
+    val warnings = (
+        result.optJSONArray("warnings").toStringList() +
+            optJSONArray("warnings").toStringList()
+        )
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+    return WorkOrderDocumentationAiResult(
+        dryRun = dryRun,
+        modelLabel = firstClean("modelLabel", "model"),
+        message = if (dryRun) {
+            firstClean("nextStep", "message").ifBlank { "NexAI dry-run je prošao, ali live pozivi nisu uključeni na serveru." }
+        } else {
+            result.firstClean("summary").ifBlank { firstClean("nextStep", "message") }
+        },
+        fieldSuggestions = fieldSuggestions.toWorkOrderDocumentationAiFieldSuggestions(),
+        measurementSuggestions = measurementSuggestions.toWorkOrderDocumentationAiMeasurementSuggestions(),
+        warnings = warnings,
+    )
+}
+
+private fun JSONArray?.toWorkOrderDocumentationAiFieldSuggestions(): List<WorkOrderDocumentationAiFieldSuggestion> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val value = item.opt("value") ?: item.opt("text") ?: item.opt("content") ?: ""
+            val rawValueJson = value.toRawJsonText()
+            val valueText = value.toAiDisplayText()
+            if (rawValueJson.isBlank() && valueText.isBlank()) continue
+            add(
+                WorkOrderDocumentationAiFieldSuggestion(
+                    fieldId = item.firstClean("fieldId", "field_id", "id"),
+                    fieldKey = item.firstClean("fieldKey", "field_key", "key"),
+                    fieldLabel = item.firstClean("fieldLabel", "field_label", "label"),
+                    valueText = valueText,
+                    rawValueJson = rawValueJson,
+                    confidence = item.firstClean("confidence"),
+                    reason = item.firstClean("reason", "explanation"),
+                    sourceFile = item.firstClean("sourceFile", "source_file"),
+                ),
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toWorkOrderDocumentationAiMeasurementSuggestions(): List<WorkOrderDocumentationAiMeasurementSuggestion> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val rows = item.optJSONArray("rows").toWorkOrderDocumentationAiMeasurementRows()
+            if (rows.isEmpty()) continue
+            add(
+                WorkOrderDocumentationAiMeasurementSuggestion(
+                    fieldId = item.firstClean("fieldId", "field_id", "id"),
+                    fieldKey = item.firstClean("fieldKey", "field_key", "key"),
+                    fieldLabel = item.firstClean("fieldLabel", "field_label", "label"),
+                    rows = rows,
+                    confidence = item.firstClean("confidence"),
+                    sourceFile = item.firstClean("sourceFile", "source_file"),
+                ),
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toWorkOrderDocumentationAiMeasurementRows(): List<WorkOrderDocumentationAiMeasurementRowSuggestion> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val values = item.optJSONObject("values").toStringMap()
+            val orderedValues = item.optJSONArray("orderedValues").toStringList().ifEmpty {
+                item.optJSONArray("ordered_values").toStringList()
+            }
+            if (values.isEmpty() && orderedValues.isEmpty()) continue
+            add(
+                WorkOrderDocumentationAiMeasurementRowSuggestion(
+                    values = values,
+                    orderedValues = orderedValues,
+                    confidence = item.firstClean("confidence"),
+                    sourceFile = item.firstClean("sourceFile", "source_file"),
+                ),
+            )
+        }
+    }
+}
+
+private fun parseJsonObject(value: String): JSONObject? =
+    runCatching {
+        val trimmed = value.trim()
+        if (trimmed.isBlank()) null else JSONObject(trimmed)
+    }.getOrNull()
+
+private fun Any?.toRawJsonText(): String = when (this) {
+    null, JSONObject.NULL -> ""
+    is JSONObject, is JSONArray -> toString()
+    else -> toString().trim()
+}
+
+private fun Any?.toAiDisplayText(): String {
+    if (this == null || this == JSONObject.NULL) return ""
+    if (this is JSONObject) {
+        val blocks = optJSONArray("blocks")
+        if (blocks != null) {
+            val parts = mutableListOf<String>()
+            for (blockIndex in 0 until blocks.length()) {
+                val block = blocks.optJSONObject(blockIndex) ?: continue
+                block.firstClean("title").takeIf { it.isNotBlank() }?.let(parts::add)
+                block.firstClean("sectionSubtitle", "section_subtitle", "subtitle").takeIf { it.isNotBlank() }?.let(parts::add)
+                val rows = block.optJSONArray("rows")
+                if (rows != null) {
+                    for (rowIndex in 0 until rows.length()) {
+                        val row = rows.optJSONObject(rowIndex) ?: continue
+                        val description = row.firstClean("description", "value", "text", "content")
+                        if (description.isNotBlank()) {
+                            val subtitle = row.firstClean("subtitle", "label")
+                            parts.add(listOf(subtitle, description).filter { it.isNotBlank() }.joinToString(": "))
+                        }
+                    }
+                }
+            }
+            return parts.distinct().joinToString("\n").trim()
+        }
+        return firstClean("description", "value", "text", "content").ifBlank { toString() }
+    }
+    if (this is JSONArray) {
+        return buildList {
+            for (index in 0 until length()) {
+                opt(index).toAiDisplayText().takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }.joinToString("\n")
+    }
+    return toString().trim()
 }
 
 private fun JSONArray?.toRecords(): List<MobileRecord> {

@@ -146,6 +146,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -187,6 +188,11 @@ import com.safenexus.app.data.WorkOrderCompanyOption
 import com.safenexus.app.data.WorkOrderCreateDraft
 import com.safenexus.app.data.WorkOrderDocumentationContext
 import com.safenexus.app.data.WorkOrderDocumentationAdditionalRecord
+import com.safenexus.app.data.WorkOrderDocumentationAiFile
+import com.safenexus.app.data.WorkOrderDocumentationAiField
+import com.safenexus.app.data.WorkOrderDocumentationAiMeasurementColumn
+import com.safenexus.app.data.WorkOrderDocumentationAiMeasurementSuggestion
+import com.safenexus.app.data.WorkOrderDocumentationAiResult
 import com.safenexus.app.data.WorkOrderDocumentationDefaults
 import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocumentationField
@@ -198,6 +204,7 @@ import com.safenexus.app.data.WorkOrderDocument
 import com.safenexus.app.data.WorkOrderLocationObjectOption
 import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderMeasurementColumn
+import com.safenexus.app.data.WorkOrderMeasurementRow
 import com.safenexus.app.data.WorkOrderMeasurementSheet
 import com.safenexus.app.data.WorkOrderMeasurementTable
 import com.safenexus.app.data.WorkOrderServiceItem
@@ -224,6 +231,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Base64
 import java.util.Locale
 
 enum class WorkOrderFilter(val label: String) {
@@ -317,6 +325,8 @@ enum class WorkOrderDocumentCategory(val value: String, val label: String) {
 }
 
 private const val WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12L * 1024L * 1024L
+private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
+private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES = 5
 
 private val workOrderDocumentAllowedMimeTypes = arrayOf(
     "application/pdf",
@@ -330,6 +340,17 @@ private val workOrderDocumentAllowedMimeTypes = arrayOf(
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "text/csv",
     "text/plain",
+)
+
+private val workOrderDocumentationAiMimeTypes = arrayOf(
+    "application/pdf",
+    "image/*",
+    "text/*",
+    "application/json",
+    "application/xml",
+    "text/csv",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 )
 
 private data class PendingDocumentSelection(
@@ -907,6 +928,43 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun prepareWorkOrderDocumentationAi(
+        workOrder: WorkOrder,
+        template: WorkOrderDocumentationTemplate,
+        files: List<WorkOrderDocumentationAiFile>,
+        modelTier: String,
+        onSuccess: (WorkOrderDocumentationAiResult) -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        if (workOrder.id.isBlank()) {
+            onFailure("RN nema ispravan ID za NexAI pripremu.")
+            return
+        }
+        if (template.id.isBlank()) {
+            onFailure("Template nema ispravan ID za NexAI pripremu.")
+            return
+        }
+        if (files.isEmpty()) {
+            onFailure("Dodaj PDF, sliku ili tekst za NexAI.")
+            return
+        }
+        viewModelScope.launch {
+            api.prepareWorkOrderDocumentationAi(
+                workOrderId = workOrder.id,
+                workOrderNumber = workOrder.displayNumber,
+                template = template,
+                files = files,
+                modelTier = modelTier,
+            )
+                .onSuccess(onSuccess)
+                .onFailure { error ->
+                    val message = error.message ?: "NexAI trenutno nije dostupan."
+                    state = state.copy(error = message, notice = "")
+                    onFailure(message)
+                }
+        }
+    }
+
     fun uploadWorkOrderDocuments(
         context: Context,
         workOrder: WorkOrder,
@@ -1400,6 +1458,16 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             },
             onExecutorsChange = { executors ->
                 viewModel.updateWorkOrderExecutors(workOrder, executors)
+            },
+            onRunAi = { template, files, modelTier, onSuccess, onFailure ->
+                viewModel.prepareWorkOrderDocumentationAi(
+                    workOrder = workOrder,
+                    template = template,
+                    files = files,
+                    modelTier = modelTier,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                )
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -7885,6 +7953,17 @@ private fun findMissingRequiredDocumentationFields(
                     ?: standardDocumentationValueForField(field, standard)
                     ?: ""
             }.orEmpty()
+            val matchingAiField = template.aiFields.firstOrNull { aiField ->
+                val blockKeys = listOf(block.id, block.key, block.tokenKey, block.label)
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .map { normalizeTemplateFieldLookup(it) }
+                    .toSet()
+                templateAiFieldCandidateKeys(aiField)
+                    .map(::normalizeTemplateFieldLookup)
+                    .any { it.isNotBlank() && blockKeys.contains(it) }
+            }
+            val matchingAiValue = matchingAiField?.let { field -> values[templateAiFieldStateKey(template, field)].orEmpty() }.orEmpty()
             val complete = when (block.type.lowercase(Locale.getDefault())) {
                 "equipment_list" -> standard.selectedEquipmentCount > 0
                 "legal_list" -> standard.selectedLegalCount > 0
@@ -7892,7 +7971,7 @@ private fun findMissingRequiredDocumentationFields(
                 "chapter" -> true
                 "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" ->
                     standardDocumentationSignatureValue(block.signatureArea, block.signatureRole, block.type, standard).isNotBlank()
-                else -> matchingValue.isNotBlank() || standardValue.isNotBlank()
+                else -> matchingValue.isNotBlank() || matchingAiValue.isNotBlank() || standardValue.isNotBlank()
             }
             if (!complete) {
                 val label = listOf(template.serviceCode, block.label)
@@ -7942,8 +8021,17 @@ private fun WorkOrderDocumentationWizardDialog(
     onObjectSelectionChange: (String) -> Unit,
     onCreateObject: (String) -> Unit,
     onExecutorsChange: (List<String>) -> Unit,
+    onRunAi: (
+        WorkOrderDocumentationTemplate,
+        List<WorkOrderDocumentationAiFile>,
+        String,
+        (WorkOrderDocumentationAiResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
+    val androidContext = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val today = remember { LocalDate.now().toString() }
     val userOptions = remember(users) {
         listOf("" to "Nije odabrano") + users.map { user ->
@@ -8254,6 +8342,53 @@ private fun WorkOrderDocumentationWizardDialog(
         defaults.templateFieldSheets,
     ) {
         mutableStateOf(defaultMeasurementSheetValues(allMeasurementTemplates, defaults))
+    }
+    var aiFiles by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<WorkOrderDocumentationAiFile>()) }
+    var aiLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    var aiMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    var aiModelTier by remember(workOrder.id, selectedObjectId) { mutableStateOf("standard") }
+    var selectedAiTemplateId by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    val aiCapableTemplates = remember(activeTemplates) {
+        activeTemplates.filter { template -> template.aiFields.isNotEmpty() || template.aiMeasurementColumns.isNotEmpty() }
+    }
+    LaunchedEffect(aiCapableTemplates, selectedAiTemplateId) {
+        if (selectedAiTemplateId.isBlank() || aiCapableTemplates.none { it.id == selectedAiTemplateId }) {
+            selectedAiTemplateId = aiCapableTemplates.firstOrNull()?.id.orEmpty()
+        }
+    }
+    val selectedAiTemplate = remember(aiCapableTemplates, selectedAiTemplateId) {
+        aiCapableTemplates.firstOrNull { it.id == selectedAiTemplateId } ?: aiCapableTemplates.firstOrNull()
+    }
+    val aiFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            aiLoading = true
+            aiMessage = ""
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    buildWorkOrderDocumentationAiFiles(
+                        context = androidContext.applicationContext,
+                        uris = uris,
+                        existingCount = aiFiles.size,
+                    )
+                }
+            }
+                .onSuccess { files ->
+                    val nextFiles = (aiFiles + files)
+                        .distinctBy { it.id }
+                        .take(WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES)
+                    aiFiles = nextFiles
+                    aiMessage = if (nextFiles.isEmpty()) {
+                        "Nije dodana nijedna datoteka."
+                    } else {
+                        "${nextFiles.size} datoteka spremno za NexAI."
+                    }
+                }
+                .onFailure { error ->
+                    aiMessage = error.message ?: "Ne mogu učitati odabrane datoteke."
+                }
+            aiLoading = false
+        }
     }
     val availableLocationObjects = remember(workOrder.companyId, workOrder.locationId, locationObjects) {
         locationObjects
@@ -8671,6 +8806,62 @@ private fun WorkOrderDocumentationWizardDialog(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
                 }
+                if (aiCapableTemplates.isNotEmpty()) {
+                    DocumentationAiAssistantSection(
+                        templates = aiCapableTemplates,
+                        selectedTemplate = selectedAiTemplate,
+                        selectedTemplateId = selectedAiTemplateId,
+                        onSelectedTemplateChange = { selectedAiTemplateId = it },
+                        files = aiFiles,
+                        modelTier = aiModelTier,
+                        message = aiMessage,
+                        loading = aiLoading,
+                        enabled = !formLoading,
+                        onModelTierChange = { aiModelTier = it },
+                        onPickFiles = { aiFilePicker.launch(workOrderDocumentationAiMimeTypes) },
+                        onRemoveFile = { fileId ->
+                            val nextFiles = aiFiles.filterNot { it.id == fileId }
+                            aiFiles = nextFiles
+                            aiMessage = if (nextFiles.isEmpty()) "" else "${nextFiles.size} datoteka spremno za NexAI."
+                        },
+                        onRun = {
+                            val template = selectedAiTemplate
+                            when {
+                                template == null -> aiMessage = "Nema templatea s NexAI postavkama za ovaj zapisnik."
+                                aiFiles.isEmpty() -> aiMessage = "Dodaj PDF, sliku ili tekst prije pokretanja NexAI-ja."
+                                else -> {
+                                    aiLoading = true
+                                    aiMessage = "Šaljem datoteke NexAI-ju..."
+                                    onRunAi(
+                                        template,
+                                        aiFiles,
+                                        aiModelTier,
+                                        { result ->
+                                            val fieldApply = applyDocumentationAiFieldSuggestions(
+                                                template = template,
+                                                result = result,
+                                                values = templateFieldValues,
+                                            )
+                                            val sheetApply = applyDocumentationAiMeasurementSuggestions(
+                                                template = template,
+                                                result = result,
+                                                sheets = measurementSheets,
+                                            )
+                                            templateFieldValues = fieldApply.values
+                                            measurementSheets = sheetApply.sheets
+                                            aiLoading = false
+                                            aiMessage = buildDocumentationAiResultMessage(result, fieldApply.count, sheetApply.rowCount)
+                                        },
+                                        { message ->
+                                            aiLoading = false
+                                            aiMessage = message
+                                        },
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
                 val templateControls = DocumentationTemplateStandardControls(
                     documentNumber = currentDocumentNumber,
                     serviceName = selectedFlowItem?.serviceName ?: inspectionType,
@@ -8961,10 +9152,18 @@ private fun WorkOrderDocumentationWizardDialog(
 private fun templateFieldPayloadKey(field: WorkOrderDocumentationField): String =
     field.id.ifBlank { field.key.ifBlank { field.tokenKey } }.trim()
 
+private fun templateAiFieldPayloadKey(field: WorkOrderDocumentationAiField): String =
+    field.id.ifBlank { field.key }.trim()
+
 private fun templateFieldStateKey(
     template: WorkOrderDocumentationTemplate,
     field: WorkOrderDocumentationField,
 ): String = "${template.id}::${templateFieldPayloadKey(field)}"
+
+private fun templateAiFieldStateKey(
+    template: WorkOrderDocumentationTemplate,
+    field: WorkOrderDocumentationAiField,
+): String = "${template.id}::${templateAiFieldPayloadKey(field)}"
 
 private fun normalizedDocumentationMap(values: Map<String, String>): Map<String, String> =
     buildMap {
@@ -9027,6 +9226,12 @@ private fun getTemplateInspectionTypeDefault(templates: List<WorkOrderDocumentat
 
 private fun templateFieldCandidateKeys(field: WorkOrderDocumentationField): List<String> =
     listOf(templateFieldPayloadKey(field), field.id, field.key, field.tokenKey, field.label)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+
+private fun templateAiFieldCandidateKeys(field: WorkOrderDocumentationAiField): List<String> =
+    listOf(templateAiFieldPayloadKey(field), field.id, field.key, field.label)
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .distinctBy { it.lowercase(Locale.getDefault()) }
@@ -9103,6 +9308,20 @@ private fun buildTemplateFieldPayload(
                     if (field.key.isNotBlank()) templateValues.getOrPut(template.id) { mutableMapOf() }[field.key] = payloadValue
                     if (field.tokenKey.isNotBlank()) templateValues.getOrPut(template.id) { mutableMapOf() }[field.tokenKey] = payloadValue
                 }
+            }
+        }
+        template.aiFields.forEach aiFieldLoop@{ field ->
+            val stateKey = templateAiFieldStateKey(template, field)
+            val value = values[stateKey]?.trim().orEmpty()
+            if (value.isBlank()) return@aiFieldLoop
+            val payloadKey = templateAiFieldPayloadKey(field)
+            val keys = templateAiFieldCandidateKeys(field)
+            keys.forEach { key -> flatValues[key] = value }
+            if (payloadKey.isNotBlank()) {
+                templateValues.getOrPut(template.id) { mutableMapOf() }[payloadKey] = value
+            }
+            if (field.key.isNotBlank()) {
+                templateValues.getOrPut(template.id) { mutableMapOf() }[field.key] = value
             }
         }
     }
@@ -9199,6 +9418,231 @@ private fun buildMeasurementSheetPayload(
     }
 
     return flatSheets to templateSheets.mapValues { it.value.toMap() }
+}
+
+private data class DocumentationAiFieldApplyResult(
+    val values: Map<String, String>,
+    val count: Int,
+)
+
+private data class DocumentationAiMeasurementApplyResult(
+    val sheets: Map<String, WorkOrderMeasurementSheet>,
+    val rowCount: Int,
+    val tableCount: Int,
+)
+
+private fun aiSuggestionLookupKeys(vararg values: String): Set<String> =
+    values
+        .flatMap { value ->
+            listOf(value.trim(), normalizeTemplateFieldLookup(value))
+        }
+        .filter { it.isNotBlank() }
+        .toSet()
+
+private fun WorkOrderDocumentationField.matchesAiSuggestion(suggestion: com.safenexus.app.data.WorkOrderDocumentationAiFieldSuggestion): Boolean {
+    val lookup = aiSuggestionLookupKeys(suggestion.fieldId, suggestion.fieldKey, suggestion.fieldLabel)
+    return templateFieldCandidateKeys(this).any { candidate ->
+        candidate in lookup || normalizeTemplateFieldLookup(candidate) in lookup
+    }
+}
+
+private fun WorkOrderDocumentationAiField.matchesAiSuggestion(suggestion: com.safenexus.app.data.WorkOrderDocumentationAiFieldSuggestion): Boolean {
+    val lookup = aiSuggestionLookupKeys(suggestion.fieldId, suggestion.fieldKey, suggestion.fieldLabel)
+    return templateAiFieldCandidateKeys(this).any { candidate ->
+        candidate in lookup || normalizeTemplateFieldLookup(candidate) in lookup
+    }
+}
+
+private fun aiSuggestionValueForField(
+    suggestion: com.safenexus.app.data.WorkOrderDocumentationAiFieldSuggestion,
+    type: String,
+): String {
+    val normalizedType = type.trim().lowercase(Locale.getDefault())
+    return if (normalizedType == "system_description" || suggestion.rawValueJson.trim().startsWith("{")) {
+        suggestion.rawValueJson.ifBlank { suggestion.valueText }
+    } else {
+        suggestion.valueText.ifBlank { suggestion.rawValueJson }
+    }.trim()
+}
+
+private fun applyDocumentationAiFieldSuggestions(
+    template: WorkOrderDocumentationTemplate,
+    result: WorkOrderDocumentationAiResult,
+    values: Map<String, String>,
+): DocumentationAiFieldApplyResult {
+    var applied = 0
+    val nextValues = values.toMutableMap()
+    result.fieldSuggestions.forEach { suggestion ->
+        val field = template.fields.firstOrNull { it.matchesAiSuggestion(suggestion) }
+        if (field != null) {
+            val value = aiSuggestionValueForField(suggestion, field.type)
+            if (value.isNotBlank()) {
+                nextValues[templateFieldStateKey(template, field)] = value
+                applied += 1
+            }
+            return@forEach
+        }
+        val aiField = template.aiFields.firstOrNull { it.matchesAiSuggestion(suggestion) }
+        if (aiField != null) {
+            val value = aiSuggestionValueForField(suggestion, aiField.type)
+            if (value.isNotBlank()) {
+                nextValues[templateAiFieldStateKey(template, aiField)] = value
+                applied += 1
+            }
+        }
+    }
+    return DocumentationAiFieldApplyResult(nextValues.toMap(), applied)
+}
+
+private fun WorkOrderMeasurementTable.matchesAiMeasurementSuggestion(suggestion: WorkOrderDocumentationAiMeasurementSuggestion): Boolean {
+    val lookup = aiSuggestionLookupKeys(suggestion.fieldId, suggestion.fieldKey, suggestion.fieldLabel)
+    return measurementTableCandidateKeys(this).any { candidate ->
+        candidate in lookup || normalizeTemplateFieldLookup(candidate) in lookup
+    }
+}
+
+private fun WorkOrderDocumentationAiMeasurementColumn.matchesField(table: WorkOrderMeasurementTable): Boolean {
+    val lookup = measurementTableCandidateKeys(table)
+        .flatMap { listOf(it, normalizeTemplateFieldLookup(it)) }
+        .filter { it.isNotBlank() }
+        .toSet()
+    return listOf(fieldId, fieldKey, fieldLabel)
+        .any { value -> value.isNotBlank() && (value in lookup || normalizeTemplateFieldLookup(value) in lookup) }
+}
+
+private fun WorkOrderDocumentationAiMeasurementColumn.matchesColumnKey(key: String, sheetColumn: WorkOrderMeasurementColumn? = null): Boolean {
+    val lookup = aiSuggestionLookupKeys(key)
+    return listOf(
+        columnId,
+        this.key,
+        label,
+        columnLetter,
+        sheetColumn?.id.orEmpty(),
+        sheetColumn?.label.orEmpty(),
+        sheetColumn?.placeholder.orEmpty(),
+    ).any { candidate ->
+        candidate.isNotBlank() && (candidate in lookup || normalizeTemplateFieldLookup(candidate) in lookup)
+    }
+}
+
+private fun buildDocumentationAiMeasurementCells(
+    sheet: WorkOrderMeasurementSheet,
+    aiColumns: List<WorkOrderDocumentationAiMeasurementColumn>,
+    row: com.safenexus.app.data.WorkOrderDocumentationAiMeasurementRowSuggestion,
+): Map<String, String> {
+    val cells = mutableMapOf<String, String>()
+    val writableAiColumns = aiColumns
+        .filter { aiColumn ->
+            val sheetColumn = sheet.columns.firstOrNull { it.id == aiColumn.columnId }
+            sheetColumn != null && !sheetColumn.readonly && sheetColumn.computed.isBlank()
+        }
+        .sortedWith(compareBy<WorkOrderDocumentationAiMeasurementColumn> { it.columnIndex }.thenBy { it.columnId })
+
+    row.values.forEach { (key, value) ->
+        val trimmedValue = value.trim()
+        if (trimmedValue.isBlank()) return@forEach
+        val aiColumn = writableAiColumns.firstOrNull { candidate ->
+            val sheetColumn = sheet.columns.firstOrNull { it.id == candidate.columnId }
+            candidate.matchesColumnKey(key, sheetColumn)
+        }
+        val directColumn = sheet.columns.firstOrNull { column ->
+            !column.readonly &&
+                column.computed.isBlank() &&
+                (column.id.equals(key, ignoreCase = true) || normalizeTemplateFieldLookup(column.label) == normalizeTemplateFieldLookup(key))
+        }
+        val columnId = aiColumn?.columnId ?: directColumn?.id
+        if (!columnId.isNullOrBlank()) {
+            cells[columnId] = trimmedValue
+        }
+    }
+
+    row.orderedValues.forEachIndexed { index, value ->
+        val trimmedValue = value.trim()
+        if (trimmedValue.isBlank()) return@forEachIndexed
+        val columnId = writableAiColumns.getOrNull(index)?.columnId.orEmpty()
+        if (columnId.isNotBlank() && !cells.containsKey(columnId)) {
+            cells[columnId] = trimmedValue
+        }
+    }
+
+    return cells.toMap()
+}
+
+private fun mergeDocumentationAiRowsIntoSheet(
+    sheet: WorkOrderMeasurementSheet,
+    aiRows: List<Map<String, String>>,
+): WorkOrderMeasurementSheet {
+    if (aiRows.isEmpty()) return sheet
+    val writableColumns = sheet.columns.filter { !it.readonly && it.computed.isBlank() }
+    val nextRows = sheet.rows.toMutableList()
+
+    aiRows.forEach { aiCells ->
+        val rowIndex = nextRows.indexOfFirst { row ->
+            writableColumns.all { column -> row.cells[column.id].orEmpty().trim().isBlank() }
+        }
+        if (rowIndex >= 0) {
+            val current = nextRows[rowIndex]
+            nextRows[rowIndex] = current.copy(cells = current.cells + aiCells)
+        } else {
+            val rowId = "ai-row-${nextRows.size + 1}"
+            nextRows.add(
+                WorkOrderMeasurementRow(
+                    id = rowId,
+                    cells = sheet.columns.associate { column -> column.id to aiCells[column.id].orEmpty() },
+                    formats = emptyMap(),
+                ),
+            )
+        }
+    }
+
+    return sheet.copy(rows = nextRows)
+}
+
+private fun applyDocumentationAiMeasurementSuggestions(
+    template: WorkOrderDocumentationTemplate,
+    result: WorkOrderDocumentationAiResult,
+    sheets: Map<String, WorkOrderMeasurementSheet>,
+): DocumentationAiMeasurementApplyResult {
+    val nextSheets = sheets.toMutableMap()
+    var rowCount = 0
+    var tableCount = 0
+
+    result.measurementSuggestions.forEach { suggestion ->
+        val table = template.measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) } ?: return@forEach
+        val stateKey = measurementSheetStateKey(template, table)
+        val sheet = nextSheets[stateKey] ?: table.sheet
+        val aiColumns = template.aiMeasurementColumns.filter { it.matchesField(table) }
+        if (aiColumns.isEmpty()) return@forEach
+        val aiRows = suggestion.rows
+            .map { row -> buildDocumentationAiMeasurementCells(sheet, aiColumns, row) }
+            .filter { it.isNotEmpty() }
+        if (aiRows.isEmpty()) return@forEach
+        nextSheets[stateKey] = mergeDocumentationAiRowsIntoSheet(sheet, aiRows)
+        rowCount += aiRows.size
+        tableCount += 1
+    }
+
+    return DocumentationAiMeasurementApplyResult(nextSheets.toMap(), rowCount, tableCount)
+}
+
+private fun buildDocumentationAiResultMessage(
+    result: WorkOrderDocumentationAiResult,
+    fieldCount: Int,
+    measurementRowCount: Int,
+): String {
+    if (result.dryRun) {
+        return result.message.ifBlank { "NexAI dry-run je prošao, ali live pozivi nisu uključeni na serveru." }
+    }
+    val warnings = result.warnings.take(2).joinToString(" ")
+    val applied = listOf(
+        if (fieldCount > 0) "$fieldCount polja" else "",
+        if (measurementRowCount > 0) "$measurementRowCount redaka mjerenja" else "",
+    ).filter { it.isNotBlank() }.joinToString(" i ")
+    return listOf(
+        if (applied.isNotBlank()) "NexAI je popunio $applied." else "NexAI je vratio odgovor, ali nema sigurnih upisa za ovaj template.",
+        result.message,
+        warnings.takeIf { it.isNotBlank() }?.let { "Provjeri: $it" },
+    ).filterNotNull().filter { it.isNotBlank() }.joinToString(" ")
 }
 
 private fun updateMeasurementSheetCell(
@@ -10503,6 +10947,143 @@ private fun buildTemplateBlockSections(blocks: List<WorkOrderDocumentationTempla
     flushSection()
 
     return sections
+}
+
+private val documentationAiModelTierOptions = listOf(
+    "fast" to "Brzi",
+    "standard" to "Standard",
+    "strong" to "Jaki",
+    "max" to "Najjači",
+)
+
+@Composable
+private fun DocumentationAiAssistantSection(
+    templates: List<WorkOrderDocumentationTemplate>,
+    selectedTemplate: WorkOrderDocumentationTemplate?,
+    selectedTemplateId: String,
+    onSelectedTemplateChange: (String) -> Unit,
+    files: List<WorkOrderDocumentationAiFile>,
+    modelTier: String,
+    message: String,
+    loading: Boolean,
+    enabled: Boolean,
+    onModelTierChange: (String) -> Unit,
+    onPickFiles: () -> Unit,
+    onRemoveFile: (String) -> Unit,
+    onRun: () -> Unit,
+) {
+    WizardSection(title = "NexAI", icon = Icons.Rounded.Fingerprint) {
+        Text(
+            "Dodaj stari PDF, sliku ili tekst. NexAI popunjava samo polja i Excel kolone označene u Template Developmentu.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+        )
+        if (templates.size > 1) {
+            WorkOrderSelectField(
+                label = "Template",
+                value = selectedTemplateId,
+                valueLabel = selectedTemplate?.title ?: "Odaberi template",
+                options = templates.map { template ->
+                    template.id to listOf(template.serviceCode, template.title)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" - ")
+                },
+                enabled = enabled && !loading,
+                onSelect = onSelectedTemplateChange,
+            )
+        }
+        val templateMeta = selectedTemplate?.let { template ->
+            listOf(
+                if (template.aiFields.isNotEmpty()) "${template.aiFields.size} AI polja" else "",
+                if (template.aiMeasurementColumns.isNotEmpty()) "${template.aiMeasurementColumns.size} AI Excel kolona" else "",
+            ).filter { it.isNotBlank() }.joinToString(" · ")
+        }.orEmpty()
+        if (templateMeta.isNotBlank()) {
+            Text(
+                templateMeta,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = onPickFiles,
+                enabled = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES,
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Rounded.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Dodaj PDF/sliku")
+            }
+            Button(
+                onClick = onRun,
+                enabled = enabled && !loading && selectedTemplate != null && files.isNotEmpty(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                } else {
+                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(if (loading) "Čitam..." else "Pokreni NexAI", fontWeight = FontWeight.Bold)
+            }
+        }
+        WorkOrderSelectField(
+            label = "Snaga modela",
+            value = modelTier,
+            valueLabel = documentationAiModelTierOptions.firstOrNull { it.first == modelTier }?.second ?: "Standard",
+            options = documentationAiModelTierOptions,
+            enabled = enabled && !loading,
+            onSelect = onModelTierChange,
+        )
+        if (files.isEmpty()) {
+            Text(
+                "Nema dodanih datoteka. Za početak je dovoljan stari PDF zapisnik.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+            )
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                files.forEach { file ->
+                    AssistChip(
+                        onClick = { onRemoveFile(file.id) },
+                        label = {
+                            Text(
+                                listOf(file.name, formatFileSizeLabel(file.size)).filter { it.isNotBlank() }.joinToString(" · "),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                if (file.type.startsWith("image/", ignoreCase = true)) Icons.Rounded.Image else Icons.Rounded.InsertDriveFile,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        },
+                    )
+                }
+            }
+        }
+        if (message.isNotBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+            ) {
+                Text(
+                    message,
+                    modifier = Modifier.padding(10.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -12019,6 +12600,32 @@ private suspend fun buildWorkOrderDocumentUploadFiles(
             documentCategory = category.value,
             description = buildWorkOrderDocumentDescription(mode),
             bytes = bytes,
+        )
+    }
+}
+
+private suspend fun buildWorkOrderDocumentationAiFiles(
+    context: Context,
+    uris: List<Uri>,
+    existingCount: Int,
+): List<WorkOrderDocumentationAiFile> = withContext(Dispatchers.IO) {
+    val availableSlots = (WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
+    if (availableSlots <= 0) {
+        error("Možeš dodati najviše $WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES datoteka za NexAI.")
+    }
+    uris.take(availableSlots).mapIndexed { index, uri ->
+        val bytes = readUriBytes(context, uri)
+        val name = resolveUriDisplayName(context, uri, existingCount + index, WorkOrderDocumentInputMode.File)
+        if (bytes.size.toLong() > WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILE_BYTES) {
+            error("Datoteka $name mora biti manja od 8 MB za NexAI.")
+        }
+        val mimeType = resolveUriMimeType(context, uri, name).ifBlank { "application/octet-stream" }
+        WorkOrderDocumentationAiFile(
+            id = "${System.currentTimeMillis()}-${existingCount + index}-${name.hashCode()}",
+            name = name.withFallbackExtension(mimeType),
+            type = mimeType,
+            size = bytes.size.toLong(),
+            contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
         )
     }
 }
