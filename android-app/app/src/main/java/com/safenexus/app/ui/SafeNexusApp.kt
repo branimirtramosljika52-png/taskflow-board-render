@@ -231,6 +231,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Locale
@@ -2674,33 +2675,27 @@ private fun WorkOrderCreateScreen(
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedTextField(
+                            WorkOrderDatePickerField(
+                                label = "Otvaranje",
                                 value = openedDate,
-                                onValueChange = { openedDate = it },
-                                modifier = Modifier.weight(1f),
-                                label = { Text("Otvaranje") },
-                                singleLine = true,
+                                onChange = { openedDate = it },
                                 enabled = !isLoading,
-                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.weight(1f),
                             )
-                            OutlinedTextField(
+                            WorkOrderDatePickerField(
+                                label = "Rok",
                                 value = dueDate,
-                                onValueChange = { dueDate = it },
-                                modifier = Modifier.weight(1f),
-                                label = { Text("Rok") },
-                                singleLine = true,
+                                onChange = { dueDate = it },
                                 enabled = !isLoading,
-                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.weight(1f),
                             )
                         }
-                        OutlinedTextField(
+                        WorkOrderDatePickerField(
+                            label = "Izvršenje (plan terena)",
                             value = executionDate,
-                            onValueChange = { executionDate = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Izvršenje (plan terena)") },
-                            singleLine = true,
+                            onChange = { executionDate = it },
                             enabled = !isLoading,
-                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         WorkOrderSelectField(
                             label = "Status",
@@ -2936,14 +2931,14 @@ private fun WorkOrderTextField(
 
 private fun isoDateToMillis(value: String): Long? =
     parseDateOrNull(value)
-        ?.atStartOfDay(ZoneId.systemDefault())
+        ?.atStartOfDay(ZoneOffset.UTC)
         ?.toInstant()
         ?.toEpochMilli()
 
 private fun millisToIsoDate(value: Long?): String =
     value?.let {
         Instant.ofEpochMilli(it)
-            .atZone(ZoneId.systemDefault())
+            .atZone(ZoneOffset.UTC)
             .toLocalDate()
             .toString()
     }.orEmpty()
