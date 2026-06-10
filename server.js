@@ -17556,7 +17556,7 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronađen.");
       const items = await domainRepository.getWorkOrderDocuments(workOrderDocumentsMatch[1]);
-      sendJson(response, 200, { items });
+      sendJson(response, 200, { items: items.map((item) => stripStoredDocumentPayloadForResponse(item)) });
       return true;
     }
 
@@ -17575,7 +17575,7 @@ async function handleApiRequest(request, response, url) {
         user,
         { sourceType: body.sourceType ?? body.source },
       );
-      sendJson(response, 201, { items });
+      sendJson(response, 201, { items: items.map((item) => stripStoredDocumentPayloadForResponse(item)) });
       return true;
     }
 
