@@ -5237,7 +5237,9 @@ function getMobileDocumentGenerationJob(jobId = "", user = null, workOrderId = "
 
 function startMobileDocumentGenerationJob({
   workOrderId = "",
-  entries = [],
+  workOrder = null,
+  wizardInput = {},
+  entries = null,
   scopedSnapshot = {},
   user = null,
 } = {}) {
@@ -5265,7 +5267,14 @@ function startMobileDocumentGenerationJob({
       job.status = "running";
       job.startedAt = new Date().toISOString();
       try {
-        const items = await saveGeneratedDocumentTemplatePdfDocuments(entries, scopedSnapshot, user, {});
+        const jobEntries = Array.isArray(entries)
+          ? entries
+          : buildMobileWorkOrderGeneratedDocumentEntries(workOrder || {}, scopedSnapshot, wizardInput || {});
+        job.entriesCount = jobEntries.length;
+        if (jobEntries.length === 0) {
+          throw new Error("Ovaj RN nema uslugu s povezanim templateom za izradu dokumentacije.");
+        }
+        const items = await saveGeneratedDocumentTemplatePdfDocuments(jobEntries, scopedSnapshot, user, {});
         job.items = items;
         job.status = items.length > 0 ? "completed" : "failed";
         job.error = items.length > 0 ? "" : "Nijedan zapisnik nije spremljen u dokumentaciju RN-a.";
@@ -14147,15 +14156,10 @@ async function handleApiRequest(request, response, url) {
         "Radni nalog nije pronađen.",
       );
       const workOrderForGeneration = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
-      const entries = buildMobileWorkOrderGeneratedDocumentEntries(workOrderForGeneration, scopedSnapshot, body);
-      if (entries.length === 0) {
-        sendError(response, 400, "Ovaj RN nema uslugu s povezanim templateom za izradu dokumentacije.");
-        return true;
-      }
-
       const job = startMobileDocumentGenerationJob({
         workOrderId: workOrder.id,
-        entries,
+        workOrder: workOrderForGeneration,
+        wizardInput: body,
         scopedSnapshot,
         user,
       });
