@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.70.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.71.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -11575,7 +11575,7 @@ function getMobileDocumentTemplateFieldBlockGroup(type = "text") {
     return "Mjerna i ispitna oprema";
   }
   if (normalizedType === "legal_list") {
-    return "Pravilnici i propisi";
+    return "Propisi";
   }
   if (
     normalizedType === "qualified_inspectors"
@@ -11609,7 +11609,7 @@ function buildMobileDocumentTemplateFieldBlockSummary(field = {}, template = {},
   }
   if (fieldType === "legal_list") {
     const legalItems = getMobileDocumentTemplateLegalFrameworksForField(template, field, scopedSnapshot, common);
-    return legalItems.length > 0 ? `${legalItems.length} propisa iz web predloska` : "Propisi se biraju u bloku Pravilnici i propisi";
+    return legalItems.length > 0 ? `${legalItems.length} propisa iz web predloska` : "Propisi se biraju u bloku Propisi";
   }
   if (fieldType === "equipment_list") {
     const equipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, field, scopedSnapshot, common);
@@ -12696,7 +12696,6 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
     LEGAL_REFERENCES_LIST: globalLegalLines.join("\n"),
     LEGAL_REFERENCES_INLINE: globalLegalLines.join("; "),
     PROPISI_POPIS: globalLegalLines.join("\n"),
-    PROPISI_I_PRAVILNICI_POPIS: [...globalLegalLines, ...rulebookLines].join("\n"),
     PRAVILNICI_POPIS: rulebookLines.join("\n"),
     RULEBOOKS_LIST: rulebookLines.join("\n"),
   });
@@ -12713,19 +12712,14 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
     if (fieldType === "legal_list") {
       const legalItems = getMobileDocumentTemplateLegalFrameworksForField(template, field, scopedSnapshot, common);
       const legalLines = legalItems.map(formatMobileLegalFrameworkLine).filter(Boolean);
-      const combinedLines = [...legalLines, ...rulebookLines];
       const legalIds = legalItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
-      const rulebookIds = selectedRulebooks.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
-      putMobileTemplateListPlaceholder(placeholders, field, index, combinedLines.join("\n"));
+      putMobileTemplateListPlaceholder(placeholders, field, index, legalLines.join("\n"));
       putMobileTemplateListPlaceholderVariant(placeholders, field, index, "PROPISI", legalLines.join("\n"));
-      putMobileTemplateListPlaceholderVariant(placeholders, field, index, "PRAVILNICI", rulebookLines.join("\n"));
       if (recordKey) {
         fieldValues[recordKey] = legalIds;
         fieldValues[`${recordKey}::legalFrameworkIds`] = legalIds;
-        fieldValues[`${recordKey}::rulebookIds`] = rulebookIds;
       }
       mergeFieldValueIds("LEGAL_FRAMEWORK_IDS", legalIds);
-      mergeFieldValueIds("RULEBOOK_IDS", rulebookIds);
       return;
     }
 

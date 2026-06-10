@@ -58405,56 +58405,6 @@ function getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrderId, field 
     .filter(Boolean);
 }
 
-function getDocumentTemplateRulebookOptions() {
-  return sortRulebooks(state.rulebooks ?? []).map((item) => ({
-    value: String(item.id),
-    label: [
-      item.title || "Pravilnik",
-      getRulebookTypeLabel(item.rulebookType),
-    ].filter(Boolean).join(" | "),
-  }));
-}
-
-function getDocumentTemplateRuntimeRulebookFieldId(field = {}) {
-  return `${String(field?.id || field?.key || "rulebooks").trim() || "rulebooks"}::rulebookIds`;
-}
-
-function getDocumentTemplateRuntimeSelectedRulebookIds(workOrderId, field = {}) {
-  const runtimeValue = getDocumentTemplateRuntimeFieldValue(
-    workOrderId,
-    getDocumentTemplateRuntimeRulebookFieldId(field),
-  );
-  if (Array.isArray(runtimeValue)) {
-    return runtimeValue.map((value) => String(value || "").trim()).filter(Boolean);
-  }
-  return [];
-}
-
-function getDocumentTemplateRulebooksForField({ selectedOnly = false, selectedIds: selectedIdsOverride = null } = {}) {
-  const items = sortRulebooks(state.rulebooks ?? []);
-  if (!selectedOnly) {
-    return items;
-  }
-
-  const selectedIds = new Set(
-    (selectedIdsOverride ?? [])
-      .map((value) => String(value || "").trim())
-      .filter(Boolean),
-  );
-  if (selectedIds.size === 0) {
-    return [];
-  }
-  return items.filter((item) => selectedIds.has(String(item?.id || "").trim()));
-}
-
-function formatDocumentTemplateRulebookExportLine(item = {}) {
-  return [
-    item.title || "Pravilnik",
-    getRulebookTypeLabel(item.rulebookType),
-    getRulebookStatusLabel(item.status),
-  ].filter(Boolean).join(" | ");
-}
-
 function getDocumentTemplateLinkedEquipmentItems(template = buildDocumentTemplateDraft()) {
   const templateId = String(template.id || "");
   const linkedByServices = templateId
@@ -62614,7 +62564,6 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
   const location = getDocumentTemplatePreviewLocation(template, sampleWorkOrder);
   const object = getDocumentTemplateRuntimeObjectForWorkOrder(sampleWorkOrder);
   const legalFrameworks = getDocumentTemplateSelectedLegalFrameworks(template);
-  const rulebooks = getDocumentTemplateRulebooksForField();
   const equipmentItems = getDocumentTemplateLinkedEquipmentItems(template);
   const runtimeWorkOrders = getDocumentTemplateRuntimeWorkOrders();
 
@@ -62627,7 +62576,6 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
     location,
     object,
     legalFrameworks,
-    rulebooks,
     equipmentItems,
   };
 }
@@ -63234,42 +63182,15 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
         selectedIds: selectedFrameworkIds,
       },
     );
-    const visibleRulebooks = getDocumentTemplateRulebooksForField({ selectedOnly: false });
-    const selectedRulebookIds = placeholderMode || !context.sampleWorkOrder?.id
-      ? []
-      : getDocumentTemplateRuntimeSelectedRulebookIds(context.sampleWorkOrder.id, field);
-    const selectedRulebooks = getDocumentTemplateRulebooksForField({
-      selectedOnly: true,
-      selectedIds: selectedRulebookIds,
-    });
-    const selectedCount = selectedFrameworks.length + selectedRulebooks.length;
-    const frameworkListHtml = selectedFrameworks.length > 0
-      ? `
-        <div class="document-template-preview-subsection">
-          <strong>Propisi</strong>
-          <ul class="document-template-preview-list">${selectedFrameworks.map((item) => (
-            `<li><strong>${escapeHtml(item.title || "Propis")}</strong>${item.referenceCode ? ` | ${escapeHtml(item.referenceCode)}` : ""}</li>`
-          )).join("")}</ul>
-        </div>
-      `
-      : "";
-    const rulebookListHtml = selectedRulebooks.length > 0
-      ? `
-        <div class="document-template-preview-subsection">
-          <strong>Pravilnici</strong>
-          <ul class="document-template-preview-list">${selectedRulebooks.map((item) => (
-            `<li><strong>${escapeHtml(item.title || "Pravilnik")}</strong>${item.rulebookType ? ` | ${escapeHtml(getRulebookTypeLabel(item.rulebookType))}` : ""}</li>`
-          )).join("")}</ul>
-        </div>
-      `
-      : "";
     const listHtml = placeholderMode
       ? `<div class="document-template-preview-pill-row"><span class="document-template-preview-pill">${escapeHtml(token)}</span></div>`
-      : selectedCount > 0
-        ? `${frameworkListHtml}${rulebookListHtml}`
-        : '<span class="document-template-preview-empty">Nema odabranih propisa ili pravilnika za ovaj blok.</span>';
-    const legalMeta = !placeholderMode && (visibleFrameworks.length > 0 || visibleRulebooks.length > 0)
-      ? `<p class="document-template-preview-muted">Dostupno ${visibleFrameworks.length} propisa i ${visibleRulebooks.length} pravilnika; odabrano ${selectedCount}.</p>`
+      : selectedFrameworks.length > 0
+        ? `<ul class="document-template-preview-list">${selectedFrameworks.map((item) => (
+          `<li><strong>${escapeHtml(item.title || "Propis")}</strong>${item.referenceCode ? ` | ${escapeHtml(item.referenceCode)}` : ""}</li>`
+        )).join("")}</ul>`
+        : '<span class="document-template-preview-empty">Nema odabranih propisa za ovaj blok.</span>';
+    const legalMeta = !placeholderMode && visibleFrameworks.length > 0
+      ? `<p class="document-template-preview-muted">Prikazuje ${visibleFrameworks.length} propisa, unaprijed označeno ${selectedFrameworks.length}.</p>`
       : "";
 
     return `
@@ -63665,29 +63586,19 @@ function buildDocumentTemplateLegalExportItems(template = buildDocumentTemplateD
   const selectedIds = workOrder?.id
     ? getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field)
     : [];
-  const selectedRulebookIds = workOrder?.id
-    ? getDocumentTemplateRuntimeSelectedRulebookIds(workOrder.id, field)
-    : [];
   const selectedItems = getDocumentTemplateLegalFrameworksForField(template, field, {
     selectedOnly: true,
     selectedIds,
-  });
-  const selectedRulebooks = getDocumentTemplateRulebooksForField({
-    selectedOnly: true,
-    selectedIds: selectedRulebookIds,
   });
   const visibleItems = getDocumentTemplateLegalFrameworksForField(template, field, {
     selectedOnly: false,
   });
 
-  const legalLines = (selectedItems.length > 0 ? selectedItems : visibleItems).map((item) => (
+  return (selectedItems.length > 0 ? selectedItems : visibleItems).map((item) => (
     item.referenceCode
       ? `${item.title || "Propis"} | ${item.referenceCode}`
       : (item.title || "Propis")
   ));
-  const rulebookLines = selectedRulebooks.map(formatDocumentTemplateRulebookExportLine);
-
-  return [...legalLines, ...rulebookLines];
 }
 
 function buildDocumentTemplateEquipmentExportRows(field = {}, context = {}) {
@@ -76629,16 +76540,9 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
         ? selectedItems.map((item) => item.name || item.inventoryNumber || item.code || "Uređaj").slice(0, 3).join(", ")
         : (selectedIds.length > 0 ? `${selectedIds.length} uređaja` : "prazno");
     } else if (fieldType === "legal_list") {
-      const selectedLegalIds = getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field);
-      const selectedRulebookIds = getDocumentTemplateRuntimeSelectedRulebookIds(workOrder.id, field);
-      const selectedCount = selectedLegalIds.length + selectedRulebookIds.length;
-      isComplete = selectedCount > 0;
-      displayValue = selectedCount > 0
-        ? [
-          selectedLegalIds.length > 0 ? `${selectedLegalIds.length} propisa` : "",
-          selectedRulebookIds.length > 0 ? `${selectedRulebookIds.length} pravilnika` : "",
-        ].filter(Boolean).join(", ")
-        : "prazno";
+      const selectedIds = getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field);
+      isComplete = selectedIds.length > 0;
+      displayValue = selectedIds.length > 0 ? `${selectedIds.length} propisa` : "prazno";
     }
 
     return {
@@ -79120,73 +79024,41 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const frameworks = getDocumentTemplateLegalFrameworksForField(templateDraft, field, { selectedOnly: false });
     const selectedIds = new Set(getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field));
-    const rulebooks = getDocumentTemplateRulebooksForField({ selectedOnly: false });
-    const selectedRulebookIds = new Set(getDocumentTemplateRuntimeSelectedRulebookIds(workOrder.id, field));
 
-    if (frameworks.length === 0 && rulebooks.length === 0) {
+    if (frameworks.length === 0) {
       const empty = document.createElement("p");
       empty.className = "helper-copy module-copy";
-      empty.textContent = "Nema dostupnih propisa ili pravilnika za ovaj blok.";
+      empty.textContent = "Nema dostupnih propisa za ovaj blok.";
       shellNode.append(empty);
       return shellNode;
     }
 
-    const appendChecklist = (labelText, items, selectedSet, runtimeFieldId, buildCopy) => {
-      if (items.length === 0) {
-        return;
-      }
-      const sectionTitle = document.createElement("span");
-      sectionTitle.className = "document-template-runtime-checklist-title";
-      sectionTitle.textContent = labelText;
-      const list = document.createElement("div");
-      list.className = "document-template-runtime-checklist";
-      items.forEach((item) => {
-        const option = document.createElement("label");
-        option.className = "document-template-runtime-checklist-item";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.value = String(item.id);
-        checkbox.checked = selectedSet.has(String(item.id));
-        checkbox.addEventListener("change", () => {
-          const nextValues = Array.from(list.querySelectorAll('input[type="checkbox"]'))
-            .filter((input) => input instanceof HTMLInputElement && input.checked)
-            .map((input) => String(input.value || "").trim())
-            .filter(Boolean);
-          setDocumentTemplateRuntimeFieldValue(workOrder.id, runtimeFieldId, nextValues, { render: false });
-          renderDocumentTemplatePreviewContent();
-        });
-        option.append(checkbox, buildCopy(item));
-        list.append(option);
+    const list = document.createElement("div");
+    list.className = "document-template-runtime-checklist";
+    frameworks.forEach((framework) => {
+      const option = document.createElement("label");
+      option.className = "document-template-runtime-checklist-item";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = String(framework.id);
+      checkbox.checked = selectedIds.has(String(framework.id));
+      checkbox.addEventListener("change", () => {
+        const nextValues = Array.from(list.querySelectorAll('input[type="checkbox"]'))
+          .filter((input) => input instanceof HTMLInputElement && input.checked)
+          .map((input) => String(input.value || "").trim())
+          .filter(Boolean);
+        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, nextValues, { render: false });
+        renderDocumentTemplatePreviewContent();
       });
-      shellNode.append(sectionTitle, list);
-    };
-
-    appendChecklist("Propisi", frameworks, selectedIds, field.id, (framework) => {
       const copy = document.createElement("span");
       copy.textContent = framework.referenceCode
         ? `${framework.title || "Propis"} | ${framework.referenceCode}`
         : (framework.title || "Propis");
-      return copy;
+      option.append(checkbox, copy);
+      list.append(option);
     });
 
-    appendChecklist("Pravilnici", rulebooks, selectedRulebookIds, getDocumentTemplateRuntimeRulebookFieldId(field), (rulebook) => {
-      const copy = document.createElement("div");
-      copy.className = "document-template-runtime-checklist-item-copy";
-      const primary = document.createElement("strong");
-      primary.textContent = rulebook.title || "Pravilnik";
-      const meta = document.createElement("span");
-      meta.className = "document-template-runtime-checklist-meta";
-      meta.textContent = [
-        getRulebookTypeLabel(rulebook.rulebookType),
-        getRulebookStatusLabel(rulebook.status),
-      ].filter(Boolean).join(" · ");
-      copy.append(primary);
-      if (meta.textContent) {
-        copy.append(meta);
-      }
-      return copy;
-    });
-
+    shellNode.append(list);
     if (field.helpText) {
       const helper = document.createElement("small");
       helper.className = "document-template-runtime-field-help";
@@ -81429,7 +81301,6 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       specialInfoField.hidden = true;
 
       const legalFrameworkOptions = getDocumentTemplateLegalFrameworkOptions();
-      const rulebookOptions = getDocumentTemplateRulebookOptions();
       const allLegalFrameworkIds = legalFrameworkOptions.map((option) => String(option.value));
       const visibleLegalIds = new Set(
         (Array.isArray(field.legalFrameworkIds) && field.legalFrameworkIds.length > 0
@@ -81487,13 +81358,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       legalHint.textContent = legalFrameworkOptions.length > 0
         ? "Prvi popis određuje koje propise korisnik vidi, a drugi što je već označeno kad otvori zapisnik."
         : "Nema dostupnih propisa u Legal Framework modulu.";
-      const rulebookHint = document.createElement("div");
-      rulebookHint.className = "document-template-inline-special-value document-template-legal-hint";
-      rulebookHint.textContent = rulebookOptions.length > 0
-        ? `Pravilnici se biraju pri izradi zapisnika iz modula Pravilnici (${rulebookOptions.length} dostupno) i spremaju se odvojeno od propisa.`
-        : "Nema dostupnih pravilnika u modulu Pravilnici.";
 
-      grid.append(visibleField, selectedField, legalHint, rulebookHint);
+      grid.append(visibleField, selectedField, legalHint);
     } else if (field.type === "equipment_list") {
       const specialInfoValue = document.createElement("div");
       specialInfoValue.className = "document-template-inline-special-value";
@@ -111148,15 +111014,10 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     const fieldType = String(field.type || "").trim().toLowerCase();
     if (fieldType === "legal_list") {
       const legalIds = getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrder.id, field);
-      const rulebookIds = getDocumentTemplateRuntimeSelectedRulebookIds(workOrder.id, field);
       if (legalIds.length > 0) {
         fieldValues[fieldKey] = legalIds;
         fieldValues[`${fieldKey}::legalFrameworkIds`] = legalIds;
         appendUniqueFieldValueIds("LEGAL_FRAMEWORK_IDS", legalIds);
-      }
-      if (rulebookIds.length > 0) {
-        fieldValues[`${fieldKey}::rulebookIds`] = rulebookIds;
-        appendUniqueFieldValueIds("RULEBOOK_IDS", rulebookIds);
       }
       return;
     }

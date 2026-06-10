@@ -7729,7 +7729,6 @@ private data class DocumentationStandardValues(
     val tipkaloAuthorizationHolderLabel: String,
     val selectedEquipmentCount: Int,
     val selectedLegalCount: Int,
-    val selectedRulebookCount: Int,
 )
 
 private fun WorkOrderDocumentationField.lookupText(): String =
@@ -7888,7 +7887,7 @@ private fun findMissingRequiredDocumentationFields(
             }.orEmpty()
             val complete = when (block.type.lowercase(Locale.getDefault())) {
                 "equipment_list" -> standard.selectedEquipmentCount > 0
-                "legal_list" -> standard.selectedLegalCount > 0 || standard.selectedRulebookCount > 0
+                "legal_list" -> standard.selectedLegalCount > 0
                 "measurement_table" -> true
                 "chapter" -> true
                 "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" ->
@@ -7915,7 +7914,6 @@ private fun WorkOrderDocumentationDefaults.hasReusableDocumentationDefaults(): B
         templateFieldSheets.values.any { it.isNotEmpty() } ||
         selectedEquipmentIds.isNotEmpty() ||
         selectedLegalFrameworkIds.isNotEmpty() ||
-        selectedRulebookIds.isNotEmpty() ||
         listOf(
             inspectionDate,
             issuedDate,
@@ -8076,17 +8074,11 @@ private fun WorkOrderDocumentationWizardDialog(
     val legalFrameworkOptionIds = remember(context.legalFrameworkOptions) {
         context.legalFrameworkOptions.map { it.id }.toSet()
     }
-    val rulebookOptionIds = remember(context.rulebookOptions) {
-        context.rulebookOptions.map { it.id }.toSet()
-    }
     var selectedEquipmentIds by remember(workOrder.id, selectedObjectId, defaults.selectedEquipmentIds, measurementEquipmentOptionIds) {
         mutableStateOf(defaults.selectedEquipmentIds.filter { measurementEquipmentOptionIds.contains(it) }.toSet())
     }
     var selectedLegalFrameworkIds by remember(workOrder.id, selectedObjectId, defaults.selectedLegalFrameworkIds, legalFrameworkOptionIds) {
         mutableStateOf(defaults.selectedLegalFrameworkIds.filter { legalFrameworkOptionIds.contains(it) }.toSet())
-    }
-    var selectedRulebookIds by remember(workOrder.id, selectedObjectId, defaults.selectedRulebookIds, rulebookOptionIds) {
-        mutableStateOf(defaults.selectedRulebookIds.filter { rulebookOptionIds.contains(it) }.toSet())
     }
     val measurementEquipmentGroupOptions = remember(context.measurementEquipmentOptions, measurementEquipmentGroup) {
         val standardGroups = ('A'..'M').map { "Grupa $it" }
@@ -8337,7 +8329,6 @@ private fun WorkOrderDocumentationWizardDialog(
         tipkaloAuthorizationHolderLabel = userLabelById[tipkaloAuthorizationHolderUserId].orEmpty().takeIf { tipkaloAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
         selectedEquipmentCount = selectedEquipmentIds.size,
         selectedLegalCount = selectedLegalFrameworkIds.size,
-        selectedRulebookCount = selectedRulebookIds.size,
     )
     val standardTemplateFieldValues = remember(allPromptTemplates, standardValues) {
         buildStandardTemplateFieldValues(allPromptTemplates, standardValues)
@@ -8701,9 +8692,6 @@ private fun WorkOrderDocumentationWizardDialog(
                     legalFrameworkOptions = context.legalFrameworkOptions,
                     selectedLegalFrameworkIds = selectedLegalFrameworkIds,
                     onSelectedLegalFrameworkIdsChange = { selectedLegalFrameworkIds = it },
-                    rulebookOptions = context.rulebookOptions,
-                    selectedRulebookIds = selectedRulebookIds,
-                    onSelectedRulebookIdsChange = { selectedRulebookIds = it },
                     measurementSheets = measurementSheets,
                     onMeasurementSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
                     standardValues = standardValues,
@@ -8759,7 +8747,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         )
                     }
 
-                    WizardSection(title = "Pravilnici i propisi", icon = Icons.Rounded.Lock) {
+                    WizardSection(title = "Propisi", icon = Icons.Rounded.Lock) {
                         DocumentationMultiSelectField(
                             label = "Propisi iz web predloška",
                             options = context.legalFrameworkOptions,
@@ -8767,14 +8755,6 @@ private fun WorkOrderDocumentationWizardDialog(
                             enabled = !formLoading,
                             emptyText = "Nema propisa povezanih s predlošcima.",
                             onChange = { selectedLegalFrameworkIds = it },
-                        )
-                        DocumentationMultiSelectField(
-                            label = "Interni pravilnici",
-                            options = context.rulebookOptions,
-                            selectedIds = selectedRulebookIds,
-                            enabled = !formLoading,
-                            emptyText = "Nema pravilnika za ovu organizaciju.",
-                            onChange = { selectedRulebookIds = it },
                         )
                     }
                 }
@@ -8858,7 +8838,6 @@ private fun WorkOrderDocumentationWizardDialog(
                     testingLocation = testingLocation,
                     selectedEquipmentCount = selectedEquipmentIds.size,
                     selectedLegalCount = selectedLegalFrameworkIds.size,
-                    selectedRulebookCount = selectedRulebookIds.size,
                     signatureMode = signatureMode,
                     completedBy = completedBy,
                     completedByOptions = completedByOptions,
@@ -8913,7 +8892,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         measurementEquipmentGroup = measurementEquipmentGroup.trim(),
                         selectedEquipmentIds = selectedEquipmentIds.toList(),
                         selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
-                        selectedRulebookIds = selectedRulebookIds.toList(),
+                        selectedRulebookIds = emptyList(),
                         signatureMode = signatureMode,
                         validityMonths = primaryValidityMonths,
                         electricalValidityMonths = electricalValidityMonths.trim(),
@@ -9842,7 +9821,6 @@ private fun DocumentationSummarySection(
     testingLocation: String,
     selectedEquipmentCount: Int,
     selectedLegalCount: Int,
-    selectedRulebookCount: Int,
     signatureMode: String,
     completedBy: String,
     completedByOptions: List<Pair<String, String>>,
@@ -9893,7 +9871,6 @@ private fun DocumentationSummarySection(
             listOf(
                 "$selectedEquipmentCount oprema",
                 "$selectedLegalCount propisi",
-                "$selectedRulebookCount pravilnici",
             ).joinToString(" · "),
         )
         DocumentationSummaryRow(
@@ -10473,9 +10450,6 @@ private data class DocumentationTemplateStandardControls(
     val legalFrameworkOptions: List<WorkOrderDocumentationOption>,
     val selectedLegalFrameworkIds: Set<String>,
     val onSelectedLegalFrameworkIdsChange: (Set<String>) -> Unit,
-    val rulebookOptions: List<WorkOrderDocumentationOption>,
-    val selectedRulebookIds: Set<String>,
-    val onSelectedRulebookIdsChange: (Set<String>) -> Unit,
     val measurementSheets: Map<String, WorkOrderMeasurementSheet>,
     val onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
     val standardValues: DocumentationStandardValues,
@@ -11226,14 +11200,6 @@ private fun TemplateLegalControls(controls: DocumentationTemplateStandardControl
         emptyText = "Nema propisa povezanih s predlošcima.",
         onChange = controls.onSelectedLegalFrameworkIdsChange,
     )
-    DocumentationMultiSelectField(
-        label = "Interni pravilnici",
-        options = controls.rulebookOptions,
-        selectedIds = controls.selectedRulebookIds,
-        enabled = controls.enabled,
-        emptyText = "Nema pravilnika za ovu organizaciju.",
-        onChange = controls.onSelectedRulebookIdsChange,
-    )
 }
 
 private fun normalizeTemplateSectionLookup(value: String): String =
@@ -11399,7 +11365,7 @@ private fun TemplateBlockDetailRow(
                         when (block.type.lowercase(Locale.getDefault())) {
                             "measurement_table" -> "Excel tablica se uređuje u bloku Excel / mjerenja."
                             "equipment_list" -> "Oprema se bira u bloku Mjerna i ispitna oprema."
-                            "legal_list" -> "Propisi i pravilnici se biraju u bloku Pravilnici i propisi."
+                            "legal_list" -> "Propisi se biraju u bloku Propisi."
                             "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" ->
                                 "Osobe i potpis se popunjavaju u bloku Osobe i potpis."
                             "sketch_upload", "image_upload" -> "Prilozi se dodaju kroz dokumentaciju radnog naloga."
@@ -11518,7 +11484,7 @@ private fun TemplateBlockRow(
                                 when (block.type.lowercase(Locale.getDefault())) {
                                     "measurement_table" -> "Excel tablica se uređuje u bloku Excel / mjerenja."
                                     "equipment_list" -> "Oprema se bira u bloku Mjerna i ispitna oprema."
-                                    "legal_list" -> "Propisi i pravilnici se biraju u bloku Pravilnici i propisi."
+                                    "legal_list" -> "Propisi se biraju u bloku Propisi."
                                     "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" ->
                                         "Osobe i potpis se popunjavaju u bloku Osobe i potpis."
                                     "sketch_upload", "image_upload" -> "Prilozi se dodaju kroz dokumentaciju radnog naloga."
