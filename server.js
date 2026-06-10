@@ -12678,8 +12678,6 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
       ...normalizedIds,
     ]);
   };
-  const selectedRulebooks = findMobileRulebooksByIds(scopedSnapshot, common.selectedRulebookIds);
-  const rulebookLines = selectedRulebooks.map(formatMobileRulebookLine).filter(Boolean);
   const globalEquipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, {}, scopedSnapshot, common);
   const globalEquipmentLines = globalEquipmentItems.map(formatMobileMeasurementEquipmentLine).filter(Boolean);
   const globalEquipmentTable = buildMobileMeasurementEquipmentTableBlock(globalEquipmentItems);
@@ -12696,13 +12694,10 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
     LEGAL_REFERENCES_LIST: globalLegalLines.join("\n"),
     LEGAL_REFERENCES_INLINE: globalLegalLines.join("; "),
     PROPISI_POPIS: globalLegalLines.join("\n"),
-    PRAVILNICI_POPIS: rulebookLines.join("\n"),
-    RULEBOOKS_LIST: rulebookLines.join("\n"),
   });
 
   fieldValues.MEASUREMENT_EQUIPMENT_IDS = globalEquipmentItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
   fieldValues.LEGAL_FRAMEWORK_IDS = normalizeMobileDocumentWizardArray(common.selectedLegalFrameworkIds);
-  fieldValues.RULEBOOK_IDS = normalizeMobileDocumentWizardArray(common.selectedRulebookIds);
 
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
     const fieldType = normalizeInputValue(field?.type).toLowerCase();

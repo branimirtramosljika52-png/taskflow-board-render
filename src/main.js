@@ -117020,7 +117020,7 @@ const MODULE_HELP_TOUR_DEFINITIONS = {
   "legal-framework": {
     navItem: "legal-framework",
     title: "Legal Framework",
-    body: "Legal Framework je registar zakona, pravilnika, normi i internih propisa koje povezuješ s uslugama i zapisnicima.",
+    body: "Legal Framework je registar zakonske regulative, podzakonskih propisa i normi koje povezuješ s uslugama i zapisnicima.",
     target: ".legal-framework-list-panel",
     primaryActionTarget: "#legal-framework-open-form",
     primaryActionTitle: "Novi propis",
