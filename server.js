@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.75.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.76.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -12663,6 +12663,41 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
   };
 }
 
+function getMobileDocumentRecordSourceDate(record = {}) {
+  return normalizeDateOnlyValue(
+    record?.inspectionDate
+    || record?.issuedDate
+    || record?.validUntil
+    || record?.expirationDate
+    || record?.updatedAt
+    || record?.createdAt,
+  );
+}
+
+function buildMobileDocumentTemplateDataSource(template = {}, latestRecord = null) {
+  const templateTitle = normalizeInputValue(template?.title || template?.documentType || "Zapisnik") || "Zapisnik";
+  if (latestRecord) {
+    return {
+      dataSourceType: "previous_inspection",
+      dataSourceTitle: normalizeInputValue(
+        latestRecord.templateTitle
+        || latestRecord.documentTitle
+        || latestRecord.title
+        || templateTitle,
+      ) || templateTitle,
+      dataSourceDate: getMobileDocumentRecordSourceDate(latestRecord),
+      dataSourceWorkOrderNumber: normalizeInputValue(latestRecord.workOrderNumber || latestRecord.recordNumber),
+    };
+  }
+
+  return {
+    dataSourceType: "template",
+    dataSourceTitle: templateTitle,
+    dataSourceDate: "",
+    dataSourceWorkOrderNumber: "",
+  };
+}
+
 function getMobileLinkedServiceIdsFromItem(item = {}) {
   const sources = [
     item?.linkedServiceIds,
@@ -13082,6 +13117,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       }
       seenTemplateKeys.add(templateServiceKey);
       const latestRecord = findLatestMobileDocumentRecordForTemplate(template, workOrder, scopedSnapshot);
+      const dataSource = buildMobileDocumentTemplateDataSource(template, latestRecord);
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
       if (!primaryDefaults && Object.keys(recordDefaults).length > 0) {
         primaryDefaults = recordDefaults;
@@ -13110,6 +13146,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
           workOrder,
           buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
         )}.pdf`,
+        ...dataSource,
         fields: buildMobileDocumentTemplatePromptFields(template, placeholders, common),
         fieldBlocks: buildMobileDocumentTemplateFieldBlocks(template, workOrder, service, scopedSnapshot, common, fieldSheets),
         inspectionTypeOptions: buildMobileDocumentTemplateInspectionTypeOptions(template),

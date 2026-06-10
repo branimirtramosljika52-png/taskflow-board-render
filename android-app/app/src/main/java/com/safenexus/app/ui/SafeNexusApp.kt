@@ -11425,6 +11425,8 @@ private fun TemplateBlockOverview(
     val sections = remember(template.fieldBlocks) {
         buildTemplateBlockSections(template.fieldBlocks)
     }
+    val sourceTitle = documentationTemplateDataSourceTitle(template)
+    val sourceDetails = documentationTemplateDataSourceDetails(template)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -11435,9 +11437,10 @@ private fun TemplateBlockOverview(
             verticalArrangement = Arrangement.spacedBy(11.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(template.title, fontWeight = FontWeight.Black)
+                Text(sourceTitle, fontWeight = FontWeight.Black)
                 Text(
                     listOf(
+                        sourceDetails,
                         template.documentType,
                         "${template.fieldBlocks.size} blokova",
                         "${template.measurementTables.size} Excel",
@@ -11457,6 +11460,28 @@ private fun TemplateBlockOverview(
             }
         }
     }
+}
+
+private fun documentationTemplateDataSourceTitle(template: WorkOrderDocumentationTemplate): String {
+    val type = template.dataSourceType.trim().lowercase(Locale.getDefault())
+    val sourceTitle = template.dataSourceTitle.ifBlank { template.title.ifBlank { "Zapisnik" } }
+    return if (type == "previous_inspection") {
+        val dateLabel = formatDatePickerLabel(template.dataSourceDate)
+        listOf("Prethodno ispitivanje", dateLabel).filter { it.isNotBlank() }.joinToString(" - ")
+    } else {
+        "Predložak: $sourceTitle"
+    }
+}
+
+private fun documentationTemplateDataSourceDetails(template: WorkOrderDocumentationTemplate): String {
+    val type = template.dataSourceType.trim().lowercase(Locale.getDefault())
+    if (type != "previous_inspection") {
+        return ""
+    }
+    return listOf(
+        template.dataSourceTitle.ifBlank { template.title }.takeIf { it.isNotBlank() },
+        template.dataSourceWorkOrderNumber.takeIf { it.isNotBlank() }?.let { "RN $it" },
+    ).filterNotNull().joinToString(" - ")
 }
 
 private data class DocumentationTemplateStandardControls(
