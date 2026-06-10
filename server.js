@@ -12650,9 +12650,34 @@ function putMobileTemplateListPlaceholder(placeholders = {}, field = {}, index =
   });
 }
 
+function putMobileTemplateListPlaceholderVariant(placeholders = {}, field = {}, index = 0, suffix = "", value = "") {
+  const normalizedSuffix = normalizeMobileDocumentTemplateFieldTokenKey(suffix, "");
+  if (!normalizedSuffix) {
+    return;
+  }
+  const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+  [
+    tokenKey,
+    normalizeInputValue(field?.key),
+    normalizeInputValue(field?.id),
+  ].filter(Boolean).forEach((key) => {
+    placeholders[`${key}_${normalizedSuffix}`] = value;
+  });
+}
+
 function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = {}, common = {}) {
   const placeholders = {};
   const fieldValues = {};
+  const mergeFieldValueIds = (key, ids = []) => {
+    const normalizedIds = normalizeMobileDocumentWizardArray(ids);
+    if (normalizedIds.length === 0) {
+      return;
+    }
+    fieldValues[key] = normalizeMobileDocumentWizardArray([
+      ...(Array.isArray(fieldValues[key]) ? fieldValues[key] : []),
+      ...normalizedIds,
+    ]);
+  };
   const selectedRulebooks = findMobileRulebooksByIds(scopedSnapshot, common.selectedRulebookIds);
   const rulebookLines = selectedRulebooks.map(formatMobileRulebookLine).filter(Boolean);
   const globalEquipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, {}, scopedSnapshot, common);
@@ -12671,6 +12696,7 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
     LEGAL_REFERENCES_LIST: globalLegalLines.join("\n"),
     LEGAL_REFERENCES_INLINE: globalLegalLines.join("; "),
     PROPISI_POPIS: globalLegalLines.join("\n"),
+    PROPISI_I_PRAVILNICI_POPIS: [...globalLegalLines, ...rulebookLines].join("\n"),
     PRAVILNICI_POPIS: rulebookLines.join("\n"),
     RULEBOOKS_LIST: rulebookLines.join("\n"),
   });
@@ -12687,25 +12713,37 @@ function buildMobileDocumentTemplateListPayload(template = {}, scopedSnapshot = 
     if (fieldType === "legal_list") {
       const legalItems = getMobileDocumentTemplateLegalFrameworksForField(template, field, scopedSnapshot, common);
       const legalLines = legalItems.map(formatMobileLegalFrameworkLine).filter(Boolean);
-      putMobileTemplateListPlaceholder(placeholders, field, index, legalLines.join("\n"));
+      const combinedLines = [...legalLines, ...rulebookLines];
+      const legalIds = legalItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
+      const rulebookIds = selectedRulebooks.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
+      putMobileTemplateListPlaceholder(placeholders, field, index, combinedLines.join("\n"));
+      putMobileTemplateListPlaceholderVariant(placeholders, field, index, "PROPISI", legalLines.join("\n"));
+      putMobileTemplateListPlaceholderVariant(placeholders, field, index, "PRAVILNICI", rulebookLines.join("\n"));
       if (recordKey) {
-        fieldValues[recordKey] = legalItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
+        fieldValues[recordKey] = legalIds;
+        fieldValues[`${recordKey}::legalFrameworkIds`] = legalIds;
+        fieldValues[`${recordKey}::rulebookIds`] = rulebookIds;
       }
+      mergeFieldValueIds("LEGAL_FRAMEWORK_IDS", legalIds);
+      mergeFieldValueIds("RULEBOOK_IDS", rulebookIds);
       return;
     }
 
     if (fieldType === "equipment_list") {
       const equipmentItems = getMobileDocumentTemplateEquipmentItemsForField(template, field, scopedSnapshot, common);
       const equipmentLines = equipmentItems.map(formatMobileMeasurementEquipmentLine).filter(Boolean);
+      const equipmentTable = buildMobileMeasurementEquipmentTableBlock(equipmentItems);
       putMobileTemplateListPlaceholder(placeholders, field, index, equipmentLines.join("\n"));
+      putMobileTemplateListPlaceholderVariant(placeholders, field, index, "TABLE", equipmentTable);
+      putMobileTemplateListPlaceholderVariant(placeholders, field, index, "TABLICA", equipmentTable);
+      putMobileTemplateListPlaceholderVariant(placeholders, field, index, "TEXT", equipmentLines.join("\n"));
+      putMobileTemplateListPlaceholderVariant(placeholders, field, index, "TEKST", equipmentLines.join("\n"));
       const equipmentIds = equipmentItems.map((item) => normalizeInputValue(item?.id)).filter(Boolean);
       if (recordKey) {
         fieldValues[recordKey] = equipmentIds;
         fieldValues[`${recordKey}::equipmentDeviceCode`] = normalizeInputValue(common.measurementEquipmentGroup);
       }
-      fieldValues.MEASUREMENT_EQUIPMENT_IDS = equipmentIds.length > 0
-        ? equipmentIds
-        : fieldValues.MEASUREMENT_EQUIPMENT_IDS;
+      mergeFieldValueIds("MEASUREMENT_EQUIPMENT_IDS", equipmentIds);
       return;
     }
 
