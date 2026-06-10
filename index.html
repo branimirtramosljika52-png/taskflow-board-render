@@ -6757,6 +6757,69 @@
                   </section>
                 </div>
               </section>
+
+              <div id="vehicle-usage-backdrop" class="offer-editor-backdrop vehicle-editor-backdrop" hidden></div>
+              <section id="vehicle-usage-panel" class="panel vehicle-modal-panel vehicle-reservation-modal" hidden aria-hidden="true">
+                <div class="vehicles-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Usage</p>
+                      <h3 id="vehicle-usage-title">Korištenje vozila</h3>
+                    </div>
+                    <div class="vehicles-editor-head-actions">
+                      <button id="vehicle-usage-close" type="button" class="ghost-button">Zatvori</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="vehicle-modal-body" tabindex="-1">
+                  <form id="vehicle-usage-form" class="entity-form vehicles-reservation-form">
+                    <input id="vehicle-usage-vehicle-id" type="hidden" />
+                    <input id="vehicle-usage-mode" type="hidden" />
+
+                    <div class="form-grid vehicles-form-grid">
+                      <label class="field">
+                        <span>Vozilo</span>
+                        <input id="vehicle-usage-vehicle-label" type="text" readonly />
+                      </label>
+                      <label class="field">
+                        <span>Kilometraža</span>
+                        <input id="vehicle-usage-odometer-km" type="number" min="0" step="1" inputmode="numeric" required />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Vezana rezervacija</span>
+                        <select id="vehicle-usage-reservation-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Korisnik vozila</span>
+                        <input id="vehicle-usage-performed-by" type="text" maxlength="180" />
+                      </label>
+                      <label class="field">
+                        <span>Destinacija / ruta</span>
+                        <input id="vehicle-usage-destination" type="text" maxlength="180" />
+                      </label>
+                    </div>
+
+                    <div class="vehicle-usage-checklist">
+                      <label><input id="vehicle-usage-clean" type="checkbox" checked /> Vozilo čisto</label>
+                      <label><input id="vehicle-usage-documents" type="checkbox" checked /> Dokumenti u vozilu</label>
+                      <label><input id="vehicle-usage-fuel" type="checkbox" checked /> Gorivo / baterija uredno</label>
+                      <label><input id="vehicle-usage-damage" type="checkbox" /> Oštećenje evidentirano</label>
+                    </div>
+
+                    <label class="field field-span-full">
+                      <span>Napomena</span>
+                      <textarea id="vehicle-usage-note" rows="2" placeholder="Kratka napomena kod preuzimanja ili povrata..."></textarea>
+                    </label>
+
+                    <p id="vehicle-usage-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button id="vehicle-usage-submit" type="submit" class="primary-button">Spremi</button>
+                    </div>
+                  </form>
+                </div>
+              </section>
               <div
                 id="measurement-equipment-document-preview-backdrop"
                 class="measurement-equipment-document-preview-backdrop"

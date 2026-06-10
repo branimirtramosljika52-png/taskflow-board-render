@@ -910,6 +910,60 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         isLoading = false,
                         error = error.message ?: "Ne mogu spremiti rezervaciju vozila.",
                     )
+            }
+        }
+    }
+
+    fun recordVehicleUsage(
+        vehicle: MobileRecord,
+        mode: String,
+        odometerKm: String,
+        destination: String,
+        reservationId: String,
+        performedBy: String,
+        vehicleClean: Boolean,
+        documentsPresent: Boolean,
+        fuelOk: Boolean,
+        damageNoted: Boolean,
+        note: String,
+    ) {
+        if (vehicle.id.isBlank()) {
+            state = state.copy(error = "Vozilo nema ispravan ID.")
+            return
+        }
+        if (odometerKm.isBlank()) {
+            state = state.copy(error = "Upiši kilometražu vozila.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.recordVehicleUsage(
+                vehicleId = vehicle.id,
+                mode = mode,
+                odometerKm = odometerKm,
+                destination = destination,
+                reservationId = reservationId,
+                performedBy = performedBy,
+                vehicleClean = vehicleClean,
+                documentsPresent = documentsPresent,
+                fuelOk = fuelOk,
+                damageNoted = damageNoted,
+                note = note,
+            )
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        selectedRecord = null,
+                        notice = if (mode == "return") "Povrat vozila je evidentiran." else "Preuzimanje vozila je evidentirano.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu evidentirati korištenje vozila.",
+                    )
                 }
         }
     }
@@ -1422,6 +1476,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         isLoading = state.isLoading,
                         onBack = { viewModel.selectRecord(null) },
                         onReserveVehicle = viewModel::createVehicleReservation,
+                        onRecordVehicleUsage = viewModel::recordVehicleUsage,
                     )
                 }
             } else {
@@ -3657,11 +3712,8 @@ private fun WorkOrdersScreen(
                     )
                 }
                 item {
-                    RecordsContent(
-                        title = "Vozila",
-                        records = filteredVehicles,
-                        emptyText = "Nema vozila za prikaz.",
-                        icon = Icons.Rounded.Business,
+                    VehicleFleetContent(
+                        vehicles = filteredVehicles,
                         onOpenRecord = onOpenRecord,
                     )
                 }
@@ -5456,6 +5508,269 @@ private fun RecordsContent(
     }
 }
 
+private data class MobileVehicleReservation(
+    val id: String,
+    val status: String,
+    val purpose: String,
+    val startAt: String,
+    val endAt: String,
+    val destination: String,
+    val userLabel: String,
+)
+
+private fun vehicleAvailabilityStatus(vehicle: MobileRecord): String =
+    vehicle.meta["availabilityStatus"].orEmpty().ifBlank { vehicle.status.ifBlank { "available" } }.lowercase()
+
+private fun vehicleStatusLabel(status: String): String = when (status.lowercase()) {
+    "reserved" -> "Zauzeto"
+    "checked_out" -> "Na terenu"
+    "service", "inactive" -> "Servis"
+    else -> "Dostupno"
+}
+
+private fun vehicleStatusColor(status: String): Color = when (status.lowercase()) {
+    "reserved", "checked_out" -> Color(0xFFB45309)
+    "service", "inactive" -> Color(0xFF64748B)
+    else -> Color(0xFF059669)
+}
+
+private fun parseVehicleReservations(vehicle: MobileRecord): List<MobileVehicleReservation> {
+    val raw = vehicle.meta["reservationsJson"].orEmpty()
+    if (raw.isBlank()) return emptyList()
+    return runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val labels = item.optJSONArray("reservedForLabels")
+                val label = if (labels != null && labels.length() > 0) {
+                    (0 until labels.length()).mapNotNull { labels.optString(it).trim().takeIf(String::isNotBlank) }.joinToString(", ")
+                } else {
+                    item.optString("reservedForLabel").trim()
+                }
+                add(
+                    MobileVehicleReservation(
+                        id = item.optString("id").trim(),
+                        status = item.optString("status", "reserved").trim(),
+                        purpose = item.optString("purpose", "Rezervacija").trim(),
+                        startAt = item.optString("startAt").trim(),
+                        endAt = item.optString("endAt").trim(),
+                        destination = item.optString("destination").trim(),
+                        userLabel = label,
+                    ),
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun parseVehicleDateTime(value: String): LocalDateTime? {
+    val normalized = value.trim()
+    if (normalized.isBlank()) return null
+    return runCatching { LocalDateTime.parse(normalized.take(19)) }.getOrNull()
+        ?: runCatching { Instant.parse(normalized).atZone(ZoneId.systemDefault()).toLocalDateTime() }.getOrNull()
+}
+
+private fun vehicleReservationOverlapsHour(reservation: MobileVehicleReservation, date: LocalDate, hour: Int): Boolean {
+    val start = parseVehicleDateTime(reservation.startAt) ?: return false
+    val end = parseVehicleDateTime(reservation.endAt) ?: return false
+    val slotStart = date.atTime(hour, 0)
+    val slotEnd = slotStart.plusHours(1)
+    return start < slotEnd && end > slotStart
+}
+
+@Composable
+private fun VehicleFleetContent(
+    vehicles: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val today = remember { LocalDate.now() }
+    val available = vehicles.count { vehicleAvailabilityStatus(it) == "available" }
+    val reserved = vehicles.count { vehicleAvailabilityStatus(it) == "reserved" }
+    val service = vehicles.count { vehicleAvailabilityStatus(it) == "service" }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                        Icon(
+                            Icons.Rounded.Business,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp).padding(10.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Status vozila", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        Text(
+                            "${vehicles.size} vozila u floti",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    VehicleStatusMetric("Dostupno", available, Color(0xFF059669), Modifier.weight(1f))
+                    VehicleStatusMetric("Zauzeto", reserved, Color(0xFFB45309), Modifier.weight(1f))
+                    VehicleStatusMetric("Servis", service, Color(0xFF64748B), Modifier.weight(1f))
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Raspored danas", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                if (vehicles.isEmpty()) {
+                    Text("Nema vozila za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+                } else {
+                    VehicleScheduleGrid(vehicles = vehicles, date = today, onOpenRecord = onOpenRecord)
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Vozila", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                if (vehicles.isEmpty()) {
+                    Text("Nema vozila za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+                } else {
+                    vehicles.take(80).forEach { vehicle ->
+                        VehicleFleetRow(vehicle = vehicle, onClick = { onOpenRecord(vehicle) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VehicleStatusMetric(label: String, count: Int, color: Color, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.height(70.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = color.copy(alpha = 0.12f),
+    ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.Center) {
+            Text(count.toString(), color = color, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = Color(0xFF334155), maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun VehicleScheduleGrid(
+    vehicles: List<MobileRecord>,
+    date: LocalDate,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val hours = remember { (7..18).toList() }
+    Column(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(96.dp))
+            hours.forEach { hour ->
+                Text(
+                    "${hour.toString().padStart(2, '0')}:00",
+                    modifier = Modifier.width(42.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        vehicles.take(12).forEach { vehicle ->
+            val reservations = parseVehicleReservations(vehicle)
+            Row(
+                modifier = Modifier
+                    .height(44.dp)
+                    .clickable { onOpenRecord(vehicle) },
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.width(96.dp)) {
+                    Text(vehicle.title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(vehicleStatusLabel(vehicleAvailabilityStatus(vehicle)), style = MaterialTheme.typography.labelSmall, color = vehicleStatusColor(vehicleAvailabilityStatus(vehicle)))
+                }
+                hours.forEach { hour ->
+                    val busy = reservations.any { vehicleReservationOverlapsHour(it, date, hour) }
+                    Surface(
+                        modifier = Modifier.size(width = 42.dp, height = 30.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (busy) Color(0xFFF59E0B).copy(alpha = 0.28f) else Color(0xFFE2E8F0).copy(alpha = 0.68f),
+                        border = if (busy) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)) else null,
+                    ) {}
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VehicleFleetRow(vehicle: MobileRecord, onClick: () -> Unit) {
+    val status = vehicleAvailabilityStatus(vehicle)
+    val statusColor = vehicleStatusColor(status)
+    val nextPurpose = vehicle.meta["nextReservationPurpose"].orEmpty()
+    val nextStart = vehicle.meta["nextReservationStartAt"].orEmpty()
+    val nextUser = vehicle.meta["nextReservationUser"].orEmpty()
+    val nextText = listOf(
+        nextPurpose,
+        if (nextStart.isNotBlank()) formatDateTimeLabel(nextStart) else "",
+        nextUser,
+    ).filter { it.isNotBlank() }.joinToString(" - ")
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = statusColor.copy(alpha = 0.08f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(shape = RoundedCornerShape(14.dp), color = statusColor.copy(alpha = 0.14f)) {
+                Icon(Icons.Rounded.Business, contentDescription = null, modifier = Modifier.size(38.dp).padding(9.dp), tint = statusColor)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(vehicle.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOf(vehicle.subtitle, "${vehicle.meta["odometerKm"].orEmpty()} km".takeIf { vehicle.meta["odometerKm"].orEmpty().isNotBlank() }).filterNotNull().joinToString(" - "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (nextText.isNotBlank()) {
+                    Text(nextText, style = MaterialTheme.typography.labelSmall, color = statusColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            AssistChip(onClick = {}, label = { Text(vehicleStatusLabel(status)) })
+        }
+    }
+}
+
+private fun formatDateTimeLabel(value: String): String {
+    val parsed = parseVehicleDateTime(value) ?: return formatDateLabel(value).ifBlank { value.take(16) }
+    return parsed.format(DateTimeFormatter.ofPattern("dd.MM. HH:mm"))
+}
+
 @Composable
 private fun MoreOverviewHero(data: BootstrapData) {
     Surface(
@@ -6913,9 +7228,11 @@ private fun MobileRecordDetailScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
 ) {
     BackHandler(onBack = onBack)
     var reservationDialogOpen by remember(record.id) { mutableStateOf(false) }
+    var usageDialogMode by remember(record.id) { mutableStateOf<String?>(null) }
     if (reservationDialogOpen) {
         VehicleReservationDialog(
             vehicle = record,
@@ -6926,6 +7243,31 @@ private fun MobileRecordDetailScreen(
             onConfirm = { purpose, startAt, endAt, destination, reservedForUserId, reservedForLabel, note ->
                 reservationDialogOpen = false
                 onReserveVehicle(record, purpose, startAt, endAt, destination, reservedForUserId, reservedForLabel, note)
+            },
+        )
+    }
+    usageDialogMode?.let { mode ->
+        VehicleUsageDialog(
+            vehicle = record,
+            mode = mode,
+            currentUserLabel = currentUserLabel,
+            isLoading = isLoading,
+            onDismiss = { usageDialogMode = null },
+            onConfirm = { selectedMode, odometerKm, destination, reservationId, performedBy, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
+                usageDialogMode = null
+                onRecordVehicleUsage(
+                    record,
+                    selectedMode,
+                    odometerKm,
+                    destination,
+                    reservationId,
+                    performedBy,
+                    vehicleClean,
+                    documentsPresent,
+                    fuelOk,
+                    damageNoted,
+                    note,
+                )
             },
         )
     }
@@ -7000,15 +7342,59 @@ private fun MobileRecordDetailScreen(
                         }
                     }
                     if (record.kind == "vehicle") {
-                        Button(
-                            onClick = { reservationDialogOpen = true },
-                            enabled = !isLoading,
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        ) {
-                            Icon(Icons.Rounded.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Rezerviraj vozilo", fontWeight = FontWeight.Black)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { reservationDialogOpen = true },
+                                enabled = !isLoading,
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Icon(Icons.Rounded.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Rezerviraj", fontWeight = FontWeight.Black)
+                            }
+                            OutlinedButton(
+                                onClick = { usageDialogMode = "checkout" },
+                                enabled = !isLoading && vehicleAvailabilityStatus(record) != "service",
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Icon(Icons.Rounded.Work, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Preuzmi", fontWeight = FontWeight.Black)
+                            }
+                            OutlinedButton(
+                                onClick = { usageDialogMode = "return" },
+                                enabled = !isLoading && vehicleAvailabilityStatus(record) != "service",
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Vrati", fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (record.kind == "vehicle") {
+                val reservations = parseVehicleReservations(record)
+                DetailSection("Raspored vozila") {
+                    if (reservations.isEmpty()) {
+                        DetailRow(Icons.Rounded.CalendarMonth, "Rezervacije", "Nema aktivnih rezervacija.")
+                    } else {
+                        reservations.take(6).forEach { reservation ->
+                            DetailRow(
+                                Icons.Rounded.CalendarMonth,
+                                reservation.purpose.ifBlank { "Rezervacija" },
+                                listOf(
+                                    "${formatDateTimeLabel(reservation.startAt)} - ${formatDateTimeLabel(reservation.endAt)}",
+                                    reservation.userLabel,
+                                    reservation.destination,
+                                    vehicleStatusLabel(reservation.status),
+                                ).filter { it.isNotBlank() }.joinToString("\n"),
+                            )
                         }
                     }
                 }
@@ -7074,12 +7460,6 @@ private fun VehicleReservationDialog(
         )
     }
     var reservedForLabel by remember(vehicle.id, currentUserLabel) { mutableStateOf(currentUserLabel) }
-    var startKm by remember(vehicle.id) { mutableStateOf(vehicle.meta["odometerKm"].orEmpty()) }
-    var endKm by remember(vehicle.id) { mutableStateOf("") }
-    var vehicleClean by remember(vehicle.id) { mutableStateOf(true) }
-    var documentsPresent by remember(vehicle.id) { mutableStateOf(true) }
-    var fuelOk by remember(vehicle.id) { mutableStateOf(true) }
-    var damageNoted by remember(vehicle.id) { mutableStateOf(false) }
     var note by remember(vehicle.id) { mutableStateOf("") }
     val reservationRangeValid = remember(startDate, startTime, endDate, endTime) {
         isReservationRangeValid(startDate, startTime, endDate, endTime)
@@ -7199,28 +7579,116 @@ private fun VehicleReservationDialog(
                     },
                 )
                 WorkOrderTextField("Ime korisnika vozila", reservedForLabel, { reservedForLabel = it }, !isLoading)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = startKm,
-                        onValueChange = { startKm = it.filter(Char::isDigit).take(7) },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("Početni km") },
-                        singleLine = true,
-                        enabled = !isLoading,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(16.dp),
+                WorkOrderTextField("Napomena", note, { note = it }, !isLoading)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(
+                        purpose.trim(),
+                        formatReservationDateTime(startDate, startTime),
+                        formatReservationDateTime(endDate, endTime),
+                        destination.trim(),
+                        reservedForUserId.trim(),
+                        reservedForLabel.trim(),
+                        note.trim(),
                     )
-                    OutlinedTextField(
-                        value = endKm,
-                        onValueChange = { endKm = it.filter(Char::isDigit).take(7) },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("Krajnji km") },
-                        singleLine = true,
-                        enabled = !isLoading,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(16.dp),
-                    )
-                }
+                },
+                enabled = !isLoading && purpose.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank() && reservationRangeValid,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text("Spremi rezervaciju", fontWeight = FontWeight.Black)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
+@Composable
+private fun VehicleUsageDialog(
+    vehicle: MobileRecord,
+    mode: String,
+    currentUserLabel: String,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+) {
+    val reservations = remember(vehicle.meta["reservationsJson"], mode) { parseVehicleReservations(vehicle) }
+    val defaultReservation = remember(reservations, mode, vehicle.meta["nextReservationId"]) {
+        val preferredStatus = if (mode == "return") "checked_out" else "reserved"
+        reservations.firstOrNull { it.status.equals(preferredStatus, ignoreCase = true) }
+            ?: reservations.firstOrNull { it.id == vehicle.meta["nextReservationId"] }
+            ?: reservations.firstOrNull()
+    }
+    var odometerKm by remember(vehicle.id, mode) { mutableStateOf(vehicle.meta["odometerKm"].orEmpty()) }
+    var destination by remember(vehicle.id, mode, defaultReservation?.destination) { mutableStateOf(defaultReservation?.destination.orEmpty()) }
+    var reservationId by remember(vehicle.id, mode, defaultReservation?.id) { mutableStateOf(defaultReservation?.id.orEmpty()) }
+    var performedBy by remember(vehicle.id, currentUserLabel) { mutableStateOf(currentUserLabel) }
+    var vehicleClean by remember(vehicle.id, mode) { mutableStateOf(true) }
+    var documentsPresent by remember(vehicle.id, mode) { mutableStateOf(true) }
+    var fuelOk by remember(vehicle.id, mode) { mutableStateOf(true) }
+    var damageNoted by remember(vehicle.id, mode) { mutableStateOf(false) }
+    var note by remember(vehicle.id, mode) { mutableStateOf("") }
+    val title = if (mode == "return") "Povrat vozila" else "Preuzimanje vozila"
+    val reservationOptions = remember(reservations) {
+        listOf("" to "Bez vezane rezervacije") + reservations.map { reservation ->
+            reservation.id to listOf(
+                reservation.purpose.ifBlank { "Rezervacija" },
+                formatDateTimeLabel(reservation.startAt),
+                reservation.userLabel,
+            ).filter { it.isNotBlank() }.joinToString(" - ")
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxWidth(0.96f),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        title = {
+            Column {
+                Text(title, fontWeight = FontWeight.Black)
+                Text(
+                    vehicle.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 620.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = odometerKm,
+                    onValueChange = { odometerKm = it.filter(Char::isDigit).take(8) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(if (mode == "return") "Kilometraža kod povrata" else "Početna kilometraža") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    shape = RoundedCornerShape(16.dp),
+                )
+                WorkOrderTextField("Destinacija / ruta", destination, { destination = it }, !isLoading)
+                WorkOrderSelectField(
+                    label = "Vezana rezervacija",
+                    value = reservationId,
+                    valueLabel = reservationOptions.firstOrNull { it.first == reservationId }?.second ?: "Bez vezane rezervacije",
+                    options = reservationOptions,
+                    enabled = !isLoading,
+                    onSelect = { reservationId = it },
+                )
+                WorkOrderTextField("Korisnik vozila", performedBy, { performedBy = it }, !isLoading)
                 Text("Stanje vozila", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
                 VehicleChecklistRow("Vozilo čisto", vehicleClean, !isLoading) { vehicleClean = it }
                 VehicleChecklistRow("Dokumenti u vozilu", documentsPresent, !isLoading) { documentsPresent = it }
@@ -7232,32 +7700,23 @@ private fun VehicleReservationDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val reservationTermLabel =
-                        "${formatDatePickerLabel(startDate)} $startTime - ${formatDatePickerLabel(endDate)} $endTime"
-                    val checklist = listOf(
-                        "Termin rezervacije: $reservationTermLabel",
-                        "Početni km: ${startKm.ifBlank { "-" }}",
-                        "Krajnji km: ${endKm.ifBlank { "-" }}",
-                        "Vozilo čisto: ${if (vehicleClean) "da" else "ne"}",
-                        "Dokumenti u vozilu: ${if (documentsPresent) "da" else "ne"}",
-                        "Gorivo / baterija uredno: ${if (fuelOk) "da" else "ne"}",
-                        "Oštećenje evidentirano: ${if (damageNoted) "da" else "ne"}",
-                        note.takeIf { it.isNotBlank() }?.let { "Napomena: $it" },
-                    ).filterNotNull().joinToString("\n")
                     onConfirm(
-                        purpose.trim(),
-                        formatReservationDateTime(startDate, startTime),
-                        formatReservationDateTime(endDate, endTime),
+                        mode,
+                        odometerKm.trim(),
                         destination.trim(),
-                        reservedForUserId.trim(),
-                        reservedForLabel.trim(),
-                        checklist,
+                        reservationId.trim(),
+                        performedBy.trim(),
+                        vehicleClean,
+                        documentsPresent,
+                        fuelOk,
+                        damageNoted,
+                        note.trim(),
                     )
                 },
-                enabled = !isLoading && purpose.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank() && reservationRangeValid,
+                enabled = !isLoading && odometerKm.isNotBlank(),
                 shape = RoundedCornerShape(16.dp),
             ) {
-                Text("Spremi rezervaciju", fontWeight = FontWeight.Black)
+                Text(if (mode == "return") "Spremi povrat" else "Spremi preuzimanje", fontWeight = FontWeight.Black)
             }
         },
         dismissButton = {

@@ -70,7 +70,10 @@ import {
   PRIORITY_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   doesAbsenceTypeRequireApproval,
+  getVehicleAvailabilityStatus,
+  getVehicleNextReservation,
   normalizeWorkOrderMeasurementSheet,
+  sortVehicleReservations,
 } from "./src/safetyModel.js";
 import {
   evaluateMeasurementFormula,
@@ -88,7 +91,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.78.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.79.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -14714,7 +14717,28 @@ function isMobileClosedWorkOrderStatus(status = "") {
 }
 
 function buildMobileVehicleRecord(item = {}) {
-  return buildMobileRecordItem(item, {
+  const nowValue = new Date().toISOString();
+  const availabilityStatus = getVehicleAvailabilityStatus(item, nowValue);
+  const nextReservation = getVehicleNextReservation(item, nowValue);
+  const reservations = sortVehicleReservations(item?.reservations ?? [], nowValue)
+    .filter((reservation) => {
+      const endTimestamp = Date.parse(reservation?.endAt ?? "");
+      return Number.isFinite(endTimestamp) && endTimestamp >= Date.now() - 24 * 60 * 60 * 1000;
+    })
+    .slice(0, 12)
+    .map((reservation) => ({
+      id: normalizeInputValue(reservation?.id),
+      status: normalizeInputValue(reservation?.status || "reserved"),
+      purpose: normalizeInputValue(reservation?.purpose || "Rezervacija"),
+      startAt: normalizeInputValue(reservation?.startAt),
+      endAt: normalizeInputValue(reservation?.endAt),
+      destination: normalizeInputValue(reservation?.destination),
+      reservedForLabel: normalizeInputValue(reservation?.reservedForLabel),
+      reservedForLabels: Array.isArray(reservation?.reservedForLabels)
+        ? reservation.reservedForLabels.map(normalizeInputValue).filter(Boolean)
+        : [],
+    }));
+  const record = buildMobileRecordItem(item, {
     kind: "vehicle",
     titleKeys: ["plateNumber", "name", "vinNumber"],
     subtitleKeys: ["name", "make", "model", "category"],
@@ -14723,6 +14747,147 @@ function buildMobileVehicleRecord(item = {}) {
     metaKeys: ["make", "model", "category", "odometerKm", "registrationExpiresOn", "serviceDueDate"],
     fallbackTitle: "Vozilo",
   });
+  return {
+    ...record,
+    status: availabilityStatus,
+    meta: {
+      ...record.meta,
+      baseStatus: normalizeInputValue(item?.status),
+      availabilityStatus,
+      availabilityLabel: availabilityStatus === "reserved"
+        ? "Rezervirano"
+        : availabilityStatus === "service"
+          ? "Servis"
+          : "Dostupno",
+      nextReservationId: normalizeInputValue(nextReservation?.id),
+      nextReservationStatus: normalizeInputValue(nextReservation?.status),
+      nextReservationPurpose: normalizeInputValue(nextReservation?.purpose),
+      nextReservationStartAt: normalizeInputValue(nextReservation?.startAt),
+      nextReservationEndAt: normalizeInputValue(nextReservation?.endAt),
+      nextReservationUser: normalizeInputValue(nextReservation?.reservedForLabel),
+      reservationsJson: JSON.stringify(reservations),
+      activityItemsJson: JSON.stringify((Array.isArray(item?.activityItems) ? item.activityItems : []).slice(0, 12)),
+    },
+  };
+}
+
+function resolveVehicleUsageMode(value = "") {
+  const normalized = normalizeInputValue(value).toLowerCase();
+  if (["return", "checkin", "check_in", "vracanje", "povrat"].includes(normalized)) {
+    return "return";
+  }
+  if (["checkout", "check_out", "preuzimanje", "start"].includes(normalized)) {
+    return "checkout";
+  }
+  return "usage";
+}
+
+function getVehicleUsagePerformerLabel(user = {}, body = {}) {
+  return normalizeInputValue(
+    body.performedBy
+    || body.reservedForLabel
+    || user.fullName
+    || user.displayName
+    || user.username
+    || user.email
+    || "Korisnik",
+  );
+}
+
+function findVehicleUsageReservation(vehicle = {}, body = {}, mode = "usage", nowValue = new Date().toISOString()) {
+  const reservations = Array.isArray(vehicle?.reservations) ? vehicle.reservations : [];
+  const requestedId = normalizeInputValue(body.reservationId);
+  if (requestedId) {
+    return reservations.find((reservation) => String(reservation.id) === requestedId) || null;
+  }
+
+  const nowTimestamp = Date.parse(nowValue);
+  const activeStatuses = new Set(["reserved", "checked_out"]);
+  const sorted = sortVehicleReservations(reservations, nowValue)
+    .filter((reservation) => activeStatuses.has(normalizeInputValue(reservation?.status).toLowerCase()));
+
+  if (mode === "return") {
+    return sorted.find((reservation) => normalizeInputValue(reservation?.status).toLowerCase() === "checked_out")
+      || sorted.find((reservation) => {
+        const start = Date.parse(reservation?.startAt ?? "");
+        const end = Date.parse(reservation?.endAt ?? "");
+        return Number.isFinite(start) && Number.isFinite(end) && start <= nowTimestamp && end >= nowTimestamp;
+      })
+      || sorted[0]
+      || null;
+  }
+
+  return sorted.find((reservation) => {
+    const start = Date.parse(reservation?.startAt ?? "");
+    const end = Date.parse(reservation?.endAt ?? "");
+    return Number.isFinite(start) && Number.isFinite(end) && start <= nowTimestamp && end >= nowTimestamp;
+  })
+    || sorted.find((reservation) => Date.parse(reservation?.startAt ?? "") >= nowTimestamp)
+    || sorted[0]
+    || null;
+}
+
+function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
+  const nowValue = new Date().toISOString();
+  const mode = resolveVehicleUsageMode(body.mode || body.usageMode);
+  const odometerKm = normalizeInputValue(body.odometerKm || body.endKm || body.startKm);
+  if (!odometerKm) {
+    throw new Error("Upiši kilometražu vozila.");
+  }
+
+  const performer = getVehicleUsagePerformerLabel(user, body);
+  const targetReservation = findVehicleUsageReservation(vehicle, body, mode, nowValue);
+  const actionLabel = mode === "return"
+    ? "Povrat vozila"
+    : mode === "checkout"
+      ? "Preuzimanje vozila"
+      : "Korištenje vozila";
+  const checklist = [
+    body.destination ? `Destinacija: ${normalizeInputValue(body.destination)}` : "",
+    body.vehicleClean !== undefined ? `Vozilo čisto: ${body.vehicleClean ? "da" : "ne"}` : "",
+    body.documentsPresent !== undefined ? `Dokumenti u vozilu: ${body.documentsPresent ? "da" : "ne"}` : "",
+    body.fuelOk !== undefined ? `Gorivo / baterija uredno: ${body.fuelOk ? "da" : "ne"}` : "",
+    body.damageNoted !== undefined ? `Oštećenje evidentirano: ${body.damageNoted ? "da" : "ne"}` : "",
+    normalizeInputValue(body.note),
+  ].map(normalizeInputValue).filter(Boolean);
+
+  const activityItem = {
+    id: randomUUID(),
+    activityType: "usage",
+    performedOn: nowValue.slice(0, 10),
+    performedBy: performer,
+    odometerKm,
+    workSummary: actionLabel,
+    note: checklist.join("\n"),
+    createdAt: nowValue,
+    updatedAt: nowValue,
+  };
+  const patch = {
+    odometerKm,
+    activityItems: [
+      activityItem,
+      ...(Array.isArray(vehicle.activityItems) ? vehicle.activityItems : []),
+    ],
+  };
+
+  if (targetReservation && mode !== "usage") {
+    const nextStatus = mode === "return" ? "completed" : "checked_out";
+    patch.reservations = (Array.isArray(vehicle.reservations) ? vehicle.reservations : []).map((reservation) => (
+      String(reservation.id) === String(targetReservation.id)
+        ? {
+          ...reservation,
+          status: nextStatus,
+          note: [
+            normalizeInputValue(reservation.note),
+            `${actionLabel}: ${odometerKm} km`,
+          ].filter(Boolean).join("\n"),
+          updatedAt: nowValue,
+        }
+        : reservation
+    ));
+  }
+
+  return patch;
 }
 
 function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
@@ -15882,6 +16047,7 @@ async function handleApiRequest(request, response, url) {
     const documentTemplateHtmlPreviewPdfExportMatch = url.pathname === "/api/document-templates/export-html-preview-pdf";
     const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
+    const vehicleUsageMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/usage$/);
     const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
     const todoTaskCommentMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)\/comments$/);
     const todoTaskMatch = url.pathname.match(/^\/api\/todo-tasks\/([^/]+)$/);
@@ -19669,6 +19835,39 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.vehicles, vehicleMatch[1], "Vozilo nije pronađeno.");
       const updated = await domainRepository.updateVehicle(vehicleMatch[1], {
         ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Vozilo nije pronađeno.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (vehicleUsageMatch && request.method === "POST") {
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const canUseVehicle = canUseScopedSnapshotAppPermission(user, scopedSnapshot, "vehicles.reserve")
+        || canUseScopedSnapshotAppPermission(user, scopedSnapshot, "vehicles.create");
+      if (!canUseVehicle) {
+        sendError(response, 403, "Nemate pravo evidentirati korištenje vozila.");
+        return true;
+      }
+
+      const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleUsageMatch[1], "Vozilo nije pronađeno.");
+      let patch = null;
+      try {
+        patch = buildVehicleUsagePatch(vehicle, body, user);
+      } catch (error) {
+        sendError(response, 400, error?.message || "Ne mogu evidentirati korištenje vozila.");
+        return true;
+      }
+
+      const updated = await domainRepository.updateVehicle(vehicle.id, {
+        ...patch,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
 

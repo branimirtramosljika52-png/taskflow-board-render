@@ -1042,6 +1042,7 @@ const VEHICLE_DOCUMENT_CATEGORY_LABELS = new Map(
 );
 const VEHICLE_ACTIVITY_TYPE_OPTIONS = Object.freeze([
   { value: "service", label: "Servis" },
+  { value: "usage", label: "Korištenje vozila" },
   { value: "technical_inspection", label: "Tehnički pregled" },
   { value: "registration", label: "Registracija" },
   { value: "repair", label: "Popravak" },
@@ -2075,6 +2076,7 @@ const state = {
   locationEditorOpen: false,
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
+  vehicleUsageEditorOpen: false,
   vehicleListSectionCollapsed: false,
   vehicleScheduleSectionCollapsed: false,
   vehicleActivitySectionExpanded: true,
@@ -3856,6 +3858,26 @@ const vehicleReservationError = document.querySelector("#vehicle-reservation-err
 const vehicleReservationResetButton = document.querySelector("#vehicle-reservation-reset");
 const vehicleReservationsList = document.querySelector("#vehicle-reservations-list");
 const vehicleReservationsEmpty = document.querySelector("#vehicle-reservations-empty");
+const vehicleUsageBackdrop = document.querySelector("#vehicle-usage-backdrop");
+const vehicleUsagePanel = document.querySelector("#vehicle-usage-panel");
+const vehicleUsageCloseButton = document.querySelector("#vehicle-usage-close");
+const vehicleUsageBody = vehicleUsagePanel?.querySelector(".vehicle-modal-body");
+const vehicleUsageTitle = document.querySelector("#vehicle-usage-title");
+const vehicleUsageForm = document.querySelector("#vehicle-usage-form");
+const vehicleUsageSubmitButton = document.querySelector("#vehicle-usage-submit");
+const vehicleUsageVehicleIdInput = document.querySelector("#vehicle-usage-vehicle-id");
+const vehicleUsageModeInput = document.querySelector("#vehicle-usage-mode");
+const vehicleUsageVehicleLabelInput = document.querySelector("#vehicle-usage-vehicle-label");
+const vehicleUsageOdometerKmInput = document.querySelector("#vehicle-usage-odometer-km");
+const vehicleUsageReservationIdInput = document.querySelector("#vehicle-usage-reservation-id");
+const vehicleUsagePerformedByInput = document.querySelector("#vehicle-usage-performed-by");
+const vehicleUsageDestinationInput = document.querySelector("#vehicle-usage-destination");
+const vehicleUsageCleanInput = document.querySelector("#vehicle-usage-clean");
+const vehicleUsageDocumentsInput = document.querySelector("#vehicle-usage-documents");
+const vehicleUsageFuelInput = document.querySelector("#vehicle-usage-fuel");
+const vehicleUsageDamageInput = document.querySelector("#vehicle-usage-damage");
+const vehicleUsageNoteInput = document.querySelector("#vehicle-usage-note");
+const vehicleUsageError = document.querySelector("#vehicle-usage-error");
 const offersModule = document.querySelector("#offers-module");
 const publicProcurementModule = document.querySelector("#public-procurement-module");
 const publicProcurementTotalCount = document.querySelector("#public-procurement-total-count");
@@ -5157,6 +5179,14 @@ if (vehicleReservationPanel?.parentElement !== document.body) {
   document.body.append(vehicleReservationPanel);
 }
 
+if (vehicleUsageBackdrop?.parentElement !== document.body) {
+  document.body.append(vehicleUsageBackdrop);
+}
+
+if (vehicleUsagePanel?.parentElement !== document.body) {
+  document.body.append(vehicleUsagePanel);
+}
+
 if (serviceCatalogEditorBackdrop?.parentElement !== document.body) {
   document.body.append(serviceCatalogEditorBackdrop);
 }
@@ -5256,6 +5286,15 @@ if (vehicleReservationBackdrop) {
 if (vehicleReservationPanel) {
   vehicleReservationPanel.hidden = true;
   vehicleReservationPanel.setAttribute("aria-hidden", "true");
+}
+
+if (vehicleUsageBackdrop) {
+  vehicleUsageBackdrop.hidden = true;
+}
+
+if (vehicleUsagePanel) {
+  vehicleUsagePanel.hidden = true;
+  vehicleUsagePanel.setAttribute("aria-hidden", "true");
 }
 
 if (serviceCatalogEditorBackdrop) {
@@ -83098,6 +83137,40 @@ function syncVehicleReservationModal() {
   }
 }
 
+function syncVehicleUsageModal() {
+  if (state.vehicleUsageEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "vehicles"
+    || !state.user
+  )) {
+    state.vehicleUsageEditorOpen = false;
+  }
+
+  const isOpen = state.vehicleUsageEditorOpen;
+  vehicleUsagePanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-vehicle-usage-open", isOpen);
+
+  if (vehicleUsagePanel) {
+    vehicleUsagePanel.hidden = !isOpen;
+    vehicleUsagePanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (vehicleUsageBackdrop) {
+    vehicleUsageBackdrop.hidden = !isOpen;
+  }
+
+  if (vehicleUsageCloseButton) {
+    vehicleUsageCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      vehicleUsageBody?.scrollTo({ top: 0, left: 0 });
+      vehicleUsageBody?.focus({ preventScroll: true });
+    });
+  }
+}
+
 function openVehicleEditor() {
   state.vehicleEditorOpen = true;
   syncVehicleEditorModal();
@@ -83136,6 +83209,25 @@ function closeVehicleReservationEditor({ reset = false } = {}) {
 
 function dismissVehicleReservationEditor() {
   closeVehicleReservationEditor({ reset: true });
+  renderVehiclesModule();
+}
+
+function openVehicleUsageEditor() {
+  state.vehicleUsageEditorOpen = true;
+  syncVehicleUsageModal();
+}
+
+function closeVehicleUsageEditor({ reset = false } = {}) {
+  state.vehicleUsageEditorOpen = false;
+  syncVehicleUsageModal();
+
+  if (reset) {
+    resetVehicleUsageForm();
+  }
+}
+
+function dismissVehicleUsageEditor() {
+  closeVehicleUsageEditor({ reset: true });
   renderVehiclesModule();
 }
 
@@ -101258,6 +101350,115 @@ function buildVehicleReservationPayload() {
   };
 }
 
+function getVehicleUsageModeLabel(mode = "") {
+  return String(mode || "").trim().toLowerCase() === "return" ? "Povrat vozila" : "Preuzimanje vozila";
+}
+
+function findVehicleUsageDefaultReservation(vehicle = {}, mode = "checkout") {
+  const reservations = sortVehicleReservations(vehicle?.reservations ?? [], new Date().toISOString());
+  const preferredStatus = mode === "return" ? "checked_out" : "reserved";
+  return reservations.find((reservation) => String(reservation.status || "").toLowerCase() === preferredStatus)
+    || getVehicleNextReservation(vehicle, new Date().toISOString())
+    || reservations[0]
+    || null;
+}
+
+function rebuildVehicleUsageReservationOptions(vehicle = {}, selectedValue = "") {
+  if (!vehicleUsageReservationIdInput) {
+    return;
+  }
+
+  const reservations = sortVehicleReservations(vehicle?.reservations ?? [], new Date().toISOString());
+  const options = [
+    { value: "", label: "Bez vezane rezervacije" },
+    ...reservations.slice(0, 20).map((reservation) => ({
+      value: reservation.id,
+      label: [
+        reservation.purpose || "Rezervacija",
+        formatDateTime(reservation.startAt),
+        reservation.reservedForLabel || "",
+        getVehicleReservationStatusLabel(reservation.status),
+      ].filter(Boolean).join(" | "),
+    })),
+  ];
+  replaceSelectOptions(vehicleUsageReservationIdInput, options, selectedValue);
+}
+
+function resetVehicleUsageForm() {
+  vehicleUsageForm?.reset();
+  if (vehicleUsageVehicleIdInput) vehicleUsageVehicleIdInput.value = "";
+  if (vehicleUsageModeInput) vehicleUsageModeInput.value = "checkout";
+  if (vehicleUsageVehicleLabelInput) vehicleUsageVehicleLabelInput.value = "";
+  if (vehicleUsageOdometerKmInput) vehicleUsageOdometerKmInput.value = "";
+  if (vehicleUsagePerformedByInput) {
+    vehicleUsagePerformedByInput.value = state.user?.fullName || state.user?.email || state.user?.username || "";
+  }
+  if (vehicleUsageCleanInput) vehicleUsageCleanInput.checked = true;
+  if (vehicleUsageDocumentsInput) vehicleUsageDocumentsInput.checked = true;
+  if (vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
+  if (vehicleUsageDamageInput) vehicleUsageDamageInput.checked = false;
+  if (vehicleUsageError) vehicleUsageError.textContent = "";
+  rebuildVehicleUsageReservationOptions({}, "");
+}
+
+function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationId = "" } = {}) {
+  const safeMode = String(mode || "").trim().toLowerCase() === "return" ? "return" : "checkout";
+  const defaultReservation = reservationId
+    ? (vehicle.reservations ?? []).find((reservation) => String(reservation.id) === String(reservationId))
+    : findVehicleUsageDefaultReservation(vehicle, safeMode);
+
+  if (vehicleUsageVehicleIdInput) vehicleUsageVehicleIdInput.value = vehicle.id || "";
+  if (vehicleUsageModeInput) vehicleUsageModeInput.value = safeMode;
+  if (vehicleUsageTitle) vehicleUsageTitle.textContent = getVehicleUsageModeLabel(safeMode);
+  if (vehicleUsageSubmitButton) vehicleUsageSubmitButton.textContent = safeMode === "return" ? "Spremi povrat" : "Spremi preuzimanje";
+  if (vehicleUsageVehicleLabelInput) {
+    vehicleUsageVehicleLabelInput.value = [vehicle.plateNumber, vehicle.name].filter(Boolean).join(" | ") || "Vozilo";
+  }
+  if (vehicleUsageOdometerKmInput) vehicleUsageOdometerKmInput.value = String(vehicle.odometerKm ?? "");
+  if (vehicleUsageDestinationInput) vehicleUsageDestinationInput.value = defaultReservation?.destination || "";
+  if (vehicleUsagePerformedByInput) {
+    vehicleUsagePerformedByInput.value = defaultReservation?.reservedForLabel
+      || state.user?.fullName
+      || state.user?.email
+      || state.user?.username
+      || "";
+  }
+  if (vehicleUsageCleanInput) vehicleUsageCleanInput.checked = true;
+  if (vehicleUsageDocumentsInput) vehicleUsageDocumentsInput.checked = true;
+  if (vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
+  if (vehicleUsageDamageInput) vehicleUsageDamageInput.checked = false;
+  if (vehicleUsageNoteInput) vehicleUsageNoteInput.value = "";
+  if (vehicleUsageError) vehicleUsageError.textContent = "";
+  rebuildVehicleUsageReservationOptions(vehicle, defaultReservation?.id || reservationId || "");
+}
+
+function buildVehicleUsagePayload() {
+  return {
+    mode: vehicleUsageModeInput?.value || "checkout",
+    odometerKm: vehicleUsageOdometerKmInput?.value || "",
+    reservationId: vehicleUsageReservationIdInput?.value || "",
+    performedBy: vehicleUsagePerformedByInput?.value || "",
+    destination: vehicleUsageDestinationInput?.value || "",
+    vehicleClean: Boolean(vehicleUsageCleanInput?.checked),
+    documentsPresent: Boolean(vehicleUsageDocumentsInput?.checked),
+    fuelOk: Boolean(vehicleUsageFuelInput?.checked),
+    damageNoted: Boolean(vehicleUsageDamageInput?.checked),
+    note: vehicleUsageNoteInput?.value || "",
+  };
+}
+
+function openVehicleUsageComposer(vehicle, options = {}) {
+  if (!vehicle || isVehicleServiceOnlyStatus(vehicle)) {
+    return;
+  }
+  state.activeVehicleId = vehicle.id;
+  hydrateVehicleUsageForm(vehicle, options);
+  openVehicleUsageEditor();
+  requestAnimationFrame(() => {
+    vehicleUsageOdometerKmInput?.focus({ preventScroll: true });
+  });
+}
+
 function resetVehicleReservationForm({ clearSelection = true, vehicleId = state.activeVehicleId || "" } = {}) {
   if (!vehicleReservationForm) {
     return;
@@ -102017,6 +102218,27 @@ function renderVehiclesModule() {
       });
     });
     actions.append(reserveButton);
+    const checkoutButton = document.createElement("button");
+    checkoutButton.type = "button";
+    checkoutButton.className = "ghost-button";
+    checkoutButton.textContent = "Preuzmi";
+    checkoutButton.hidden = !canReserveVehicles;
+    checkoutButton.disabled = !canReserveVehicles || isServiceVehicle;
+    checkoutButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openVehicleUsageComposer(vehicle, { mode: "checkout" });
+    });
+    const returnButton = document.createElement("button");
+    returnButton.type = "button";
+    returnButton.className = "ghost-button";
+    returnButton.textContent = "Vrati";
+    returnButton.hidden = !canReserveVehicles;
+    returnButton.disabled = !canReserveVehicles || isServiceVehicle;
+    returnButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openVehicleUsageComposer(vehicle, { mode: "return" });
+    });
+    actions.append(checkoutButton, returnButton);
     head.append(actions);
 
     const openVehicle = () => {
@@ -102107,6 +102329,16 @@ function renderVehiclesModule() {
       editButton.addEventListener("click", () => {
         hydrateVehicleReservationForm(reservationVehicle, reservation);
       });
+      const usageButton = document.createElement("button");
+      usageButton.type = "button";
+      usageButton.className = "ghost-button";
+      usageButton.textContent = String(reservation.status || "").toLowerCase() === "checked_out" ? "Vrati" : "Preuzmi";
+      usageButton.addEventListener("click", () => {
+        openVehicleUsageComposer(reservationVehicle, {
+          mode: String(reservation.status || "").toLowerCase() === "checked_out" ? "return" : "checkout",
+          reservationId: reservation.id,
+        });
+      });
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "ghost-button";
@@ -102127,7 +102359,7 @@ function renderVehiclesModule() {
         });
       });
       if (canReserveVehicles) {
-        actions.append(editButton, deleteButton);
+        actions.append(usageButton, editButton, deleteButton);
       }
 
       item.append(head, windowLabel, actions);
@@ -102146,6 +102378,7 @@ function renderVehiclesModule() {
   renderVehicleDocuments();
   renderVehicleActivities();
   syncVehicleEditorSummary();
+  syncVehicleUsageModal();
 }
 
 function renderActiveView() {
@@ -102176,6 +102409,10 @@ function renderActiveView() {
     state.userEditorOpen = false;
     state.absenceEditorOpen = false;
     state.absenceBalanceEditorOpen = false;
+  }
+
+  if (state.activeView !== "module" || state.activeModuleItem !== "vehicles") {
+    state.vehicleUsageEditorOpen = false;
   }
 
   renderDashboardOverview();
@@ -120397,6 +120634,48 @@ vehicleScheduleNextButton?.addEventListener("click", () => {
 vehicleScheduleDateInput?.addEventListener("change", () => {
   state.vehicleScheduleDate = vehicleScheduleDateInput.value || new Date().toISOString().slice(0, 10);
   renderVehiclesModule();
+});
+
+vehicleUsageCloseButton?.addEventListener("click", () => {
+  dismissVehicleUsageEditor();
+});
+
+vehicleUsageBackdrop?.addEventListener("click", () => {
+  dismissVehicleUsageEditor();
+});
+
+vehicleUsageForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!getCanReserveVehicles() && !getCanManageVehicles()) {
+    return;
+  }
+
+  const vehicleId = vehicleUsageVehicleIdInput?.value || "";
+  if (!vehicleId) {
+    if (vehicleUsageError) {
+      vehicleUsageError.textContent = "Odaberi vozilo prije spremanja.";
+    }
+    return;
+  }
+
+  const payload = buildVehicleUsagePayload();
+  if (!String(payload.odometerKm || "").trim()) {
+    if (vehicleUsageError) {
+      vehicleUsageError.textContent = "Upiši kilometražu vozila.";
+    }
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/vehicles/${vehicleId}/usage`, {
+    method: "POST",
+    body: payload,
+  }), vehicleUsageError).then((success) => {
+    if (!success) {
+      return;
+    }
+    closeVehicleUsageEditor({ reset: true });
+    renderVehiclesModule();
+  });
 });
 
 vehicleReservationForm?.addEventListener("submit", (event) => {

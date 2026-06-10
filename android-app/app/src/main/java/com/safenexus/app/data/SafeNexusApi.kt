@@ -233,6 +233,37 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun recordVehicleUsage(
+        vehicleId: String,
+        mode: String,
+        odometerKm: String,
+        destination: String,
+        reservationId: String,
+        performedBy: String,
+        vehicleClean: Boolean,
+        documentsPresent: Boolean,
+        fuelOk: Boolean,
+        damageNoted: Boolean,
+        note: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("mode", mode)
+                .put("odometerKm", odometerKm)
+                .put("destination", destination)
+                .put("reservationId", reservationId)
+                .put("performedBy", performedBy)
+                .put("vehicleClean", vehicleClean)
+                .put("documentsPresent", documentsPresent)
+                .put("fuelOk", fuelOk)
+                .put("damageNoted", damageNoted)
+                .put("note", note)
+                .toString()
+            request("/api/vehicles/${vehicleId.pathSegment()}/usage", method = "POST", body = payload)
+            Unit
+        }
+    }
+
     suspend fun createWorkOrderLocationObject(
         workOrder: WorkOrder,
         name: String,
