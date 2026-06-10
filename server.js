@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.77.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.78.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -6092,6 +6092,10 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
     saveMs: Date.now() - saveStartedAt,
     totalMs: Date.now() - startedAt,
   });
+
+  if (savedItems.some((entry) => entry?.item || entry?.record)) {
+    invalidateSnapshotCaches();
+  }
 
   return savedItems.filter((entry) => entry?.item);
 }
@@ -12776,6 +12780,66 @@ function buildMobileDocumentTemplateDataSource(template = {}, latestRecord = nul
   };
 }
 
+function mergeMobileDocumentContextRecords(scopedSnapshot = {}, freshRecords = []) {
+  const existingRecords = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
+  const mergedRecords = [];
+  const seenKeys = new Set();
+
+  [...(Array.isArray(freshRecords) ? freshRecords : []), ...existingRecords].forEach((record) => {
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      return;
+    }
+    const key = normalizeInputValue(record.id)
+      || [
+        record.templateId,
+        record.companyId,
+        record.locationId,
+        record.objectId,
+        record.objectName,
+        record.inspectionDate,
+        record.issuedDate,
+        record.createdAt,
+      ].map(normalizeInputValue).join("::");
+    if (!key || seenKeys.has(key)) {
+      return;
+    }
+    seenKeys.add(key);
+    mergedRecords.push(record);
+  });
+
+  return {
+    ...scopedSnapshot,
+    documentRecords: mergedRecords,
+  };
+}
+
+async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSnapshot = {}) {
+  if (typeof domainRepository.listDocumentRecords !== "function") {
+    return scopedSnapshot;
+  }
+
+  const organizationId = normalizeInputValue(scopedSnapshot.activeOrganizationId || workOrder.organizationId);
+  const companyId = normalizeInputValue(workOrder.companyId);
+  const locationId = normalizeInputValue(workOrder.locationId);
+  if (!organizationId || !companyId || !locationId) {
+    return scopedSnapshot;
+  }
+
+  try {
+    const freshRecords = await domainRepository.listDocumentRecords({
+      organizationId,
+      companyId,
+      locationId,
+      limit: 500,
+      periodics: true,
+    });
+    return mergeMobileDocumentContextRecords(scopedSnapshot, freshRecords);
+  } catch (error) {
+    console.warn("[mobile-documentation-context] Ne mogu ucitati svjeze zapise dokumentacije.", error?.message || error);
+    return scopedSnapshot;
+  }
+}
+
 function getMobileLinkedServiceIdsFromItem(item = {}) {
   const sources = [
     item?.linkedServiceIds,
@@ -15379,7 +15443,8 @@ async function handleApiRequest(request, response, url) {
       const workOrderForContext = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, {
         objectId: url.searchParams.get("objectId") ?? "",
       });
-      sendJson(response, 200, buildMobileWorkOrderDocumentationContext(workOrderForContext, scopedSnapshot));
+      const contextSnapshot = await buildMobileDocumentationContextSnapshot(workOrderForContext, scopedSnapshot);
+      sendJson(response, 200, buildMobileWorkOrderDocumentationContext(workOrderForContext, contextSnapshot));
       return true;
     }
 

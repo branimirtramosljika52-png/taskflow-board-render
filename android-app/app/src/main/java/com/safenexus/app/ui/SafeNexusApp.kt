@@ -390,6 +390,7 @@ data class AppState(
     val workOrderDocuments: List<WorkOrderDocument> = emptyList(),
     val workOrderDocumentsLoading: Boolean = false,
     val documentationContextWorkOrderId: String = "",
+    val documentationContextObjectId: String = "",
     val documentationContext: WorkOrderDocumentationContext = WorkOrderDocumentationContext(),
     val documentationContextLoading: Boolean = false,
     val isLoading: Boolean = false,
@@ -807,6 +808,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun loadWorkOrderDocumentationContext(workOrder: WorkOrder, objectId: String = "") {
         val workOrderId = workOrder.id.trim()
+        val contextObjectId = objectId.trim()
         if (workOrderId.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za izradu dokumentacije.")
             return
@@ -814,15 +816,19 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
 
         state = state.copy(
             documentationContextWorkOrderId = workOrderId,
+            documentationContextObjectId = contextObjectId,
             documentationContext = WorkOrderDocumentationContext(workOrderId = workOrderId, workOrderNumber = workOrder.displayNumber),
             documentationContextLoading = true,
             error = "",
             notice = "",
         )
         viewModelScope.launch {
-            api.workOrderDocumentationContext(workOrderId, objectId)
+            api.workOrderDocumentationContext(workOrderId, contextObjectId)
                 .onSuccess { context ->
-                    if (state.documentationContextWorkOrderId == workOrderId) {
+                    if (
+                        state.documentationContextWorkOrderId == workOrderId &&
+                        state.documentationContextObjectId == contextObjectId
+                    ) {
                         state = state.copy(
                             documentationContext = context,
                             documentationContextLoading = false,
@@ -831,7 +837,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
                 .onFailure { error ->
-                    if (state.documentationContextWorkOrderId == workOrderId) {
+                    if (
+                        state.documentationContextWorkOrderId == workOrderId &&
+                        state.documentationContextObjectId == contextObjectId
+                    ) {
                         state = state.copy(
                             documentationContextLoading = false,
                             error = error.message ?: "Ne mogu učitati polja predloška za RN.",
@@ -1486,12 +1495,17 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             services = state.data.workOrderServices,
             locationObjects = state.data.workOrderLocationObjects,
             selectedObjectId = documentationWizardObjectId,
-            context = if (state.documentationContextWorkOrderId == workOrder.id) {
+            context = if (
+                state.documentationContextWorkOrderId == workOrder.id &&
+                state.documentationContextObjectId == documentationWizardObjectId
+            ) {
                 state.documentationContext
             } else {
                 WorkOrderDocumentationContext(workOrderId = workOrder.id, workOrderNumber = workOrder.displayNumber)
             },
-            contextLoading = state.documentationContextLoading && state.documentationContextWorkOrderId == workOrder.id,
+            contextLoading = state.documentationContextLoading &&
+                state.documentationContextWorkOrderId == workOrder.id &&
+                state.documentationContextObjectId == documentationWizardObjectId,
             isLoading = state.isLoading,
             onDismiss = { documentationWizardTarget = null },
             onObjectSelectionChange = { objectId ->
