@@ -96,7 +96,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.85.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.86.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -8380,6 +8380,65 @@ function resolveFieldInquiryAssignedUsersPayload(scopedSnapshot, body = {}) {
   };
 }
 
+function resolveWorkOrderExecutorsPayload(scopedSnapshot = {}, input = {}) {
+  const rawValues = Array.isArray(input.executors)
+    ? input.executors
+    : [input.executor1, input.executor2];
+  const users = scopedSnapshot.users ?? [];
+  const usersById = new Map(users.map((user) => [String(user.id), user]));
+  const usersByLabel = new Map(users.flatMap((user) => {
+    const label = getScopedUserDisplayLabel(user);
+    return label ? [[label.toLowerCase(), user]] : [];
+  }));
+
+  return rawValues
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean)
+    .map((value) => {
+      const idMatch = usersById.get(String(value));
+      if (idMatch) {
+        return getScopedUserDisplayLabel(idMatch, value);
+      }
+      const labelMatch = usersByLabel.get(value.toLowerCase());
+      return labelMatch ? getScopedUserDisplayLabel(labelMatch, value) : value;
+    })
+    .filter(Boolean)
+    .filter((value, index, values) => (
+      values.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index
+    ));
+}
+
+function resolveFieldInquiryExecutorsForWorkOrder(scopedSnapshot = {}, inquiry = {}) {
+  const fromIds = resolveWorkOrderExecutorsPayload(scopedSnapshot, {
+    executors: Array.isArray(inquiry.assignedUserIds) ? inquiry.assignedUserIds : [],
+  });
+  if (fromIds.length > 0) {
+    return fromIds;
+  }
+  return resolveWorkOrderExecutorsPayload(scopedSnapshot, {
+    executors: Array.isArray(inquiry.assignedUserLabels) ? inquiry.assignedUserLabels : [],
+  });
+}
+
+function hasWorkOrderExecutorInput(input = {}) {
+  return bodyHasOwnField(input, "executors")
+    || bodyHasOwnField(input, "executor1")
+    || bodyHasOwnField(input, "executor2");
+}
+
+function withResolvedWorkOrderExecutors(scopedSnapshot = {}, input = {}) {
+  if (!hasWorkOrderExecutorInput(input)) {
+    return input;
+  }
+  const executors = resolveWorkOrderExecutorsPayload(scopedSnapshot, input);
+  return {
+    ...input,
+    executors,
+    executor1: executors[0] || "",
+    executor2: executors[1] || "",
+  };
+}
+
 function assertFieldInquiryPayloadInScope(scopedSnapshot, body = {}) {
   assertCompanyPayloadInScope(scopedSnapshot, body);
   assertLocationPayloadInScope(scopedSnapshot, body);
@@ -10241,14 +10300,14 @@ async function persistPeopleTrainingCertificates(record = {}, scopedSnapshot = {
   }) ?? record;
 }
 
-function getScopedUserDisplayLabel(userLike = {}) {
+function getScopedUserDisplayLabel(userLike = {}, fallback = "User") {
   return String(
     userLike.fullName
     || [userLike.firstName, userLike.lastName].filter(Boolean).join(" ")
     || userLike.email
     || userLike.username
-    || "User",
-  ).trim() || "User";
+    || fallback,
+  ).trim() || fallback || "User";
 }
 
 function canManageAbsenceEntry(user, entry = {}) {
@@ -15432,6 +15491,7 @@ function buildMobileFieldInquiryRecord(item = {}) {
       contactPhone: normalizeInputValue(item.contactPhone),
       serviceLine: normalizeInputValue(item.serviceLine),
       note: normalizeInputValue(item.note),
+      assignedUserIds: Array.isArray(item.assignedUserIds) ? item.assignedUserIds.map(normalizeInputValue).filter(Boolean).join(",") : "",
       assignedUserLabels: Array.isArray(item.assignedUserLabels) ? item.assignedUserLabels.join(", ") : "",
       vehicleId: normalizeInputValue(item.vehicleId),
       vehicleLabel: normalizeInputValue(item.vehicleLabel),
@@ -17655,7 +17715,7 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
       const createdWorkOrder = await domainRepository.createWorkOrder({
-        ...body,
+        ...withResolvedWorkOrderExecutors(scopedSnapshot, body),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
@@ -20182,7 +20242,7 @@ async function handleApiRequest(request, response, url) {
         assertLocationPayloadInScope(scopedSnapshot, patch);
         assertServiceCatalogIdsPayloadInScope(scopedSnapshot, patch);
         const updatedWorkOrder = await domainRepository.updateWorkOrder(workOrderId, {
-          ...patch,
+          ...withResolvedWorkOrderExecutors(scopedSnapshot, patch),
           organizationId: scopedSnapshot.activeOrganizationId,
         }, user);
         if (updatedWorkOrder) {
@@ -20218,7 +20278,7 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateWorkOrder(mobileWorkOrderMatch[1], {
-        ...body,
+        ...withResolvedWorkOrderExecutors(scopedSnapshot, body),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 
@@ -20257,7 +20317,7 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], {
-        ...body,
+        ...withResolvedWorkOrderExecutors(scopedSnapshot, body),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 
@@ -20323,6 +20383,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      const executorLabels = resolveFieldInquiryExecutorsForWorkOrder(scopedSnapshot, inquiry);
       const createdWorkOrder = await domainRepository.createWorkOrder({
         companyId: inquiry.companyId,
         locationId: inquiry.locationId,
@@ -20333,7 +20394,9 @@ async function handleApiRequest(request, response, url) {
         priority: body.priority || "Normal",
         serviceLine: inquiry.serviceLine || inquiry.title,
         description: [inquiry.title, inquiry.note].filter(Boolean).join("\n\n"),
-        executors: inquiry.assignedUserLabels ?? [],
+        executors: executorLabels,
+        executor1: executorLabels[0] || "",
+        executor2: executorLabels[1] || "",
         contactName: inquiry.contactName,
         contactPhone: inquiry.contactPhone,
         linkReference: `Terenski upit ${inquiry.id}`,
@@ -20344,6 +20407,7 @@ async function handleApiRequest(request, response, url) {
         status: "converted",
         workOrderId: createdWorkOrder.id,
         convertedWorkOrderId: createdWorkOrder.id,
+        assignedUserLabels: executorLabels.length > 0 ? executorLabels : inquiry.assignedUserLabels,
       }, user);
       queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
 

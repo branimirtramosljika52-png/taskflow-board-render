@@ -3663,14 +3663,24 @@ private fun FieldInquiryEditorDialog(
             .map { it.trim() }
             .filter { it.isNotBlank() }
     }
+    val initialAssigneeIdsFromMeta = remember(record?.id) {
+        record?.meta?.get("assignedUserIds").orEmpty()
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
     val userOptions = remember(data.workOrderUsers) {
         data.workOrderUsers.map { user -> user.id to user.label.ifBlank { user.fullName.ifBlank { user.email } } }
     }
-    val initialAssigneeIds = remember(record?.id, initialAssigneeLabels, userOptions, currentUserLabel) {
+    val initialAssigneeIds = remember(record?.id, initialAssigneeLabels, initialAssigneeIdsFromMeta, userOptions, currentUserLabel) {
+        val optionIds = userOptions.map { it.first }.toSet()
+        val byId = initialAssigneeIdsFromMeta.filter { it in optionIds }
         val byLabel = initialAssigneeLabels.mapNotNull { label ->
             userOptions.firstOrNull { option -> option.second.equals(label, ignoreCase = true) }?.first
         }
-        byLabel.ifEmpty {
+        byId.ifEmpty {
+            byLabel
+        }.ifEmpty {
             userOptions.firstOrNull { option -> option.second.equals(currentUserLabel, ignoreCase = true) }?.let { listOf(it.first) }
                 ?: emptyList()
         }
