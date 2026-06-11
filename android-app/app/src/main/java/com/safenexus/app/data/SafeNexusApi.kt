@@ -240,6 +240,7 @@ class SafeNexusApi(
         destination: String,
         reservationId: String,
         performedBy: String,
+        vehicleCondition: String,
         vehicleClean: Boolean,
         documentsPresent: Boolean,
         fuelOk: Boolean,
@@ -253,6 +254,7 @@ class SafeNexusApi(
                 .put("destination", destination)
                 .put("reservationId", reservationId)
                 .put("performedBy", performedBy)
+                .put("vehicleCondition", vehicleCondition)
                 .put("vehicleClean", vehicleClean)
                 .put("documentsPresent", documentsPresent)
                 .put("fuelOk", fuelOk)

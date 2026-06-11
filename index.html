@@ -6614,6 +6614,16 @@
                     <section class="service-catalog-template-block vehicle-editor-section-block">
                       <div class="section-heading offers-section-heading">
                         <div>
+                          <p class="section-kicker">Putovanja</p>
+                          <h3>Evidencija putovanja</h3>
+                        </div>
+                      </div>
+                      <div id="vehicle-trip-list" class="vehicle-trip-list"></div>
+                    </section>
+
+                    <section class="service-catalog-template-block vehicle-editor-section-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
                           <p class="section-kicker">Activity</p>
                           <h3>Servisna i tehnička evidencija</h3>
                         </div>
@@ -6783,7 +6793,7 @@
                         <input id="vehicle-usage-vehicle-label" type="text" readonly />
                       </label>
                       <label class="field">
-                        <span>Kilometraža</span>
+                        <span id="vehicle-usage-odometer-label">Kilometraža</span>
                         <input id="vehicle-usage-odometer-km" type="number" min="0" step="1" inputmode="numeric" required />
                       </label>
                       <label class="field field-span-full">
@@ -6795,8 +6805,12 @@
                         <input id="vehicle-usage-performed-by" type="text" maxlength="180" />
                       </label>
                       <label class="field">
-                        <span>Destinacija / ruta</span>
+                        <span id="vehicle-usage-destination-label">Lokacija gdje se ide</span>
                         <input id="vehicle-usage-destination" type="text" maxlength="180" />
+                      </label>
+                      <label class="field field-span-full">
+                        <span id="vehicle-usage-condition-label">Stanje vozila</span>
+                        <input id="vehicle-usage-condition" type="text" maxlength="240" placeholder="Uredno, oštećenje, oprema..." />
                       </label>
                     </div>
 

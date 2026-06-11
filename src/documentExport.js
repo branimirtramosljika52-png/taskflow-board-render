@@ -9760,40 +9760,83 @@ function compactVehicleEvidenceNote(note = "") {
     .join("\n");
 }
 
+function isVehicleEvidenceTripActivity(activity = {}) {
+  const type = clean(activity?.activityType ?? activity?.type).toLowerCase();
+  return type === "vehicle_trip"
+    || Boolean(
+      clean(activity?.departureAt)
+      || clean(activity?.returnAt)
+      || clean(activity?.startKm)
+      || clean(activity?.endKm)
+      || clean(activity?.tripStatus),
+    );
+}
+
+function formatVehicleEvidenceDatePart(value = "") {
+  const normalized = clean(value);
+  if (!normalized) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return formatOfferPdfDate(normalized);
+  }
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return formatOfferPdfDate(normalized);
+  }
+  try {
+    return new Intl.DateTimeFormat("hr-HR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "Europe/Zagreb",
+    }).format(parsed);
+  } catch {
+    return formatOfferPdfDate(parsed.toISOString().slice(0, 10));
+  }
+}
+
+function formatVehicleEvidenceTimePart(value = "") {
+  const normalized = clean(value);
+  if (!normalized || /^\d{4}-\d{2}-\d{2}$/.test(normalized)) return "";
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("hr-HR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Europe/Zagreb",
+    }).format(parsed);
+  } catch {
+    return `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
+  }
+}
+
 function buildVehicleEvidenceRows(vehicle = {}) {
-  const reservationRows = (Array.isArray(vehicle.reservations) ? vehicle.reservations : [])
-    .map((reservation) => ({
-      sortKey: getVehicleEvidenceTimestamp(reservation?.startAt || reservation?.createdAt || reservation?.updatedAt),
-      datum: formatVehicleEvidenceDateTime(reservation?.startAt),
-      do: formatVehicleEvidenceDateTime(reservation?.endAt),
-      vrsta: "Rezervacija",
-      korisnik: getVehicleEvidenceAssignees(reservation),
-      ruta: reservation?.destination || "",
-      km: "",
-      status: getVehicleEvidenceStatusLabel(reservation?.status || "reserved"),
-      napomena: normalizePdfLines([reservation?.purpose, reservation?.note]).join("\n"),
-    }));
-
-  const activityRows = (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [])
+  return (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [])
+    .filter(isVehicleEvidenceTripActivity)
     .map((activity) => {
-      const note = String(activity?.note ?? "");
-      const type = clean(activity?.workSummary)
-        || (clean(activity?.activityType).toLowerCase() === "usage" ? "Koristenje vozila" : clean(activity?.activityType))
-        || "Aktivnost";
+      const drivers = Array.isArray(activity?.driverLabels)
+        ? normalizePdfLines(activity.driverLabels).join(", ")
+        : clean(activity?.performedBy);
+      const condition = normalizePdfLines([
+        activity?.returnCondition,
+        activity?.vehicleCondition,
+        activity?.departureCondition,
+        compactVehicleEvidenceNote(activity?.note),
+      ]).join("\n");
       return {
-        sortKey: getVehicleEvidenceTimestamp(activity?.createdAt || activity?.performedOn || activity?.updatedAt),
-        datum: formatVehicleEvidenceDateTime(activity?.createdAt || activity?.performedOn),
-        do: "",
-        vrsta: type,
-        korisnik: activity?.performedBy || "",
-        ruta: getVehicleEvidenceNoteValue(note, "Destinacija:"),
-        km: activity?.odometerKm ? `${activity.odometerKm} km` : "",
-        status: "",
-        napomena: compactVehicleEvidenceNote(note),
+        sortKey: getVehicleEvidenceTimestamp(activity?.departureAt || activity?.createdAt || activity?.performedOn),
+        departureDate: formatVehicleEvidenceDatePart(activity?.departureAt || activity?.performedOn),
+        departureTime: formatVehicleEvidenceTimePart(activity?.departureAt),
+        returnDate: formatVehicleEvidenceDatePart(activity?.returnAt),
+        returnTime: formatVehicleEvidenceTimePart(activity?.returnAt),
+        destination: clean(activity?.destination),
+        drivers,
+        startKm: clean(activity?.startKm) ? `${clean(activity?.startKm)} km` : "",
+        endKm: clean(activity?.endKm) ? `${clean(activity?.endKm)} km` : "",
+        vehicleCondition: condition,
       };
-    });
-
-  return [...reservationRows, ...activityRows]
+    })
     .sort((left, right) => left.sortKey - right.sortKey)
     .map(({ sortKey, ...row }) => row);
 }
@@ -9879,19 +9922,20 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
   renderReportTable(
     doc,
     helpers,
-    "Evidencija koristenja i rezervacija",
+    "Evidencija putovanja",
     [
-      { key: "datum", label: "Datum od", width: 78 },
-      { key: "do", label: "Datum do", width: 78 },
-      { key: "vrsta", label: "Vrsta", width: 82 },
-      { key: "korisnik", label: "Korisnik", width: 102 },
-      { key: "ruta", label: "Ruta", width: 104 },
-      { key: "km", label: "Km", width: 58 },
-      { key: "status", label: "Status", width: 76 },
-      { key: "napomena", label: "Napomena", width: 200 },
+      { key: "departureDate", label: "Datum polaska", width: 76 },
+      { key: "departureTime", label: "Vrijeme polaska", width: 70 },
+      { key: "returnDate", label: "Datum povratka", width: 76 },
+      { key: "returnTime", label: "Vrijeme povratka", width: 70 },
+      { key: "destination", label: "Lokacija gdje se ide", width: 126 },
+      { key: "drivers", label: "Vozaci", width: 112 },
+      { key: "startKm", label: "Pocetna km", width: 64 },
+      { key: "endKm", label: "Krajnja KM", width: 64 },
+      { key: "vehicleCondition", label: "Stanje vozila", width: 150 },
     ],
     evidenceRows,
-    { emptyMessage: "Za ovo vozilo jos nema rezervacija ni evidentiranog koristenja." },
+    { emptyMessage: "Za ovo vozilo jos nema evidentiranih putovanja." },
   );
 
   const range = doc.bufferedPageRange();

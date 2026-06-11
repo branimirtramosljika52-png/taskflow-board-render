@@ -921,6 +921,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         destination: String,
         reservationId: String,
         performedBy: String,
+        vehicleCondition: String,
         vehicleClean: Boolean,
         documentsPresent: Boolean,
         fuelOk: Boolean,
@@ -945,6 +946,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 destination = destination,
                 reservationId = reservationId,
                 performedBy = performedBy,
+                vehicleCondition = vehicleCondition,
                 vehicleClean = vehicleClean,
                 documentsPresent = documentsPresent,
                 fuelOk = fuelOk,
@@ -5564,6 +5566,18 @@ private data class MobileVehicleReservation(
     val userLabel: String,
 )
 
+private data class MobileVehicleTrip(
+    val id: String,
+    val departureAt: String,
+    val returnAt: String,
+    val destination: String,
+    val drivers: String,
+    val startKm: String,
+    val endKm: String,
+    val condition: String,
+    val status: String,
+)
+
 private fun vehicleAvailabilityStatus(vehicle: MobileRecord): String =
     vehicle.meta["availabilityStatus"].orEmpty().ifBlank { vehicle.status.ifBlank { "available" } }.lowercase()
 
@@ -5610,11 +5624,67 @@ private fun parseVehicleReservations(vehicle: MobileRecord): List<MobileVehicleR
     }.getOrDefault(emptyList())
 }
 
+private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
+    val raw = vehicle.meta["activityItemsJson"].orEmpty()
+    if (raw.isBlank()) return emptyList()
+    return runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val activityType = item.optString("activityType").trim().lowercase(Locale.getDefault())
+                val hasTripFields = listOf("departureAt", "returnAt", "startKm", "endKm", "tripStatus")
+                    .any { key -> item.optString(key).trim().isNotBlank() }
+                if (activityType != "vehicle_trip" && !hasTripFields) continue
+
+                val driverLabels = item.optJSONArray("driverLabels")
+                val drivers = if (driverLabels != null && driverLabels.length() > 0) {
+                    (0 until driverLabels.length())
+                        .mapNotNull { driverLabels.optString(it).trim().takeIf(String::isNotBlank) }
+                        .joinToString(", ")
+                } else {
+                    item.optString("performedBy").trim()
+                }
+                val condition = listOf(
+                    item.optString("returnCondition").trim(),
+                    item.optString("vehicleCondition").trim(),
+                    item.optString("departureCondition").trim(),
+                    item.optString("note").trim(),
+                ).firstOrNull { it.isNotBlank() }.orEmpty()
+                add(
+                    MobileVehicleTrip(
+                        id = item.optString("id").trim(),
+                        departureAt = item.optString("departureAt").trim().ifBlank { item.optString("performedOn").trim() },
+                        returnAt = item.optString("returnAt").trim(),
+                        destination = item.optString("destination").trim(),
+                        drivers = drivers,
+                        startKm = item.optString("startKm").trim(),
+                        endKm = item.optString("endKm").trim(),
+                        condition = condition,
+                        status = item.optString("tripStatus").trim(),
+                    ),
+                )
+            }
+        }.sortedByDescending { trip -> trip.departureAt.ifBlank { trip.id } }
+    }.getOrDefault(emptyList())
+}
+
 private fun parseVehicleDateTime(value: String): LocalDateTime? {
     val normalized = value.trim()
     if (normalized.isBlank()) return null
     return runCatching { LocalDateTime.parse(normalized.take(19)) }.getOrNull()
         ?: runCatching { Instant.parse(normalized).atZone(ZoneId.systemDefault()).toLocalDateTime() }.getOrNull()
+}
+
+private fun formatVehicleTripDatePart(value: String): String {
+    val parsed = parseVehicleDateTime(value)
+    if (parsed != null) return parsed.format(DateTimeFormatter.ofPattern("dd.MM.yyyy."))
+    return formatDateLabel(value).ifBlank { value.take(10) }
+}
+
+private fun formatVehicleTripTimePart(value: String): String {
+    val parsed = parseVehicleDateTime(value) ?: return value.substringAfter('T', "").take(5)
+    return parsed.format(DateTimeFormatter.ofPattern("HH:mm"))
 }
 
 private fun vehicleReservationOverlapsHour(reservation: MobileVehicleReservation, date: LocalDate, hour: Int): Boolean {
@@ -7274,7 +7344,7 @@ private fun MobileRecordDetailScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
-    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -7300,7 +7370,7 @@ private fun MobileRecordDetailScreen(
             currentUserLabel = currentUserLabel,
             isLoading = isLoading,
             onDismiss = { usageDialogMode = null },
-            onConfirm = { selectedMode, odometerKm, destination, reservationId, performedBy, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
+            onConfirm = { selectedMode, odometerKm, destination, reservationId, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
                 usageDialogMode = null
                 onRecordVehicleUsage(
                     record,
@@ -7309,6 +7379,7 @@ private fun MobileRecordDetailScreen(
                     destination,
                     reservationId,
                     performedBy,
+                    vehicleCondition,
                     vehicleClean,
                     documentsPresent,
                     fuelOk,
@@ -7437,6 +7508,7 @@ private fun MobileRecordDetailScreen(
 
             if (record.kind == "vehicle") {
                 val reservations = parseVehicleReservations(record)
+                val trips = parseVehicleTrips(record)
                 DetailSection("Raspored vozila") {
                     if (reservations.isEmpty()) {
                         DetailRow(Icons.Rounded.CalendarMonth, "Rezervacije", "Nema aktivnih rezervacija.")
@@ -7450,6 +7522,32 @@ private fun MobileRecordDetailScreen(
                                     reservation.userLabel,
                                     reservation.destination,
                                     vehicleStatusLabel(reservation.status),
+                                ).filter { it.isNotBlank() }.joinToString("\n"),
+                            )
+                        }
+                    }
+                }
+                DetailSection("Evidencija putovanja") {
+                    if (trips.isEmpty()) {
+                        DetailRow(Icons.Rounded.Description, "Putovanja", "Nema evidentiranih putovanja.")
+                    } else {
+                        trips.take(8).forEach { trip ->
+                            DetailRow(
+                                Icons.Rounded.Description,
+                                trip.destination.ifBlank { "Putovanje vozila" },
+                                listOf(
+                                    "Polazak: ${formatVehicleTripDatePart(trip.departureAt)} ${formatVehicleTripTimePart(trip.departureAt)}".trim(),
+                                    if (trip.returnAt.isNotBlank()) {
+                                        "Povratak: ${formatVehicleTripDatePart(trip.returnAt)} ${formatVehicleTripTimePart(trip.returnAt)}".trim()
+                                    } else {
+                                        "Povratak: otvoreno"
+                                    },
+                                    trip.drivers.takeIf { it.isNotBlank() }?.let { "Vozači: $it" }.orEmpty(),
+                                    listOf(
+                                        trip.startKm.takeIf { it.isNotBlank() }?.let { "Početna $it km" }.orEmpty(),
+                                        trip.endKm.takeIf { it.isNotBlank() }?.let { "Krajnja $it km" }.orEmpty(),
+                                    ).filter { it.isNotBlank() }.joinToString(" | "),
+                                    trip.condition.takeIf { it.isNotBlank() }?.let { "Stanje: $it" }.orEmpty(),
                                 ).filter { it.isNotBlank() }.joinToString("\n"),
                             )
                         }
@@ -7673,7 +7771,7 @@ private fun VehicleUsageDialog(
     currentUserLabel: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onConfirm: (String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
 ) {
     val reservations = remember(vehicle.meta["reservationsJson"], mode) { parseVehicleReservations(vehicle) }
     val defaultReservation = remember(reservations, mode, vehicle.meta["nextReservationId"]) {
@@ -7686,6 +7784,7 @@ private fun VehicleUsageDialog(
     var destination by remember(vehicle.id, mode, defaultReservation?.destination) { mutableStateOf(defaultReservation?.destination.orEmpty()) }
     var reservationId by remember(vehicle.id, mode, defaultReservation?.id) { mutableStateOf(defaultReservation?.id.orEmpty()) }
     var performedBy by remember(vehicle.id, currentUserLabel) { mutableStateOf(currentUserLabel) }
+    var vehicleCondition by remember(vehicle.id, mode) { mutableStateOf(if (mode == "return") "" else "Uredno") }
     var vehicleClean by remember(vehicle.id, mode) { mutableStateOf(true) }
     var documentsPresent by remember(vehicle.id, mode) { mutableStateOf(true) }
     var fuelOk by remember(vehicle.id, mode) { mutableStateOf(true) }
@@ -7730,13 +7829,13 @@ private fun VehicleUsageDialog(
                     value = odometerKm,
                     onValueChange = { odometerKm = it.filter(Char::isDigit).take(8) },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (mode == "return") "Kilometraža kod povrata" else "Početna kilometraža") },
+                    label = { Text(if (mode == "return") "Krajnja KM" else "Početna KM") },
                     singleLine = true,
                     enabled = !isLoading,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     shape = RoundedCornerShape(16.dp),
                 )
-                WorkOrderTextField("Destinacija / ruta", destination, { destination = it }, !isLoading)
+                WorkOrderTextField("Lokacija gdje se ide", destination, { destination = it }, !isLoading)
                 WorkOrderSelectField(
                     label = "Vezana rezervacija",
                     value = reservationId,
@@ -7746,7 +7845,13 @@ private fun VehicleUsageDialog(
                     onSelect = { reservationId = it },
                 )
                 WorkOrderTextField("Korisnik vozila", performedBy, { performedBy = it }, !isLoading)
-                Text("Stanje vozila", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                WorkOrderTextField(
+                    if (mode == "return") "Stanje vozila pri povratku" else "Stanje vozila pri polasku",
+                    vehicleCondition,
+                    { vehicleCondition = it },
+                    !isLoading,
+                )
+                Text("Kontrola vozila", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
                 VehicleChecklistRow("Vozilo čisto", vehicleClean, !isLoading) { vehicleClean = it }
                 VehicleChecklistRow("Dokumenti u vozilu", documentsPresent, !isLoading) { documentsPresent = it }
                 VehicleChecklistRow("Gorivo / baterija uredno", fuelOk, !isLoading) { fuelOk = it }
@@ -7763,6 +7868,7 @@ private fun VehicleUsageDialog(
                         destination.trim(),
                         reservationId.trim(),
                         performedBy.trim(),
+                        vehicleCondition.trim(),
                         vehicleClean,
                         documentsPresent,
                         fuelOk,
@@ -7770,7 +7876,7 @@ private fun VehicleUsageDialog(
                         note.trim(),
                     )
                 },
-                enabled = !isLoading && odometerKm.isNotBlank(),
+                enabled = !isLoading && odometerKm.isNotBlank() && (mode == "return" || destination.isNotBlank()),
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Text(if (mode == "return") "Spremi povrat" else "Spremi preuzimanje", fontWeight = FontWeight.Black)

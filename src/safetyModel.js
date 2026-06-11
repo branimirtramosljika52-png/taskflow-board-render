@@ -2894,8 +2894,8 @@ function normalizeVehicleInteger(value, fallback = null) {
 }
 
 function compareVehicleActivityRecency(left = {}, right = {}) {
-  const leftDate = normalizeText(left.performedOn);
-  const rightDate = normalizeText(right.performedOn);
+  const leftDate = normalizeText(left.returnAt ?? left.departureAt ?? left.performedOn);
+  const rightDate = normalizeText(right.returnAt ?? right.departureAt ?? right.performedOn);
 
   if (leftDate && rightDate && leftDate !== rightDate) {
     return rightDate.localeCompare(leftDate);
@@ -2934,6 +2934,19 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
     const workSummary = normalizeText(item?.workSummary ?? item?.workPerformed ?? item?.works).slice(0, 240);
     const note = normalizeText(item?.note);
     const odometerKm = normalizeVehicleInteger(item?.odometerKm, null);
+    const tripStatus = normalizeText(item?.tripStatus).toLowerCase().slice(0, 32);
+    const reservationId = normalizeId(item?.reservationId);
+    const departureAt = normalizeOptionalDateTime(item?.departureAt ?? item?.startedAt ?? item?.startAt);
+    const returnAt = normalizeOptionalDateTime(item?.returnAt ?? item?.endedAt ?? item?.endAt);
+    const destination = normalizeText(item?.destination ?? item?.route ?? item?.location).slice(0, 180);
+    const driverLabels = Array.isArray(item?.driverLabels)
+      ? item.driverLabels.map((value) => normalizeText(value).slice(0, 180)).filter(Boolean)
+      : [normalizeText(item?.driverLabel ?? item?.driver ?? item?.performedBy).slice(0, 180)].filter(Boolean);
+    const startKm = normalizeVehicleInteger(item?.startKm ?? item?.startOdometerKm, null);
+    const endKm = normalizeVehicleInteger(item?.endKm ?? item?.endOdometerKm, null);
+    const vehicleCondition = normalizeText(item?.vehicleCondition ?? item?.condition).slice(0, 240);
+    const departureCondition = normalizeText(item?.departureCondition).slice(0, 240);
+    const returnCondition = normalizeText(item?.returnCondition).slice(0, 240);
     const hasAnyData = Boolean(
       activityType
       || performedOn
@@ -2941,7 +2954,18 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
       || validUntil
       || workSummary
       || note
-      || normalizeText(item?.odometerKm),
+      || normalizeText(item?.odometerKm)
+      || tripStatus
+      || reservationId
+      || departureAt
+      || returnAt
+      || destination
+      || driverLabels.length
+      || normalizeText(item?.startKm ?? item?.startOdometerKm)
+      || normalizeText(item?.endKm ?? item?.endOdometerKm)
+      || vehicleCondition
+      || departureCondition
+      || returnCondition
     );
 
     if (!hasAnyData) {
@@ -2957,6 +2981,17 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
       odometerKm,
       workSummary,
       note,
+      tripStatus,
+      reservationId,
+      departureAt,
+      returnAt,
+      destination,
+      driverLabels,
+      startKm,
+      endKm,
+      vehicleCondition,
+      departureCondition,
+      returnCondition,
       createdAt: normalizeOptionalDateTime(item?.createdAt) ?? timestamp,
       updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? timestamp,
     };

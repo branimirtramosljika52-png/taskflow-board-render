@@ -31812,6 +31812,49 @@ body.is-vehicle-usage-open {
   gap: 12px;
 }
 
+.vehicle-trip-list {
+  min-width: 0;
+}
+
+.vehicle-trip-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(47, 104, 84, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.vehicle-trip-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.vehicle-trip-table th,
+.vehicle-trip-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  text-align: left;
+  vertical-align: top;
+}
+
+.vehicle-trip-table th {
+  background: rgba(239, 246, 255, 0.94);
+  color: #1d4ed8;
+  font-size: 0.74rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.vehicle-trip-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.vehicle-trip-table td {
+  color: #263a32;
+  font-weight: 700;
+}
+
 .vehicle-activity-row {
   display: grid;
   gap: 12px;

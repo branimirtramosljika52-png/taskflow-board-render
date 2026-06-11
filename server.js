@@ -92,7 +92,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.80.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.81.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -14767,7 +14767,7 @@ function buildMobileVehicleRecord(item = {}) {
       nextReservationEndAt: normalizeInputValue(nextReservation?.endAt),
       nextReservationUser: normalizeInputValue(nextReservation?.reservedForLabel),
       reservationsJson: JSON.stringify(reservations),
-      activityItemsJson: JSON.stringify((Array.isArray(item?.activityItems) ? item.activityItems : []).slice(0, 12)),
+      activityItemsJson: JSON.stringify((Array.isArray(item?.activityItems) ? item.activityItems : []).slice(0, 30)),
     },
   };
 }
@@ -14793,6 +14793,94 @@ function getVehicleUsagePerformerLabel(user = {}, body = {}) {
     || user.email
     || "Korisnik",
   );
+}
+
+function getVehicleUsageDriverLabels(user = {}, body = {}, reservation = null) {
+  const explicitLabels = Array.isArray(body.driverLabels)
+    ? body.driverLabels
+    : Array.isArray(body.drivers)
+      ? body.drivers
+      : [];
+  const reservationLabels = Array.isArray(reservation?.reservedForLabels)
+    ? reservation.reservedForLabels
+    : [reservation?.reservedForLabel];
+  const labels = [
+    ...explicitLabels,
+    body.driverLabel,
+    body.driver,
+    getVehicleUsagePerformerLabel(user, body),
+    ...reservationLabels,
+  ]
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean);
+  return Array.from(new Set(labels));
+}
+
+function isVehicleTripActivity(item = {}) {
+  const activityType = normalizeInputValue(item?.activityType ?? item?.type).toLowerCase();
+  return activityType === "vehicle_trip"
+    || Boolean(
+      normalizeInputValue(item?.departureAt)
+      || normalizeInputValue(item?.returnAt)
+      || normalizeInputValue(item?.startKm)
+      || normalizeInputValue(item?.endKm)
+      || normalizeInputValue(item?.tripStatus),
+    );
+}
+
+function getVehicleUsageDestination(body = {}, reservation = null, existingTrip = null) {
+  return normalizeInputValue(
+    body.destination
+    || body.route
+    || body.location
+    || existingTrip?.destination
+    || reservation?.destination
+    || reservation?.purpose,
+  );
+}
+
+function buildVehicleUsageCondition(body = {}, mode = "checkout") {
+  const explicitCondition = normalizeInputValue(body.vehicleCondition || body.condition);
+  const checklist = [
+    body.vehicleClean !== undefined ? `Vozilo cisto: ${body.vehicleClean ? "da" : "ne"}` : "",
+    body.documentsPresent !== undefined ? `Dokumenti u vozilu: ${body.documentsPresent ? "da" : "ne"}` : "",
+    body.fuelOk !== undefined ? `Gorivo / baterija uredno: ${body.fuelOk ? "da" : "ne"}` : "",
+    body.damageNoted !== undefined ? `Ostecenje evidentirano: ${body.damageNoted ? "da" : "ne"}` : "",
+    normalizeInputValue(body.note),
+  ].map(normalizeInputValue).filter(Boolean);
+  const fallbackPrefix = mode === "return" ? "Povrat" : "Polazak";
+  return [
+    explicitCondition,
+    checklist.length ? `${fallbackPrefix}: ${checklist.join("; ")}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function findOpenVehicleTrip(vehicle = {}, body = {}, reservation = null) {
+  const requestedTripId = normalizeInputValue(body.tripId || body.activityItemId);
+  const requestedReservationId = normalizeInputValue(body.reservationId || reservation?.id);
+  const activityItems = Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [];
+  const tripItems = activityItems.filter(isVehicleTripActivity);
+
+  if (requestedTripId) {
+    const byId = tripItems.find((item) => String(item.id) === requestedTripId);
+    if (byId) return byId;
+  }
+
+  if (requestedReservationId) {
+    const byReservation = tripItems.find((item) => (
+      normalizeInputValue(item?.reservationId) === requestedReservationId
+      && normalizeInputValue(item?.tripStatus).toLowerCase() !== "completed"
+      && !normalizeInputValue(item?.returnAt)
+    ));
+    if (byReservation) return byReservation;
+  }
+
+  return tripItems
+    .filter((item) => normalizeInputValue(item?.tripStatus).toLowerCase() !== "completed" && !normalizeInputValue(item?.returnAt))
+    .sort((left, right) => (
+      normalizeInputValue(right?.departureAt || right?.createdAt || right?.performedOn)
+        .localeCompare(normalizeInputValue(left?.departureAt || left?.createdAt || left?.performedOn))
+    ))[0] || null;
 }
 
 function findVehicleUsageReservation(vehicle = {}, body = {}, mode = "usage", nowValue = new Date().toISOString()) {
@@ -14828,7 +14916,7 @@ function findVehicleUsageReservation(vehicle = {}, body = {}, mode = "usage", no
     || null;
 }
 
-function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
+function buildVehicleUsagePatchLegacy(vehicle = {}, body = {}, user = {}) {
   const nowValue = new Date().toISOString();
   const mode = resolveVehicleUsageMode(body.mode || body.usageMode);
   const odometerKm = normalizeInputValue(body.odometerKm || body.endKm || body.startKm);
@@ -14870,6 +14958,107 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
       ...(Array.isArray(vehicle.activityItems) ? vehicle.activityItems : []),
     ],
   };
+
+  if (targetReservation && mode !== "usage") {
+    const nextStatus = mode === "return" ? "completed" : "checked_out";
+    patch.reservations = (Array.isArray(vehicle.reservations) ? vehicle.reservations : []).map((reservation) => (
+      String(reservation.id) === String(targetReservation.id)
+        ? {
+          ...reservation,
+          status: nextStatus,
+          note: [
+            normalizeInputValue(reservation.note),
+            `${actionLabel}: ${odometerKm} km`,
+          ].filter(Boolean).join("\n"),
+          updatedAt: nowValue,
+        }
+        : reservation
+    ));
+  }
+
+  return patch;
+}
+
+function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
+  const nowValue = new Date().toISOString();
+  const mode = resolveVehicleUsageMode(body.mode || body.usageMode);
+  const odometerKm = normalizeInputValue(body.odometerKm || body.endKm || body.startKm);
+  if (!odometerKm) {
+    throw new Error("Upisi kilometrazu vozila.");
+  }
+
+  const targetReservation = findVehicleUsageReservation(vehicle, body, mode, nowValue);
+  const openTrip = mode === "return" ? findOpenVehicleTrip(vehicle, body, targetReservation) : null;
+  const performer = getVehicleUsagePerformerLabel(user, body);
+  const openTripDriverLabels = Array.isArray(openTrip?.driverLabels)
+    ? openTrip.driverLabels.map((value) => normalizeInputValue(value)).filter(Boolean)
+    : [];
+  const driverLabels = mode === "return" && openTripDriverLabels.length
+    ? openTripDriverLabels
+    : getVehicleUsageDriverLabels(user, body, targetReservation);
+  const destination = getVehicleUsageDestination(body, targetReservation, openTrip);
+  const condition = buildVehicleUsageCondition(body, mode);
+  const actionLabel = mode === "return"
+    ? "Povrat vozila"
+    : mode === "checkout"
+      ? "Preuzimanje vozila"
+      : "Koristenje vozila";
+  const activityItems = Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [];
+  const patch = { odometerKm };
+
+  if (mode === "return" && openTrip) {
+    patch.activityItems = activityItems.map((item) => (
+      String(item.id) === String(openTrip.id)
+        ? {
+          ...item,
+          activityType: "vehicle_trip",
+          performedOn: item.performedOn || (item.departureAt || nowValue).slice(0, 10),
+          performedBy: driverLabels.join(", ") || performer,
+          odometerKm,
+          workSummary: "Putovanje vozila",
+          reservationId: normalizeInputValue(item.reservationId || targetReservation?.id),
+          tripStatus: "completed",
+          departureAt: normalizeInputValue(item.departureAt || targetReservation?.startAt || nowValue),
+          returnAt: nowValue,
+          destination,
+          driverLabels,
+          startKm: normalizeInputValue(item.startKm || item.odometerKm || ""),
+          endKm: odometerKm,
+          vehicleCondition: condition || normalizeInputValue(item.vehicleCondition),
+          departureCondition: normalizeInputValue(item.departureCondition || item.vehicleCondition),
+          returnCondition: condition,
+          note: normalizeInputValue(item.note),
+          createdAt: normalizeInputValue(item.createdAt || nowValue),
+          updatedAt: nowValue,
+        }
+        : item
+    ));
+  } else {
+    const isReturnFallback = mode === "return";
+    const activityItem = {
+      id: randomUUID(),
+      activityType: "vehicle_trip",
+      performedOn: nowValue.slice(0, 10),
+      performedBy: driverLabels.join(", ") || performer,
+      odometerKm,
+      workSummary: "Putovanje vozila",
+      reservationId: normalizeInputValue(targetReservation?.id),
+      tripStatus: isReturnFallback ? "completed" : "open",
+      departureAt: isReturnFallback ? normalizeInputValue(targetReservation?.startAt || "") : nowValue,
+      returnAt: isReturnFallback ? nowValue : "",
+      destination,
+      driverLabels,
+      startKm: isReturnFallback ? "" : odometerKm,
+      endKm: isReturnFallback ? odometerKm : "",
+      vehicleCondition: condition,
+      departureCondition: isReturnFallback ? "" : condition,
+      returnCondition: isReturnFallback ? condition : "",
+      note: normalizeInputValue(body.note),
+      createdAt: nowValue,
+      updatedAt: nowValue,
+    };
+    patch.activityItems = [activityItem, ...activityItems];
+  }
 
   if (targetReservation && mode !== "usage") {
     const nextStatus = mode === "return" ? "completed" : "checked_out";

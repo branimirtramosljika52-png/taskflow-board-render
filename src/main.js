@@ -1053,6 +1053,7 @@ const VEHICLE_ACTIVITY_TYPE_OPTIONS = Object.freeze([
 const VEHICLE_ACTIVITY_TYPE_LABELS = new Map(
   VEHICLE_ACTIVITY_TYPE_OPTIONS.map((option) => [String(option.value), option.label]),
 );
+VEHICLE_ACTIVITY_TYPE_LABELS.set("vehicle_trip", "Putovanje");
 const ABSENCE_REQUEST_TYPE_OPTIONS = Object.freeze(
   ABSENCE_TYPE_OPTIONS.filter((option) => option.group === "request"),
 );
@@ -3825,6 +3826,7 @@ const vehicleActivityAddButton = document.querySelector("#vehicle-activity-add")
 const vehicleActivityToggleButton = document.querySelector("#vehicle-activity-toggle");
 const vehicleActivityBody = document.querySelector("#vehicle-activity-body");
 const vehicleActivityList = document.querySelector("#vehicle-activity-list");
+const vehicleTripList = document.querySelector("#vehicle-trip-list");
 const vehicleDocumentsInput = document.querySelector("#vehicle-documents-input");
 const vehicleDocumentsUploadButton = document.querySelector("#vehicle-documents-upload");
 const vehicleDocumentsToggleButton = document.querySelector("#vehicle-documents-toggle");
@@ -3869,9 +3871,13 @@ const vehicleUsageVehicleIdInput = document.querySelector("#vehicle-usage-vehicl
 const vehicleUsageModeInput = document.querySelector("#vehicle-usage-mode");
 const vehicleUsageVehicleLabelInput = document.querySelector("#vehicle-usage-vehicle-label");
 const vehicleUsageOdometerKmInput = document.querySelector("#vehicle-usage-odometer-km");
+const vehicleUsageOdometerLabel = document.querySelector("#vehicle-usage-odometer-label");
 const vehicleUsageReservationIdInput = document.querySelector("#vehicle-usage-reservation-id");
 const vehicleUsagePerformedByInput = document.querySelector("#vehicle-usage-performed-by");
 const vehicleUsageDestinationInput = document.querySelector("#vehicle-usage-destination");
+const vehicleUsageDestinationLabel = document.querySelector("#vehicle-usage-destination-label");
+const vehicleUsageConditionInput = document.querySelector("#vehicle-usage-condition");
+const vehicleUsageConditionLabel = document.querySelector("#vehicle-usage-condition-label");
 const vehicleUsageCleanInput = document.querySelector("#vehicle-usage-clean");
 const vehicleUsageDocumentsInput = document.querySelector("#vehicle-usage-documents");
 const vehicleUsageFuelInput = document.querySelector("#vehicle-usage-fuel");
@@ -100951,8 +100957,8 @@ function getVehicleActivityTypeLabel(value = "") {
 }
 
 function compareVehicleActivityDraftRecency(left = {}, right = {}) {
-  const leftDate = String(left.performedOn || "").trim();
-  const rightDate = String(right.performedOn || "").trim();
+  const leftDate = String(left.returnAt || left.departureAt || left.performedOn || "").trim();
+  const rightDate = String(right.returnAt || right.departureAt || right.performedOn || "").trim();
 
   if (leftDate && rightDate && leftDate !== rightDate) {
     return rightDate.localeCompare(leftDate);
@@ -100972,6 +100978,9 @@ function compareVehicleActivityDraftRecency(left = {}, right = {}) {
 }
 
 function createVehicleActivityDraft(entry = {}, { applyDefaultDate = false } = {}) {
+  const driverLabels = Array.isArray(entry.driverLabels)
+    ? entry.driverLabels.map((value) => String(value || "").trim()).filter(Boolean)
+    : [String(entry.driverLabel || entry.driver || "").trim()].filter(Boolean);
   return {
     id: String(entry.id || crypto.randomUUID()),
     activityType: normalizeVehicleActivityTypeValue(entry.activityType || entry.type),
@@ -100982,6 +100991,17 @@ function createVehicleActivityDraft(entry = {}, { applyDefaultDate = false } = {
     validUntil: String(entry.validUntil || "").trim().slice(0, 10),
     workSummary: String(entry.workSummary || entry.workPerformed || entry.works || "").trim().slice(0, 240),
     note: String(entry.note || "").trim().slice(0, 240),
+    tripStatus: String(entry.tripStatus || "").trim().slice(0, 32),
+    reservationId: String(entry.reservationId || "").trim(),
+    departureAt: String(entry.departureAt || entry.startedAt || entry.startAt || "").trim(),
+    returnAt: String(entry.returnAt || entry.endedAt || entry.endAt || "").trim(),
+    destination: String(entry.destination || entry.route || entry.location || "").trim().slice(0, 180),
+    driverLabels,
+    startKm: String(entry.startKm ?? entry.startOdometerKm ?? "").trim().slice(0, 12),
+    endKm: String(entry.endKm ?? entry.endOdometerKm ?? "").trim().slice(0, 12),
+    vehicleCondition: String(entry.vehicleCondition || entry.condition || "").trim().slice(0, 240),
+    departureCondition: String(entry.departureCondition || "").trim().slice(0, 240),
+    returnCondition: String(entry.returnCondition || "").trim().slice(0, 240),
     createdAt: String(entry.createdAt || new Date().toISOString()),
     updatedAt: String(entry.updatedAt || entry.createdAt || new Date().toISOString()),
   };
@@ -100995,6 +101015,16 @@ function isVehicleActivityDraftMeaningful(entry = {}) {
     || String(entry.validUntil || "").trim()
     || String(entry.workSummary || "").trim()
     || String(entry.note || "").trim()
+    || String(entry.tripStatus || "").trim()
+    || String(entry.departureAt || "").trim()
+    || String(entry.returnAt || "").trim()
+    || String(entry.destination || "").trim()
+    || (Array.isArray(entry.driverLabels) && entry.driverLabels.length > 0)
+    || String(entry.startKm || "").trim()
+    || String(entry.endKm || "").trim()
+    || String(entry.vehicleCondition || "").trim()
+    || String(entry.departureCondition || "").trim()
+    || String(entry.returnCondition || "").trim()
   );
 }
 
@@ -101004,6 +101034,7 @@ function setVehicleActivityDrafts(items = []) {
     .filter((entry) => isVehicleActivityDraftMeaningful(entry))
     .sort(compareVehicleActivityDraftRecency);
   renderVehicleActivities();
+  renderVehicleTrips();
 }
 
 function updateVehicleActivityDraft(activityId, patch = {}) {
@@ -101031,6 +101062,19 @@ function buildVehicleActivityPayload() {
       validUntil: String(entry.validUntil || "").trim().slice(0, 10),
       workSummary: String(entry.workSummary || "").trim().slice(0, 240),
       note: String(entry.note || "").trim().slice(0, 240),
+      tripStatus: String(entry.tripStatus || "").trim().slice(0, 32),
+      reservationId: String(entry.reservationId || "").trim(),
+      departureAt: String(entry.departureAt || "").trim(),
+      returnAt: String(entry.returnAt || "").trim(),
+      destination: String(entry.destination || "").trim().slice(0, 180),
+      driverLabels: Array.isArray(entry.driverLabels)
+        ? entry.driverLabels.map((value) => String(value || "").trim()).filter(Boolean)
+        : [],
+      startKm: String(entry.startKm || "").trim(),
+      endKm: String(entry.endKm || "").trim(),
+      vehicleCondition: String(entry.vehicleCondition || "").trim().slice(0, 240),
+      departureCondition: String(entry.departureCondition || "").trim().slice(0, 240),
+      returnCondition: String(entry.returnCondition || "").trim().slice(0, 240),
       createdAt: String(entry.createdAt || new Date().toISOString()),
       updatedAt: new Date().toISOString(),
     }))
@@ -101186,12 +101230,127 @@ async function queueVehicleDocuments(
   renderVehicleDocuments();
 }
 
+function isVehicleTripDraft(entry = {}) {
+  return normalizeVehicleActivityTypeValue(entry.activityType) === "vehicle_trip"
+    || Boolean(
+      String(entry.departureAt || "").trim()
+      || String(entry.returnAt || "").trim()
+      || String(entry.startKm || "").trim()
+      || String(entry.endKm || "").trim()
+      || String(entry.tripStatus || "").trim()
+    );
+}
+
+function formatVehicleTripDatePart(value = "") {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  const dateValue = normalized.includes("T") ? normalized : normalized.slice(0, 10);
+  return formatCompactDate(dateValue) || normalized.slice(0, 10);
+}
+
+function formatVehicleTripTimePart(value = "") {
+  const normalized = String(value || "").trim();
+  if (!normalized || !normalized.includes("T")) return "";
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return normalized.slice(11, 16);
+  }
+  return parsed.toLocaleTimeString("hr-HR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function getVehicleTripDrivers(entry = {}) {
+  const labels = Array.isArray(entry.driverLabels) ? entry.driverLabels : [];
+  return labels.map((value) => String(value || "").trim()).filter(Boolean).join(", ")
+    || String(entry.performedBy || "").trim();
+}
+
+function getVehicleTripCondition(entry = {}) {
+  return [
+    entry.returnCondition,
+    entry.vehicleCondition,
+    entry.departureCondition,
+    entry.note,
+  ].map((value) => String(value || "").trim()).filter(Boolean)[0] || "";
+}
+
+function renderVehicleTrips() {
+  if (!vehicleTripList) {
+    return;
+  }
+
+  const trips = vehicleActivityDrafts
+    .filter(isVehicleTripDraft)
+    .sort((left, right) => String(right.departureAt || right.createdAt || "").localeCompare(String(left.departureAt || left.createdAt || "")));
+
+  if (trips.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Još nema evidentiranih putovanja za ovo vozilo.";
+    vehicleTripList.replaceChildren(empty);
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "vehicle-trip-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  [
+    "Datum polaska",
+    "Vrijeme polaska",
+    "Datum povratka",
+    "Vrijeme povratka",
+    "Lokacija gdje se ide",
+    "Vozači",
+    "Početna km",
+    "Krajnja KM",
+    "Stanje vozila",
+  ].forEach((label) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    headRow.append(th);
+  });
+  thead.append(headRow);
+
+  const tbody = document.createElement("tbody");
+  trips.forEach((trip) => {
+    const row = document.createElement("tr");
+    [
+      formatVehicleTripDatePart(trip.departureAt || trip.performedOn),
+      formatVehicleTripTimePart(trip.departureAt),
+      formatVehicleTripDatePart(trip.returnAt),
+      formatVehicleTripTimePart(trip.returnAt),
+      trip.destination || "",
+      getVehicleTripDrivers(trip),
+      trip.startKm ? `${trip.startKm} km` : "",
+      trip.endKm ? `${trip.endKm} km` : "",
+      getVehicleTripCondition(trip),
+    ].forEach((value) => {
+      const td = document.createElement("td");
+      td.textContent = value || "-";
+      row.append(td);
+    });
+    tbody.append(row);
+  });
+  table.append(thead, tbody);
+
+  const wrap = document.createElement("div");
+  wrap.className = "vehicle-trip-table-wrap";
+  wrap.append(table);
+  vehicleTripList.replaceChildren(wrap);
+}
+
 function renderVehicleActivities() {
   if (!vehicleActivityList) {
     return;
   }
 
-  if (vehicleActivityDrafts.length === 0) {
+  const editableActivities = vehicleActivityDrafts.filter((entry) => !isVehicleTripDraft(entry));
+
+  if (editableActivities.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = "Dodaj servis, promjenu guma, tehnički pregled, registraciju ili drugi važan događaj za vozilo.";
@@ -101209,7 +101368,7 @@ function renderVehicleActivities() {
     return field;
   };
 
-  vehicleActivityList.replaceChildren(...vehicleActivityDrafts.map((entry) => {
+  vehicleActivityList.replaceChildren(...editableActivities.map((entry) => {
     const row = document.createElement("article");
     row.className = "vehicle-activity-row";
 
@@ -101407,6 +101566,10 @@ function resetVehicleUsageForm() {
   if (vehicleUsageModeInput) vehicleUsageModeInput.value = "checkout";
   if (vehicleUsageVehicleLabelInput) vehicleUsageVehicleLabelInput.value = "";
   if (vehicleUsageOdometerKmInput) vehicleUsageOdometerKmInput.value = "";
+  if (vehicleUsageOdometerLabel) vehicleUsageOdometerLabel.textContent = "Početna KM";
+  if (vehicleUsageDestinationLabel) vehicleUsageDestinationLabel.textContent = "Lokacija gdje se ide";
+  if (vehicleUsageConditionLabel) vehicleUsageConditionLabel.textContent = "Stanje vozila pri polasku";
+  if (vehicleUsageConditionInput) vehicleUsageConditionInput.value = "";
   if (vehicleUsagePerformedByInput) {
     vehicleUsagePerformedByInput.value = state.user?.fullName || state.user?.email || state.user?.username || "";
   }
@@ -101428,6 +101591,11 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   if (vehicleUsageModeInput) vehicleUsageModeInput.value = safeMode;
   if (vehicleUsageTitle) vehicleUsageTitle.textContent = getVehicleUsageModeLabel(safeMode);
   if (vehicleUsageSubmitButton) vehicleUsageSubmitButton.textContent = safeMode === "return" ? "Spremi povrat" : "Spremi preuzimanje";
+  if (vehicleUsageOdometerLabel) vehicleUsageOdometerLabel.textContent = safeMode === "return" ? "Krajnja KM" : "Početna KM";
+  if (vehicleUsageDestinationLabel) vehicleUsageDestinationLabel.textContent = "Lokacija gdje se ide";
+  if (vehicleUsageConditionLabel) {
+    vehicleUsageConditionLabel.textContent = safeMode === "return" ? "Stanje vozila pri povratku" : "Stanje vozila pri polasku";
+  }
   if (vehicleUsageVehicleLabelInput) {
     vehicleUsageVehicleLabelInput.value = [vehicle.plateNumber, vehicle.name].filter(Boolean).join(" | ") || "Vozilo";
   }
@@ -101444,6 +101612,12 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   if (vehicleUsageDocumentsInput) vehicleUsageDocumentsInput.checked = true;
   if (vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
   if (vehicleUsageDamageInput) vehicleUsageDamageInput.checked = false;
+  if (vehicleUsageConditionInput) {
+    vehicleUsageConditionInput.value = safeMode === "return" ? "" : "Uredno";
+    vehicleUsageConditionInput.placeholder = safeMode === "return"
+      ? "Stanje pri povratku, oštećenje, oprema..."
+      : "Stanje pri polasku, oprema, napomena...";
+  }
   if (vehicleUsageNoteInput) vehicleUsageNoteInput.value = "";
   if (vehicleUsageError) vehicleUsageError.textContent = "";
   rebuildVehicleUsageReservationOptions(vehicle, defaultReservation?.id || reservationId || "");
@@ -101456,6 +101630,7 @@ function buildVehicleUsagePayload() {
     reservationId: vehicleUsageReservationIdInput?.value || "",
     performedBy: vehicleUsagePerformedByInput?.value || "",
     destination: vehicleUsageDestinationInput?.value || "",
+    vehicleCondition: vehicleUsageConditionInput?.value || "",
     vehicleClean: Boolean(vehicleUsageCleanInput?.checked),
     documentsPresent: Boolean(vehicleUsageDocumentsInput?.checked),
     fuelOk: Boolean(vehicleUsageFuelInput?.checked),
@@ -101547,6 +101722,7 @@ function resetVehicleForm({ clearSelection = true } = {}) {
 
   renderVehicleDocuments();
   renderVehicleActivities();
+  renderVehicleTrips();
   syncVehicleEditorSummary();
 }
 
@@ -120689,6 +120865,13 @@ vehicleUsageForm?.addEventListener("submit", (event) => {
   if (!String(payload.odometerKm || "").trim()) {
     if (vehicleUsageError) {
       vehicleUsageError.textContent = "Upiši kilometražu vozila.";
+    }
+    return;
+  }
+
+  if (String(payload.mode || "").trim().toLowerCase() !== "return" && !String(payload.destination || "").trim()) {
+    if (vehicleUsageError) {
+      vehicleUsageError.textContent = "Upiši lokaciju gdje se ide.";
     }
     return;
   }
