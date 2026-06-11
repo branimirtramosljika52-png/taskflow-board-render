@@ -4739,6 +4739,24 @@ test("todo tasks support assignment, work-order linking, comments and filtering"
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "todo-1");
 
+  const planFiltered = filterTodoTasks([
+    progressed,
+    {
+      ...progressed,
+      id: "todo-plan-1",
+      title: "Next week teren",
+      status: "next_week_job",
+      companyName: "",
+      locationName: "",
+      workOrderNumber: "",
+    },
+  ], {
+    scope: "plan",
+  });
+
+  assert.equal(planFiltered.length, 1);
+  assert.equal(planFiltered[0].id, "todo-plan-1");
+
   const sorted = sortTodoTasks([
     {
       ...progressed,

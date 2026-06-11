@@ -1532,7 +1532,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     }
     val openMobileRecord: (MobileRecord) -> Unit = { record ->
         val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
-            record.kind == "work_order" && (
+            record.kind in setOf("work_order", "todo_plan") && (
                 workOrder.id == record.relatedId ||
                     workOrder.id == record.id.removePrefix("work-order:")
                 )
@@ -3525,7 +3525,7 @@ private fun FieldInquiriesContent(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Plan terena", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text(
-                        "${records.size} upita · $upcoming u idućih 7 dana",
+                        "${records.size} stavki · $upcoming u idućih 7 dana",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -3539,7 +3539,7 @@ private fun FieldInquiriesContent(
 
             if (sortedRecords.isEmpty()) {
                 Text(
-                    "Nema upita za teren. Dodaj brzi dogovor i kasnije ga poveži s RN-om.",
+                    "Nema planiranih ToDo stavki ni upita za teren.",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             } else {
@@ -3563,7 +3563,14 @@ private fun FieldInquiryCard(
     onEdit: () -> Unit,
     onConvert: () -> Unit,
 ) {
-    val canConvert = record.status != "converted" && record.meta["companyId"].orEmpty().isNotBlank()
+    val isTodoPlan = record.kind == "todo_plan"
+    val canConvert = !isTodoPlan && record.status != "converted" && record.meta["companyId"].orEmpty().isNotBlank()
+    val statusLabel = if (isTodoPlan) {
+        record.status.ifBlank { record.meta["statusValue"].orEmpty().ifBlank { "Next Week Job" } }
+    } else {
+        fieldInquiryStatusLabel(record.status)
+    }
+    val statusColor = if (isTodoPlan) MaterialTheme.colorScheme.primary else calendarRecordColor("field_inquiry")
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -3579,13 +3586,22 @@ private fun FieldInquiryCard(
                 verticalAlignment = Alignment.Top,
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(record.title.ifBlank { "Upit za teren" }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(record.title.ifBlank { if (isTodoPlan) "Next Week Job" else "Upit za teren" }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        listOf(
-                            formatDateLabel(record.date).ifBlank { record.date },
-                            listOf(record.meta["timeFrom"].orEmpty(), record.meta["timeTo"].orEmpty()).filter { it.isNotBlank() }.joinToString("-"),
-                            record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" },
-                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        if (isTodoPlan) {
+                            listOf(
+                                formatDateLabel(record.date).ifBlank { record.date },
+                                record.meta["workOrderNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "RN $it" }.orEmpty(),
+                                record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" },
+                                record.meta["locationName"].orEmpty(),
+                            ).filter { it.isNotBlank() }.joinToString(" · ")
+                        } else {
+                            listOf(
+                                formatDateLabel(record.date).ifBlank { record.date },
+                                listOf(record.meta["timeFrom"].orEmpty(), record.meta["timeTo"].orEmpty()).filter { it.isNotBlank() }.joinToString("-"),
+                                record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" },
+                            ).filter { it.isNotBlank() }.joinToString(" · ")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         maxLines = 2,
@@ -3594,26 +3610,36 @@ private fun FieldInquiryCard(
                 }
                 Surface(
                     shape = RoundedCornerShape(999.dp),
-                    color = calendarRecordColor("field_inquiry").copy(alpha = 0.14f),
+                    color = statusColor.copy(alpha = 0.14f),
                 ) {
                     Text(
-                        fieldInquiryStatusLabel(record.status),
+                        statusLabel,
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = calendarRecordColor("field_inquiry"),
+                        color = statusColor,
                         fontWeight = FontWeight.Bold,
                     )
                 }
             }
 
-            val details = listOf(
-                "Lokacija" to record.meta["locationName"].orEmpty(),
-                "RN" to record.meta["workOrderNumber"].orEmpty(),
-                "Ekipa" to record.meta["assignedUserLabels"].orEmpty(),
-                "Vozilo" to record.meta["vehicleLabel"].orEmpty(),
-                "Kontakt" to listOf(record.meta["contactName"].orEmpty(), record.meta["contactPhone"].orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
-                "Usluga" to record.meta["serviceLine"].orEmpty(),
-            ).filter { it.second.isNotBlank() }
+            val details = if (isTodoPlan) {
+                listOf(
+                    "RN" to record.meta["workOrderNumber"].orEmpty(),
+                    "Lokacija" to record.meta["locationName"].orEmpty(),
+                    "Nositelj" to record.meta["assignedToLabel"].orEmpty(),
+                    "Sudionici" to record.meta["invitedUserLabels"].orEmpty(),
+                    "Prioritet" to record.meta["priority"].orEmpty(),
+                ).filter { it.second.isNotBlank() }
+            } else {
+                listOf(
+                    "Lokacija" to record.meta["locationName"].orEmpty(),
+                    "RN" to record.meta["workOrderNumber"].orEmpty(),
+                    "Ekipa" to record.meta["assignedUserLabels"].orEmpty(),
+                    "Vozilo" to record.meta["vehicleLabel"].orEmpty(),
+                    "Kontakt" to listOf(record.meta["contactName"].orEmpty(), record.meta["contactPhone"].orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+                    "Usluga" to record.meta["serviceLine"].orEmpty(),
+                ).filter { it.second.isNotBlank() }
+            }
 
             if (details.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3632,16 +3658,18 @@ private fun FieldInquiryCard(
                 Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f))
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onEdit, shape = RoundedCornerShape(14.dp)) {
-                    Text("Uredi")
-                }
-                OutlinedButton(
-                    onClick = onConvert,
-                    enabled = canConvert,
-                    shape = RoundedCornerShape(14.dp),
-                ) {
-                    Text("Napravi RN")
+            if (!isTodoPlan) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onEdit, shape = RoundedCornerShape(14.dp)) {
+                        Text("Uredi")
+                    }
+                    OutlinedButton(
+                        onClick = onConvert,
+                        enabled = canConvert,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text("Napravi RN")
+                    }
                 }
             }
         }
@@ -4106,8 +4134,11 @@ private fun WorkOrdersScreen(
     val periodicEntries = remember(state.data, state.workOrders, normalizedQuery) {
         buildPeriodicEntries(state.data, state.workOrders, normalizedQuery)
     }
-    val filteredFieldInquiries = remember(state.data.fieldInquiries, normalizedQuery) {
-        state.data.fieldInquiries.filter { record -> record.matchesSearch(normalizedQuery) }
+    val fieldPlanRecords = remember(state.data.fieldInquiries, state.data.todoPlanTasks) {
+        state.data.fieldInquiries + state.data.todoPlanTasks
+    }
+    val filteredFieldInquiries = remember(fieldPlanRecords, normalizedQuery) {
+        fieldPlanRecords.filter { record -> record.matchesSearch(normalizedQuery) }
     }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
@@ -7172,6 +7203,7 @@ private fun RecordLine(
 private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Rounded.Work): ImageVector = when (record.kind) {
     "work_order" -> Icons.Rounded.Work
     "field_inquiry" -> Icons.Rounded.EventNote
+    "todo_plan" -> Icons.Rounded.ListAlt
     "vehicle", "vehicle_reservation" -> Icons.Rounded.Business
     "document" -> Icons.Rounded.Mail
     "training" -> Icons.Rounded.Fingerprint
@@ -7186,6 +7218,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
 private fun recordKindLabel(kind: String): String = when (kind) {
     "work_order" -> "Radni nalog"
     "field_inquiry" -> "Plan terena"
+    "todo_plan" -> "Next Week Job"
     "vehicle" -> "Vozilo"
     "vehicle_reservation" -> "Rezervacija vozila"
     "document" -> "Dokument"

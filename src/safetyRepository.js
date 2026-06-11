@@ -3403,9 +3403,10 @@ async function fetchSnapshotFromConnection(connection) {
     ORDER BY
       CASE status
         WHEN 'open' THEN 0
-        WHEN 'in_progress' THEN 1
-        WHEN 'waiting' THEN 2
-        WHEN 'done' THEN 3
+        WHEN 'next_week_job' THEN 1
+        WHEN 'in_progress' THEN 2
+        WHEN 'waiting' THEN 3
+        WHEN 'done' THEN 4
         ELSE 9
       END ASC,
       due_date ASC,

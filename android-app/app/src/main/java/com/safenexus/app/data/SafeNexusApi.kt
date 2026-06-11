@@ -92,6 +92,7 @@ class SafeNexusApi(
                 rulebooks = json.optJSONArray("rulebooks").toRecords(),
                 riskAssessmentRecords = json.optJSONArray("riskAssessmentRecords").toRecords(),
                 fieldInquiries = json.optJSONArray("fieldInquiries").toRecords(),
+                todoPlanTasks = json.optJSONArray("todoPlanTasks").toRecords(),
                 calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
                 dashboard = json.optJSONObject("dashboard").toDashboardStats(),
             )

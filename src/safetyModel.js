@@ -35,6 +35,7 @@ export const FIELD_INQUIRY_STATUS_OPTIONS = [
 
 export const TODO_TASK_STATUS_OPTIONS = [
   { value: "open", label: "Novo" },
+  { value: "next_week_job", label: "Next Week Job" },
   { value: "in_progress", label: "U radu" },
   { value: "waiting", label: "Ceka odgovor" },
   { value: "done", label: "Zavrseno" },
@@ -588,9 +589,10 @@ const REMINDER_STATUS_RANK = {
 };
 const TODO_TASK_STATUS_RANK = {
   open: 0,
-  in_progress: 1,
-  waiting: 2,
-  done: 3,
+  next_week_job: 1,
+  in_progress: 2,
+  waiting: 3,
+  done: 4,
 };
 const OFFER_STATUS_RANK = {
   draft: 0,
@@ -9764,6 +9766,10 @@ export function filterTodoTasks(
       return false;
     }
 
+    if (scope === "plan" && item.status !== "next_week_job") {
+      return false;
+    }
+
     if (scope === "invited" && normalizedUserId && !normalizeIdList(item.invitedUserIds).includes(normalizedUserId)) {
       return false;
     }
@@ -9783,6 +9789,7 @@ export function filterTodoTasks(
       item.headquarters,
       item.locationName,
       item.workOrderNumber,
+      item.status,
       item.createdByLabel,
       item.assignedToLabel,
       ...(item.invitedUserLabels ?? []),
