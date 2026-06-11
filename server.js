@@ -54,7 +54,10 @@ import {
 } from "./src/pubchemClient.js";
 import { createSafetyRepository } from "./src/safetyRepository.js";
 import { extractStlChemicalDataFromFile, extractStlTextFromFile } from "./src/stlChemicalExtractor.js";
-import { createTenantRepository } from "./src/tenantRepository.js";
+import {
+  createTenantRepository,
+  normalizePushNotificationPreferences,
+} from "./src/tenantRepository.js";
 import {
   clearAuthCookies,
   createAccessToken,
@@ -92,7 +95,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.83.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.84.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -6101,6 +6104,44 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
     invalidateSnapshotCaches();
   }
 
+  const savedByWorkOrderId = savedItems
+    .filter((entry) => entry?.item)
+    .reduce((map, entry) => {
+      const key = String(entry.workOrderId || "").trim();
+      if (!key) {
+        return map;
+      }
+      const current = map.get(key) ?? [];
+      current.push(entry);
+      map.set(key, current);
+      return map;
+    }, new Map());
+
+  savedByWorkOrderId.forEach((items, workOrderId) => {
+    const workOrder = workOrders.find((entry) => String(entry.id) === String(workOrderId));
+    if (!workOrder) {
+      return;
+    }
+    const recipientIds = resolveWorkOrderPushUserIds(workOrder, scopedSnapshot);
+    if (recipientIds.length === 0) {
+      return;
+    }
+    const firstItem = items[0] ?? {};
+    const workOrderNumber = String(firstItem.workOrderNumber || workOrder.workOrderNumber || "").trim() || "-";
+    queuePushToUserIds(recipientIds, {
+      title: "Dokumentacija spremna",
+      body: items.length > 1
+        ? `RN ${workOrderNumber}: spremljeno je ${items.length} dokumenata.`
+        : `RN ${workOrderNumber}: ${firstItem.fileName || "dokument"} je spremljen.`,
+      data: {
+        type: "document_ready",
+        workOrderId,
+        workOrderNumber,
+        documentId: String(firstItem.item?.id || "").trim(),
+      },
+    });
+  });
+
   return savedItems.filter((entry) => entry?.item);
 }
 
@@ -7147,8 +7188,13 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
 const REPORT_SCHEDULE_TIME_ZONE = "Europe/Zagreb";
 const REPORT_SCHEDULE_POLL_MS = 60_000;
 const REPORT_SCHEDULE_GRACE_MINUTES = 10;
+const SCHEDULED_PUSH_START_HOUR = 7;
+const SCHEDULED_PUSH_SOON_DAYS = 7;
+const SCHEDULED_PUSH_PERIODICS_DAYS = 30;
 let scheduledProfileReportsTimer = null;
 let scheduledProfileReportsRunning = false;
+let scheduledPushNotificationsTimer = null;
+let scheduledPushNotificationsRunning = false;
 
 function getScheduledReportClock(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -7255,6 +7301,444 @@ async function runScheduledProfileReports() {
   } finally {
     scheduledProfileReportsRunning = false;
   }
+}
+
+function parseScheduledDateKey(value = "") {
+  const normalized = normalizeInputValue(value);
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) {
+    return "";
+  }
+
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function getScheduledDateKeyTime(dateKey = "") {
+  const match = String(dateKey || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return Number.NaN;
+  }
+
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function getScheduledDaysUntil(dateKey = "", todayKey = "") {
+  const targetTime = getScheduledDateKeyTime(dateKey);
+  const todayTime = getScheduledDateKeyTime(todayKey);
+  if (!Number.isFinite(targetTime) || !Number.isFinite(todayTime)) {
+    return Number.NaN;
+  }
+
+  return Math.round((targetTime - todayTime) / 86_400_000);
+}
+
+function getScheduledItemDateKey(item = {}, keys = []) {
+  for (const key of keys) {
+    const dateKey = parseScheduledDateKey(item?.[key]);
+    if (dateKey) {
+      return dateKey;
+    }
+  }
+  return "";
+}
+
+function isScheduledDateInWindow(dateKey = "", todayKey = "", horizonDays = SCHEDULED_PUSH_PERIODICS_DAYS) {
+  const daysUntil = getScheduledDaysUntil(dateKey, todayKey);
+  return Number.isFinite(daysUntil) && daysUntil >= -365 && daysUntil <= horizonDays;
+}
+
+function getScheduledDueLabel(dueDate = "", todayKey = "") {
+  const daysUntil = getScheduledDaysUntil(dueDate, todayKey);
+  if (!Number.isFinite(daysUntil)) {
+    return "";
+  }
+  if (daysUntil < 0) {
+    return `kasni ${Math.abs(daysUntil)} d`;
+  }
+  if (daysUntil === 0) {
+    return "danas";
+  }
+  return `za ${daysUntil} d`;
+}
+
+function isScheduledUserAdmin(user = {}) {
+  return ["super_admin", "admin"].includes(normalizeInputValue(user.role));
+}
+
+function scheduledPushCandidate(key, title, body, type, data = {}) {
+  return {
+    key: normalizeInputValue(key),
+    payload: {
+      title,
+      body,
+      data: {
+        type,
+        ...data,
+      },
+    },
+  };
+}
+
+function addScheduledDueSummaryCandidate(candidates, {
+  key = "",
+  type = "",
+  title = "",
+  label = "",
+  entries = [],
+  todayKey = "",
+}) {
+  const dueEntries = entries
+    .map((entry) => ({
+      ...entry,
+      dateKey: parseScheduledDateKey(entry.dateKey),
+    }))
+    .filter((entry) => entry.dateKey && isScheduledDateInWindow(entry.dateKey, todayKey));
+
+  if (dueEntries.length === 0) {
+    return;
+  }
+
+  const overdueCount = dueEntries.filter((entry) => getScheduledDaysUntil(entry.dateKey, todayKey) < 0).length;
+  const todayCount = dueEntries.filter((entry) => getScheduledDaysUntil(entry.dateKey, todayKey) === 0).length;
+  const soonCount = dueEntries.length - overdueCount - todayCount;
+  const bodyParts = [
+    overdueCount ? `${overdueCount} isteklo/kasni` : "",
+    todayCount ? `${todayCount} danas` : "",
+    soonCount ? `${soonCount} uskoro` : "",
+  ].filter(Boolean);
+
+  candidates.push(scheduledPushCandidate(
+    key,
+    title,
+    `${label}: ${bodyParts.join(", ")}.`,
+    type,
+    {
+      count: String(dueEntries.length),
+      overdueCount: String(overdueCount),
+      todayCount: String(todayCount),
+      soonCount: String(soonCount),
+    },
+  ));
+}
+
+function collectUserScheduledWorkOrderPushCandidates(user = {}, scopedSnapshot = {}, todayKey = "") {
+  const candidates = [];
+  const userId = String(user.id || "").trim();
+  const activeWorkOrders = (scopedSnapshot.workOrders ?? [])
+    .filter((workOrder) => !isMobileClosedWorkOrderStatus(workOrder?.status))
+    .filter((workOrder) => resolveWorkOrderPushUserIds(workOrder, scopedSnapshot).some((id) => String(id) === userId));
+
+  activeWorkOrders.forEach((workOrder) => {
+    const workOrderNumber = getWorkOrderPushNumber(workOrder);
+    const executionDate = parseScheduledDateKey(workOrder.executionDate);
+    if (executionDate) {
+      const daysUntilExecution = getScheduledDaysUntil(executionDate, todayKey);
+      if (Number.isFinite(daysUntilExecution) && daysUntilExecution <= 1) {
+        candidates.push(scheduledPushCandidate(
+          `work-order-execution:${workOrder.id}:${executionDate}:${todayKey}`,
+          daysUntilExecution < 0 ? "RN plan terena kasni" : "RN plan terena",
+          `RN ${workOrderNumber} - izvrsenje ${getScheduledDueLabel(executionDate, todayKey)}.`,
+          "work_order_execution_due",
+          {
+            workOrderId: normalizeInputValue(workOrder.id),
+            workOrderNumber,
+            dueDate: executionDate,
+          },
+        ));
+      }
+    }
+
+    const dueDate = parseScheduledDateKey(workOrder.dueDate);
+    if (dueDate) {
+      const daysUntilDue = getScheduledDaysUntil(dueDate, todayKey);
+      if (Number.isFinite(daysUntilDue) && daysUntilDue <= SCHEDULED_PUSH_SOON_DAYS) {
+        candidates.push(scheduledPushCandidate(
+          `work-order-due:${workOrder.id}:${dueDate}:${todayKey}`,
+          daysUntilDue < 0 ? "RN rok je prosao" : "RN rok dolazi",
+          `RN ${workOrderNumber} - rok ${getScheduledDueLabel(dueDate, todayKey)}.`,
+          "work_order_due",
+          {
+            workOrderId: normalizeInputValue(workOrder.id),
+            workOrderNumber,
+            dueDate,
+          },
+        ));
+      }
+    }
+  });
+
+  return candidates;
+}
+
+function collectUserScheduledReminderPushCandidates(user = {}, scopedSnapshot = {}, todayKey = "") {
+  const userId = String(user.id || "").trim();
+  return (scopedSnapshot.reminders ?? [])
+    .filter((item) => normalizeInputValue(item?.status).toLowerCase() !== "done")
+    .filter((item) => !item?.assignedToUserId || String(item.assignedToUserId) === userId || isScheduledUserAdmin(user))
+    .map((item) => {
+      const dueDate = parseScheduledDateKey(item?.dueDate);
+      if (!dueDate) {
+        return null;
+      }
+      const daysUntil = getScheduledDaysUntil(dueDate, todayKey);
+      if (!Number.isFinite(daysUntil) || daysUntil > 1) {
+        return null;
+      }
+
+      return scheduledPushCandidate(
+        `reminder:${item.id}:${dueDate}:${todayKey}`,
+        daysUntil < 0 ? "Reminder kasni" : "Reminder je blizu",
+        `${item.title || "Reminder"} - rok ${getScheduledDueLabel(dueDate, todayKey)}.`,
+        "reminder_due",
+        {
+          reminderId: normalizeInputValue(item.id),
+          dueDate,
+        },
+      );
+    })
+    .filter(Boolean);
+}
+
+function collectScheduledMeasurementEntries(scopedSnapshot = {}) {
+  return (scopedSnapshot.measurementEquipment ?? []).flatMap((item) => {
+    const entries = [];
+    const validUntil = parseScheduledDateKey(item?.validUntil);
+    if (validUntil) {
+      entries.push({ dateKey: validUntil });
+    }
+    (Array.isArray(item?.activityItems) ? item.activityItems : []).forEach((activity) => {
+      const dateKey = getScheduledItemDateKey(activity, ["validUntil", "dueDate", "nextDueDate"]);
+      if (dateKey) {
+        entries.push({ dateKey });
+      }
+    });
+    return entries;
+  });
+}
+
+function collectScheduledVehicleEntries(scopedSnapshot = {}) {
+  return (scopedSnapshot.vehicles ?? []).flatMap((vehicle) => {
+    const entries = [];
+    const registrationDate = parseScheduledDateKey(vehicle?.registrationExpiresOn);
+    if (registrationDate) {
+      entries.push({ dateKey: registrationDate });
+    }
+    (Array.isArray(vehicle?.activityItems) ? vehicle.activityItems : []).forEach((activity) => {
+      const dateKey = getScheduledItemDateKey(activity, ["validUntil", "dueDate", "serviceDueDate"]);
+      if (dateKey) {
+        entries.push({ dateKey });
+      }
+    });
+    return entries;
+  });
+}
+
+function collectScheduledTrainingEntries(user = {}, scopedSnapshot = {}) {
+  const userId = String(user.id || "").trim();
+  const canSeeAll = isScheduledUserAdmin(user);
+  return (scopedSnapshot.peopleTrainingRecords ?? [])
+    .filter((record) => canSeeAll || String(record?.userId || "") === userId)
+    .flatMap((record) => {
+      const details = record?.details ?? {};
+      return [
+        record?.validUntil,
+        record?.expirationDate,
+        details?.validUntil,
+        details?.medicalCertificateValidUntil,
+        details?.medicalReferralValidUntil,
+        details?.psychologicalCheckUntil,
+      ].map((value) => ({ dateKey: parseScheduledDateKey(value) })).filter((entry) => entry.dateKey);
+    });
+}
+
+function collectScheduledFoundationEntries(scopedSnapshot = {}) {
+  return [
+    ...(scopedSnapshot.riskAssessments ?? []).map((item) => ({ dateKey: getScheduledItemDateKey(item, ["revisionDate", "reviewDate", "dueDate"]) })),
+    ...(scopedSnapshot.rulebooks ?? []).map((item) => ({ dateKey: getScheduledItemDateKey(item, ["reviewDate", "effectiveFrom", "dueDate"]) })),
+    ...(scopedSnapshot.jobs ?? []).map((item) => ({ dateKey: getScheduledItemDateKey(item, ["reviewDate", "revisionDate", "dueDate"]) })),
+  ].filter((entry) => entry.dateKey);
+}
+
+function collectScheduledAbsenceEntries(user = {}, scopedSnapshot = {}, todayKey = "") {
+  const userId = String(user.id || "").trim();
+  const isAdmin = isScheduledUserAdmin(user) || canManageMasterData(user);
+  const entries = [];
+
+  (scopedSnapshot.absenceEntries ?? []).forEach((entry) => {
+    const status = normalizeInputValue(entry?.status).toLowerCase();
+    const startDate = parseScheduledDateKey(entry?.startDate);
+    if (!startDate) {
+      return;
+    }
+    if (status === "pending" && isAdmin) {
+      entries.push({ dateKey: todayKey || startDate });
+      return;
+    }
+    if (status === "approved" && (isAdmin || String(entry?.userId || "") === userId)) {
+      entries.push({ dateKey: startDate });
+    }
+  });
+
+  return entries;
+}
+
+function collectUserScheduledPushCandidates(user = {}, scopedSnapshot = {}, todayKey = "") {
+  const candidates = [
+    ...collectUserScheduledWorkOrderPushCandidates(user, scopedSnapshot, todayKey),
+    ...collectUserScheduledReminderPushCandidates(user, scopedSnapshot, todayKey),
+  ];
+  const organizationId = normalizeInputValue(scopedSnapshot.activeOrganizationId || user.organizationId || "global");
+  const isAdmin = isScheduledUserAdmin(user) || canManageMasterData(user);
+
+  addScheduledDueSummaryCandidate(candidates, {
+    key: `measurement-equipment:${organizationId}:${todayKey}`,
+    type: "measurement_equipment_due",
+    title: "Mjerna oprema",
+    label: "Umjernice i rokovi opreme",
+    entries: collectScheduledMeasurementEntries(scopedSnapshot),
+    todayKey,
+  });
+  addScheduledDueSummaryCandidate(candidates, {
+    key: `vehicle-due:${organizationId}:${todayKey}`,
+    type: "vehicle_due",
+    title: "Vozila",
+    label: "Rokovi vozila",
+    entries: collectScheduledVehicleEntries(scopedSnapshot),
+    todayKey,
+  });
+  addScheduledDueSummaryCandidate(candidates, {
+    key: `safety-authorization:${organizationId}:${todayKey}`,
+    type: "safety_authorization_due",
+    title: "Safety authorization",
+    label: "Ovlastenja",
+    entries: (scopedSnapshot.safetyAuthorizations ?? []).map((item) => ({ dateKey: parseScheduledDateKey(item?.validUntil) })),
+    todayKey,
+  });
+  addScheduledDueSummaryCandidate(candidates, {
+    key: `training:${organizationId}:${user.id}:${todayKey}`,
+    type: "training_due",
+    title: "Osposobljavanja",
+    label: "Ispiti, pregledi i uvjerenja",
+    entries: collectScheduledTrainingEntries(user, scopedSnapshot),
+    todayKey,
+  });
+  addScheduledDueSummaryCandidate(candidates, {
+    key: `foundation-documents:${organizationId}:${todayKey}`,
+    type: "foundation_document_due",
+    title: "Temeljna dokumentacija",
+    label: "Procjene, pravilnici i poslovi",
+    entries: collectScheduledFoundationEntries(scopedSnapshot),
+    todayKey,
+  });
+  addScheduledDueSummaryCandidate(candidates, {
+    key: `absence:${organizationId}:${user.id}:${todayKey}`,
+    type: "absence_due",
+    title: "Odsutnosti",
+    label: "GO, bolovanja i zahtjevi",
+    entries: collectScheduledAbsenceEntries(user, scopedSnapshot, todayKey),
+    todayKey,
+  });
+
+  const digestEntries = [
+    ...collectScheduledMeasurementEntries(scopedSnapshot),
+    ...collectScheduledVehicleEntries(scopedSnapshot),
+    ...(scopedSnapshot.safetyAuthorizations ?? []).map((item) => ({ dateKey: parseScheduledDateKey(item?.validUntil) })),
+    ...collectScheduledTrainingEntries(user, scopedSnapshot),
+    ...collectScheduledFoundationEntries(scopedSnapshot),
+    ...collectScheduledAbsenceEntries(user, scopedSnapshot, todayKey),
+  ].filter((entry) => entry.dateKey && isScheduledDateInWindow(entry.dateKey, todayKey));
+  if (digestEntries.length > 0) {
+    const overdueCount = digestEntries.filter((entry) => getScheduledDaysUntil(entry.dateKey, todayKey) < 0).length;
+    candidates.push(scheduledPushCandidate(
+      `periodics-digest:${organizationId}:${user.id}:${todayKey}`,
+      "Dnevni sazetak periodike",
+      `${digestEntries.length} rokova za pracenje, od toga ${overdueCount} isteklo ili kasni.`,
+      "periodics_digest",
+      {
+        count: String(digestEntries.length),
+        overdueCount: String(overdueCount),
+      },
+    ));
+  }
+
+  if (isAdmin) {
+    const pendingSignupCount = (scopedSnapshot.signupRequests ?? [])
+      .filter((request) => normalizeInputValue(request?.status).toLowerCase() === "pending")
+      .length;
+    if (pendingSignupCount > 0) {
+      candidates.push(scheduledPushCandidate(
+        `signup-requests:${organizationId}:${todayKey}`,
+        "Novi zahtjevi za pristup",
+        `${pendingSignupCount} zahtjeva ceka obradu.`,
+        "signup_request",
+        {
+          count: String(pendingSignupCount),
+        },
+      ));
+    }
+  }
+
+  return candidates.filter((candidate) => candidate.key && candidate.payload);
+}
+
+async function runScheduledPushNotifications() {
+  if (
+    scheduledPushNotificationsRunning
+    || typeof tenantRepository.listUsersWithPushTokens !== "function"
+    || typeof tenantRepository.tryMarkPushNotificationSent !== "function"
+  ) {
+    return;
+  }
+
+  const clock = getScheduledReportClock();
+  if (clock.hour < SCHEDULED_PUSH_START_HOUR || !(await isFirebasePushConfigured())) {
+    return;
+  }
+
+  scheduledPushNotificationsRunning = true;
+  try {
+    const users = await tenantRepository.listUsersWithPushTokens();
+    if (!users.length) {
+      return;
+    }
+
+    const rawSnapshot = await domainRepository.getSnapshot();
+    for (const pushUser of users) {
+      try {
+        const scopedSnapshot = await tenantRepository.getSnapshot(pushUser, pushUser.organizationId, rawSnapshot);
+        const candidates = collectUserScheduledPushCandidates(pushUser, scopedSnapshot, clock.dateKey);
+        for (const candidate of candidates) {
+          const marked = await tenantRepository.tryMarkPushNotificationSent(pushUser.id, candidate.key);
+          if (!marked) {
+            continue;
+          }
+          await sendPushToUserIds([String(pushUser.id)], candidate.payload);
+        }
+      } catch (error) {
+        console.warn("[push] Zakazani push nije uspio za korisnika.", {
+          userId: pushUser?.id,
+          error: error?.message || error,
+        });
+      }
+    }
+  } finally {
+    scheduledPushNotificationsRunning = false;
+  }
+}
+
+function startScheduledPushNotifications() {
+  if (scheduledPushNotificationsTimer) {
+    return;
+  }
+
+  scheduledPushNotificationsTimer = setInterval(() => {
+    void runScheduledPushNotifications();
+  }, REPORT_SCHEDULE_POLL_MS);
+  scheduledPushNotificationsTimer.unref?.();
+
+  setTimeout(() => {
+    void runScheduledPushNotifications();
+  }, 10_000).unref?.();
 }
 
 function startScheduledProfileReports() {
@@ -14501,6 +14985,38 @@ function resolveWorkOrderPushUserIds(workOrder = {}, scopedSnapshot = {}) {
   return [...ids];
 }
 
+function resolveAdminPushUserIds(scopedSnapshot = {}) {
+  return [...new Set((scopedSnapshot.users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .filter((user) => ["super_admin", "admin"].includes(normalizeInputValue(user.role)))
+    .map((user) => normalizeInputValue(user.id))
+    .filter(Boolean))];
+}
+
+function resolveTodoTaskPushUserIds(todoTask = {}, scopedSnapshot = {}, excludedUserIds = []) {
+  const ids = new Set();
+  const excluded = new Set((Array.isArray(excludedUserIds) ? excludedUserIds : []).map((id) => String(id)).filter(Boolean));
+  const assignedToUserId = normalizeInputValue(todoTask.assignedToUserId);
+  if (assignedToUserId) {
+    ids.add(assignedToUserId);
+  }
+  (Array.isArray(todoTask.invitedUsers) ? todoTask.invitedUsers : []).forEach((entry) => {
+    const userId = normalizeInputValue(entry?.userId);
+    if (userId) {
+      ids.add(userId);
+    }
+  });
+  const workOrderId = normalizeInputValue(todoTask.workOrderId);
+  if (workOrderId) {
+    const workOrder = (scopedSnapshot.workOrders ?? []).find((entry) => String(entry.id) === String(workOrderId));
+    if (workOrder) {
+      resolveWorkOrderPushUserIds(workOrder, scopedSnapshot).forEach((id) => ids.add(String(id)));
+    }
+  }
+  excluded.forEach((id) => ids.delete(id));
+  return [...ids];
+}
+
 function addLookupIdsToSet(lookup, key, ids) {
   const matchingIds = lookup.get(key);
   if (matchingIds instanceof Set) {
@@ -14522,10 +15038,83 @@ function resolveAddedExecutorPushUserIds(currentWorkOrder = {}, nextWorkOrder = 
   return [...ids];
 }
 
-async function sendPushToUserIds(userIds = [], payload = {}) {
+const PUSH_PREFERENCE_KEY_BY_TYPE = Object.freeze({
+  work_order_assigned: "workOrderAssigned",
+  work_order_executor_added: "workOrderAssigned",
+  work_order_status_changed: "workOrderStatus",
+  work_order_closed: "workOrderStatus",
+  work_order_execution_due: "workOrderExecutionDue",
+  work_order_due: "workOrderDue",
+  document_ready: "documentReady",
+  document_signature: "documentSignature",
+  signature_rejected: "documentSignature",
+  periodics_digest: "periodicsDigest",
+  vehicle_reservation: "vehicleReservation",
+  vehicle_return_due: "vehicleReturn",
+  vehicle_due: "vehicleReturn",
+  measurement_equipment_due: "measurementEquipment",
+  safety_authorization_due: "safetyAuthorization",
+  training_due: "training",
+  reminder_due: "reminders",
+  todo_comment: "todoComments",
+  absence_request: "absence",
+  absence_due: "absence",
+  signup_request: "signupRequests",
+  foundation_document_due: "foundationDocuments",
+});
+
+function resolvePushPreferenceKey(payload = {}, options = {}) {
+  const explicitKey = normalizeInputValue(options.preferenceKey || payload?.data?.preferenceKey);
+  if (explicitKey) {
+    return explicitKey;
+  }
+
+  return PUSH_PREFERENCE_KEY_BY_TYPE[normalizeInputValue(payload?.data?.type)] || "";
+}
+
+function isPushPreferenceEnabled(preferences = {}, preferenceKey = "") {
+  const normalized = normalizePushNotificationPreferences(preferences);
+  if (!normalized.enabled) {
+    return false;
+  }
+  if (!preferenceKey) {
+    return true;
+  }
+  if (!Object.prototype.hasOwnProperty.call(normalized, preferenceKey)) {
+    return true;
+  }
+  return Boolean(normalized[preferenceKey]);
+}
+
+async function filterPushUserIdsByPreferences(userIds = [], payload = {}, options = {}) {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id)).filter(Boolean))];
+  if (ids.length === 0 || options.bypassPreferences === true) {
+    return ids;
+  }
+
+  const preferenceKey = resolvePushPreferenceKey(payload, options);
+  if (!preferenceKey || typeof tenantRepository.getPushNotificationPreferencesForUserIds !== "function") {
+    return ids;
+  }
+
+  const preferencesByUserId = await tenantRepository.getPushNotificationPreferencesForUserIds(ids);
+  return ids.filter((id) => isPushPreferenceEnabled(preferencesByUserId.get(String(id)), preferenceKey));
+}
+
+async function sendPushToUserIds(userIds = [], payload = {}, options = {}) {
   const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id)).filter(Boolean))];
   if (ids.length === 0) {
     return { sent: 0, skipped: true, reason: "no-recipients" };
+  }
+
+  const filteredIds = await filterPushUserIdsByPreferences(ids, payload, options);
+  if (filteredIds.length === 0) {
+    return {
+      sent: 0,
+      skipped: true,
+      reason: "preferences-disabled",
+      preferenceKey: resolvePushPreferenceKey(payload, options),
+    };
   }
 
   if (typeof tenantRepository.listPushTokensForUserIds !== "function") {
@@ -14536,7 +15125,7 @@ async function sendPushToUserIds(userIds = [], payload = {}) {
     return { sent: 0, skipped: true, reason: "firebase-not-configured" };
   }
 
-  const tokens = await tenantRepository.listPushTokensForUserIds(ids);
+  const tokens = await tenantRepository.listPushTokensForUserIds(filteredIds);
   const uniqueTokens = [...new Map(tokens.map((item) => [item.token, item])).values()].filter((item) => item.token);
   if (uniqueTokens.length === 0) {
     return { sent: 0, skipped: true, reason: "no-tokens" };
@@ -14555,13 +15144,14 @@ async function sendPushToUserIds(userIds = [], payload = {}) {
   };
 }
 
-function queuePushToUserIds(userIds = [], payload = {}) {
-  void sendPushToUserIds(userIds, payload)
+function queuePushToUserIds(userIds = [], payload = {}, options = {}) {
+  void sendPushToUserIds(userIds, payload, options)
     .then((result) => {
       if (result?.skipped) {
         console.info("[push] preskoceno", JSON.stringify({
           reason: result.reason || "unknown",
           recipients: Array.isArray(userIds) ? userIds.length : 0,
+          preferenceKey: result.preferenceKey || resolvePushPreferenceKey(payload, options),
           type: payload?.data?.type || "",
           workOrderId: payload?.data?.workOrderId || "",
           workOrderNumber: payload?.data?.workOrderNumber || "",
@@ -14571,6 +15161,7 @@ function queuePushToUserIds(userIds = [], payload = {}) {
           sent: result.sent || 0,
           failed: result.failed || 0,
           recipients: Array.isArray(userIds) ? userIds.length : 0,
+          preferenceKey: resolvePushPreferenceKey(payload, options),
           type: payload?.data?.type || "",
           workOrderId: payload?.data?.workOrderId || "",
           workOrderNumber: payload?.data?.workOrderNumber || "",
@@ -15566,6 +16157,27 @@ async function handleApiRequest(request, response, url) {
     if (request.method === "POST" && url.pathname === "/api/auth/signup") {
       const body = await readJsonBody(request);
       const result = await tenantRepository.submitSignupRequest(body);
+      if (result?.request && typeof tenantRepository.listUsersWithPushTokens === "function") {
+        const usersWithPush = await tenantRepository.listUsersWithPushTokens();
+        const requestOrganizationId = normalizeInputValue(result.request.organizationId);
+        const recipientIds = usersWithPush
+          .filter((item) => ["super_admin", "admin"].includes(normalizeInputValue(item.role)))
+          .filter((item) => (
+            normalizeInputValue(item.role) === "super_admin"
+            || !requestOrganizationId
+            || (Array.isArray(item.organizationIds) ? item.organizationIds : []).some((id) => String(id) === requestOrganizationId)
+          ))
+          .map((item) => normalizeInputValue(item.id))
+          .filter(Boolean);
+        queuePushToUserIds(recipientIds, {
+          title: "Novi zahtjev za pristup",
+          body: `${result.request.fullName || result.request.email || "Novi korisnik"} ceka obradu.`,
+          data: {
+            type: "signup_request",
+            signupRequestId: String(result.request.id || ""),
+          },
+        });
+      }
       sendJson(response, 201, result);
       return true;
     }
@@ -15928,7 +16540,7 @@ async function handleApiRequest(request, response, url) {
         data: {
           type: "push_test",
         },
-      });
+      }, { bypassPreferences: true });
       sendJson(response, 200, { ok: true, result });
       return true;
     }
@@ -16125,6 +16737,37 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/auth/profile/push-notifications") {
+      const currentUser = await tenantRepository.getUserById(user.id) ?? user;
+      sendJson(response, 200, {
+        ok: true,
+        preferences: normalizePushNotificationPreferences(currentUser.pushNotificationPreferences),
+      });
+      return true;
+    }
+
+    if (request.method === "PATCH" && url.pathname === "/api/auth/profile/push-notifications") {
+      if (typeof tenantRepository.updateOwnPushNotificationPreferences !== "function") {
+        sendError(response, 501, "Push postavke nisu podrzane u ovom spremistu.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const updatedUser = await tenantRepository.updateOwnPushNotificationPreferences(
+        user,
+        body.preferences ?? body,
+      );
+
+      if (!updatedUser) {
+        sendError(response, 404, "Korisnik nije pronađen.");
+        return true;
+      }
+
+      request[requestUserSymbol] = updatedUser;
+      await writeSnapshot(response, updatedUser, request);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/auth/profile/report-email") {
       const reportUser = await tenantRepository.getUserById(user.id) ?? user;
 
@@ -16296,6 +16939,7 @@ async function handleApiRequest(request, response, url) {
       }
 
       const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
       const reviewedAt = new Date().toISOString();
       const rejections = Array.isArray(body?.rejections) ? body.rejections : [];
       const reviewJob = getSignatureBridgeJob(String(body?.jobToken || "").trim());
@@ -16352,6 +16996,19 @@ async function handleApiRequest(request, response, url) {
             signatureReviewedAt: reviewedAt,
             signatureReviewNotifiedOwner: true,
           }, user);
+        }
+        const workOrder = (scopedSnapshot.workOrders ?? []).find((item) => String(item.id) === String(review.workOrderId));
+        if (workOrder) {
+          queuePushToUserIds(resolveWorkOrderPushUserIds(workOrder, scopedSnapshot), {
+            title: "Dokument vracen s potpisa",
+            body: `RN ${review.workOrderNumber || "-"}: ${comment || "potrebna je korekcija dokumenta."}`,
+            data: {
+              type: "signature_rejected",
+              workOrderId: review.workOrderId,
+              workOrderNumber: review.workOrderNumber,
+              documentId: review.documentId,
+            },
+          });
         }
         return review;
       }));
@@ -16944,12 +17601,20 @@ async function handleApiRequest(request, response, url) {
       assertWorkOrderPayloadInScope(scopedSnapshot, body);
       const assignedPayload = resolveAssignedUserPayload(scopedSnapshot, body);
       const invitedPayload = resolveTodoInvitedUsersPayload(scopedSnapshot, body);
-      await domainRepository.createTodoTask({
+      const created = await domainRepository.createTodoTask({
         ...body,
         ...assignedPayload,
         ...invitedPayload,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
+      queuePushToUserIds(resolveTodoTaskPushUserIds(created, scopedSnapshot, [user.id]), {
+        title: "Novi ToDo",
+        body: created?.title || "Dodijeljen vam je ToDo zadatak.",
+        data: {
+          type: "todo_comment",
+          todoTaskId: String(created?.id || ""),
+        },
+      });
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -17628,6 +18293,16 @@ async function handleApiRequest(request, response, url) {
         approvedByLabel: finalStatus === "approved" ? actorLabel : "",
         approvedAt: finalStatus === "approved" ? new Date().toISOString() : null,
       });
+      if (finalStatus === "pending") {
+        queuePushToUserIds(resolveAdminPushUserIds(scopedSnapshot), {
+          title: "Zahtjev za odsutnost",
+          body: `${getScopedUserDisplayLabel(targetUser)} je poslao zahtjev za odsutnost.`,
+          data: {
+            type: "absence_request",
+            userId: String(targetUser.id),
+          },
+        });
+      }
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -19541,6 +20216,14 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      queuePushToUserIds(resolveTodoTaskPushUserIds(updated, scopedSnapshot, [user.id]), {
+        title: "Novi ToDo komentar",
+        body: `${getScopedUserDisplayLabel(user)}: ${normalizeInputValue(body.message || body.comment || body.text).slice(0, 120) || "Dodan je komentar."}`,
+        data: {
+          type: "todo_comment",
+          todoTaskId: String(updated.id || todoTaskCommentMatch[1]),
+        },
+      });
       await writeSnapshot(response, user, request);
       return true;
     }
@@ -20406,6 +21089,17 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      if (normalizeInputValue(current.status).toLowerCase() !== normalizeInputValue(updated.status).toLowerCase()) {
+        queuePushToUserIds([String(updated.userId || targetUser.id)], {
+          title: "Status odsutnosti",
+          body: `Odsutnost je sada: ${updated.status || requestedStatus}.`,
+          data: {
+            type: "absence_due",
+            absenceEntryId: String(updated.id || absenceEntryMatch[1]),
+          },
+        });
+      }
+
       await writeSnapshot(response, user, request);
       return true;
     }
@@ -21159,6 +21853,10 @@ async function shutdown(signal) {
     clearInterval(scheduledProfileReportsTimer);
     scheduledProfileReportsTimer = null;
   }
+  if (scheduledPushNotificationsTimer) {
+    clearInterval(scheduledPushNotificationsTimer);
+    scheduledPushNotificationsTimer = null;
+  }
 
   server.close(async () => {
     try {
@@ -21184,6 +21882,7 @@ process.on("SIGTERM", () => {
 });
 
 startScheduledProfileReports();
+startScheduledPushNotifications();
 
 server.listen(port, () => {
   console.log(`SelfDash workspace live at http://localhost:${port} (${domainRepository.kind})`);

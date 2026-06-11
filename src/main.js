@@ -1154,6 +1154,46 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   workOrderCompletionSharePercent: 20,
   workOrderServicePointFactors: Object.freeze({}),
 });
+const DEFAULT_PUSH_NOTIFICATION_PREFERENCES = Object.freeze({
+  enabled: true,
+  workOrderAssigned: true,
+  workOrderStatus: true,
+  workOrderExecutionDue: true,
+  workOrderDue: true,
+  documentReady: true,
+  documentSignature: true,
+  periodicsDigest: false,
+  vehicleReservation: true,
+  vehicleReturn: true,
+  measurementEquipment: true,
+  safetyAuthorization: true,
+  training: true,
+  reminders: true,
+  todoComments: true,
+  absence: true,
+  signupRequests: true,
+  foundationDocuments: true,
+});
+const PUSH_NOTIFICATION_PREFERENCE_DEFINITIONS = Object.freeze([
+  { key: "enabled", label: "Push obavijesti aktivne", description: "Glavni prekidac za sve Android push obavijesti.", master: true },
+  { key: "workOrderAssigned", label: "RN dodjele", description: "Novi RN i dodavanje izvršitelja." },
+  { key: "workOrderStatus", label: "RN statusi", description: "Promjena statusa i zatvaranje RN-a." },
+  { key: "workOrderExecutionDue", label: "Plan terena", description: "Datum izvršenja danas, sutra ili u kašnjenju." },
+  { key: "workOrderDue", label: "Rokovi RN-a", description: "RN rokovi koji dolaze ili kasne." },
+  { key: "documentReady", label: "Dokumenti spremni", description: "Zapisnici i PDF-ovi generirani iz weba ili Androida." },
+  { key: "documentSignature", label: "Potpisi", description: "Potpisano, vraćeno s potpisa ili traži korekciju." },
+  { key: "vehicleReservation", label: "Rezervacije vozila", description: "Dodjele i rezervacije vozila." },
+  { key: "vehicleReturn", label: "Vozila i evidencije", description: "Povrat, registracija, gume i evidencija putovanja." },
+  { key: "measurementEquipment", label: "Mjerna oprema", description: "Umjernice i rokovi opreme." },
+  { key: "safetyAuthorization", label: "Safety authorization", description: "Ovlaštenja koja ističu ili su istekla." },
+  { key: "training", label: "Osposobljavanja", description: "Ispiti, liječnički pregledi i uvjerenja." },
+  { key: "foundationDocuments", label: "Temeljna dokumentacija", description: "Procjene rizika, pravilnici i jobs rokovi." },
+  { key: "reminders", label: "Reminders", description: "Podsjetnici koji dolaze ili kasne." },
+  { key: "todoComments", label: "ToDo i komentari", description: "Novi zadaci i komentari na temama." },
+  { key: "absence", label: "Odsutnosti", description: "Zahtjevi, odobrenja, GO i bolovanja." },
+  { key: "signupRequests", label: "Zahtjevi za pristup", description: "Novi korisnici koji čekaju obradu." },
+  { key: "periodicsDigest", label: "Dnevni sažetak periodike", description: "Sažetak više rokova u jednom danu." },
+]);
 const WORK_ORDER_SERVICE_PROGRESS_OPTIONS = Object.freeze([
   { value: "pending", label: "Nije završeno", tone: "pending" },
   { value: "in_progress", label: "U tijeku", tone: "progress" },
@@ -3593,6 +3633,9 @@ const settingsWorkOrderServiceFactorsList = document.querySelector("#settings-wo
 const settingsJobAiFields = document.querySelector("#settings-job-ai-fields");
 const settingsJobAiSaveButton = document.querySelector("#settings-job-ai-save");
 const settingsJobAiFeedback = document.querySelector("#settings-job-ai-feedback");
+const settingsPushPreferencesGrid = document.querySelector("#settings-push-preferences-grid");
+const settingsPushPreferencesSaveButton = document.querySelector("#settings-push-preferences-save");
+const settingsPushPreferencesFeedback = document.querySelector("#settings-push-preferences-feedback");
 let settingsJobAiInstructionDrafts = {};
 let settingsJobAiDraftInitialized = false;
 let settingsJobAiActiveModalKey = "";
@@ -8990,6 +9033,29 @@ function normalizeVehicleNotificationSettings(value = {}) {
 
 function getVehicleNotificationSettings() {
   return normalizeVehicleNotificationSettings(state.vehicleNotificationSettings);
+}
+
+function normalizePushNotificationPreferences(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const normalized = {
+    ...DEFAULT_PUSH_NOTIFICATION_PREFERENCES,
+  };
+
+  Object.keys(DEFAULT_PUSH_NOTIFICATION_PREFERENCES).forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      normalized[key] = Boolean(source[key]);
+    }
+  });
+
+  return normalized;
+}
+
+function getPushNotificationPreferences() {
+  const currentUser = getProfileDialogUser();
+  return normalizePushNotificationPreferences(
+    currentUser?.pushNotificationPreferences
+      ?? state.user?.pushNotificationPreferences,
+  );
 }
 
 function normalizePeriodicsVisualSettings(value = {}) {
@@ -33008,6 +33074,65 @@ function syncSettingsWorkOrderPointShareInputs(changedInput = null) {
   });
 }
 
+function createSettingsPushPreferenceCard(definition = {}, preferences = {}) {
+  const label = document.createElement("label");
+  label.className = "settings-push-preference-card";
+  if (definition.master) {
+    label.classList.add("is-master");
+  }
+
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.dataset.pushPreferenceKey = definition.key;
+  input.checked = Boolean(preferences[definition.key]);
+
+  const copy = document.createElement("span");
+  const title = document.createElement("strong");
+  title.textContent = definition.label || definition.key;
+  const description = document.createElement("span");
+  description.textContent = definition.description || "";
+  copy.append(title, description);
+
+  label.append(input, copy);
+  return label;
+}
+
+function renderSettingsPushPreferences() {
+  if (!settingsPushPreferencesGrid) {
+    return;
+  }
+
+  const preferences = getPushNotificationPreferences();
+  settingsPushPreferencesGrid.replaceChildren(
+    ...PUSH_NOTIFICATION_PREFERENCE_DEFINITIONS.map((definition) => (
+      createSettingsPushPreferenceCard(definition, preferences)
+    )),
+  );
+
+  if (settingsPushPreferencesSaveButton) {
+    settingsPushPreferencesSaveButton.disabled = !state.user;
+    settingsPushPreferencesSaveButton.hidden = !state.user;
+  }
+}
+
+function collectSettingsPushPreferences() {
+  const preferences = {
+    ...DEFAULT_PUSH_NOTIFICATION_PREFERENCES,
+  };
+
+  settingsPushPreferencesGrid?.querySelectorAll("[data-push-preference-key]").forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const key = input.dataset.pushPreferenceKey || "";
+    if (Object.prototype.hasOwnProperty.call(preferences, key)) {
+      preferences[key] = Boolean(input.checked);
+    }
+  });
+
+  return preferences;
+}
+
 function renderSettingsModule() {
   if (!settingsModule) {
     return;
@@ -33024,6 +33149,7 @@ function renderSettingsModule() {
 
   syncSettingsOrganizationLogo();
   syncSettingsDocumentStamp();
+  renderSettingsPushPreferences();
 
   if (settingsMeasurementLeadDaysInput) {
     if (document.activeElement !== settingsMeasurementLeadDaysInput) {
@@ -33543,6 +33669,51 @@ async function savePeriodicsVisualSettings(options = {}) {
     if (settingsWorkOrderPointsFeedback) {
       settingsWorkOrderPointsFeedback.textContent = successMessage;
     }
+  }
+
+  return success;
+}
+
+async function saveProfilePushNotificationPreferences(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Push postavke su spremljene.";
+
+  if (!state.user) {
+    setInlineMessage(settingsPushPreferencesFeedback, "Prijavite se prije spremanja push postavki.");
+    return false;
+  }
+
+  const preferences = collectSettingsPushPreferences();
+  if (settingsPushPreferencesSaveButton) {
+    settingsPushPreferencesSaveButton.disabled = true;
+  }
+
+  const success = await runMutation(() => apiRequest("/auth/profile/push-notifications", {
+    method: "PATCH",
+    body: {
+      preferences,
+    },
+  }), settingsPushPreferencesFeedback);
+
+  if (settingsPushPreferencesSaveButton) {
+    settingsPushPreferencesSaveButton.disabled = false;
+  }
+
+  if (success) {
+    state.user = {
+      ...(state.user ?? {}),
+      pushNotificationPreferences: preferences,
+    };
+    const currentUserIndex = state.users.findIndex((item) => String(item.id) === String(state.user?.id));
+    if (currentUserIndex >= 0) {
+      state.users[currentUserIndex] = {
+        ...state.users[currentUserIndex],
+        pushNotificationPreferences: preferences,
+      };
+    }
+    renderSettingsPushPreferences();
+    setInlineMessage(settingsPushPreferencesFeedback, successMessage, "success");
   }
 
   return success;
@@ -126659,6 +126830,17 @@ topbarTodoOpenAllButton?.addEventListener("click", (event) => {
 
 settingsSaveAllButton?.addEventListener("click", () => {
   void saveAllSettingsBlocks();
+});
+
+settingsPushPreferencesSaveButton?.addEventListener("click", () => {
+  void saveProfilePushNotificationPreferences();
+});
+
+settingsPushPreferencesGrid?.addEventListener("change", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.matches("[data-push-preference-key]")) {
+    setInlineMessage(settingsPushPreferencesFeedback, "");
+  }
 });
 
 settingsJobAiSaveButton?.addEventListener("click", () => {

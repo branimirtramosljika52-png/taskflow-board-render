@@ -4769,6 +4769,55 @@ body.is-profile-modal-open {
   gap: 14px;
 }
 
+.settings-push-panel {
+  gap: 12px;
+}
+
+.settings-push-preferences-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.settings-push-preference-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(112, 131, 159, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.settings-push-preference-card.is-master {
+  grid-column: 1 / -1;
+  border-color: rgba(40, 111, 220, 0.28);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.9));
+}
+
+.settings-push-preference-card input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #2563eb;
+}
+
+.settings-push-preference-card strong {
+  display: block;
+  color: #172033;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.settings-push-preference-card span {
+  display: block;
+  margin-top: 3px;
+  color: #5c6a86;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .settings-brand-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -68,7 +68,11 @@ class SafeNexusMessagingService : FirebaseMessagingService() {
         ensureNotificationChannel()
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            data["workOrderId"]?.takeIf { it.isNotBlank() }?.let { putExtra("workOrderId", it) }
+            data.forEach { (key, value) ->
+                if (key.isNotBlank() && value.isNotBlank()) {
+                    putExtra(key, value)
+                }
+            }
         }
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -94,10 +98,10 @@ class SafeNexusMessagingService : FirebaseMessagingService() {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Radni nalozi",
+            "SafeNexus obavijesti",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Obavijesti o radnim nalozima u SafeNexus aplikaciji"
+            description = "Radni nalozi, dokumenti, vozila, periodika i ostale SafeNexus obavijesti"
         }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
@@ -107,6 +111,6 @@ class SafeNexusMessagingService : FirebaseMessagingService() {
         Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
 
     private companion object {
-        const val CHANNEL_ID = "safe_nexus_work_orders"
+        const val CHANNEL_ID = "safe_nexus_notifications"
     }
 }

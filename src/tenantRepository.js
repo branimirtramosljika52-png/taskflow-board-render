@@ -115,6 +115,42 @@ function normalizeReportScheduleInput(input = {}, current = {}) {
   };
 }
 
+export const DEFAULT_PUSH_NOTIFICATION_PREFERENCES = Object.freeze({
+  enabled: true,
+  workOrderAssigned: true,
+  workOrderStatus: true,
+  workOrderExecutionDue: true,
+  workOrderDue: true,
+  documentReady: true,
+  documentSignature: true,
+  periodicsDigest: false,
+  vehicleReservation: true,
+  vehicleReturn: true,
+  measurementEquipment: true,
+  safetyAuthorization: true,
+  training: true,
+  reminders: true,
+  todoComments: true,
+  absence: true,
+  signupRequests: true,
+  foundationDocuments: true,
+});
+
+export function normalizePushNotificationPreferences(value = {}) {
+  const source = parseJsonObject(value, {});
+  const normalized = {
+    ...DEFAULT_PUSH_NOTIFICATION_PREFERENCES,
+  };
+
+  Object.keys(DEFAULT_PUSH_NOTIFICATION_PREFERENCES).forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      normalized[key] = toBooleanFlag(source[key], DEFAULT_PUSH_NOTIFICATION_PREFERENCES[key]);
+    }
+  });
+
+  return normalized;
+}
+
 function resolveAppUrl() {
   return dbString(process.env.PUBLIC_APP_URL) || dbString(process.env.APP_URL) || "https://safe-nexus.org";
 }
@@ -1155,6 +1191,9 @@ function sanitizeUser(row) {
       : Boolean(Number(row.report_email_enabled)),
     reportEmailTime: normalizeReportEmailTime(row.report_email_time ?? row.reportEmailTime ?? "07:00"),
     reportEmailLastSentOn: normalizeReportEmailDateKey(row.report_email_last_sent_on ?? row.reportEmailLastSentOn),
+    pushNotificationPreferences: normalizePushNotificationPreferences(
+      row.push_notification_preferences_json ?? row.pushNotificationPreferences,
+    ),
     clientCompanyIds: normalizeClientScopeIds(row.client_company_ids_json ?? row.clientCompanyIds),
     clientLocationIds: normalizeClientScopeIds(row.client_location_ids_json ?? row.clientLocationIds),
     clientAccessAllLocations: row.client_access_all_locations === undefined
@@ -1530,6 +1569,7 @@ async function ensureSchema(connection) {
       report_email_enabled TINYINT(1) NOT NULL DEFAULT 0,
       report_email_time VARCHAR(5) NOT NULL DEFAULT '07:00',
       report_email_last_sent_on VARCHAR(10) NOT NULL DEFAULT '',
+      push_notification_preferences_json LONGTEXT NULL,
       client_company_ids_json TEXT NULL,
       client_location_ids_json TEXT NULL,
       client_access_all_locations TINYINT(1) NOT NULL DEFAULT 1,
@@ -1614,6 +1654,17 @@ async function ensureSchema(connection) {
       UNIQUE KEY uniq_app_push_tokens_token (token),
       KEY idx_app_push_tokens_user_id (user_id),
       KEY idx_app_push_tokens_platform (platform)
+    )
+  `);
+
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS app_push_notification_log (
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      notification_key VARCHAR(220) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_app_push_notification_log_user_key (user_id, notification_key),
+      KEY idx_app_push_notification_log_created_at (created_at)
     )
   `);
 
@@ -1719,8 +1770,14 @@ async function ensureSchema(connection) {
   await ensureColumn(
     connection,
     "app_users",
+    "push_notification_preferences_json",
+    "LONGTEXT NULL AFTER report_email_last_sent_on",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
     "client_company_ids_json",
-    "TEXT NULL AFTER report_email_last_sent_on",
+    "TEXT NULL AFTER push_notification_preferences_json",
   );
   await ensureColumn(
     connection,
@@ -3003,6 +3060,7 @@ export class MemoryTenantRepository {
     this.companyAssignments = new Map();
     this.refreshTokens = new Map();
     this.pushTokens = new Map();
+    this.pushNotificationLog = new Map();
     this.signupRequests = [];
   }
 
@@ -3032,6 +3090,7 @@ export class MemoryTenantRepository {
         reportEmailEnabled: false,
         reportEmailTime: "07:00",
         reportEmailLastSentOn: "",
+        pushNotificationPreferences: normalizePushNotificationPreferences(),
         avatarDataUrl: "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -3198,6 +3257,50 @@ export class MemoryTenantRepository {
     return [...this.pushTokens.values()]
       .filter((item) => allowedIds.has(String(item.userId)) && item.token)
       .map((item) => ({ ...item }));
+  }
+
+  async getPushNotificationPreferencesForUserIds(userIds = []) {
+    const allowedIds = new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id)).filter(Boolean));
+    const preferences = new Map();
+    if (allowedIds.size === 0) {
+      return preferences;
+    }
+
+    this.users.forEach((user) => {
+      if (allowedIds.has(String(user.id))) {
+        preferences.set(String(user.id), normalizePushNotificationPreferences(user.pushNotificationPreferences));
+      }
+    });
+    return preferences;
+  }
+
+  async listUsersWithPushTokens() {
+    const userIds = new Set([...this.pushTokens.values()].map((item) => String(item.userId)).filter(Boolean));
+    const users = this.users
+      .filter((item) => item.isActive && userIds.has(String(item.id)))
+      .map((item) => ({ ...item }));
+
+    return decorateUsersWithOrganizations(users, this.organizations);
+  }
+
+  async tryMarkPushNotificationSent(userId, notificationKey) {
+    const safeUserId = String(userId || "").trim();
+    const safeKey = dbString(notificationKey).slice(0, 220);
+    if (!safeUserId || !safeKey) {
+      return false;
+    }
+
+    const compositeKey = `${safeUserId}::${safeKey}`;
+    if (this.pushNotificationLog.has(compositeKey)) {
+      return false;
+    }
+
+    this.pushNotificationLog.set(compositeKey, {
+      userId: safeUserId,
+      notificationKey: safeKey,
+      createdAt: new Date().toISOString(),
+    });
+    return true;
   }
 
   async getSnapshot(actor, requestedOrganizationId, rawSnapshot = {
@@ -3376,6 +3479,7 @@ export class MemoryTenantRepository {
       reportEmailEnabled: false,
       reportEmailTime: "07:00",
       reportEmailLastSentOn: "",
+      pushNotificationPreferences: normalizePushNotificationPreferences(),
       clientCompanyIds: [...(normalized.clientCompanyIds ?? [])],
       clientLocationIds: [...(normalized.clientLocationIds ?? [])],
       clientAccessAllLocations: Boolean(normalized.clientAccessAllLocations),
@@ -3592,6 +3696,18 @@ export class MemoryTenantRepository {
     } else {
       current.reportEmailLastSentOn = normalized.reportEmailLastSentOn;
     }
+    current.updatedAt = new Date().toISOString();
+    return this.getUserById(current.id);
+  }
+
+  async updateOwnPushNotificationPreferences(actor, input = {}) {
+    const current = this.users.find((item) => item.id === String(actor?.id));
+
+    if (!current) {
+      return null;
+    }
+
+    current.pushNotificationPreferences = normalizePushNotificationPreferences(input);
     current.updatedAt = new Date().toISOString();
     return this.getUserById(current.id);
   }
@@ -4257,6 +4373,82 @@ export class MySqlTenantRepository {
           updatedAt: normalizeTimestamp(row.updated_at),
         }))
         .filter((item) => item.token);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getPushNotificationPreferencesForUserIds(userIds = []) {
+    const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+    const preferences = new Map();
+    if (ids.length === 0) {
+      return preferences;
+    }
+
+    const connection = await this.pool.getConnection();
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT id, push_notification_preferences_json
+          FROM app_users
+          WHERE id IN (?)
+            AND is_active = 1
+        `,
+        [ids],
+      );
+      rows.forEach((row) => {
+        preferences.set(
+          String(row.id),
+          normalizePushNotificationPreferences(row.push_notification_preferences_json),
+        );
+      });
+      return preferences;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listUsersWithPushTokens() {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT DISTINCT u.*, o.name AS organization_name
+          FROM app_users u
+          INNER JOIN app_push_tokens pt ON pt.user_id = u.id
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.is_active = 1
+            AND COALESCE(pt.token, '') <> ''
+          ORDER BY u.id ASC
+        `,
+      );
+      const users = rows.map(sanitizeUser);
+      const organizationIds = Array.from(new Set(users.flatMap((user) => user.organizationIds)));
+      const organizations = await fetchOrganizations(connection, organizationIds);
+      return decorateUsersWithOrganizations(users, organizations);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async tryMarkPushNotificationSent(userId, notificationKey) {
+    const numericUserId = Number(userId);
+    const safeKey = dbString(notificationKey).slice(0, 220);
+    if (!Number.isFinite(numericUserId) || numericUserId <= 0 || !safeKey) {
+      return false;
+    }
+
+    const connection = await this.pool.getConnection();
+    try {
+      const [result] = await connection.query(
+        `
+          INSERT IGNORE INTO app_push_notification_log (user_id, notification_key)
+          VALUES (?, ?)
+        `,
+        [numericUserId, safeKey],
+      );
+      return result.affectedRows > 0;
     } finally {
       connection.release();
     }
@@ -5111,6 +5303,34 @@ export class MySqlTenantRepository {
           Number(actor?.id),
         ],
       );
+
+      return this.getUserById(actor.id);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateOwnPushNotificationPreferences(actor, input = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const preferences = normalizePushNotificationPreferences(input);
+      const [result] = await connection.query(
+        `
+          UPDATE app_users
+          SET push_notification_preferences_json = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [
+          JSON.stringify(preferences),
+          Number(actor?.id),
+        ],
+      );
+
+      if (result.affectedRows === 0) {
+        return null;
+      }
 
       return this.getUserById(actor.id);
     } finally {
