@@ -1560,6 +1560,7 @@ const ALL_SIDEBAR_GROUPS = [
   "locations",
   "documents",
   "learning",
+  "foundation",
 ];
 const VIEW_TO_SIDEBAR_GROUP = {
   selfdash: "home",
@@ -1589,6 +1590,7 @@ const SIDEBAR_GROUP_DEFAULT_VIEW = {
   locations: "locations",
   documents: "module",
   learning: "module",
+  foundation: "module",
 };
 const MODULE_VIEW_DEFINITIONS = {
   reminders: {
@@ -1718,37 +1720,37 @@ const MODULE_VIEW_DEFINITIONS = {
     chips: ["Files", "Templates", "Evidence"],
   },
   tests: {
-    kicker: "Health And Safety",
-    title: "Tests",
+    kicker: "Osposobljavanja",
+    title: "Testovi",
     description: "Mjesto za testove, provjere znanja i internu edukaciju zaposlenika po organizacijama.",
     chips: ["Knowledge checks", "Exams", "Progress"],
   },
   "people-training": {
-    kicker: "Health And Safety",
+    kicker: "Osposobljavanja",
     title: "Osposobljavanja",
     description: "Evidencija osposobljavanja po osobi, tvrtki, RN-u, online testu i uvjerenjima za klijentski portal.",
     chips: ["RN", "Ispiti", "Uvjerenja"],
   },
   jobs: {
-    kicker: "Health And Safety",
+    kicker: "Temeljna dokumentacija",
     title: "Jobs",
     description: "Katalog poslova s opisima, radnim okruženjem, uvjetima rada i opasnostima za procjene rizika.",
     chips: ["Poslovi", "NexAI", "Opasnosti"],
   },
   "learning-people": {
-    kicker: "Health And Safety",
+    kicker: "Osposobljavanja",
     title: "People",
     description: "Pregled polaznika, statusa edukacija i napretka po zaposlenicima i timovima.",
     chips: ["Learners", "Status", "Certificates"],
   },
   "risk-assessment": {
-    kicker: "Health And Safety",
-    title: "Risk Assessment",
+    kicker: "Temeljna dokumentacija",
+    title: "Procjene rizika",
     description: "Procjene rizika po tvrtkama, lokacijama, poslovima, planu mjera i komunikaciji s klijentom.",
     chips: ["Procjena rizika", "Plan mjera", "Klijent"],
   },
   rulebooks: {
-    kicker: "Health And Safety",
+    kicker: "Temeljna dokumentacija",
     title: "Pravilnici",
     description: "Interni pravilnici i programi za zaštitu na radu, požar, alkohol/opojna sredstva, kemikalije i osposobljavanje.",
     chips: ["ZNR", "Požar", "Alkohol/opojna", "Kemikalije"],
@@ -1787,9 +1789,9 @@ const SIDEBAR_ITEM_CONFIG = {
   documents: { group: "documents", view: "module", module: "documents" },
   tests: { group: "learning", view: "module", module: "tests" },
   "people-training": { group: "learning", view: "module", module: "people-training" },
-  jobs: { group: "learning", view: "module", module: "jobs" },
-  "risk-assessment": { group: "learning", view: "module", module: "risk-assessment" },
-  rulebooks: { group: "learning", view: "module", module: "rulebooks" },
+  jobs: { group: "foundation", view: "module", module: "jobs" },
+  "risk-assessment": { group: "foundation", view: "module", module: "risk-assessment" },
+  rulebooks: { group: "foundation", view: "module", module: "rulebooks" },
   "learning-people": { group: "learning", view: "module", module: "learning-people" },
 };
 const SIDEBAR_GROUP_DEFAULT_ITEM = {
@@ -1800,6 +1802,7 @@ const SIDEBAR_GROUP_DEFAULT_ITEM = {
   locations: "list-location",
   documents: "documents",
   learning: "people-training",
+  foundation: "risk-assessment",
 };
 const SIDEBAR_GROUP_LABELS = {
   home: "Home",
@@ -1808,7 +1811,8 @@ const SIDEBAR_GROUP_LABELS = {
   company: "Company",
   locations: "Locations",
   documents: "Documents",
-  learning: "Health And Safety",
+  learning: "Osposobljavanja",
+  foundation: "Temeljna dokumentacija",
 };
 const SIDEBAR_ITEM_LABELS = {
   dashboard: "Dashboard",
@@ -1840,10 +1844,10 @@ const SIDEBAR_ITEM_LABELS = {
   "list-location": "List Location",
   "add-location": "Add New",
   documents: "Documents",
-  tests: "Test",
+  tests: "Testovi",
   "people-training": "Osposobljavanja",
   jobs: "Jobs",
-  "risk-assessment": "Risk Assessment",
+  "risk-assessment": "Procjene rizika",
   rulebooks: "Pravilnici",
   "learning-people": "People",
 };
@@ -71546,7 +71550,7 @@ function renderServiceCatalogLearningTestChecklist(selectedIds = []) {
   if (tests.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Prvo pripremi grupe edukacije u Learning > Testovi pa ih ovdje poveži s uslugom osposobljavanja.";
+    empty.textContent = "Prvo pripremi grupe edukacije u Osposobljavanja > Testovi pa ih ovdje poveži s uslugom osposobljavanja.";
     serviceCatalogLearningTestList.replaceChildren(empty);
     return;
   }
@@ -117785,7 +117789,7 @@ function getGeneralHelpTourSteps() {
     },
     {
       title: "Lijeva navigacija",
-      body: "Lijevo biraš grupe modula: Home, Operations, Company, Documents i Health And Safety. Lokacije su sada dio Company radnog prostora.",
+      body: "Lijevo biraš grupe modula: Home, Operations, Company, Documents, Osposobljavanja i Temeljna dokumentacija. Lokacije su sada dio Company radnog prostora.",
       target: "#app-sidebar",
       points: ["Klik na grupu otvara njezine module.", "Ako je sidebar minimiziran, vodič ga širi dok traje objašnjenje."],
       prepare: "general",
@@ -118045,12 +118049,18 @@ const HELP_TOUR_MENU_GROUPS = [
     ],
   },
   {
-    label: "Health And Safety",
+    label: "Osposobljavanja",
     items: [
-      { kind: "tests", label: "Test", description: "Grupe edukacija, materijali, pitanja i live preview." },
+      { kind: "tests", label: "Testovi", description: "Grupe edukacija, materijali, pitanja i live preview." },
       { kind: "people-training", label: "Osposobljavanja", description: "Evidencija po osobama, RN ispiti i uvjerenja." },
-      { kind: "risk-assessment", label: "Risk Assessment", description: "Procjene rizika, mjere i klijentski status." },
+    ],
+  },
+  {
+    label: "Temeljna dokumentacija",
+    items: [
+      { kind: "risk-assessment", label: "Procjene rizika", description: "Procjene rizika, mjere i klijentski status." },
       { kind: "rulebooks", label: "Pravilnici", description: "Interni pravilnici i programi ZNR, požar, alkohol/opojna sredstva, kemikalije i osposobljavanje." },
+      { kind: "jobs", label: "Jobs", description: "Poslovi, sistematizacija, opasnosti i NexAI upute za procjene." },
     ],
   },
 ];
@@ -118450,8 +118460,8 @@ const MODULE_HELP_TOUR_DEFINITIONS = {
   },
   "risk-assessment": {
     navItem: "risk-assessment",
-    title: "Risk Assessment",
-    body: "Risk Assessment vodi procjene rizika po tvrtki, lokaciji, poslu, mjerama i statusu komunikacije s klijentom.",
+    title: "Procjene rizika",
+    body: "Procjene rizika vode temeljnu dokumentaciju po tvrtki, lokaciji, poslu, mjerama i statusu komunikacije s klijentom.",
     target: "#risk-assessment-module",
     primaryActionTarget: "#risk-assessment-new",
     primaryActionTitle: "Nova procjena",
@@ -142120,7 +142130,7 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
         <span class="risk-assessment-document-icon">DOC</span>
         <div>
           <strong>Obrazac analize radnog mjesta</strong>
-          <small>Dokumentni prikaz iz Risk Assessment podataka i odabranih Jobs stavki.</small>
+          <small>Dokumentni prikaz iz procjene rizika i odabranih Jobs stavki.</small>
         </div>
       </summary>
       <div class="risk-assessment-document-paper">

@@ -100,15 +100,15 @@ test.describe("SafeNexus smoke", () => {
 
     const riskAssessmentNav = page.locator('[data-sidebar-item="risk-assessment"]');
     if (!(await riskAssessmentNav.isVisible().catch(() => false))) {
-      await page.getByRole("button", { name: /^Health And Safety$/i }).click();
+      await page.getByRole("button", { name: /^Temeljna dokumentacija$/i }).click();
     }
 
-    const learningToggle = page.locator('[data-group-toggle="learning"]');
+    const foundationToggle = page.locator('[data-group-toggle="foundation"]');
     if (
       !(await riskAssessmentNav.isVisible().catch(() => false))
-      && await learningToggle.isVisible().catch(() => false)
+      && await foundationToggle.isVisible().catch(() => false)
     ) {
-      await learningToggle.click();
+      await foundationToggle.click();
     }
 
     await riskAssessmentNav.scrollIntoViewIfNeeded();

@@ -312,7 +312,7 @@
               </span>
               <span class="rail-label">DOCUMENTS</span>
             </button>
-            <button type="button" class="rail-button" data-sidebar-group="learning" title="Health And Safety" aria-label="Health And Safety">
+            <button type="button" class="rail-button" data-sidebar-group="learning" title="Osposobljavanja" aria-label="Osposobljavanja">
               <span class="rail-icon" aria-hidden="true">
                 <svg class="icon-svg" viewBox="0 0 24 24">
                   <path d="M3 8.5 12 4l9 4.5-9 4.5-9-4.5Z"></path>
@@ -320,7 +320,18 @@
                   <path d="M19 10v5"></path>
                 </svg>
               </span>
-              <span class="rail-label">H&S</span>
+              <span class="rail-label">OSPOS.</span>
+            </button>
+            <button type="button" class="rail-button" data-sidebar-group="foundation" title="Temeljna dokumentacija" aria-label="Temeljna dokumentacija">
+              <span class="rail-icon" aria-hidden="true">
+                <svg class="icon-svg" viewBox="0 0 24 24">
+                  <path d="M6 4h8l4 4v12H6z"></path>
+                  <path d="M14 4v5h5"></path>
+                  <path d="M9 13h6M9 16h4"></path>
+                  <path d="M4 20h16"></path>
+                </svg>
+              </span>
+              <span class="rail-label">TEMELJ.</span>
             </button>
           </nav>
         </aside>
@@ -752,7 +763,7 @@
                     <path d="M19 10v5"></path>
                   </svg>
                 </span>
-                <span class="sidebar-group-label">Health And Safety</span>
+                <span class="sidebar-group-label">Osposobljavanja</span>
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
@@ -776,16 +787,23 @@
                   </span>
                   <strong>Osposobljavanja</strong>
                 </button>
-                <button type="button" class="tab-button sidebar-link" data-sidebar-item="jobs">
-                  <span class="tab-button-icon" aria-hidden="true">
-                    <svg class="icon-svg" viewBox="0 0 24 24">
-                      <path d="M10 6h4a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3V8a2 2 0 0 1 2-2Z"></path>
-                      <path d="M8 9h8"></path>
-                      <path d="M9 14h6"></path>
-                    </svg>
-                  </span>
-                  <strong>Jobs</strong>
-                </button>
+              </div>
+            </section>
+
+            <section class="sidebar-group" data-sidebar-group-panel="foundation">
+              <button type="button" class="sidebar-group-toggle" data-group-toggle="foundation">
+                <span class="sidebar-group-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M6 4h8l4 4v12H6z"></path>
+                    <path d="M14 4v5h5"></path>
+                    <path d="M9 13h6M9 16h4"></path>
+                    <path d="M4 20h16"></path>
+                  </svg>
+                </span>
+                <span class="sidebar-group-label">Temeljna dokumentacija</span>
+                <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
+              </button>
+              <div class="tab-strip sidebar-group-items">
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="risk-assessment">
                   <span class="tab-button-icon" aria-hidden="true">
                     <svg class="icon-svg" viewBox="0 0 24 24">
@@ -793,7 +811,7 @@
                       <path d="M9 12l2 2 4-5"></path>
                     </svg>
                   </span>
-                  <strong>Risk Assessment</strong>
+                  <strong>Procjene rizika</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="rulebooks">
                   <span class="tab-button-icon" aria-hidden="true">
@@ -805,6 +823,16 @@
                     </svg>
                   </span>
                   <strong>Pravilnici</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="jobs">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M10 6h4a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3V8a2 2 0 0 1 2-2Z"></path>
+                      <path d="M8 9h8"></path>
+                      <path d="M9 14h6"></path>
+                    </svg>
+                  </span>
+                  <strong>Jobs</strong>
                 </button>
               </div>
             </section>
@@ -4392,7 +4420,7 @@
           <section id="people-training-panel" class="panel people-training-panel" hidden>
             <div class="section-heading offers-section-heading">
               <div>
-                <p class="section-kicker">Health And Safety</p>
+                <p class="section-kicker">Osposobljavanja</p>
                 <h3>Osposobljavanja ljudi</h3>
               </div>
               <div class="vehicles-panel-head-actions">
@@ -4577,7 +4605,7 @@
             <section class="panel jobs-list-panel">
               <div class="section-heading offers-section-heading jobs-hero-heading">
                 <div>
-                  <p class="section-kicker">Health And Safety</p>
+                  <p class="section-kicker">Temeljna dokumentacija</p>
                   <h3>Jobs</h3>
                   <p class="module-copy">Katalog poslova za sistematizaciju, procjene rizika i NexAI prijedloge.</p>
                 </div>
@@ -4748,8 +4776,8 @@
             <section class="panel risk-assessment-list-panel">
               <div class="section-heading offers-section-heading">
                 <div>
-                  <p class="section-kicker">Health And Safety</p>
-                  <h3>Risk Assessment</h3>
+                  <p class="section-kicker">Temeljna dokumentacija</p>
+                  <h3>Procjene rizika</h3>
                 </div>
                 <div class="vehicles-panel-head-actions">
                   <button id="risk-assessment-new" type="button" class="primary-button">+ Nova procjena</button>
@@ -8471,7 +8499,7 @@
               <section class="panel rulebooks-hero-panel">
                 <div class="section-heading offers-section-heading rulebooks-list-heading">
                   <div>
-                    <p class="section-kicker">Health And Safety</p>
+                    <p class="section-kicker">Temeljna dokumentacija</p>
                     <h3>Pravilnici</h3>
                   </div>
                   <button id="rulebook-open-form" type="button" class="primary-button">+ Novi pravilnik</button>
