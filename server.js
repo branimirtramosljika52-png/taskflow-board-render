@@ -92,7 +92,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.81.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.82.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -14998,6 +14998,8 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
     : getVehicleUsageDriverLabels(user, body, targetReservation);
   const destination = getVehicleUsageDestination(body, targetReservation, openTrip);
   const condition = buildVehicleUsageCondition(body, mode);
+  const linkedWorkOrderId = normalizeInputValue(body.linkedWorkOrderId || body.workOrderId);
+  const linkedWorkOrderNumber = normalizeInputValue(body.linkedWorkOrderNumber || body.workOrderNumber);
   const actionLabel = mode === "return"
     ? "Povrat vozila"
     : mode === "checkout"
@@ -15027,6 +15029,8 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
           vehicleCondition: condition || normalizeInputValue(item.vehicleCondition),
           departureCondition: normalizeInputValue(item.departureCondition || item.vehicleCondition),
           returnCondition: condition,
+          linkedWorkOrderId: linkedWorkOrderId || normalizeInputValue(item.linkedWorkOrderId || item.workOrderId),
+          linkedWorkOrderNumber: linkedWorkOrderNumber || normalizeInputValue(item.linkedWorkOrderNumber || item.workOrderNumber),
           note: normalizeInputValue(item.note),
           createdAt: normalizeInputValue(item.createdAt || nowValue),
           updatedAt: nowValue,
@@ -15053,6 +15057,8 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
       vehicleCondition: condition,
       departureCondition: isReturnFallback ? "" : condition,
       returnCondition: isReturnFallback ? condition : "",
+      linkedWorkOrderId,
+      linkedWorkOrderNumber,
       note: normalizeInputValue(body.note),
       createdAt: nowValue,
       updatedAt: nowValue,

@@ -239,6 +239,8 @@ class SafeNexusApi(
         odometerKm: String,
         destination: String,
         reservationId: String,
+        linkedWorkOrderId: String,
+        linkedWorkOrderNumber: String,
         performedBy: String,
         vehicleCondition: String,
         vehicleClean: Boolean,
@@ -253,6 +255,8 @@ class SafeNexusApi(
                 .put("odometerKm", odometerKm)
                 .put("destination", destination)
                 .put("reservationId", reservationId)
+                .put("linkedWorkOrderId", linkedWorkOrderId)
+                .put("linkedWorkOrderNumber", linkedWorkOrderNumber)
                 .put("performedBy", performedBy)
                 .put("vehicleCondition", vehicleCondition)
                 .put("vehicleClean", vehicleClean)

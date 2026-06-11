@@ -920,6 +920,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         odometerKm: String,
         destination: String,
         reservationId: String,
+        linkedWorkOrderId: String,
+        linkedWorkOrderNumber: String,
         performedBy: String,
         vehicleCondition: String,
         vehicleClean: Boolean,
@@ -945,6 +947,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 odometerKm = odometerKm,
                 destination = destination,
                 reservationId = reservationId,
+                linkedWorkOrderId = linkedWorkOrderId,
+                linkedWorkOrderNumber = linkedWorkOrderNumber,
                 performedBy = performedBy,
                 vehicleCondition = vehicleCondition,
                 vehicleClean = vehicleClean,
@@ -1519,6 +1523,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     MobileRecordDetailScreen(
                         record = selectedRecord,
                         users = state.data.workOrderUsers,
+                        workOrders = state.data.workOrders,
                         currentUserLabel = state.user?.displayName.orEmpty(),
                         isLoading = state.isLoading,
                         onBack = { viewModel.selectRecord(null) },
@@ -5576,6 +5581,11 @@ private data class MobileVehicleTrip(
     val endKm: String,
     val condition: String,
     val status: String,
+    val reservationId: String,
+    val linkedWorkOrderId: String,
+    val linkedWorkOrderNumber: String,
+    val documentCount: Int,
+    val documentLabels: String,
 )
 
 private fun vehicleAvailabilityStatus(vehicle: MobileRecord): String =
@@ -5651,6 +5661,22 @@ private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
                     item.optString("departureCondition").trim(),
                     item.optString("note").trim(),
                 ).firstOrNull { it.isNotBlank() }.orEmpty()
+                val documents = item.optJSONArray("documents") ?: item.optJSONArray("attachments")
+                val documentLabels = if (documents != null && documents.length() > 0) {
+                    (0 until documents.length())
+                        .mapNotNull { documentIndex ->
+                            val documentItem = documents.optJSONObject(documentIndex) ?: return@mapNotNull null
+                            val category = documentItem.optString("documentCategory", documentItem.optString("category")).trim()
+                            val fileName = documentItem.optString("fileName", documentItem.optString("name")).trim()
+                            listOf(category, fileName)
+                                .filter { it.isNotBlank() }
+                                .joinToString(": ")
+                                .takeIf { it.isNotBlank() }
+                        }
+                        .joinToString(", ")
+                } else {
+                    ""
+                }
                 add(
                     MobileVehicleTrip(
                         id = item.optString("id").trim(),
@@ -5662,6 +5688,11 @@ private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
                         endKm = item.optString("endKm").trim(),
                         condition = condition,
                         status = item.optString("tripStatus").trim(),
+                        reservationId = item.optString("reservationId").trim(),
+                        linkedWorkOrderId = item.optString("linkedWorkOrderId", item.optString("workOrderId")).trim(),
+                        linkedWorkOrderNumber = item.optString("linkedWorkOrderNumber", item.optString("workOrderNumber")).trim(),
+                        documentCount = documents?.length() ?: 0,
+                        documentLabels = documentLabels,
                     ),
                 )
             }
@@ -7340,11 +7371,12 @@ private fun WorkOrderCard(
 private fun MobileRecordDetailScreen(
     record: MobileRecord,
     users: List<WorkOrderUserOption>,
+    workOrders: List<WorkOrder>,
     currentUserLabel: String,
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
-    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -7367,10 +7399,11 @@ private fun MobileRecordDetailScreen(
         VehicleUsageDialog(
             vehicle = record,
             mode = mode,
+            workOrders = workOrders,
             currentUserLabel = currentUserLabel,
             isLoading = isLoading,
             onDismiss = { usageDialogMode = null },
-            onConfirm = { selectedMode, odometerKm, destination, reservationId, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
+            onConfirm = { selectedMode, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
                 usageDialogMode = null
                 onRecordVehicleUsage(
                     record,
@@ -7378,6 +7411,8 @@ private fun MobileRecordDetailScreen(
                     odometerKm,
                     destination,
                     reservationId,
+                    linkedWorkOrderId,
+                    linkedWorkOrderNumber,
                     performedBy,
                     vehicleCondition,
                     vehicleClean,
@@ -7543,11 +7578,17 @@ private fun MobileRecordDetailScreen(
                                         "Povratak: otvoreno"
                                     },
                                     trip.drivers.takeIf { it.isNotBlank() }?.let { "Vozači: $it" }.orEmpty(),
+                                    trip.linkedWorkOrderNumber.takeIf { it.isNotBlank() }?.let { "RN: $it" }.orEmpty(),
                                     listOf(
                                         trip.startKm.takeIf { it.isNotBlank() }?.let { "Početna $it km" }.orEmpty(),
                                         trip.endKm.takeIf { it.isNotBlank() }?.let { "Krajnja $it km" }.orEmpty(),
                                     ).filter { it.isNotBlank() }.joinToString(" | "),
                                     trip.condition.takeIf { it.isNotBlank() }?.let { "Stanje: $it" }.orEmpty(),
+                                    if (trip.documentCount > 0) {
+                                        "Prilozi: ${trip.documentLabels.ifBlank { "${trip.documentCount} dok." }}"
+                                    } else {
+                                        ""
+                                    },
                                 ).filter { it.isNotBlank() }.joinToString("\n"),
                             )
                         }
@@ -7768,23 +7809,66 @@ private fun VehicleReservationDialog(
 private fun VehicleUsageDialog(
     vehicle: MobileRecord,
     mode: String,
+    workOrders: List<WorkOrder>,
     currentUserLabel: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onConfirm: (String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
 ) {
     val reservations = remember(vehicle.meta["reservationsJson"], mode) { parseVehicleReservations(vehicle) }
+    val trips = remember(vehicle.meta["activityItemsJson"], mode) { parseVehicleTrips(vehicle) }
     val defaultReservation = remember(reservations, mode, vehicle.meta["nextReservationId"]) {
         val preferredStatus = if (mode == "return") "checked_out" else "reserved"
         reservations.firstOrNull { it.status.equals(preferredStatus, ignoreCase = true) }
             ?: reservations.firstOrNull { it.id == vehicle.meta["nextReservationId"] }
             ?: reservations.firstOrNull()
     }
+    val openTrip = remember(trips, defaultReservation?.id, mode) {
+        if (mode != "return") {
+            null
+        } else {
+            trips.firstOrNull { trip ->
+                trip.returnAt.isBlank() &&
+                    !trip.status.equals("completed", ignoreCase = true) &&
+                    defaultReservation?.id?.let { it.isNotBlank() && trip.reservationId == it } == true
+            } ?: trips.firstOrNull { trip ->
+                trip.returnAt.isBlank() && !trip.status.equals("completed", ignoreCase = true)
+            }
+        }
+    }
+    val destinationSuggestions = remember(vehicle.id, trips, reservations, defaultReservation?.destination, openTrip?.destination) {
+        (
+            listOf(defaultReservation?.destination.orEmpty(), openTrip?.destination.orEmpty()) +
+                reservations.map { it.destination } +
+                trips.map { it.destination }
+            )
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .take(5)
+    }
+    val driverSuggestions = remember(vehicle.id, currentUserLabel, trips, defaultReservation?.userLabel, openTrip?.drivers) {
+        (
+            listOf(defaultReservation?.userLabel.orEmpty(), openTrip?.drivers.orEmpty(), currentUserLabel) +
+                trips.map { it.drivers }
+            )
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .take(5)
+    }
     var odometerKm by remember(vehicle.id, mode) { mutableStateOf(vehicle.meta["odometerKm"].orEmpty()) }
-    var destination by remember(vehicle.id, mode, defaultReservation?.destination) { mutableStateOf(defaultReservation?.destination.orEmpty()) }
+    var destination by remember(vehicle.id, mode, defaultReservation?.destination, openTrip?.destination) {
+        mutableStateOf(defaultReservation?.destination.orEmpty().ifBlank { openTrip?.destination.orEmpty() })
+    }
     var reservationId by remember(vehicle.id, mode, defaultReservation?.id) { mutableStateOf(defaultReservation?.id.orEmpty()) }
-    var performedBy by remember(vehicle.id, currentUserLabel) { mutableStateOf(currentUserLabel) }
-    var vehicleCondition by remember(vehicle.id, mode) { mutableStateOf(if (mode == "return") "" else "Uredno") }
+    var linkedWorkOrderId by remember(vehicle.id, mode, openTrip?.linkedWorkOrderId) {
+        mutableStateOf(openTrip?.linkedWorkOrderId.orEmpty())
+    }
+    var performedBy by remember(vehicle.id, mode, currentUserLabel, defaultReservation?.userLabel, openTrip?.drivers) {
+        mutableStateOf(defaultReservation?.userLabel.orEmpty().ifBlank { openTrip?.drivers.orEmpty().ifBlank { currentUserLabel } })
+    }
+    var vehicleCondition by remember(vehicle.id, mode) { mutableStateOf("Uredno") }
     var vehicleClean by remember(vehicle.id, mode) { mutableStateOf(true) }
     var documentsPresent by remember(vehicle.id, mode) { mutableStateOf(true) }
     var fuelOk by remember(vehicle.id, mode) { mutableStateOf(true) }
@@ -7799,6 +7883,25 @@ private fun VehicleUsageDialog(
                 reservation.userLabel,
             ).filter { it.isNotBlank() }.joinToString(" - ")
         }
+    }
+    val workOrderOptions = remember(workOrders, openTrip?.linkedWorkOrderId, openTrip?.linkedWorkOrderNumber) {
+        val baseOptions = workOrders
+            .take(250)
+            .map { workOrder ->
+                workOrder.id to listOf(
+                    workOrder.displayNumber,
+                    workOrder.companyName,
+                    workOrder.locationName,
+                ).filter { it.isNotBlank() }.joinToString(" - ")
+            }
+        val existingLinked = openTrip?.linkedWorkOrderId.orEmpty()
+        val existingLabel = openTrip?.linkedWorkOrderNumber.orEmpty()
+        val merged = if (existingLinked.isNotBlank() && baseOptions.none { it.first == existingLinked }) {
+            listOf(existingLinked to existingLabel.ifBlank { "Povezani RN" }) + baseOptions
+        } else {
+            baseOptions
+        }
+        listOf("" to "Bez povezanog RN-a") + merged
     }
 
     AlertDialog(
@@ -7836,6 +7939,18 @@ private fun VehicleUsageDialog(
                     shape = RoundedCornerShape(16.dp),
                 )
                 WorkOrderTextField("Lokacija gdje se ide", destination, { destination = it }, !isLoading)
+                if (destinationSuggestions.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        destinationSuggestions.forEach { suggestion ->
+                            FilterChip(
+                                selected = destination.equals(suggestion, ignoreCase = true),
+                                enabled = !isLoading,
+                                onClick = { destination = suggestion },
+                                label = { Text(suggestion, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                }
                 WorkOrderSelectField(
                     label = "Vezana rezervacija",
                     value = reservationId,
@@ -7844,13 +7959,55 @@ private fun VehicleUsageDialog(
                     enabled = !isLoading,
                     onSelect = { reservationId = it },
                 )
+                WorkOrderSelectField(
+                    label = "Povezani RN",
+                    value = linkedWorkOrderId,
+                    valueLabel = workOrderOptions.firstOrNull { it.first == linkedWorkOrderId }?.second
+                        ?: openTrip?.linkedWorkOrderNumber.orEmpty().ifBlank { "Bez povezanog RN-a" },
+                    options = workOrderOptions,
+                    enabled = !isLoading,
+                    onSelect = { linkedWorkOrderId = it },
+                )
                 WorkOrderTextField("Korisnik vozila", performedBy, { performedBy = it }, !isLoading)
+                if (driverSuggestions.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        driverSuggestions.forEach { suggestion ->
+                            FilterChip(
+                                selected = performedBy.equals(suggestion, ignoreCase = true),
+                                enabled = !isLoading,
+                                onClick = { performedBy = suggestion },
+                                label = { Text(suggestion, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                }
                 WorkOrderTextField(
                     if (mode == "return") "Stanje vozila pri povratku" else "Stanje vozila pri polasku",
                     vehicleCondition,
                     { vehicleCondition = it },
                     !isLoading,
                 )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Uredno", "Gorivo OK", "Dokumenti OK", "Oštećenje").forEach { suggestion ->
+                        FilterChip(
+                            selected = vehicleCondition.equals(suggestion, ignoreCase = true),
+                            enabled = !isLoading,
+                            onClick = {
+                                vehicleCondition = suggestion
+                                if (suggestion == "Oštećenje") {
+                                    damageNoted = true
+                                }
+                                if (suggestion == "Gorivo OK") {
+                                    fuelOk = true
+                                }
+                                if (suggestion == "Dokumenti OK") {
+                                    documentsPresent = true
+                                }
+                            },
+                            label = { Text(suggestion, fontWeight = FontWeight.Bold) },
+                        )
+                    }
+                }
                 Text("Kontrola vozila", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
                 VehicleChecklistRow("Vozilo čisto", vehicleClean, !isLoading) { vehicleClean = it }
                 VehicleChecklistRow("Dokumenti u vozilu", documentsPresent, !isLoading) { documentsPresent = it }
@@ -7862,11 +8019,15 @@ private fun VehicleUsageDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val linkedWorkOrderNumber = workOrders.firstOrNull { it.id == linkedWorkOrderId }?.displayNumber
+                        ?: openTrip?.linkedWorkOrderNumber.orEmpty()
                     onConfirm(
                         mode,
                         odometerKm.trim(),
                         destination.trim(),
                         reservationId.trim(),
+                        linkedWorkOrderId.trim(),
+                        linkedWorkOrderNumber.trim(),
                         performedBy.trim(),
                         vehicleCondition.trim(),
                         vehicleClean,

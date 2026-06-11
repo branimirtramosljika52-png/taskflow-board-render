@@ -6800,6 +6800,10 @@
                         <span>Vezana rezervacija</span>
                         <select id="vehicle-usage-reservation-id"></select>
                       </label>
+                      <label class="field field-span-full">
+                        <span>Povezani RN</span>
+                        <select id="vehicle-usage-work-order-id"></select>
+                      </label>
                       <label class="field">
                         <span>Korisnik vozila</span>
                         <input id="vehicle-usage-performed-by" type="text" maxlength="180" />
@@ -6813,6 +6817,8 @@
                         <input id="vehicle-usage-condition" type="text" maxlength="240" placeholder="Uredno, oštećenje, oprema..." />
                       </label>
                     </div>
+
+                    <div id="vehicle-usage-quick-actions" class="vehicle-usage-quick-actions"></div>
 
                     <div class="vehicle-usage-checklist">
                       <label><input id="vehicle-usage-clean" type="checkbox" checked /> Vozilo čisto</label>

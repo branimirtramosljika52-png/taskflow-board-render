@@ -2947,6 +2947,9 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
     const vehicleCondition = normalizeText(item?.vehicleCondition ?? item?.condition).slice(0, 240);
     const departureCondition = normalizeText(item?.departureCondition).slice(0, 240);
     const returnCondition = normalizeText(item?.returnCondition).slice(0, 240);
+    const linkedWorkOrderId = normalizeId(item?.linkedWorkOrderId ?? item?.workOrderId);
+    const linkedWorkOrderNumber = normalizeText(item?.linkedWorkOrderNumber ?? item?.workOrderNumber).slice(0, 80);
+    const documents = normalizeAttachmentDocuments(item?.documents ?? item?.attachments ?? []);
     const hasAnyData = Boolean(
       activityType
       || performedOn
@@ -2966,6 +2969,9 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
       || vehicleCondition
       || departureCondition
       || returnCondition
+      || linkedWorkOrderId
+      || linkedWorkOrderNumber
+      || documents.length
     );
 
     if (!hasAnyData) {
@@ -2992,6 +2998,9 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
       vehicleCondition,
       departureCondition,
       returnCondition,
+      linkedWorkOrderId,
+      linkedWorkOrderNumber,
+      documents,
       createdAt: normalizeOptionalDateTime(item?.createdAt) ?? timestamp,
       updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? timestamp,
     };
