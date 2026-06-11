@@ -261,15 +261,15 @@ enum class AppSection(val label: String) {
     More("Evidencije"),
 }
 
-private enum class MoreSectionFocus(val listIndex: Int, val title: String) {
-    Overview(0, "Evidencije"),
-    Companies(2, "Tvrtke"),
-    Locations(2, "Lokacije"),
-    Periodics(3, "Periodika"),
-    Documents(4, "Dokumenti"),
-    Services(5, "Service liste"),
-    Foundation(6, "Pravilnici"),
-    Training(7, "Osposobljavanja"),
+private enum class MoreSectionFocus(val title: String) {
+    Overview("Evidencije"),
+    Companies("Tvrtke"),
+    Locations("Lokacije"),
+    Periodics("Periodika"),
+    Documents("Dokumenti"),
+    Services("Service liste"),
+    Foundation("Pravilnici"),
+    Training("Osposobljavanja"),
 }
 
 enum class CalendarViewMode(val label: String) {
@@ -3639,7 +3639,7 @@ private fun WorkOrdersScreen(
 
     LaunchedEffect(state.section, moreFocus) {
         if (state.section == AppSection.More) {
-            listState.animateScrollToItem(moreFocus.listIndex)
+            listState.animateScrollToItem(0)
         }
     }
 
@@ -3775,51 +3775,118 @@ private fun WorkOrdersScreen(
                     ModuleSearchField(
                         query = state.query,
                         onQueryChange = onQueryChange,
-                        label = "Pretraga dokumentacije i modula",
+                        label = when (moreFocus) {
+                            MoreSectionFocus.Companies -> "Pretraga tvrtki, OIB-a i kontakata"
+                            MoreSectionFocus.Locations -> "Pretraga lokacija, regija i adresa"
+                            MoreSectionFocus.Periodics -> "Pretraga periodike i rokova"
+                            MoreSectionFocus.Documents -> "Pretraga dokumenata"
+                            MoreSectionFocus.Services -> "Pretraga service lista"
+                            MoreSectionFocus.Foundation -> "Pretraga pravilnika i procjena"
+                            MoreSectionFocus.Training -> "Pretraga osposobljavanja"
+                            MoreSectionFocus.Overview -> "Pretraga evidencija i modula"
+                        },
                     )
                 }
-                item {
-                    MoreOverviewHero(state.data)
-                }
-                item {
-                    CompanyLocationDirectory(
-                        companies = state.data.companies,
-                        locations = state.data.locations,
-                        query = normalizedQuery,
-                        onOpenRecord = onOpenRecord,
-                    )
-                }
-                item {
-                    PeriodicsPreview(entries = periodicEntries)
-                }
-                item {
-                    DocumentRegisterPreview(
-                        records = filteredDocuments,
-                        onOpenRecord = onOpenRecord,
-                    )
-                }
-                item {
-                    ServicesCatalogPreview(
-                        services = state.data.workOrderServices,
-                        query = normalizedQuery,
-                    )
-                }
-                item {
-                    FoundationDocumentationPreview(
-                        rulebooks = filteredRulebooks,
-                        assessments = filteredAssessments,
-                        documents = filteredDocuments,
-                        onOpenRecord = onOpenRecord,
-                    )
-                }
-                item {
-                    RecordsContent(
-                        title = "Osposobljavanja",
-                        records = filteredTraining,
-                        emptyText = "Nema osposobljavanja za prikaz.",
-                        icon = Icons.Rounded.Fingerprint,
-                        onOpenRecord = onOpenRecord,
-                    )
+                when (moreFocus) {
+                    MoreSectionFocus.Overview -> {
+                        item {
+                            MoreOverviewHero(state.data)
+                        }
+                        item {
+                            CompanyDirectory(
+                                companies = state.data.companies,
+                                locations = state.data.locations,
+                                query = normalizedQuery,
+                                onOpenRecord = onOpenRecord,
+                            )
+                        }
+                        item {
+                            LocationDirectory(
+                                locations = state.data.locations,
+                                query = normalizedQuery,
+                                onOpenRecord = onOpenRecord,
+                            )
+                        }
+                        item {
+                            PeriodicsPreview(entries = periodicEntries)
+                        }
+                        item {
+                            DocumentRegisterPreview(
+                                records = filteredDocuments,
+                                onOpenRecord = onOpenRecord,
+                            )
+                        }
+                        item {
+                            ServicesCatalogPreview(
+                                services = state.data.workOrderServices,
+                                query = normalizedQuery,
+                            )
+                        }
+                        item {
+                            FoundationDocumentationPreview(
+                                rulebooks = filteredRulebooks,
+                                assessments = filteredAssessments,
+                                documents = filteredDocuments,
+                                onOpenRecord = onOpenRecord,
+                            )
+                        }
+                        item {
+                            RecordsContent(
+                                title = "Osposobljavanja",
+                                records = filteredTraining,
+                                emptyText = "Nema osposobljavanja za prikaz.",
+                                icon = Icons.Rounded.Fingerprint,
+                                onOpenRecord = onOpenRecord,
+                            )
+                        }
+                    }
+                    MoreSectionFocus.Companies -> item {
+                        CompanyDirectory(
+                            companies = state.data.companies,
+                            locations = state.data.locations,
+                            query = normalizedQuery,
+                            onOpenRecord = onOpenRecord,
+                        )
+                    }
+                    MoreSectionFocus.Locations -> item {
+                        LocationDirectory(
+                            locations = state.data.locations,
+                            query = normalizedQuery,
+                            onOpenRecord = onOpenRecord,
+                        )
+                    }
+                    MoreSectionFocus.Periodics -> item {
+                        PeriodicsPreview(entries = periodicEntries)
+                    }
+                    MoreSectionFocus.Documents -> item {
+                        DocumentRegisterPreview(
+                            records = filteredDocuments,
+                            onOpenRecord = onOpenRecord,
+                        )
+                    }
+                    MoreSectionFocus.Services -> item {
+                        ServicesCatalogPreview(
+                            services = state.data.workOrderServices,
+                            query = normalizedQuery,
+                        )
+                    }
+                    MoreSectionFocus.Foundation -> item {
+                        FoundationDocumentationPreview(
+                            rulebooks = filteredRulebooks,
+                            assessments = filteredAssessments,
+                            documents = filteredDocuments,
+                            onOpenRecord = onOpenRecord,
+                        )
+                    }
+                    MoreSectionFocus.Training -> item {
+                        RecordsContent(
+                            title = "Osposobljavanja",
+                            records = filteredTraining,
+                            emptyText = "Nema osposobljavanja za prikaz.",
+                            icon = Icons.Rounded.Fingerprint,
+                            onOpenRecord = onOpenRecord,
+                        )
+                    }
                 }
             } else {
             item {
@@ -5963,14 +6030,13 @@ private fun MoreOverviewHero(data: BootstrapData) {
 }
 
 @Composable
-private fun CompanyLocationDirectory(
+private fun CompanyDirectory(
     companies: List<MobileRecord>,
     locations: List<MobileRecord>,
     query: String,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
     val filteredCompanies = remember(companies, query) { companies.filter { it.matchesSearch(query) } }
-    val filteredLocations = remember(locations, query) { locations.filter { it.matchesSearch(query) } }
     val locationCountByCompany = remember(locations) {
         locations.groupingBy { record ->
             record.meta["companyName"].orEmpty().ifBlank { record.subtitle.substringBefore(" - ").trim() }
@@ -5989,39 +6055,78 @@ private fun CompanyLocationDirectory(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SectionHeader(
-                title = "Tvrtke i lokacije",
-                subtitle = "${filteredCompanies.size} tvrtki · ${filteredLocations.size} lokacija",
+                title = "Tvrtke",
+                subtitle = "${filteredCompanies.size} zapisa",
                 icon = Icons.Rounded.Business,
             )
 
-            filteredCompanies.take(8).forEach { company ->
-                DirectoryCompanyLine(
-                    company = company,
-                    locationCount = locationCountByCompany[company.title].orZero(),
-                    onClick = { onOpenRecord(company) },
-                )
+            if (filteredCompanies.isEmpty()) {
+                Text("Nema tvrtki za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            } else {
+                filteredCompanies.take(14).forEach { company ->
+                    DirectoryCompanyLine(
+                        company = company,
+                        locationCount = locationCountByCompany[company.title].orZero(),
+                        onClick = { onOpenRecord(company) },
+                    )
+                }
+                if (filteredCompanies.size > 14) {
+                    Text(
+                        "Prikazano je prvih 14 tvrtki. Koristi pretragu za sužavanje.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
             }
-            if (filteredCompanies.size > 8) {
-                Text(
-                    "Prikazano je prvih 8 tvrtki. Koristi pretragu za sužavanje.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                )
-            }
+        }
+    }
+}
 
-            Text("Lokacije", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
-            filteredLocations.take(10).forEach { location ->
-                RecordLine(
-                    title = location.title,
-                    subtitle = location.subtitle.ifBlank { location.meta["region"].orEmpty() },
-                    status = location.status,
-                    date = "",
-                    icon = Icons.Rounded.LocationOn,
-                    onClick = { onOpenRecord(location) },
-                )
-            }
+@Composable
+private fun LocationDirectory(
+    locations: List<MobileRecord>,
+    query: String,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val filteredLocations = remember(locations, query) { locations.filter { it.matchesSearch(query) } }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SectionHeader(
+                title = "Lokacije",
+                subtitle = "${filteredLocations.size} zapisa",
+                icon = Icons.Rounded.LocationOn,
+            )
+
             if (filteredLocations.isEmpty()) {
                 Text("Nema lokacija za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            } else {
+                filteredLocations.take(16).forEach { location ->
+                    RecordLine(
+                        title = location.title,
+                        subtitle = location.subtitle.ifBlank { location.meta["region"].orEmpty() },
+                        status = location.status,
+                        date = "",
+                        icon = Icons.Rounded.LocationOn,
+                        onClick = { onOpenRecord(location) },
+                    )
+                }
+                if (filteredLocations.size > 16) {
+                    Text(
+                        "Prikazano je prvih 16 lokacija. Koristi pretragu za sužavanje.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
             }
         }
     }
