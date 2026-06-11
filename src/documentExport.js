@@ -9841,14 +9841,80 @@ function buildVehicleEvidenceRows(vehicle = {}) {
     .map(({ sortKey, ...row }) => row);
 }
 
+function getUniqueVehicleEvidenceParts(parts = []) {
+  const seen = new Set();
+  return normalizePdfLines(parts).filter((part) => {
+    const key = part.toLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderVehicleEvidenceInfoGrid(doc, helpers, items = []) {
+  const safeItems = getReportArray(items)
+    .map((item) => ({
+      label: clean(item?.label),
+      value: normalizePdfText(item?.value || "-"),
+    }))
+    .filter((item) => item.label);
+
+  drawOfferPdfSectionTitle(doc, "Podaci o vozilu");
+
+  if (safeItems.length === 0) {
+    return;
+  }
+
+  const gap = 10;
+  const columns = 2;
+  const cardWidth = (helpers.availableWidth - gap * (columns - 1)) / columns;
+
+  for (let index = 0; index < safeItems.length; index += columns) {
+    const rowItems = safeItems.slice(index, index + columns);
+    doc.font("dejavu").fontSize(9.8);
+    const rowHeight = Math.max(
+      42,
+      ...rowItems.map((item) => (
+        doc.heightOfString(item.value, {
+          width: cardWidth - 24,
+          lineGap: 1,
+        }) + 27
+      )),
+    );
+    helpers.ensureSpace(rowHeight + 8, { layout: "landscape" });
+    const y = doc.y;
+
+    rowItems.forEach((item, columnIndex) => {
+      const x = doc.page.margins.left + columnIndex * (cardWidth + gap);
+      doc.roundedRect(x, y, cardWidth, rowHeight, 10).fillAndStroke("#f8fbff", "#d8e4f5");
+      doc.font("dejavu-bold").fontSize(8).fillColor("#2563eb").text(item.label.toUpperCase(), x + 12, y + 9, {
+        width: cardWidth - 24,
+      });
+      doc.font("dejavu").fontSize(9.8).fillColor("#1f2333").text(item.value || "-", x + 12, y + 24, {
+        width: cardWidth - 24,
+        lineGap: 1,
+      });
+    });
+
+    doc.y = y + rowHeight + 8;
+  }
+}
+
 export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
   organizationName = "",
   generatedAt = new Date().toISOString(),
 } = {}) {
-  const vehicleTitle = normalizePdfLines([
+  const vehicleModelLabel = getUniqueVehicleEvidenceParts([
+    vehicle.make,
+    vehicle.model,
+    vehicle.year,
+  ]).join(" ");
+  const vehicleTitle = getUniqueVehicleEvidenceParts([
     vehicle.plateNumber,
     vehicle.name,
-    [vehicle.make, vehicle.model].filter(Boolean).join(" "),
+    vehicleModelLabel,
   ]).join(" - ") || "Vozilo";
   const doc = new PDFDocument({
     autoFirstPage: true,
@@ -9906,19 +9972,30 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
   doc.moveDown(1);
   renderReportMetricGrid(doc, helpers, [
     { label: "Registracija", value: vehicle.plateNumber || "-" },
-    { label: "Model", value: normalizePdfLines([vehicle.make, vehicle.model, vehicle.year]).join(" ") || "-" },
+    { label: "Model", value: vehicleModelLabel || "-" },
     { label: "Kilometraza", value: vehicle.odometerKm ? `${vehicle.odometerKm} km` : "-" },
     { label: "Zapisa", value: evidenceRows.length },
   ]);
 
-  drawOfferPdfSectionTitle(doc, "Podaci o vozilu");
-  writeOfferPdfMetaRow(doc, "Naziv", vehicle.name || "-", { labelWidth: 110, valueWidth: 620 });
-  writeOfferPdfMetaRow(doc, "VIN / sasija", vehicle.vinNumber || "-", { labelWidth: 110, valueWidth: 620 });
-  writeOfferPdfMetaRow(doc, "Kategorija", vehicle.category || "-", { labelWidth: 110, valueWidth: 620 });
-  writeOfferPdfMetaRow(doc, "Registracija vrijedi", formatOfferPdfDate(vehicle.registrationExpiresOn), { labelWidth: 110, valueWidth: 620 });
-  writeOfferPdfMetaRow(doc, "Servis do", formatOfferPdfDate(vehicle.serviceDueDate), { labelWidth: 110, valueWidth: 620 });
+  renderVehicleEvidenceInfoGrid(doc, helpers, [
+    { label: "Naziv", value: vehicle.name || "-" },
+    { label: "VIN / sasija", value: vehicle.vinNumber || "-" },
+    { label: "Kategorija", value: vehicle.category || "-" },
+    { label: "Registracija vrijedi", value: formatOfferPdfDate(vehicle.registrationExpiresOn) || "-" },
+    { label: "Servis do", value: formatOfferPdfDate(vehicle.serviceDueDate) || "-" },
+    { label: "Status", value: getVehicleEvidenceStatusLabel(vehicle.status || "available") },
+  ]);
 
-  doc.moveDown(0.35);
+  doc.addPage({
+    size: "A4",
+    layout: "landscape",
+    margins: {
+      top: 34,
+      bottom: 34,
+      left: 32,
+      right: 32,
+    },
+  });
   renderReportTable(
     doc,
     helpers,
@@ -9944,7 +10021,7 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
     doc.font("dejavu").fontSize(8).fillColor("#94a3b8").text(
       `SafeNexus | Evidencija vozila | ${index + 1 - range.start}/${range.count}`,
       doc.page.margins.left,
-      doc.page.height - 24,
+      doc.page.height - doc.page.margins.bottom - 10,
       {
         width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
         align: "right",
