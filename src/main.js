@@ -4973,7 +4973,6 @@ const todoAssignedCount = document.querySelector("#todo-assigned-count");
 const todoCreatedCount = document.querySelector("#todo-created-count");
 const todoOverdueCount = document.querySelector("#todo-overdue-count");
 const todoOpenComposerButton = document.querySelector("#todo-open-composer");
-const todoOpenPlanComposerButton = document.querySelector("#todo-open-plan-composer");
 const todoEditorBackdrop = document.querySelector("#todo-editor-backdrop");
 const todoEditorPanel = document.querySelector("#todo-editor-panel");
 const todoEditorBackdropHomeParent = todoEditorBackdrop?.parentNode ?? null;
@@ -5007,9 +5006,6 @@ const todoError = document.querySelector("#todo-error");
 const todoSearchInput = document.querySelector("#todo-search");
 const todoFilterScopeInput = document.querySelector("#todo-filter-scope");
 const todoFilterStatusInput = document.querySelector("#todo-filter-status");
-const todoPlanBody = document.querySelector("#todo-plan-body");
-const todoPlanEmpty = document.querySelector("#todo-plan-empty");
-const todoPlanCount = document.querySelector("#todo-plan-count");
 const todoBody = document.querySelector("#todo-body");
 const todoEmpty = document.querySelector("#todo-empty");
 const todoInlineError = document.querySelector("#todo-inline-error");
@@ -94856,22 +94852,6 @@ function getFilteredTodoTasks() {
   }));
 }
 
-function isTodoPlanTask(task = {}) {
-  return String(task.status || "").trim().toLowerCase() === "next_week_job";
-}
-
-function getTodoPlanTasks() {
-  return sortTodoTasks((state.todoTasks ?? []).filter(isTodoPlanTask));
-}
-
-function getTodoTaskLinkSummary(task = {}) {
-  return [
-    task.workOrderNumber ? `RN ${task.workOrderNumber}` : "",
-    task.companyName || "",
-    task.locationName || "",
-  ].filter(Boolean).join(" · ");
-}
-
 function getTodoInvitedPeopleOptions() {
   return [...state.users]
     .filter((user) => user?.isActive !== false)
@@ -95430,17 +95410,6 @@ function openTodoComposerForWorkOrder(workOrder = null) {
   renderTodoLinkPreview();
   syncTodoEditorChrome();
   openTodoEditor();
-}
-
-function openTodoPlanComposer() {
-  openTodoComposerForWorkOrder(null);
-  if (todoStatusInput) {
-    todoStatusInput.value = "next_week_job";
-  }
-  if (todoTitleInput && !todoTitleInput.value.trim()) {
-    todoTitleInput.value = "Plan terena";
-  }
-  syncTodoEditorChrome();
 }
 
 function createTodoTaskStatusBadge(task) {
@@ -96027,169 +95996,6 @@ function createTodoTaskExpandedPanel(task = {}) {
   return wrap;
 }
 
-async function createWorkOrderFromTodoPlanTask(task = {}) {
-  const taskId = String(task.id || "").trim();
-  if (!taskId) {
-    return false;
-  }
-
-  if (!task.companyId || !task.locationId) {
-    setInlineMessage(todoInlineError, "Za izradu RN-a iz plana prvo odaberi tvrtku i lokaciju.");
-    hydrateTodoTaskForm(task);
-    return false;
-  }
-
-  let createdWorkOrder = null;
-  const success = await runMutation(async () => {
-    const payload = await apiRequest("/work-orders", {
-      method: "POST",
-      body: {
-        companyId: task.companyId,
-        locationId: task.locationId,
-        status: "Otvoreni RN",
-        openedDate: getTodayDateKey(),
-        dueDate: task.dueDate || "",
-        priority: task.priority || "Normal",
-        serviceLine: task.title || "Plan terena",
-        description: task.message || task.title || "Plan terena",
-        executors: [task.assignedToLabel].filter(Boolean),
-        executor1: task.assignedToLabel || "",
-        linkReference: `ToDo ${task.title || task.id}`,
-      },
-    });
-    createdWorkOrder = payload?.item ?? null;
-    if (!createdWorkOrder?.id) {
-      throw new Error("RN je otvoren, ali ga nije moguće povezati s planom.");
-    }
-
-    return apiRequest(`/todo-tasks/${encodeURIComponent(taskId)}`, {
-      method: "PATCH",
-      body: {
-        workOrderId: createdWorkOrder.id,
-        companyId: createdWorkOrder.companyId || task.companyId,
-        locationId: createdWorkOrder.locationId || task.locationId,
-      },
-    });
-  }, todoInlineError);
-
-  if (success) {
-    setInlineMessage(todoInlineError, "");
-    const latestWorkOrder = createdWorkOrder?.id
-      ? (state.workOrders.find((item) => String(item.id) === String(createdWorkOrder.id)) ?? createdWorkOrder)
-      : null;
-    if (latestWorkOrder) {
-      hydrateWorkOrderForm(latestWorkOrder);
-    }
-  }
-
-  return success;
-}
-
-function createTodoPlanTaskCard(task = {}) {
-  const card = document.createElement("article");
-  card.className = "todo-task-card is-plan-card";
-  const linkedWorkOrder = getLinkedTodoWorkOrder(task);
-  const linkSummary = getTodoTaskLinkSummary(task);
-
-  const head = document.createElement("div");
-  head.className = "todo-task-card-head";
-
-  const shell = document.createElement("div");
-  shell.className = "todo-task-card-shell";
-
-  const avatar = document.createElement("span");
-  avatar.className = "todo-task-card-avatar";
-  avatar.textContent = "NJ";
-
-  const copy = document.createElement("div");
-  copy.className = "todo-task-card-copy";
-
-  const title = document.createElement("strong");
-  title.className = "todo-task-card-title";
-  title.textContent = task.title || "Plan terena";
-
-  const subtitle = document.createElement("span");
-  subtitle.className = "todo-task-card-subtitle";
-  subtitle.textContent = linkSummary || "Slobodni plan bez tvrtke ili RN-a";
-
-  const preview = document.createElement("span");
-  preview.className = "todo-task-card-preview";
-  preview.textContent = (task.message || "Dogovor za teren.").replace(/\s+/g, " ").trim();
-
-  copy.append(title, subtitle, preview);
-  shell.append(avatar, copy);
-  head.append(shell, createTodoTaskStatusBadge(task));
-
-  const meta = document.createElement("div");
-  meta.className = "todo-task-card-meta";
-  meta.append(
-    createMetaPill(task.dueDate ? `Termin ${formatCompactDate(task.dueDate)}` : "Bez termina", isTodoTaskOverdue(task) ? "is-danger" : "is-soft"),
-    createTodoTaskPriorityBadge(task.priority || "Normal"),
-  );
-  if (task.assignedToLabel) {
-    meta.append(createMetaPill(`Nositelj ${task.assignedToLabel}`, "is-soft"));
-  }
-  if (Array.isArray(task.invitedUserLabels) && task.invitedUserLabels.length > 0) {
-    meta.append(createMetaPill(`${task.invitedUserLabels.length} pozvanih`, "is-soft"));
-  }
-
-  const actions = document.createElement("div");
-  actions.className = "todo-task-card-footer-actions todo-plan-card-actions";
-  actions.addEventListener("click", (event) => {
-    event.stopPropagation();
-  });
-
-  if (linkedWorkOrder) {
-    actions.append(createActionButton("Otvori RN", "ghost-button todo-open-topic-button", () => {
-      hydrateWorkOrderForm(linkedWorkOrder);
-    }));
-  } else if (task.companyId && task.locationId) {
-    actions.append(createActionButton("Napravi RN", "ghost-button todo-open-topic-button", () => {
-      void createWorkOrderFromTodoPlanTask(task);
-    }));
-  }
-
-  actions.append(createActionButton("Uredi", "ghost-button todo-open-topic-button", () => {
-    hydrateTodoTaskForm(task);
-  }));
-
-  const footer = document.createElement("div");
-  footer.className = "todo-task-card-footer";
-  const footerMain = document.createElement("div");
-  footerMain.className = "todo-task-card-footer-main";
-  footerMain.append(meta);
-  footer.append(footerMain, actions);
-
-  card.append(head, footer);
-  card.tabIndex = 0;
-  card.addEventListener("click", () => {
-    hydrateTodoTaskForm(task);
-  });
-  card.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      hydrateTodoTaskForm(task);
-    }
-  });
-  return card;
-}
-
-function renderTodoPlanList() {
-  if (!todoPlanBody) {
-    return;
-  }
-
-  const tasks = getTodoPlanTasks();
-  todoPlanBody.replaceChildren(...tasks.map(createTodoPlanTaskCard));
-
-  if (todoPlanCount) {
-    todoPlanCount.textContent = `${tasks.length} ${tasks.length === 1 ? "stavka" : "stavki"}`;
-  }
-  if (todoPlanEmpty) {
-    todoPlanEmpty.hidden = tasks.length !== 0;
-  }
-}
-
 function selectTodoTask(taskId) {
   state.activeTodoTaskId = String(taskId ?? "");
   renderTodo();
@@ -96613,7 +96419,6 @@ function renderTodo() {
   syncTodoEditorModal();
   renderTodoSummary();
   renderTopbarShortcutCounts();
-  renderTodoPlanList();
   renderTodoList();
   renderTodoDetail();
 }
@@ -103586,7 +103391,6 @@ function renderSharedOptions() {
   ], todoFilterStatusInput?.value || "all");
   replaceSelectOptions(todoFilterScopeInput, [
     { value: "all", label: "Sve teme" },
-    { value: "plan", label: "Plan terena" },
     { value: "assigned", label: "Nositelj sam" },
     { value: "invited", label: "Pozvan sam" },
     { value: "created", label: "Otvorio sam" },
@@ -120969,7 +120773,6 @@ remindersFilterStatusInput?.addEventListener("change", renderReminders);
 todoOpenComposerButton?.addEventListener("click", () => {
   openTodoComposerForWorkOrder(null);
 });
-todoOpenPlanComposerButton?.addEventListener("click", openTodoPlanComposer);
 todoEditorCloseButton?.addEventListener("click", dismissTodoEditor);
 todoEditorBackdrop?.addEventListener("click", dismissTodoEditor);
 todoTitleInput?.addEventListener("input", syncTodoEditorChrome);

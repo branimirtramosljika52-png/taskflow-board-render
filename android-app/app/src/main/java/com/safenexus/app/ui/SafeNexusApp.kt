@@ -265,6 +265,7 @@ enum class AppSection(val label: String) {
 
 private enum class MoreSectionFocus(val title: String) {
     Overview("Evidencije"),
+    Todo("ToDo"),
     FieldInquiries("Plan terena"),
     Companies("Tvrtke"),
     Locations("Lokacije"),
@@ -1532,7 +1533,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     }
     val openMobileRecord: (MobileRecord) -> Unit = { record ->
         val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
-            record.kind in setOf("work_order", "todo_plan") && (
+            record.kind in setOf("work_order", "todo_task") && (
                 workOrder.id == record.relatedId ||
                     workOrder.id == record.id.removePrefix("work-order:")
                 )
@@ -3525,7 +3526,7 @@ private fun FieldInquiriesContent(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Plan terena", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text(
-                        "${records.size} stavki · $upcoming u idućih 7 dana",
+                        "${records.size} upita · $upcoming u idućih 7 dana",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -3539,7 +3540,7 @@ private fun FieldInquiriesContent(
 
             if (sortedRecords.isEmpty()) {
                 Text(
-                    "Nema planiranih ToDo stavki ni upita za teren.",
+                    "Nema upita za teren. Dodaj brzi dogovor i kasnije ga poveži s RN-om.",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             } else {
@@ -3563,14 +3564,8 @@ private fun FieldInquiryCard(
     onEdit: () -> Unit,
     onConvert: () -> Unit,
 ) {
-    val isTodoPlan = record.kind == "todo_plan"
-    val canConvert = !isTodoPlan && record.status != "converted" && record.meta["companyId"].orEmpty().isNotBlank()
-    val statusLabel = if (isTodoPlan) {
-        record.status.ifBlank { record.meta["statusValue"].orEmpty().ifBlank { "Next Week Job" } }
-    } else {
-        fieldInquiryStatusLabel(record.status)
-    }
-    val statusColor = if (isTodoPlan) MaterialTheme.colorScheme.primary else calendarRecordColor("field_inquiry")
+    val canConvert = record.status != "converted" && record.meta["companyId"].orEmpty().isNotBlank()
+    val statusColor = calendarRecordColor("field_inquiry")
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -3586,22 +3581,13 @@ private fun FieldInquiryCard(
                 verticalAlignment = Alignment.Top,
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(record.title.ifBlank { if (isTodoPlan) "Next Week Job" else "Upit za teren" }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(record.title.ifBlank { "Upit za teren" }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        if (isTodoPlan) {
-                            listOf(
-                                formatDateLabel(record.date).ifBlank { record.date },
-                                record.meta["workOrderNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "RN $it" }.orEmpty(),
-                                record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" },
-                                record.meta["locationName"].orEmpty(),
-                            ).filter { it.isNotBlank() }.joinToString(" · ")
-                        } else {
-                            listOf(
-                                formatDateLabel(record.date).ifBlank { record.date },
-                                listOf(record.meta["timeFrom"].orEmpty(), record.meta["timeTo"].orEmpty()).filter { it.isNotBlank() }.joinToString("-"),
-                                record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" },
-                            ).filter { it.isNotBlank() }.joinToString(" · ")
-                        },
+                        listOf(
+                            formatDateLabel(record.date).ifBlank { record.date },
+                            listOf(record.meta["timeFrom"].orEmpty(), record.meta["timeTo"].orEmpty()).filter { it.isNotBlank() }.joinToString("-"),
+                            record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" },
+                        ).filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         maxLines = 2,
@@ -3613,7 +3599,7 @@ private fun FieldInquiryCard(
                     color = statusColor.copy(alpha = 0.14f),
                 ) {
                     Text(
-                        statusLabel,
+                        fieldInquiryStatusLabel(record.status),
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = statusColor,
@@ -3622,24 +3608,14 @@ private fun FieldInquiryCard(
                 }
             }
 
-            val details = if (isTodoPlan) {
-                listOf(
-                    "RN" to record.meta["workOrderNumber"].orEmpty(),
-                    "Lokacija" to record.meta["locationName"].orEmpty(),
-                    "Nositelj" to record.meta["assignedToLabel"].orEmpty(),
-                    "Sudionici" to record.meta["invitedUserLabels"].orEmpty(),
-                    "Prioritet" to record.meta["priority"].orEmpty(),
-                ).filter { it.second.isNotBlank() }
-            } else {
-                listOf(
-                    "Lokacija" to record.meta["locationName"].orEmpty(),
-                    "RN" to record.meta["workOrderNumber"].orEmpty(),
-                    "Ekipa" to record.meta["assignedUserLabels"].orEmpty(),
-                    "Vozilo" to record.meta["vehicleLabel"].orEmpty(),
-                    "Kontakt" to listOf(record.meta["contactName"].orEmpty(), record.meta["contactPhone"].orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
-                    "Usluga" to record.meta["serviceLine"].orEmpty(),
-                ).filter { it.second.isNotBlank() }
-            }
+            val details = listOf(
+                "Lokacija" to record.meta["locationName"].orEmpty(),
+                "RN" to record.meta["workOrderNumber"].orEmpty(),
+                "Ekipa" to record.meta["assignedUserLabels"].orEmpty(),
+                "Vozilo" to record.meta["vehicleLabel"].orEmpty(),
+                "Kontakt" to listOf(record.meta["contactName"].orEmpty(), record.meta["contactPhone"].orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+                "Usluga" to record.meta["serviceLine"].orEmpty(),
+            ).filter { it.second.isNotBlank() }
 
             if (details.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3658,18 +3634,16 @@ private fun FieldInquiryCard(
                 Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f))
             }
 
-            if (!isTodoPlan) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onEdit, shape = RoundedCornerShape(14.dp)) {
-                        Text("Uredi")
-                    }
-                    OutlinedButton(
-                        onClick = onConvert,
-                        enabled = canConvert,
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Text("Napravi RN")
-                    }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit, shape = RoundedCornerShape(14.dp)) {
+                    Text("Uredi")
+                }
+                OutlinedButton(
+                    onClick = onConvert,
+                    enabled = canConvert,
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Napravi RN")
                 }
             }
         }
@@ -4134,11 +4108,11 @@ private fun WorkOrdersScreen(
     val periodicEntries = remember(state.data, state.workOrders, normalizedQuery) {
         buildPeriodicEntries(state.data, state.workOrders, normalizedQuery)
     }
-    val fieldPlanRecords = remember(state.data.fieldInquiries, state.data.todoPlanTasks) {
-        state.data.fieldInquiries + state.data.todoPlanTasks
+    val filteredTodoTasks = remember(state.data.todoTasks, normalizedQuery) {
+        state.data.todoTasks.filter { record -> record.matchesSearch(normalizedQuery) }
     }
-    val filteredFieldInquiries = remember(fieldPlanRecords, normalizedQuery) {
-        fieldPlanRecords.filter { record -> record.matchesSearch(normalizedQuery) }
+    val filteredFieldInquiries = remember(state.data.fieldInquiries, normalizedQuery) {
+        state.data.fieldInquiries.filter { record -> record.matchesSearch(normalizedQuery) }
     }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
@@ -4291,6 +4265,7 @@ private fun WorkOrdersScreen(
                         query = state.query,
                         onQueryChange = onQueryChange,
                         label = when (moreFocus) {
+                            MoreSectionFocus.Todo -> "Pretraga ToDo zadataka, statusa, tvrtke ili RN-a"
                             MoreSectionFocus.FieldInquiries -> "Pretraga upita, termina, tvrtke ili RN-a"
                             MoreSectionFocus.Companies -> "Pretraga tvrtki, OIB-a i kontakata"
                             MoreSectionFocus.Locations -> "Pretraga lokacija, regija i adresa"
@@ -4307,6 +4282,15 @@ private fun WorkOrdersScreen(
                     MoreSectionFocus.Overview -> {
                         item {
                             MoreOverviewHero(state.data)
+                        }
+                        item {
+                            RecordsContent(
+                                title = "ToDo",
+                                records = filteredTodoTasks,
+                                emptyText = "Nema ToDo zadataka za prikaz.",
+                                icon = Icons.Rounded.ListAlt,
+                                onOpenRecord = onOpenRecord,
+                            )
                         }
                         item {
                             FieldInquiriesContent(
@@ -4370,6 +4354,15 @@ private fun WorkOrdersScreen(
                                 onOpenRecord = onOpenRecord,
                             )
                         }
+                    }
+                    MoreSectionFocus.Todo -> item {
+                        RecordsContent(
+                            title = "ToDo",
+                            records = filteredTodoTasks,
+                            emptyText = "Nema ToDo zadataka za prikaz.",
+                            icon = Icons.Rounded.ListAlt,
+                            onOpenRecord = onOpenRecord,
+                        )
                     }
                     MoreSectionFocus.FieldInquiries -> item {
                         FieldInquiriesContent(
@@ -4694,7 +4687,8 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
-            MainMenuShortcut("Plan terena", "Upiti, dogovori i termini prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
+            MainMenuShortcut("ToDo", "Zadaci, teme i Next Week Job status", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Todo),
+            MainMenuShortcut("Plan terena", "Upiti i dogovori prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
             MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business, MoreSectionFocus.Companies),
             MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn, MoreSectionFocus.Locations),
             MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
@@ -6120,6 +6114,7 @@ private fun calendarMonthName(month: Int): String = when (month) {
 private fun calendarRecordColor(kind: String): Color = when (kind) {
     "work_order" -> Color(0xFF2563EB)
     "field_inquiry" -> Color(0xFFD97706)
+    "todo_task" -> Color(0xFF2563EB)
     "vehicle", "vehicle_reservation" -> Color(0xFF059669)
     "document" -> Color(0xFF7C3AED)
     "training" -> Color(0xFFDC2626)
@@ -7203,7 +7198,7 @@ private fun RecordLine(
 private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Rounded.Work): ImageVector = when (record.kind) {
     "work_order" -> Icons.Rounded.Work
     "field_inquiry" -> Icons.Rounded.EventNote
-    "todo_plan" -> Icons.Rounded.ListAlt
+    "todo_task" -> Icons.Rounded.ListAlt
     "vehicle", "vehicle_reservation" -> Icons.Rounded.Business
     "document" -> Icons.Rounded.Mail
     "training" -> Icons.Rounded.Fingerprint
@@ -7218,7 +7213,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
 private fun recordKindLabel(kind: String): String = when (kind) {
     "work_order" -> "Radni nalog"
     "field_inquiry" -> "Plan terena"
-    "todo_plan" -> "Next Week Job"
+    "todo_task" -> "ToDo"
     "vehicle" -> "Vozilo"
     "vehicle_reservation" -> "Rezervacija vozila"
     "document" -> "Dokument"

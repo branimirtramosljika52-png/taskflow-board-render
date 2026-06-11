@@ -94,6 +94,7 @@ import {
   sortServiceCatalogItems,
   sortVehicles,
   sortTodoTasks,
+  TODO_TASK_STATUS_OPTIONS,
   updateClientPortalRecord,
   updateVehicle,
   updateVehicleReservation,
@@ -4739,23 +4740,28 @@ test("todo tasks support assignment, work-order linking, comments and filtering"
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "todo-1");
 
-  const planFiltered = filterTodoTasks([
+  assert.equal(
+    TODO_TASK_STATUS_OPTIONS.some((option) => option.value === "next_week_job" && option.label === "Next Week Job"),
+    true,
+  );
+  const nextWeekJob = updateTodoTask(
     progressed,
     {
-      ...progressed,
-      id: "todo-plan-1",
-      title: "Next week teren",
       status: "next_week_job",
-      companyName: "",
-      locationName: "",
-      workOrderNumber: "",
     },
-  ], {
-    scope: "plan",
+    {
+      ...state,
+      workOrders: [workOrder],
+      todoTasks: [progressed],
+    },
+    () => "2026-03-26T11:00:00.000Z",
+  );
+  const nextWeekFiltered = filterTodoTasks([progressed, nextWeekJob], {
+    status: "next_week_job",
   });
 
-  assert.equal(planFiltered.length, 1);
-  assert.equal(planFiltered[0].id, "todo-plan-1");
+  assert.equal(nextWeekFiltered.length, 1);
+  assert.equal(nextWeekFiltered[0].status, "next_week_job");
 
   const sorted = sortTodoTasks([
     {

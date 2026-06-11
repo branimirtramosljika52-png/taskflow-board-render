@@ -97,7 +97,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.87.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.88.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -15570,22 +15570,22 @@ function getTodoTaskStatusLabel(status = "") {
   return TODO_TASK_STATUS_OPTIONS.find((option) => option.value === normalized)?.label || normalized;
 }
 
-function buildMobileTodoPlanRecord(item = {}) {
+function buildMobileTodoTaskRecord(item = {}) {
   return {
     id: normalizeInputValue(item.id),
-    title: normalizeInputValue(item.title || "Plan terena"),
+    title: normalizeInputValue(item.title || "ToDo"),
     subtitle: [
       normalizeInputValue(item.workOrderNumber ? `RN ${item.workOrderNumber}` : ""),
       normalizeInputValue(item.companyName),
       normalizeInputValue(item.locationName),
     ].filter(Boolean).join(" - "),
-    status: getTodoTaskStatusLabel(item.status || "next_week_job"),
-    kind: "todo_plan",
+    status: getTodoTaskStatusLabel(item.status || "open"),
+    kind: "todo_task",
     date: normalizeInputValue(item.dueDate),
     relatedId: normalizeInputValue(item.workOrderId),
     coordinates: "",
     meta: {
-      statusValue: normalizeInputValue(item.status || "next_week_job"),
+      statusValue: normalizeInputValue(item.status || "open"),
       companyId: normalizeInputValue(item.companyId),
       companyName: normalizeInputValue(item.companyName),
       locationId: normalizeInputValue(item.locationId),
@@ -16177,9 +16177,7 @@ async function writeMobileBootstrap(response, user, request) {
 
   const vehicles = limitMobileRecords((scopedSnapshot.vehicles ?? []).map(buildMobileVehicleRecord));
   const fieldInquiries = limitMobileRecords((scopedSnapshot.fieldInquiries ?? []).map(buildMobileFieldInquiryRecord));
-  const todoPlanTasks = limitMobileRecords((scopedSnapshot.todoTasks ?? [])
-    .filter((item) => normalizeInputValue(item.status).toLowerCase() === "next_week_job")
-    .map(buildMobileTodoPlanRecord));
+  const todoTasks = limitMobileRecords((scopedSnapshot.todoTasks ?? []).map(buildMobileTodoTaskRecord));
 
   const documentRecords = limitMobileRecords((scopedSnapshot.documentRecords ?? []).map((item) => buildMobileRecordItem(item, {
     kind: "document",
@@ -16247,7 +16245,7 @@ async function writeMobileBootstrap(response, user, request) {
     dashboard: buildMobileDashboard(scopedSnapshot, workOrders),
     workOrders,
     fieldInquiries,
-    todoPlanTasks,
+    todoTasks,
     companies,
     locations,
     vehicles,

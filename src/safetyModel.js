@@ -9766,10 +9766,6 @@ export function filterTodoTasks(
       return false;
     }
 
-    if (scope === "plan" && item.status !== "next_week_job") {
-      return false;
-    }
-
     if (scope === "invited" && normalizedUserId && !normalizeIdList(item.invitedUserIds).includes(normalizedUserId)) {
       return false;
     }
