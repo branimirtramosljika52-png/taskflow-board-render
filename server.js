@@ -7052,6 +7052,61 @@ function getScopedSnapshotCacheKey(user, requestedOrganizationId = "") {
   ].join("::");
 }
 
+function areExecutorListsEqual(left = [], right = []) {
+  const normalize = (values) => values
+    .map((value) => normalizeInputValue(value).toLowerCase())
+    .filter(Boolean);
+  const leftValues = normalize(left);
+  const rightValues = normalize(right);
+  return leftValues.length === rightValues.length
+    && leftValues.every((value, index) => value === rightValues[index]);
+}
+
+function normalizeScopedSnapshotExecutorLabels(scopedSnapshot = {}) {
+  if (!Array.isArray(scopedSnapshot.workOrders) && !Array.isArray(scopedSnapshot.fieldInquiries)) {
+    return scopedSnapshot;
+  }
+
+  let changed = false;
+  const workOrders = Array.isArray(scopedSnapshot.workOrders)
+    ? scopedSnapshot.workOrders.map((workOrder) => {
+      const source = Array.isArray(workOrder.executors)
+        ? workOrder.executors
+        : [workOrder.executor1, workOrder.executor2];
+      const executors = resolveWorkOrderExecutorsPayload(scopedSnapshot, { executors: source });
+      if (areExecutorListsEqual(source, executors)) {
+        return workOrder;
+      }
+      changed = true;
+      return {
+        ...workOrder,
+        executors,
+        executor1: executors[0] || "",
+        executor2: executors[1] || "",
+      };
+    })
+    : scopedSnapshot.workOrders;
+
+  const fieldInquiries = Array.isArray(scopedSnapshot.fieldInquiries)
+    ? scopedSnapshot.fieldInquiries.map((inquiry) => {
+      const source = Array.isArray(inquiry.assignedUserLabels) ? inquiry.assignedUserLabels : [];
+      const assignedUserLabels = resolveFieldInquiryExecutorsForWorkOrder(scopedSnapshot, inquiry);
+      if (areExecutorListsEqual(source, assignedUserLabels)) {
+        return inquiry;
+      }
+      changed = true;
+      return {
+        ...inquiry,
+        assignedUserLabels,
+      };
+    })
+    : scopedSnapshot.fieldInquiries;
+
+  return changed
+    ? { ...scopedSnapshot, workOrders, fieldInquiries }
+    : scopedSnapshot;
+}
+
 async function getRawSnapshot(request) {
   const cacheable = isSnapshotCacheableRequest(request);
   const now = Date.now();
@@ -7090,7 +7145,9 @@ async function getScopedState(user, request) {
   }
 
   const rawSnapshot = await getRawSnapshot(request);
-  const scopedSnapshot = await tenantRepository.getSnapshot(user, requestedOrganizationId, rawSnapshot);
+  const scopedSnapshot = normalizeScopedSnapshotExecutorLabels(
+    await tenantRepository.getSnapshot(user, requestedOrganizationId, rawSnapshot),
+  );
 
   if (cacheable) {
     scopedSnapshotCache.set(cacheKey, {
@@ -8426,11 +8483,19 @@ function hasWorkOrderExecutorInput(input = {}) {
     || bodyHasOwnField(input, "executor2");
 }
 
-function withResolvedWorkOrderExecutors(scopedSnapshot = {}, input = {}) {
-  if (!hasWorkOrderExecutorInput(input)) {
+function withResolvedWorkOrderExecutors(scopedSnapshot = {}, input = {}, current = null) {
+  const hasExecutorInput = hasWorkOrderExecutorInput(input);
+  if (!hasExecutorInput && !current) {
     return input;
   }
-  const executors = resolveWorkOrderExecutorsPayload(scopedSnapshot, input);
+  const source = hasExecutorInput ? input : current;
+  const rawValues = Array.isArray(source?.executors)
+    ? source.executors
+    : [source?.executor1, source?.executor2];
+  const executors = resolveWorkOrderExecutorsPayload(scopedSnapshot, source);
+  if (!hasExecutorInput && areExecutorListsEqual(rawValues, executors)) {
+    return input;
+  }
   return {
     ...input,
     executors,
@@ -20242,7 +20307,7 @@ async function handleApiRequest(request, response, url) {
         assertLocationPayloadInScope(scopedSnapshot, patch);
         assertServiceCatalogIdsPayloadInScope(scopedSnapshot, patch);
         const updatedWorkOrder = await domainRepository.updateWorkOrder(workOrderId, {
-          ...withResolvedWorkOrderExecutors(scopedSnapshot, patch),
+          ...withResolvedWorkOrderExecutors(scopedSnapshot, patch, currentWorkOrder),
           organizationId: scopedSnapshot.activeOrganizationId,
         }, user);
         if (updatedWorkOrder) {
@@ -20278,7 +20343,7 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateWorkOrder(mobileWorkOrderMatch[1], {
-        ...withResolvedWorkOrderExecutors(scopedSnapshot, body),
+        ...withResolvedWorkOrderExecutors(scopedSnapshot, body, currentWorkOrder),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 
@@ -20317,7 +20382,7 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], {
-        ...withResolvedWorkOrderExecutors(scopedSnapshot, body),
+        ...withResolvedWorkOrderExecutors(scopedSnapshot, body, currentWorkOrder),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 
