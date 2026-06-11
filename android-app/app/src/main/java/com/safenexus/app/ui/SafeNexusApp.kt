@@ -1245,6 +1245,51 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun downloadVehicleEvidencePdf(context: Context, vehicle: MobileRecord) {
+        if (vehicle.id.isBlank()) {
+            state = state.copy(error = "Vozilo nema ispravan ID za PDF evidenciju.")
+            return
+        }
+
+        val slug = listOf(vehicle.title, vehicle.subtitle)
+            .joinToString("-")
+            .replace(Regex("[^A-Za-z0-9_-]+"), "-")
+            .trim('-')
+            .ifBlank { "vozilo" }
+        val fallbackFileName = "evidencija-vozila-$slug.pdf"
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadVehicleEvidencePdf(vehicle.id, fallbackFileName)
+                .onSuccess { downloaded ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
+                            state = state.copy(
+                                isLoading = false,
+                                notice = if (opened) {
+                                    "PDF evidencija vozila je spremljena u Preuzimanja / SafeNexus i otvorena."
+                                } else {
+                                    "PDF evidencija vozila je spremljena u Preuzimanja / SafeNexus."
+                                },
+                                error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje PDF-a.",
+                            )
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti PDF evidenciju vozila.",
+                            )
+                        }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti PDF evidenciju vozila.",
+                    )
+                }
+        }
+    }
+
     fun signWorkOrderPdf(
         context: Context,
         workOrder: WorkOrder,
@@ -1477,6 +1522,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onBack = { viewModel.selectRecord(null) },
                         onReserveVehicle = viewModel::createVehicleReservation,
                         onRecordVehicleUsage = viewModel::recordVehicleUsage,
+                        onDownloadVehicleEvidencePdf = { vehicle -> viewModel.downloadVehicleEvidencePdf(context.applicationContext, vehicle) },
                     )
                 }
             } else {
@@ -7229,6 +7275,7 @@ private fun MobileRecordDetailScreen(
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
     onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
 ) {
     BackHandler(onBack = onBack)
     var reservationDialogOpen by remember(record.id) { mutableStateOf(false) }
@@ -7372,6 +7419,16 @@ private fun MobileRecordDetailScreen(
                                 Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Vrati", fontWeight = FontWeight.Black)
+                            }
+                            OutlinedButton(
+                                onClick = { onDownloadVehicleEvidencePdf(record) },
+                                enabled = !isLoading,
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("PDF evidencija", fontWeight = FontWeight.Black)
                             }
                         }
                     }

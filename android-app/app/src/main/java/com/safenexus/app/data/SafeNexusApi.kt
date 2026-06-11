@@ -571,6 +571,35 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun downloadVehicleEvidencePdf(vehicleId: String, fallbackFileName: String): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = "/api/vehicles/${vehicleId.pathSegment()}/export-pdf"
+            val connection = openConnection(
+                path,
+                method = "POST",
+                body = "{}",
+                accept = "application/pdf",
+                readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
+            )
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti PDF evidenciju vozila (${connection.responseCode})."
+                })
+            }
+            DownloadedDocument(
+                fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
+                    .ifBlank { fallbackFileName.ifBlank { "evidencija-vozila.pdf" } },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { "application/pdf" }
+                    ?: "application/pdf",
+                bytes = bytes,
+            )
+        }
+    }
+
     suspend fun signWorkOrderPdf(
         workOrderId: String,
         signaturePngBytes: ByteArray,

@@ -100597,6 +100597,23 @@ function getActiveVehicle() {
   return state.vehicles.find((item) => String(item.id) === String(state.activeVehicleId)) ?? null;
 }
 
+async function downloadVehicleEvidencePdf(vehicle = {}) {
+  const vehicleId = String(vehicle?.id || "").trim();
+  if (!vehicleId) {
+    throw new Error("Odaberi vozilo prije izvoza evidencije.");
+  }
+
+  const fallbackName = `${sanitizeDocumentTemplateFileName(
+    `evidencija-vozila-${vehicle.plateNumber || vehicle.name || "vozilo"}`,
+    "evidencija-vozila",
+  )}.pdf`;
+  const { blob, fileName } = await apiBinaryRequest(`/vehicles/${encodeURIComponent(vehicleId)}/export-pdf`, {
+    method: "POST",
+    body: {},
+  });
+  triggerBlobDownload(blob, fileName || fallbackName);
+}
+
 function getVehicleFromReservationEditor() {
   const vehicleId = String(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
   return state.vehicles.find((item) => String(item.id) === vehicleId) ?? null;
@@ -102239,6 +102256,16 @@ function renderVehiclesModule() {
       openVehicleUsageComposer(vehicle, { mode: "return" });
     });
     actions.append(checkoutButton, returnButton);
+    const evidenceButton = document.createElement("button");
+    evidenceButton.type = "button";
+    evidenceButton.className = "ghost-button";
+    evidenceButton.textContent = "PDF evidencija";
+    evidenceButton.hidden = !canAccessVehicles;
+    evidenceButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void runMutation(() => downloadVehicleEvidencePdf(vehicle), vehicleError);
+    });
+    actions.append(evidenceButton);
     head.append(actions);
 
     const openVehicle = () => {

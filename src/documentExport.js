@@ -8604,7 +8604,7 @@ async function resolvePdfImageBuffer(source = "") {
 }
 
 function createPdfLayoutHelpers(doc) {
-  let currentLayout = doc.page.layout === "landscape" ? "landscape" : "portrait";
+  let currentLayout = doc.page.layout === "landscape" || doc.page.width > doc.page.height ? "landscape" : "portrait";
   let currentPageIndex = 0;
   const margins = {
     top: 40,
@@ -9687,6 +9687,228 @@ function renderReportTable(doc, helpers, title, columns = [], rows = [], { empty
   });
 
   doc.moveDown(0.4);
+}
+
+function getVehicleEvidenceStatusLabel(value = "") {
+  const normalized = clean(value).toLowerCase();
+  if (normalized === "available") return "Dostupno";
+  if (normalized === "service") return "Servis";
+  if (normalized === "inactive") return "Neaktivno";
+  if (normalized === "reserved") return "Rezervacija";
+  if (normalized === "checked_out") return "Na terenu";
+  if (normalized === "completed") return "Zavrseno";
+  if (normalized === "cancelled") return "Otkazano";
+  return clean(value) || "-";
+}
+
+function formatVehicleEvidenceDateTime(value = "") {
+  const normalized = clean(value);
+  if (!normalized) {
+    return "";
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return formatOfferPdfDate(normalized);
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return formatOfferPdfDate(normalized);
+  }
+
+  try {
+    return new Intl.DateTimeFormat("hr-HR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "Europe/Zagreb",
+    }).format(parsed);
+  } catch {
+    return `${formatOfferPdfDate(parsed.toISOString().slice(0, 10))} ${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
+  }
+}
+
+function getVehicleEvidenceTimestamp(value = "") {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+}
+
+function getVehicleEvidenceAssignees(reservation = {}) {
+  const labels = Array.isArray(reservation.reservedForLabels)
+    ? reservation.reservedForLabels
+    : [reservation.reservedForLabel];
+  return normalizePdfLines(labels).join(", ");
+}
+
+function getVehicleEvidenceNoteValue(note = "", prefix = "") {
+  const normalizedPrefix = clean(prefix).toLowerCase();
+  const lines = String(note ?? "").replace(/\r\n/g, "\n").split("\n");
+  const matched = lines.find((line) => clean(line).toLowerCase().startsWith(normalizedPrefix));
+  return matched ? clean(matched.slice(prefix.length)) : "";
+}
+
+function compactVehicleEvidenceNote(note = "") {
+  return String(note ?? "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => clean(line))
+    .filter((line) => line && ![
+      "destinacija:",
+      "vozilo cisto:",
+      "dokumenti u vozilu:",
+      "gorivo / baterija uredno:",
+      "ostecenje evidentirano:",
+    ].some((prefix) => line.toLowerCase().startsWith(prefix)))
+    .join("\n");
+}
+
+function buildVehicleEvidenceRows(vehicle = {}) {
+  const reservationRows = (Array.isArray(vehicle.reservations) ? vehicle.reservations : [])
+    .map((reservation) => ({
+      sortKey: getVehicleEvidenceTimestamp(reservation?.startAt || reservation?.createdAt || reservation?.updatedAt),
+      datum: formatVehicleEvidenceDateTime(reservation?.startAt),
+      do: formatVehicleEvidenceDateTime(reservation?.endAt),
+      vrsta: "Rezervacija",
+      korisnik: getVehicleEvidenceAssignees(reservation),
+      ruta: reservation?.destination || "",
+      km: "",
+      status: getVehicleEvidenceStatusLabel(reservation?.status || "reserved"),
+      napomena: normalizePdfLines([reservation?.purpose, reservation?.note]).join("\n"),
+    }));
+
+  const activityRows = (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [])
+    .map((activity) => {
+      const note = String(activity?.note ?? "");
+      const type = clean(activity?.workSummary)
+        || (clean(activity?.activityType).toLowerCase() === "usage" ? "Koristenje vozila" : clean(activity?.activityType))
+        || "Aktivnost";
+      return {
+        sortKey: getVehicleEvidenceTimestamp(activity?.createdAt || activity?.performedOn || activity?.updatedAt),
+        datum: formatVehicleEvidenceDateTime(activity?.createdAt || activity?.performedOn),
+        do: "",
+        vrsta: type,
+        korisnik: activity?.performedBy || "",
+        ruta: getVehicleEvidenceNoteValue(note, "Destinacija:"),
+        km: activity?.odometerKm ? `${activity.odometerKm} km` : "",
+        status: "",
+        napomena: compactVehicleEvidenceNote(note),
+      };
+    });
+
+  return [...reservationRows, ...activityRows]
+    .sort((left, right) => left.sortKey - right.sortKey)
+    .map(({ sortKey, ...row }) => row);
+}
+
+export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
+  organizationName = "",
+  generatedAt = new Date().toISOString(),
+} = {}) {
+  const vehicleTitle = normalizePdfLines([
+    vehicle.plateNumber,
+    vehicle.name,
+    [vehicle.make, vehicle.model].filter(Boolean).join(" "),
+  ]).join(" - ") || "Vozilo";
+  const doc = new PDFDocument({
+    autoFirstPage: true,
+    size: "A4",
+    layout: "landscape",
+    margins: {
+      top: 34,
+      bottom: 34,
+      left: 32,
+      right: 32,
+    },
+    bufferPages: true,
+    info: {
+      Title: `Evidencija vozila ${vehicleTitle}`,
+      Author: "SafeNexus",
+      Subject: "Evidencija koristenja vozila",
+    },
+  });
+
+  doc.registerFont("dejavu", PDF_FONTS.regular);
+  doc.registerFont("dejavu-bold", PDF_FONTS.bold);
+  doc.registerFont("dejavu-italic", PDF_FONTS.italic);
+  doc.font("dejavu");
+
+  const helpers = createPdfLayoutHelpers(doc);
+  const evidenceRows = buildVehicleEvidenceRows(vehicle);
+
+  helpers.ensureSpace(92, { layout: "landscape" });
+  doc.font("dejavu-bold").fontSize(9.5).fillColor("#2563eb").text("SAFE NEXUS - EVIDENCIJA VOZILA");
+  doc.moveDown(0.25);
+  doc.font("dejavu-bold").fontSize(20).fillColor("#111827").text(vehicleTitle, {
+    width: helpers.availableWidth - 178,
+  });
+  doc.font("dejavu").fontSize(9.5).fillColor("#64748b").text(
+    normalizePdfLines([
+      organizationName,
+      `Generirano: ${formatVehicleEvidenceDateTime(generatedAt)}`,
+    ]).join(" | "),
+  );
+
+  const badgeWidth = 152;
+  const badgeX = doc.page.width - doc.page.margins.right - badgeWidth;
+  const badgeY = doc.page.margins.top;
+  doc.save();
+  doc.roundedRect(badgeX, badgeY, badgeWidth, 50, 14);
+  doc.fillColor("#eff6ff").fill();
+  doc.restore();
+  doc.font("dejavu-bold").fontSize(8.5).fillColor("#2563eb").text("STATUS", badgeX + 12, badgeY + 10, {
+    width: badgeWidth - 24,
+  });
+  doc.font("dejavu-bold").fontSize(12).fillColor("#0f172a").text(getVehicleEvidenceStatusLabel(vehicle.status || "available"), badgeX + 12, badgeY + 25, {
+    width: badgeWidth - 24,
+  });
+
+  doc.moveDown(1);
+  renderReportMetricGrid(doc, helpers, [
+    { label: "Registracija", value: vehicle.plateNumber || "-" },
+    { label: "Model", value: normalizePdfLines([vehicle.make, vehicle.model, vehicle.year]).join(" ") || "-" },
+    { label: "Kilometraza", value: vehicle.odometerKm ? `${vehicle.odometerKm} km` : "-" },
+    { label: "Zapisa", value: evidenceRows.length },
+  ]);
+
+  drawOfferPdfSectionTitle(doc, "Podaci o vozilu");
+  writeOfferPdfMetaRow(doc, "Naziv", vehicle.name || "-", { labelWidth: 110, valueWidth: 620 });
+  writeOfferPdfMetaRow(doc, "VIN / sasija", vehicle.vinNumber || "-", { labelWidth: 110, valueWidth: 620 });
+  writeOfferPdfMetaRow(doc, "Kategorija", vehicle.category || "-", { labelWidth: 110, valueWidth: 620 });
+  writeOfferPdfMetaRow(doc, "Registracija vrijedi", formatOfferPdfDate(vehicle.registrationExpiresOn), { labelWidth: 110, valueWidth: 620 });
+  writeOfferPdfMetaRow(doc, "Servis do", formatOfferPdfDate(vehicle.serviceDueDate), { labelWidth: 110, valueWidth: 620 });
+
+  doc.moveDown(0.35);
+  renderReportTable(
+    doc,
+    helpers,
+    "Evidencija koristenja i rezervacija",
+    [
+      { key: "datum", label: "Datum od", width: 78 },
+      { key: "do", label: "Datum do", width: 78 },
+      { key: "vrsta", label: "Vrsta", width: 82 },
+      { key: "korisnik", label: "Korisnik", width: 102 },
+      { key: "ruta", label: "Ruta", width: 104 },
+      { key: "km", label: "Km", width: 58 },
+      { key: "status", label: "Status", width: 76 },
+      { key: "napomena", label: "Napomena", width: 200 },
+    ],
+    evidenceRows,
+    { emptyMessage: "Za ovo vozilo jos nema rezervacija ni evidentiranog koristenja." },
+  );
+
+  const range = doc.bufferedPageRange();
+  for (let index = range.start; index < range.start + range.count; index += 1) {
+    doc.switchToPage(index);
+    doc.font("dejavu").fontSize(8).fillColor("#94a3b8").text(
+      `SafeNexus | Evidencija vozila | ${index + 1 - range.start}/${range.count}`,
+      doc.page.margins.left,
+      doc.page.height - 24,
+      {
+        width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        align: "right",
+      },
+    );
+  }
+
+  return pdfBufferFromDocument(doc);
 }
 
 export async function buildDashboardCalendarReportPdfBuffer({
