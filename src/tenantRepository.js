@@ -2193,6 +2193,10 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     isCompanyScopedItemVisible(item) || isExecutorScopedWorkOrderVisible(item)
   ));
   const visibleWorkOrderIds = new Set(visibleWorkOrders.map((item) => String(item.id)));
+  const visibleFieldInquiries = (rawSnapshot.fieldInquiries ?? []).filter((item) => (
+    isOrganizationOrCompanyItemVisible(item)
+    || (item.workOrderId && visibleWorkOrderIds.has(String(item.workOrderId)))
+  ));
   const visiblePeopleTrainingRecords = (rawSnapshot.peopleTrainingRecords ?? []).filter(isCompanyScopedItemVisible);
   const visibleClientPortalRecords = (
     actorIsClientPortal || hasAppPermission("clientPortal.manage")
@@ -2269,6 +2273,11 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.locationId)))
     )),
     workOrders: visibleWorkOrders,
+    fieldInquiries: visibleFieldInquiries.map((item) => ({
+      ...item,
+      assignedUserIds: [...(item.assignedUserIds ?? [])],
+      assignedUserLabels: [...(item.assignedUserLabels ?? [])],
+    })),
     peopleTrainingRecords: visiblePeopleTrainingRecords.map((item) => ({
       ...item,
       trainingItems: (item.trainingItems ?? []).map((entry) => ({ ...entry })),
@@ -3308,6 +3317,7 @@ export class MemoryTenantRepository {
     locations: [],
     locationObjects: [],
     workOrders: [],
+    fieldInquiries: [],
     reminders: [],
     todoTasks: [],
     offers: [],
@@ -4458,6 +4468,7 @@ export class MySqlTenantRepository {
     companies: [],
     locations: [],
     workOrders: [],
+    fieldInquiries: [],
     reminders: [],
     todoTasks: [],
       offers: [],

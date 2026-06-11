@@ -72,6 +72,7 @@ import {
 import {
   PERSON_TRAINING_TYPE_OPTIONS,
   PRIORITY_OPTIONS,
+  FIELD_INQUIRY_STATUS_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   doesAbsenceTypeRequireApproval,
   getVehicleAvailabilityStatus,
@@ -95,7 +96,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.84.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.85.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -8366,6 +8367,46 @@ function assertWorkOrderPayloadInScope(scopedSnapshot, body = {}) {
   assertInScope(scopedSnapshot.workOrders, body.workOrderId, "Radni nalog nije dostupan za odabranu organizaciju.");
 }
 
+function resolveFieldInquiryAssignedUsersPayload(scopedSnapshot, body = {}) {
+  const assignedUserIds = normalizeRequestIdList(body.assignedUserIds);
+  const users = assignedUserIds.map((userId) => (
+    assertInScope(scopedSnapshot.users ?? [], userId, "Odabrani izvrsitelj nije dostupan za aktivnu organizaciju.")
+  ));
+  return {
+    assignedUserIds: users.map((item) => String(item.id)),
+    assignedUserLabels: users.map((item) => (
+      item.fullName || [item.firstName, item.lastName].filter(Boolean).join(" ") || item.email || item.username || "Korisnik"
+    )),
+  };
+}
+
+function assertFieldInquiryPayloadInScope(scopedSnapshot, body = {}) {
+  assertCompanyPayloadInScope(scopedSnapshot, body);
+  assertLocationPayloadInScope(scopedSnapshot, body);
+  assertWorkOrderPayloadInScope(scopedSnapshot, body);
+  if (body.vehicleId) {
+    assertInScope(scopedSnapshot.vehicles ?? [], body.vehicleId, "Vozilo nije dostupno za odabranu organizaciju.");
+  }
+}
+
+async function syncFieldInquiryWorkOrderExecutionDate(scopedSnapshot, inquiry = {}, actor = null) {
+  const workOrderId = normalizeInputValue(inquiry.workOrderId);
+  const plannedDate = normalizeInputValue(inquiry.plannedDate);
+  if (!workOrderId || !plannedDate) {
+    return null;
+  }
+
+  const currentWorkOrder = (scopedSnapshot.workOrders ?? []).find((item) => String(item.id) === workOrderId);
+  if (!currentWorkOrder || normalizeInputValue(currentWorkOrder.executionDate) === plannedDate) {
+    return currentWorkOrder ?? null;
+  }
+
+  return await domainRepository.updateWorkOrder(workOrderId, {
+    executionDate: plannedDate,
+    organizationId: scopedSnapshot.activeOrganizationId,
+  }, actor);
+}
+
 function normalizeInputValue(value) {
   return String(value ?? "").trim();
 }
@@ -15363,6 +15404,41 @@ function buildMobileVehicleRecord(item = {}) {
   };
 }
 
+function buildMobileFieldInquiryRecord(item = {}) {
+  return {
+    id: normalizeInputValue(item.id),
+    title: normalizeInputValue(item.title || item.companyName || item.locationName || "Upit za teren"),
+    subtitle: [
+      normalizeInputValue(item.companyName),
+      normalizeInputValue(item.locationName),
+      normalizeInputValue(item.workOrderNumber ? `RN ${item.workOrderNumber}` : ""),
+      normalizeInputValue(item.serviceLine),
+    ].filter(Boolean).join(" - "),
+    status: normalizeInputValue(item.status || "inquiry"),
+    kind: "field_inquiry",
+    date: normalizeInputValue(item.plannedDate),
+    relatedId: normalizeInputValue(item.workOrderId),
+    coordinates: "",
+    meta: {
+      companyId: normalizeInputValue(item.companyId),
+      companyName: normalizeInputValue(item.companyName),
+      locationId: normalizeInputValue(item.locationId),
+      locationName: normalizeInputValue(item.locationName),
+      workOrderId: normalizeInputValue(item.workOrderId),
+      workOrderNumber: normalizeInputValue(item.workOrderNumber),
+      timeFrom: normalizeInputValue(item.timeFrom),
+      timeTo: normalizeInputValue(item.timeTo),
+      contactName: normalizeInputValue(item.contactName),
+      contactPhone: normalizeInputValue(item.contactPhone),
+      serviceLine: normalizeInputValue(item.serviceLine),
+      note: normalizeInputValue(item.note),
+      assignedUserLabels: Array.isArray(item.assignedUserLabels) ? item.assignedUserLabels.join(", ") : "",
+      vehicleId: normalizeInputValue(item.vehicleId),
+      vehicleLabel: normalizeInputValue(item.vehicleLabel),
+    },
+  };
+}
+
 function resolveVehicleUsageMode(value = "") {
   const normalized = normalizeInputValue(value).toLowerCase();
   if (["return", "checkin", "check_in", "vracanje", "povrat"].includes(normalized)) {
@@ -15709,6 +15785,17 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
     });
   });
 
+  (scopedSnapshot.fieldInquiries ?? []).forEach((inquiry) => {
+    const date = firstMobileRecordValue(inquiry, ["plannedDate"]);
+    if (!date) return;
+    const record = buildMobileFieldInquiryRecord(inquiry);
+    events.push({
+      ...record,
+      id: `field-inquiry:${inquiry.id}`,
+      kind: "field_inquiry",
+    });
+  });
+
   (scopedSnapshot.vehicles ?? []).forEach((vehicle) => {
     (vehicle.reservations ?? []).forEach((reservation) => {
       const date = firstMobileRecordValue(reservation, ["startAt", "createdAt"]);
@@ -15927,6 +16014,7 @@ async function writeMobileBootstrap(response, user, request) {
   })));
 
   const vehicles = limitMobileRecords((scopedSnapshot.vehicles ?? []).map(buildMobileVehicleRecord));
+  const fieldInquiries = limitMobileRecords((scopedSnapshot.fieldInquiries ?? []).map(buildMobileFieldInquiryRecord));
 
   const documentRecords = limitMobileRecords((scopedSnapshot.documentRecords ?? []).map((item) => buildMobileRecordItem(item, {
     kind: "document",
@@ -15989,9 +16077,11 @@ async function writeMobileBootstrap(response, user, request) {
       workOrderLocationObjects: buildMobileWorkOrderLocationObjectOptions(scopedSnapshot.locationObjects),
       workOrderUsers: buildMobileWorkOrderUserOptions(scopedSnapshot.users),
       workOrderServices: buildMobileWorkOrderServiceOptions(scopedSnapshot.serviceCatalog),
+      fieldInquiryStatuses: FIELD_INQUIRY_STATUS_OPTIONS,
     },
     dashboard: buildMobileDashboard(scopedSnapshot, workOrders),
     workOrders,
+    fieldInquiries,
     companies,
     locations,
     vehicles,
@@ -16848,6 +16938,10 @@ async function handleApiRequest(request, response, url) {
     const companyMatch = url.pathname.match(/^\/api\/companies\/([^/]+)$/);
     const locationMatch = url.pathname.match(/^\/api\/locations\/([^/]+)$/);
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
+    const fieldInquiryConvertMatch = url.pathname.match(/^\/api\/field-inquiries\/([^/]+)\/convert-to-work-order$/);
+    const mobileFieldInquiryConvertMatch = url.pathname.match(/^\/api\/mobile\/field-inquiries\/([^/]+)\/convert-to-work-order$/);
+    const fieldInquiryMatch = url.pathname.match(/^\/api\/field-inquiries\/([^/]+)$/);
+    const mobileFieldInquiryMatch = url.pathname.match(/^\/api\/mobile\/field-inquiries\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
     const offerHtmlDraftPreviewMatch = url.pathname === "/api/offers/preview-html-draft";
@@ -17566,6 +17660,34 @@ async function handleApiRequest(request, response, url) {
       }, user);
       queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
       sendJson(response, 201, { ok: true, item: createdWorkOrder });
+      return true;
+    }
+
+    if (request.method === "POST" && (url.pathname === "/api/field-inquiries" || url.pathname === "/api/mobile/field-inquiries")) {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati terenskim upitima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertFieldInquiryPayloadInScope(scopedSnapshot, body);
+      const assignedPayload = resolveFieldInquiryAssignedUsersPayload(scopedSnapshot, body);
+      const created = await domainRepository.createFieldInquiry({
+        ...body,
+        ...assignedPayload,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (normalizeRequestBoolean(body.syncWorkOrderExecutionDate, false)) {
+        await syncFieldInquiryWorkOrderExecutionDate(scopedSnapshot, created, user);
+      }
+
+      if (url.pathname.startsWith("/api/mobile/")) {
+        sendJson(response, 201, { ok: true, item: buildMobileFieldInquiryRecord(created) });
+      } else {
+        await writeSnapshot(response, user, request, 201);
+      }
       return true;
     }
 
@@ -20148,6 +20270,96 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if ((fieldInquiryMatch || mobileFieldInquiryMatch) && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati terenskim upitima.");
+        return true;
+      }
+
+      const inquiryId = (fieldInquiryMatch || mobileFieldInquiryMatch)[1];
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.fieldInquiries ?? [], inquiryId, "Terenski upit nije pronađen.");
+      assertFieldInquiryPayloadInScope(scopedSnapshot, body);
+      const assignedPayload = Object.prototype.hasOwnProperty.call(body, "assignedUserIds")
+        ? resolveFieldInquiryAssignedUsersPayload(scopedSnapshot, body)
+        : {};
+      const updated = await domainRepository.updateFieldInquiry(inquiryId, {
+        ...body,
+        ...assignedPayload,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Terenski upit nije pronađen.");
+        return true;
+      }
+
+      if (normalizeRequestBoolean(body.syncWorkOrderExecutionDate, false)) {
+        await syncFieldInquiryWorkOrderExecutionDate(scopedSnapshot, updated, user);
+      }
+
+      if (mobileFieldInquiryMatch) {
+        invalidateSnapshotCaches();
+        sendJson(response, 200, { ok: true, item: buildMobileFieldInquiryRecord(updated) });
+      } else {
+        await writeSnapshot(response, user, request);
+      }
+      return true;
+    }
+
+    if ((fieldInquiryConvertMatch || mobileFieldInquiryConvertMatch) && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati terenskim upitima.");
+        return true;
+      }
+
+      const inquiryId = (fieldInquiryConvertMatch || mobileFieldInquiryConvertMatch)[1];
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const inquiry = assertInScope(scopedSnapshot.fieldInquiries ?? [], inquiryId, "Terenski upit nije pronađen.");
+      if (!inquiry.companyId) {
+        sendError(response, 400, "Za pretvaranje upita u RN treba odabrati tvrtku.");
+        return true;
+      }
+
+      const createdWorkOrder = await domainRepository.createWorkOrder({
+        companyId: inquiry.companyId,
+        locationId: inquiry.locationId,
+        status: body.status || "Otvoreni RN",
+        openedDate: new Date().toISOString().slice(0, 10),
+        dueDate: body.dueDate || "",
+        executionDate: inquiry.plannedDate || "",
+        priority: body.priority || "Normal",
+        serviceLine: inquiry.serviceLine || inquiry.title,
+        description: [inquiry.title, inquiry.note].filter(Boolean).join("\n\n"),
+        executors: inquiry.assignedUserLabels ?? [],
+        contactName: inquiry.contactName,
+        contactPhone: inquiry.contactPhone,
+        linkReference: `Terenski upit ${inquiry.id}`,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      const updatedInquiry = await domainRepository.updateFieldInquiry(inquiry.id, {
+        status: "converted",
+        workOrderId: createdWorkOrder.id,
+        convertedWorkOrderId: createdWorkOrder.id,
+      }, user);
+      queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
+
+      if (mobileFieldInquiryConvertMatch) {
+        invalidateSnapshotCaches();
+        sendJson(response, 201, {
+          ok: true,
+          item: buildMobileFieldInquiryRecord(updatedInquiry ?? inquiry),
+          workOrder: buildMobileWorkOrderItem(createdWorkOrder),
+        });
+      } else {
+        await writeSnapshot(response, user, request, 201);
+      }
+      return true;
+    }
+
     if (reminderMatch && request.method === "PATCH") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati reminderima.");
@@ -21209,6 +21421,31 @@ async function handleApiRequest(request, response, url) {
       }
 
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if ((fieldInquiryMatch || mobileFieldInquiryMatch) && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati terenske upite.");
+        return true;
+      }
+
+      const inquiryId = (fieldInquiryMatch || mobileFieldInquiryMatch)[1];
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.fieldInquiries ?? [], inquiryId, "Terenski upit nije pronađen.");
+      const deleted = await domainRepository.deleteFieldInquiry(inquiryId);
+
+      if (!deleted) {
+        sendError(response, 404, "Terenski upit nije pronađen.");
+        return true;
+      }
+
+      if (mobileFieldInquiryMatch) {
+        invalidateSnapshotCaches();
+        sendJson(response, 200, { ok: true });
+      } else {
+        await writeSnapshot(response, user, request);
+      }
       return true;
     }
 

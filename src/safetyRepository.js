@@ -20,6 +20,7 @@ import {
   createDrawingProject,
   createDashboardWidget,
   createDocumentTemplate,
+  createFieldInquiry,
   createJob,
   createLearningTest,
   createLegalFramework,
@@ -60,6 +61,7 @@ import {
   updateAbsenceBalanceEntry,
   updateAbsenceEntry,
   updateDocumentTemplate,
+  updateFieldInquiry,
   updateJob,
   updateLearningTest,
   updateLegalFramework,
@@ -3476,6 +3478,61 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [fieldInquiryRows] = await connection.query(`
+    SELECT id, organization_id, title, status, company_id, location_id, work_order_id,
+           planned_date, time_from, time_to, contact_name, contact_phone, service_line, note,
+           assigned_user_ids_json, assigned_user_labels_json, vehicle_id, vehicle_label,
+           created_by_user_id, created_by_label, converted_work_order_id, created_at, updated_at
+    FROM web_field_inquiries
+    ORDER BY
+      CASE status
+        WHEN 'inquiry' THEN 0
+        WHEN 'tentative' THEN 1
+        WHEN 'confirmed' THEN 2
+        WHEN 'converted' THEN 3
+        WHEN 'rejected' THEN 4
+        ELSE 9
+      END ASC,
+      planned_date ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const fieldInquiries = fieldInquiryRows.map((row) => {
+    const linkedWorkOrder = workOrdersById.get(String(row.work_order_id ?? ""));
+    const company = companiesById.get(String(linkedWorkOrder?.companyId ?? row.company_id ?? ""));
+    const location = locationsById.get(String(linkedWorkOrder?.locationId ?? row.location_id ?? ""));
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      title: row.title ?? "",
+      status: row.status ?? "inquiry",
+      plannedDate: normalizeDateOnly(row.planned_date),
+      timeFrom: row.time_from ?? "",
+      timeTo: row.time_to ?? "",
+      companyId: linkedWorkOrder?.companyId ?? dbString(row.company_id),
+      companyName: linkedWorkOrder?.companyName ?? company?.name ?? "",
+      locationId: linkedWorkOrder?.locationId ?? dbString(row.location_id),
+      locationName: linkedWorkOrder?.locationName ?? location?.name ?? "",
+      workOrderId: linkedWorkOrder?.id ?? dbString(row.work_order_id),
+      workOrderNumber: linkedWorkOrder?.workOrderNumber ?? "",
+      contactName: row.contact_name ?? "",
+      contactPhone: row.contact_phone ?? "",
+      serviceLine: row.service_line ?? "",
+      note: row.note ?? "",
+      assignedUserIds: parseJsonArray(row.assigned_user_ids_json).map((value) => dbString(value)).filter(Boolean),
+      assignedUserLabels: parseJsonArray(row.assigned_user_labels_json).map((value) => dbString(value)).filter(Boolean),
+      vehicleId: dbString(row.vehicle_id),
+      vehicleLabel: row.vehicle_label ?? "",
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      convertedWorkOrderId: dbString(row.converted_work_order_id),
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [offerRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
            offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note,
@@ -4605,6 +4662,7 @@ async function fetchSnapshotFromConnection(connection) {
     locations,
     locationObjects,
     workOrders,
+    fieldInquiries,
     reminders,
     todoTasks,
     offers,
@@ -4717,6 +4775,7 @@ export class InMemorySafetyRepository {
       locations: [],
       locationObjects: [],
       workOrders: [],
+      fieldInquiries: [],
       reminders: [],
       todoTasks: [],
       offers: [],
@@ -4850,6 +4909,11 @@ export class InMemorySafetyRepository {
       locations: [...this.snapshot.locations],
       locationObjects: [...this.snapshot.locationObjects],
       workOrders: [...this.snapshot.workOrders],
+      fieldInquiries: (this.snapshot.fieldInquiries ?? []).map((item) => ({
+        ...item,
+        assignedUserIds: [...(item.assignedUserIds ?? [])],
+        assignedUserLabels: [...(item.assignedUserLabels ?? [])],
+      })),
       reminders: [...this.snapshot.reminders],
       todoTasks: this.snapshot.todoTasks.map((item) => ({
         ...item,
@@ -5106,6 +5170,7 @@ export class InMemorySafetyRepository {
 
     const hasLocations = this.snapshot.locations.some((item) => item.companyId === id);
     const hasWorkOrders = this.snapshot.workOrders.some((item) => item.companyId === id);
+    const hasFieldInquiries = (this.snapshot.fieldInquiries ?? []).some((item) => item.companyId === id);
     const hasReminders = this.snapshot.reminders.some((item) => item.companyId === id);
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.companyId === id);
     const hasOffers = this.snapshot.offers.some((item) => item.companyId === id);
@@ -5114,7 +5179,7 @@ export class InMemorySafetyRepository {
     const hasContracts = this.snapshot.contracts.some((item) => item.companyId === id);
     const hasDrawings = this.snapshot.drawings.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPublicProcurements || hasPurchaseOrders || hasContracts || hasDrawings) {
+    if (hasLocations || hasWorkOrders || hasFieldInquiries || hasReminders || hasTodoTasks || hasOffers || hasPublicProcurements || hasPurchaseOrders || hasContracts || hasDrawings) {
       throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, javnom nabavom, narudzbenicama, ugovorima, crtezima ili radnim nalozima.");
     }
 
@@ -5154,13 +5219,14 @@ export class InMemorySafetyRepository {
     }
 
     const hasWorkOrders = this.snapshot.workOrders.some((item) => item.locationId === id);
+    const hasFieldInquiries = (this.snapshot.fieldInquiries ?? []).some((item) => item.locationId === id);
     const hasReminders = this.snapshot.reminders.some((item) => item.locationId === id);
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.locationId === id);
     const hasOffers = this.snapshot.offers.some((item) => item.locationId === id);
     const hasPurchaseOrders = this.snapshot.purchaseOrders.some((item) => item.locationId === id);
     const hasDrawings = this.snapshot.drawings.some((item) => item.locationId === id);
 
-    if (hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders || hasDrawings) {
+    if (hasWorkOrders || hasFieldInquiries || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders || hasDrawings) {
       throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama, crtezima ili radnim nalozima.");
     }
 
@@ -5219,6 +5285,36 @@ export class InMemorySafetyRepository {
     }));
     this.workOrderActivity.set(String(id), [...nextEntries, ...existingEntries]);
     return next;
+  }
+
+  async createFieldInquiry(input, actor = null) {
+    const item = createFieldInquiry({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.fieldInquiries = [item, ...(this.snapshot.fieldInquiries ?? [])];
+    return item;
+  }
+
+  async updateFieldInquiry(id, patch, actor = null) {
+    const current = (this.snapshot.fieldInquiries ?? []).find((item) => String(item.id) === String(id));
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateFieldInquiry(current, patch, this.snapshot, () => new Date().toISOString());
+    this.snapshot.fieldInquiries = (this.snapshot.fieldInquiries ?? []).map((item) => (
+      String(item.id) === String(id) ? next : item
+    ));
+    return next;
+  }
+
+  async deleteFieldInquiry(id) {
+    const before = (this.snapshot.fieldInquiries ?? []).length;
+    this.snapshot.fieldInquiries = (this.snapshot.fieldInquiries ?? []).filter((item) => String(item.id) !== String(id));
+    return this.snapshot.fieldInquiries.length !== before;
   }
 
   async getWorkOrderActivity(id) {
@@ -7381,6 +7477,38 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_field_inquiries (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(220) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'inquiry',
+        company_id INT NULL,
+        location_id INT NULL,
+        work_order_id INT NULL,
+        planned_date DATE NULL,
+        time_from VARCHAR(16) NOT NULL DEFAULT '',
+        time_to VARCHAR(16) NOT NULL DEFAULT '',
+        contact_name VARCHAR(160) NOT NULL DEFAULT '',
+        contact_phone VARCHAR(80) NOT NULL DEFAULT '',
+        service_line VARCHAR(500) NOT NULL DEFAULT '',
+        note TEXT NULL,
+        assigned_user_ids_json LONGTEXT NULL,
+        assigned_user_labels_json LONGTEXT NULL,
+        vehicle_id INT NULL,
+        vehicle_label VARCHAR(180) NOT NULL DEFAULT '',
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        converted_work_order_id INT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_field_inquiries_org_date (organization_id, planned_date),
+        INDEX idx_web_field_inquiries_status (organization_id, status),
+        INDEX idx_web_field_inquiries_company (company_id),
+        INDEX idx_web_field_inquiries_location (location_id),
+        INDEX idx_web_field_inquiries_work_order (work_order_id)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_offers (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -8837,6 +8965,10 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM radni_nalozi WHERE oib = ?",
         [current.oib],
       );
+      const [[fieldInquiryCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_field_inquiries WHERE company_id = ?",
+        [Number(id)],
+      );
       const [[reminderCount]] = await connection.query(
         "SELECT COUNT(*) AS total FROM web_reminders WHERE company_id = ?",
         [Number(id)],
@@ -8870,7 +9002,7 @@ export class MySqlSafetyRepository {
         [Number(id)],
       );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || publicProcurementCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
+      if (locationCount.total > 0 || workOrderCount.total > 0 || fieldInquiryCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || publicProcurementCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
         throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, javnom nabavom, narudzbenicama, ugovorima, crtezima, procjenama rizika ili radnim nalozima.");
       }
 
@@ -9082,6 +9214,10 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM radni_nalozi WHERE oib = ? AND lokacija = ?",
         [current.companyOib, current.name],
       );
+      const [[fieldInquiryCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_field_inquiries WHERE location_id = ?",
+        [Number(id)],
+      );
       const [[reminderCount]] = await connection.query(
         "SELECT COUNT(*) AS total FROM web_reminders WHERE location_id = ?",
         [Number(id)],
@@ -9107,7 +9243,7 @@ export class MySqlSafetyRepository {
         [Number(id)],
       );
 
-      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
+      if (workOrderCount.total > 0 || fieldInquiryCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
         await connection.rollback();
         throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama, crtezima, procjenama rizika ili radnim nalozima.");
       }
@@ -9286,6 +9422,132 @@ export class MySqlSafetyRepository {
     } catch (error) {
       await connection.rollback();
       throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createFieldInquiry(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createFieldInquiry({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_field_inquiries
+            (organization_id, title, status, company_id, location_id, work_order_id,
+             planned_date, time_from, time_to, contact_name, contact_phone, service_line, note,
+             assigned_user_ids_json, assigned_user_labels_json, vehicle_id, vehicle_label,
+             created_by_user_id, created_by_label, converted_work_order_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.status,
+          parseNullableInteger(draft.companyId),
+          parseNullableInteger(draft.locationId),
+          parseNullableInteger(draft.workOrderId),
+          draft.plannedDate,
+          draft.timeFrom,
+          draft.timeTo,
+          draft.contactName,
+          draft.contactPhone,
+          draft.serviceLine,
+          draft.note,
+          JSON.stringify(draft.assignedUserIds ?? []),
+          JSON.stringify(draft.assignedUserLabels ?? []),
+          parseNullableInteger(draft.vehicleId),
+          draft.vehicleLabel,
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+          parseNullableInteger(draft.convertedWorkOrderId),
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateFieldInquiry(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = (snapshot.fieldInquiries ?? []).find((item) => String(item.id) === String(id));
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateFieldInquiry(current, patch, snapshot, () => new Date().toISOString());
+      await connection.query(
+        `
+          UPDATE web_field_inquiries
+          SET title = ?, status = ?, company_id = ?, location_id = ?, work_order_id = ?,
+              planned_date = ?, time_from = ?, time_to = ?, contact_name = ?, contact_phone = ?,
+              service_line = ?, note = ?, assigned_user_ids_json = ?, assigned_user_labels_json = ?,
+              vehicle_id = ?, vehicle_label = ?, converted_work_order_id = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.status,
+          parseNullableInteger(next.companyId),
+          parseNullableInteger(next.locationId),
+          parseNullableInteger(next.workOrderId),
+          next.plannedDate,
+          next.timeFrom,
+          next.timeTo,
+          next.contactName,
+          next.contactPhone,
+          next.serviceLine,
+          next.note,
+          JSON.stringify(next.assignedUserIds ?? []),
+          JSON.stringify(next.assignedUserLabels ?? []),
+          parseNullableInteger(next.vehicleId),
+          next.vehicleLabel,
+          parseNullableInteger(next.convertedWorkOrderId),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteFieldInquiry(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_field_inquiries WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
     } finally {
       connection.release();
     }

@@ -14,6 +14,7 @@
   DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS,
   DOCUMENT_TEMPLATE_STATUS_OPTIONS,
   DOCUMENT_TEMPLATE_TYPE_OPTIONS,
+  FIELD_INQUIRY_STATUS_OPTIONS,
   CONTRACT_STATUS_OPTIONS,
   CONTRACT_TEMPLATE_STATUS_OPTIONS,
   CLIENT_PORTAL_RECORD_STATUS_OPTIONS,
@@ -1500,6 +1501,7 @@ const WORK_ORDER_VIEW_MODES = [
   { value: "list", label: "List" },
   { value: "calendar", label: "Calendar" },
   { value: "maps", label: "Maps" },
+  { value: "field-inquiries", label: "Upiti" },
 ];
 const WORK_ORDER_FILTER_FIELD_DEFINITIONS = [
   { value: "status", label: "Status", type: "options", operators: ["is", "is_not", "is_empty", "is_not_empty"] },
@@ -1967,6 +1969,7 @@ const state = {
   loginContentItems: [],
   loginContent: null,
   workOrders: [],
+  fieldInquiries: [],
   reminders: [],
   todoTasks: [],
   offers: [],
@@ -2086,6 +2089,7 @@ const state = {
     modelTiers: [],
   },
   activeTodoTaskId: "",
+  activeFieldInquiryId: "",
   todoExpandedTaskIds: new Set(),
   activeDashboardWidgetId: "",
   activeVehicleId: "",
@@ -5620,6 +5624,31 @@ const workOrderMapSummary = document.querySelector("#work-order-map-summary");
 const workOrderMapSelectionTitle = document.querySelector("#work-order-map-selection-title");
 const workOrderMapSelection = document.querySelector("#work-order-map-selection");
 const workOrderMapList = document.querySelector("#work-order-map-list");
+const fieldInquiriesView = document.querySelector("#field-inquiries-view");
+const fieldInquiryForm = document.querySelector("#field-inquiry-form");
+const fieldInquiryFormTitle = document.querySelector("#field-inquiry-form-title");
+const fieldInquiryIdInput = document.querySelector("#field-inquiry-id");
+const fieldInquiryTitleInput = document.querySelector("#field-inquiry-title");
+const fieldInquiryStatusInput = document.querySelector("#field-inquiry-status");
+const fieldInquiryPlannedDateInput = document.querySelector("#field-inquiry-planned-date");
+const fieldInquiryTimeFromInput = document.querySelector("#field-inquiry-time-from");
+const fieldInquiryTimeToInput = document.querySelector("#field-inquiry-time-to");
+const fieldInquiryCompanyInput = document.querySelector("#field-inquiry-company");
+const fieldInquiryLocationInput = document.querySelector("#field-inquiry-location");
+const fieldInquiryWorkOrderInput = document.querySelector("#field-inquiry-work-order");
+const fieldInquiryVehicleInput = document.querySelector("#field-inquiry-vehicle");
+const fieldInquiryAssigneesInput = document.querySelector("#field-inquiry-assignees");
+const fieldInquiryContactNameInput = document.querySelector("#field-inquiry-contact-name");
+const fieldInquiryContactPhoneInput = document.querySelector("#field-inquiry-contact-phone");
+const fieldInquiryServiceLineInput = document.querySelector("#field-inquiry-service-line");
+const fieldInquiryNoteInput = document.querySelector("#field-inquiry-note");
+const fieldInquirySyncWorkOrderDateInput = document.querySelector("#field-inquiry-sync-rn-date");
+const fieldInquiryResetButton = document.querySelector("#field-inquiry-reset");
+const fieldInquiryConvertButton = document.querySelector("#field-inquiry-convert");
+const fieldInquiryFeedback = document.querySelector("#field-inquiry-feedback");
+const fieldInquiryCount = document.querySelector("#field-inquiry-count");
+const fieldInquiryList = document.querySelector("#field-inquiry-list");
+const fieldInquiryEmpty = document.querySelector("#field-inquiry-empty");
 
 const companyForm = document.querySelector("#company-form");
 const companyError = document.querySelector("#company-error");
@@ -9617,6 +9646,7 @@ function applySnapshot(payload, options = {}) {
   state.signupRequests = payload.signupRequests ?? [];
   state.loginContentItems = payload.loginContentItems ?? [];
   state.workOrders = payload.workOrders ?? [];
+  state.fieldInquiries = payload.fieldInquiries ?? [];
   state.reminders = payload.reminders ?? [];
   state.todoTasks = payload.todoTasks ?? [];
   state.offers = payload.offers ?? [];
@@ -9693,6 +9723,9 @@ function applySnapshot(payload, options = {}) {
   }
   if (state.workOrderDocuments.workOrderId && !state.workOrders.some((item) => String(item.id) === String(state.workOrderDocuments.workOrderId))) {
     resetWorkOrderDocumentsState();
+  }
+  if (state.activeFieldInquiryId && !state.fieldInquiries.some((item) => String(item.id) === String(state.activeFieldInquiryId))) {
+    state.activeFieldInquiryId = "";
   }
   if (!state.todoTasks.some((item) => String(item.id) === String(state.activeTodoTaskId))) {
     state.activeTodoTaskId = state.todoTasks[0]?.id ?? "";
@@ -103382,6 +103415,13 @@ function renderSharedOptions() {
   rebuildTodoDetailAssigneeOptions(todoDetailAssignee?.value || "");
   rebuildTodoDetailInvitedUserOptions(getSelectedMultiSelectValues(todoDetailInvitedUsersInput));
   rebuildTodoWorkOrderOptions(todoWorkOrderIdInput?.value || "");
+  rebuildFieldInquiryOptions({
+    selectedCompanyId: fieldInquiryCompanyInput?.value || "",
+    selectedLocationId: fieldInquiryLocationInput?.value || "",
+    selectedWorkOrderId: fieldInquiryWorkOrderInput?.value || "",
+    selectedVehicleId: fieldInquiryVehicleInput?.value || "",
+    selectedAssigneeIds: getSelectedMultiSelectValues(fieldInquiryAssigneesInput),
+  });
   rebuildVehicleReservationUserOptions(getVehicleReservationSelectedUserIds());
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
   rebuildOfferCompanyOptions(offerCompanyIdInput?.value || "");
@@ -107327,6 +107367,480 @@ function renderWorkOrderPremiumSummary(items = state.workOrders ?? []) {
   }));
 }
 
+function getFieldInquiryStatusOption(status = "") {
+  const normalizedStatus = String(status || "").trim() || "inquiry";
+  return FIELD_INQUIRY_STATUS_OPTIONS.find((option) => option.value === normalizedStatus)
+    || FIELD_INQUIRY_STATUS_OPTIONS[0]
+    || { value: "inquiry", label: "Upit" };
+}
+
+function getFieldInquiryStatusLabel(status = "") {
+  return getFieldInquiryStatusOption(status).label;
+}
+
+function getFieldInquiryById(id = "") {
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+  return (state.fieldInquiries ?? []).find((item) => String(item.id) === normalizedId) ?? null;
+}
+
+function getFieldInquiryCompany(item = {}) {
+  return (state.companies ?? []).find((company) => String(company.id) === String(item.companyId || "")) ?? null;
+}
+
+function getFieldInquiryLocation(item = {}) {
+  return (state.locations ?? []).find((location) => String(location.id) === String(item.locationId || "")) ?? null;
+}
+
+function getFieldInquiryWorkOrder(item = {}) {
+  return (state.workOrders ?? []).find((workOrder) => String(workOrder.id) === String(item.workOrderId || "")) ?? null;
+}
+
+function getFieldInquiryVehicle(item = {}) {
+  return (state.vehicles ?? []).find((vehicle) => String(vehicle.id) === String(item.vehicleId || "")) ?? null;
+}
+
+function getFieldInquiryCompanyLabel(item = {}) {
+  return item.companyName || getFieldInquiryCompany(item)?.name || "";
+}
+
+function getFieldInquiryLocationLabel(item = {}) {
+  return item.locationName || getFieldInquiryLocation(item)?.name || "";
+}
+
+function getFieldInquiryWorkOrderLabel(item = {}) {
+  return item.workOrderNumber || getFieldInquiryWorkOrder(item)?.workOrderNumber || "";
+}
+
+function getFieldInquiryVehicleLabel(item = {}) {
+  const vehicle = getFieldInquiryVehicle(item);
+  return item.vehicleLabel || vehicle?.registration || vehicle?.name || "";
+}
+
+function getFieldInquiryAssigneeLabels(item = {}) {
+  const explicitLabels = Array.isArray(item.assignedUserLabels)
+    ? item.assignedUserLabels.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  if (explicitLabels.length > 0) {
+    return explicitLabels;
+  }
+  const selectedIds = new Set(
+    (Array.isArray(item.assignedUserIds) ? item.assignedUserIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+  if (selectedIds.size === 0) {
+    return [];
+  }
+  return (state.users ?? [])
+    .filter((user) => selectedIds.has(String(user.id)))
+    .map((user) => user.fullName || user.username || user.email || "")
+    .filter(Boolean);
+}
+
+function compareFieldInquiries(left = {}, right = {}) {
+  const leftDate = normalizeDateInputValue(left.plannedDate || "") || "9999-12-31";
+  const rightDate = normalizeDateInputValue(right.plannedDate || "") || "9999-12-31";
+  if (leftDate !== rightDate) {
+    return leftDate.localeCompare(rightDate);
+  }
+  const leftTime = String(left.timeFrom || "").padEnd(5, "9") || "99:99";
+  const rightTime = String(right.timeFrom || "").padEnd(5, "9") || "99:99";
+  if (leftTime !== rightTime) {
+    return leftTime.localeCompare(rightTime);
+  }
+  return String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""));
+}
+
+function getSortedFieldInquiries() {
+  return [...(state.fieldInquiries ?? [])].sort(compareFieldInquiries);
+}
+
+function rebuildFieldInquiryOptions({
+  selectedCompanyId = fieldInquiryCompanyInput?.value || "",
+  selectedLocationId = fieldInquiryLocationInput?.value || "",
+  selectedWorkOrderId = fieldInquiryWorkOrderInput?.value || "",
+  selectedVehicleId = fieldInquiryVehicleInput?.value || "",
+  selectedAssigneeIds = getSelectedMultiSelectValues(fieldInquiryAssigneesInput),
+} = {}) {
+  if (fieldInquiryStatusInput) {
+    replaceSelectOptions(fieldInquiryStatusInput, FIELD_INQUIRY_STATUS_OPTIONS, fieldInquiryStatusInput.value || "inquiry");
+  }
+
+  if (fieldInquiryCompanyInput) {
+    const companyOptions = [
+      { value: "", label: "Bez tvrtke" },
+      ...(state.companies ?? [])
+        .slice()
+        .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
+        .map((company) => ({ value: company.id, label: company.name || "Tvrtka" })),
+    ];
+    replaceSelectOptions(fieldInquiryCompanyInput, companyOptions, selectedCompanyId);
+  }
+
+  if (fieldInquiryLocationInput) {
+    const locationOptions = (state.locations ?? [])
+      .filter((location) => !selectedCompanyId || String(location.companyId || "") === String(selectedCompanyId))
+      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
+      .map((location) => ({
+        value: location.id,
+        label: [location.name, location.companyName].filter(Boolean).join(" · ") || "Lokacija",
+      }));
+    replaceSelectOptions(fieldInquiryLocationInput, [
+      { value: "", label: selectedCompanyId ? "Bez lokacije" : "Bez lokacije / slobodni upit" },
+      ...locationOptions,
+    ], selectedLocationId);
+  }
+
+  if (fieldInquiryWorkOrderInput) {
+    const workOrderOptions = sortWorkOrders(state.workOrders ?? [])
+      .filter((workOrder) => !selectedCompanyId || String(workOrder.companyId || "") === String(selectedCompanyId))
+      .slice(0, 500)
+      .map((workOrder) => ({
+        value: workOrder.id,
+        label: [
+          workOrder.workOrderNumber || "RN",
+          workOrder.companyName || "",
+          workOrder.locationName || "",
+        ].filter(Boolean).join(" · "),
+      }));
+    replaceSelectOptions(fieldInquiryWorkOrderInput, [
+      { value: "", label: "Bez RN-a" },
+      ...workOrderOptions,
+    ], selectedWorkOrderId);
+  }
+
+  if (fieldInquiryVehicleInput) {
+    const vehicleOptions = (state.vehicles ?? [])
+      .slice()
+      .sort((left, right) => String(left.registration || left.name || "").localeCompare(String(right.registration || right.name || ""), "hr"))
+      .map((vehicle) => ({
+        value: vehicle.id,
+        label: [vehicle.registration || vehicle.name || "Vozilo", vehicle.model || vehicle.name || ""].filter(Boolean).join(" · "),
+      }));
+    replaceSelectOptions(fieldInquiryVehicleInput, [
+      { value: "", label: "Bez vozila" },
+      ...vehicleOptions,
+    ], selectedVehicleId);
+  }
+
+  if (fieldInquiryAssigneesInput) {
+    const userOptions = (state.users ?? [])
+      .slice()
+      .sort((left, right) => String(left.fullName || left.username || left.email || "").localeCompare(String(right.fullName || right.username || right.email || ""), "hr"))
+      .map((user) => ({
+        value: user.id,
+        label: user.fullName || user.username || user.email || "Korisnik",
+      }));
+    replaceSelectOptions(fieldInquiryAssigneesInput, userOptions, "");
+    setMultiSelectSelectedValues(fieldInquiryAssigneesInput, selectedAssigneeIds);
+  }
+}
+
+function resetFieldInquiryForm() {
+  state.activeFieldInquiryId = "";
+  if (fieldInquiryFormTitle) {
+    fieldInquiryFormTitle.textContent = "Novi upit za teren";
+  }
+  if (fieldInquiryIdInput) fieldInquiryIdInput.value = "";
+  if (fieldInquiryTitleInput) fieldInquiryTitleInput.value = "";
+  if (fieldInquiryStatusInput) fieldInquiryStatusInput.value = "inquiry";
+  if (fieldInquiryPlannedDateInput) fieldInquiryPlannedDateInput.value = formatDateInputDisplayValue(getTodayDateKey());
+  if (fieldInquiryTimeFromInput) fieldInquiryTimeFromInput.value = "";
+  if (fieldInquiryTimeToInput) fieldInquiryTimeToInput.value = "";
+  if (fieldInquiryContactNameInput) fieldInquiryContactNameInput.value = "";
+  if (fieldInquiryContactPhoneInput) fieldInquiryContactPhoneInput.value = "";
+  if (fieldInquiryServiceLineInput) fieldInquiryServiceLineInput.value = "";
+  if (fieldInquiryNoteInput) fieldInquiryNoteInput.value = "";
+  if (fieldInquirySyncWorkOrderDateInput) fieldInquirySyncWorkOrderDateInput.checked = true;
+  const currentUserId = state.user?.id ? [String(state.user.id)] : [];
+  rebuildFieldInquiryOptions({
+    selectedCompanyId: "",
+    selectedLocationId: "",
+    selectedWorkOrderId: "",
+    selectedVehicleId: "",
+    selectedAssigneeIds: currentUserId,
+  });
+  if (fieldInquiryConvertButton) {
+    fieldInquiryConvertButton.hidden = true;
+  }
+  setInlineMessage(fieldInquiryFeedback, "");
+}
+
+function hydrateFieldInquiryForm(item = {}) {
+  state.activeFieldInquiryId = String(item.id || "");
+  if (fieldInquiryFormTitle) {
+    fieldInquiryFormTitle.textContent = item.title ? "Uredi terenski upit" : "Terenski upit";
+  }
+  if (fieldInquiryIdInput) fieldInquiryIdInput.value = String(item.id || "");
+  if (fieldInquiryTitleInput) fieldInquiryTitleInput.value = item.title || "";
+  if (fieldInquiryStatusInput) fieldInquiryStatusInput.value = getFieldInquiryStatusOption(item.status).value;
+  if (fieldInquiryPlannedDateInput) fieldInquiryPlannedDateInput.value = item.plannedDate ? formatDateInputDisplayValue(item.plannedDate) : "";
+  if (fieldInquiryTimeFromInput) fieldInquiryTimeFromInput.value = item.timeFrom || "";
+  if (fieldInquiryTimeToInput) fieldInquiryTimeToInput.value = item.timeTo || "";
+  if (fieldInquiryContactNameInput) fieldInquiryContactNameInput.value = item.contactName || "";
+  if (fieldInquiryContactPhoneInput) fieldInquiryContactPhoneInput.value = item.contactPhone || "";
+  if (fieldInquiryServiceLineInput) fieldInquiryServiceLineInput.value = item.serviceLine || "";
+  if (fieldInquiryNoteInput) fieldInquiryNoteInput.value = item.note || "";
+  if (fieldInquirySyncWorkOrderDateInput) fieldInquirySyncWorkOrderDateInput.checked = true;
+  rebuildFieldInquiryOptions({
+    selectedCompanyId: item.companyId || "",
+    selectedLocationId: item.locationId || "",
+    selectedWorkOrderId: item.workOrderId || "",
+    selectedVehicleId: item.vehicleId || "",
+    selectedAssigneeIds: Array.isArray(item.assignedUserIds) ? item.assignedUserIds.map(String) : [],
+  });
+  if (fieldInquiryConvertButton) {
+    fieldInquiryConvertButton.hidden = !item.id || String(item.status || "") === "converted";
+    fieldInquiryConvertButton.disabled = !item.companyId;
+    fieldInquiryConvertButton.title = item.companyId ? "" : "Za pretvaranje u RN prvo odaberi tvrtku.";
+  }
+  setInlineMessage(fieldInquiryFeedback, "");
+  fieldInquiryTitleInput?.focus({ preventScroll: true });
+}
+
+function syncFieldInquiryContextFromWorkOrder() {
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === String(fieldInquiryWorkOrderInput?.value || "")) ?? null;
+  if (!workOrder) {
+    return;
+  }
+  const companyId = workOrder.companyId || "";
+  const locationId = workOrder.locationId || "";
+  rebuildFieldInquiryOptions({
+    selectedCompanyId: companyId,
+    selectedLocationId: locationId,
+    selectedWorkOrderId: workOrder.id,
+    selectedVehicleId: fieldInquiryVehicleInput?.value || "",
+    selectedAssigneeIds: getSelectedMultiSelectValues(fieldInquiryAssigneesInput),
+  });
+  if (fieldInquiryServiceLineInput && !fieldInquiryServiceLineInput.value) {
+    fieldInquiryServiceLineInput.value = getWorkOrderServiceSummary(workOrder) || workOrder.serviceLine || "";
+  }
+  if (fieldInquiryTitleInput && !fieldInquiryTitleInput.value) {
+    fieldInquiryTitleInput.value = [
+      workOrder.workOrderNumber || "",
+      workOrder.companyName || "",
+      workOrder.locationName || "",
+    ].filter(Boolean).join(" · ");
+  }
+  if (fieldInquiryContactNameInput && !fieldInquiryContactNameInput.value) {
+    fieldInquiryContactNameInput.value = workOrder.contactName || "";
+  }
+  if (fieldInquiryContactPhoneInput && !fieldInquiryContactPhoneInput.value) {
+    fieldInquiryContactPhoneInput.value = workOrder.contactPhone || "";
+  }
+}
+
+function normalizeFieldInquiryDateInput() {
+  if (!fieldInquiryPlannedDateInput) {
+    return "";
+  }
+  const normalizedValue = normalizeDateInputValue(fieldInquiryPlannedDateInput.value);
+  const isValid = !normalizedValue || /^\d{4}-\d{2}-\d{2}$/.test(normalizedValue);
+  fieldInquiryPlannedDateInput.value = isValid ? formatDateInputDisplayValue(normalizedValue) : fieldInquiryPlannedDateInput.value.trim();
+  return isValid ? normalizedValue : "";
+}
+
+function buildFieldInquiryPayload() {
+  const normalizedDate = normalizeFieldInquiryDateInput();
+  const rawDate = String(fieldInquiryPlannedDateInput?.value || "").trim();
+  if (rawDate && !normalizedDate) {
+    throw new Error("Datum upita mora biti u formatu dd.mm.yyyy.");
+  }
+
+  const title = String(fieldInquiryTitleInput?.value || "").trim();
+  if (!title) {
+    throw new Error("Upiši naziv ili kratki opis upita.");
+  }
+
+  const selectedAssigneeIds = getSelectedMultiSelectValues(fieldInquiryAssigneesInput);
+  const selectedAssigneeLabels = Array.from(fieldInquiryAssigneesInput?.selectedOptions ?? [])
+    .map((option) => String(option.textContent || "").trim())
+    .filter(Boolean);
+
+  return {
+    title,
+    status: fieldInquiryStatusInput?.value || "inquiry",
+    plannedDate: normalizedDate,
+    timeFrom: fieldInquiryTimeFromInput?.value || "",
+    timeTo: fieldInquiryTimeToInput?.value || "",
+    companyId: fieldInquiryCompanyInput?.value || "",
+    locationId: fieldInquiryLocationInput?.value || "",
+    workOrderId: fieldInquiryWorkOrderInput?.value || "",
+    vehicleId: fieldInquiryVehicleInput?.value || "",
+    contactName: fieldInquiryContactNameInput?.value || "",
+    contactPhone: fieldInquiryContactPhoneInput?.value || "",
+    serviceLine: fieldInquiryServiceLineInput?.value || "",
+    note: fieldInquiryNoteInput?.value || "",
+    assignedUserIds: selectedAssigneeIds,
+    assignedUserLabels: selectedAssigneeLabels,
+    syncWorkOrderExecutionDate: Boolean(fieldInquirySyncWorkOrderDateInput?.checked),
+  };
+}
+
+function renderFieldInquiryCard(item = {}) {
+  const card = document.createElement("article");
+  card.className = "field-inquiry-card";
+  card.classList.add(`is-${getFieldInquiryStatusOption(item.status).value}`);
+  card.classList.toggle("is-active", String(item.id) === String(state.activeFieldInquiryId));
+
+  const head = document.createElement("div");
+  head.className = "field-inquiry-card-head";
+  const copy = document.createElement("div");
+  copy.className = "field-inquiry-card-copy";
+  const title = document.createElement("strong");
+  title.textContent = item.title || "Terenski upit";
+  const meta = document.createElement("span");
+  meta.textContent = [
+    item.plannedDate ? formatCompactDate(item.plannedDate) : "Bez datuma",
+    [item.timeFrom, item.timeTo].filter(Boolean).join("-"),
+    getFieldInquiryCompanyLabel(item) || "Bez tvrtke",
+  ].filter(Boolean).join(" · ");
+  copy.append(title, meta);
+  const status = document.createElement("span");
+  status.className = "field-inquiry-status-pill";
+  status.textContent = getFieldInquiryStatusLabel(item.status);
+  head.append(copy, status);
+
+  const details = document.createElement("div");
+  details.className = "field-inquiry-card-details";
+  [
+    ["Lokacija", getFieldInquiryLocationLabel(item)],
+    ["RN", getFieldInquiryWorkOrderLabel(item)],
+    ["Ekipa", getFieldInquiryAssigneeLabels(item).join(", ")],
+    ["Vozilo", getFieldInquiryVehicleLabel(item)],
+    ["Kontakt", joinParts([item.contactName, item.contactPhone])],
+    ["Usluga", item.serviceLine || ""],
+  ].filter(([, value]) => String(value || "").trim()).forEach(([label, value]) => {
+    const row = document.createElement("span");
+    row.innerHTML = `<small>${escapeHtml(label)}</small>${escapeHtml(value)}`;
+    details.append(row);
+  });
+
+  if (item.note) {
+    const note = document.createElement("p");
+    note.className = "field-inquiry-card-note";
+    note.textContent = item.note;
+    details.append(note);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "field-inquiry-card-actions";
+  actions.append(createActionButton("Uredi", "ghost-button", () => hydrateFieldInquiryForm(item)));
+  const convertButton = createActionButton("Napravi RN", "ghost-button", () => {
+    void convertFieldInquiryToWorkOrder(item.id);
+  });
+  convertButton.disabled = !item.companyId || String(item.status || "") === "converted";
+  convertButton.hidden = String(item.status || "") === "converted";
+  convertButton.title = item.companyId ? "" : "Za RN treba odabrati tvrtku.";
+  actions.append(convertButton);
+  const deleteButton = createActionButton("Obriši", "ghost-button card-danger", () => {
+    if (!window.confirm("Obrisati ovaj terenski upit?")) {
+      return;
+    }
+    void deleteFieldInquiry(item.id);
+  });
+  actions.append(deleteButton);
+
+  card.append(head, details, actions);
+  card.addEventListener("click", (event) => {
+    if (isInteractiveWorkOrderTarget(event.target)) {
+      return;
+    }
+    hydrateFieldInquiryForm(item);
+  });
+  return card;
+}
+
+function renderFieldInquiriesView() {
+  if (!fieldInquiriesView) {
+    return;
+  }
+
+  rebuildFieldInquiryOptions({
+    selectedCompanyId: fieldInquiryCompanyInput?.value || "",
+    selectedLocationId: fieldInquiryLocationInput?.value || "",
+    selectedWorkOrderId: fieldInquiryWorkOrderInput?.value || "",
+    selectedVehicleId: fieldInquiryVehicleInput?.value || "",
+    selectedAssigneeIds: getSelectedMultiSelectValues(fieldInquiryAssigneesInput),
+  });
+
+  if (!fieldInquiryIdInput?.value && !state.activeFieldInquiryId && fieldInquiryPlannedDateInput && !fieldInquiryPlannedDateInput.value) {
+    fieldInquiryPlannedDateInput.value = formatDateInputDisplayValue(getTodayDateKey());
+  }
+
+  const items = getSortedFieldInquiries();
+  if (fieldInquiryCount) {
+    const nextSeven = shiftDateKey(getTodayDateKey(), 7);
+    const weekCount = items.filter((item) => {
+      const dateKey = normalizeDateInputValue(item.plannedDate || "");
+      return dateKey && dateKey >= getTodayDateKey() && dateKey <= nextSeven;
+    }).length;
+    fieldInquiryCount.textContent = `${items.length} ukupno · ${weekCount} u idućih 7 dana`;
+  }
+  if (fieldInquiryList) {
+    fieldInquiryList.replaceChildren(...items.map(renderFieldInquiryCard));
+  }
+  if (fieldInquiryEmpty) {
+    fieldInquiryEmpty.hidden = items.length > 0;
+  }
+}
+
+async function saveFieldInquiry() {
+  let payload;
+  try {
+    payload = buildFieldInquiryPayload();
+  } catch (error) {
+    setInlineMessage(fieldInquiryFeedback, error.message || "Upit nije ispravno popunjen.");
+    return;
+  }
+  const inquiryId = String(fieldInquiryIdInput?.value || "").trim();
+  const success = await runMutation(() => apiRequest(inquiryId
+    ? `/field-inquiries/${encodeURIComponent(inquiryId)}`
+    : "/field-inquiries", {
+      method: inquiryId ? "PATCH" : "POST",
+      body: payload,
+    }), fieldInquiryFeedback);
+  if (success) {
+    resetFieldInquiryForm();
+    renderWorkOrderWorkspace();
+  }
+}
+
+async function convertFieldInquiryToWorkOrder(id = fieldInquiryIdInput?.value || "") {
+  const inquiry = getFieldInquiryById(id);
+  if (!inquiry) {
+    setInlineMessage(fieldInquiryFeedback, "Odaberi upit koji želiš pretvoriti u RN.");
+    return;
+  }
+  const success = await runMutation(() => apiRequest(`/field-inquiries/${encodeURIComponent(String(inquiry.id))}/convert-to-work-order`, {
+    method: "POST",
+    body: {
+      syncWorkOrderExecutionDate: true,
+    },
+  }), fieldInquiryFeedback);
+  if (success) {
+    resetFieldInquiryForm();
+    renderWorkOrderWorkspace();
+  }
+}
+
+async function deleteFieldInquiry(id = "") {
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+  const success = await runMutation(() => apiRequest(`/field-inquiries/${encodeURIComponent(normalizedId)}`, {
+    method: "DELETE",
+  }), fieldInquiryFeedback);
+  if (success) {
+    resetFieldInquiryForm();
+    renderWorkOrderWorkspace();
+  }
+}
+
 function renderWorkOrderWorkspace() {
   ensureWorkOrderColumnPanelSettingsLoaded();
   updateWorkOrderModeButtons();
@@ -107343,6 +107857,7 @@ function renderWorkOrderWorkspace() {
     list: "Nema radnih naloga za trenutni filter.",
     calendar: "Nema radnih naloga za prikaz u kalendaru.",
     maps: "Nema radnih naloga za prikaz na karti.",
+    "field-inquiries": "Nema terenskih upita za prikaz.",
   };
 
   if (workOrderListView) {
@@ -107357,8 +107872,14 @@ function renderWorkOrderWorkspace() {
     workOrderMapView.hidden = state.activeWorkOrderViewMode !== "maps";
   }
 
+  if (fieldInquiriesView) {
+    fieldInquiriesView.hidden = state.activeWorkOrderViewMode !== "field-inquiries";
+  }
+
   if (workOrdersEmpty) {
-    const shouldShowEmpty = filtered.length === 0 && state.activeWorkOrderViewMode !== "calendar";
+    const shouldShowEmpty = filtered.length === 0
+      && state.activeWorkOrderViewMode !== "calendar"
+      && state.activeWorkOrderViewMode !== "field-inquiries";
     workOrdersEmpty.hidden = !shouldShowEmpty;
     workOrdersEmpty.textContent = emptyTextByMode[state.activeWorkOrderViewMode] || emptyTextByMode.list;
   }
@@ -107373,8 +107894,10 @@ function renderWorkOrderWorkspace() {
     renderCompactWorkOrdersList();
   } else if (state.activeWorkOrderViewMode === "calendar") {
     renderWorkOrderCalendarView();
-  } else {
+  } else if (state.activeWorkOrderViewMode === "maps") {
     renderWorkOrderCroatiaMapView();
+  } else {
+    renderFieldInquiriesView();
   }
 
   queueWorkOrderCalendarGridShellHeightSync();
@@ -121038,6 +121561,55 @@ workOrderModeButtons.forEach((button) => {
 
     setActiveWorkOrderViewMode(nextMode);
   });
+});
+
+fieldInquiryForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveFieldInquiry();
+});
+
+fieldInquiryResetButton?.addEventListener("click", () => {
+  resetFieldInquiryForm();
+  renderFieldInquiriesView();
+});
+
+fieldInquiryConvertButton?.addEventListener("click", () => {
+  void convertFieldInquiryToWorkOrder(fieldInquiryIdInput?.value || "");
+});
+
+fieldInquiryPlannedDateInput?.addEventListener("input", () => {
+  fieldInquiryPlannedDateInput.value = normalizeLiveDateTypingValue(fieldInquiryPlannedDateInput.value);
+});
+
+fieldInquiryPlannedDateInput?.addEventListener("change", () => {
+  normalizeFieldInquiryDateInput();
+});
+
+fieldInquiryCompanyInput?.addEventListener("change", () => {
+  rebuildFieldInquiryOptions({
+    selectedCompanyId: fieldInquiryCompanyInput.value,
+    selectedLocationId: "",
+    selectedWorkOrderId: "",
+    selectedVehicleId: fieldInquiryVehicleInput?.value || "",
+    selectedAssigneeIds: getSelectedMultiSelectValues(fieldInquiryAssigneesInput),
+  });
+});
+
+fieldInquiryLocationInput?.addEventListener("change", () => {
+  const location = (state.locations ?? []).find((item) => String(item.id) === String(fieldInquiryLocationInput.value)) ?? null;
+  if (location?.companyId && fieldInquiryCompanyInput && String(fieldInquiryCompanyInput.value || "") !== String(location.companyId)) {
+    rebuildFieldInquiryOptions({
+      selectedCompanyId: location.companyId,
+      selectedLocationId: location.id,
+      selectedWorkOrderId: fieldInquiryWorkOrderInput?.value || "",
+      selectedVehicleId: fieldInquiryVehicleInput?.value || "",
+      selectedAssigneeIds: getSelectedMultiSelectValues(fieldInquiryAssigneesInput),
+    });
+  }
+});
+
+fieldInquiryWorkOrderInput?.addEventListener("change", () => {
+  syncFieldInquiryContextFromWorkOrder();
 });
 
 workOrderListDensityButtons.forEach((button) => {
@@ -147950,6 +148522,7 @@ function resetAuthenticatedWorkspaceState() {
   state.userManagementScope = "people";
   state.organizations = [];
   state.workOrders = [];
+  state.fieldInquiries = [];
   state.workOrderMetricFilter = "";
   state.reminders = [];
   state.todoTasks = [];

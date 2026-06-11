@@ -91,6 +91,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.EventNote
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Folder
@@ -180,6 +181,7 @@ import com.safenexus.app.data.BootstrapData
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
 import com.safenexus.app.data.DownloadedDocument
+import com.safenexus.app.data.FieldInquiryDraft
 import com.safenexus.app.data.MobileRecord
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
@@ -263,6 +265,7 @@ enum class AppSection(val label: String) {
 
 private enum class MoreSectionFocus(val title: String) {
     Overview("Evidencije"),
+    FieldInquiries("Plan terena"),
     Companies("Tvrtke"),
     Locations("Lokacije"),
     Periodics("Periodika"),
@@ -372,6 +375,14 @@ private val workOrderStatusOptions = listOf(
     "Ovjeren RN",
     "Fakturiran RN",
     "Storno RN",
+)
+
+private val fieldInquiryStatusOptions = listOf(
+    "inquiry" to "Upit",
+    "tentative" to "Tentativno",
+    "confirmed" to "Potvrđeno",
+    "rejected" to "Odbijeno",
+    "converted" to "Pretvoreno u RN",
 )
 
 data class AppState(
@@ -636,6 +647,64 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         error = error.message ?: "Ne mogu dodati lokaciju.",
+                    )
+                }
+        }
+    }
+
+    fun saveFieldInquiry(draft: FieldInquiryDraft) {
+        if (draft.title.trim().isBlank()) {
+            state = state.copy(error = "Upiši naziv ili kratki opis upita.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            val result = if (draft.id.isBlank()) {
+                api.createFieldInquiry(draft)
+            } else {
+                api.updateFieldInquiry(draft)
+            }
+            result
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        section = AppSection.More,
+                        notice = if (draft.id.isBlank()) "Terenski upit je dodan." else "Terenski upit je spremljen.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu spremiti terenski upit.",
+                    )
+                }
+        }
+    }
+
+    fun convertFieldInquiryToWorkOrder(inquiry: MobileRecord) {
+        val inquiryId = inquiry.id.removePrefix("field-inquiry:").ifBlank { inquiry.relatedId }
+        if (inquiryId.isBlank()) {
+            state = state.copy(error = "Ne mogu pronaći ID upita.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.convertFieldInquiryToWorkOrder(inquiryId)
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        section = AppSection.WorkOrders,
+                        notice = "Iz upita je otvoren radni nalog.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu napraviti RN iz upita.",
                     )
                 }
         }
@@ -1518,6 +1587,8 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onNewWorkOrder = viewModel::openWorkOrderCreate,
                         onStatusChange = viewModel::updateWorkOrderStatus,
                         onAddDocumentation = openDocumentationActions,
+                        onSaveFieldInquiry = viewModel::saveFieldInquiry,
+                        onConvertFieldInquiry = viewModel::convertFieldInquiryToWorkOrder,
                     )
                 } else {
                     MobileRecordDetailScreen(
@@ -3415,6 +3486,402 @@ private fun WorkOrderMultiSelectChips(
     }
 }
 
+private fun fieldInquiryStatusLabel(status: String): String =
+    fieldInquiryStatusOptions.firstOrNull { it.first == status }?.second ?: status.ifBlank { "Upit" }
+
+private fun fieldInquiryId(record: MobileRecord): String =
+    record.id.removePrefix("field-inquiry:").ifBlank { record.id }
+
+@Composable
+private fun FieldInquiriesContent(
+    records: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onNewInquiry: () -> Unit,
+    onEditInquiry: (MobileRecord) -> Unit,
+    onConvertInquiry: (MobileRecord) -> Unit,
+) {
+    val today = remember { LocalDate.now() }
+    val upcoming = remember(records, today) {
+        records.count { record ->
+            val date = record.parsedDate
+            date != null && !date.isBefore(today) && !date.isAfter(today.plusDays(7))
+        }
+    }
+    val sortedRecords = remember(records) {
+        records.sortedWith(compareBy<MobileRecord> { it.parsedDate ?: LocalDate.MAX }.thenBy { it.title })
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Plan terena", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text(
+                        "${records.size} upita · $upcoming u idućih 7 dana",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                Button(onClick = onNewInquiry, shape = RoundedCornerShape(16.dp)) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Upit")
+                }
+            }
+
+            if (sortedRecords.isEmpty()) {
+                Text(
+                    "Nema upita za teren. Dodaj brzi dogovor i kasnije ga poveži s RN-om.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            } else {
+                sortedRecords.forEach { record ->
+                    FieldInquiryCard(
+                        record = record,
+                        onOpenRecord = { onOpenRecord(record) },
+                        onEdit = { onEditInquiry(record) },
+                        onConvert = { onConvertInquiry(record) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FieldInquiryCard(
+    record: MobileRecord,
+    onOpenRecord: () -> Unit,
+    onEdit: () -> Unit,
+    onConvert: () -> Unit,
+) {
+    val canConvert = record.status != "converted" && record.meta["companyId"].orEmpty().isNotBlank()
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onOpenRecord),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+    ) {
+        Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(record.title.ifBlank { "Upit za teren" }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(
+                            formatDateLabel(record.date).ifBlank { record.date },
+                            listOf(record.meta["timeFrom"].orEmpty(), record.meta["timeTo"].orEmpty()).filter { it.isNotBlank() }.joinToString("-"),
+                            record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" },
+                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = calendarRecordColor("field_inquiry").copy(alpha = 0.14f),
+                ) {
+                    Text(
+                        fieldInquiryStatusLabel(record.status),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = calendarRecordColor("field_inquiry"),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+
+            val details = listOf(
+                "Lokacija" to record.meta["locationName"].orEmpty(),
+                "RN" to record.meta["workOrderNumber"].orEmpty(),
+                "Ekipa" to record.meta["assignedUserLabels"].orEmpty(),
+                "Vozilo" to record.meta["vehicleLabel"].orEmpty(),
+                "Kontakt" to listOf(record.meta["contactName"].orEmpty(), record.meta["contactPhone"].orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+                "Usluga" to record.meta["serviceLine"].orEmpty(),
+            ).filter { it.second.isNotBlank() }
+
+            if (details.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    details.forEach { (label, value) ->
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text("$label: $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            },
+                        )
+                    }
+                }
+            }
+
+            record.meta["note"].orEmpty().takeIf { it.isNotBlank() }?.let { note ->
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f))
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onEdit, shape = RoundedCornerShape(14.dp)) {
+                    Text("Uredi")
+                }
+                OutlinedButton(
+                    onClick = onConvert,
+                    enabled = canConvert,
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Napravi RN")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FieldInquiryEditorDialog(
+    record: MobileRecord?,
+    data: BootstrapData,
+    currentUserLabel: String,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (FieldInquiryDraft) -> Unit,
+) {
+    val initialAssigneeLabels = remember(record?.id) {
+        record?.meta?.get("assignedUserLabels").orEmpty()
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+    val userOptions = remember(data.workOrderUsers) {
+        data.workOrderUsers.map { user -> user.id to user.label.ifBlank { user.fullName.ifBlank { user.email } } }
+    }
+    val initialAssigneeIds = remember(record?.id, initialAssigneeLabels, userOptions, currentUserLabel) {
+        val byLabel = initialAssigneeLabels.mapNotNull { label ->
+            userOptions.firstOrNull { option -> option.second.equals(label, ignoreCase = true) }?.first
+        }
+        byLabel.ifEmpty {
+            userOptions.firstOrNull { option -> option.second.equals(currentUserLabel, ignoreCase = true) }?.let { listOf(it.first) }
+                ?: emptyList()
+        }
+    }
+
+    var title by remember(record?.id) { mutableStateOf(record?.title.orEmpty()) }
+    var status by remember(record?.id) { mutableStateOf(record?.status?.ifBlank { "inquiry" } ?: "inquiry") }
+    var plannedDate by remember(record?.id) { mutableStateOf(record?.date?.take(10).orEmpty().ifBlank { LocalDate.now().toString() }) }
+    var timeFrom by remember(record?.id) { mutableStateOf(record?.meta?.get("timeFrom").orEmpty()) }
+    var timeTo by remember(record?.id) { mutableStateOf(record?.meta?.get("timeTo").orEmpty()) }
+    var companyId by remember(record?.id) { mutableStateOf(record?.meta?.get("companyId").orEmpty()) }
+    var locationId by remember(record?.id) { mutableStateOf(record?.meta?.get("locationId").orEmpty()) }
+    var workOrderId by remember(record?.id) { mutableStateOf(record?.meta?.get("workOrderId").orEmpty()) }
+    var vehicleId by remember(record?.id) { mutableStateOf(record?.meta?.get("vehicleId").orEmpty()) }
+    var contactName by remember(record?.id) { mutableStateOf(record?.meta?.get("contactName").orEmpty()) }
+    var contactPhone by remember(record?.id) { mutableStateOf(record?.meta?.get("contactPhone").orEmpty()) }
+    var serviceLine by remember(record?.id) { mutableStateOf(record?.meta?.get("serviceLine").orEmpty()) }
+    var note by remember(record?.id) { mutableStateOf(record?.meta?.get("note").orEmpty()) }
+    var selectedAssigneeIds by remember(record?.id, initialAssigneeIds) { mutableStateOf(initialAssigneeIds) }
+
+    val companyOptions = remember(data.workOrderCompanies) {
+        listOf(WorkOrderPickerOption("", "Bez tvrtke", "Slobodni upit")) + data.workOrderCompanies.map { company ->
+            WorkOrderPickerOption(
+                value = company.id,
+                label = company.name,
+                meta = listOf(company.headquarters, company.oib.takeIf { it.isNotBlank() }?.let { "OIB $it" }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
+                searchText = listOf(company.name, company.oib, company.headquarters).joinToString(" "),
+            )
+        }
+    }
+    val locationOptions = remember(data.workOrderLocations, companyId) {
+        listOf(WorkOrderPickerOption("", "Bez lokacije")) + data.workOrderLocations
+            .filter { companyId.isBlank() || it.companyId == companyId }
+            .map { location ->
+                WorkOrderPickerOption(
+                    value = location.id,
+                    label = location.name,
+                    meta = listOf(location.region, location.coordinates).filter { it.isNotBlank() }.joinToString(" · "),
+                    searchText = listOf(location.name, location.region, location.coordinates).joinToString(" "),
+                )
+            }
+    }
+    val workOrderOptions = remember(data.workOrders, companyId) {
+        listOf(WorkOrderPickerOption("", "Bez RN-a")) + data.workOrders
+            .filter { companyId.isBlank() || it.companyId == companyId }
+            .take(250)
+            .map { workOrder ->
+                WorkOrderPickerOption(
+                    value = workOrder.id,
+                    label = workOrder.displayNumber,
+                    meta = listOf(workOrder.companyName, workOrder.locationName, workOrder.displayService).filter { it.isNotBlank() }.joinToString(" · "),
+                    searchText = listOf(workOrder.number, workOrder.companyName, workOrder.locationName, workOrder.serviceLine).joinToString(" "),
+                )
+            }
+    }
+    val vehicleOptions = remember(data.vehicles) {
+        listOf("" to "Bez vozila") + data.vehicles.map { vehicle ->
+            fieldInquiryId(vehicle) to listOf(vehicle.title, vehicle.subtitle).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { vehicle.title }
+        }
+    }
+    val selectedCompanyLabel = companyOptions.firstOrNull { it.value == companyId }?.label ?: "Bez tvrtke"
+    val selectedLocationLabel = locationOptions.firstOrNull { it.value == locationId }?.label ?: "Bez lokacije"
+    val selectedWorkOrderLabel = workOrderOptions.firstOrNull { it.value == workOrderId }?.label ?: "Bez RN-a"
+    val selectedVehicleLabel = vehicleOptions.firstOrNull { it.first == vehicleId }?.second ?: "Bez vozila"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (record == null) "Novi terenski upit" else "Uredi terenski upit", fontWeight = FontWeight.Black) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 620.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Naziv / opis") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                WorkOrderSelectField(
+                    label = "Status",
+                    value = status,
+                    valueLabel = fieldInquiryStatusLabel(status),
+                    options = fieldInquiryStatusOptions,
+                    enabled = !isLoading,
+                    onSelect = { status = it },
+                )
+                WorkOrderDatePickerField("Datum", plannedDate, { plannedDate = it }, !isLoading)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WorkOrderSelectField("Od", timeFrom, timeFrom.ifBlank { "Bez vremena" }, listOf("" to "Bez vremena") + reservationTimeOptions, !isLoading, { timeFrom = it }, Modifier.weight(1f))
+                    WorkOrderSelectField("Do", timeTo, timeTo.ifBlank { "Bez vremena" }, listOf("" to "Bez vremena") + reservationTimeOptions, !isLoading, { timeTo = it }, Modifier.weight(1f))
+                }
+                WorkOrderSearchSelectField(
+                    label = "Tvrtka",
+                    value = companyId,
+                    valueLabel = selectedCompanyLabel,
+                    options = companyOptions,
+                    enabled = !isLoading,
+                    onSelect = {
+                        companyId = it
+                        locationId = ""
+                        workOrderId = ""
+                    },
+                    icon = Icons.Rounded.Business,
+                )
+                WorkOrderSearchSelectField(
+                    label = "Lokacija",
+                    value = locationId,
+                    valueLabel = selectedLocationLabel,
+                    options = locationOptions,
+                    enabled = !isLoading,
+                    onSelect = { selected ->
+                        locationId = selected
+                        data.workOrderLocations.firstOrNull { it.id == selected }?.let { location ->
+                            companyId = location.companyId
+                        }
+                    },
+                    icon = Icons.Rounded.LocationOn,
+                )
+                WorkOrderSearchSelectField(
+                    label = "Povezani RN",
+                    value = workOrderId,
+                    valueLabel = selectedWorkOrderLabel,
+                    options = workOrderOptions,
+                    enabled = !isLoading,
+                    onSelect = { selected ->
+                        workOrderId = selected
+                        data.workOrders.firstOrNull { it.id == selected }?.let { workOrder ->
+                            companyId = workOrder.companyId
+                            locationId = workOrder.locationId
+                            if (title.isBlank()) title = listOf(workOrder.displayNumber, workOrder.companyName).filter { it.isNotBlank() }.joinToString(" · ")
+                            if (serviceLine.isBlank()) serviceLine = workOrder.displayService
+                            if (contactName.isBlank()) contactName = workOrder.contactName
+                            if (contactPhone.isBlank()) contactPhone = workOrder.contactPhone
+                        }
+                    },
+                    icon = Icons.Rounded.Work,
+                )
+                WorkOrderSelectField(
+                    label = "Vozilo",
+                    value = vehicleId,
+                    valueLabel = selectedVehicleLabel,
+                    options = vehicleOptions,
+                    enabled = !isLoading,
+                    onSelect = { vehicleId = it },
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Ekipa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    WorkOrderMultiSelectChips(
+                        options = userOptions,
+                        selected = selectedAssigneeIds,
+                        enabled = !isLoading,
+                        emptyText = "Nema dostupnih korisnika.",
+                    ) { userId ->
+                        selectedAssigneeIds = if (userId in selectedAssigneeIds) {
+                            selectedAssigneeIds - userId
+                        } else {
+                            selectedAssigneeIds + userId
+                        }
+                    }
+                }
+                OutlinedTextField(contactName, { contactName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Kontakt") }, singleLine = true, shape = RoundedCornerShape(16.dp))
+                OutlinedTextField(contactPhone, { contactPhone = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Telefon") }, singleLine = true, shape = RoundedCornerShape(16.dp))
+                OutlinedTextField(serviceLine, { serviceLine = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Usluga / tema") }, singleLine = true, shape = RoundedCornerShape(16.dp))
+                OutlinedTextField(note, { note = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 3, maxLines = 5, shape = RoundedCornerShape(16.dp))
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val labelById = userOptions.toMap()
+                    onSave(
+                        FieldInquiryDraft(
+                            id = record?.let(::fieldInquiryId).orEmpty(),
+                            title = title.trim(),
+                            status = status.ifBlank { "inquiry" },
+                            plannedDate = plannedDate,
+                            timeFrom = timeFrom,
+                            timeTo = timeTo,
+                            companyId = companyId,
+                            locationId = locationId,
+                            workOrderId = workOrderId,
+                            vehicleId = vehicleId,
+                            contactName = contactName.trim(),
+                            contactPhone = contactPhone.trim(),
+                            serviceLine = serviceLine.trim(),
+                            note = note.trim(),
+                            assignedUserIds = selectedAssigneeIds,
+                            assignedUserLabels = selectedAssigneeIds.mapNotNull { labelById[it] },
+                            syncWorkOrderExecutionDate = true,
+                        ),
+                    )
+                },
+                enabled = !isLoading && title.trim().isNotBlank(),
+            ) {
+                Text("Spremi")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
 @Composable
 private fun DocumentationMultiSelectField(
     label: String,
@@ -3588,6 +4055,8 @@ private fun WorkOrdersScreen(
     onNewWorkOrder: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
+    onSaveFieldInquiry: (FieldInquiryDraft) -> Unit,
+    onConvertFieldInquiry: (MobileRecord) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
     val filtered = remember(state.workOrders, normalizedQuery, state.filter, state.user?.displayName, state.user?.email) {
@@ -3627,9 +4096,14 @@ private fun WorkOrdersScreen(
     val periodicEntries = remember(state.data, state.workOrders, normalizedQuery) {
         buildPeriodicEntries(state.data, state.workOrders, normalizedQuery)
     }
+    val filteredFieldInquiries = remember(state.data.fieldInquiries, normalizedQuery) {
+        state.data.fieldInquiries.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
     var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
+    var fieldInquiryDialogRecord by remember { mutableStateOf<MobileRecord?>(null) }
+    var fieldInquiryDialogOpen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val openMenuShortcut: (AppSection, MoreSectionFocus?) -> Unit = { section, focus ->
         mainMenuExpanded = false
@@ -3776,6 +4250,7 @@ private fun WorkOrdersScreen(
                         query = state.query,
                         onQueryChange = onQueryChange,
                         label = when (moreFocus) {
+                            MoreSectionFocus.FieldInquiries -> "Pretraga upita, termina, tvrtke ili RN-a"
                             MoreSectionFocus.Companies -> "Pretraga tvrtki, OIB-a i kontakata"
                             MoreSectionFocus.Locations -> "Pretraga lokacija, regija i adresa"
                             MoreSectionFocus.Periodics -> "Pretraga periodike i rokova"
@@ -3791,6 +4266,21 @@ private fun WorkOrdersScreen(
                     MoreSectionFocus.Overview -> {
                         item {
                             MoreOverviewHero(state.data)
+                        }
+                        item {
+                            FieldInquiriesContent(
+                                records = filteredFieldInquiries,
+                                onOpenRecord = onOpenRecord,
+                                onNewInquiry = {
+                                    fieldInquiryDialogRecord = null
+                                    fieldInquiryDialogOpen = true
+                                },
+                                onEditInquiry = { record ->
+                                    fieldInquiryDialogRecord = record
+                                    fieldInquiryDialogOpen = true
+                                },
+                                onConvertInquiry = onConvertFieldInquiry,
+                            )
                         }
                         item {
                             CompanyDirectory(
@@ -3839,6 +4329,21 @@ private fun WorkOrdersScreen(
                                 onOpenRecord = onOpenRecord,
                             )
                         }
+                    }
+                    MoreSectionFocus.FieldInquiries -> item {
+                        FieldInquiriesContent(
+                            records = filteredFieldInquiries,
+                            onOpenRecord = onOpenRecord,
+                            onNewInquiry = {
+                                fieldInquiryDialogRecord = null
+                                fieldInquiryDialogOpen = true
+                            },
+                            onEditInquiry = { record ->
+                                fieldInquiryDialogRecord = record
+                                fieldInquiryDialogOpen = true
+                            },
+                            onConvertInquiry = onConvertFieldInquiry,
+                        )
                     }
                     MoreSectionFocus.Companies -> item {
                         CompanyDirectory(
@@ -3959,6 +4464,24 @@ private fun WorkOrdersScreen(
             }
             }
         }
+    }
+
+    if (fieldInquiryDialogOpen) {
+        FieldInquiryEditorDialog(
+            record = fieldInquiryDialogRecord,
+            data = state.data,
+            currentUserLabel = state.user?.displayName.orEmpty(),
+            isLoading = state.isLoading,
+            onDismiss = {
+                fieldInquiryDialogOpen = false
+                fieldInquiryDialogRecord = null
+            },
+            onSave = { draft ->
+                fieldInquiryDialogOpen = false
+                fieldInquiryDialogRecord = null
+                onSaveFieldInquiry(draft)
+            },
+        )
     }
 }
 
@@ -4130,6 +4653,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
+            MainMenuShortcut("Plan terena", "Upiti, dogovori i termini prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
             MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business, MoreSectionFocus.Companies),
             MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn, MoreSectionFocus.Locations),
             MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
@@ -5554,6 +6078,7 @@ private fun calendarMonthName(month: Int): String = when (month) {
 
 private fun calendarRecordColor(kind: String): Color = when (kind) {
     "work_order" -> Color(0xFF2563EB)
+    "field_inquiry" -> Color(0xFFD97706)
     "vehicle", "vehicle_reservation" -> Color(0xFF059669)
     "document" -> Color(0xFF7C3AED)
     "training" -> Color(0xFFDC2626)
@@ -6636,6 +7161,7 @@ private fun RecordLine(
 
 private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Rounded.Work): ImageVector = when (record.kind) {
     "work_order" -> Icons.Rounded.Work
+    "field_inquiry" -> Icons.Rounded.EventNote
     "vehicle", "vehicle_reservation" -> Icons.Rounded.Business
     "document" -> Icons.Rounded.Mail
     "training" -> Icons.Rounded.Fingerprint
@@ -6649,6 +7175,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
 
 private fun recordKindLabel(kind: String): String = when (kind) {
     "work_order" -> "Radni nalog"
+    "field_inquiry" -> "Plan terena"
     "vehicle" -> "Vozilo"
     "vehicle_reservation" -> "Rezervacija vozila"
     "document" -> "Dokument"

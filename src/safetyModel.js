@@ -25,6 +25,14 @@ export const REMINDER_STATUS_OPTIONS = [
   { value: "done", label: "Gotov" },
 ];
 
+export const FIELD_INQUIRY_STATUS_OPTIONS = [
+  { value: "inquiry", label: "Upit" },
+  { value: "tentative", label: "Tentativno" },
+  { value: "confirmed", label: "Potvrdeno" },
+  { value: "rejected", label: "Odbijeno" },
+  { value: "converted", label: "Pretvoreno u RN" },
+];
+
 export const TODO_TASK_STATUS_OPTIONS = [
   { value: "open", label: "Novo" },
   { value: "in_progress", label: "U radu" },
@@ -9137,6 +9145,205 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
   }, company, location);
 
   return next;
+}
+
+function normalizeFieldInquiryStatus(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const match = FIELD_INQUIRY_STATUS_OPTIONS.find((option) => option.value === normalized);
+  return match?.value ?? "inquiry";
+}
+
+function normalizeFieldInquiryTime(value = "") {
+  const raw = normalizeText(value);
+  const match = raw.match(/^([01]?\d|2[0-3])[:.]?([0-5]\d)$/);
+  if (!match) {
+    return raw.slice(0, 16);
+  }
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function resolveFieldInquiryUsers(values = [], state = {}) {
+  const ids = normalizeIdList(values);
+  const usersById = new Map((state.users ?? []).map((user) => [String(user.id), user]));
+  const labels = ids.map((id) => {
+    const user = usersById.get(String(id));
+    return normalizeText(user?.fullName || [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || user?.username || id);
+  }).filter(Boolean);
+
+  return {
+    assignedUserIds: ids,
+    assignedUserLabels: labels,
+  };
+}
+
+function hydrateFieldInquiryCore({
+  current = {},
+  input = {},
+  state = {},
+  timestamp = isoNow(),
+} = {}) {
+  const requestedWorkOrderId = hasOwn(input, "workOrderId")
+    ? normalizeId(input.workOrderId)
+    : normalizeId(current.workOrderId);
+  const linkedWorkOrder = requestedWorkOrderId
+    ? (state.workOrders ?? []).find((item) => String(item.id) === String(requestedWorkOrderId))
+    : null;
+
+  if (requestedWorkOrderId && !linkedWorkOrder) {
+    throw new Error("Povezani RN nije pronaden.");
+  }
+
+  const requestedLocationId = hasOwn(input, "locationId")
+    ? normalizeId(input.locationId)
+    : normalizeId(current.locationId);
+  const linkedLocation = requestedLocationId
+    ? (state.locations ?? []).find((item) => String(item.id) === String(requestedLocationId))
+    : null;
+
+  if (requestedLocationId && !linkedLocation) {
+    throw new Error("Lokacija nije pronadena.");
+  }
+
+  const requestedCompanyId = hasOwn(input, "companyId")
+    ? normalizeId(input.companyId)
+    : normalizeId(current.companyId);
+  const inferredCompanyId = linkedWorkOrder?.companyId || linkedLocation?.companyId || requestedCompanyId;
+  const linkedCompany = inferredCompanyId
+    ? (state.companies ?? []).find((item) => String(item.id) === String(inferredCompanyId))
+    : null;
+
+  if (requestedCompanyId && !linkedCompany) {
+    throw new Error("Tvrtka nije pronadena.");
+  }
+
+  if (linkedLocation && linkedCompany && String(linkedLocation.companyId) !== String(linkedCompany.id)) {
+    throw new Error("Lokacija ne pripada odabranoj tvrtki.");
+  }
+
+  const userSnapshot = hasOwn(input, "assignedUserIds")
+    ? (() => {
+      const resolved = resolveFieldInquiryUsers(input.assignedUserIds, state);
+      const fallbackLabels = Array.isArray(input.assignedUserLabels)
+        ? input.assignedUserLabels.map((value) => normalizeText(value)).filter(Boolean)
+        : [];
+      return {
+        assignedUserIds: resolved.assignedUserIds,
+        assignedUserLabels: resolved.assignedUserLabels.length > 0 ? resolved.assignedUserLabels : fallbackLabels,
+      };
+    })()
+    : {
+      assignedUserIds: normalizeIdList(current.assignedUserIds),
+      assignedUserLabels: Array.isArray(current.assignedUserLabels)
+        ? current.assignedUserLabels.map((value) => normalizeText(value)).filter(Boolean)
+        : [],
+    };
+  const vehicleId = hasOwn(input, "vehicleId") ? normalizeId(input.vehicleId) : normalizeId(current.vehicleId);
+  const vehicle = vehicleId
+    ? (state.vehicles ?? []).find((item) => String(item.id) === String(vehicleId))
+    : null;
+
+  if (vehicleId && !vehicle) {
+    throw new Error("Vozilo nije pronadeno.");
+  }
+
+  const title = hasOwn(input, "title")
+    ? requireText(input.title, "Naziv upita")
+    : requireText(current.title, "Naziv upita");
+
+  return {
+    ...current,
+    organizationId: hasOwn(input, "organizationId")
+      ? requireText(input.organizationId, "Organizacija")
+      : requireText(current.organizationId, "Organizacija"),
+    title,
+    status: hasOwn(input, "status") ? normalizeFieldInquiryStatus(input.status) : normalizeFieldInquiryStatus(current.status),
+    plannedDate: hasOwn(input, "plannedDate") ? normalizeOptionalDate(input.plannedDate) : normalizeOptionalDate(current.plannedDate),
+    timeFrom: hasOwn(input, "timeFrom") ? normalizeFieldInquiryTime(input.timeFrom) : normalizeFieldInquiryTime(current.timeFrom),
+    timeTo: hasOwn(input, "timeTo") ? normalizeFieldInquiryTime(input.timeTo) : normalizeFieldInquiryTime(current.timeTo),
+    companyId: linkedCompany?.id ?? "",
+    companyName: linkedCompany?.name ?? normalizeText(input.companyName ?? current.companyName),
+    locationId: linkedLocation?.id ?? "",
+    locationName: linkedLocation?.name ?? normalizeText(input.locationName ?? current.locationName),
+    workOrderId: linkedWorkOrder?.id ?? "",
+    workOrderNumber: linkedWorkOrder?.workOrderNumber ?? normalizeText(input.workOrderNumber ?? current.workOrderNumber),
+    contactName: hasOwn(input, "contactName") ? normalizeText(input.contactName) : normalizeText(current.contactName),
+    contactPhone: hasOwn(input, "contactPhone") ? normalizeText(input.contactPhone) : normalizeText(current.contactPhone),
+    serviceLine: hasOwn(input, "serviceLine") ? normalizeText(input.serviceLine) : normalizeText(current.serviceLine),
+    note: hasOwn(input, "note") ? normalizeText(input.note) : normalizeText(current.note),
+    assignedUserIds: userSnapshot.assignedUserIds,
+    assignedUserLabels: userSnapshot.assignedUserLabels,
+    vehicleId: vehicle?.id ?? "",
+    vehicleLabel: vehicle ? normalizeText([vehicle.licensePlate, vehicle.name, vehicle.model].filter(Boolean).join(" - ")) : normalizeText(input.vehicleLabel ?? current.vehicleLabel),
+    createdByUserId: normalizeText(current.createdByUserId || input.createdByUserId),
+    createdByLabel: normalizeText(current.createdByLabel || input.createdByLabel),
+    convertedWorkOrderId: normalizeId(current.convertedWorkOrderId || input.convertedWorkOrderId),
+    updatedAt: timestamp,
+  };
+}
+
+export function createFieldInquiry(input, state, createId = () => crypto.randomUUID(), now = isoNow) {
+  const timestamp = now();
+  return {
+    ...hydrateFieldInquiryCore({
+      input,
+      state,
+      timestamp,
+    }),
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateFieldInquiry(current, patch, state, now = isoNow) {
+  return hydrateFieldInquiryCore({
+    current,
+    input: patch,
+    state,
+    timestamp: now(),
+  });
+}
+
+export function filterFieldInquiries(items, { query = "", status = "all" } = {}) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  return (items ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+    const haystack = [
+      item.title,
+      item.companyName,
+      item.locationName,
+      item.workOrderNumber,
+      item.contactName,
+      item.contactPhone,
+      item.serviceLine,
+      item.note,
+      ...(item.assignedUserLabels ?? []),
+      item.vehicleLabel,
+    ].join(" ").toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortFieldInquiries(items) {
+  const statusRank = new Map(FIELD_INQUIRY_STATUS_OPTIONS.map((option, index) => [option.value, index]));
+  return [...(items ?? [])].sort((left, right) => {
+    const leftDate = left.plannedDate || "9999-12-31";
+    const rightDate = right.plannedDate || "9999-12-31";
+    if (leftDate !== rightDate) {
+      return leftDate.localeCompare(rightDate);
+    }
+    const leftRank = statusRank.get(left.status) ?? 99;
+    const rightRank = statusRank.get(right.status) ?? 99;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
 }
 
 export function createReminder(

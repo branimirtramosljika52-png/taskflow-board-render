@@ -2008,6 +2008,7 @@
                 <button type="button" class="workspace-view-chip is-active" data-work-order-mode="list">List</button>
                 <button type="button" class="workspace-view-chip" data-work-order-mode="calendar">Calendar</button>
                 <button type="button" class="workspace-view-chip" data-work-order-mode="maps">Maps</button>
+                <button type="button" class="workspace-view-chip" data-work-order-mode="field-inquiries">Upiti</button>
               </div>
 
             </div>
@@ -2187,6 +2188,101 @@
                   </div>
                 </div>
               </section>
+
+            <section id="field-inquiries-view" class="work-order-mode-view field-inquiries-view" hidden>
+              <div class="field-inquiries-layout">
+                <form id="field-inquiry-form" class="field-inquiry-form">
+                  <div class="field-inquiry-form-head">
+                    <div>
+                      <p class="section-kicker">Plan terena</p>
+                      <h3 id="field-inquiry-form-title">Novi upit za teren</h3>
+                      <span>Brzo zabiljezi termin i kasnije ga povezi s RN-om.</span>
+                    </div>
+                    <button id="field-inquiry-reset" type="button" class="ghost-button">Očisti</button>
+                  </div>
+                  <input id="field-inquiry-id" type="hidden" />
+                  <div class="field-inquiry-grid">
+                    <label class="field field-inquiry-title-field">
+                      <span>Naziv / opis *</span>
+                      <input id="field-inquiry-title" type="text" placeholder="Npr. Upit za pregled hale u Lučkom" required />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="field-inquiry-status"></select>
+                    </label>
+                    <label class="field">
+                      <span>Datum</span>
+                      <input id="field-inquiry-planned-date" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
+                    </label>
+                    <label class="field">
+                      <span>Od</span>
+                      <input id="field-inquiry-time-from" type="time" />
+                    </label>
+                    <label class="field">
+                      <span>Do</span>
+                      <input id="field-inquiry-time-to" type="time" />
+                    </label>
+                    <label class="field">
+                      <span>Tvrtka</span>
+                      <select id="field-inquiry-company"></select>
+                    </label>
+                    <label class="field">
+                      <span>Lokacija</span>
+                      <select id="field-inquiry-location"></select>
+                    </label>
+                    <label class="field">
+                      <span>Povezani RN</span>
+                      <select id="field-inquiry-work-order"></select>
+                    </label>
+                    <label class="field">
+                      <span>Vozilo</span>
+                      <select id="field-inquiry-vehicle"></select>
+                    </label>
+                    <label class="field field-inquiry-wide-field">
+                      <span>Ekipa</span>
+                      <select id="field-inquiry-assignees" multiple size="4"></select>
+                    </label>
+                    <label class="field">
+                      <span>Kontakt</span>
+                      <input id="field-inquiry-contact-name" type="text" placeholder="Ime osobe" />
+                    </label>
+                    <label class="field">
+                      <span>Telefon</span>
+                      <input id="field-inquiry-contact-phone" type="tel" placeholder="+385..." />
+                    </label>
+                    <label class="field field-inquiry-wide-field">
+                      <span>Usluga / tema</span>
+                      <input id="field-inquiry-service-line" type="text" placeholder="Panik rasvjeta, tipkala, pregled..." />
+                    </label>
+                    <label class="field field-inquiry-wide-field">
+                      <span>Napomena</span>
+                      <textarea id="field-inquiry-note" rows="3" placeholder="Sto je dogovoreno, tko je zvao, sto jos nedostaje..."></textarea>
+                    </label>
+                  </div>
+                  <label class="field-inquiry-sync-row">
+                    <input id="field-inquiry-sync-rn-date" type="checkbox" checked />
+                    <span>Ako je povezan RN, prepiši datum u datum izvršenja RN-a</span>
+                  </label>
+                  <div class="field-inquiry-actions">
+                    <button id="field-inquiry-convert" type="button" class="ghost-button" hidden>Napravi RN iz upita</button>
+                    <button type="submit" class="primary-button">Spremi upit</button>
+                  </div>
+                  <p id="field-inquiry-feedback" class="form-error" aria-live="polite"></p>
+                </form>
+
+                <section class="field-inquiries-list-panel">
+                  <div class="field-inquiries-list-head">
+                    <div>
+                      <p class="section-kicker">Dogovori</p>
+                      <h3>Terenski upiti</h3>
+                    </div>
+                    <span id="field-inquiry-count" class="work-order-calendar-meta"></span>
+                  </div>
+                  <div id="field-inquiry-list" class="field-inquiry-list"></div>
+                  <p id="field-inquiry-empty" class="empty-inline" hidden>Nema terenskih upita za trenutni filter.</p>
+                </section>
+              </div>
+            </section>
 
             <p id="work-orders-empty" class="empty-inline" hidden>Nema radnih naloga za trenutni filter.</p>
             <p id="work-orders-load-state" class="load-state" hidden></p>

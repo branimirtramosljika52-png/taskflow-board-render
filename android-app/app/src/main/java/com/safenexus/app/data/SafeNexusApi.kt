@@ -91,6 +91,7 @@ class SafeNexusApi(
                 clientPortalRecords = json.optJSONArray("clientPortalRecords").toRecords(),
                 rulebooks = json.optJSONArray("rulebooks").toRecords(),
                 riskAssessmentRecords = json.optJSONArray("riskAssessmentRecords").toRecords(),
+                fieldInquiries = json.optJSONArray("fieldInquiries").toRecords(),
                 calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
                 dashboard = json.optJSONObject("dashboard").toDashboardStats(),
             )
@@ -128,6 +129,31 @@ class SafeNexusApi(
                 .put("department", draft.department)
                 .toString()
             request("/api/work-orders", method = "POST", body = payload)
+            Unit
+        }
+    }
+
+    suspend fun createFieldInquiry(draft: FieldInquiryDraft): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            request("/api/mobile/field-inquiries", method = "POST", body = draft.toJsonPayload())
+            Unit
+        }
+    }
+
+    suspend fun updateFieldInquiry(draft: FieldInquiryDraft): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            request("/api/mobile/field-inquiries/${draft.id.pathSegment()}", method = "PATCH", body = draft.toJsonPayload())
+            Unit
+        }
+    }
+
+    suspend fun convertFieldInquiryToWorkOrder(inquiryId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            request(
+                "/api/mobile/field-inquiries/${inquiryId.pathSegment()}/convert-to-work-order",
+                method = "POST",
+                body = JSONObject().put("syncWorkOrderExecutionDate", true).toString(),
+            )
             Unit
         }
     }
@@ -862,6 +888,26 @@ private fun Map<String, Map<String, String>>.toNestedJsonObject(): JSONObject {
     forEach { (key, values) -> json.put(key, values.toJsonObject()) }
     return json
 }
+
+private fun FieldInquiryDraft.toJsonPayload(): String =
+    JSONObject()
+        .put("title", title)
+        .put("status", status)
+        .put("plannedDate", plannedDate)
+        .put("timeFrom", timeFrom)
+        .put("timeTo", timeTo)
+        .put("companyId", companyId)
+        .put("locationId", locationId)
+        .put("workOrderId", workOrderId)
+        .put("vehicleId", vehicleId)
+        .put("contactName", contactName)
+        .put("contactPhone", contactPhone)
+        .put("serviceLine", serviceLine)
+        .put("note", note)
+        .put("assignedUserIds", JSONArray(assignedUserIds))
+        .put("assignedUserLabels", JSONArray(assignedUserLabels))
+        .put("syncWorkOrderExecutionDate", syncWorkOrderExecutionDate)
+        .toString()
 
 private fun WorkOrderMeasurementSheet.toJsonObject(): JSONObject {
     val columnArray = JSONArray()
