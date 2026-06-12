@@ -10714,12 +10714,97 @@ function getOfferPdfBreakdownRows(item = {}) {
     : [];
 }
 
+function isOfferPdfMonthlyFeeItem(item = {}) {
+  const unit = clean(item?.unit).toLowerCase();
+  const description = clean(item?.description).toLowerCase();
+  return unit === "mj"
+    || unit === "mjesec"
+    || unit === "mjesecno"
+    || unit === "mjesečno"
+    || description.includes("mjese")
+    || description.includes("pausal")
+    || description.includes("paušal");
+}
+
 function getOfferPdfMonthlyItems(items = [], offerType = "") {
   const planType = normalizeOfferPlanType(offerType);
   const safeItems = Array.isArray(items) ? items : [];
-  if (planType === "Hybrid Plan") {
-    return safeItems.filter((item) => !hasOfferPdfBreakdownRows(item));
+  if (false && planType === "Hybrid Plan") {
+    const monthlyItems = getOfferPdfMonthlyItems(items, offer.serviceLine);
+    const serviceItems = getOfferPdfServicePricingItems(items, offer.serviceLine);
+    const monthlyRows = buildFinancialTableRowsHtml(monthlyItems);
+    const serviceRows = buildServicePricingRowsHtml(serviceItems);
+
+    return `
+      <div class="offer-html-plan-head offer-html-hybrid-plan-head">
+        <strong>Hybrid plan</strong>
+        <span>${monthlyItems.length} mjesečno · ${serviceItems.length} po usluzi</span>
+      </div>
+      ${buildOfferHtmlPlanFinancialSummary(offer, currency)}
+      <section class="offer-html-plan-section offer-html-hybrid-monthly-section">
+        <h4>Mjesečne naknade</h4>
+        <table class="offer-html-items-table offer-html-financial-items-table offer-html-hybrid-monthly-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Opis</th>
+              <th>Jed.</th>
+              <th>Kol.</th>
+              <th>Cijena</th>
+              <th>Iznos</th>
+            </tr>
+          </thead>
+          <tbody>${monthlyRows || `<tr><td colspan="6">Nema mjesečnih naknada.</td></tr>`}</tbody>
+        </table>
+      </section>
+      <section class="offer-html-plan-section offer-html-service-pricing-section">
+        <h4>Cjenik usluga po izvršenju</h4>
+        <table class="offer-html-items-table offer-html-service-pricing-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Usluga / razrada</th>
+              <th>Jedinica</th>
+              <th>Cijena</th>
+            </tr>
+          </thead>
+          <tbody>${serviceRows || `<tr><td colspan="4">Nema usluga u cjeniku.</td></tr>`}</tbody>
+        </table>
+      </section>
+    `;
   }
+
+  if (planType === "Hybrid Plan") {
+    return safeItems.filter((item) => isOfferPdfMonthlyFeeItem(item));
+  }
+  if (false && planType === "One-Time Service") {
+    const oneTimeRows = buildFinancialTableRowsHtml(items);
+    return `
+      <div class="offer-html-plan-head offer-html-one-time-plan-head">
+        <strong>One-time service</strong>
+        <span>${items.length} jednokratno</span>
+      </div>
+      ${buildOfferHtmlPlanFinancialSummary(offer, currency)}
+      <section class="offer-html-plan-section">
+        <h4>Jednokratne usluge</h4>
+        <table class="offer-html-items-table offer-html-financial-items-table offer-html-one-time-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Opis</th>
+              <th>Jed.</th>
+              <th>Kol.</th>
+              <th>Cijena</th>
+              <th>Iznos</th>
+            </tr>
+          </thead>
+          <tbody>${oneTimeRows || `<tr><td colspan="6">Nema jednokratnih stavki.</td></tr>`}</tbody>
+          ${offer.showTotalAmount !== false ? `<tfoot>${buildOfferHtmlFinancialFooterRows(offer, currency, { colspan: 5 })}</tfoot>` : ""}
+        </table>
+      </section>
+    `;
+  }
+
   if (planType === "Fixed Plan") {
     return safeItems.filter((item) => !isOfferPdfIncludedServiceItem(item));
   }
@@ -10733,7 +10818,7 @@ function getOfferPdfServicePricingItems(items = [], offerType = "") {
     return [];
   }
   if (planType === "Hybrid Plan") {
-    return safeItems.filter((item) => hasOfferPdfBreakdownRows(item));
+    return safeItems.filter((item) => !isOfferPdfMonthlyFeeItem(item));
   }
   return safeItems;
 }
@@ -10781,6 +10866,13 @@ function formatOfferPdfItemAmount(item = {}, currency = "EUR") {
   const total = parseOfferPdfNumber(item?.totalPrice, 0);
   if (total > 0) {
     return formatOfferPdfCurrency(total, currency);
+  }
+
+  const breakdownTotal = getOfferPdfBreakdownRows(item).reduce((sum, entry) => (
+    sum + Math.max(0, parseOfferPdfNumber(entry?.amount, 0))
+  ), 0);
+  if (breakdownTotal > 0) {
+    return formatOfferPdfCurrency(breakdownTotal, currency);
   }
 
   const quantity = Math.max(0, parseOfferPdfNumber(item?.quantity, 0));
@@ -10874,6 +10966,160 @@ function buildOfferHtmlItemsTable(offer = {}, currency = "EUR") {
   }
 
   const planType = normalizeOfferPlanType(offer.serviceLine);
+  const buildFinancialTableRowsHtml = (tableItems = []) => tableItems.flatMap((item, index) => {
+    const breakdowns = getOfferPdfBreakdownRows(item);
+    const hasBreakdowns = breakdowns.length > 0;
+    const mainRow = `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${formatOfferHtmlText(item.description || item.serviceCode || "Stavka")}</td>
+        <td>${hasBreakdowns ? "" : formatOfferHtmlText(item.unit || "")}</td>
+        <td>${hasBreakdowns ? "" : formatOfferHtmlText(item.quantity ?? "")}</td>
+        <td>${hasBreakdowns ? `<span class="offer-html-breakdown-badge">Razrada</span>` : `<span class="offer-html-money">${escapeOfferHtml(formatOfferPdfCurrency(item.unitPrice ?? 0, currency))}</span>`}</td>
+        <td><span class="offer-html-money">${escapeOfferHtml(formatOfferPdfItemAmount(item, currency) || formatOfferPdfCurrency(item.totalPrice ?? 0, currency))}</span></td>
+      </tr>
+    `;
+    const breakdownRows = breakdowns.map((entry) => `
+      <tr class="offer-html-breakdown-table-row">
+        <td></td>
+        <td colspan="4">${formatOfferHtmlText(getOfferPdfBreakdownDocumentLabel(entry))}</td>
+        <td><span class="offer-html-money">${escapeOfferHtml(formatOfferPdfCurrency(parseOfferPdfNumber(entry.amount, 0), currency))}</span></td>
+      </tr>
+    `);
+    return [mainRow, ...breakdownRows];
+  }).join("");
+
+  const buildServicePricingRowsHtml = (tableItems = []) => tableItems.flatMap((item, index) => {
+    const breakdowns = getOfferPdfBreakdownRows(item);
+    if (breakdowns.length === 0) {
+      return [`
+        <tr>
+          <td>${index + 1}</td>
+          <td>${formatOfferHtmlText(item.description || item.serviceCode || "Usluga")}</td>
+          <td>${formatOfferHtmlText(getOfferPdfQuantityText(item) || item.unit || "po usluzi")}</td>
+          <td><span class="offer-html-money">${escapeOfferHtml(formatOfferPdfItemAmount(item, currency) || formatOfferPdfCurrency(item.unitPrice ?? 0, currency))}</span></td>
+        </tr>
+      `];
+    }
+
+    const groupRow = `
+      <tr class="offer-html-service-group-row">
+        <td>${index + 1}</td>
+        <td colspan="3">${formatOfferHtmlText(item.description || item.serviceCode || "Usluga")}</td>
+      </tr>
+    `;
+    const breakdownRows = breakdowns.map((entry) => `
+      <tr class="offer-html-breakdown-table-row">
+        <td></td>
+        <td>${formatOfferHtmlText(`- ${getOfferPdfBreakdownDocumentLabel(entry)}`)}</td>
+        <td>${formatOfferHtmlText(entry.unitLabel || "")}</td>
+        <td><span class="offer-html-money">${escapeOfferHtml(formatOfferPdfCurrency(parseOfferPdfNumber(entry.amount, 0), currency))}</span></td>
+      </tr>
+    `);
+    return [groupRow, ...breakdownRows];
+  }).join("");
+
+  if (planType === "Hybrid Plan") {
+    const monthlyItems = getOfferPdfMonthlyItems(items, offer.serviceLine);
+    const serviceItems = getOfferPdfServicePricingItems(items, offer.serviceLine);
+    const monthlyRows = buildFinancialTableRowsHtml(monthlyItems);
+    const serviceRows = buildServicePricingRowsHtml(serviceItems);
+
+    return `
+      <div class="offer-html-plan-head offer-html-hybrid-plan-head">
+        <strong>Hybrid plan</strong>
+        <span>${monthlyItems.length} mjesečno · ${serviceItems.length} po usluzi</span>
+      </div>
+      ${buildOfferHtmlPlanFinancialSummary(offer, currency)}
+      <section class="offer-html-plan-section offer-html-hybrid-monthly-section">
+        <h4>Mjesečne naknade</h4>
+        <table class="offer-html-items-table offer-html-financial-items-table offer-html-hybrid-monthly-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Opis</th>
+              <th>Jed.</th>
+              <th>Kol.</th>
+              <th>Cijena</th>
+              <th>Iznos</th>
+            </tr>
+          </thead>
+          <tbody>${monthlyRows || `<tr><td colspan="6">Nema mjesečnih naknada.</td></tr>`}</tbody>
+        </table>
+      </section>
+      <section class="offer-html-plan-section offer-html-service-pricing-section">
+        <h4>Cjenik usluga po izvršenju</h4>
+        <table class="offer-html-items-table offer-html-service-pricing-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Usluga / razrada</th>
+              <th>Jedinica</th>
+              <th>Cijena</th>
+            </tr>
+          </thead>
+          <tbody>${serviceRows || `<tr><td colspan="4">Nema usluga u cjeniku.</td></tr>`}</tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  if (planType === "One-Time Service") {
+    const oneTimeRows = buildFinancialTableRowsHtml(items);
+    return `
+      <div class="offer-html-plan-head offer-html-one-time-plan-head">
+        <strong>One-time service</strong>
+        <span>${items.length} jednokratno</span>
+      </div>
+      ${buildOfferHtmlPlanFinancialSummary(offer, currency)}
+      <section class="offer-html-plan-section">
+        <h4>Jednokratne usluge</h4>
+        <table class="offer-html-items-table offer-html-financial-items-table offer-html-one-time-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Opis</th>
+              <th>Jed.</th>
+              <th>Kol.</th>
+              <th>Cijena</th>
+              <th>Iznos</th>
+            </tr>
+          </thead>
+          <tbody>${oneTimeRows || `<tr><td colspan="6">Nema jednokratnih stavki.</td></tr>`}</tbody>
+          ${offer.showTotalAmount !== false ? `<tfoot>${buildOfferHtmlFinancialFooterRows(offer, currency, { colspan: 5 })}</tfoot>` : ""}
+        </table>
+      </section>
+    `;
+  }
+
+  if (planType === "Per Employee Plan") {
+    const employeeRows = buildFinancialTableRowsHtml(items);
+    return `
+      <div class="offer-html-plan-head offer-html-per-employee-plan-head">
+        <strong>Per employee plan</strong>
+        <span>${items.length} stavki po zaposleniku</span>
+      </div>
+      ${buildOfferHtmlPlanFinancialSummary(offer, currency)}
+      <section class="offer-html-plan-section">
+        <h4>Cijena po zaposleniku</h4>
+        <table class="offer-html-items-table offer-html-financial-items-table offer-html-per-employee-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Opis</th>
+              <th>Jed.</th>
+              <th>Kol.</th>
+              <th>Cijena</th>
+              <th>Iznos</th>
+            </tr>
+          </thead>
+          <tbody>${employeeRows || `<tr><td colspan="6">Nema dodanih stavki po zaposleniku.</td></tr>`}</tbody>
+          ${offer.showTotalAmount !== false ? `<tfoot>${buildOfferHtmlFinancialFooterRows(offer, currency, { colspan: 5 })}</tfoot>` : ""}
+        </table>
+      </section>
+    `;
+  }
+
   if (planType === "Hybrid Plan") {
     const monthlyItems = getOfferPdfMonthlyItems(items, offer.serviceLine);
     const serviceItems = getOfferPdfServicePricingItems(items, offer.serviceLine);
@@ -11139,6 +11385,9 @@ export function buildOfferHtmlTemplate(offer = {}, options = {}) {
         .safe-offer-html-template td,.safe-offer-html-template th{border:1px solid #d9e3f3;padding:8px 9px;vertical-align:top}
         .safe-offer-html-template th{background:#f1f6ff;color:#1e3a8a;text-align:left;font-weight:700}
         .safe-offer-html-template h4{margin:12px 0 6px;color:#0f172a;font-size:13px}
+        .offer-html-hybrid-monthly-section h4,.offer-html-service-pricing-section h4{border-radius:10px;padding:7px 10px;margin:12px 0 7px}
+        .offer-html-hybrid-monthly-section h4{background:#dbeafe;color:#1d4ed8}
+        .offer-html-service-pricing-section h4{background:#e0e7ff;color:#3730a3}
         .safe-offer-html-template tfoot td{background:#f8fafc;font-weight:700;text-align:right}
         .safe-offer-html-template tfoot .offer-html-total-row td{background:#ecfdf5;color:#047857;font-size:14px}
         .safe-offer-html-template strong{color:#0f172a}
@@ -11150,17 +11399,23 @@ export function buildOfferHtmlTemplate(offer = {}, options = {}) {
         .offer-html-plan-summary strong{display:block;margin-top:3px;text-align:right;font-size:14px}
         .offer-html-plan-summary .is-grand{background:#ecfdf5;border-color:#bbf7d0}
         .offer-html-plan-summary .is-grand strong,.offer-html-plan-summary .is-grand span{color:#047857}
-        .offer-html-fixed-plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 8px;color:#0f172a}
-        .offer-html-fixed-plan-head span{color:#64748b;font-size:12px}
+        .offer-html-plan-head,.offer-html-fixed-plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 8px;color:#0f172a}
+        .offer-html-plan-head span,.offer-html-fixed-plan-head span{color:#64748b;font-size:12px}
         .offer-html-included-badge{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:#dcfce7;color:#047857;font-size:11px;font-weight:800}
+        .offer-html-breakdown-badge{display:inline-block;padding:2px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:800}
         .offer-html-money{display:inline-block;white-space:nowrap}
+        .offer-html-financial-items-table th:nth-child(5),.offer-html-financial-items-table td:nth-child(5),.offer-html-financial-items-table th:nth-child(6),.offer-html-financial-items-table td:nth-child(6){width:126px;text-align:right;white-space:nowrap}
+        .offer-html-service-pricing-table th:nth-child(1),.offer-html-service-pricing-table td:nth-child(1){width:34px;text-align:center}
+        .offer-html-service-pricing-table th:nth-child(3),.offer-html-service-pricing-table td:nth-child(3){width:116px;text-align:center}
+        .offer-html-service-pricing-table th:nth-child(4),.offer-html-service-pricing-table td:nth-child(4){width:128px;text-align:right;white-space:nowrap}
         .offer-html-fixed-plan-table th:nth-child(5),.offer-html-fixed-plan-table td:nth-child(5),.offer-html-fixed-plan-table th:nth-child(6),.offer-html-fixed-plan-table td:nth-child(6){width:126px;text-align:right;white-space:nowrap}
         .offer-html-included-services-table th:nth-child(1),.offer-html-included-services-table td:nth-child(1){width:34px;text-align:center}
         .offer-html-included-services-table th:nth-child(2),.offer-html-included-services-table td:nth-child(2){width:96px}
         .offer-html-fixed-plan-table tbody tr.is-included td{background:#f6fdf8;color:#14532d}
         .offer-html-simple-items-table th:nth-child(2),.offer-html-simple-items-table td:nth-child(2){width:145px;text-align:right}
-        .offer-html-group-row td{background:#f8fafc;font-weight:700;color:#0f172a}
-        .offer-html-breakdown-table-row td:first-child{padding-left:18px;color:#334155}
+        .offer-html-group-row td,.offer-html-service-group-row td{background:#e0f2fe;font-weight:700;color:#0f172a}
+        .offer-html-breakdown-table-row td{background:#fff;color:#334155}
+        .offer-html-breakdown-table-row td:first-child{padding-left:22px;color:#334155}
         .offer-html-items-table th:nth-child(1),.offer-html-items-table td:nth-child(1){width:34px;text-align:center}
         .offer-html-items-table th:nth-child(3),.offer-html-items-table td:nth-child(3),.offer-html-items-table th:nth-child(4),.offer-html-items-table td:nth-child(4){width:58px;text-align:center}
         .offer-html-items-table th:nth-child(5),.offer-html-items-table td:nth-child(5),.offer-html-items-table th:nth-child(6),.offer-html-items-table td:nth-child(6){width:110px;text-align:right}
@@ -11242,23 +11497,32 @@ export function buildOfferHtmlTemplate(offer = {}, options = {}) {
       .offer-html-items th,.offer-html-items td{border:1px solid #d9e3f3;padding:8px 9px;vertical-align:top}
       .offer-html-items th{background:#f1f6ff;color:#1e3a8a;text-align:left;font-weight:700}
       .offer-html-plan-section h4{margin:10px 0 7px;color:#0f172a;font-size:13px}
+      .offer-html-hybrid-monthly-section h4,.offer-html-service-pricing-section h4{border-radius:10px;padding:7px 10px;margin:12px 0 7px}
+      .offer-html-hybrid-monthly-section h4{background:#dbeafe;color:#1d4ed8}
+      .offer-html-service-pricing-section h4{background:#e0e7ff;color:#3730a3}
       .offer-html-plan-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0 14px}
       .offer-html-plan-summary div{border:1px solid #d9e3f3;border-radius:10px;background:#f8fafc;padding:9px 10px}
       .offer-html-plan-summary span{display:block;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
       .offer-html-plan-summary strong{display:block;margin-top:3px;text-align:right;font-size:14px}
       .offer-html-plan-summary .is-grand{background:#ecfdf5;border-color:#bbf7d0}
       .offer-html-plan-summary .is-grand strong,.offer-html-plan-summary .is-grand span{color:#047857}
-      .offer-html-fixed-plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 8px;color:#0f172a}
-      .offer-html-fixed-plan-head span{color:#64748b;font-size:12px}
+      .offer-html-plan-head,.offer-html-fixed-plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 8px;color:#0f172a}
+      .offer-html-plan-head span,.offer-html-fixed-plan-head span{color:#64748b;font-size:12px}
       .offer-html-included-badge{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:#dcfce7;color:#047857;font-size:11px;font-weight:800}
+      .offer-html-breakdown-badge{display:inline-block;padding:2px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:800}
       .offer-html-money{display:inline-block;white-space:nowrap}
+      .offer-html-financial-items-table th:nth-child(5),.offer-html-financial-items-table td:nth-child(5),.offer-html-financial-items-table th:nth-child(6),.offer-html-financial-items-table td:nth-child(6){width:126px;text-align:right;white-space:nowrap}
+      .offer-html-service-pricing-table th:nth-child(1),.offer-html-service-pricing-table td:nth-child(1){width:34px;text-align:center}
+      .offer-html-service-pricing-table th:nth-child(3),.offer-html-service-pricing-table td:nth-child(3){width:116px;text-align:center}
+      .offer-html-service-pricing-table th:nth-child(4),.offer-html-service-pricing-table td:nth-child(4){width:128px;text-align:right;white-space:nowrap}
       .offer-html-fixed-plan-table th:nth-child(5),.offer-html-fixed-plan-table td:nth-child(5),.offer-html-fixed-plan-table th:nth-child(6),.offer-html-fixed-plan-table td:nth-child(6){width:126px;text-align:right;white-space:nowrap}
       .offer-html-included-services-table th:nth-child(1),.offer-html-included-services-table td:nth-child(1){width:34px;text-align:center}
       .offer-html-included-services-table th:nth-child(2),.offer-html-included-services-table td:nth-child(2){width:96px}
       .offer-html-fixed-plan-table tbody tr.is-included td{background:#f6fdf8;color:#14532d}
       .offer-html-simple-items-table th:nth-child(2),.offer-html-simple-items-table td:nth-child(2){width:145px;text-align:right}
-      .offer-html-group-row td{background:#f8fafc;font-weight:700;color:#0f172a}
-      .offer-html-breakdown-table-row td:first-child{padding-left:18px;color:#334155}
+      .offer-html-group-row td,.offer-html-service-group-row td{background:#e0f2fe;font-weight:700;color:#0f172a}
+      .offer-html-breakdown-table-row td{background:#fff;color:#334155}
+      .offer-html-breakdown-table-row td:first-child{padding-left:22px;color:#334155}
       .offer-html-total-row td{background:#ecfdf5;color:#047857;font-weight:800}
       .offer-html-item{border:1px solid #cfd8ea;border-radius:16px;padding:14px;background:#fff}
       .offer-html-item-main{display:grid;grid-template-columns:minmax(0,1fr) 140px;gap:14px;align-items:start}
@@ -11960,7 +12224,10 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
     doc.y += 8;
   };
 
-  const drawOfferPdfFinancialItemsTable = (tableItems = []) => {
+  const drawOfferPdfFinancialItemsTable = (tableItems = [], {
+    includeTotals = true,
+    emptyMessage = "Ponuda jos nema dodanih stavki.",
+  } = {}) => {
     const tableX = doc.page.margins.left;
     const tableWidth = helpers.availableWidth;
     const columns = [
@@ -11984,8 +12251,8 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
           text: column.label,
           align: column.align,
           bold: true,
-          fillColor: "#f1f6ff",
-          textColor: "#1e3a8a",
+          fillColor: "#e0e7ff",
+          textColor: "#3730a3",
         });
         x += column.width;
       });
@@ -12025,7 +12292,7 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
     };
 
     if (!Array.isArray(tableItems) || tableItems.length === 0) {
-      drawOfferPdfSimplePriceTable([], { emptyMessage: "Ponuda jos nema dodanih stavki." });
+      drawOfferPdfSimplePriceTable([], { emptyMessage });
       return;
     }
 
@@ -12035,7 +12302,6 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
       const breakdowns = getOfferPdfBreakdownRows(item);
       const descriptionLines = normalizePdfLines([
         item.description || item.serviceCode || "Stavka",
-        ...breakdowns.map((entry) => `- ${getOfferPdfBreakdownDocumentLabel(entry)}: ${formatOfferPdfCurrency(parseOfferPdfNumber(entry.amount, 0), currency)}`),
         Number(item.discountRate ?? 0) > 0 ? `Rabat stavke: ${Number(item.discountRate ?? 0)}%` : "",
         isIncluded ? "Ukljuceno u plan" : "",
       ]);
@@ -12076,11 +12342,158 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
         x += column.width;
       });
       doc.y = y + rowHeight;
+
+      breakdowns.forEach((entry) => {
+        const amountColumn = columns.at(-1);
+        const labelWidth = tableWidth - amountColumn.width;
+        const label = `- ${getOfferPdfBreakdownDocumentLabel(entry)}`;
+        const amount = formatOfferPdfCurrency(parseOfferPdfNumber(entry.amount, 0), currency);
+        doc.font("dejavu").fontSize(8.1);
+        const labelHeight = doc.heightOfString(normalizePdfText(label), {
+          width: labelWidth - 14,
+          lineGap: 1,
+        });
+        const breakdownHeight = Math.max(28, labelHeight + 14);
+        helpers.ensureSpace(breakdownHeight + 2);
+        const breakdownY = doc.y;
+        drawOfferPdfTableCell({
+          x: tableX,
+          y: breakdownY,
+          width: labelWidth,
+          height: breakdownHeight,
+          text: label,
+          align: "left",
+          fontSize: 8.1,
+          fillColor: "#f8fafc",
+          textColor: "#334155",
+        });
+        drawOfferPdfTableCell({
+          x: tableX + labelWidth,
+          y: breakdownY,
+          width: amountColumn.width,
+          height: breakdownHeight,
+          text: amount,
+          align: "right",
+          bold: true,
+          fontSize: 7.8,
+          fillColor: "#f8fafc",
+          textColor: "#0f172a",
+        });
+        doc.y = breakdownY + breakdownHeight;
+      });
     });
 
-    if (offer.showTotalAmount !== false) {
+    if (includeTotals && offer.showTotalAmount !== false) {
       getOfferPdfFinancialRows(offer, currency).forEach(drawFooterRow);
     }
+    doc.y += 8;
+  };
+
+  const drawOfferPdfServicePricingTable = (serviceItems = []) => {
+    const tableX = doc.page.margins.left;
+    const tableWidth = helpers.availableWidth;
+    const columns = [
+      { id: "index", label: "#", width: 30, align: "center" },
+      { id: "description", label: "Usluga / razrada", width: Math.max(210, tableWidth - 30 - 110 - 122), align: "left" },
+      { id: "unit", label: "Jedinica", width: 110, align: "center" },
+      { id: "amount", label: "Cijena", width: 122, align: "right" },
+    ];
+    const drawHeader = () => {
+      helpers.ensureSpace(30);
+      const y = doc.y;
+      let x = tableX;
+      columns.forEach((column) => {
+        drawOfferPdfTableCell({
+          x,
+          y,
+          width: column.width,
+          height: 28,
+          text: column.label,
+          align: column.align,
+          bold: true,
+          fillColor: "#f1f6ff",
+          textColor: "#1e3a8a",
+        });
+        x += column.width;
+      });
+      doc.y = y + 28;
+    };
+
+    drawHeader();
+    if (!Array.isArray(serviceItems) || serviceItems.length === 0) {
+      helpers.ensureSpace(30);
+      const y = doc.y;
+      drawOfferPdfTableCell({
+        x: tableX,
+        y,
+        width: tableWidth,
+        height: 28,
+        text: "Nema usluga u cjeniku.",
+        fillColor: "#ffffff",
+        textColor: "#64748b",
+      });
+      doc.y = y + 28;
+      doc.moveDown(0.35);
+      return;
+    }
+
+    serviceItems.forEach((item, index) => {
+      const breakdowns = getOfferPdfBreakdownRows(item);
+      const rows = breakdowns.length > 0
+        ? [
+          {
+            index: String(index + 1),
+            description: item.description || item.serviceCode || "Usluga",
+            unit: "",
+            amount: "",
+            isGroup: true,
+          },
+          ...breakdowns.map((entry) => ({
+            index: "",
+            description: `- ${getOfferPdfBreakdownDocumentLabel(entry)}`,
+            unit: clean(entry.unitLabel || ""),
+            amount: formatOfferPdfCurrency(parseOfferPdfNumber(entry.amount, 0), currency),
+            isBreakdown: true,
+          })),
+        ]
+        : [{
+          index: String(index + 1),
+          description: item.description || item.serviceCode || "Usluga",
+          unit: getOfferPdfQuantityText(item) || clean(item.unit || "") || "po usluzi",
+          amount: formatOfferPdfItemAmount(item, currency) || formatOfferPdfCurrency(item.unitPrice ?? 0, currency),
+        }];
+
+      rows.forEach((row, rowIndex) => {
+        doc.font(row.isGroup ? "dejavu-bold" : "dejavu").fontSize(row.isGroup ? 8.8 : 8.2);
+        const descriptionColumn = columns.find((column) => column.id === "description");
+        const descriptionHeight = doc.heightOfString(normalizePdfText(row.description), {
+          width: descriptionColumn.width - 12,
+          lineGap: 1,
+        });
+        const rowHeight = Math.max(row.isGroup ? 30 : 28, descriptionHeight + 15);
+        helpers.ensureSpace(rowHeight + 2);
+        const y = doc.y;
+        let x = tableX;
+        const fillColor = row.isGroup ? "#e0f2fe" : "#ffffff";
+        columns.forEach((column) => {
+          drawOfferPdfTableCell({
+            x,
+            y,
+            width: column.width,
+            height: rowHeight,
+            text: row[column.id],
+            align: column.align,
+            bold: row.isGroup || column.id === "amount",
+            fontSize: column.id === "amount" ? 7.8 : 8.2,
+            fillColor,
+            textColor: row.isBreakdown ? "#334155" : "#0f172a",
+            paddingX: row.isBreakdown && column.id === "description" ? 18 : 6,
+          });
+          x += column.width;
+        });
+        doc.y = y + rowHeight;
+      });
+    });
     doc.y += 8;
   };
 
@@ -12252,7 +12665,12 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
 
     doc.moveDown(0.15);
     drawOfferPdfSectionTitle(doc, "Mjesečne naknade");
-    if (monthlyItems.length === 0) {
+    drawOfferPdfFinancialItemsTable(monthlyItems, {
+      includeTotals: false,
+      emptyMessage: "Nema mjesecnih naknada.",
+    });
+    if (true) {
+    } else if (monthlyItems.length === 0) {
       drawOfferPdfSimplePriceTable([], { emptyMessage: "Nema mjesečnih naknada." });
     } else {
       drawOfferPdfSimplePriceTable(monthlyItems.map((item) => {
@@ -12270,7 +12688,9 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
 
     doc.moveDown(0.2);
     drawOfferPdfSectionTitle(doc, "Cjenik usluga");
-    if (serviceItems.length === 0) {
+    drawOfferPdfServicePricingTable(serviceItems);
+    if (true) {
+    } else if (serviceItems.length === 0) {
       drawOfferPdfSimplePriceTable([], { emptyMessage: "Nema usluga u cjeniku." });
     } else {
       const pricingRows = serviceItems.flatMap((item) => {
@@ -12302,6 +12722,11 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
     drawOfferPdfSectionTitle(doc, "Ukljucene usluge");
     drawOfferPdfIncludedServicesTable(includedItems);
   } else {
+    if (planType === "One-Time Service") {
+      drawOfferPdfSectionTitle(doc, "Jednokratne usluge");
+    } else if (planType === "Per Employee Plan") {
+      drawOfferPdfSectionTitle(doc, "Cijena po zaposleniku");
+    }
     drawOfferPdfFinancialItemsTable(items);
   }
 

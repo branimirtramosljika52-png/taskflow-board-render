@@ -3660,6 +3660,18 @@ function hasCommercialBreakdownRows(item = {}) {
   ));
 }
 
+function isCommercialMonthlyFeeItem(item = {}) {
+  const unit = String(item?.unit || "").trim().toLowerCase();
+  const description = String(item?.description || "").trim().toLowerCase();
+  return unit === "mj"
+    || unit === "mjesec"
+    || unit === "mjesecno"
+    || unit === "mjesečno"
+    || description.includes("mjese")
+    || description.includes("pausal")
+    || description.includes("paušal");
+}
+
 function buildCommercialTableCell(text = "", format = {}) {
   return {
     text: String(text ?? ""),
@@ -3773,6 +3785,12 @@ function buildCommercialItemAmountText(item = {}, currency = "EUR") {
   if (total > 0) {
     return getCommercialMoneyText(total, currency);
   }
+  const breakdownTotal = Array.isArray(item?.breakdowns)
+    ? item.breakdowns.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount || 0)), 0)
+    : 0;
+  if (breakdownTotal > 0) {
+    return getCommercialMoneyText(breakdownTotal, currency);
+  }
   const quantity = Number(item?.quantity ?? 0) || 0;
   const unitPrice = Number(item?.unitPrice ?? 0) || 0;
   if (quantity > 0 && unitPrice > 0) {
@@ -3789,7 +3807,7 @@ function getCommercialOfferMonthlyItems(items = [], offerType = "") {
   const planType = normalizeCommercialOfferPlanType(offerType);
   const safeItems = Array.isArray(items) ? items : [];
   if (planType === "Hybrid Plan") {
-    return safeItems.filter((item) => !hasCommercialBreakdownRows(item));
+    return safeItems.filter((item) => isCommercialMonthlyFeeItem(item));
   }
   if (planType === "Fixed Plan") {
     return safeItems.filter((item) => !isCommercialIncludedServiceItem(item));
@@ -3804,7 +3822,7 @@ function getCommercialOfferServicePricingItems(items = [], offerType = "") {
     return [];
   }
   if (planType === "Hybrid Plan") {
-    return safeItems.filter((item) => hasCommercialBreakdownRows(item));
+    return safeItems.filter((item) => !isCommercialMonthlyFeeItem(item));
   }
   return safeItems;
 }
@@ -3888,8 +3906,9 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
       .forEach((entry, breakdownIndex) => {
         pushRow(
           `item-${itemIndex + 1}-breakdown-${breakdownIndex + 1}`,
-          `- ${getCommercialBreakdownDocumentLabel(entry)}`,
+          `    - ${getCommercialBreakdownDocumentLabel(entry)}`,
           getCommercialMoneyText(entry?.amount, currency),
+          { fillColor: "#FFFFFF", color: "#334155" },
         );
       });
   };
@@ -3904,7 +3923,6 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
     const included = Boolean(item?.isIncludedService || item?.includedService || item?.includedInPlan || item?.included);
     const description = [
       item?.description || item?.serviceCode || "Stavka",
-      ...breakdowns.map((entry) => `- ${getCommercialBreakdownDocumentLabel(entry)}: ${getCommercialMoneyText(entry?.amount, currency)}`),
       Number(item?.discountRate || 0) > 0 ? `Rabat stavke: ${item.discountRate}%` : "",
       included ? "Uključeno u plan" : "",
     ].filter(Boolean).join("\n");
@@ -3922,6 +3940,30 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
           color: included ? "#047857" : "#0F172A",
         }),
       ],
+    });
+    breakdowns.forEach((entry, breakdownIndex) => {
+      const rowId = `financial-item-${index + 1}-breakdown-${breakdownIndex + 1}`;
+      rows.push({
+        id: rowId,
+        cells: [
+          buildCommercialTableCell(`- ${getCommercialBreakdownDocumentLabel(entry)}`, {
+            align: "left",
+            fillColor: "#F8FAFC",
+            color: "#334155",
+          }),
+          buildCommercialTableCell("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCell("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCell("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCell("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCell(getCommercialMoneyText(entry?.amount, currency), {
+            align: "right",
+            bold: true,
+            fillColor: "#F8FAFC",
+            color: "#0F172A",
+          }),
+        ],
+      });
+      merges.push({ rowId, columnId: "index", colSpan: 5 });
     });
   };
 
@@ -4004,6 +4046,188 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
 
     return buildTableBlock(serviceColumns, serviceRows, serviceMerges, ["included-header"]);
   };
+
+  const buildHybridMonthlyFeesTableBlock = (monthlyItems = []) => {
+    const monthlyColumns = [
+      { id: "index", label: "#", width: 42 },
+      { id: "description", label: "Mjesečna naknada", width: 300 },
+      { id: "unit", label: "Jed.", width: 54 },
+      { id: "quantity", label: "Kol.", width: 54 },
+      { id: "unitPrice", label: "Cijena", width: 90 },
+      { id: "amount", label: "Iznos", width: 98 },
+    ];
+    const monthlyRows = [{
+      id: "monthly-header",
+      header: true,
+      cells: monthlyColumns.map((column) => buildCommercialTableCell(column.label, {
+        bold: true,
+        fillColor: "#DBEAFE",
+        color: "#1D4ED8",
+        align: ["index", "unit", "quantity"].includes(column.id) ? "center" : (column.id === "amount" || column.id === "unitPrice" ? "right" : "left"),
+      })),
+    }];
+    const monthlyMerges = [];
+    if (monthlyItems.length === 0) {
+      monthlyRows.push({
+        id: "monthly-empty",
+        cells: monthlyColumns.map((column, index) => buildCommercialTableCell(index === 0 ? "Nema mjesečnih naknada." : "", {
+          color: "#64748B",
+        })),
+      });
+      monthlyMerges.push({ rowId: "monthly-empty", columnId: "index", colSpan: monthlyColumns.length });
+    } else {
+      monthlyItems.forEach((item, index) => {
+        monthlyRows.push({
+          id: `monthly-fee-${index + 1}`,
+          cells: [
+            buildCommercialTableCell(String(index + 1), { align: "center" }),
+            buildCommercialTableCell(item?.description || "Mjesečna naknada", { align: "left", bold: true }),
+            buildCommercialTableCell(String(item?.unit || ""), { align: "center" }),
+            buildCommercialTableCell(String(item?.quantity ?? ""), { align: "center" }),
+            buildCommercialTableCell(getCommercialMoneyText(item?.unitPrice, currency), { align: "right" }),
+            buildCommercialTableCell(buildCommercialItemAmountText(item, currency), { align: "right", bold: true }),
+          ],
+        });
+      });
+    }
+    return buildTableBlock(monthlyColumns, monthlyRows, monthlyMerges, ["monthly-header"]);
+  };
+
+  const buildHybridServicePricingTableBlock = (serviceItems = []) => {
+    const serviceColumns = [
+      { id: "index", label: "#", width: 42 },
+      { id: "description", label: "Usluga / razrada", width: 382 },
+      { id: "unit", label: "Jedinica", width: 90 },
+      { id: "amount", label: "Cijena", width: 120 },
+    ];
+    const serviceRows = [{
+      id: "service-header",
+      header: true,
+      cells: serviceColumns.map((column) => buildCommercialTableCell(column.label, {
+        bold: true,
+        fillColor: "#E0E7FF",
+        color: "#3730A3",
+        align: column.id === "index" || column.id === "unit" ? "center" : (column.id === "amount" ? "right" : "left"),
+      })),
+    }];
+    const serviceMerges = [];
+    if (serviceItems.length === 0) {
+      serviceRows.push({
+        id: "service-empty",
+        cells: serviceColumns.map((column, index) => buildCommercialTableCell(index === 0 ? "Nema usluga u cjeniku." : "", {
+          color: "#64748B",
+        })),
+      });
+      serviceMerges.push({ rowId: "service-empty", columnId: "index", colSpan: serviceColumns.length });
+    } else {
+      serviceItems.forEach((item, index) => {
+        const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns.filter((entry) => (
+          String(entry?.recordLabel || entry?.label || entry?.unitLabel || "").trim()
+            || String(entry?.measurementFrom || "").trim()
+            || String(entry?.measurementTo || "").trim()
+            || Number(entry?.amount || 0) > 0
+        )) : [];
+        if (breakdowns.length === 0) {
+          serviceRows.push({
+            id: `service-item-${index + 1}`,
+            cells: [
+              buildCommercialTableCell(String(index + 1), { align: "center" }),
+              buildCommercialTableCell(item?.description || item?.serviceCode || "Usluga", { align: "left", bold: true }),
+              buildCommercialTableCell(getCommercialQuantityText(item) || item?.unit || "po usluzi", { align: "center" }),
+              buildCommercialTableCell(buildCommercialItemAmountText(item, currency), { align: "right", bold: true }),
+            ],
+          });
+          return;
+        }
+
+        const groupRowId = `service-group-${index + 1}`;
+        serviceRows.push({
+          id: groupRowId,
+          cells: [
+            buildCommercialTableCell(String(index + 1), { align: "center", fillColor: "#F8FAFC" }),
+            buildCommercialTableCell(item?.description || item?.serviceCode || "Usluga", { align: "left", bold: true, fillColor: "#F8FAFC" }),
+            buildCommercialTableCell("", { fillColor: "#F8FAFC" }),
+            buildCommercialTableCell("", { fillColor: "#F8FAFC" }),
+          ],
+        });
+        serviceMerges.push({ rowId: groupRowId, columnId: "description", colSpan: 3 });
+        breakdowns.forEach((entry, breakdownIndex) => {
+          serviceRows.push({
+            id: `service-item-${index + 1}-breakdown-${breakdownIndex + 1}`,
+            cells: [
+              buildCommercialTableCell("", { align: "center" }),
+              buildCommercialTableCell(getCommercialBreakdownDocumentLabel(entry), { align: "left", color: "#334155" }),
+              buildCommercialTableCell(entry?.unitLabel || "", { align: "center", color: "#475569" }),
+              buildCommercialTableCell(getCommercialMoneyText(entry?.amount, currency), { align: "right", bold: true }),
+            ],
+          });
+        });
+      });
+    }
+    return buildTableBlock(serviceColumns, serviceRows, serviceMerges, ["service-header"]);
+  };
+
+  const buildHybridTotalsTableBlock = () => {
+    const totalColumns = [
+      { id: "label", label: "Ukupni iznosi", width: 500 },
+      { id: "amount", label: "Iznos", width: 130 },
+    ];
+    const totalRows = [{
+      id: "totals-header",
+      header: true,
+      cells: totalColumns.map((column) => buildCommercialTableCell(column.label, {
+        bold: true,
+        fillColor: "#F3F4F6",
+        align: column.id === "amount" ? "right" : "left",
+      })),
+    }];
+    getCommercialFinancialRows(totals || {}, currency).forEach((row) => {
+      totalRows.push({
+        id: `hybrid-total-${row.id}`,
+        cells: [
+          buildCommercialTableCell(row.label, {
+            align: "right",
+            bold: true,
+            fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC",
+            color: row.isGrand ? "#047857" : "#0F172A",
+          }),
+          buildCommercialTableCell(row.amount, {
+            align: "right",
+            bold: true,
+            fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC",
+            color: row.isGrand ? "#047857" : "#0F172A",
+          }),
+        ],
+      });
+    });
+    return buildTableBlock(totalColumns, totalRows, [], ["totals-header"]);
+  };
+
+  if (isHybridPlan) {
+    const monthlyItems = getCommercialOfferMonthlyItems(allItems, offerType);
+    const serviceItems = getCommercialOfferServicePricingItems(allItems, offerType);
+    if (section === "monthly") {
+      return buildHybridMonthlyFeesTableBlock(monthlyItems);
+    }
+    if (section === "services") {
+      return buildHybridServicePricingTableBlock(serviceItems);
+    }
+    if (section === "all") {
+      const blocks = [
+        { type: "heading", text: "Mjesečne naknade", level: 4 },
+        buildHybridMonthlyFeesTableBlock(monthlyItems),
+        { type: "heading", text: "Cjenik usluga po izvršenju", level: 4 },
+        buildHybridServicePricingTableBlock(serviceItems),
+      ];
+      if (showTotalAmount && totals && typeof totals === "object") {
+        blocks.push(
+          { type: "heading", text: "Ukupni iznosi", level: 4 },
+          buildHybridTotalsTableBlock(),
+        );
+      }
+      return { __docxBlockType: "blocks", blocks };
+    }
+  }
 
   if (isFinancialPlan) {
     if (isFixedPlan && section === "all") {
@@ -4102,20 +4326,21 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
     const serviceItems = getCommercialOfferServicePricingItems(safeItems, offerType);
 
     if (feeItems.length > 0) {
-      pushMergedRow("monthly-fees-section", "Mjesečne naknade", { fillColor: "#F8FAFC" });
+      pushMergedRow("monthly-fees-section", "Mjesečne naknade", { fillColor: "#DBEAFE", color: "#1D4ED8", bold: true });
       feeItems.forEach((item, index) => {
         pushRow(
           `monthly-fee-${index + 1}`,
           item?.description || "Mjesečna naknada",
           buildCommercialItemAmountText(item, currency),
+          { fillColor: "#EFF6FF", bold: true },
         );
       });
     }
 
     if (serviceItems.length > 0) {
-      pushMergedRow("service-pricing-section", "Cjenik usluga", { fillColor: "#F8FAFC" });
+      pushMergedRow("service-pricing-section", "Cjenik usluga", { fillColor: "#E0E7FF", color: "#3730A3", bold: true });
       serviceItems.forEach((item, index) => {
-        pushMergedRow(`service-item-${index + 1}`, item?.description || "Usluga", { fillColor: "#FFFFFF" });
+        pushMergedRow(`service-item-${index + 1}`, item?.description || "Usluga", { fillColor: "#E0F2FE", color: "#0F172A", bold: true });
         pushBreakdownRows(item, index);
       });
     }
@@ -6391,6 +6616,9 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
   const currency = String(normalizedOffer.currency || "EUR").trim() || "EUR";
   const items = Array.isArray(normalizedOffer.items) ? normalizedOffer.items : [];
   const planType = normalizeCommercialOfferPlanType(normalizedOffer.serviceLine || "");
+  const itemsFallbackTitle = planType === "Per Employee Plan"
+    ? "Cijena po zaposleniku"
+    : "Opis stavke";
   const suppressItemTotals = planType === "Hybrid Plan"
     || items.some((item) => hasCommercialBreakdownRows(item));
   const itemsSummary = items
@@ -6410,7 +6638,7 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
     })
     .join("\n");
   const itemsTable = buildCommercialItemsTablePlaceholder(items, currency, {
-    fallbackTitle: "Opis stavke",
+    fallbackTitle: itemsFallbackTitle,
     offerType: normalizedOffer.serviceLine || "",
     showTotalAmount: normalizedOffer.showTotalAmount !== false,
     totals: normalizedOffer,
@@ -18257,11 +18485,17 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
-      await domainRepository.createOffer({
+      const created = await domainRepository.createOffer({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
-      await writeSnapshot(response, user, request, 201);
+      if (!isSnapshotCacheableRequest(request)) {
+        invalidateSnapshotCaches();
+      }
+      sendJson(response, 201, {
+        ok: true,
+        item: created,
+      });
       return true;
     }
 
@@ -20873,7 +21107,13 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response, user, request);
+      if (!isSnapshotCacheableRequest(request)) {
+        invalidateSnapshotCaches();
+      }
+      sendJson(response, 200, {
+        ok: true,
+        item: updated,
+      });
       return true;
     }
 

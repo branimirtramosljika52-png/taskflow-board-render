@@ -904,11 +904,11 @@ const OFFER_PLAN_TYPE_DEFINITIONS = Object.freeze([
   Object.freeze({
     value: "Per Employee Plan",
     label: "Per Employee Plan",
-    help: "Cijena po zaposleniku, bez razrade po mjernim mjestima.",
+    help: "Cijena po zaposleniku, s mogućom razradom stavki.",
     itemsTitle: "Cijena po zaposleniku",
     addButtonLabel: "+ Dodaj stavku",
-    allowBreakdowns: false,
-    allowMultipleItems: false,
+    allowBreakdowns: true,
+    allowMultipleItems: true,
   }),
 ]);
 const OFFER_SERVICE_LINE_OPTIONS = Object.freeze(OFFER_PLAN_TYPE_DEFINITIONS.map((entry) => entry.value));
@@ -51933,6 +51933,12 @@ function buildCommercialItemAmountText(item = {}, currency = "EUR") {
   if (total > 0) {
     return getCommercialTableMoneyText(total, currency);
   }
+  const breakdownTotal = Array.isArray(item?.breakdowns)
+    ? item.breakdowns.reduce((sum, entry) => sum + Math.max(0, parseOfferMoneyInput(entry?.amount, 0)), 0)
+    : 0;
+  if (breakdownTotal > 0) {
+    return getCommercialTableMoneyText(breakdownTotal, currency);
+  }
   const quantity = Math.max(0, parseOfferMoneyInput(item?.quantity, 0));
   const unitPrice = Math.max(0, parseOfferMoneyInput(item?.unitPrice, 0));
   if (quantity > 0 && unitPrice > 0) {
@@ -51949,7 +51955,7 @@ function getCommercialOfferMonthlyItems(items = [], offerType = "") {
   const planType = getCommercialItemsTablePlanType(offerType);
   const safeItems = Array.isArray(items) ? items : [];
   if (planType === "Hybrid Plan") {
-    return safeItems.filter((item) => !hasCommercialItemBreakdownRows(item));
+    return safeItems.filter((item) => isOfferMainFeeItemDraft(item));
   }
   if (planType === "Fixed Plan") {
     return safeItems.filter((item) => !isCommercialIncludedServiceItem(item));
@@ -51964,7 +51970,7 @@ function getCommercialOfferServicePricingItems(items = [], offerType = "") {
     return [];
   }
   if (planType === "Hybrid Plan") {
-    return safeItems.filter((item) => hasCommercialItemBreakdownRows(item));
+    return safeItems.filter((item) => !isOfferMainFeeItemDraft(item));
   }
   return safeItems;
 }
@@ -52048,8 +52054,9 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
       .forEach((entry, breakdownIndex) => {
         pushRow(
           `item-${itemIndex + 1}-breakdown-${breakdownIndex + 1}`,
-          `- ${getCommercialBreakdownDocumentLabel(entry)}`,
+          `    - ${getCommercialBreakdownDocumentLabel(entry)}`,
           getCommercialTableMoneyText(entry?.amount, currency),
+          { fillColor: "#FFFFFF", color: "#334155" },
         );
       });
   };
@@ -52064,7 +52071,6 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
     const included = Boolean(item?.isIncludedService || item?.includedService || item?.includedInPlan || item?.included);
     const description = [
       item?.description || item?.serviceCode || "Stavka",
-      ...breakdowns.map((entry) => `- ${getCommercialBreakdownDocumentLabel(entry)}: ${getCommercialTableMoneyText(entry?.amount, currency)}`),
       parseOfferMoneyInput(item?.discountRate, 0) > 0 ? `Rabat stavke: ${item.discountRate}%` : "",
       included ? "Uključeno u plan" : "",
     ].filter(Boolean).join("\n");
@@ -52082,6 +52088,30 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
           color: included ? "#047857" : "#0F172A",
         }),
       ],
+    });
+    breakdowns.forEach((entry, breakdownIndex) => {
+      const rowId = `financial-item-${index + 1}-breakdown-${breakdownIndex + 1}`;
+      rows.push({
+        id: rowId,
+        cells: [
+          buildCommercialTableCellPreview(`- ${getCommercialBreakdownDocumentLabel(entry)}`, {
+            align: "left",
+            fillColor: "#F8FAFC",
+            color: "#334155",
+          }),
+          buildCommercialTableCellPreview("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCellPreview("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCellPreview("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCellPreview("", { fillColor: "#F8FAFC" }),
+          buildCommercialTableCellPreview(getCommercialTableMoneyText(entry?.amount, currency), {
+            align: "right",
+            bold: true,
+            fillColor: "#F8FAFC",
+            color: "#0F172A",
+          }),
+        ],
+      });
+      merges.push({ rowId, columnId: "index", colSpan: 5 });
     });
   };
 
@@ -52164,6 +52194,188 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
 
     return buildTableBlock(serviceColumns, serviceRows, serviceMerges, ["included-header"]);
   };
+
+  const buildHybridMonthlyFeesTableBlock = (monthlyItems = []) => {
+    const monthlyColumns = [
+      { id: "index", label: "#", width: 42 },
+      { id: "description", label: "Mjesečna naknada", width: 300 },
+      { id: "unit", label: "Jed.", width: 54 },
+      { id: "quantity", label: "Kol.", width: 54 },
+      { id: "unitPrice", label: "Cijena", width: 90 },
+      { id: "amount", label: "Iznos", width: 98 },
+    ];
+    const monthlyRows = [{
+      id: "monthly-header",
+      header: true,
+      cells: monthlyColumns.map((column) => buildCommercialTableCellPreview(column.label, {
+        bold: true,
+        fillColor: "#DBEAFE",
+        color: "#1D4ED8",
+        align: ["index", "unit", "quantity"].includes(column.id) ? "center" : (column.id === "amount" || column.id === "unitPrice" ? "right" : "left"),
+      })),
+    }];
+    const monthlyMerges = [];
+    if (monthlyItems.length === 0) {
+      monthlyRows.push({
+        id: "monthly-empty",
+        cells: monthlyColumns.map((column, index) => buildCommercialTableCellPreview(index === 0 ? "Nema mjesečnih naknada." : "", {
+          color: "#64748B",
+        })),
+      });
+      monthlyMerges.push({ rowId: "monthly-empty", columnId: "index", colSpan: monthlyColumns.length });
+    } else {
+      monthlyItems.forEach((item, index) => {
+        monthlyRows.push({
+          id: `monthly-fee-${index + 1}`,
+          cells: [
+            buildCommercialTableCellPreview(String(index + 1), { align: "center", fillColor: "#EFF6FF" }),
+            buildCommercialTableCellPreview(item?.description || "Mjesečna naknada", { align: "left", bold: true, fillColor: "#EFF6FF", color: "#0F172A" }),
+            buildCommercialTableCellPreview(String(item?.unit || ""), { align: "center", fillColor: "#EFF6FF" }),
+            buildCommercialTableCellPreview(String(item?.quantity ?? ""), { align: "center", fillColor: "#EFF6FF" }),
+            buildCommercialTableCellPreview(getCommercialTableMoneyText(item?.unitPrice, currency), { align: "right", fillColor: "#EFF6FF" }),
+            buildCommercialTableCellPreview(buildCommercialItemAmountText(item, currency), { align: "right", bold: true, fillColor: "#EFF6FF", color: "#1D4ED8" }),
+          ],
+        });
+      });
+    }
+    return buildTableBlock(monthlyColumns, monthlyRows, monthlyMerges, ["monthly-header"]);
+  };
+
+  const buildHybridServicePricingTableBlock = (serviceItems = []) => {
+    const serviceColumns = [
+      { id: "index", label: "#", width: 42 },
+      { id: "description", label: "Usluga / razrada", width: 382 },
+      { id: "unit", label: "Jedinica", width: 90 },
+      { id: "amount", label: "Cijena", width: 120 },
+    ];
+    const serviceRows = [{
+      id: "service-header",
+      header: true,
+      cells: serviceColumns.map((column) => buildCommercialTableCellPreview(column.label, {
+        bold: true,
+        fillColor: "#E0E7FF",
+        color: "#3730A3",
+        align: column.id === "index" || column.id === "unit" ? "center" : (column.id === "amount" ? "right" : "left"),
+      })),
+    }];
+    const serviceMerges = [];
+    if (serviceItems.length === 0) {
+      serviceRows.push({
+        id: "service-empty",
+        cells: serviceColumns.map((column, index) => buildCommercialTableCellPreview(index === 0 ? "Nema usluga u cjeniku." : "", {
+          color: "#64748B",
+        })),
+      });
+      serviceMerges.push({ rowId: "service-empty", columnId: "index", colSpan: serviceColumns.length });
+    } else {
+      serviceItems.forEach((item, index) => {
+        const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns.filter((entry) => (
+          String(entry?.recordLabel || entry?.label || entry?.unitLabel || "").trim()
+            || String(entry?.measurementFrom || "").trim()
+            || String(entry?.measurementTo || "").trim()
+            || parseOfferMoneyInput(entry?.amount, 0) > 0
+        )) : [];
+        if (breakdowns.length === 0) {
+          serviceRows.push({
+            id: `service-item-${index + 1}`,
+            cells: [
+              buildCommercialTableCellPreview(String(index + 1), { align: "center", fillColor: "#F8FAFC" }),
+              buildCommercialTableCellPreview(item?.description || item?.serviceCode || "Usluga", { align: "left", bold: true, fillColor: "#F8FAFC" }),
+              buildCommercialTableCellPreview(getCommercialTableQuantityText(item) || item?.unit || "po usluzi", { align: "center", fillColor: "#F8FAFC" }),
+              buildCommercialTableCellPreview(buildCommercialItemAmountText(item, currency), { align: "right", bold: true, fillColor: "#F8FAFC" }),
+            ],
+          });
+          return;
+        }
+
+        const groupRowId = `service-group-${index + 1}`;
+        serviceRows.push({
+          id: groupRowId,
+          cells: [
+            buildCommercialTableCellPreview(String(index + 1), { align: "center", bold: true, fillColor: "#E0F2FE", color: "#0369A1" }),
+            buildCommercialTableCellPreview(item?.description || item?.serviceCode || "Usluga", { align: "left", bold: true, fillColor: "#E0F2FE", color: "#0F172A" }),
+            buildCommercialTableCellPreview("", { fillColor: "#E0F2FE" }),
+            buildCommercialTableCellPreview("", { fillColor: "#E0F2FE" }),
+          ],
+        });
+        serviceMerges.push({ rowId: groupRowId, columnId: "description", colSpan: 3 });
+        breakdowns.forEach((entry, breakdownIndex) => {
+          serviceRows.push({
+            id: `service-item-${index + 1}-breakdown-${breakdownIndex + 1}`,
+            cells: [
+              buildCommercialTableCellPreview("", { align: "center", fillColor: "#FFFFFF" }),
+              buildCommercialTableCellPreview(`    - ${getCommercialBreakdownDocumentLabel(entry)}`, { align: "left", color: "#334155", fillColor: "#FFFFFF" }),
+              buildCommercialTableCellPreview(entry?.unitLabel || "", { align: "center", color: "#475569", fillColor: "#FFFFFF" }),
+              buildCommercialTableCellPreview(getCommercialTableMoneyText(entry?.amount, currency), { align: "right", bold: true, fillColor: "#FFFFFF" }),
+            ],
+          });
+        });
+      });
+    }
+    return buildTableBlock(serviceColumns, serviceRows, serviceMerges, ["service-header"]);
+  };
+
+  const buildHybridTotalsTableBlock = () => {
+    const totalColumns = [
+      { id: "label", label: "Ukupni iznosi", width: 500 },
+      { id: "amount", label: "Iznos", width: 130 },
+    ];
+    const totalRows = [{
+      id: "totals-header",
+      header: true,
+      cells: totalColumns.map((column) => buildCommercialTableCellPreview(column.label, {
+        bold: true,
+        fillColor: "#F3F4F6",
+        align: column.id === "amount" ? "right" : "left",
+      })),
+    }];
+    getCommercialFinancialRowsPreview(totals || {}, currency).forEach((row) => {
+      totalRows.push({
+        id: `hybrid-total-${row.id}`,
+        cells: [
+          buildCommercialTableCellPreview(row.label, {
+            align: "right",
+            bold: true,
+            fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC",
+            color: row.isGrand ? "#047857" : "#0F172A",
+          }),
+          buildCommercialTableCellPreview(row.amount, {
+            align: "right",
+            bold: true,
+            fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC",
+            color: row.isGrand ? "#047857" : "#0F172A",
+          }),
+        ],
+      });
+    });
+    return buildTableBlock(totalColumns, totalRows, [], ["totals-header"]);
+  };
+
+  if (isHybridPlan) {
+    const monthlyItems = getCommercialOfferMonthlyItems(allItems, offerType);
+    const serviceItems = getCommercialOfferServicePricingItems(allItems, offerType);
+    if (section === "monthly") {
+      return buildHybridMonthlyFeesTableBlock(monthlyItems);
+    }
+    if (section === "services") {
+      return buildHybridServicePricingTableBlock(serviceItems);
+    }
+    if (section === "all") {
+      const blocks = [
+        { type: "heading", text: "Mjesečne naknade", level: 4 },
+        buildHybridMonthlyFeesTableBlock(monthlyItems),
+        { type: "heading", text: "Cjenik usluga po izvršenju", level: 4 },
+        buildHybridServicePricingTableBlock(serviceItems),
+      ];
+      if (showTotalAmount && totals && typeof totals === "object") {
+        blocks.push(
+          { type: "heading", text: "Ukupni iznosi", level: 4 },
+          buildHybridTotalsTableBlock(),
+        );
+      }
+      return { __docxBlockType: "blocks", blocks };
+    }
+  }
 
   if (isFinancialPlan) {
     if (isFixedPlan && section === "all") {
@@ -52263,20 +52475,21 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
     const serviceItems = getCommercialOfferServicePricingItems(safeItems, offerType);
 
     if (feeItems.length > 0) {
-      pushMergedRow("monthly-fees-section", "Mjesečne naknade", { fillColor: "#F8FAFC" });
+      pushMergedRow("monthly-fees-section", "Mjesečne naknade", { fillColor: "#DBEAFE", color: "#1D4ED8", bold: true });
       feeItems.forEach((item, index) => {
         pushRow(
           `monthly-fee-${index + 1}`,
           item?.description || "Mjesečna naknada",
           buildCommercialItemAmountText(item, currency),
+          { fillColor: "#EFF6FF", bold: true },
         );
       });
     }
 
     if (serviceItems.length > 0) {
-      pushMergedRow("service-pricing-section", "Cjenik usluga", { fillColor: "#F8FAFC" });
+      pushMergedRow("service-pricing-section", "Cjenik usluga", { fillColor: "#E0E7FF", color: "#3730A3", bold: true });
       serviceItems.forEach((item, index) => {
-        pushMergedRow(`service-item-${index + 1}`, item?.description || "Usluga", { fillColor: "#FFFFFF" });
+        pushMergedRow(`service-item-${index + 1}`, item?.description || "Usluga", { fillColor: "#E0F2FE", color: "#0F172A", bold: true });
         pushBreakdownRows(item, index);
       });
     }
@@ -52344,6 +52557,11 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
     || Boolean(normalizedOffer.orderDirection);
   const currency = normalizedOffer.currency || "EUR";
   const planType = getCommercialItemsTablePlanType(normalizedOffer.serviceLine || "");
+  const itemsFallbackTitle = !isPurchaseOrder && planType === "Per Employee Plan"
+    ? "Cijena po zaposleniku"
+    : isPurchaseOrder
+      ? "Opis narudžbe"
+      : "Opis stavke";
   const suppressItemTotals = !isPurchaseOrder
     && (planType === "Hybrid Plan" || hasSerializedCommercialBreakdowns(normalizedOffer.items ?? []));
   const itemsSummary = (normalizedOffer.items ?? [])
@@ -52366,7 +52584,7 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
     normalizedOffer.items ?? [],
     currency,
     {
-      fallbackTitle: isPurchaseOrder ? "Opis narudžbe" : "Opis stavke",
+      fallbackTitle: itemsFallbackTitle,
       offerType: isPurchaseOrder ? "" : normalizedOffer.serviceLine,
       showTotalAmount: normalizedOffer.showTotalAmount !== false,
       totals: normalizedOffer,
@@ -98608,6 +98826,7 @@ function renderOfferItemRows() {
   const allowMultipleItems = shouldOfferPlanAllowMultipleItems();
   const activePlanDefinition = getActiveOfferPlanTypeDefinition();
   const isFixedPlanActive = isOfferPlanEditorActive() && activePlanDefinition.value === "Fixed Plan";
+  const isHybridPlanActive = isOfferPlanEditorActive() && activePlanDefinition.value === "Hybrid Plan";
   const indexedOfferItems = offerFormItems.map((item, index) => ({ type: "item", item, index }));
   const fixedBillableEntries = isFixedPlanActive
     ? indexedOfferItems.filter((entry) => !entry.item?.isIncludedService)
@@ -98615,11 +98834,23 @@ function renderOfferItemRows() {
   const fixedIncludedEntries = isFixedPlanActive
     ? indexedOfferItems.filter((entry) => Boolean(entry.item?.isIncludedService))
     : [];
+  const hybridMonthlyEntries = isHybridPlanActive
+    ? indexedOfferItems.filter((entry) => isOfferMainFeeItemDraft(entry.item))
+    : [];
+  const hybridServiceEntries = isHybridPlanActive
+    ? indexedOfferItems.filter((entry) => !isOfferMainFeeItemDraft(entry.item))
+    : [];
   const renderEntries = isFixedPlanActive
     ? [
       ...fixedBillableEntries,
       { type: "fixed-included-section", count: fixedIncludedEntries.length },
       ...fixedIncludedEntries,
+    ]
+    : isHybridPlanActive
+    ? [
+      ...hybridMonthlyEntries,
+      { type: "hybrid-services-section", count: hybridServiceEntries.length },
+      ...hybridServiceEntries,
     ]
     : indexedOfferItems;
 
@@ -98640,6 +98871,25 @@ function renderOfferItemRows() {
         openOfferServiceAddMenu(offerAddItemButton);
       });
       section.append(copy, addIncludedButton);
+      return section;
+    }
+
+    if (entry.type === "hybrid-services-section") {
+      const section = document.createElement("div");
+      section.className = "offer-fixed-included-section offer-hybrid-services-section";
+      const copy = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = "Usluge po izvršenju";
+      const help = document.createElement("p");
+      help.className = "inline-help";
+      help.textContent = entry.count
+        ? `${entry.count} usluga ide u cjenik po izvršenju. Razradu možeš dodati po svakoj usluzi.`
+        : "Dodaj usluge iz kataloga ili ručno, pa po potrebi upiši razradu cijena.";
+      copy.append(title, help);
+      const addServiceButton = createActionButton("+ Dodaj iz kataloga", "ghost-button offer-fixed-included-add", () => {
+        openOfferServiceAddMenu(offerAddItemButton);
+      });
+      section.append(copy, addServiceButton);
       return section;
     }
 
@@ -98759,6 +99009,10 @@ function renderOfferItemRows() {
       ? "Uključena usluga"
       : isFixedPlanItem
       ? "Fiksna stavka"
+      : isHybridPlanActive && isMainFeeItem
+      ? `Mjesečna naknada ${index + 1}`
+      : isHybridPlanActive
+      ? `Usluga po izvršenju ${index + 1}`
       : isMainFeeItem
       ? `Glavna naknada ${index + 1}`
       : (itemShowsBreakdowns ? `Usluga ${index + 1}` : `Stavka ${index + 1}`);
@@ -99379,6 +99633,19 @@ function buildOfferPayload() {
       ? purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry))
       : [],
   };
+}
+
+function applyOfferMutationPayload(payload = {}) {
+  const item = payload?.item;
+  if (!item || typeof item !== "object" || !item.id) {
+    return false;
+  }
+
+  state.offers = sortOffers([
+    item,
+    ...(state.offers ?? []).filter((offer) => String(offer.id) !== String(item.id)),
+  ]);
+  return true;
 }
 
 function resetOfferForm() {
@@ -100315,27 +100582,12 @@ function createOfferListFinancialSummary(offer = {}) {
   }
 
   const currency = offer.currency || "EUR";
-  const taxRate = String(offer.taxRate ?? "").trim();
-  const planType = normalizeOfferPlanTypeValue(offer.serviceLine || "");
   const summary = document.createElement("div");
   summary.className = "offer-list-financial-summary";
 
-  const rows = planType === "Fixed Plan" ? [
+  const rows = [
     ["Bez PDV-a", formatCurrencyAmount(offer.taxableSubtotal ?? offer.subtotal ?? 0, currency), "is-fixed-base"],
-  ] : [
-    ["Bez PDV-a", formatCurrencyAmount(offer.taxableSubtotal ?? offer.subtotal ?? 0, currency), ""],
-    [taxRate ? `PDV ${taxRate}%` : "PDV", formatCurrencyAmount(offer.taxTotal ?? 0, currency), ""],
-    ["Ukupno s PDV-om", formatCurrencyAmount(offer.total ?? 0, currency), "is-grand"],
   ];
-
-  if (planType !== "Fixed Plan" && (Number(offer.discountTotal || 0) > 0 || Number(offer.discountRate || 0) > 0)) {
-    rows.unshift(["Međuzbroj", formatCurrencyAmount(offer.subtotal ?? 0, currency), ""]);
-    rows.splice(1, 0, [
-      Number(offer.discountRate || 0) > 0 ? `Rabat ${offer.discountRate}%` : "Rabat",
-      formatCurrencyAmount(offer.discountTotal ?? 0, currency),
-      "is-discount",
-    ]);
-  }
 
   summary.append(...rows.map(([label, value, className]) => {
     const row = document.createElement("span");
@@ -123648,7 +123900,13 @@ offerForm?.addEventListener("submit", (event) => {
   void runMutation(() => apiRequest(path, {
     method,
     body: buildOfferPayload(),
-  }), offerError).then((success) => {
+  }), offerError, {
+    onSuccessPayload(payload) {
+      if (apiBasePath === "/offers") {
+        applyOfferMutationPayload(payload);
+      }
+    },
+  }).then((success) => {
     if (success) {
       closeOfferEditor({ reset: true });
       renderOffersModule();

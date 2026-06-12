@@ -1773,17 +1773,30 @@ test("hybrid offer HTML separates monthly fees from service pricing", () => {
           { priceKind: "next_measurement", amount: 24 },
         ],
       },
+      {
+        description: "Jednostavna intervencija",
+        unit: "usluga",
+        quantity: 1,
+        unitPrice: 55,
+        totalPrice: 55,
+      },
     ],
   });
 
   assert.match(html, /Mjesečne naknade/);
+  assert.match(html, /offer-html-hybrid-monthly-table/);
+  assert.match(html, /offer-html-service-pricing-table/);
+  assert.match(html, /1 mjese/);
+  assert.match(html, /2 po usluzi/);
   assert.match(html, /Cjenik usluga/);
   assert.match(html, /Mjesečni iznos/);
   assert.match(html, /Usluge po izvršenju/);
+  assert.match(html, /Jednostavna intervencija/);
   assert.match(html, /Do 10 mjernih mjesta/);
   assert.match(html, /Od 11 do 20 mjernog mjesta/);
   assert.match(html, /Svako iduće mjerno mjesto/);
   assert.match(html, /142,00 EUR/);
+  assert.match(html, /55,00 EUR/);
   assert.match(html, /24,00 EUR/);
   assert.doesNotMatch(html, /MM 11 - 20/);
 });
@@ -1803,8 +1816,11 @@ test("one-time offer HTML uses financial table with tax footer", () => {
         description: "Jednokratno ispitivanje",
         unit: "kom",
         quantity: 3,
-        unitPrice: 40,
+        unitPrice: 0,
         totalPrice: 120,
+        breakdowns: [
+          { priceKind: "measurement", measurementTo: "3", amount: 120 },
+        ],
       },
     ],
     subtotal: 120,
@@ -1815,11 +1831,50 @@ test("one-time offer HTML uses financial table with tax footer", () => {
   });
 
   assert.match(html, /Jednokratno ispitivanje/);
+  assert.match(html, /offer-html-one-time-table/);
+  assert.match(html, /Razrada/);
+  assert.match(html, /Do 3 mjernih mjesta/);
   assert.match(html, /offer-html-plan-summary/);
   assert.match(html, /Međuzbroj/);
   assert.match(html, /PDV \(25%\)/);
   assert.match(html, /Ukupno s PDV-om/);
   assert.match(html, /150,00 EUR/);
+});
+
+test("per employee offer HTML uses employee pricing table with tax footer", () => {
+  const html = buildOfferHtmlTemplate({
+    title: "Per employee ponuda",
+    offerNumber: "26-AG-EMP",
+    offerDate: "2026-05-06",
+    companyName: "Alpha d.o.o.",
+    companyOib: "12345678901",
+    headquarters: "Zagreb",
+    locationName: "Pogon 1",
+    serviceLine: "Per Employee Plan",
+    items: [
+      {
+        description: "Naknada po zaposleniku",
+        unit: "zaposlenik",
+        quantity: 12,
+        unitPrice: 8,
+        totalPrice: 96,
+      },
+    ],
+    subtotal: 96,
+    taxableSubtotal: 96,
+    taxRate: 25,
+    taxTotal: 24,
+    total: 120,
+  });
+
+  assert.match(html, /Per employee plan/);
+  assert.match(html, /Cijena po zaposleniku/);
+  assert.match(html, /offer-html-per-employee-table/);
+  assert.match(html, /Naknada po zaposleniku/);
+  assert.match(html, /zaposlenik/);
+  assert.match(html, /96,00 EUR/);
+  assert.match(html, /PDV \(25%\)/);
+  assert.match(html, /120,00 EUR/);
 });
 
 test("offer export returns a direct PDF buffer", async () => {
