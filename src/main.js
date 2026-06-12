@@ -2241,6 +2241,8 @@ const state = {
     items: [],
     page: 1,
     serialNumber: "",
+    removedAfter: "",
+    removedBefore: "",
     fetchedAt: "",
     totalItems: null,
   },
@@ -4596,6 +4598,8 @@ const measurementEquipmentLocalListPanel = document.querySelector("#measurement-
 const measurementEquipmentIsznrPanel = document.querySelector("#measurement-equipment-isznr-panel");
 const measurementEquipmentIsznrRefreshButton = document.querySelector("#measurement-equipment-isznr-refresh");
 const measurementEquipmentIsznrSerialInput = document.querySelector("#measurement-equipment-isznr-serial");
+const measurementEquipmentIsznrRemovedAfterInput = document.querySelector("#measurement-equipment-isznr-removed-after");
+const measurementEquipmentIsznrRemovedBeforeInput = document.querySelector("#measurement-equipment-isznr-removed-before");
 const measurementEquipmentIsznrPageInput = document.querySelector("#measurement-equipment-isznr-page");
 const measurementEquipmentIsznrFeedback = document.querySelector("#measurement-equipment-isznr-feedback");
 const measurementEquipmentIsznrList = document.querySelector("#measurement-equipment-isznr-list");
@@ -9948,6 +9952,8 @@ function applySnapshot(payload, options = {}) {
       items: [],
       page: 1,
       serialNumber: "",
+      removedAfter: "",
+      removedBefore: "",
       fetchedAt: "",
       totalItems: null,
     };
@@ -74523,6 +74529,8 @@ function getMeasurementEquipmentIsznrState() {
       items: [],
       page: 1,
       serialNumber: "",
+      removedAfter: "",
+      removedBefore: "",
       fetchedAt: "",
       totalItems: null,
     };
@@ -74616,6 +74624,12 @@ function renderMeasurementEquipmentIsznrPanel() {
 
   if (measurementEquipmentIsznrSerialInput && document.activeElement !== measurementEquipmentIsznrSerialInput) {
     measurementEquipmentIsznrSerialInput.value = isznrState.serialNumber || "";
+  }
+  if (measurementEquipmentIsznrRemovedAfterInput && document.activeElement !== measurementEquipmentIsznrRemovedAfterInput) {
+    measurementEquipmentIsznrRemovedAfterInput.value = isznrState.removedAfter || "";
+  }
+  if (measurementEquipmentIsznrRemovedBeforeInput && document.activeElement !== measurementEquipmentIsznrRemovedBeforeInput) {
+    measurementEquipmentIsznrRemovedBeforeInput.value = isznrState.removedBefore || "";
   }
   if (measurementEquipmentIsznrPageInput && document.activeElement !== measurementEquipmentIsznrPageInput) {
     measurementEquipmentIsznrPageInput.value = String(Math.max(1, Number(isznrState.page) || 1));
@@ -74733,6 +74747,8 @@ async function loadMeasurementEquipmentIsznrInstruments() {
   isznrState.loading = true;
   isznrState.error = "";
   isznrState.serialNumber = measurementEquipmentIsznrSerialInput?.value?.trim() || isznrState.serialNumber || "";
+  isznrState.removedAfter = measurementEquipmentIsznrRemovedAfterInput?.value?.trim() || "";
+  isznrState.removedBefore = measurementEquipmentIsznrRemovedBeforeInput?.value?.trim() || "";
   isznrState.page = Math.max(1, Number(measurementEquipmentIsznrPageInput?.value || isznrState.page || 1) || 1);
   renderMeasurementEquipmentModule();
 
@@ -74743,6 +74759,8 @@ async function loadMeasurementEquipmentIsznrInstruments() {
         page: isznrState.page,
         pagination: true,
         serialNumber: isznrState.serialNumber,
+        removedAfter: isznrState.removedAfter,
+        removedBefore: isznrState.removedBefore,
       },
     });
     isznrState.items = Array.isArray(payload?.items) ? payload.items : [];
@@ -126907,6 +126925,18 @@ measurementEquipmentIsznrSerialInput?.addEventListener("keydown", (event) => {
     event.preventDefault();
     void loadMeasurementEquipmentIsznrInstruments();
   }
+});
+
+measurementEquipmentIsznrRemovedAfterInput?.addEventListener("change", () => {
+  const isznrState = getMeasurementEquipmentIsznrState();
+  isznrState.removedAfter = measurementEquipmentIsznrRemovedAfterInput.value.trim();
+  renderMeasurementEquipmentIsznrPanel();
+});
+
+measurementEquipmentIsznrRemovedBeforeInput?.addEventListener("change", () => {
+  const isznrState = getMeasurementEquipmentIsznrState();
+  isznrState.removedBefore = measurementEquipmentIsznrRemovedBeforeInput.value.trim();
+  renderMeasurementEquipmentIsznrPanel();
 });
 
 measurementEquipmentIsznrPageInput?.addEventListener("change", () => {

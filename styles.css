@@ -32647,6 +32647,14 @@ body.is-vehicle-usage-open {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.measurement-equipment-isznr-filters {
+  grid-template-columns:
+    minmax(260px, 1fr)
+    minmax(150px, 190px)
+    minmax(150px, 190px)
+    minmax(110px, 150px);
+}
+
 .periodics-module {
   gap: 14px;
 }

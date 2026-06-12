@@ -1059,7 +1059,7 @@ async function testIsznrApiConnection({ baseUrl = "", username = "", password = 
     result = await fetch(requestUrl, {
       method: "GET",
       headers: {
-        accept: "application/json",
+        accept: "application/ld+json, application/json",
         authorization: createIsznrBasicAuthHeader(normalizedUsername, safePassword),
       },
       signal: controller.signal,
@@ -1230,7 +1230,7 @@ async function fetchIsznrInstruments({
     result = await fetch(requestUrl, {
       method: "GET",
       headers: {
-        accept: "application/json",
+        accept: "application/ld+json, application/json",
         authorization: createIsznrBasicAuthHeader(normalizedUsername, safePassword),
       },
       signal: controller.signal,
