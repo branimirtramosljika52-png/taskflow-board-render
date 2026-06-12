@@ -1192,6 +1192,7 @@ const DEFAULT_PUSH_NOTIFICATION_PREFERENCES = Object.freeze({
   absence: true,
   signupRequests: true,
   foundationDocuments: true,
+  publicProcurements: true,
 });
 const PUSH_NOTIFICATION_PREFERENCE_DEFINITIONS = Object.freeze([
   { key: "enabled", label: "Push obavijesti aktivne", description: "Glavni prekidac za sve Android push obavijesti.", master: true },
@@ -1207,6 +1208,7 @@ const PUSH_NOTIFICATION_PREFERENCE_DEFINITIONS = Object.freeze([
   { key: "safetyAuthorization", label: "Safety authorization", description: "Ovlaštenja koja ističu ili su istekla." },
   { key: "training", label: "Osposobljavanja", description: "Ispiti, liječnički pregledi i uvjerenja." },
   { key: "foundationDocuments", label: "Temeljna dokumentacija", description: "Procjene rizika, pravilnici i jobs rokovi." },
+  { key: "publicProcurements", label: "Javna nabava", description: "Rokovi javnih nabava koji dolaze ili kasne." },
   { key: "reminders", label: "Reminders", description: "Podsjetnici koji dolaze ili kasne." },
   { key: "todoComments", label: "ToDo i komentari", description: "Novi zadaci i komentari na temama." },
   { key: "absence", label: "Odsutnosti", description: "Zahtjevi, odobrenja, GO i bolovanja." },
@@ -93786,6 +93788,9 @@ function getNotificationKindLabel(kind = "") {
   if (kind === "signup_request") {
     return "Pristup";
   }
+  if (kind === "public_procurement") {
+    return "Javna nabava";
+  }
   if (kind === "absence") {
     return "Odsutnost";
   }
@@ -93875,6 +93880,63 @@ function buildReminderNotifications() {
         context,
         dueDate,
         referenceId: String(item.id ?? ""),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildPublicProcurementNotifications() {
+  if (!getCanViewPublicProcurements()) {
+    return [];
+  }
+
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  const getDaysUntil = (value) => {
+    const targetDate = parseDateValue(value);
+    if (!targetDate) {
+      return null;
+    }
+
+    targetDate.setHours(0, 0, 0, 0);
+    return Math.round((targetDate.getTime() - todayDate.getTime()) / 86400000);
+  };
+
+  return (state.publicProcurements ?? [])
+    .filter((item) => normalizePublicProcurementStatusValue(item?.status || "open") === "open")
+    .map((item) => {
+      const dueDate = String(item.deadline || "").slice(0, 10);
+      if (!dueDate) {
+        return null;
+      }
+
+      const daysUntil = getDaysUntil(dueDate);
+      if (!Number.isFinite(daysUntil) || daysUntil > 7) {
+        return null;
+      }
+
+      let level = "warning";
+      let title = "Javna nabava uskoro ističe";
+      if (daysUntil < 0) {
+        level = "critical";
+        title = "Javna nabava je istekla";
+      } else if (daysUntil === 0) {
+        title = "Javna nabava ističe danas";
+      }
+
+      return {
+        id: `public-procurement-${item.id}-${dueDate}`,
+        kind: "public_procurement",
+        level,
+        title,
+        message: item.title || item.referenceNumber || "Javna nabava",
+        context: [
+          item.referenceNumber ? `#${item.referenceNumber}` : "",
+          item.companyName || "",
+          item.amount ? getPublicProcurementAmountText(item) : "",
+        ].filter(Boolean).join(" · ") || "Javna nabava",
+        dueDate,
+        referenceId: String(item.id || ""),
       };
     })
     .filter(Boolean);
@@ -94553,6 +94615,7 @@ function renderTopbarShortcutCounts() {
 function getAllNotifications() {
   return [
     ...buildReminderNotifications(),
+    ...buildPublicProcurementNotifications(),
     ...buildMeasurementEquipmentNotifications(),
     ...buildSafetyAuthorizationNotifications(),
     ...buildAbsenceNotifications(),
@@ -94624,6 +94687,18 @@ function openNotificationEntry(entry) {
       return;
     }
     activateSidebarItem("reminders", { expandSidebar: state.sidebarCollapsed });
+    return;
+  }
+
+  if (entry.kind === "public_procurement") {
+    activateSidebarItem("public-procurement", { expandSidebar: state.sidebarCollapsed });
+    const procurement = (state.publicProcurements ?? []).find((item) => String(item.id) === String(entry.referenceId)) ?? null;
+    if (procurement && getCanEditPublicProcurements()) {
+      window.requestAnimationFrame(() => {
+        hydratePublicProcurementForm(procurement);
+        openPublicProcurementEditor();
+      });
+    }
     return;
   }
 

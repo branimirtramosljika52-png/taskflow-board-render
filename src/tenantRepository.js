@@ -134,6 +134,7 @@ export const DEFAULT_PUSH_NOTIFICATION_PREFERENCES = Object.freeze({
   absence: true,
   signupRequests: true,
   foundationDocuments: true,
+  publicProcurements: true,
 });
 
 export function normalizePushNotificationPreferences(value = {}) {

@@ -8030,6 +8030,60 @@ function collectUserScheduledReminderPushCandidates(user = {}, scopedSnapshot = 
     .filter(Boolean);
 }
 
+function normalizeScheduledPublicProcurementStatus(value = "open") {
+  const status = normalizeInputValue(value || "open").toLowerCase();
+  if (status === "in_progress") {
+    return "open";
+  }
+  if (status === "submitted") {
+    return "sent";
+  }
+  if (status === "awarded") {
+    return "accepted";
+  }
+  if (status === "cancelled") {
+    return "rejected";
+  }
+  return status || "open";
+}
+
+function collectUserScheduledPublicProcurementPushCandidates(user = {}, scopedSnapshot = {}, todayKey = "") {
+  return (scopedSnapshot.publicProcurements ?? [])
+    .filter((item) => normalizeScheduledPublicProcurementStatus(item?.status || "open") === "open")
+    .map((item) => {
+      const dueDate = parseScheduledDateKey(item?.deadline);
+      if (!dueDate) {
+        return null;
+      }
+
+      const daysUntil = getScheduledDaysUntil(dueDate, todayKey);
+      if (!Number.isFinite(daysUntil) || daysUntil > SCHEDULED_PUSH_SOON_DAYS) {
+        return null;
+      }
+
+      const title = daysUntil < 0
+        ? "Javna nabava je istekla"
+        : daysUntil === 0
+          ? "Javna nabava istice danas"
+          : "Javna nabava uskoro istice";
+      const label = normalizeInputValue(item.title || item.referenceNumber || "Javna nabava");
+
+      return scheduledPushCandidate(
+        `public-procurement:${item.id}:${dueDate}:${todayKey}`,
+        title,
+        `${label} - rok ${getScheduledDueLabel(dueDate, todayKey)}.`,
+        "public_procurement_due",
+        {
+          publicProcurementId: normalizeInputValue(item.id),
+          referenceNumber: normalizeInputValue(item.referenceNumber),
+          companyName: normalizeInputValue(item.companyName),
+          dueDate,
+        },
+      );
+    })
+    .filter(Boolean);
+}
+
 function collectScheduledMeasurementEntries(scopedSnapshot = {}) {
   return (scopedSnapshot.measurementEquipment ?? []).flatMap((item) => {
     const entries = [];
@@ -8117,6 +8171,7 @@ function collectUserScheduledPushCandidates(user = {}, scopedSnapshot = {}, toda
   const candidates = [
     ...collectUserScheduledWorkOrderPushCandidates(user, scopedSnapshot, todayKey),
     ...collectUserScheduledReminderPushCandidates(user, scopedSnapshot, todayKey),
+    ...collectUserScheduledPublicProcurementPushCandidates(user, scopedSnapshot, todayKey),
   ];
   const organizationId = normalizeInputValue(scopedSnapshot.activeOrganizationId || user.organizationId || "global");
   const isAdmin = isScheduledUserAdmin(user) || canManageMasterData(user);
@@ -15699,6 +15754,7 @@ const PUSH_PREFERENCE_KEY_BY_TYPE = Object.freeze({
   absence_due: "absence",
   signup_request: "signupRequests",
   foundation_document_due: "foundationDocuments",
+  public_procurement_due: "publicProcurements",
 });
 
 function resolvePushPreferenceKey(payload = {}, options = {}) {
