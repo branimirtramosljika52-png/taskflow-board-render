@@ -4451,6 +4451,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [measurementEquipmentRows] = await connection.query(`
     SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
+           isznr_instrument_id, isznr_synced_at,
            entered_by, approved_by, entry_date,
            requires_calibration, calibration_date, calibration_period, valid_until, note,
            linked_template_ids_json, linked_service_catalog_ids_json, documents_json, activity_items_json, measurement_specs_json, created_at, updated_at
@@ -4491,6 +4492,8 @@ async function fetchSnapshotFromConnection(connection) {
       deviceCode: row.device_code ?? "",
       serialNumber: row.serial_number ?? "",
       inventoryNumber: row.inventory_number ?? "",
+      isznrInstrumentId: row.isznr_instrument_id ?? "",
+      isznrSyncedAt: normalizeTimestamp(row.isznr_synced_at),
       enteredBy: row.entered_by ?? "",
       approvedBy: row.approved_by ?? "",
       entryDate: normalizeDateOnly(row.entry_date),
@@ -8161,6 +8164,8 @@ export class MySqlSafetyRepository {
         device_code VARCHAR(120) NOT NULL DEFAULT '',
         serial_number VARCHAR(120) NOT NULL DEFAULT '',
         inventory_number VARCHAR(80) NOT NULL DEFAULT '',
+        isznr_instrument_id VARCHAR(80) NOT NULL DEFAULT '',
+        isznr_synced_at DATETIME NULL,
         entered_by VARCHAR(180) NOT NULL DEFAULT '',
         approved_by VARCHAR(180) NOT NULL DEFAULT '',
         entry_date DATE NULL,
@@ -8177,7 +8182,8 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_measurement_equipment_org_valid (organization_id, valid_until),
-        INDEX idx_web_measurement_equipment_inventory (organization_id, inventory_number)
+        INDEX idx_web_measurement_equipment_inventory (organization_id, inventory_number),
+        INDEX idx_web_measurement_equipment_isznr (organization_id, isznr_instrument_id)
       )
     `);
     await this.pool.query(`
@@ -8545,6 +8551,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_legal_frameworks", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "serial_number", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "isznr_instrument_id", "VARCHAR(80) NOT NULL DEFAULT '' AFTER inventory_number");
+    await ensureColumnExists(this.pool, "web_measurement_equipment", "isznr_synced_at", "DATETIME NULL AFTER isznr_instrument_id");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entered_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER inventory_number");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "approved_by", "VARCHAR(180) NOT NULL DEFAULT '' AFTER entered_by");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "entry_date", "DATE NULL AFTER approved_by");
@@ -12983,10 +12991,11 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_measurement_equipment
             (organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
+             isznr_instrument_id, isznr_synced_at,
              entered_by, approved_by, entry_date,
              requires_calibration, calibration_date, calibration_period, valid_until, note,
              linked_template_ids_json, linked_service_catalog_ids_json, documents_json, activity_items_json, measurement_specs_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -12997,6 +13006,8 @@ export class MySqlSafetyRepository {
           draft.deviceCode,
           draft.serialNumber,
           draft.inventoryNumber,
+          draft.isznrInstrumentId,
+          formatMysqlDateTime(draft.isznrSyncedAt),
           draft.enteredBy,
           draft.approvedBy,
           draft.entryDate,
@@ -13448,6 +13459,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_measurement_equipment
           SET name = ?, equipment_kind = ?, manufacturer = ?, device_type = ?, device_code = ?, serial_number = ?, inventory_number = ?,
+              isznr_instrument_id = ?, isznr_synced_at = ?,
               entered_by = ?, approved_by = ?, entry_date = ?,
               requires_calibration = ?, calibration_date = ?, calibration_period = ?, valid_until = ?,
               note = ?, linked_template_ids_json = ?, linked_service_catalog_ids_json = ?, documents_json = ?, activity_items_json = ?, measurement_specs_json = ?
@@ -13461,6 +13473,8 @@ export class MySqlSafetyRepository {
           next.deviceCode,
           next.serialNumber,
           next.inventoryNumber,
+          next.isznrInstrumentId,
+          formatMysqlDateTime(next.isznrSyncedAt),
           next.enteredBy,
           next.approvedBy,
           next.entryDate,

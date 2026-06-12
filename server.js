@@ -97,7 +97,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.89.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.90.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -1571,6 +1571,155 @@ function normalizeIsznrInstrumentRecord(source = {}) {
     measurementDateTo: String(pickIsznrValue(record, ["measurementDateTo", "measurementTo", "datumUmjeravanjaDo"]) || "").trim(),
     removed: String(pickIsznrValue(record, ["removed", "removedAt", "rashodovano"]) || "").trim(),
   };
+}
+
+function getMeasurementEquipmentIsznrInstrumentId(item = {}) {
+  return normalizeInputValue(item?.isznrInstrumentId || item?.isznrId || item?.externalIsznrId);
+}
+
+function normalizeIsznrInstrumentImportItems(items = []) {
+  const seen = new Set();
+  return (Array.isArray(items) ? items : [])
+    .map((item) => normalizeIsznrInstrumentRecord(item))
+    .filter((item) => item.isznrId || item.serialNumber || item.name)
+    .filter((item) => {
+      const key = [
+        normalizeInputValue(item.isznrId),
+        normalizeInputValue(item.serialNumber),
+        normalizeInputValue(item.name),
+      ].join("|").toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 250);
+}
+
+function findMeasurementEquipmentForIsznrInstrument(localItems = [], isznrItem = {}) {
+  const isznrId = normalizeInputValue(isznrItem.isznrId || isznrItem.id).toLowerCase();
+  const serialNumber = normalizeInputValue(isznrItem.serialNumber).toLowerCase();
+  const name = normalizeInputValue(isznrItem.name).toLowerCase();
+
+  return localItems.find((item) => (
+    isznrId && getMeasurementEquipmentIsznrInstrumentId(item).toLowerCase() === isznrId
+  )) || localItems.find((item) => (
+    serialNumber && normalizeInputValue(item?.serialNumber).toLowerCase() === serialNumber
+  )) || localItems.find((item) => (
+    name && normalizeInputValue(item?.name).toLowerCase() === name
+  )) || null;
+}
+
+function mergeMeasurementEquipmentNoteLines(...values) {
+  const seen = new Set();
+  const lines = [];
+  values
+    .flatMap((value) => normalizeInputValue(value).split(/\r?\n/g))
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean)
+    .forEach((line) => {
+      const key = line.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        lines.push(line);
+      }
+    });
+  return lines.join("\n");
+}
+
+function buildMeasurementEquipmentPayloadFromIsznrInstrument(isznrItem = {}, {
+  organizationId = "",
+  current = null,
+  nowValue = new Date().toISOString(),
+} = {}) {
+  const isznrInstrumentId = normalizeInputValue(isznrItem.isznrId || isznrItem.id);
+  const name = normalizeInputValue(isznrItem.name) || (isznrInstrumentId ? `ISZNR oprema ${isznrInstrumentId}` : "ISZNR mjerna oprema");
+  const calibrationDate = normalizeInputValue(isznrItem.measurementDateFrom).slice(0, 10);
+  const validUntil = normalizeInputValue(isznrItem.measurementDateTo).slice(0, 10);
+  const hasCalibration = Boolean(calibrationDate || validUntil || current?.requiresCalibration);
+  const isznrNote = isznrInstrumentId ? `ISZNR ID: ${isznrInstrumentId}` : "";
+  const removedNote = normalizeInputValue(isznrItem.removed)
+    ? `ISZNR rashodovano: ${normalizeInputValue(isznrItem.removed).slice(0, 10)}`
+    : "";
+
+  return {
+    organizationId: normalizeInputValue(current?.organizationId || organizationId),
+    name: normalizeInputValue(current?.name) || name,
+    equipmentKind: normalizeInputValue(current?.equipmentKind) || "combined",
+    manufacturer: normalizeInputValue(current?.manufacturer),
+    deviceType: normalizeInputValue(current?.deviceType),
+    deviceCode: normalizeInputValue(current?.deviceCode),
+    serialNumber: normalizeInputValue(current?.serialNumber) || normalizeInputValue(isznrItem.serialNumber),
+    inventoryNumber: normalizeInputValue(current?.inventoryNumber),
+    isznrInstrumentId,
+    isznrSyncedAt: nowValue,
+    enteredBy: normalizeInputValue(current?.enteredBy),
+    approvedBy: normalizeInputValue(current?.approvedBy),
+    entryDate: normalizeInputValue(current?.entryDate),
+    requiresCalibration: hasCalibration,
+    calibrationDate: normalizeInputValue(current?.calibrationDate) || calibrationDate || null,
+    calibrationPeriod: normalizeInputValue(current?.calibrationPeriod),
+    validUntil: normalizeInputValue(current?.validUntil) || validUntil || null,
+    note: mergeMeasurementEquipmentNoteLines(current?.note, isznrNote, removedNote),
+    linkedServiceCatalogIds: Array.isArray(current?.linkedServiceCatalogIds) ? current.linkedServiceCatalogIds : [],
+    linkedTemplateIds: Array.isArray(current?.linkedTemplateIds) ? current.linkedTemplateIds : [],
+    documents: Array.isArray(current?.documents) ? current.documents : [],
+    activityItems: Array.isArray(current?.activityItems) ? current.activityItems : [],
+    measurementSpecs: Array.isArray(current?.measurementSpecs) ? current.measurementSpecs : [],
+  };
+}
+
+async function syncIsznrInstrumentsToMeasurementEquipment({
+  items = [],
+  scopedSnapshot = {},
+  canCreate = false,
+  canEdit = false,
+} = {}) {
+  const nowValue = new Date().toISOString();
+  const organizationId = normalizeInputValue(scopedSnapshot.activeOrganizationId);
+  let localItems = Array.isArray(scopedSnapshot.measurementEquipment) ? [...scopedSnapshot.measurementEquipment] : [];
+  const result = {
+    received: items.length,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+  };
+
+  for (const item of items) {
+    const current = findMeasurementEquipmentForIsznrInstrument(localItems, item);
+    if (current) {
+      if (!canEdit) {
+        result.skipped += 1;
+        continue;
+      }
+      const updated = await domainRepository.updateMeasurementEquipmentItem(current.id, buildMeasurementEquipmentPayloadFromIsznrInstrument(item, {
+        organizationId,
+        current,
+        nowValue,
+      }));
+      if (updated) {
+        result.updated += 1;
+        localItems = localItems.map((entry) => String(entry.id) === String(updated.id) ? updated : entry);
+      } else {
+        result.skipped += 1;
+      }
+      continue;
+    }
+
+    if (!canCreate) {
+      result.skipped += 1;
+      continue;
+    }
+    const created = await domainRepository.createMeasurementEquipmentItem(buildMeasurementEquipmentPayloadFromIsznrInstrument(item, {
+      organizationId,
+      nowValue,
+    }));
+    result.created += 1;
+    localItems = [created, ...localItems];
+  }
+
+  return result;
 }
 
 async function fetchIsznrInstruments({
@@ -16685,6 +16834,44 @@ function limitMobileRecords(records = [], limit = MOBILE_BOOTSTRAP_RECORD_LIMIT)
     .slice(0, limit);
 }
 
+function buildMobileMeasurementEquipmentRecord(item = {}) {
+  const isznrInstrumentId = getMeasurementEquipmentIsznrInstrumentId(item);
+  const title = normalizeInputValue(item.name) || "Mjerna oprema";
+  const subtitle = [
+    normalizeInputValue(item.manufacturer),
+    normalizeInputValue(item.deviceType),
+    normalizeInputValue(item.serialNumber) ? `Ser. ${normalizeInputValue(item.serialNumber)}` : "",
+    normalizeInputValue(item.inventoryNumber) ? `Inv. ${normalizeInputValue(item.inventoryNumber)}` : "",
+  ].filter(Boolean).join(" - ");
+  const validUntil = normalizeInputValue(item.validUntil);
+  const calibrationDate = normalizeInputValue(item.calibrationDate);
+
+  return {
+    id: normalizeInputValue(item.id),
+    title,
+    subtitle,
+    status: isznrInstrumentId ? "ISZNR" : (item.requiresCalibration ? "Umjerava se" : "Lokalno"),
+    kind: "measurement_equipment",
+    date: validUntil || calibrationDate || normalizeInputValue(item.updatedAt),
+    relatedId: normalizeInputValue(item.id),
+    coordinates: "",
+    meta: {
+      equipmentKind: normalizeInputValue(item.equipmentKind),
+      manufacturer: normalizeInputValue(item.manufacturer),
+      deviceType: normalizeInputValue(item.deviceType),
+      deviceCode: normalizeInputValue(item.deviceCode),
+      serialNumber: normalizeInputValue(item.serialNumber),
+      inventoryNumber: normalizeInputValue(item.inventoryNumber),
+      calibrationDate,
+      validUntil,
+      requiresCalibration: item.requiresCalibration ? "true" : "false",
+      isznrInstrumentId,
+      isznrSyncedAt: normalizeInputValue(item.isznrSyncedAt),
+      isznrLinked: isznrInstrumentId ? "true" : "false",
+    },
+  };
+}
+
 function isMobileClosedWorkOrderStatus(status = "") {
   const normalized = normalizeInputValue(status)
     .toLowerCase()
@@ -17320,6 +17507,7 @@ function buildMobileDashboard(scopedSnapshot = {}, workOrders = []) {
     clientPortalTotal: (scopedSnapshot.clientPortalRecords ?? []).length,
     rulebooksTotal: (scopedSnapshot.rulebooks ?? []).length,
     riskAssessmentsTotal: (scopedSnapshot.riskAssessments ?? []).length,
+    measurementEquipmentTotal: (scopedSnapshot.measurementEquipment ?? []).length,
   };
 }
 
@@ -17437,6 +17625,7 @@ async function writeMobileBootstrap(response, user, request) {
   })));
 
   const vehicles = limitMobileRecords((scopedSnapshot.vehicles ?? []).map(buildMobileVehicleRecord));
+  const measurementEquipmentRecords = limitMobileRecords((scopedSnapshot.measurementEquipment ?? []).map(buildMobileMeasurementEquipmentRecord));
   const fieldInquiries = limitMobileRecords((scopedSnapshot.fieldInquiries ?? []).map(buildMobileFieldInquiryRecord));
   const todoTasks = limitMobileRecords((scopedSnapshot.todoTasks ?? []).map(buildMobileTodoTaskRecord));
   const offers = limitMobileRecords((scopedSnapshot.offers ?? []).map(buildMobileOfferRecord));
@@ -17512,6 +17701,7 @@ async function writeMobileBootstrap(response, user, request) {
     companies,
     locations,
     vehicles,
+    measurementEquipmentRecords,
     documentRecords,
     peopleTrainingRecords,
     clientPortalRecords,
@@ -20123,6 +20313,39 @@ async function handleApiRequest(request, response, url) {
         removedStrictlyAfter: body?.removedStrictlyAfter,
       });
       sendJson(response, 200, result);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/isznr/instruments/sync") {
+      const canCreateMeasurementEquipment = await canUseScopedAppPermission(user, request, "measurementEquipment.create");
+      const canEditMeasurementEquipment = await canUseScopedAppPermission(user, request, "measurementEquipment.edit");
+      if (!canCreateMeasurementEquipment && !canEditMeasurementEquipment) {
+        sendError(response, 403, "Nemate pravo spremati ISZNR mjernu opremu.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const items = normalizeIsznrInstrumentImportItems(body?.items);
+      if (!items.length) {
+        sendError(response, 400, "Nema ISZNR opreme za spremanje.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const syncResult = await syncIsznrInstrumentsToMeasurementEquipment({
+        items,
+        scopedSnapshot,
+        canCreate: canCreateMeasurementEquipment,
+        canEdit: canEditMeasurementEquipment,
+      });
+      invalidateSnapshotCaches();
+      const { scopedSnapshot: nextScopedSnapshot } = await getScopedState(user, request);
+      sendJson(response, 200, {
+        storage: domainRepository.kind,
+        user,
+        ...nextScopedSnapshot,
+        syncResult,
+      });
       return true;
     }
 

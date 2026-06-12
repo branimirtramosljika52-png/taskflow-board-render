@@ -273,6 +273,7 @@ private enum class MoreSectionFocus(val title: String) {
     Periodics("Periodika"),
     Documents("Dokumenti"),
     Services("Service liste"),
+    MeasurementEquipment("Mjerna oprema"),
     Foundation("Pravilnici"),
     Training("Osposobljavanja"),
 }
@@ -4164,6 +4165,9 @@ private fun WorkOrdersScreen(
     val filteredOffers = remember(state.data.offers, normalizedQuery) {
         state.data.offers.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredMeasurementEquipment = remember(state.data.measurementEquipmentRecords, normalizedQuery) {
+        state.data.measurementEquipmentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
     var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
@@ -4323,6 +4327,7 @@ private fun WorkOrdersScreen(
                             MoreSectionFocus.Periodics -> "Pretraga periodike i rokova"
                             MoreSectionFocus.Documents -> "Pretraga dokumenata"
                             MoreSectionFocus.Services -> "Pretraga service lista"
+                            MoreSectionFocus.MeasurementEquipment -> "Pretraga mjerne opreme, ISZNR ID-a, serijskog ili inv. broja"
                             MoreSectionFocus.Foundation -> "Pretraga pravilnika i procjena"
                             MoreSectionFocus.Training -> "Pretraga osposobljavanja"
                             MoreSectionFocus.Overview -> "Pretraga evidencija i modula"
@@ -4395,6 +4400,14 @@ private fun WorkOrdersScreen(
                             ServicesCatalogPreview(
                                 services = state.data.workOrderServices,
                                 query = normalizedQuery,
+                            )
+                        }
+                        item {
+                            MeasurementEquipmentContent(
+                                records = filteredMeasurementEquipment,
+                                totalCount = filteredMeasurementEquipment.size,
+                                displayLimit = 8,
+                                onOpenRecord = onOpenRecord,
                             )
                         }
                         item {
@@ -4476,6 +4489,14 @@ private fun WorkOrdersScreen(
                         ServicesCatalogPreview(
                             services = state.data.workOrderServices,
                             query = normalizedQuery,
+                        )
+                    }
+                    MoreSectionFocus.MeasurementEquipment -> item {
+                        MeasurementEquipmentContent(
+                            records = filteredMeasurementEquipment,
+                            totalCount = filteredMeasurementEquipment.size,
+                            displayLimit = 80,
+                            onOpenRecord = onOpenRecord,
                         )
                     }
                     MoreSectionFocus.Foundation -> item {
@@ -4764,6 +4785,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
             MainMenuShortcut("Periodika", "Rokovi, pregledi i isteci", AppSection.More, Icons.Rounded.CalendarMonth, MoreSectionFocus.Periodics),
             MainMenuShortcut("Service liste", "Pravilnici, mjerna oprema i autorizacije", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Services),
+            MainMenuShortcut("Mjerna oprema", "Popis opreme i ISZNR oznake", AppSection.More, Icons.Rounded.Work, MoreSectionFocus.MeasurementEquipment),
             MainMenuShortcut("Pravilnici", "Temeljna dokumentacija i procjene", AppSection.More, Icons.Rounded.Lock, MoreSectionFocus.Foundation),
             MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint, MoreSectionFocus.Training),
         )
@@ -6654,6 +6676,7 @@ private fun MoreOverviewHero(data: BootstrapData) {
                 StatusCountPill("Tvrtke", data.companies.size, Color(0xFF2563EB))
                 StatusCountPill("Lokacije", data.locations.size, Color(0xFF0F766E))
                 StatusCountPill("Ponude", data.offers.size, Color(0xFF1D4ED8))
+                StatusCountPill("Oprema", data.measurementEquipmentRecords.size, Color(0xFF0F766E))
                 StatusCountPill("Dokumenti", data.documentRecords.size, Color(0xFF7C3AED))
                 StatusCountPill("Procjene", data.riskAssessmentRecords.size, Color(0xFFB45309))
             }
@@ -7097,6 +7120,134 @@ private fun ServiceCatalogLine(service: WorkOrderServiceOption) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun MeasurementEquipmentContent(
+    records: List<MobileRecord>,
+    totalCount: Int,
+    displayLimit: Int,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val isznrCount = remember(records) {
+        records.count { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
+    }
+    val visibleRecords = remember(records, displayLimit) { records.take(displayLimit.coerceAtLeast(1)) }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
+        ) {
+            SectionHeader(
+                title = "Mjerna oprema",
+                subtitle = "$totalCount zapisa · $isznrCount ISZNR povezano",
+                icon = Icons.Rounded.Work,
+            )
+            if (records.isEmpty()) {
+                Text("Nema mjerne opreme za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            } else {
+                visibleRecords.forEach { record ->
+                    MeasurementEquipmentLine(record = record, onOpenRecord = onOpenRecord)
+                }
+                if (records.size > visibleRecords.size) {
+                    Text(
+                        "Prikazano je prvih ${visibleRecords.size}. Koristi pretragu za sužavanje popisa.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeasurementEquipmentLine(
+    record: MobileRecord,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val isIsznr = record.meta["isznrLinked"].equals("true", ignoreCase = true)
+    val accent = if (isIsznr) Color(0xFF059669) else Color(0xFF64748B)
+    val validUntil = record.meta["validUntil"].orEmpty()
+    val serial = record.meta["serialNumber"].orEmpty()
+    val inventory = record.meta["inventoryNumber"].orEmpty()
+    val isznrId = record.meta["isznrInstrumentId"].orEmpty()
+    val secondary = listOf(
+        record.subtitle,
+        if (validUntil.isNotBlank()) "Vrijedi do ${formatDateLabel(validUntil).ifBlank { validUntil }}" else "",
+    ).filter { it.isNotBlank() }.joinToString(" - ")
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenRecord(record) },
+        shape = RoundedCornerShape(18.dp),
+        color = accent.copy(alpha = 0.08f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(shape = CircleShape, color = accent.copy(alpha = 0.14f)) {
+                Icon(
+                    if (isIsznr) Icons.Rounded.CheckCircle else Icons.Rounded.Work,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .padding(9.dp),
+                    tint = accent,
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(record.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (secondary.isNotBlank()) {
+                    Text(
+                        secondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (isznrId.isNotBlank()) MeasurementEquipmentMiniChip("ISZNR $isznrId", accent)
+                    if (serial.isNotBlank()) MeasurementEquipmentMiniChip("Ser. $serial", Color(0xFF2563EB))
+                    if (inventory.isNotBlank()) MeasurementEquipmentMiniChip("Inv. $inventory", Color(0xFF7C3AED))
+                }
+            }
+            Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.12f)) {
+                Text(
+                    if (isIsznr) "✓" else "—",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = accent,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeasurementEquipmentMiniChip(label: String, accent: Color) {
+    Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.1f)) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            color = accent,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
     }
 }
 

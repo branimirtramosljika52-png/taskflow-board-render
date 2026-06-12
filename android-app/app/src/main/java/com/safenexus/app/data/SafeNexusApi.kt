@@ -86,6 +86,7 @@ class SafeNexusApi(
                 workOrderServices = json.optJSONObject("options")?.optJSONArray("workOrderServices").toWorkOrderServices(),
                 workOrderLocationObjects = json.optJSONObject("options")?.optJSONArray("workOrderLocationObjects").toWorkOrderLocationObjects(),
                 vehicles = json.optJSONArray("vehicles").toRecords(),
+                measurementEquipmentRecords = json.optJSONArray("measurementEquipmentRecords").toRecords(),
                 documentRecords = json.optJSONArray("documentRecords").toRecords(),
                 peopleTrainingRecords = json.optJSONArray("peopleTrainingRecords").toRecords(),
                 clientPortalRecords = json.optJSONArray("clientPortalRecords").toRecords(),
@@ -878,6 +879,7 @@ private fun JSONObject?.toDashboardStats(): DashboardStats {
         clientPortalTotal = optInt("clientPortalTotal", 0),
         rulebooksTotal = optInt("rulebooksTotal", 0),
         riskAssessmentsTotal = optInt("riskAssessmentsTotal", 0),
+        measurementEquipmentTotal = optInt("measurementEquipmentTotal", 0),
     )
 }
 

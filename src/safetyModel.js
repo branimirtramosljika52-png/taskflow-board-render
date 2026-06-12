@@ -7149,6 +7149,8 @@ export function createMeasurementEquipmentItem(
   const deviceCode = normalizeText(input.deviceCode);
   const inventoryNumber = normalizeText(input.inventoryNumber);
   const serialNumber = normalizeText(input.serialNumber);
+  const isznrInstrumentId = normalizeText(input.isznrInstrumentId ?? input.isznrId ?? input.externalIsznrId).slice(0, 80);
+  const isznrSyncedAt = normalizeText(input.isznrSyncedAt).slice(0, 50);
   const enteredBy = normalizeText(input.enteredBy).slice(0, 180);
   const approvedBy = normalizeText(input.approvedBy).slice(0, 180);
   const entryDate = normalizeOptionalDate(input.entryDate);
@@ -7216,6 +7218,8 @@ export function createMeasurementEquipmentItem(
     deviceCode,
     serialNumber,
     inventoryNumber,
+    isznrInstrumentId,
+    isznrSyncedAt,
     enteredBy,
     approvedBy,
     entryDate,
@@ -7246,6 +7250,12 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
   const serialNumber = hasOwn(patch, "serialNumber")
     ? normalizeText(patch.serialNumber)
     : current.serialNumber;
+  const isznrInstrumentId = hasOwn(patch, "isznrInstrumentId") || hasOwn(patch, "isznrId") || hasOwn(patch, "externalIsznrId")
+    ? normalizeText(patch.isznrInstrumentId ?? patch.isznrId ?? patch.externalIsznrId).slice(0, 80)
+    : normalizeText(current.isznrInstrumentId ?? current.isznrId ?? current.externalIsznrId).slice(0, 80);
+  const isznrSyncedAt = hasOwn(patch, "isznrSyncedAt")
+    ? normalizeText(patch.isznrSyncedAt).slice(0, 50)
+    : normalizeText(current.isznrSyncedAt).slice(0, 50);
   const enteredBy = hasOwn(patch, "enteredBy")
     ? normalizeText(patch.enteredBy).slice(0, 180)
     : normalizeText(current.enteredBy).slice(0, 180);
@@ -7342,6 +7352,8 @@ export function updateMeasurementEquipmentItem(current, patch, state, now = isoN
     deviceCode,
     serialNumber,
     inventoryNumber,
+    isznrInstrumentId,
+    isznrSyncedAt,
     enteredBy,
     approvedBy,
     entryDate,
@@ -7381,6 +7393,10 @@ export function filterMeasurementEquipmentItems(
       item.deviceCode,
       item.serialNumber,
       item.inventoryNumber,
+      item.isznrInstrumentId,
+      item.isznrId,
+      item.externalIsznrId,
+      item.isznrSyncedAt,
       item.enteredBy,
       item.approvedBy,
       item.entryDate,

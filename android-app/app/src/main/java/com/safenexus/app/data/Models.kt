@@ -20,6 +20,7 @@ data class BootstrapData(
     val workOrderServices: List<WorkOrderServiceOption> = emptyList(),
     val workOrderLocationObjects: List<WorkOrderLocationObjectOption> = emptyList(),
     val vehicles: List<MobileRecord> = emptyList(),
+    val measurementEquipmentRecords: List<MobileRecord> = emptyList(),
     val documentRecords: List<MobileRecord> = emptyList(),
     val peopleTrainingRecords: List<MobileRecord> = emptyList(),
     val clientPortalRecords: List<MobileRecord> = emptyList(),
@@ -412,6 +413,7 @@ data class DashboardStats(
     val clientPortalTotal: Int = 0,
     val rulebooksTotal: Int = 0,
     val riskAssessmentsTotal: Int = 0,
+    val measurementEquipmentTotal: Int = 0,
 )
 
 data class MobileRecord(
