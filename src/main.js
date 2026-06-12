@@ -33970,9 +33970,15 @@ async function testSettingsIsznrApiConnection() {
   setInlineMessage(settingsIsznrApiFeedback, "Testiram ISZNR vezu...", "success");
 
   try {
-    const result = await apiRequest("/isznr/test-connection", {
+    const result = await apiRequestWithTransientRetry("/isznr/test-connection", {
       method: "POST",
       body: collectSettingsIsznrApiPayload(),
+    }, {
+      maxAttempts: 3,
+      delays: [1200, 2500],
+      onRetry: () => {
+        setInlineMessage(settingsIsznrApiFeedback, "ISZNR test veze se ponavlja nakon kratkog prekida...", "success");
+      },
     });
     const message = result?.message || "ISZNR API veza je dostupna.";
     setInlineMessage(settingsIsznrApiFeedback, message, result?.ok === false ? "error" : "success");

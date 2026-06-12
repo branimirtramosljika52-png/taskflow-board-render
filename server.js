@@ -1006,6 +1006,36 @@ function normalizeIsznrApiUsername(value = "") {
   return String(value ?? "").trim().replace(/\s+/g, "");
 }
 
+function buildIsznrResourceUrl(baseUrl = "", resourcePath = "") {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const resourceParts = String(resourcePath || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const url = new URL(normalizedBaseUrl);
+
+  if (resourceParts.length === 0) {
+    return url;
+  }
+
+  const baseParts = url.pathname
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const lowerBaseParts = baseParts.map((part) => part.toLowerCase());
+  const lowerResourceParts = resourceParts.map((part) => part.toLowerCase());
+  const alreadyTargetsResource = lowerResourceParts.every((part, index) => {
+    const offset = lowerBaseParts.length - lowerResourceParts.length + index;
+    return offset >= 0 && lowerBaseParts[offset] === part;
+  });
+
+  if (!alreadyTargetsResource) {
+    url.pathname = `/${[...baseParts, ...resourceParts].join("/")}`;
+  }
+
+  return url;
+}
+
 async function testIsznrApiConnection({ baseUrl = "", username = "", password = "" } = {}) {
   const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
   const normalizedUsername = normalizeIsznrApiUsername(username);
@@ -1018,15 +1048,19 @@ async function testIsznrApiConnection({ baseUrl = "", username = "", password = 
     throw createRequestError(400, "Upiši ISZNR lozinku ili prvo spremi postojeću lozinku u Settings.");
   }
 
+  const requestUrl = buildIsznrResourceUrl(normalizedBaseUrl, "instruments");
+  requestUrl.searchParams.set("page", "1");
+  requestUrl.searchParams.set("pagination", "true");
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ISZNR_TEST_TIMEOUT_MS);
   let result;
   try {
-    result = await fetch(normalizedBaseUrl, {
+    result = await fetch(requestUrl, {
       method: "GET",
       headers: {
         accept: "application/json",
-        authorization: `Basic ${Buffer.from(`${normalizedUsername}:${safePassword}`, "utf8").toString("base64")}`,
+        authorization: createIsznrBasicAuthHeader(normalizedUsername, safePassword),
       },
       signal: controller.signal,
     });
@@ -1046,7 +1080,7 @@ async function testIsznrApiConnection({ baseUrl = "", username = "", password = 
       status: result.status,
       contentType,
       baseUrl: normalizedBaseUrl,
-      message: `ISZNR API veza radi (${result.status}).`,
+      message: `ISZNR API veza radi. Resurs mjerne opreme je dostupan (${result.status}).`,
     };
   }
 
@@ -1055,7 +1089,7 @@ async function testIsznrApiConnection({ baseUrl = "", username = "", password = 
   }
 
   const rootHint = result.status === 404
-    ? " API je dostupan, ali bazni URL nije konkretan resurs. Za dohvat treba odabrati endpoint resursa."
+    ? " Provjeri URL u Settings. Za IS ZNR bazni URL koristi npr. https://isznr.gov.hr/api/v3."
     : "";
   return {
     ok: false,
@@ -1169,7 +1203,7 @@ async function fetchIsznrInstruments({
     throw createRequestError(400, "ISZNR lozinka nije spremljena. Spremi ju u Settings prije dohvata opreme.");
   }
 
-  const requestUrl = new URL(`${normalizedBaseUrl.replace(/\/+$/, "")}/instruments`);
+  const requestUrl = buildIsznrResourceUrl(normalizedBaseUrl, "instruments");
   const pageNumber = Math.max(1, Number(page) || 1);
   requestUrl.searchParams.set("page", String(pageNumber));
   requestUrl.searchParams.set("pagination", pagination === false ? "false" : "true");
