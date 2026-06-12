@@ -97,7 +97,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.92.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.93.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -726,6 +726,18 @@ const ISZNR_RESOURCE_TEST_TIMEOUT_MS = Math.max(
 const ISZNR_RESOURCE_TEST_CONCURRENCY = Math.max(
   1,
   Number(process.env.ISZNR_RESOURCE_TEST_CONCURRENCY || 4) || 4,
+);
+const ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS = Math.max(
+  5000,
+  Number(process.env.ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS || 20000) || 20000,
+);
+const ISZNR_MOBILE_INSTRUMENT_MAX_PAGES = Math.max(
+  1,
+  Number(process.env.ISZNR_MOBILE_INSTRUMENT_MAX_PAGES || 8) || 8,
+);
+const ISZNR_MOBILE_INSTRUMENT_MAX_RECORDS = Math.max(
+  20,
+  Number(process.env.ISZNR_MOBILE_INSTRUMENT_MAX_RECORDS || 500) || 500,
 );
 const ISZNR_AUTHORIZED_COMPANY_PROBE_ID = String(process.env.ISZNR_AUTHORIZED_COMPANY_PROBE_ID || "").trim();
 const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
@@ -1733,6 +1745,7 @@ async function fetchIsznrInstruments({
   removedStrictlyBefore = "",
   removedAfter = "",
   removedStrictlyAfter = "",
+  timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
 } = {}) {
   const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
   const normalizedUsername = normalizeIsznrApiUsername(username);
@@ -1766,7 +1779,7 @@ async function fetchIsznrInstruments({
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ISZNR_TEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let result;
   try {
     result = await fetch(requestUrl, {
@@ -1812,6 +1825,63 @@ async function fetchIsznrInstruments({
     totalItems: getIsznrPayloadTotal(payload),
     items,
     fetchedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchMobileIsznrInstrumentList(options = {}) {
+  const maxPages = Math.max(1, Number(options.maxPages) || ISZNR_MOBILE_INSTRUMENT_MAX_PAGES);
+  const maxRecords = Math.max(20, Number(options.maxRecords) || ISZNR_MOBILE_INSTRUMENT_MAX_RECORDS);
+  const requestedPage = Math.max(1, Number(options.page) || 1);
+  const requestedPagination = options.pagination !== false;
+
+  if (!requestedPagination || requestedPage > 1) {
+    const result = await fetchIsznrInstruments({
+      ...options,
+      page: requestedPage,
+      pagination: requestedPagination,
+      timeoutMs: ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
+    });
+    return {
+      ...result,
+      recordsLimited: result.items.length >= maxRecords,
+      pagesFetched: 1,
+      items: result.items.slice(0, maxRecords),
+    };
+  }
+
+  const items = [];
+  let totalItems = null;
+  let fetchedAt = "";
+  let pagesFetched = 0;
+  for (let currentPage = 1; currentPage <= maxPages && items.length < maxRecords; currentPage += 1) {
+    const pageResult = await fetchIsznrInstruments({
+      ...options,
+      page: currentPage,
+      pagination: true,
+      timeoutMs: ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
+    });
+    pagesFetched += 1;
+    fetchedAt = pageResult.fetchedAt || fetchedAt;
+    totalItems = pageResult.totalItems ?? totalItems;
+    items.push(...pageResult.items);
+
+    if (pageResult.count === 0) {
+      break;
+    }
+    if (totalItems !== null && items.length >= totalItems) {
+      break;
+    }
+  }
+
+  return {
+    ok: true,
+    page: 1,
+    count: items.length,
+    totalItems,
+    items: items.slice(0, maxRecords),
+    fetchedAt: fetchedAt || new Date().toISOString(),
+    pagesFetched,
+    recordsLimited: items.length > maxRecords || (totalItems !== null && totalItems > maxRecords),
   };
 }
 
@@ -18117,12 +18187,12 @@ async function handleApiRequest(request, response, url) {
 
       const { scopedSnapshot } = await getScopedState(user, request);
       const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
-      const result = await fetchIsznrInstruments({
+      const result = await fetchMobileIsznrInstrumentList({
         baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
         username: storedSettings?.username || "",
         password: storedSettings?.passwordSecret || "",
         page: url.searchParams.get("page") || 1,
-        pagination: url.searchParams.get("pagination") === "true",
+        pagination: url.searchParams.get("pagination") !== "false",
         serialNumber: url.searchParams.get("serialNumber") || "",
         removedBefore: url.searchParams.get("removedBefore") || "",
         removedStrictlyBefore: url.searchParams.get("removedStrictlyBefore") || "",
@@ -18135,7 +18205,9 @@ async function handleApiRequest(request, response, url) {
         count: result.count,
         totalItems: result.totalItems,
         fetchedAt: result.fetchedAt,
-        records: limitMobileRecords(result.items.map(buildMobileIsznrInstrumentRecord), 500),
+        pagesFetched: result.pagesFetched,
+        recordsLimited: Boolean(result.recordsLimited),
+        records: limitMobileRecords(result.items.map(buildMobileIsznrInstrumentRecord), ISZNR_MOBILE_INSTRUMENT_MAX_RECORDS),
       });
       return true;
     }

@@ -199,7 +199,7 @@ class SafeNexusApi(
 
     suspend fun listIsznrMeasurementEquipment(): Result<List<MobileRecord>> = withContext(Dispatchers.IO) {
         runCatching {
-            val json = JSONObject(request("/api/mobile/isznr/instruments?pagination=false"))
+            val json = JSONObject(request("/api/mobile/isznr/instruments", readTimeoutMs = 60_000))
             json.optJSONArray("records").toRecords()
         }
     }
