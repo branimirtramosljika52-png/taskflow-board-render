@@ -9183,7 +9183,7 @@ export class MySqlSafetyRepository {
 
     try {
       await connection.beginTransaction();
-      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection);
+      const snapshot = await fetchSnapshotFromConnection(connection);
       const locationObject = createLocationObject(input, snapshot);
 
       const [result] = await connection.query(
@@ -9536,7 +9536,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection, { currentOfferId: id });
+      const snapshot = await fetchSnapshotFromConnection(connection);
       const draft = createFieldInquiry({
         ...input,
         createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
@@ -9595,7 +9595,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection);
+      const snapshot = await fetchSnapshotFromConnection(connection);
       const current = (snapshot.fieldInquiries ?? []).find((item) => String(item.id) === String(id));
 
       if (!current) {
@@ -10757,7 +10757,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection, { currentOfferId: id });
+      const snapshot = await fetchSnapshotFromConnection(connection);
       const draft = createPublicProcurement({
         ...input,
         createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
