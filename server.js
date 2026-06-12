@@ -1159,37 +1159,38 @@ async function fetchIsznrResourceProbe({
     }
   });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const result = await fetch(requestUrl, {
-      method: "GET",
-      headers: createIsznrRequestHeaders(username, password),
-      signal: controller.signal,
+    const result = await requestIsznrText(requestUrl, {
+      headers: {
+        ...createIsznrRequestHeaders(username, password),
+        "user-agent": "SafeNexus/1.0",
+      },
+      preferIpv4: true,
+      timeoutMs,
     });
-    const responseText = await result.text().catch(() => "");
+    const responseText = result.text || "";
     const payload = parseJson ? parseIsznrJsonPayload(responseText) : null;
     return {
       ok: result.ok,
       status: result.status,
-      contentType: String(result.headers.get("content-type") || "").trim(),
+      contentType: getResponseHeaderValue(result.headers, "content-type"),
       path: getIsznrDisplayPath(requestUrl),
+      transport: result.transport || "",
       payload,
       responseText: responseText.slice(0, 1000),
     };
   } catch (error) {
+    const timeoutError = isNetworkTimeoutError(error);
     return {
       ok: false,
       status: 0,
       contentType: "",
       path: getIsznrDisplayPath(requestUrl),
-      errorCode: error?.name === "AbortError" ? "timeout" : "network",
-      message: error?.name === "AbortError"
+      errorCode: timeoutError ? "timeout" : "network",
+      message: timeoutError
         ? "ISZNR API se nije javio na vrijeme."
         : "ISZNR API nije dostupan s poslužitelja.",
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -1423,6 +1424,12 @@ async function testIsznrApiConnection({
 
   const activeCount = resources.filter((item) => item.active).length;
   const failedCount = resources.length - activeCount;
+  const criticalResourcePaths = new Set(["/authorized_companies", "/instruments"]);
+  const criticalFailures = resources.filter((item) => (
+    criticalResourcePaths.has(String(item.path || "").split("?")[0])
+    && !item.active
+  ));
+  const connectionOk = criticalFailures.length === 0;
   const groups = resources.reduce((accumulator, item) => {
     if (!accumulator[item.group]) {
       accumulator[item.group] = {
@@ -1442,7 +1449,7 @@ async function testIsznrApiConnection({
   }, {});
 
   return {
-    ok: failedCount === 0,
+    ok: connectionOk,
     status: authProbe?.status || (failedCount === 0 ? 200 : 207),
     baseUrl: normalizedBaseUrl,
     checkedAt: new Date().toISOString(),
@@ -1454,57 +1461,13 @@ async function testIsznrApiConnection({
       groups: Object.values(groups),
     },
     resources,
-    message: failedCount === 0
-      ? `ISZNR API radi. Aktivno je ${activeCount}/${resources.length} dokumentiranih GET resursa.`
-      : `ISZNR API se javlja, ali ${failedCount}/${resources.length} dokumentiranih GET resursa nije prošlo test.`,
+    message: !connectionOk
+      ? "ISZNR prijava radi, ali ključni resursi za SafeNexus nisu dostupni."
+      : failedCount === 0
+        ? `ISZNR API radi. Aktivno je ${activeCount}/${resources.length} dokumentiranih GET resursa.`
+        : `ISZNR API veza radi. ${failedCount}/${resources.length} dokumentiranih GET resursa nije prošlo detaljni test.`,
   };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ISZNR_TEST_TIMEOUT_MS);
-  let result;
-  try {
-    result = await fetch(requestUrl, {
-      method: "GET",
-      headers: {
-        accept: "application/ld+json, application/json",
-        authorization: createIsznrBasicAuthHeader(normalizedUsername, safePassword),
-      },
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw createRequestError(504, "ISZNR API se nije javio na vrijeme.");
-    }
-    throw createRequestError(502, "ISZNR API nije dostupan s poslužitelja.");
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const contentType = String(result.headers.get("content-type") || "").trim();
-  if (result.ok) {
-    return {
-      ok: true,
-      status: result.status,
-      contentType,
-      baseUrl: normalizedBaseUrl,
-      message: `ISZNR API veza radi. Resurs mjerne opreme je dostupan (${result.status}).`,
-    };
-  }
-
-  if (result.status === 401 || result.status === 403) {
-    throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
-  }
-
-  const rootHint = result.status === 404
-    ? " Provjeri URL u Settings. Za IS ZNR bazni URL koristi npr. https://isznr.gov.hr/api/v3."
-    : "";
-  return {
-    ok: false,
-    status: result.status,
-    contentType,
-    baseUrl: normalizedBaseUrl,
-    message: `ISZNR API je odgovorio statusom ${result.status}.${rootHint}`,
-  };
 }
 
 function createIsznrBasicAuthHeader(username = "", password = "") {
@@ -1577,7 +1540,12 @@ function requestTextWithHttpsIpv4(requestUrl, {
 async function requestIsznrText(requestUrl, {
   headers = {},
   timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
+  preferIpv4 = false,
 } = {}) {
+  if (preferIpv4 && requestUrl?.protocol === "https:") {
+    return requestTextWithHttpsIpv4(requestUrl, { headers, timeoutMs });
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
