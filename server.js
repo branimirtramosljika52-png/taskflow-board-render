@@ -17071,10 +17071,16 @@ function isMobileTrainingBooleanTrue(value) {
 }
 
 function getMobilePeopleTrainingItemDate(item = {}) {
+  if (!item || typeof item !== "object") {
+    return "";
+  }
   return firstMobileRecordValue(item, ["validUntil", "certificateValidUntil", "passedOn", "issuedOn", "date", "trainingDate", "createdAt"]);
 }
 
 function getMobilePeopleTrainingItemStatus(item = {}) {
+  if (!item || typeof item !== "object") {
+    return "Nedostaje";
+  }
   const rawStatus = normalizeInputValue(item.status || item.certificateStatus);
   if (rawStatus) {
     return rawStatus;
@@ -17100,14 +17106,23 @@ function getMobilePeopleTrainingItemStatus(item = {}) {
 }
 
 function getPeopleTrainingAttachmentDocumentId(document = {}) {
+  if (!document || typeof document !== "object") {
+    return "";
+  }
   return normalizeInputValue(document.id || document.documentId || document.sourceDocumentId);
 }
 
 function getPeopleTrainingAttachmentDocumentName(document = {}) {
+  if (!document || typeof document !== "object") {
+    return "";
+  }
   return normalizeInputValue(document.fileName || document.name || document.title) || "Dokument";
 }
 
 function buildMobilePeopleTrainingDocument(document = {}) {
+  if (!document || typeof document !== "object") {
+    return null;
+  }
   const id = getPeopleTrainingAttachmentDocumentId(document);
   const category = normalizeInputValue(document.documentCategory || document.category);
   return {
@@ -17130,12 +17145,17 @@ function findPeopleTrainingAttachmentDocumentById(record = {}, documentId = "") 
     return null;
   }
   return (Array.isArray(record.attachments) ? record.attachments : []).find((document) => (
-    getPeopleTrainingAttachmentDocumentId(document) === normalizedDocumentId
-    || normalizeInputValue(document.sourceDocumentId) === normalizedDocumentId
+    document && typeof document === "object" && (
+      getPeopleTrainingAttachmentDocumentId(document) === normalizedDocumentId
+      || normalizeInputValue(document.sourceDocumentId) === normalizedDocumentId
+    )
   )) || null;
 }
 
 function getMobilePeopleTrainingDocumentForItem(record = {}, item = {}, scopedSnapshot = {}) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
   const certificateDocumentId = normalizeInputValue(item.certificateDocumentId || item.documentId);
   if (certificateDocumentId) {
     const matched = findPeopleTrainingAttachmentDocumentById(record, certificateDocumentId);
@@ -17153,6 +17173,9 @@ function getMobilePeopleTrainingDocumentForItem(record = {}, item = {}, scopedSn
   const typeKey = normalizeLookupKey(item.type || item.trainingType || item.label || item.serviceName);
   const serviceId = normalizeInputValue(item.serviceId || item.serviceCatalogId);
   return (Array.isArray(record.attachments) ? record.attachments : []).find((attachment) => {
+    if (!attachment || typeof attachment !== "object") {
+      return false;
+    }
     const categoryKey = normalizeLookupKey(attachment.documentCategory || attachment.category || "");
     const descriptionKey = normalizeLookupKey(attachment.description || attachment.fileName || "");
     return (
@@ -17163,6 +17186,9 @@ function getMobilePeopleTrainingDocumentForItem(record = {}, item = {}, scopedSn
 }
 
 function buildMobilePeopleTrainingItem(record = {}, item = {}, index = 0, scopedSnapshot = {}) {
+  if (!item || typeof item !== "object") {
+    item = {};
+  }
   const document = getMobilePeopleTrainingDocumentForItem(record, item, scopedSnapshot);
   const validUntil = normalizeInputValue(item.validUntil || item.certificateValidUntil).slice(0, 10);
   const passedOn = normalizeInputValue(item.passedOn || item.issuedOn || item.date || item.trainingDate).slice(0, 10);
@@ -17203,11 +17229,15 @@ function getMobilePeopleTrainingRecordStatus(items = [], record = {}) {
 }
 
 function buildMobilePeopleTrainingRecord(record = {}, scopedSnapshot = {}) {
+  if (!record || typeof record !== "object") {
+    record = {};
+  }
   const trainingItems = (Array.isArray(record.trainingItems) ? record.trainingItems : [])
     .map((item, index) => buildMobilePeopleTrainingItem(record, item, index, scopedSnapshot));
   const documents = (Array.isArray(record.attachments) ? record.attachments : [])
+    .filter((document) => document && typeof document === "object")
     .map(buildMobilePeopleTrainingDocument)
-    .filter((document) => document.id || document.fileName)
+    .filter((document) => document && (document.id || document.fileName))
     .slice(0, 30);
   const expiredCount = trainingItems.filter((item) => normalizeLookupKey(item.status).includes("istek")).length;
   const expiringCount = trainingItems.filter((item) => normalizeLookupKey(item.status).includes("uskoro")).length;
