@@ -19352,6 +19352,31 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/isznr/api-settings") {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+        sendError(response, 403, "Nemate pravo spremati ISZNR API postavke.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const apiSettings = {
+        baseUrl: body?.baseUrl,
+        username: body?.username,
+        clearPassword: Boolean(body?.clearPassword),
+      };
+      if (typeof body?.password === "string" && body.password.trim()) {
+        apiSettings.password = body.password;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertIsznrApiSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        apiSettings,
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/app-capabilities") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo spremati mogućnosti aplikacije.");

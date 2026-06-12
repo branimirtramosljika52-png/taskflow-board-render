@@ -2618,6 +2618,26 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
           : {},
       };
     })(),
+    isznrApiSettings: (() => {
+      const settingsEntry = (rawSnapshot.isznrApiSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      if (!settingsEntry) {
+        return {
+          baseUrl: "",
+          username: "",
+          hasPassword: false,
+          updatedAt: null,
+        };
+      }
+
+      return {
+        baseUrl: String(settingsEntry.baseUrl || "").trim(),
+        username: String(settingsEntry.username || "").trim(),
+        hasPassword: Boolean(settingsEntry.hasPassword || settingsEntry.passwordSecret),
+        updatedAt: settingsEntry.updatedAt || null,
+      };
+    })(),
     appCapabilities: (() => {
       const settingsEntry = (rawSnapshot.appCapabilities ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
@@ -3344,6 +3364,7 @@ export class MemoryTenantRepository {
     absenceNotificationSettings: [],
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
+    isznrApiSettings: [],
     appCapabilities: [],
     appRolePermissions: [],
     companyRolePermissions: [],
@@ -4494,6 +4515,7 @@ export class MySqlTenantRepository {
     absenceNotificationSettings: [],
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
+    isznrApiSettings: [],
     appCapabilities: [],
     appRolePermissions: [],
     companyRolePermissions: [],
@@ -4556,6 +4578,12 @@ export class MySqlTenantRepository {
         absenceNotificationSettings: [],
         vehicleNotificationSettings: [],
         periodicsVisualSettings: [],
+        isznrApiSettings: {
+          baseUrl: "",
+          username: "",
+          hasPassword: false,
+          updatedAt: null,
+        },
         appCapabilities: [],
         safetyAuthorizations: [],
         absenceEntries: [],

@@ -1173,6 +1173,12 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   workOrderCompletionSharePercent: 20,
   workOrderServicePointFactors: Object.freeze({}),
 });
+const DEFAULT_ISZNR_API_SETTINGS = Object.freeze({
+  baseUrl: "",
+  username: "",
+  hasPassword: false,
+  updatedAt: null,
+});
 const DEFAULT_PUSH_NOTIFICATION_PREFERENCES = Object.freeze({
   enabled: true,
   workOrderAssigned: true,
@@ -2027,6 +2033,9 @@ const state = {
   },
   periodicsVisualSettings: {
     ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
+  },
+  isznrApiSettings: {
+    ...DEFAULT_ISZNR_API_SETTINGS,
   },
   appCapabilities: [],
   appRolePermissions: normalizeAppRolePermissions([]),
@@ -3688,6 +3697,13 @@ const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-a
 const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
 const settingsPeriodicsVisualFeedback = document.querySelector("#settings-periodics-visual-feedback");
 const settingsWorkOrderPointsFeedback = document.querySelector("#settings-work-order-points-feedback");
+const settingsIsznrApiUrlInput = document.querySelector("#settings-isznr-api-url");
+const settingsIsznrApiUsernameInput = document.querySelector("#settings-isznr-api-username");
+const settingsIsznrApiPasswordInput = document.querySelector("#settings-isznr-api-password");
+const settingsIsznrApiClearPasswordInput = document.querySelector("#settings-isznr-api-clear-password");
+const settingsIsznrApiStatus = document.querySelector("#settings-isznr-api-status");
+const settingsIsznrApiSaveButton = document.querySelector("#settings-isznr-api-save");
+const settingsIsznrApiFeedback = document.querySelector("#settings-isznr-api-feedback");
 const documentsSearchInput = document.querySelector("#documents-search");
 const documentsFilterKindInput = document.querySelector("#documents-filter-kind");
 const documentsRefreshButton = document.querySelector("#documents-refresh");
@@ -9167,6 +9183,22 @@ function getPeriodicsVisualSettings() {
   return normalizePeriodicsVisualSettings(state.periodicsVisualSettings);
 }
 
+function normalizeIsznrApiSettings(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+  return {
+    baseUrl: String(source.baseUrl ?? source.url ?? source.apiUrl ?? "").trim(),
+    username: String(source.username ?? source.user ?? "").trim(),
+    hasPassword: Boolean(source.hasPassword),
+    updatedAt: source.updatedAt || null,
+  };
+}
+
+function getIsznrApiSettings() {
+  return normalizeIsznrApiSettings(state.isznrApiSettings);
+}
+
 function clampNumber(value = 0, min = 0, max = 100) {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
@@ -9713,6 +9745,9 @@ function applySnapshot(payload, options = {}) {
   );
   state.periodicsVisualSettings = normalizePeriodicsVisualSettings(
     payload.periodicsVisualSettings,
+  );
+  state.isznrApiSettings = normalizeIsznrApiSettings(
+    payload.isznrApiSettings,
   );
   state.appCapabilities = normalizeAppCapabilities(payload.appCapabilities ?? []);
   if (state.appCapabilitiesDialog.open) {
@@ -33191,6 +33226,57 @@ function collectSettingsPushPreferences() {
   return preferences;
 }
 
+function renderSettingsIsznrApiSettings() {
+  const settings = getIsznrApiSettings();
+  const canManageSettings = getCanManageSettings();
+
+  if (settingsIsznrApiUrlInput) {
+    if (document.activeElement !== settingsIsznrApiUrlInput) {
+      settingsIsznrApiUrlInput.value = settings.baseUrl;
+    }
+    settingsIsznrApiUrlInput.disabled = !canManageSettings;
+  }
+  if (settingsIsznrApiUsernameInput) {
+    if (document.activeElement !== settingsIsznrApiUsernameInput) {
+      settingsIsznrApiUsernameInput.value = settings.username;
+    }
+    settingsIsznrApiUsernameInput.disabled = !canManageSettings;
+  }
+  if (settingsIsznrApiPasswordInput) {
+    settingsIsznrApiPasswordInput.disabled = !canManageSettings || Boolean(settingsIsznrApiClearPasswordInput?.checked);
+  }
+  if (settingsIsznrApiClearPasswordInput) {
+    settingsIsznrApiClearPasswordInput.disabled = !canManageSettings || !settings.hasPassword;
+    if (!settings.hasPassword) {
+      settingsIsznrApiClearPasswordInput.checked = false;
+    }
+  }
+  if (settingsIsznrApiSaveButton) {
+    settingsIsznrApiSaveButton.disabled = !canManageSettings;
+    settingsIsznrApiSaveButton.hidden = !canManageSettings;
+  }
+  if (settingsIsznrApiStatus) {
+    const parts = [
+      settings.hasPassword ? "Lozinka je spremljena." : "Lozinka nije postavljena.",
+      settings.updatedAt ? `Zadnja promjena: ${formatDateTime(settings.updatedAt)}` : "",
+    ].filter(Boolean);
+    settingsIsznrApiStatus.textContent = parts.join(" ");
+  }
+}
+
+function collectSettingsIsznrApiPayload() {
+  const payload = {
+    baseUrl: settingsIsznrApiUrlInput?.value || "",
+    username: settingsIsznrApiUsernameInput?.value || "",
+    clearPassword: Boolean(settingsIsznrApiClearPasswordInput?.checked),
+  };
+  const password = settingsIsznrApiPasswordInput?.value || "";
+  if (password && !payload.clearPassword) {
+    payload.password = password;
+  }
+  return payload;
+}
+
 function renderSettingsModule() {
   if (!settingsModule) {
     return;
@@ -33208,6 +33294,7 @@ function renderSettingsModule() {
   syncSettingsOrganizationLogo();
   syncSettingsDocumentStamp();
   renderSettingsPushPreferences();
+  renderSettingsIsznrApiSettings();
 
   if (settingsMeasurementLeadDaysInput) {
     if (document.activeElement !== settingsMeasurementLeadDaysInput) {
@@ -33335,6 +33422,7 @@ function renderSettingsModule() {
     settingsVehicleNotificationsFeedback,
     settingsPeriodicsVisualFeedback,
     settingsWorkOrderPointsFeedback,
+    settingsIsznrApiFeedback,
   ].forEach((feedbackNode) => {
     if (!feedbackNode) {
       return;
@@ -33777,6 +33865,48 @@ async function saveProfilePushNotificationPreferences(options = {}) {
   return success;
 }
 
+async function saveSettingsIsznrApiSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "ISZNR API postavke su spremljene.";
+
+  if (!getCanManageSettings()) {
+    setInlineMessage(settingsIsznrApiFeedback, "Nemate pravo spremati ISZNR API postavke.");
+    return false;
+  }
+
+  if (!state.activeOrganizationId) {
+    setInlineMessage(settingsIsznrApiFeedback, "Odaberi organizaciju prije spremanja ISZNR postavki.");
+    return false;
+  }
+
+  if (settingsIsznrApiSaveButton) {
+    settingsIsznrApiSaveButton.disabled = true;
+  }
+
+  const success = await runMutation(() => apiRequest("/isznr/api-settings", {
+    method: "POST",
+    body: collectSettingsIsznrApiPayload(),
+  }), settingsIsznrApiFeedback);
+
+  if (settingsIsznrApiSaveButton) {
+    settingsIsznrApiSaveButton.disabled = !getCanManageSettings();
+  }
+
+  if (success) {
+    if (settingsIsznrApiPasswordInput) {
+      settingsIsznrApiPasswordInput.value = "";
+    }
+    if (settingsIsznrApiClearPasswordInput) {
+      settingsIsznrApiClearPasswordInput.checked = false;
+    }
+    renderSettingsIsznrApiSettings();
+    setInlineMessage(settingsIsznrApiFeedback, successMessage, "success");
+  }
+
+  return success;
+}
+
 async function saveCompanyRolePermissions(options = {}) {
   const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
     ? options.successMessage.trim()
@@ -33835,6 +33965,7 @@ async function saveAllSettingsBlocks() {
       settingsVehicleNotificationsFeedback,
       settingsPeriodicsVisualFeedback,
       settingsWorkOrderPointsFeedback,
+      settingsIsznrApiFeedback,
       settingsJobAiFeedback,
     ].forEach((feedbackNode) => setInlineMessage(feedbackNode, permissionMessage));
     return false;
@@ -33928,6 +34059,7 @@ async function saveAllSettingsBlocks() {
   const workOrderServicePointFactors = normalizeWorkOrderServicePointFactors(
     collectSettingsWorkOrderServicePointFactors(),
   );
+  const isznrApiPayload = collectSettingsIsznrApiPayload();
   const jobAiInstructions = normalizeJobAiInstructionDrafts(collectSettingsJobAiInstructions());
 
   if (settingsMeasurementLeadDaysInput) settingsMeasurementLeadDaysInput.value = String(measurementLeadDays);
@@ -33959,6 +34091,7 @@ async function saveAllSettingsBlocks() {
     settingsVehicleNotificationsFeedback,
     settingsPeriodicsVisualFeedback,
     settingsWorkOrderPointsFeedback,
+    settingsIsznrApiFeedback,
     settingsJobAiFeedback,
   ].forEach((feedbackNode) => setInlineMessage(feedbackNode, ""));
 
@@ -34015,6 +34148,10 @@ async function saveAllSettingsBlocks() {
         workOrderServicePointFactors,
       },
     });
+    payload = await apiRequest("/isznr/api-settings", {
+      method: "POST",
+      body: isznrApiPayload,
+    });
     payload = await apiRequest("/jobs/ai-settings", {
       method: "POST",
       body: {
@@ -34028,8 +34165,15 @@ async function saveAllSettingsBlocks() {
 
     settingsOrganizationLogoDraftTouched = false;
     settingsDocumentStampDraftTouched = false;
+    if (settingsIsznrApiPasswordInput) {
+      settingsIsznrApiPasswordInput.value = "";
+    }
+    if (settingsIsznrApiClearPasswordInput) {
+      settingsIsznrApiClearPasswordInput.checked = false;
+    }
     syncSettingsOrganizationLogo();
     syncSettingsDocumentStamp();
+    renderSettingsIsznrApiSettings();
     syncDocumentTemplateHtmlBuilderBranding();
     [
       settingsOrganizationFeedback,
@@ -34039,6 +34183,7 @@ async function saveAllSettingsBlocks() {
       settingsVehicleNotificationsFeedback,
       settingsPeriodicsVisualFeedback,
       settingsWorkOrderPointsFeedback,
+      settingsIsznrApiFeedback,
       settingsJobAiFeedback,
     ].forEach((feedbackNode) => setInlineMessage(feedbackNode, successMessage, "success"));
     return true;
@@ -128604,6 +128749,18 @@ settingsPushPreferencesSaveButton?.addEventListener("click", () => {
   void saveProfilePushNotificationPreferences();
 });
 
+settingsIsznrApiSaveButton?.addEventListener("click", () => {
+  void saveSettingsIsznrApiSettings();
+});
+
+settingsIsznrApiClearPasswordInput?.addEventListener("change", () => {
+  if (settingsIsznrApiPasswordInput && settingsIsznrApiClearPasswordInput.checked) {
+    settingsIsznrApiPasswordInput.value = "";
+  }
+  renderSettingsIsznrApiSettings();
+  setInlineMessage(settingsIsznrApiFeedback, "");
+});
+
 settingsPushPreferencesGrid?.addEventListener("change", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.matches("[data-push-preference-key]")) {
@@ -149755,6 +149912,9 @@ function resetAuthenticatedWorkspaceState() {
   };
   state.periodicsVisualSettings = {
     ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
+  };
+  state.isznrApiSettings = {
+    ...DEFAULT_ISZNR_API_SETTINGS,
   };
   state.appRolePermissions = normalizeAppRolePermissions([]);
   state.appPermissions = {};

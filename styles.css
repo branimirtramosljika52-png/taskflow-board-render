@@ -4991,6 +4991,20 @@ body.is-profile-modal-open {
   height: 42px;
 }
 
+.settings-inline-check {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.settings-inline-check input {
+  width: 16px;
+  height: 16px;
+}
+
 .settings-points-layout {
   display: grid;
   grid-template-columns: minmax(220px, 0.72fr) minmax(280px, 1fr);

@@ -6416,6 +6416,36 @@
                 <div id="settings-push-preferences-grid" class="settings-push-preferences-grid"></div>
                 <p id="settings-push-preferences-feedback" class="form-error" aria-live="polite"></p>
               </section>
+              <section class="panel settings-notifications-panel settings-isznr-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Integracije</p>
+                    <h3>ISZNR API</h3>
+                  </div>
+                  <button id="settings-isznr-api-save" type="button" class="ghost-button">Spremi ISZNR</button>
+                </div>
+                <p class="helper-copy module-copy">Podaci se spremaju za aktivnu organizaciju. Lozinka se ne prikazuje nakon spremanja.</p>
+                <div class="settings-notification-inline">
+                  <label class="field field-span-full">
+                    <span>API URL</span>
+                    <input id="settings-isznr-api-url" type="url" inputmode="url" autocomplete="off" placeholder="https://..." />
+                  </label>
+                  <label class="field">
+                    <span>Korisnik</span>
+                    <input id="settings-isznr-api-username" autocomplete="off" placeholder="ISZNR korisničko ime" />
+                  </label>
+                  <label class="field">
+                    <span>Lozinka</span>
+                    <input id="settings-isznr-api-password" type="password" autocomplete="new-password" placeholder="Prazno = zadrži postojeću" />
+                  </label>
+                </div>
+                <label class="settings-inline-check">
+                  <input id="settings-isznr-api-clear-password" type="checkbox" />
+                  <span>Ukloni spremljenu lozinku</span>
+                </label>
+                <p id="settings-isznr-api-status" class="helper-copy module-copy"></p>
+                <p id="settings-isznr-api-feedback" class="form-error" aria-live="polite"></p>
+              </section>
               <section class="panel settings-notifications-panel">
                 <div class="section-heading offers-section-heading">
                   <div>

@@ -457,6 +457,38 @@ test("periodics visual settings store work order point split as complementary pe
   assert.equal(updated.workOrderServicePointFactors["id:service-1"], 4);
 });
 
+test("in-memory safety repository stores ISZNR API settings and preserves password when omitted", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const saved = await repository.upsertIsznrApiSettings({
+    organizationId: "org-1",
+    apiSettings: {
+      baseUrl: "isznr.example.test/api/",
+      username: "api-user",
+      password: "secret-pass",
+    },
+  });
+
+  assert.equal(saved.baseUrl, "https://isznr.example.test/api");
+  assert.equal(saved.username, "api-user");
+  assert.equal(saved.passwordSecret, "secret-pass");
+  assert.equal(saved.hasPassword, true);
+
+  const updated = await repository.upsertIsznrApiSettings({
+    organizationId: "org-1",
+    apiSettings: {
+      baseUrl: "https://isznr.example.test/v2",
+      username: "api-user-2",
+    },
+  });
+
+  assert.equal(updated.baseUrl, "https://isznr.example.test/v2");
+  assert.equal(updated.username, "api-user-2");
+  assert.equal(updated.passwordSecret, "secret-pass");
+  assert.equal(updated.hasPassword, true);
+});
+
 test("in-memory safety repository stores app role permissions per organization", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();

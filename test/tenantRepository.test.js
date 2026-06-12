@@ -142,6 +142,40 @@ test("memory tenant repository scopes snapshot by assigned companies", async () 
   assert.equal(scoped.documentTemplates[0].id, "template-2");
 });
 
+test("memory tenant repository exposes ISZNR settings without password secret", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const actor = {
+    id: "1",
+    role: "super_admin",
+    organizationId: "1",
+  };
+
+  await repository.createOrganization(actor, { name: "ISZNR Org" });
+
+  const scoped = await repository.getSnapshot(actor, "2", {
+    isznrApiSettings: [
+      {
+        organizationId: "2",
+        baseUrl: "https://isznr.example.test/api",
+        username: "api-user",
+        passwordSecret: "secret-pass",
+        hasPassword: true,
+        updatedAt: "2026-06-12T10:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.deepEqual(scoped.isznrApiSettings, {
+    baseUrl: "https://isznr.example.test/api",
+    username: "api-user",
+    hasPassword: true,
+    updatedAt: "2026-06-12T10:00:00.000Z",
+  });
+  assert.equal(Object.hasOwn(scoped.isznrApiSettings, "passwordSecret"), false);
+});
+
 test("memory tenant repository resolves company permissions by profile role", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

@@ -657,6 +657,41 @@ function normalizePeriodicsVisualSettings(value = {}) {
   };
 }
 
+function normalizeIsznrApiBaseUrl(value = "") {
+  const raw = dbString(value).replace(/\/+$/, "");
+  if (!raw) {
+    return "";
+  }
+
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+    ? raw
+    : `https://${raw}`;
+
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("ISZNR API URL nije ispravan.");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("ISZNR API URL mora koristiti http ili https.");
+  }
+
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function normalizeIsznrApiSettings(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+
+  return {
+    baseUrl: normalizeIsznrApiBaseUrl(source.baseUrl ?? source.url ?? source.apiUrl),
+    username: dbString(source.username ?? source.user).slice(0, 240),
+  };
+}
+
 function normalizeAppCapabilityStatus(value = "") {
   const normalized = String(value ?? "").trim().toLowerCase();
   return APP_CAPABILITY_STATUS_VALUES.has(normalized)
@@ -2370,6 +2405,24 @@ function mapPeriodicsVisualSettingsEntry(row = {}) {
   return {
     organizationId,
     ...normalized,
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapIsznrApiSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const passwordSecret = dbString(row.password_secret);
+  return {
+    organizationId,
+    baseUrl: dbString(row.base_url),
+    username: dbString(row.username),
+    passwordSecret,
+    hasPassword: Boolean(passwordSecret),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   };
@@ -4607,6 +4660,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapPeriodicsVisualSettingsEntry(row))
     .filter(Boolean);
 
+  const [isznrApiSettingsRows] = await connection.query(`
+    SELECT organization_id, base_url, username, password_secret, created_at, updated_at
+    FROM web_isznr_api_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const isznrApiSettings = isznrApiSettingsRows
+    .map((row) => mapIsznrApiSettingsEntry(row))
+    .filter(Boolean);
+
   const [appCapabilitySettingsRows] = await connection.query(`
     SELECT organization_id, modules_json, created_at, updated_at
     FROM web_app_capability_settings
@@ -4795,6 +4858,7 @@ async function fetchSnapshotFromConnection(connection) {
     absenceNotificationSettings,
     vehicleNotificationSettings,
     periodicsVisualSettings,
+    isznrApiSettings,
     appCapabilities,
     appRolePermissions,
     companyRolePermissions,
@@ -4909,6 +4973,7 @@ export class InMemorySafetyRepository {
       absenceNotificationSettings: [],
       vehicleNotificationSettings: [],
       periodicsVisualSettings: [],
+      isznrApiSettings: [],
       appCapabilities: [],
       appRolePermissions: [],
       companyRolePermissions: [],
@@ -5207,6 +5272,9 @@ export class InMemorySafetyRepository {
         ...item,
       })),
       periodicsVisualSettings: this.snapshot.periodicsVisualSettings.map((item) => ({
+        ...item,
+      })),
+      isznrApiSettings: this.snapshot.isznrApiSettings.map((item) => ({
         ...item,
       })),
       appCapabilities: this.snapshot.appCapabilities.map((item) => ({
@@ -6965,6 +7033,54 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async getIsznrApiSettings(organizationId = "") {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      return null;
+    }
+
+    return this.snapshot.isznrApiSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? null;
+  }
+
+  async upsertIsznrApiSettings({ organizationId = "", apiSettings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za ISZNR API postavke.");
+    }
+
+    const normalizedSettings = normalizeIsznrApiSettings(apiSettings);
+    const currentIndex = this.snapshot.isznrApiSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    const previous = currentIndex >= 0 ? this.snapshot.isznrApiSettings[currentIndex] : null;
+    const hasPasswordInput = Object.prototype.hasOwnProperty.call(apiSettings, "password")
+      || Object.prototype.hasOwnProperty.call(apiSettings, "passwordSecret");
+    const passwordSecret = apiSettings.clearPassword
+      ? ""
+      : (hasPasswordInput
+        ? dbString(apiSettings.password ?? apiSettings.passwordSecret)
+        : dbString(previous?.passwordSecret));
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      ...normalizedSettings,
+      passwordSecret,
+      hasPassword: Boolean(passwordSecret),
+      createdAt: previous?.createdAt || timestamp,
+      updatedAt: timestamp,
+    };
+
+    if (currentIndex >= 0) {
+      this.snapshot.isznrApiSettings[currentIndex] = nextEntry;
+    } else {
+      this.snapshot.isznrApiSettings.push(nextEntry);
+    }
+
+    return this.getIsznrApiSettings(safeOrganizationId);
+  }
+
   async upsertAppCapabilities({ organizationId = "", modules = [] } = {}) {
     const safeOrganizationId = dbString(organizationId);
     if (!safeOrganizationId) {
@@ -8113,6 +8229,18 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_periodics_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_isznr_api_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        base_url TEXT NULL,
+        username VARCHAR(240) NOT NULL DEFAULT '',
+        password_secret TEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_isznr_api_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -13162,6 +13290,63 @@ export class MySqlSafetyRepository {
       organizationId: String(safeOrganizationId),
       ...normalizedSettings,
     };
+  }
+
+  async getIsznrApiSettings(organizationId = "") {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      return null;
+    }
+
+    const [rows] = await this.pool.query(
+      `
+        SELECT organization_id, base_url, username, password_secret, created_at, updated_at
+        FROM web_isznr_api_settings
+        WHERE organization_id = ?
+        LIMIT 1
+      `,
+      [safeOrganizationId],
+    );
+
+    return mapIsznrApiSettingsEntry(rows[0]) ?? null;
+  }
+
+  async upsertIsznrApiSettings({ organizationId = "", apiSettings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za ISZNR API postavke.");
+    }
+
+    const normalizedSettings = normalizeIsznrApiSettings(apiSettings);
+    const currentEntry = await this.getIsznrApiSettings(safeOrganizationId);
+    const hasPasswordInput = Object.prototype.hasOwnProperty.call(apiSettings, "password")
+      || Object.prototype.hasOwnProperty.call(apiSettings, "passwordSecret");
+    const passwordSecret = apiSettings.clearPassword
+      ? ""
+      : (hasPasswordInput
+        ? dbString(apiSettings.password ?? apiSettings.passwordSecret)
+        : dbString(currentEntry?.passwordSecret));
+
+    await this.pool.query(
+      `
+        INSERT INTO web_isznr_api_settings
+          (organization_id, base_url, username, password_secret)
+        VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          base_url = VALUES(base_url),
+          username = VALUES(username),
+          password_secret = VALUES(password_secret),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [
+        safeOrganizationId,
+        normalizedSettings.baseUrl,
+        normalizedSettings.username,
+        passwordSecret,
+      ],
+    );
+
+    return this.getIsznrApiSettings(safeOrganizationId);
   }
 
   async upsertAppCapabilities({ organizationId = "", modules = [] } = {}) {
