@@ -197,6 +197,13 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun listIsznrMeasurementEquipment(): Result<List<MobileRecord>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = JSONObject(request("/api/mobile/isznr/instruments?pagination=false"))
+            json.optJSONArray("records").toRecords()
+        }
+    }
+
     suspend fun updateWorkOrderStatus(workOrderId: String, status: String): Result<WorkOrder> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()

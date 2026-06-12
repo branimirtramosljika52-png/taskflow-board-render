@@ -97,7 +97,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.91.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.92.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -16872,6 +16872,41 @@ function buildMobileMeasurementEquipmentRecord(item = {}) {
   };
 }
 
+function buildMobileIsznrInstrumentRecord(item = {}) {
+  const instrument = normalizeIsznrInstrumentRecord(item);
+  const isznrInstrumentId = normalizeInputValue(instrument.isznrId || instrument.id);
+  const serialNumber = normalizeInputValue(instrument.serialNumber);
+  const validUntil = normalizeInputValue(instrument.measurementDateTo).slice(0, 10);
+  const calibrationDate = normalizeInputValue(instrument.measurementDateFrom).slice(0, 10);
+  const removed = normalizeInputValue(instrument.removed).slice(0, 10);
+  const title = normalizeInputValue(instrument.name) || (isznrInstrumentId ? `IS ZNR oprema ${isznrInstrumentId}` : "IS ZNR mjerna oprema");
+  const subtitle = [
+    serialNumber ? `Ser. ${serialNumber}` : "",
+    validUntil ? `Vrijedi do ${validUntil}` : "",
+    removed ? `Rashodovano ${removed}` : "",
+  ].filter(Boolean).join(" - ");
+
+  return {
+    id: `isznr-instrument:${isznrInstrumentId || serialNumber || title}`,
+    title,
+    subtitle,
+    status: removed ? "Rashodovano" : "IS ZNR",
+    kind: "isznr_measurement_equipment",
+    date: validUntil || calibrationDate || removed,
+    relatedId: isznrInstrumentId,
+    coordinates: "",
+    meta: {
+      isznrInstrumentId,
+      serialNumber,
+      calibrationDate,
+      validUntil,
+      removed,
+      isznrLinked: "true",
+      isznrSource: "live",
+    },
+  };
+}
+
 function isMobileClosedWorkOrderStatus(status = "") {
   const normalized = normalizeInputValue(status)
     .toLowerCase()
@@ -18071,6 +18106,37 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/mobile/work-orders") {
       await writeMobileWorkOrders(response, user, request);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/mobile/isznr/instruments") {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
+        sendError(response, 403, "Nemate pravo dohvatiti IS ZNR mjernu opremu.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const result = await fetchIsznrInstruments({
+        baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: storedSettings?.username || "",
+        password: storedSettings?.passwordSecret || "",
+        page: url.searchParams.get("page") || 1,
+        pagination: url.searchParams.get("pagination") === "true",
+        serialNumber: url.searchParams.get("serialNumber") || "",
+        removedBefore: url.searchParams.get("removedBefore") || "",
+        removedStrictlyBefore: url.searchParams.get("removedStrictlyBefore") || "",
+        removedAfter: url.searchParams.get("removedAfter") || "",
+        removedStrictlyAfter: url.searchParams.get("removedStrictlyAfter") || "",
+      });
+      sendJson(response, 200, {
+        ok: true,
+        page: result.page,
+        count: result.count,
+        totalItems: result.totalItems,
+        fetchedAt: result.fetchedAt,
+        records: limitMobileRecords(result.items.map(buildMobileIsznrInstrumentRecord), 500),
+      });
       return true;
     }
 

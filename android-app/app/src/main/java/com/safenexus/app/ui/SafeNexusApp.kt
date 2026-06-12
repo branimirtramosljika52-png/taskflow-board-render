@@ -407,6 +407,10 @@ data class AppState(
     val documentationContextObjectId: String = "",
     val documentationContext: WorkOrderDocumentationContext = WorkOrderDocumentationContext(),
     val documentationContextLoading: Boolean = false,
+    val isznrMeasurementEquipmentRecords: List<MobileRecord> = emptyList(),
+    val isznrMeasurementEquipmentLoading: Boolean = false,
+    val isznrMeasurementEquipmentLoaded: Boolean = false,
+    val isznrMeasurementEquipmentError: String = "",
     val isLoading: Boolean = false,
     val error: String = "",
     val notice: String = "",
@@ -518,6 +522,30 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     } else {
                         state = state.copy(isLoading = false, error = message)
                     }
+                }
+        }
+    }
+
+    fun loadIsznrMeasurementEquipment(force: Boolean = false) {
+        if (state.isznrMeasurementEquipmentLoading) return
+        if (!force && state.isznrMeasurementEquipmentLoaded) return
+        state = state.copy(isznrMeasurementEquipmentLoading = true, isznrMeasurementEquipmentError = "")
+        viewModelScope.launch {
+            api.listIsznrMeasurementEquipment()
+                .onSuccess { records ->
+                    state = state.copy(
+                        isznrMeasurementEquipmentRecords = records,
+                        isznrMeasurementEquipmentLoading = false,
+                        isznrMeasurementEquipmentLoaded = true,
+                        isznrMeasurementEquipmentError = "",
+                    )
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isznrMeasurementEquipmentLoading = false,
+                        isznrMeasurementEquipmentLoaded = true,
+                        isznrMeasurementEquipmentError = error.message ?: "Ne mogu dohvatiti IS ZNR mjernu opremu.",
+                    )
                 }
         }
     }
@@ -1637,6 +1665,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onAddDocumentation = openDocumentationActions,
                         onSaveFieldInquiry = viewModel::saveFieldInquiry,
                         onConvertFieldInquiry = viewModel::convertFieldInquiryToWorkOrder,
+                        onLoadIsznrMeasurementEquipment = viewModel::loadIsznrMeasurementEquipment,
                     )
                 } else {
                     MobileRecordDetailScreen(
@@ -4117,6 +4146,7 @@ private fun WorkOrdersScreen(
     onAddDocumentation: (WorkOrder) -> Unit,
     onSaveFieldInquiry: (FieldInquiryDraft) -> Unit,
     onConvertFieldInquiry: (MobileRecord) -> Unit,
+    onLoadIsznrMeasurementEquipment: (Boolean) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
     val filtered = remember(state.workOrders, normalizedQuery, state.filter, state.user?.displayName, state.user?.email) {
@@ -4168,6 +4198,9 @@ private fun WorkOrdersScreen(
     val filteredMeasurementEquipment = remember(state.data.measurementEquipmentRecords, normalizedQuery) {
         state.data.measurementEquipmentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredIsznrMeasurementEquipment = remember(state.isznrMeasurementEquipmentRecords, normalizedQuery) {
+        state.isznrMeasurementEquipmentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
     var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
@@ -4183,6 +4216,9 @@ private fun WorkOrdersScreen(
     LaunchedEffect(state.section, moreFocus) {
         if (state.section == AppSection.More) {
             listState.animateScrollToItem(0)
+            if (moreFocus == MoreSectionFocus.MeasurementEquipment) {
+                onLoadIsznrMeasurementEquipment(false)
+            }
         }
     }
 
@@ -4405,8 +4441,14 @@ private fun WorkOrdersScreen(
                         item {
                             MeasurementEquipmentContent(
                                 records = filteredMeasurementEquipment,
+                                isznrRecords = filteredIsznrMeasurementEquipment,
                                 totalCount = filteredMeasurementEquipment.size,
+                                isznrTotalCount = state.isznrMeasurementEquipmentRecords.size,
+                                isznrLoading = state.isznrMeasurementEquipmentLoading,
+                                isznrLoaded = state.isznrMeasurementEquipmentLoaded,
+                                isznrError = state.isznrMeasurementEquipmentError,
                                 displayLimit = 8,
+                                onLoadIsznr = onLoadIsznrMeasurementEquipment,
                                 onOpenRecord = onOpenRecord,
                             )
                         }
@@ -4494,8 +4536,14 @@ private fun WorkOrdersScreen(
                     MoreSectionFocus.MeasurementEquipment -> item {
                         MeasurementEquipmentContent(
                             records = filteredMeasurementEquipment,
+                            isznrRecords = filteredIsznrMeasurementEquipment,
                             totalCount = filteredMeasurementEquipment.size,
+                            isznrTotalCount = state.isznrMeasurementEquipmentRecords.size,
+                            isznrLoading = state.isznrMeasurementEquipmentLoading,
+                            isznrLoaded = state.isznrMeasurementEquipmentLoaded,
+                            isznrError = state.isznrMeasurementEquipmentError,
                             displayLimit = 80,
+                            onLoadIsznr = onLoadIsznrMeasurementEquipment,
                             onOpenRecord = onOpenRecord,
                         )
                     }
@@ -7126,15 +7174,20 @@ private fun ServiceCatalogLine(service: WorkOrderServiceOption) {
 @Composable
 private fun MeasurementEquipmentContent(
     records: List<MobileRecord>,
+    isznrRecords: List<MobileRecord>,
     totalCount: Int,
+    isznrTotalCount: Int,
+    isznrLoading: Boolean,
+    isznrLoaded: Boolean,
+    isznrError: String,
     displayLimit: Int,
+    onLoadIsznr: (Boolean) -> Unit,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
-    var selectedTab by remember(records) { mutableStateOf(MeasurementEquipmentTab.All) }
-    val isznrRecords = remember(records) {
-        records.filter { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
+    var selectedTab by remember { mutableStateOf(MeasurementEquipmentTab.All) }
+    val localIsznrCount = remember(records) {
+        records.count { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
     }
-    val isznrCount = isznrRecords.size
     val tabRecords = remember(records, isznrRecords, selectedTab) {
         when (selectedTab) {
             MeasurementEquipmentTab.All -> records
@@ -7142,6 +7195,12 @@ private fun MeasurementEquipmentContent(
         }
     }
     val visibleRecords = remember(tabRecords, displayLimit) { tabRecords.take(displayLimit.coerceAtLeast(1)) }
+
+    LaunchedEffect(selectedTab, isznrLoaded, isznrLoading) {
+        if (selectedTab == MeasurementEquipmentTab.Isznr && !isznrLoaded && !isznrLoading) {
+            onLoadIsznr(false)
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -7156,7 +7215,7 @@ private fun MeasurementEquipmentContent(
         ) {
             SectionHeader(
                 title = "Mjerna oprema",
-                subtitle = "$totalCount zapisa · $isznrCount u IS ZNR",
+                subtitle = "$totalCount lokalno · $isznrTotalCount IS ZNR · $localIsznrCount povezano",
                 icon = Icons.Rounded.Work,
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -7168,18 +7227,44 @@ private fun MeasurementEquipmentContent(
                 )
                 MeasurementEquipmentTabChip(
                     label = "IS ZNR",
-                    count = isznrCount,
+                    count = isznrTotalCount,
                     selected = selectedTab == MeasurementEquipmentTab.Isznr,
-                    onClick = { selectedTab = MeasurementEquipmentTab.Isznr },
+                    onClick = {
+                        selectedTab = MeasurementEquipmentTab.Isznr
+                        onLoadIsznr(false)
+                    },
                 )
             }
-            if (tabRecords.isEmpty()) {
+            if (selectedTab == MeasurementEquipmentTab.Isznr) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (isznrLoaded) "Live popis iz IS ZNR-a" else "IS ZNR popis se učitava nakon otvaranja taba.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { onLoadIsznr(true) }, enabled = !isznrLoading) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi IS ZNR")
+                    }
+                }
+                AnimatedVisibility(isznrLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                AnimatedVisibility(isznrError.isNotBlank()) {
+                    MessageCard(text = isznrError, isError = true)
+                }
+            }
+            if (!isznrLoading && tabRecords.isEmpty()) {
                 val emptyText = when (selectedTab) {
                     MeasurementEquipmentTab.All -> "Nema mjerne opreme za prikaz."
-                    MeasurementEquipmentTab.Isznr -> "Nema opreme označene kao IS ZNR. Sinkroniziraj opremu u web aplikaciji pa osvježi mobilnu aplikaciju."
+                    MeasurementEquipmentTab.Isznr -> "IS ZNR nije vratio mjernu opremu za prikaz."
                 }
                 Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
-            } else {
+            } else if (tabRecords.isNotEmpty()) {
                 visibleRecords.forEach { record ->
                     MeasurementEquipmentLine(record = record, onOpenRecord = onOpenRecord)
                 }
