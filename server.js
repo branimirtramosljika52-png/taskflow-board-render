@@ -721,13 +721,13 @@ const ISZNR_TEST_TIMEOUT_MS = Math.max(
 );
 const ISZNR_RESOURCE_TEST_TIMEOUT_MS = Math.max(
   2500,
-  Number(process.env.ISZNR_RESOURCE_TEST_TIMEOUT_MS || 4500) || 4500,
+  Number(process.env.ISZNR_RESOURCE_TEST_TIMEOUT_MS || 12000) || 12000,
 );
 const ISZNR_RESOURCE_TEST_CONCURRENCY = Math.max(
   1,
-  Number(process.env.ISZNR_RESOURCE_TEST_CONCURRENCY || 8) || 8,
+  Number(process.env.ISZNR_RESOURCE_TEST_CONCURRENCY || 4) || 4,
 );
-const ISZNR_AUTHORIZED_COMPANY_PROBE_ID = String(process.env.ISZNR_AUTHORIZED_COMPANY_PROBE_ID || "68").trim();
+const ISZNR_AUTHORIZED_COMPANY_PROBE_ID = String(process.env.ISZNR_AUTHORIZED_COMPANY_PROBE_ID || "").trim();
 const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
   { group: "Šifarnici", label: "Ovlaštene osobe", path: "authorized_companies" },
   { group: "Šifarnici", label: "Poslodavci", path: "companies", acceptsClientError: true },
@@ -1245,19 +1245,28 @@ function normalizeIsznrAuthorizedCompanyRecord(source = {}) {
   };
 }
 
+function findIsznrAuthorizedCompanyByOib(payload = {}, expectedOib = "") {
+  const normalizedOib = normalizeIsznrOib(expectedOib);
+  if (!normalizedOib) {
+    return null;
+  }
+  return getIsznrPayloadArray(payload)
+    .map((item) => normalizeIsznrAuthorizedCompanyRecord(item))
+    .find((item) => item?.oib === normalizedOib)
+    || null;
+}
+
 function summarizeIsznrAuthorizedCompanyProbe({ id = "", expectedOib = "", byIdProbe = null, byOibProbe = null } = {}) {
   const byIdRecord = normalizeIsznrAuthorizedCompanyRecord(byIdProbe?.payload);
-  const collectionItems = byOibProbe?.ok ? getIsznrPayloadArray(byOibProbe.payload) : [];
-  const matchedByOib = expectedOib
-    ? collectionItems
-      .map((item) => normalizeIsznrAuthorizedCompanyRecord(item))
-      .find((item) => item?.oib === expectedOib)
-    : null;
+  const matchedByOib = byOibProbe?.ok ? findIsznrAuthorizedCompanyByOib(byOibProbe.payload, expectedOib) : null;
   const byIdOibMatches = Boolean(expectedOib && byIdRecord?.oib && byIdRecord.oib === expectedOib);
+  const resolvedId = matchedByOib?.id || byIdRecord?.id || id;
 
   return {
-    id,
+    id: resolvedId,
+    requestedId: id,
     expectedOib,
+    resolvedRecord: matchedByOib || byIdRecord || null,
     byId: byIdProbe
       ? {
         ok: Boolean(byIdProbe.ok),
@@ -1297,17 +1306,6 @@ async function testIsznrAuthorizedCompanyProbe({
 } = {}) {
   const id = String(authorizedCompanyId || "").replace(/[^\d]/g, "");
   const expectedOib = normalizeIsznrOib(authorizedCompanyOib);
-  const byIdProbe = id
-    ? await fetchIsznrResourceProbe({
-      baseUrl,
-      username,
-      password,
-      resourcePath: `authorized_companies/${id}`,
-      timeoutMs: ISZNR_TEST_TIMEOUT_MS,
-      parseJson: true,
-    })
-    : null;
-
   const byOibProbe = expectedOib
     ? await fetchIsznrResourceProbe({
       baseUrl,
@@ -1318,9 +1316,21 @@ async function testIsznrAuthorizedCompanyProbe({
       parseJson: true,
     })
     : null;
+  const matchedByOib = byOibProbe?.ok ? findIsznrAuthorizedCompanyByOib(byOibProbe.payload, expectedOib) : null;
+  const resolvedId = String(matchedByOib?.id || id || "").replace(/[^\d]/g, "");
+  const byIdProbe = resolvedId
+    ? await fetchIsznrResourceProbe({
+      baseUrl,
+      username,
+      password,
+      resourcePath: `authorized_companies/${resolvedId}`,
+      timeoutMs: ISZNR_TEST_TIMEOUT_MS,
+      parseJson: true,
+    })
+    : null;
 
   return summarizeIsznrAuthorizedCompanyProbe({
-    id,
+    id: resolvedId,
     expectedOib,
     byIdProbe,
     byOibProbe,
@@ -1353,7 +1363,7 @@ async function testIsznrApiConnection({
     authorizedCompanyId,
     authorizedCompanyOib: normalizedOrganizationOib,
   });
-  const authProbe = authorizedCompany?.byId || authorizedCompany?.byOib;
+  const authProbe = authorizedCompany?.byOib || authorizedCompany?.byId;
   if (isIsznrAuthFailure(authProbe)) {
     throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
   }
