@@ -7130,10 +7130,18 @@ private fun MeasurementEquipmentContent(
     displayLimit: Int,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
-    val isznrCount = remember(records) {
-        records.count { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
+    var selectedTab by remember(records) { mutableStateOf(MeasurementEquipmentTab.All) }
+    val isznrRecords = remember(records) {
+        records.filter { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
     }
-    val visibleRecords = remember(records, displayLimit) { records.take(displayLimit.coerceAtLeast(1)) }
+    val isznrCount = isznrRecords.size
+    val tabRecords = remember(records, isznrRecords, selectedTab) {
+        when (selectedTab) {
+            MeasurementEquipmentTab.All -> records
+            MeasurementEquipmentTab.Isznr -> isznrRecords
+        }
+    }
+    val visibleRecords = remember(tabRecords, displayLimit) { tabRecords.take(displayLimit.coerceAtLeast(1)) }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -7148,16 +7156,34 @@ private fun MeasurementEquipmentContent(
         ) {
             SectionHeader(
                 title = "Mjerna oprema",
-                subtitle = "$totalCount zapisa · $isznrCount ISZNR povezano",
+                subtitle = "$totalCount zapisa · $isznrCount u IS ZNR",
                 icon = Icons.Rounded.Work,
             )
-            if (records.isEmpty()) {
-                Text("Nema mjerne opreme za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MeasurementEquipmentTabChip(
+                    label = "Sve",
+                    count = totalCount,
+                    selected = selectedTab == MeasurementEquipmentTab.All,
+                    onClick = { selectedTab = MeasurementEquipmentTab.All },
+                )
+                MeasurementEquipmentTabChip(
+                    label = "IS ZNR",
+                    count = isznrCount,
+                    selected = selectedTab == MeasurementEquipmentTab.Isznr,
+                    onClick = { selectedTab = MeasurementEquipmentTab.Isznr },
+                )
+            }
+            if (tabRecords.isEmpty()) {
+                val emptyText = when (selectedTab) {
+                    MeasurementEquipmentTab.All -> "Nema mjerne opreme za prikaz."
+                    MeasurementEquipmentTab.Isznr -> "Nema opreme označene kao IS ZNR. Sinkroniziraj opremu u web aplikaciji pa osvježi mobilnu aplikaciju."
+                }
+                Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
             } else {
                 visibleRecords.forEach { record ->
                     MeasurementEquipmentLine(record = record, onOpenRecord = onOpenRecord)
                 }
-                if (records.size > visibleRecords.size) {
+                if (tabRecords.size > visibleRecords.size) {
                     Text(
                         "Prikazano je prvih ${visibleRecords.size}. Koristi pretragu za sužavanje popisa.",
                         style = MaterialTheme.typography.bodySmall,
@@ -7167,6 +7193,27 @@ private fun MeasurementEquipmentContent(
             }
         }
     }
+}
+
+private enum class MeasurementEquipmentTab {
+    All,
+    Isznr,
+}
+
+@Composable
+private fun MeasurementEquipmentTabChip(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = {
+            Text("$label ($count)", fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold)
+        },
+    )
 }
 
 @Composable
