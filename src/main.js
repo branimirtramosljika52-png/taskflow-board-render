@@ -1179,6 +1179,7 @@ const DEFAULT_ISZNR_API_SETTINGS = Object.freeze({
   hasPassword: false,
   updatedAt: null,
 });
+const ISZNR_MASKED_PASSWORD_VALUE = "******";
 const DEFAULT_PUSH_NOTIFICATION_PREFERENCES = Object.freeze({
   enabled: true,
   workOrderAssigned: true,
@@ -3715,6 +3716,7 @@ const settingsWorkOrderPointsFeedback = document.querySelector("#settings-work-o
 const settingsIsznrApiUrlInput = document.querySelector("#settings-isznr-api-url");
 const settingsIsznrApiUsernameInput = document.querySelector("#settings-isznr-api-username");
 const settingsIsznrApiPasswordInput = document.querySelector("#settings-isznr-api-password");
+const settingsIsznrApiPasswordToggle = document.querySelector("#settings-isznr-api-password-toggle");
 const settingsIsznrApiClearPasswordInput = document.querySelector("#settings-isznr-api-clear-password");
 const settingsIsznrApiStatus = document.querySelector("#settings-isznr-api-status");
 const settingsIsznrApiTestButton = document.querySelector("#settings-isznr-api-test");
@@ -33294,7 +33296,17 @@ function renderSettingsIsznrApiSettings() {
     settingsIsznrApiUsernameInput.disabled = !canManageSettings;
   }
   if (settingsIsznrApiPasswordInput) {
+    if (document.activeElement !== settingsIsznrApiPasswordInput) {
+      settingsIsznrApiPasswordInput.value = settings.hasPassword ? ISZNR_MASKED_PASSWORD_VALUE : "";
+      settingsIsznrApiPasswordInput.type = "password";
+    }
     settingsIsznrApiPasswordInput.disabled = !canManageSettings || Boolean(settingsIsznrApiClearPasswordInput?.checked);
+  }
+  if (settingsIsznrApiPasswordToggle) {
+    settingsIsznrApiPasswordToggle.disabled = !canManageSettings || !settings.hasPassword || Boolean(settingsIsznrApiClearPasswordInput?.checked);
+    settingsIsznrApiPasswordToggle.hidden = !settings.hasPassword;
+    settingsIsznrApiPasswordToggle.textContent = settingsIsznrApiPasswordInput?.type === "text" ? "Sakrij" : "Prikaži";
+    settingsIsznrApiPasswordToggle.setAttribute("aria-pressed", settingsIsznrApiPasswordInput?.type === "text" ? "true" : "false");
   }
   if (settingsIsznrApiClearPasswordInput) {
     settingsIsznrApiClearPasswordInput.disabled = !canManageSettings || !settings.hasPassword;
@@ -33312,7 +33324,7 @@ function renderSettingsIsznrApiSettings() {
   }
   if (settingsIsznrApiStatus) {
     const parts = [
-      settings.hasPassword ? "Lozinka je spremljena." : "Lozinka nije postavljena.",
+      settings.hasPassword ? `Lozinka je spremljena kao ${ISZNR_MASKED_PASSWORD_VALUE}.` : "Lozinka nije postavljena.",
       settings.updatedAt ? `Zadnja promjena: ${formatDateTime(settings.updatedAt)}` : "",
     ].filter(Boolean);
     settingsIsznrApiStatus.textContent = parts.join(" ");
@@ -33325,7 +33337,6 @@ function renderSettingsIsznrApiResourceStatus(result = null) {
   }
 
   const resources = Array.isArray(result?.resources) ? result.resources : [];
-  const summaryGroups = Array.isArray(result?.summary?.groups) ? result.summary.groups : [];
   const authorizedCompany = result?.authorizedCompany && typeof result.authorizedCompany === "object"
     ? result.authorizedCompany
     : null;
@@ -33337,6 +33348,58 @@ function renderSettingsIsznrApiResourceStatus(result = null) {
   }
 
   const fragments = [];
+  const allResourcesActive = resources.length ? resources.every((item) => item.active) : false;
+  const isOk = result?.ok !== false && (allResourcesActive || authorizedCompany);
+  const checkedAt = result?.checkedAt ? formatDateTime(result.checkedAt) : "";
+  const summaryCard = document.createElement("section");
+  summaryCard.className = `settings-isznr-api-result-card ${isOk ? "is-ok" : "is-warning"}`;
+  const summaryIcon = document.createElement("span");
+  summaryIcon.className = "settings-isznr-api-result-icon";
+  summaryIcon.textContent = isOk ? "✓" : "!";
+  const summaryCopy = document.createElement("div");
+  const summaryTitle = document.createElement("strong");
+  summaryTitle.textContent = isOk ? "IS ZNR veza radi" : "IS ZNR veza treba provjeru";
+  const summaryText = document.createElement("span");
+  const total = result?.summary?.total ?? resources.length;
+  const active = result?.summary?.active ?? resources.filter((item) => item.active).length;
+  summaryText.textContent = total
+    ? `Brzo provjereno ${active}/${total} ključnih GET resursa bez dohvaćanja cijelog sustava.${checkedAt ? ` ${checkedAt}` : ""}`
+    : `Provjerena prijava i osnovni odgovor API-ja.${checkedAt ? ` ${checkedAt}` : ""}`;
+  summaryCopy.append(summaryTitle, summaryText);
+  summaryCard.append(summaryIcon, summaryCopy);
+  fragments.push(summaryCard);
+
+  const appendProbeLine = (card, {
+    ok = false,
+    path = "",
+    label = "",
+    message = "",
+    record = null,
+  } = {}) => {
+    const line = document.createElement("div");
+    line.className = `settings-isznr-api-probe-line ${ok ? "is-ok" : "is-warning"}`;
+    const left = document.createElement("span");
+    left.className = "settings-isznr-api-probe-left";
+    const check = document.createElement("span");
+    check.className = "settings-isznr-api-check";
+    check.textContent = ok ? "✓" : "!";
+    const copy = document.createElement("span");
+    const labelNode = document.createElement("strong");
+    labelNode.textContent = label || path || "Provjera";
+    const pathNode = document.createElement("small");
+    pathNode.textContent = path || "";
+    copy.append(labelNode, pathNode);
+    left.append(check, copy);
+
+    const right = document.createElement("strong");
+    const recordLabel = record?.name
+      ? ` ${record.name}${record.oib ? ` (${record.oib})` : ""}`
+      : "";
+    right.textContent = `${message || (ok ? "Radi" : "Nije prošlo")}${recordLabel}`;
+    line.append(left, right);
+    card.append(line);
+  };
+
   if (authorizedCompany) {
     const card = document.createElement("section");
     card.className = "settings-isznr-api-status-card";
@@ -33353,17 +33416,13 @@ function renderSettingsIsznrApiResourceStatus(result = null) {
     card.append(title);
 
     [authorizedCompany.byId, authorizedCompany.byOib].filter(Boolean).forEach((probe) => {
-      const line = document.createElement("div");
-      line.className = `settings-isznr-api-probe-line ${probe.ok ? "is-ok" : "is-warning"}`;
-      const label = document.createElement("span");
-      label.textContent = probe.path || "";
-      const message = document.createElement("strong");
-      const recordLabel = probe.record?.name
-        ? ` ${probe.record.name}${probe.record.oib ? ` (${probe.record.oib})` : ""}`
-        : "";
-      message.textContent = `${probe.message || "Bez poruke"}${recordLabel}`;
-      line.append(label, message);
-      card.append(line);
+      appendProbeLine(card, {
+        ok: Boolean(probe.ok),
+        path: probe.path || "",
+        label: probe.path || "Ovlaštena osoba",
+        message: probe.message || "Bez poruke",
+        record: probe.record,
+      });
     });
     fragments.push(card);
   }
@@ -33374,41 +33433,17 @@ function renderSettingsIsznrApiResourceStatus(result = null) {
     const title = document.createElement("div");
     title.className = "settings-isznr-api-status-title";
     title.innerHTML = `<strong></strong><span></span>`;
-    title.querySelector("strong").textContent = "Ključni ISZNR GET resursi";
+    title.querySelector("strong").textContent = "Brza provjera IS ZNR resursa";
     title.querySelector("span").textContent = `${result?.summary?.active ?? 0}/${result?.summary?.total ?? resources.length} aktivno`;
     overview.append(title);
 
-    summaryGroups.forEach((group) => {
-      const groupResources = resources.filter((item) => item.group === group.group);
-      const failed = groupResources.filter((item) => !item.active);
-      const groupLine = document.createElement("div");
-      groupLine.className = `settings-isznr-api-resource-group ${failed.length ? "is-warning" : "is-ok"}`;
-      const groupHead = document.createElement("div");
-      groupHead.className = "settings-isznr-api-resource-group-head";
-      const groupTitle = document.createElement("strong");
-      groupTitle.textContent = group.group;
-      const groupCount = document.createElement("span");
-      groupCount.textContent = `${group.active}/${group.total}`;
-      groupHead.append(groupTitle, groupCount);
-      groupLine.append(groupHead);
-
-      if (failed.length) {
-        const failedList = document.createElement("ul");
-        failedList.className = "settings-isznr-api-resource-failures";
-        failed.slice(0, 4).forEach((item) => {
-          const row = document.createElement("li");
-          row.textContent = `${item.label}: ${item.message}`;
-          failedList.append(row);
-        });
-        if (failed.length > 4) {
-          const row = document.createElement("li");
-          row.textContent = `Još ${failed.length - 4} resursa nije prošlo test.`;
-          failedList.append(row);
-        }
-        groupLine.append(failedList);
-      }
-
-      overview.append(groupLine);
+    resources.forEach((resource) => {
+      appendProbeLine(overview, {
+        ok: Boolean(resource.active),
+        path: resource.path || "",
+        label: resource.label || resource.group || resource.path,
+        message: resource.message || (resource.active ? "Radi" : "Nije prošlo"),
+      });
     });
     fragments.push(overview);
   }
@@ -33424,10 +33459,60 @@ function collectSettingsIsznrApiPayload() {
     clearPassword: Boolean(settingsIsznrApiClearPasswordInput?.checked),
   };
   const password = settingsIsznrApiPasswordInput?.value || "";
-  if (password && !payload.clearPassword) {
+  if (password && password !== ISZNR_MASKED_PASSWORD_VALUE && !payload.clearPassword) {
     payload.password = password;
   }
   return payload;
+}
+
+async function toggleSettingsIsznrApiPasswordVisibility() {
+  if (!settingsIsznrApiPasswordInput || !settingsIsznrApiPasswordToggle) {
+    return;
+  }
+
+  const isVisible = settingsIsznrApiPasswordInput.type === "text";
+  if (isVisible) {
+    settingsIsznrApiPasswordInput.type = "password";
+    if (settingsIsznrApiPasswordInput.dataset.revealedStoredPassword === "true") {
+      settingsIsznrApiPasswordInput.value = getIsznrApiSettings().hasPassword ? ISZNR_MASKED_PASSWORD_VALUE : "";
+      settingsIsznrApiPasswordInput.dataset.revealedStoredPassword = "false";
+    }
+    settingsIsznrApiPasswordToggle.textContent = "Prikaži";
+    settingsIsznrApiPasswordToggle.setAttribute("aria-pressed", "false");
+    return;
+  }
+
+  if (settingsIsznrApiPasswordInput.value && settingsIsznrApiPasswordInput.value !== ISZNR_MASKED_PASSWORD_VALUE) {
+    settingsIsznrApiPasswordInput.type = "text";
+    settingsIsznrApiPasswordInput.dataset.revealedStoredPassword = "false";
+    settingsIsznrApiPasswordToggle.textContent = "Sakrij";
+    settingsIsznrApiPasswordToggle.setAttribute("aria-pressed", "true");
+    return;
+  }
+
+  const settings = getIsznrApiSettings();
+  if (!settings.hasPassword) {
+    settingsIsznrApiPasswordInput.type = "text";
+    settingsIsznrApiPasswordToggle.textContent = "Sakrij";
+    settingsIsznrApiPasswordToggle.setAttribute("aria-pressed", "true");
+    return;
+  }
+
+  settingsIsznrApiPasswordToggle.disabled = true;
+  try {
+    const payload = await apiRequest("/isznr/api-settings/reveal-password", {
+      method: "POST",
+    });
+    settingsIsznrApiPasswordInput.value = payload?.password || "";
+    settingsIsznrApiPasswordInput.type = "text";
+    settingsIsznrApiPasswordInput.dataset.revealedStoredPassword = payload?.password ? "true" : "false";
+    settingsIsznrApiPasswordToggle.textContent = "Sakrij";
+    settingsIsznrApiPasswordToggle.setAttribute("aria-pressed", "true");
+  } catch (error) {
+    setInlineMessage(settingsIsznrApiFeedback, error.message || "Ne mogu prikazati spremljenu ISZNR lozinku.");
+  } finally {
+    settingsIsznrApiPasswordToggle.disabled = !getCanManageSettings();
+  }
 }
 
 function renderSettingsModule() {
@@ -34049,6 +34134,8 @@ async function saveSettingsIsznrApiSettings(options = {}) {
   if (success) {
     if (settingsIsznrApiPasswordInput) {
       settingsIsznrApiPasswordInput.value = "";
+      settingsIsznrApiPasswordInput.type = "password";
+      settingsIsznrApiPasswordInput.dataset.revealedStoredPassword = "false";
     }
     if (settingsIsznrApiClearPasswordInput) {
       settingsIsznrApiClearPasswordInput.checked = false;
@@ -129330,9 +129417,20 @@ settingsIsznrApiSaveButton?.addEventListener("click", () => {
   void saveSettingsIsznrApiSettings();
 });
 
+settingsIsznrApiPasswordToggle?.addEventListener("click", () => {
+  void toggleSettingsIsznrApiPasswordVisibility();
+});
+
+settingsIsznrApiPasswordInput?.addEventListener("input", () => {
+  settingsIsznrApiPasswordInput.dataset.revealedStoredPassword = "false";
+  setInlineMessage(settingsIsznrApiFeedback, "");
+});
+
 settingsIsznrApiClearPasswordInput?.addEventListener("change", () => {
   if (settingsIsznrApiPasswordInput && settingsIsznrApiClearPasswordInput.checked) {
     settingsIsznrApiPasswordInput.value = "";
+    settingsIsznrApiPasswordInput.type = "password";
+    settingsIsznrApiPasswordInput.dataset.revealedStoredPassword = "false";
   }
   renderSettingsIsznrApiSettings();
   setInlineMessage(settingsIsznrApiFeedback, "");

@@ -6427,7 +6427,7 @@
                     <button id="settings-isznr-api-save" type="button" class="ghost-button">Spremi ISZNR</button>
                   </div>
                 </div>
-                <p class="helper-copy module-copy">Podaci se spremaju za aktivnu organizaciju. Lozinka se ne prikazuje nakon spremanja.</p>
+                <p class="helper-copy module-copy">Podaci se spremaju za aktivnu organizaciju. Spremljena lozinka je maskirana kao ****** i može se prikazati po potrebi.</p>
                 <div class="settings-notification-inline">
                   <label class="field field-span-full">
                     <span>API URL</span>
@@ -6439,7 +6439,10 @@
                   </label>
                   <label class="field">
                     <span>Lozinka</span>
-                    <input id="settings-isznr-api-password" type="password" autocomplete="new-password" placeholder="Prazno = zadrži postojeću" />
+                    <div class="settings-password-control">
+                      <input id="settings-isznr-api-password" type="password" autocomplete="new-password" placeholder="******" />
+                      <button id="settings-isznr-api-password-toggle" class="settings-password-toggle" type="button" aria-pressed="false">Prikaži</button>
+                    </div>
                   </label>
                 </div>
                 <label class="settings-inline-check">

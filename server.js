@@ -798,22 +798,9 @@ const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
   { group: "Arhiva", label: "Biološki čimbenici", path: "bc_a_cs" },
 ]);
 const ISZNR_CONNECTION_TEST_RESOURCE_PATHS = new Set([
-  "authorized_companies",
-  "companies",
   "instruments",
+  "companies",
   "experts",
-  "holder_of_authorizations",
-  "employees",
-  "znr_a_cs",
-  "pr_a_cs",
-  "zoop_records",
-  "zos_records",
-  "zos_registers",
-  "ro_obligation_registers",
-  "fc_records",
-  "kc_records",
-  "bc_records",
-  "os_a_cs",
 ]);
 const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
@@ -20487,6 +20474,22 @@ async function handleApiRequest(request, response, url) {
         apiSettings,
       });
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/isznr/api-settings/reveal-password") {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+        sendError(response, 403, "Nemate pravo prikazati ISZNR lozinku.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      sendJson(response, 200, {
+        ok: true,
+        hasPassword: Boolean(storedSettings?.passwordSecret),
+        password: storedSettings?.passwordSecret || "",
+      });
       return true;
     }
 
