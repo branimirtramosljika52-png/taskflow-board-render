@@ -1711,6 +1711,7 @@ test("offer HTML template renders escaped commercial data", () => {
       },
     ],
     subtotal: 26.43,
+    taxRate: 25,
     taxTotal: 6.61,
     total: 33.04,
   });
@@ -1723,7 +1724,12 @@ test("offer HTML template renders escaped commercial data", () => {
   assert.match(html, /Alpha &amp; Beta/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.doesNotMatch(html, /\{\{OFFER_NUMBER\}\}/);
+  assert.match(html, /offer-html-fixed-plan-table/);
   assert.match(html, /26,43 EUR/);
+  assert.match(html, /PDV \(25%\)/);
+  assert.match(html, /6,61 EUR/);
+  assert.match(html, /Ukupno s PDV-om/);
+  assert.match(html, /33,04 EUR/);
 });
 
 test("hybrid offer HTML separates monthly fees from service pricing", () => {
@@ -1771,6 +1777,40 @@ test("hybrid offer HTML separates monthly fees from service pricing", () => {
   assert.match(html, /142,00 EUR/);
   assert.match(html, /24,00 EUR/);
   assert.doesNotMatch(html, /MM 11 - 20/);
+});
+
+test("one-time offer HTML uses financial table with tax footer", () => {
+  const html = buildOfferHtmlTemplate({
+    title: "One-time ponuda",
+    offerNumber: "26-AG-ONE",
+    offerDate: "2026-05-06",
+    companyName: "Alpha d.o.o.",
+    companyOib: "12345678901",
+    headquarters: "Zagreb",
+    locationName: "Pogon 1",
+    serviceLine: "One-Time Service",
+    items: [
+      {
+        description: "Jednokratno ispitivanje",
+        unit: "kom",
+        quantity: 3,
+        unitPrice: 40,
+        totalPrice: 120,
+      },
+    ],
+    subtotal: 120,
+    taxableSubtotal: 120,
+    taxRate: 25,
+    taxTotal: 30,
+    total: 150,
+  });
+
+  assert.match(html, /Jednokratno ispitivanje/);
+  assert.match(html, /offer-html-plan-summary/);
+  assert.match(html, /Međuzbroj/);
+  assert.match(html, /PDV \(25%\)/);
+  assert.match(html, /Ukupno s PDV-om/);
+  assert.match(html, /150,00 EUR/);
 });
 
 test("offer export returns a direct PDF buffer", async () => {

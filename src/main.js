@@ -51825,6 +51825,49 @@ function getCommercialTableMoneyText(value, currency = "EUR", { showZero = false
   return formatCurrencyAmount(numeric, currency);
 }
 
+function getCommercialFinancialRowsPreview(source = {}, currency = "EUR") {
+  const hasDiscount = Number(source?.discountRate || 0) > 0 || Number(source?.discountTotal || 0) > 0;
+  const taxRate = String(source?.taxRate ?? "").trim();
+  const rows = [
+    {
+      id: "subtotal",
+      label: "Međuzbroj",
+      amount: formatCurrencyAmount(source?.subtotal || 0, currency),
+    },
+  ];
+
+  if (hasDiscount) {
+    rows.push(
+      {
+        id: "discount",
+        label: Number(source?.discountRate || 0) > 0 ? `Rabat (${source.discountRate}%)` : "Rabat",
+        amount: formatCurrencyAmount(source?.discountTotal || 0, currency),
+      },
+      {
+        id: "taxable-subtotal",
+        label: "Osnovica za PDV",
+        amount: formatCurrencyAmount(source?.taxableSubtotal || 0, currency),
+      },
+    );
+  }
+
+  rows.push(
+    {
+      id: "tax",
+      label: taxRate ? `PDV (${taxRate}%)` : "PDV",
+      amount: formatCurrencyAmount(source?.taxTotal || 0, currency),
+    },
+    {
+      id: "total",
+      label: "Ukupno s PDV-om",
+      amount: formatCurrencyAmount(source?.total || 0, currency),
+      isGrand: true,
+    },
+  );
+
+  return rows;
+}
+
 function getCommercialBreakdownRangeText(entry = {}) {
   const priceKind = String(entry?.priceKind || "").trim();
   const measurementFrom = String(entry?.measurementFrom || "").trim();
@@ -51904,6 +51947,7 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
   fallbackTitle = "Opis stavke",
   offerType = "",
   showTotalAmount = true,
+  totals = null,
   section = "all",
   includeHeader = true,
   emptyMessage = "Nema dodanih stavki.",
@@ -51912,15 +51956,25 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
   const planType = getCommercialItemsTablePlanType(offerType);
   const isFixedPlan = planType === "Fixed Plan";
   const isHybridPlan = planType === "Hybrid Plan";
+  const isFinancialPlan = section === "all" && ["Fixed Plan", "One-Time Service", "Per Employee Plan"].includes(planType);
   const safeItems = section === "monthly"
     ? getCommercialOfferMonthlyItems(allItems, offerType)
     : section === "services"
       ? getCommercialOfferServicePricingItems(allItems, offerType)
       : allItems;
-  const columns = [
-    { id: "description", label: fallbackTitle, width: 520 },
-    { id: "amount", label: "Iznos", width: 120 },
-  ];
+  const columns = isFinancialPlan
+    ? [
+      { id: "index", label: "#", width: 42 },
+      { id: "description", label: fallbackTitle, width: 330 },
+      { id: "unit", label: "Jed.", width: 54 },
+      { id: "quantity", label: "Kol.", width: 54 },
+      { id: "unitPrice", label: "Cijena", width: 86 },
+      { id: "amount", label: "Iznos", width: 98 },
+    ]
+    : [
+      { id: "description", label: fallbackTitle, width: 520 },
+      { id: "amount", label: "Iznos", width: 120 },
+    ];
   const merges = [];
   const rows = [];
   if (includeHeader) {
@@ -51974,7 +52028,88 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
       });
   };
 
-  if (safeItems.length === 0) {
+  const pushFinancialItemRow = (item, index) => {
+    const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns.filter((entry) => (
+      String(entry?.recordLabel || entry?.label || entry?.unitLabel || "").trim()
+        || String(entry?.measurementFrom || "").trim()
+        || String(entry?.measurementTo || "").trim()
+        || parseOfferMoneyInput(entry?.amount, 0) > 0
+    )) : [];
+    const included = Boolean(item?.isIncludedService || item?.includedService || item?.includedInPlan || item?.included);
+    const description = [
+      item?.description || item?.serviceCode || "Stavka",
+      ...breakdowns.map((entry) => `- ${getCommercialBreakdownDocumentLabel(entry)}: ${getCommercialTableMoneyText(entry?.amount, currency)}`),
+      parseOfferMoneyInput(item?.discountRate, 0) > 0 ? `Rabat stavke: ${item.discountRate}%` : "",
+      included ? "Uključeno u plan" : "",
+    ].filter(Boolean).join("\n");
+    rows.push({
+      id: `financial-item-${index + 1}`,
+      cells: [
+        buildCommercialTableCellPreview(String(index + 1), { align: "center" }),
+        buildCommercialTableCellPreview(description, { align: "left", bold: true }),
+        buildCommercialTableCellPreview(included ? "" : String(item?.unit || ""), { align: "center" }),
+        buildCommercialTableCellPreview(included ? "" : String(item?.quantity ?? ""), { align: "center" }),
+        buildCommercialTableCellPreview(included ? "" : getCommercialTableMoneyText(item?.unitPrice, currency), { align: "right" }),
+        buildCommercialTableCellPreview(included ? "Uključeno" : buildCommercialItemAmountText(item, currency), {
+          align: "right",
+          bold: true,
+          color: included ? "#047857" : "#0F172A",
+        }),
+      ],
+    });
+  };
+
+  const pushFinancialTotals = () => {
+    if (!totals || typeof totals !== "object") {
+      return;
+    }
+    getCommercialFinancialRowsPreview(totals, currency).forEach((row) => {
+      const rowId = `financial-total-${row.id}`;
+      rows.push({
+        id: rowId,
+        cells: [
+          buildCommercialTableCellPreview(row.label, {
+            align: "right",
+            bold: true,
+            fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC",
+            color: row.isGrand ? "#047857" : "#0F172A",
+          }),
+          buildCommercialTableCellPreview("", { fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC" }),
+          buildCommercialTableCellPreview("", { fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC" }),
+          buildCommercialTableCellPreview("", { fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC" }),
+          buildCommercialTableCellPreview("", { fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC" }),
+          buildCommercialTableCellPreview(row.amount, {
+            align: "right",
+            bold: true,
+            fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC",
+            color: row.isGrand ? "#047857" : "#0F172A",
+          }),
+        ],
+      });
+      merges.push({ rowId, columnId: "index", colSpan: 5 });
+    });
+  };
+
+  if (isFinancialPlan) {
+    if (safeItems.length === 0) {
+      const rowId = "empty";
+      rows.push({
+        id: rowId,
+        cells: columns.map((column, index) => buildCommercialTableCellPreview(index === 0 ? emptyMessage : "", {
+          align: index === columns.length - 1 ? "right" : "left",
+          color: "#64748B",
+        })),
+      });
+      merges.push({ rowId, columnId: "index", colSpan: columns.length });
+    } else {
+      safeItems.forEach((item, index) => {
+        pushFinancialItemRow(item, index);
+      });
+      if (showTotalAmount) {
+        pushFinancialTotals();
+      }
+    }
+  } else if (safeItems.length === 0) {
     pushRow("empty", emptyMessage, "");
   } else if (section === "monthly") {
     safeItems.forEach((item, index) => {
@@ -52034,6 +52169,22 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
         pushBreakdownRows(item, index);
       });
     }
+
+    if (section === "all" && showTotalAmount && totals && typeof totals === "object") {
+      getCommercialFinancialRowsPreview(totals, currency).forEach((row) => {
+        pushRow(
+          `hybrid-total-${row.id}`,
+          row.label,
+          row.amount,
+          {
+            align: "right",
+            bold: true,
+            fillColor: row.isGrand ? "#ECFDF5" : "#F8FAFC",
+            color: row.isGrand ? "#047857" : "#0F172A",
+          },
+        );
+      });
+    }
   } else {
     safeItems.forEach((item, index) => {
       const hasBreakdowns = hasCommercialItemBreakdownRows(item);
@@ -52084,14 +52235,16 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
   const suppressItemTotals = !isPurchaseOrder
     && (planType === "Hybrid Plan" || hasSerializedCommercialBreakdowns(normalizedOffer.items ?? []));
   const itemsSummary = (normalizedOffer.items ?? [])
-    .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity} ${item.unit}` : ""}${!suppressItemTotals && Number(item.totalPrice || 0) > 0 ? ` · ${formatCurrencyAmount(item.totalPrice || 0, currency)}` : ""}`)
+    .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity} ${item.unit}` : ""}${item?.isIncludedService ? " · Uključeno" : (!suppressItemTotals && Number(item.totalPrice || 0) > 0 ? ` · ${formatCurrencyAmount(item.totalPrice || 0, currency)}` : "")}`)
     .join("\n");
   const itemsTableText = (normalizedOffer.items ?? [])
     .map((item, index) => {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
         ? `\n${item.breakdowns.map((entry) => `   - ${getOfferBreakdownDisplayLabel(entry)}: ${formatCurrencyAmount(entry.amount || 0, currency)}`).join("\n")}`
         : "";
-      const amountText = suppressItemTotals
+      const amountText = item?.isIncludedService
+        ? "Uključeno"
+        : suppressItemTotals
         ? formatCurrencyAmount(item.unitPrice || 0, currency)
         : formatCurrencyAmount(item.totalPrice || 0, currency);
       return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${amountText}${breakdownText}`;
@@ -52104,6 +52257,7 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
       fallbackTitle: isPurchaseOrder ? "Opis narudžbe" : "Opis stavke",
       offerType: isPurchaseOrder ? "" : normalizedOffer.serviceLine,
       showTotalAmount: normalizedOffer.showTotalAmount !== false,
+      totals: normalizedOffer,
     },
   );
   const monthlyItems = getCommercialOfferMonthlyItems(normalizedOffer.items ?? [], isPurchaseOrder ? "" : normalizedOffer.serviceLine);
@@ -98345,7 +98499,7 @@ function renderOfferItemRows() {
     total.className = "offer-item-total";
     const totalLabel = document.createElement("span");
     totalLabel.className = "offer-item-total-label";
-    totalLabel.textContent = "Ukupno";
+    totalLabel.textContent = isFixedPlanItem ? "Bez PDV-a" : "Ukupno";
     const totalValue = document.createElement("strong");
     totalValue.className = "offer-item-total-value";
     totalValue.setAttribute("data-offer-item-total-index", String(index));
@@ -99856,6 +100010,67 @@ function renderPublicProcurementModule() {
   }
 }
 
+function createOfferListFinancialSummary(offer = {}) {
+  if (offer.showTotalAmount === false) {
+    return null;
+  }
+
+  const currency = offer.currency || "EUR";
+  const taxRate = String(offer.taxRate ?? "").trim();
+  const summary = document.createElement("div");
+  summary.className = "offer-list-financial-summary";
+
+  const rows = [
+    ["Bez PDV-a", formatCurrencyAmount(offer.taxableSubtotal ?? offer.subtotal ?? 0, currency), ""],
+    [taxRate ? `PDV ${taxRate}%` : "PDV", formatCurrencyAmount(offer.taxTotal ?? 0, currency), ""],
+    ["Ukupno s PDV-om", formatCurrencyAmount(offer.total ?? 0, currency), "is-grand"],
+  ];
+
+  if (Number(offer.discountTotal || 0) > 0 || Number(offer.discountRate || 0) > 0) {
+    rows.unshift(["Međuzbroj", formatCurrencyAmount(offer.subtotal ?? 0, currency), ""]);
+    rows.splice(1, 0, [
+      Number(offer.discountRate || 0) > 0 ? `Rabat ${offer.discountRate}%` : "Rabat",
+      formatCurrencyAmount(offer.discountTotal ?? 0, currency),
+      "is-discount",
+    ]);
+  }
+
+  summary.append(...rows.map(([label, value, className]) => {
+    const row = document.createElement("span");
+    row.className = ["offer-list-financial-row", className].filter(Boolean).join(" ");
+    const labelNode = document.createElement("span");
+    labelNode.textContent = label;
+    const valueNode = document.createElement("strong");
+    valueNode.textContent = value;
+    row.append(labelNode, valueNode);
+    return row;
+  }));
+
+  return summary;
+}
+
+function getOfferPlanDisplayCounts(offer = {}) {
+  const planType = normalizeOfferPlanTypeValue(offer.serviceLine || "");
+  const items = Array.isArray(offer.items) ? offer.items : [];
+  if (planType === "Fixed Plan") {
+    const includedCount = items.filter((item) => Boolean(item?.isIncludedService || item?.includedService || item?.includedInPlan || item?.included)).length;
+    const billableCount = Math.max(0, items.length - includedCount);
+    return [
+      billableCount ? `${billableCount} naplativo` : "",
+      includedCount ? `${includedCount} uključeno` : "",
+    ].filter(Boolean);
+  }
+  if (planType === "Hybrid Plan") {
+    const monthlyCount = getCommercialOfferMonthlyItems(items, offer.serviceLine || "").length;
+    const serviceCount = getCommercialOfferServicePricingItems(items, offer.serviceLine || "").length;
+    return [
+      monthlyCount ? `${monthlyCount} mjesečno` : "",
+      serviceCount ? `${serviceCount} cjenik` : "",
+    ].filter(Boolean);
+  }
+  return [];
+}
+
 function renderOffersModule() {
   if (!offersModule || !offersList || !offersEmpty) {
     return;
@@ -99950,6 +100165,7 @@ function renderOffersModule() {
     const chipNodes = [
       createMetaPill(getCommercialDocumentStatusLabel(offer.status || config.defaultStatus), `is-${slugifyValue(offer.status || config.defaultStatus)}`),
       ...(offer.serviceLine ? [createMetaPill(offer.serviceLine)] : []),
+      ...getOfferPlanDisplayCounts(offer).map((label) => createMetaPill(label, "is-muted")),
       ...(getCommercialDocumentDateValue(offer) ? [createMetaPill(formatDate(getCommercialDocumentDateValue(offer)), "is-muted")] : []),
       ...(offer.documentMode === "upload" ? [createMetaPill("Samostalni upload", "is-success")] : []),
       ...(offer.internalDocumentNumber ? [createMetaPill(`Interno ${offer.internalDocumentNumber}`, "is-muted")] : []),
@@ -100003,11 +100219,9 @@ function renderOffersModule() {
       }),
     );
 
-    if (offer.showTotalAmount !== false) {
-      const total = document.createElement("strong");
-      total.className = "offer-list-card-total";
-      total.textContent = formatCurrencyAmount(offer.total || 0, offer.currency || "EUR");
-      actions.append(total);
+    const financialSummary = createOfferListFinancialSummary(offer);
+    if (financialSummary) {
+      actions.append(financialSummary);
     }
 
     footer.append(footerLeft, actions);

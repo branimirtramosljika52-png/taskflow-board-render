@@ -5879,6 +5879,48 @@ body.is-offer-editor-open {
   color: #1d6b4d;
 }
 
+.offer-list-financial-summary {
+  display: grid;
+  gap: 3px;
+  min-width: 190px;
+  padding: 8px 10px;
+  border: 1px solid rgba(196, 210, 232, 0.78);
+  border-radius: 12px;
+  background: rgba(248, 251, 255, 0.94);
+}
+
+.offer-list-financial-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.offer-list-financial-row strong {
+  color: var(--text);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.offer-list-financial-row.is-discount strong {
+  color: #b45309;
+}
+
+.offer-list-financial-row.is-grand {
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(170, 199, 184, 0.72);
+  color: #047857;
+  font-weight: 800;
+}
+
+.offer-list-financial-row.is-grand strong {
+  color: #047857;
+  font-size: 0.86rem;
+}
+
 .offer-list-card .work-item-status-dropdown {
   flex: 0 0 auto;
 }
