@@ -3718,6 +3718,7 @@ const settingsIsznrApiStatus = document.querySelector("#settings-isznr-api-statu
 const settingsIsznrApiTestButton = document.querySelector("#settings-isznr-api-test");
 const settingsIsznrApiSaveButton = document.querySelector("#settings-isznr-api-save");
 const settingsIsznrApiFeedback = document.querySelector("#settings-isznr-api-feedback");
+const settingsIsznrApiResourceStatus = document.querySelector("#settings-isznr-api-resource-status");
 const documentsSearchInput = document.querySelector("#documents-search");
 const documentsFilterKindInput = document.querySelector("#documents-filter-kind");
 const documentsRefreshButton = document.querySelector("#documents-refresh");
@@ -33313,6 +33314,104 @@ function renderSettingsIsznrApiSettings() {
   }
 }
 
+function renderSettingsIsznrApiResourceStatus(result = null) {
+  if (!settingsIsznrApiResourceStatus) {
+    return;
+  }
+
+  const resources = Array.isArray(result?.resources) ? result.resources : [];
+  const summaryGroups = Array.isArray(result?.summary?.groups) ? result.summary.groups : [];
+  const authorizedCompany = result?.authorizedCompany && typeof result.authorizedCompany === "object"
+    ? result.authorizedCompany
+    : null;
+
+  if (!resources.length && !authorizedCompany) {
+    settingsIsznrApiResourceStatus.hidden = true;
+    settingsIsznrApiResourceStatus.replaceChildren();
+    return;
+  }
+
+  const fragments = [];
+  if (authorizedCompany) {
+    const card = document.createElement("section");
+    card.className = "settings-isznr-api-status-card";
+    const title = document.createElement("div");
+    title.className = "settings-isznr-api-status-title";
+    const titleText = authorizedCompany.id
+      ? `Ovlaštena osoba ID ${authorizedCompany.id}`
+      : "Ovlaštena osoba";
+    title.innerHTML = `<strong></strong><span></span>`;
+    title.querySelector("strong").textContent = titleText;
+    title.querySelector("span").textContent = authorizedCompany.expectedOib
+      ? `OIB ${authorizedCompany.expectedOib}`
+      : "OIB nije upisan na aktivnoj organizaciji";
+    card.append(title);
+
+    [authorizedCompany.byId, authorizedCompany.byOib].filter(Boolean).forEach((probe) => {
+      const line = document.createElement("div");
+      line.className = `settings-isznr-api-probe-line ${probe.ok ? "is-ok" : "is-warning"}`;
+      const label = document.createElement("span");
+      label.textContent = probe.path || "";
+      const message = document.createElement("strong");
+      const recordLabel = probe.record?.name
+        ? ` ${probe.record.name}${probe.record.oib ? ` (${probe.record.oib})` : ""}`
+        : "";
+      message.textContent = `${probe.message || "Bez poruke"}${recordLabel}`;
+      line.append(label, message);
+      card.append(line);
+    });
+    fragments.push(card);
+  }
+
+  if (resources.length) {
+    const overview = document.createElement("section");
+    overview.className = "settings-isznr-api-status-card";
+    const title = document.createElement("div");
+    title.className = "settings-isznr-api-status-title";
+    title.innerHTML = `<strong></strong><span></span>`;
+    title.querySelector("strong").textContent = "Dokumentirani ISZNR GET resursi";
+    title.querySelector("span").textContent = `${result?.summary?.active ?? 0}/${result?.summary?.total ?? resources.length} aktivno`;
+    overview.append(title);
+
+    summaryGroups.forEach((group) => {
+      const groupResources = resources.filter((item) => item.group === group.group);
+      const failed = groupResources.filter((item) => !item.active);
+      const groupLine = document.createElement("div");
+      groupLine.className = `settings-isznr-api-resource-group ${failed.length ? "is-warning" : "is-ok"}`;
+      const groupHead = document.createElement("div");
+      groupHead.className = "settings-isznr-api-resource-group-head";
+      const groupTitle = document.createElement("strong");
+      groupTitle.textContent = group.group;
+      const groupCount = document.createElement("span");
+      groupCount.textContent = `${group.active}/${group.total}`;
+      groupHead.append(groupTitle, groupCount);
+      groupLine.append(groupHead);
+
+      if (failed.length) {
+        const failedList = document.createElement("ul");
+        failedList.className = "settings-isznr-api-resource-failures";
+        failed.slice(0, 4).forEach((item) => {
+          const row = document.createElement("li");
+          row.textContent = `${item.label}: ${item.message}`;
+          failedList.append(row);
+        });
+        if (failed.length > 4) {
+          const row = document.createElement("li");
+          row.textContent = `Još ${failed.length - 4} resursa nije prošlo test.`;
+          failedList.append(row);
+        }
+        groupLine.append(failedList);
+      }
+
+      overview.append(groupLine);
+    });
+    fragments.push(overview);
+  }
+
+  settingsIsznrApiResourceStatus.replaceChildren(...fragments);
+  settingsIsznrApiResourceStatus.hidden = false;
+}
+
 function collectSettingsIsznrApiPayload() {
   const payload = {
     baseUrl: settingsIsznrApiUrlInput?.value || "",
@@ -33973,6 +34072,7 @@ async function testSettingsIsznrApiConnection() {
   if (settingsIsznrApiSaveButton) {
     settingsIsznrApiSaveButton.disabled = true;
   }
+  renderSettingsIsznrApiResourceStatus(null);
   setInlineMessage(settingsIsznrApiFeedback, "Testiram ISZNR vezu...", "success");
 
   try {
@@ -33988,9 +34088,11 @@ async function testSettingsIsznrApiConnection() {
     });
     const message = result?.message || "ISZNR API veza je dostupna.";
     setInlineMessage(settingsIsznrApiFeedback, message, result?.ok === false ? "error" : "success");
+    renderSettingsIsznrApiResourceStatus(result);
     return Boolean(result?.ok);
   } catch (error) {
     setInlineMessage(settingsIsznrApiFeedback, error.message || "ISZNR test veze nije uspio.");
+    renderSettingsIsznrApiResourceStatus(null);
     return false;
   } finally {
     if (settingsIsznrApiTestButton) {

@@ -719,6 +719,70 @@ const ISZNR_TEST_TIMEOUT_MS = Math.max(
   3000,
   Number(process.env.ISZNR_TEST_TIMEOUT_MS || 10000) || 10000,
 );
+const ISZNR_RESOURCE_TEST_TIMEOUT_MS = Math.max(
+  2500,
+  Number(process.env.ISZNR_RESOURCE_TEST_TIMEOUT_MS || 4500) || 4500,
+);
+const ISZNR_RESOURCE_TEST_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.ISZNR_RESOURCE_TEST_CONCURRENCY || 8) || 8,
+);
+const ISZNR_AUTHORIZED_COMPANY_PROBE_ID = String(process.env.ISZNR_AUTHORIZED_COMPANY_PROBE_ID || "68").trim();
+const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
+  { group: "Šifarnici", label: "Ovlaštene osobe", path: "authorized_companies" },
+  { group: "Šifarnici", label: "Poslodavci", path: "companies", acceptsClientError: true },
+  { group: "Šifarnici", label: "Mjerna i ispitna oprema", path: "instruments" },
+  { group: "Šifarnici", label: "Obveze ispitivanja radnog okoliša", path: "working_environment_obligation_registers" },
+  { group: "Zaposleni", label: "Stručnjaci ZNR", path: "experts" },
+  { group: "Zaposleni", label: "Nositelji ovlaštenja", path: "holder_of_authorizations" },
+  { group: "Zaposleni", label: "Ostali zaposlenici", path: "employees" },
+  { group: "Temeljni zapisi", label: "Ugovori o obavljanju poslova ZNR", path: "znr_a_cs" },
+  { group: "Temeljni zapisi", label: "Evidencija nadzora", path: "znr_a_c_supervisions" },
+  { group: "Temeljni zapisi", label: "Procjene rizika", path: "pr_a_cs" },
+  { group: "Osposobljavanja", label: "ZOOP zapisnici", path: "zoop_records" },
+  { group: "Osposobljavanja", label: "ZOS zapisnici", path: "zos_records" },
+  { group: "Osposobljavanja", label: "ZOS evidencije", path: "zos_registers" },
+  { group: "Radna oprema", label: "Obveze ispitivanja radne opreme", path: "ro_obligation_registers" },
+  { group: "Radna oprema", label: "Posebni zdravstveni zahtjevi", path: "ro_health_requirement_registers" },
+  { group: "Radna oprema", label: "Opasnosti", path: "hazard_registers" },
+  { group: "Radna oprema", label: "Štetnosti", path: "harmfulness_registers" },
+  { group: "Radna oprema", label: "Napori", path: "strain_registers" },
+  { group: "Radna oprema", label: "Strojarske kontrole", path: "ro_mechanical_engineering_registers" },
+  { group: "Radna oprema", label: "Elektro kontrole", path: "ro_electrical_registers" },
+  { group: "Radna oprema", label: "Zapisnici radne opreme", path: "ro_records" },
+  { group: "Radna oprema", label: "Strojarski rezultati", path: "ro_mechanical_engineerings" },
+  { group: "Radna oprema", label: "Električni rezultati", path: "ro_electricals" },
+  { group: "Radna oprema", label: "Indikacije rizika", path: "ro_risk_indications" },
+  { group: "Radna oprema", label: "Privici radne opreme", path: "ro_attachments" },
+  { group: "Fizikalni čimbenici", label: "Zdravstveni zahtjevi", path: "fc_health_requirement_registers" },
+  { group: "Fizikalni čimbenici", label: "Zapisnici", path: "fc_records" },
+  { group: "Fizikalni čimbenici", label: "Privici", path: "fc_attachments" },
+  { group: "Fizikalni čimbenici", label: "Prostori", path: "fc_spaces" },
+  { group: "Fizikalni čimbenici", label: "Vibracije", path: "fc_vibrations" },
+  { group: "Fizikalni čimbenici", label: "Mikroklimatski uvjeti", path: "fc_micro_climatic_conditions" },
+  { group: "Fizikalni čimbenici", label: "Osvijetljenost", path: "fc_illuminations" },
+  { group: "Fizikalni čimbenici", label: "Buka", path: "fc_noises" },
+  { group: "Fizikalni čimbenici", label: "Zaključne ocjene", path: "fc_final_grades" },
+  { group: "Kemijski čimbenici", label: "Zdravstveni zahtjevi", path: "kc_health_requirement_registers" },
+  { group: "Kemijski čimbenici", label: "Zapisnici", path: "kc_records" },
+  { group: "Kemijski čimbenici", label: "Privici", path: "kc_attachments" },
+  { group: "Kemijski čimbenici", label: "Prostori", path: "kc_spaces" },
+  { group: "Kemijski čimbenici", label: "Štetnosti", path: "kc_harmfulnesses" },
+  { group: "Kemijski čimbenici", label: "Zaključne ocjene", path: "kc_final_grades" },
+  { group: "Biološki čimbenici", label: "Zdravstveni zahtjevi", path: "bc_health_requirement_registers" },
+  { group: "Biološki čimbenici", label: "Zapisnici", path: "bc_records" },
+  { group: "Biološki čimbenici", label: "Privici", path: "bc_attachments" },
+  { group: "Biološki čimbenici", label: "Prostori", path: "bc_spaces" },
+  { group: "Biološki čimbenici", label: "Štetnosti", path: "bc_harmfulnesses" },
+  { group: "Biološki čimbenici", label: "Zaključne ocjene", path: "bc_final_grades" },
+  { group: "Arhiva", label: "Vrste kemijskih ispitivanja", path: "chemical_types" },
+  { group: "Arhiva", label: "Vrste fizikalnih ispitivanja", path: "physical_types" },
+  { group: "Arhiva", label: "Osposobljavanja", path: "os_a_cs" },
+  { group: "Arhiva", label: "Ispitivanja radne opreme", path: "ro_a_cs" },
+  { group: "Arhiva", label: "Fizikalni čimbenici", path: "fc_a_cs" },
+  { group: "Arhiva", label: "Kemijski čimbenici", path: "kc_a_cs" },
+  { group: "Arhiva", label: "Biološki čimbenici", path: "bc_a_cs" },
+]);
 const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
   Number(process.env.DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES || 28 * 1024 * 1024) || 28 * 1024 * 1024,
@@ -1036,10 +1100,244 @@ function buildIsznrResourceUrl(baseUrl = "", resourcePath = "") {
   return url;
 }
 
-async function testIsznrApiConnection({ baseUrl = "", username = "", password = "" } = {}) {
+function normalizeIsznrOib(value = "") {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function createIsznrRequestHeaders(username = "", password = "") {
+  return {
+    accept: "application/ld+json, application/json",
+    authorization: createIsznrBasicAuthHeader(username, password),
+  };
+}
+
+function getIsznrDisplayPath(url) {
+  if (!(url instanceof URL)) {
+    return "";
+  }
+  return `${url.pathname}${url.search}`.replace(/^\/api\/v3\/?/, "/");
+}
+
+function parseIsznrJsonPayload(text = "") {
+  if (!String(text || "").trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchIsznrResourceProbe({
+  baseUrl = "",
+  username = "",
+  password = "",
+  resourcePath = "",
+  searchParams = {},
+  timeoutMs = ISZNR_RESOURCE_TEST_TIMEOUT_MS,
+  parseJson = false,
+} = {}) {
+  const requestUrl = buildIsznrResourceUrl(baseUrl, resourcePath);
+  Object.entries(searchParams || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      requestUrl.searchParams.set(key, String(value));
+    }
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const result = await fetch(requestUrl, {
+      method: "GET",
+      headers: createIsznrRequestHeaders(username, password),
+      signal: controller.signal,
+    });
+    const responseText = await result.text().catch(() => "");
+    const payload = parseJson ? parseIsznrJsonPayload(responseText) : null;
+    return {
+      ok: result.ok,
+      status: result.status,
+      contentType: String(result.headers.get("content-type") || "").trim(),
+      path: getIsznrDisplayPath(requestUrl),
+      payload,
+      responseText: responseText.slice(0, 1000),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      contentType: "",
+      path: getIsznrDisplayPath(requestUrl),
+      errorCode: error?.name === "AbortError" ? "timeout" : "network",
+      message: error?.name === "AbortError"
+        ? "ISZNR API se nije javio na vrijeme."
+        : "ISZNR API nije dostupan s poslužitelja.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isIsznrAuthFailure(probe = {}) {
+  return probe?.status === 401 || probe?.status === 403;
+}
+
+function isIsznrResourceActive(probe = {}, resource = {}) {
+  if (probe?.ok) {
+    return true;
+  }
+  if (resource.acceptsClientError && [400, 422].includes(Number(probe?.status))) {
+    return true;
+  }
+  return false;
+}
+
+function getIsznrResourceProbeMessage(probe = {}, resource = {}) {
+  if (probe?.ok) {
+    return `Dostupno (${probe.status})`;
+  }
+  if (resource.acceptsClientError && [400, 422].includes(Number(probe?.status))) {
+    return `Endpoint postoji, ali traži dokumentirani filter (${probe.status})`;
+  }
+  if (isIsznrAuthFailure(probe)) {
+    return `Autentikacija nije prošla (${probe.status})`;
+  }
+  if (probe?.errorCode === "timeout") {
+    return "Timeout";
+  }
+  if (probe?.errorCode === "network") {
+    return "Nedostupno s poslužitelja";
+  }
+  return probe?.status ? `Odgovor ${probe.status}` : "Nema odgovora";
+}
+
+function getIsznrResourceSearchParams(resource = {}, context = {}) {
+  if (resource.path === "companies" && context.organizationOib) {
+    return { oib: context.organizationOib };
+  }
+  return {};
+}
+
+async function mapIsznrWithConcurrency(items = [], limit = 6, worker = async () => null) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workerCount = Math.min(Math.max(1, Number(limit) || 1), items.length || 1);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }));
+  return results;
+}
+
+function normalizeIsznrAuthorizedCompanyRecord(source = {}) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  return {
+    id: String(pickIsznrValue(source, ["id"]) || extractIsznrId(source) || "").trim(),
+    oib: normalizeIsznrOib(pickIsznrValue(source, ["oib", "OIB"])),
+    internationalIdentifier: String(pickIsznrValue(source, ["internationalIdentifier"]) || "").trim(),
+    name: String(pickIsznrValue(source, ["name", "title", "naziv"]) || "").trim(),
+  };
+}
+
+function summarizeIsznrAuthorizedCompanyProbe({ id = "", expectedOib = "", byIdProbe = null, byOibProbe = null } = {}) {
+  const byIdRecord = normalizeIsznrAuthorizedCompanyRecord(byIdProbe?.payload);
+  const collectionItems = byOibProbe?.ok ? getIsznrPayloadArray(byOibProbe.payload) : [];
+  const matchedByOib = expectedOib
+    ? collectionItems
+      .map((item) => normalizeIsznrAuthorizedCompanyRecord(item))
+      .find((item) => item?.oib === expectedOib)
+    : null;
+  const byIdOibMatches = Boolean(expectedOib && byIdRecord?.oib && byIdRecord.oib === expectedOib);
+
+  return {
+    id,
+    expectedOib,
+    byId: byIdProbe
+      ? {
+        ok: Boolean(byIdProbe.ok),
+        status: byIdProbe.status,
+        path: byIdProbe.path,
+        record: byIdRecord,
+        oibMatches: byIdOibMatches,
+        message: byIdProbe.ok
+          ? (expectedOib
+            ? (byIdOibMatches ? "ID dohvat radi i OIB odgovara." : "ID dohvat radi, ali OIB ne odgovara očekivanom OIB-u.")
+            : "ID dohvat radi.")
+          : getIsznrResourceProbeMessage(byIdProbe),
+      }
+      : null,
+    byOib: expectedOib
+      ? {
+        ok: Boolean(byOibProbe?.ok && matchedByOib),
+        status: byOibProbe?.status ?? 0,
+        path: byOibProbe?.path || "/authorized_companies",
+        record: matchedByOib || null,
+        message: byOibProbe?.ok
+          ? (matchedByOib
+            ? "OIB je pronađen filtriranjem kolekcije ovlaštenih osoba."
+            : "Kolekcija je dohvaćena, ali OIB nije pronađen među dostupnim ovlaštenim osobama.")
+          : getIsznrResourceProbeMessage(byOibProbe),
+      }
+      : null,
+  };
+}
+
+async function testIsznrAuthorizedCompanyProbe({
+  baseUrl = "",
+  username = "",
+  password = "",
+  authorizedCompanyId = ISZNR_AUTHORIZED_COMPANY_PROBE_ID,
+  authorizedCompanyOib = "",
+} = {}) {
+  const id = String(authorizedCompanyId || "").replace(/[^\d]/g, "");
+  const expectedOib = normalizeIsznrOib(authorizedCompanyOib);
+  const byIdProbe = id
+    ? await fetchIsznrResourceProbe({
+      baseUrl,
+      username,
+      password,
+      resourcePath: `authorized_companies/${id}`,
+      timeoutMs: ISZNR_TEST_TIMEOUT_MS,
+      parseJson: true,
+    })
+    : null;
+
+  const byOibProbe = expectedOib
+    ? await fetchIsznrResourceProbe({
+      baseUrl,
+      username,
+      password,
+      resourcePath: "authorized_companies",
+      timeoutMs: ISZNR_TEST_TIMEOUT_MS,
+      parseJson: true,
+    })
+    : null;
+
+  return summarizeIsznrAuthorizedCompanyProbe({
+    id,
+    expectedOib,
+    byIdProbe,
+    byOibProbe,
+  });
+}
+
+async function testIsznrApiConnection({
+  baseUrl = "",
+  username = "",
+  password = "",
+  organizationOib = "",
+  authorizedCompanyId = ISZNR_AUTHORIZED_COMPANY_PROBE_ID,
+} = {}) {
   const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
   const normalizedUsername = normalizeIsznrApiUsername(username);
   const safePassword = String(password ?? "");
+  const normalizedOrganizationOib = normalizeIsznrOib(organizationOib);
 
   if (!/^\d{11}$/.test(normalizedUsername)) {
     throw createRequestError(400, "OIB korisnika za ISZNR mora imati 11 znamenki.");
@@ -1048,9 +1346,94 @@ async function testIsznrApiConnection({ baseUrl = "", username = "", password = 
     throw createRequestError(400, "Upiši ISZNR lozinku ili prvo spremi postojeću lozinku u Settings.");
   }
 
-  const requestUrl = buildIsznrResourceUrl(normalizedBaseUrl, "instruments");
-  requestUrl.searchParams.set("page", "1");
-  requestUrl.searchParams.set("pagination", "true");
+  const authorizedCompany = await testIsznrAuthorizedCompanyProbe({
+    baseUrl: normalizedBaseUrl,
+    username: normalizedUsername,
+    password: safePassword,
+    authorizedCompanyId,
+    authorizedCompanyOib: normalizedOrganizationOib,
+  });
+  const authProbe = authorizedCompany?.byId || authorizedCompany?.byOib;
+  if (isIsznrAuthFailure(authProbe)) {
+    throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
+  }
+  if (authProbe?.status === 0) {
+    throw createRequestError(
+      authProbe?.message === "Timeout" ? 504 : 502,
+      authProbe?.message === "Timeout"
+        ? "ISZNR API se nije javio na vrijeme."
+        : "ISZNR API nije dostupan s poslužitelja.",
+    );
+  }
+
+  const context = {
+    organizationOib: normalizedOrganizationOib,
+  };
+  const resources = await mapIsznrWithConcurrency(
+    ISZNR_DOCUMENTED_GET_RESOURCES,
+    ISZNR_RESOURCE_TEST_CONCURRENCY,
+    async (resource) => {
+      const probe = await fetchIsznrResourceProbe({
+        baseUrl: normalizedBaseUrl,
+        username: normalizedUsername,
+        password: safePassword,
+        resourcePath: resource.path,
+        searchParams: getIsznrResourceSearchParams(resource, context),
+      });
+      return {
+        group: resource.group,
+        label: resource.label,
+        path: probe.path || `/${resource.path}`,
+        status: probe.status,
+        contentType: probe.contentType,
+        active: isIsznrResourceActive(probe, resource),
+        authFailure: isIsznrAuthFailure(probe),
+        message: getIsznrResourceProbeMessage(probe, resource),
+      };
+    },
+  );
+
+  if (resources.some((item) => item.authFailure)) {
+    throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
+  }
+
+  const activeCount = resources.filter((item) => item.active).length;
+  const failedCount = resources.length - activeCount;
+  const groups = resources.reduce((accumulator, item) => {
+    if (!accumulator[item.group]) {
+      accumulator[item.group] = {
+        group: item.group,
+        total: 0,
+        active: 0,
+        failed: 0,
+      };
+    }
+    accumulator[item.group].total += 1;
+    if (item.active) {
+      accumulator[item.group].active += 1;
+    } else {
+      accumulator[item.group].failed += 1;
+    }
+    return accumulator;
+  }, {});
+
+  return {
+    ok: failedCount === 0,
+    status: authProbe?.status || (failedCount === 0 ? 200 : 207),
+    baseUrl: normalizedBaseUrl,
+    checkedAt: new Date().toISOString(),
+    authorizedCompany,
+    summary: {
+      total: resources.length,
+      active: activeCount,
+      failed: failedCount,
+      groups: Object.values(groups),
+    },
+    resources,
+    message: failedCount === 0
+      ? `ISZNR API radi. Aktivno je ${activeCount}/${resources.length} dokumentiranih GET resursa.`
+      : `ISZNR API se javlja, ali ${failedCount}/${resources.length} dokumentiranih GET resursa nije prošlo test.`,
+  };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ISZNR_TEST_TIMEOUT_MS);
@@ -19689,6 +20072,11 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const activeOrganization = scopedSnapshot.currentOrganization
+        || (Array.isArray(scopedSnapshot.organizations)
+          ? scopedSnapshot.organizations.find((item) => String(item.id) === String(scopedSnapshot.activeOrganizationId))
+          : null)
+        || {};
       const passwordInput = typeof body?.password === "string" && body.password
         ? body.password
         : "";
@@ -19696,6 +20084,8 @@ async function handleApiRequest(request, response, url) {
         baseUrl: body?.baseUrl || storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
         username: body?.username || storedSettings?.username || "",
         password: body?.clearPassword ? passwordInput : (passwordInput || storedSettings?.passwordSecret || ""),
+        organizationOib: body?.authorizedCompanyOib || activeOrganization.oib || "",
+        authorizedCompanyId: body?.authorizedCompanyId || ISZNR_AUTHORIZED_COMPANY_PROBE_ID,
       });
       sendJson(response, 200, result);
       return true;

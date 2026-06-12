@@ -5005,6 +5005,82 @@ body.is-profile-modal-open {
   height: 16px;
 }
 
+.settings-isznr-api-resource-status {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.settings-isznr-api-status-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 16px;
+  background: rgba(248, 251, 255, 0.88);
+}
+
+.settings-isznr-api-status-title,
+.settings-isznr-api-resource-group-head,
+.settings-isznr-api-probe-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.settings-isznr-api-status-title strong,
+.settings-isznr-api-resource-group-head strong {
+  color: var(--text);
+}
+
+.settings-isznr-api-status-title span,
+.settings-isznr-api-resource-group-head span,
+.settings-isznr-api-probe-line span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.settings-isznr-api-probe-line,
+.settings-isznr-api-resource-group {
+  padding: 9px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.settings-isznr-api-probe-line strong {
+  text-align: right;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.settings-isznr-api-probe-line.is-ok,
+.settings-isznr-api-resource-group.is-ok {
+  border-color: rgba(34, 197, 94, 0.24);
+  background: rgba(240, 253, 244, 0.72);
+}
+
+.settings-isznr-api-probe-line.is-warning,
+.settings-isznr-api-resource-group.is-warning {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(255, 251, 235, 0.78);
+}
+
+.settings-isznr-api-resource-group {
+  display: grid;
+  gap: 7px;
+}
+
+.settings-isznr-api-resource-failures {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: #92400e;
+  font-size: 0.82rem;
+}
+
 .settings-points-layout {
   display: grid;
   grid-template-columns: minmax(220px, 0.72fr) minmax(280px, 1fr);
