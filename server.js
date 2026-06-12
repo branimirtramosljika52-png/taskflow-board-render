@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { lookup as dnsLookup } from "node:dns";
 import { createHash, createSign, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -1509,6 +1511,106 @@ function createIsznrBasicAuthHeader(username = "", password = "") {
   return `Basic ${Buffer.from(`${normalizeIsznrApiUsername(username)}:${String(password ?? "")}`, "utf8").toString("base64")}`;
 }
 
+function getResponseHeaderValue(headers, name = "") {
+  if (!headers || !name) {
+    return "";
+  }
+  if (typeof headers.get === "function") {
+    return String(headers.get(name) || "").trim();
+  }
+  return String(headers[String(name).toLowerCase()] || headers[name] || "").trim();
+}
+
+function isNetworkTimeoutError(error = {}) {
+  return error?.name === "AbortError"
+    || error?.code === "ETIMEDOUT"
+    || error?.code === "UND_ERR_CONNECT_TIMEOUT"
+    || error?.cause?.code === "ETIMEDOUT"
+    || error?.cause?.code === "UND_ERR_CONNECT_TIMEOUT";
+}
+
+function summarizeNetworkError(error = {}) {
+  return {
+    name: error?.name || "",
+    code: error?.code || error?.cause?.code || "",
+    message: error?.message || error?.cause?.message || "",
+  };
+}
+
+function requestTextWithHttpsIpv4(requestUrl, {
+  headers = {},
+  timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
+} = {}) {
+  return new Promise((resolveRequest, rejectRequest) => {
+    const requestOptions = {
+      method: "GET",
+      headers,
+      timeout: timeoutMs,
+      lookup(hostname, options, callback) {
+        dnsLookup(hostname, { ...options, family: 4 }, callback);
+      },
+    };
+    const clientRequest = httpsRequest(requestUrl, requestOptions, (clientResponse) => {
+      const chunks = [];
+      clientResponse.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      clientResponse.on("end", () => {
+        const status = Number(clientResponse.statusCode || 0);
+        resolveRequest({
+          ok: status >= 200 && status < 300,
+          status,
+          headers: clientResponse.headers || {},
+          text: Buffer.concat(chunks).toString("utf8"),
+          transport: "https-ipv4",
+        });
+      });
+    });
+    clientRequest.on("timeout", () => {
+      const timeoutError = new Error("ISZNR HTTPS IPv4 request timed out.");
+      timeoutError.code = "ETIMEDOUT";
+      clientRequest.destroy(timeoutError);
+    });
+    clientRequest.on("error", rejectRequest);
+    clientRequest.end();
+  });
+}
+
+async function requestIsznrText(requestUrl, {
+  headers = {},
+  timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
+} = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const result = await fetch(requestUrl, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+    });
+    const text = await result.text().catch(() => "");
+    return {
+      ok: result.ok,
+      status: result.status,
+      headers: result.headers,
+      text,
+      transport: "fetch",
+    };
+  } catch (fetchError) {
+    try {
+      return await requestTextWithHttpsIpv4(requestUrl, { headers, timeoutMs });
+    } catch (fallbackError) {
+      console.warn("[isznr] request failed", {
+        path: requestUrl.pathname,
+        search: requestUrl.search,
+        fetchError: summarizeNetworkError(fetchError),
+        fallbackError: summarizeNetworkError(fallbackError),
+      });
+      throw isNetworkTimeoutError(fetchError) ? fetchError : fallbackError;
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function getIsznrPayloadArray(payload = {}) {
   if (Array.isArray(payload)) {
     return payload;
@@ -1778,28 +1880,25 @@ async function fetchIsznrInstruments({
     requestUrl.searchParams.set("removed[strictly_after]", String(removedStrictlyAfter).trim());
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let result;
+  const requestHeaders = {
+    accept: "application/ld+json, application/json",
+    authorization: createIsznrBasicAuthHeader(normalizedUsername, safePassword),
+    "user-agent": "SafeNexus/1.0",
+  };
   try {
-    result = await fetch(requestUrl, {
-      method: "GET",
-      headers: {
-        accept: "application/ld+json, application/json",
-        authorization: createIsznrBasicAuthHeader(normalizedUsername, safePassword),
-      },
-      signal: controller.signal,
+    result = await requestIsznrText(requestUrl, {
+      headers: requestHeaders,
+      timeoutMs,
     });
   } catch (error) {
-    if (error?.name === "AbortError") {
+    if (isNetworkTimeoutError(error)) {
       throw createRequestError(504, "ISZNR oprema se nije dohvatila na vrijeme.");
     }
     throw createRequestError(502, "ISZNR API za opremu nije dostupan s poslužitelja.");
-  } finally {
-    clearTimeout(timeout);
   }
 
-  const responseText = await result.text().catch(() => "");
+  const responseText = result.text || "";
   let payload = null;
   if (responseText) {
     try {
