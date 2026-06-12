@@ -2177,6 +2177,7 @@ const state = {
   measurementEquipmentTemplateSectionExpanded: false,
   measurementEquipmentActivitySectionExpanded: false,
   measurementEquipmentDocumentsSectionExpanded: false,
+  measurementEquipmentActiveTab: "local",
   safetyAuthorizationEditorOpen: false,
   absenceEditorOpen: false,
   absenceBalanceEditorOpen: false,
@@ -2232,6 +2233,16 @@ const state = {
   measurementEquipmentFilters: {
     query: "",
     sort: "due-asc",
+  },
+  measurementEquipmentIsznr: {
+    loading: false,
+    loaded: false,
+    error: "",
+    items: [],
+    page: 1,
+    serialNumber: "",
+    fetchedAt: "",
+    totalItems: null,
   },
   measurementEquipmentActivityFeed: {
     organizationId: "",
@@ -4579,6 +4590,19 @@ const serviceCatalogError = document.querySelector("#service-catalog-error");
 const serviceCatalogResetButton = document.querySelector("#service-catalog-reset");
 const serviceCatalogDeleteButton = document.querySelector("#service-catalog-delete");
 const measurementEquipmentModule = document.querySelector("#measurement-equipment-module");
+const measurementEquipmentTabButtons = Array.from(document.querySelectorAll("[data-measurement-equipment-tab]"));
+const measurementEquipmentLocalToolbar = document.querySelector("#measurement-equipment-local-toolbar");
+const measurementEquipmentLocalListPanel = document.querySelector("#measurement-equipment-local-list-panel");
+const measurementEquipmentIsznrPanel = document.querySelector("#measurement-equipment-isznr-panel");
+const measurementEquipmentIsznrRefreshButton = document.querySelector("#measurement-equipment-isznr-refresh");
+const measurementEquipmentIsznrSerialInput = document.querySelector("#measurement-equipment-isznr-serial");
+const measurementEquipmentIsznrPageInput = document.querySelector("#measurement-equipment-isznr-page");
+const measurementEquipmentIsznrFeedback = document.querySelector("#measurement-equipment-isznr-feedback");
+const measurementEquipmentIsznrList = document.querySelector("#measurement-equipment-isznr-list");
+const measurementEquipmentIsznrEmpty = document.querySelector("#measurement-equipment-isznr-empty");
+const measurementEquipmentIsznrCount = document.querySelector("#measurement-equipment-isznr-count");
+const measurementEquipmentIsznrLinkedCount = document.querySelector("#measurement-equipment-isznr-linked-count");
+const measurementEquipmentIsznrUnlinkedCount = document.querySelector("#measurement-equipment-isznr-unlinked-count");
 const measurementEquipmentTotalCount = document.querySelector("#measurement-equipment-total-count");
 const measurementEquipmentCalibrationCount = document.querySelector("#measurement-equipment-calibration-count");
 const measurementEquipmentExpiringCount = document.querySelector("#measurement-equipment-expiring-count");
@@ -9696,6 +9720,7 @@ async function apiBinaryRequest(path, options = {}, retryOnAuthFailure = true) {
 
 function applySnapshot(payload, options = {}) {
   const preserveDocumentTemplateEditorDraft = options?.preserveDocumentTemplateEditorDraft ?? null;
+  const previousActiveOrganizationId = state.activeOrganizationId;
   state.storage = payload.storage;
   state.organizations = payload.organizations ?? [];
   state.companies = payload.companies ?? [];
@@ -9915,6 +9940,18 @@ function applySnapshot(payload, options = {}) {
   }
   state.user = payload.user ?? state.user;
   state.activeOrganizationId = payload.activeOrganizationId ?? state.activeOrganizationId;
+  if (String(previousActiveOrganizationId || "") !== String(state.activeOrganizationId || "")) {
+    state.measurementEquipmentIsznr = {
+      loading: false,
+      loaded: false,
+      error: "",
+      items: [],
+      page: 1,
+      serialNumber: "",
+      fetchedAt: "",
+      totalItems: null,
+    };
+  }
   state.workOrderRenderLimit = WORK_ORDER_BATCH_SIZE;
   state.locationRenderLimit = LOCATION_LIST_BATCH_SIZE;
   loadWorkOrderFilterPreferences();
@@ -74462,6 +74499,259 @@ function sortMeasurementEquipmentItemsForList(items, mode = "due-asc") {
   });
 }
 
+function normalizeMeasurementEquipmentMatchKey(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function getMeasurementEquipmentIsznrState() {
+  if (!state.measurementEquipmentIsznr || typeof state.measurementEquipmentIsznr !== "object") {
+    state.measurementEquipmentIsznr = {
+      loading: false,
+      loaded: false,
+      error: "",
+      items: [],
+      page: 1,
+      serialNumber: "",
+      fetchedAt: "",
+      totalItems: null,
+    };
+  }
+  return state.measurementEquipmentIsznr;
+}
+
+function getMeasurementEquipmentIsznrLinkStatus(isznrItem = {}) {
+  const localItems = Array.isArray(state.measurementEquipment) ? state.measurementEquipment : [];
+  const isznrId = normalizeMeasurementEquipmentMatchKey(isznrItem.isznrId || isznrItem.id);
+  const serialNumber = normalizeMeasurementEquipmentMatchKey(isznrItem.serialNumber);
+  const name = normalizeMeasurementEquipmentMatchKey(isznrItem.name);
+
+  const exactMatch = localItems.find((item) => (
+    isznrId
+    && (
+      normalizeMeasurementEquipmentMatchKey(item.isznrInstrumentId || item.isznrId || item.externalIsznrId) === isznrId
+    )
+  ));
+  if (exactMatch) {
+    return {
+      status: "linked",
+      label: "Povezano",
+      description: `Lokalno: ${exactMatch.name || "oprema"}`,
+      item: exactMatch,
+    };
+  }
+
+  const serialMatch = localItems.find((item) => (
+    serialNumber
+    && normalizeMeasurementEquipmentMatchKey(item.serialNumber) === serialNumber
+  ));
+  if (serialMatch) {
+    return {
+      status: "probable",
+      label: "Moguće povezano",
+      description: `Serijski broj je već u lokalnom registru: ${serialMatch.name || "oprema"}`,
+      item: serialMatch,
+    };
+  }
+
+  const nameMatch = localItems.find((item) => (
+    name
+    && normalizeMeasurementEquipmentMatchKey(item.name) === name
+  ));
+  if (nameMatch) {
+    return {
+      status: "probable",
+      label: "Provjeri naziv",
+      description: `Sličan naziv postoji lokalno: ${nameMatch.name || "oprema"}`,
+      item: nameMatch,
+    };
+  }
+
+  return {
+    status: "unlinked",
+    label: "Nije u lokalnom registru",
+    description: "Treba unijeti ili ručno povezati s lokalnom opremom.",
+    item: null,
+  };
+}
+
+function renderMeasurementEquipmentTabShell() {
+  const activeTab = state.measurementEquipmentActiveTab === "isznr" ? "isznr" : "local";
+  state.measurementEquipmentActiveTab = activeTab;
+
+  measurementEquipmentTabButtons.forEach((button) => {
+    const isActive = button.dataset.measurementEquipmentTab === activeTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+
+  const isIsznrTab = activeTab === "isznr";
+  if (measurementEquipmentLocalToolbar) {
+    measurementEquipmentLocalToolbar.hidden = isIsznrTab;
+  }
+  if (measurementEquipmentLocalListPanel) {
+    measurementEquipmentLocalListPanel.hidden = isIsznrTab;
+  }
+  if (measurementEquipmentIsznrPanel) {
+    measurementEquipmentIsznrPanel.hidden = !isIsznrTab;
+  }
+}
+
+function renderMeasurementEquipmentIsznrPanel() {
+  const isznrState = getMeasurementEquipmentIsznrState();
+  const items = Array.isArray(isznrState.items) ? isznrState.items : [];
+  const linkStatuses = items.map((item) => getMeasurementEquipmentIsznrLinkStatus(item));
+  const linkedCount = linkStatuses.filter((entry) => entry.status === "linked" || entry.status === "probable").length;
+  const unlinkedCount = Math.max(0, items.length - linkedCount);
+
+  if (measurementEquipmentIsznrSerialInput && document.activeElement !== measurementEquipmentIsznrSerialInput) {
+    measurementEquipmentIsznrSerialInput.value = isznrState.serialNumber || "";
+  }
+  if (measurementEquipmentIsznrPageInput && document.activeElement !== measurementEquipmentIsznrPageInput) {
+    measurementEquipmentIsznrPageInput.value = String(Math.max(1, Number(isznrState.page) || 1));
+  }
+  if (measurementEquipmentIsznrRefreshButton) {
+    measurementEquipmentIsznrRefreshButton.disabled = isznrState.loading || !getCanViewMeasurementEquipment();
+    measurementEquipmentIsznrRefreshButton.textContent = isznrState.loading ? "Dohvaćam..." : "Dohvati opremu";
+  }
+  if (measurementEquipmentIsznrCount) {
+    measurementEquipmentIsznrCount.textContent = isznrState.totalItems !== null && isznrState.totalItems !== undefined
+      ? `${items.length}/${isznrState.totalItems}`
+      : String(items.length);
+  }
+  if (measurementEquipmentIsznrLinkedCount) {
+    measurementEquipmentIsznrLinkedCount.textContent = String(linkedCount);
+  }
+  if (measurementEquipmentIsznrUnlinkedCount) {
+    measurementEquipmentIsznrUnlinkedCount.textContent = String(unlinkedCount);
+  }
+  if (measurementEquipmentIsznrFeedback) {
+    measurementEquipmentIsznrFeedback.textContent = isznrState.error
+      || (isznrState.fetchedAt ? `Zadnji dohvat: ${formatCompactDateTime(isznrState.fetchedAt)}` : "");
+    measurementEquipmentIsznrFeedback.classList.toggle("is-error", Boolean(isznrState.error));
+  }
+
+  if (!measurementEquipmentIsznrList || !measurementEquipmentIsznrEmpty) {
+    return;
+  }
+
+  if (isznrState.loading) {
+    const loadingCard = document.createElement("div");
+    loadingCard.className = "offers-empty-card";
+    loadingCard.textContent = "Dohvaćam mjernu i ispitnu opremu iz IS ZNR-a...";
+    measurementEquipmentIsznrList.replaceChildren(loadingCard);
+    measurementEquipmentIsznrEmpty.hidden = true;
+    return;
+  }
+
+  if (!isznrState.loaded && !items.length) {
+    measurementEquipmentIsznrList.replaceChildren();
+    measurementEquipmentIsznrEmpty.hidden = false;
+    measurementEquipmentIsznrEmpty.textContent = "Još nije dohvaćena oprema iz IS ZNR-a.";
+    return;
+  }
+
+  if (!items.length) {
+    measurementEquipmentIsznrList.replaceChildren();
+    measurementEquipmentIsznrEmpty.hidden = false;
+    measurementEquipmentIsznrEmpty.textContent = "IS ZNR nije vratio opremu za odabrani filter.";
+    return;
+  }
+
+  measurementEquipmentIsznrEmpty.hidden = true;
+  measurementEquipmentIsznrList.replaceChildren(...items.map((item, index) => {
+    const linkStatus = linkStatuses[index] || getMeasurementEquipmentIsznrLinkStatus(item);
+    const card = document.createElement("article");
+    card.className = `measurement-equipment-isznr-card is-${linkStatus.status}`;
+
+    const head = document.createElement("div");
+    head.className = "measurement-equipment-isznr-card-head";
+    const copy = document.createElement("div");
+    copy.className = "measurement-equipment-card-copy";
+    const title = document.createElement("h4");
+    title.textContent = item.name || "Oprema bez naziva";
+    const meta = document.createElement("p");
+    meta.className = "measurement-equipment-card-meta";
+    meta.textContent = [
+      item.isznrId ? `ISZNR ID ${item.isznrId}` : "",
+      item.serialNumber ? `Ser. ${item.serialNumber}` : "",
+    ].filter(Boolean).join(" | ") || "Bez identifikatora";
+    copy.append(title, meta);
+
+    const badge = createBadge(linkStatus.label, `measurement-equipment-isznr-status is-${linkStatus.status}`);
+    head.append(copy, badge);
+
+    const details = document.createElement("div");
+    details.className = "measurement-equipment-isznr-details";
+    const measurementRange = [
+      item.measurementDateFrom ? `Umjereno od ${formatCompactDate(item.measurementDateFrom)}` : "",
+      item.measurementDateTo ? `do ${formatCompactDate(item.measurementDateTo)}` : "",
+    ].filter(Boolean).join(" ");
+    details.append(
+      createListLine(measurementRange || "Bez datuma umjeravanja u IS ZNR-u", "measurement-equipment-isznr-detail"),
+      createListLine(item.removed ? `Rashodovano: ${formatCompactDate(item.removed)}` : "Nije označeno kao rashodovano", "measurement-equipment-isznr-detail"),
+      createListLine(linkStatus.description, "measurement-equipment-isznr-detail is-status"),
+    );
+
+    if (linkStatus.item) {
+      const actionRow = document.createElement("div");
+      actionRow.className = "measurement-equipment-isznr-actions";
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.className = "ghost-button";
+      openButton.textContent = "Otvori lokalno";
+      openButton.addEventListener("click", () => {
+        hydrateMeasurementEquipmentForm(linkStatus.item);
+      });
+      actionRow.append(openButton);
+      details.append(actionRow);
+    }
+
+    card.append(head, details);
+    return card;
+  }));
+}
+
+async function loadMeasurementEquipmentIsznrInstruments() {
+  const isznrState = getMeasurementEquipmentIsznrState();
+  if (!getCanViewMeasurementEquipment()) {
+    isznrState.error = "Nemate pravo dohvatiti ISZNR mjernu opremu.";
+    renderMeasurementEquipmentModule();
+    return;
+  }
+
+  isznrState.loading = true;
+  isznrState.error = "";
+  isznrState.serialNumber = measurementEquipmentIsznrSerialInput?.value?.trim() || isznrState.serialNumber || "";
+  isznrState.page = Math.max(1, Number(measurementEquipmentIsznrPageInput?.value || isznrState.page || 1) || 1);
+  renderMeasurementEquipmentModule();
+
+  try {
+    const payload = await apiRequest("/isznr/instruments", {
+      method: "POST",
+      body: {
+        page: isznrState.page,
+        pagination: true,
+        serialNumber: isznrState.serialNumber,
+      },
+    });
+    isznrState.items = Array.isArray(payload?.items) ? payload.items : [];
+    isznrState.loaded = true;
+    isznrState.error = "";
+    isznrState.fetchedAt = payload?.fetchedAt || new Date().toISOString();
+    isznrState.totalItems = payload?.totalItems ?? null;
+  } catch (error) {
+    isznrState.error = error.message || "ISZNR oprema nije dohvaćena.";
+  } finally {
+    isznrState.loading = false;
+    renderMeasurementEquipmentModule();
+  }
+}
+
 function renderMeasurementEquipmentModule() {
   if (!measurementEquipmentModule || !measurementEquipmentList || !measurementEquipmentEmpty) {
     return;
@@ -74473,6 +74763,7 @@ function renderMeasurementEquipmentModule() {
   const canAccessMeasurementEquipment = getCanViewMeasurementEquipment()
     || canCreateMeasurementEquipment
     || canEditMeasurementEquipment;
+  renderMeasurementEquipmentTabShell();
   const filters = {
     query: measurementEquipmentSearchInput?.value?.trim() || state.measurementEquipmentFilters.query || "",
     sort: measurementEquipmentSortInput?.value || state.measurementEquipmentFilters.sort || "due-asc",
@@ -74670,6 +74961,7 @@ function renderMeasurementEquipmentModule() {
   }
 
   syncMeasurementEquipmentCardTemplateControls();
+  renderMeasurementEquipmentIsznrPanel();
   if (state.measurementEquipmentExportDialogOpen) {
     syncMeasurementEquipmentExportDialogModal();
   }
@@ -126585,6 +126877,36 @@ measurementEquipmentSearchInput?.addEventListener("input", () => {
 measurementEquipmentSortInput?.addEventListener("change", () => {
   state.measurementEquipmentFilters.sort = measurementEquipmentSortInput.value || "due-asc";
   renderMeasurementEquipmentModule();
+});
+
+measurementEquipmentTabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const tab = button.dataset.measurementEquipmentTab === "isznr" ? "isznr" : "local";
+    state.measurementEquipmentActiveTab = tab;
+    renderMeasurementEquipmentModule();
+  });
+});
+
+measurementEquipmentIsznrRefreshButton?.addEventListener("click", () => {
+  void loadMeasurementEquipmentIsznrInstruments();
+});
+
+measurementEquipmentIsznrSerialInput?.addEventListener("input", () => {
+  const isznrState = getMeasurementEquipmentIsznrState();
+  isznrState.serialNumber = measurementEquipmentIsznrSerialInput.value.trim();
+});
+
+measurementEquipmentIsznrSerialInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void loadMeasurementEquipmentIsznrInstruments();
+  }
+});
+
+measurementEquipmentIsznrPageInput?.addEventListener("change", () => {
+  const isznrState = getMeasurementEquipmentIsznrState();
+  isznrState.page = Math.max(1, Number(measurementEquipmentIsznrPageInput.value || 1) || 1);
+  renderMeasurementEquipmentIsznrPanel();
 });
 
 measurementEquipmentSideActivityFilterInput?.addEventListener("change", () => {

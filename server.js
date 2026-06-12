@@ -1066,6 +1066,179 @@ async function testIsznrApiConnection({ baseUrl = "", username = "", password = 
   };
 }
 
+function createIsznrBasicAuthHeader(username = "", password = "") {
+  return `Basic ${Buffer.from(`${normalizeIsznrApiUsername(username)}:${String(password ?? "")}`, "utf8").toString("base64")}`;
+}
+
+function getIsznrPayloadArray(payload = {}) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const candidates = [
+    payload["hydra:member"],
+    payload.member,
+    payload.members,
+    payload.items,
+    payload.results,
+    payload.data,
+    payload.content,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+  return [];
+}
+
+function getIsznrPayloadTotal(payload = {}) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const value = payload["hydra:totalItems"]
+    ?? payload.totalItems
+    ?? payload.total
+    ?? payload.count
+    ?? payload.pagination?.totalItems
+    ?? null;
+  const total = Number(value);
+  return Number.isFinite(total) ? total : null;
+}
+
+function pickIsznrValue(source = {}, keys = []) {
+  if (!source || typeof source !== "object") {
+    return "";
+  }
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null && source[key] !== "") {
+      return source[key];
+    }
+  }
+  return "";
+}
+
+function extractIsznrId(source = {}) {
+  const directId = pickIsznrValue(source, ["id", "instrumentId", "instrumentID"]);
+  if (directId !== "") {
+    return String(directId).trim();
+  }
+  const iri = String(source?.["@id"] || source?.iri || source?.url || "").trim();
+  const match = iri.match(/\/([^/]+)$/);
+  return match ? match[1] : "";
+}
+
+function normalizeIsznrInstrumentRecord(source = {}) {
+  const attributes = source?.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const id = extractIsznrId(record);
+  return {
+    id,
+    isznrId: id,
+    name: String(pickIsznrValue(record, ["name", "title", "naziv"]) || "").trim(),
+    serialNumber: String(pickIsznrValue(record, ["serialNumber", "serial", "serijskiBroj"]) || "").trim(),
+    measurementDateFrom: String(pickIsznrValue(record, ["measurementDateFrom", "measurementFrom", "datumUmjeravanjaOd"]) || "").trim(),
+    measurementDateTo: String(pickIsznrValue(record, ["measurementDateTo", "measurementTo", "datumUmjeravanjaDo"]) || "").trim(),
+    removed: String(pickIsznrValue(record, ["removed", "removedAt", "rashodovano"]) || "").trim(),
+  };
+}
+
+async function fetchIsznrInstruments({
+  baseUrl = "",
+  username = "",
+  password = "",
+  page = 1,
+  pagination = true,
+  serialNumber = "",
+  removedBefore = "",
+  removedStrictlyBefore = "",
+  removedAfter = "",
+  removedStrictlyAfter = "",
+} = {}) {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const normalizedUsername = normalizeIsznrApiUsername(username);
+  const safePassword = String(password ?? "");
+
+  if (!/^\d{11}$/.test(normalizedUsername)) {
+    throw createRequestError(400, "OIB korisnika za ISZNR mora imati 11 znamenki.");
+  }
+  if (!safePassword) {
+    throw createRequestError(400, "ISZNR lozinka nije spremljena. Spremi ju u Settings prije dohvata opreme.");
+  }
+
+  const requestUrl = new URL(`${normalizedBaseUrl.replace(/\/+$/, "")}/instruments`);
+  const pageNumber = Math.max(1, Number(page) || 1);
+  requestUrl.searchParams.set("page", String(pageNumber));
+  requestUrl.searchParams.set("pagination", pagination === false ? "false" : "true");
+  if (String(serialNumber || "").trim()) {
+    requestUrl.searchParams.set("serialNumber", String(serialNumber).trim());
+  }
+  if (String(removedBefore || "").trim()) {
+    requestUrl.searchParams.set("removed[before]", String(removedBefore).trim());
+  }
+  if (String(removedStrictlyBefore || "").trim()) {
+    requestUrl.searchParams.set("removed[strictly_before]", String(removedStrictlyBefore).trim());
+  }
+  if (String(removedAfter || "").trim()) {
+    requestUrl.searchParams.set("removed[after]", String(removedAfter).trim());
+  }
+  if (String(removedStrictlyAfter || "").trim()) {
+    requestUrl.searchParams.set("removed[strictly_after]", String(removedStrictlyAfter).trim());
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ISZNR_TEST_TIMEOUT_MS);
+  let result;
+  try {
+    result = await fetch(requestUrl, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        authorization: createIsznrBasicAuthHeader(normalizedUsername, safePassword),
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw createRequestError(504, "ISZNR oprema se nije dohvatila na vrijeme.");
+    }
+    throw createRequestError(502, "ISZNR API za opremu nije dostupan s poslužitelja.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const responseText = await result.text().catch(() => "");
+  let payload = null;
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
+      throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
+    }
+    throw createRequestError(result.status || 502, `ISZNR API je odgovorio statusom ${result.status || "nepoznato"}.`);
+  }
+
+  const rawItems = getIsznrPayloadArray(payload);
+  const items = rawItems.map((item) => normalizeIsznrInstrumentRecord(item));
+  return {
+    ok: true,
+    page: pageNumber,
+    count: items.length,
+    totalItems: getIsznrPayloadTotal(payload),
+    items,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 function buildOpenWeatherCityLabel(city = {}) {
   return [city.name, city.state, city.country]
     .map((part) => normalizeOpenWeatherCityName(part))
@@ -19489,6 +19662,31 @@ async function handleApiRequest(request, response, url) {
         baseUrl: body?.baseUrl || storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
         username: body?.username || storedSettings?.username || "",
         password: body?.clearPassword ? passwordInput : (passwordInput || storedSettings?.passwordSecret || ""),
+      });
+      sendJson(response, 200, result);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/isznr/instruments") {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
+        sendError(response, 403, "Nemate pravo dohvatiti ISZNR mjernu opremu.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const result = await fetchIsznrInstruments({
+        baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: storedSettings?.username || "",
+        password: storedSettings?.passwordSecret || "",
+        page: body?.page,
+        pagination: body?.pagination !== false,
+        serialNumber: body?.serialNumber,
+        removedBefore: body?.removedBefore,
+        removedStrictlyBefore: body?.removedStrictlyBefore,
+        removedAfter: body?.removedAfter,
+        removedStrictlyAfter: body?.removedStrictlyAfter,
       });
       sendJson(response, 200, result);
       return true;

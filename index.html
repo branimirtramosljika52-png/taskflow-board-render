@@ -9029,7 +9029,28 @@
             </section>
 
             <section id="measurement-equipment-module" class="measurement-equipment-module" hidden>
-              <section class="panel measurement-equipment-toolbar-panel">
+              <div class="measurement-equipment-tab-strip" role="tablist" aria-label="Mjerna i ispitna oprema">
+                <button
+                  type="button"
+                  class="measurement-equipment-tab-button is-active"
+                  data-measurement-equipment-tab="local"
+                  role="tab"
+                  aria-selected="true"
+                >
+                  Lokalna oprema
+                </button>
+                <button
+                  type="button"
+                  class="measurement-equipment-tab-button"
+                  data-measurement-equipment-tab="isznr"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  ISZNR oprema
+                </button>
+              </div>
+
+              <section id="measurement-equipment-local-toolbar" class="panel measurement-equipment-toolbar-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Equipment</p>
@@ -9147,7 +9168,7 @@
                 </section>
               </section>
 
-              <section class="panel measurement-equipment-list-panel">
+              <section id="measurement-equipment-local-list-panel" class="panel measurement-equipment-list-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Register</p>
@@ -9168,6 +9189,51 @@
 
                 <div id="measurement-equipment-list" class="measurement-equipment-list"></div>
                 <p id="measurement-equipment-empty" class="helper-copy" hidden>Nema opreme za prikaz u odabranoj organizaciji.</p>
+              </section>
+
+              <section id="measurement-equipment-isznr-panel" class="panel measurement-equipment-isznr-panel" hidden>
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">ISZNR</p>
+                    <h3>Oprema iz IS ZNR-a</h3>
+                    <p class="helper-copy module-copy">
+                      Dohvat iz IS ZNR API-ja i usporedba s lokalnim registrom opreme.
+                    </p>
+                  </div>
+                  <button id="measurement-equipment-isznr-refresh" type="button" class="primary-button">Dohvati opremu</button>
+                </div>
+
+                <div class="measurement-equipment-isznr-summary" aria-label="Sažetak ISZNR opreme">
+                  <div class="measurement-equipment-isznr-stat">
+                    <span>ISZNR zapisa</span>
+                    <strong id="measurement-equipment-isznr-count">0</strong>
+                  </div>
+                  <div class="measurement-equipment-isznr-stat">
+                    <span>Povezano</span>
+                    <strong id="measurement-equipment-isznr-linked-count">0</strong>
+                  </div>
+                  <div class="measurement-equipment-isznr-stat">
+                    <span>Za unos/provjeru</span>
+                    <strong id="measurement-equipment-isznr-unlinked-count">0</strong>
+                  </div>
+                </div>
+
+                <div class="measurement-equipment-isznr-filters">
+                  <label class="field">
+                    <span>Serijski broj</span>
+                    <input id="measurement-equipment-isznr-serial" type="search" placeholder="Npr. 61557, Xam 8000..." />
+                  </label>
+                  <label class="field">
+                    <span>Stranica</span>
+                    <input id="measurement-equipment-isznr-page" type="number" min="1" step="1" value="1" />
+                  </label>
+                </div>
+
+                <p id="measurement-equipment-isznr-feedback" class="helper-copy module-copy"></p>
+                <div id="measurement-equipment-isznr-list" class="measurement-equipment-isznr-list"></div>
+                <p id="measurement-equipment-isznr-empty" class="helper-copy" hidden>
+                  Još nije dohvaćena oprema iz IS ZNR-a.
+                </p>
               </section>
 
               <div id="measurement-equipment-editor-backdrop" class="offer-editor-backdrop measurement-equipment-editor-backdrop" hidden></div>
