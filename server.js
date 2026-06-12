@@ -797,6 +797,24 @@ const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
   { group: "Arhiva", label: "Kemijski čimbenici", path: "kc_a_cs" },
   { group: "Arhiva", label: "Biološki čimbenici", path: "bc_a_cs" },
 ]);
+const ISZNR_CONNECTION_TEST_RESOURCE_PATHS = new Set([
+  "authorized_companies",
+  "companies",
+  "instruments",
+  "experts",
+  "holder_of_authorizations",
+  "employees",
+  "znr_a_cs",
+  "pr_a_cs",
+  "zoop_records",
+  "zos_records",
+  "zos_registers",
+  "ro_obligation_registers",
+  "fc_records",
+  "kc_records",
+  "bc_records",
+  "os_a_cs",
+]);
 const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
   Number(process.env.DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES || 28 * 1024 * 1024) || 28 * 1024 * 1024,
@@ -1394,8 +1412,11 @@ async function testIsznrApiConnection({
   const context = {
     organizationOib: normalizedOrganizationOib,
   };
+  const connectionTestResources = ISZNR_DOCUMENTED_GET_RESOURCES.filter((resource) => (
+    ISZNR_CONNECTION_TEST_RESOURCE_PATHS.has(resource.path)
+  ));
   const resources = await mapIsznrWithConcurrency(
-    ISZNR_DOCUMENTED_GET_RESOURCES,
+    connectionTestResources,
     ISZNR_RESOURCE_TEST_CONCURRENCY,
     async (resource) => {
       const probe = await fetchIsznrResourceProbe({
@@ -1465,8 +1486,8 @@ async function testIsznrApiConnection({
     message: !connectionOk
       ? "ISZNR prijava radi, ali ključni resursi za SafeNexus nisu dostupni."
       : failedCount === 0
-        ? `ISZNR API radi. Aktivno je ${activeCount}/${resources.length} dokumentiranih GET resursa.`
-        : `ISZNR API veza radi. ${failedCount}/${resources.length} dokumentiranih GET resursa nije prošlo detaljni test.`,
+        ? `ISZNR API radi. Aktivno je ${activeCount}/${resources.length} ključnih GET resursa.`
+        : `ISZNR API veza radi. ${failedCount}/${resources.length} ključnih GET resursa nije prošlo detaljni test.`,
   };
 
 }

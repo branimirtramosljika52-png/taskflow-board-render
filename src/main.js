@@ -33374,7 +33374,7 @@ function renderSettingsIsznrApiResourceStatus(result = null) {
     const title = document.createElement("div");
     title.className = "settings-isznr-api-status-title";
     title.innerHTML = `<strong></strong><span></span>`;
-    title.querySelector("strong").textContent = "Dokumentirani ISZNR GET resursi";
+    title.querySelector("strong").textContent = "Ključni ISZNR GET resursi";
     title.querySelector("span").textContent = `${result?.summary?.active ?? 0}/${result?.summary?.total ?? resources.length} aktivno`;
     overview.append(title);
 
