@@ -23174,6 +23174,31 @@ body.is-document-template-editor-open .chat-dock {
   box-shadow: 0 12px 22px rgba(69, 76, 108, 0.12);
 }
 
+.todo-calendar-card {
+  --calendar-card-accent: #8b5cf6;
+  --calendar-card-soft: #f6f1ff;
+  --calendar-card-border: #eadcff;
+}
+
+.todo-calendar-card.is-compact {
+  padding: 9px 10px 10px 12px;
+}
+
+.todo-calendar-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.todo-calendar-card-action {
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+}
+
 .work-order-calendar-card.is-dragging {
   opacity: 0.56;
   transform: rotate(1.5deg) scale(0.985);
