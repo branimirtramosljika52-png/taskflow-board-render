@@ -727,7 +727,7 @@ const ISZNR_RESOURCE_TEST_TIMEOUT_MS = Math.max(
 );
 const ISZNR_RESOURCE_TEST_CONCURRENCY = Math.max(
   1,
-  Number(process.env.ISZNR_RESOURCE_TEST_CONCURRENCY || 4) || 4,
+  Number(process.env.ISZNR_RESOURCE_TEST_CONCURRENCY || 8) || 8,
 );
 const ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS = Math.max(
   5000,
@@ -1404,7 +1404,7 @@ async function testIsznrApiConnection({
         password: safePassword,
         resourcePath: resource.path,
         searchParams: getIsznrResourceSearchParams(resource, context),
-        timeoutMs: Math.min(ISZNR_RESOURCE_TEST_TIMEOUT_MS, 4500),
+        timeoutMs: Math.min(ISZNR_RESOURCE_TEST_TIMEOUT_MS, 2500),
       });
       return {
         group: resource.group,
