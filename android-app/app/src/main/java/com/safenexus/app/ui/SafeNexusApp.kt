@@ -411,6 +411,10 @@ data class AppState(
     val isznrMeasurementEquipmentLoading: Boolean = false,
     val isznrMeasurementEquipmentLoaded: Boolean = false,
     val isznrMeasurementEquipmentError: String = "",
+    val isznrPeopleRecords: List<MobileRecord> = emptyList(),
+    val isznrPeopleLoading: Boolean = false,
+    val isznrPeopleLoaded: Boolean = false,
+    val isznrPeopleError: String = "",
     val isLoading: Boolean = false,
     val error: String = "",
     val notice: String = "",
@@ -545,6 +549,30 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         isznrMeasurementEquipmentLoading = false,
                         isznrMeasurementEquipmentLoaded = true,
                         isznrMeasurementEquipmentError = error.message ?: "Ne mogu dohvatiti IS ZNR mjernu opremu.",
+                    )
+                }
+        }
+    }
+
+    fun loadIsznrPeople(force: Boolean = false) {
+        if (state.isznrPeopleLoading) return
+        if (!force && state.isznrPeopleLoaded) return
+        state = state.copy(isznrPeopleLoading = true, isznrPeopleError = "")
+        viewModelScope.launch {
+            api.listIsznrPeople()
+                .onSuccess { records ->
+                    state = state.copy(
+                        isznrPeopleRecords = records,
+                        isznrPeopleLoading = false,
+                        isznrPeopleLoaded = true,
+                        isznrPeopleError = "",
+                    )
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isznrPeopleLoading = false,
+                        isznrPeopleLoaded = true,
+                        isznrPeopleError = error.message ?: "Ne mogu dohvatiti IS ZNR evidenciju zaposlenih.",
                     )
                 }
         }
@@ -1311,6 +1339,50 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun downloadPeopleTrainingDocument(context: Context, record: MobileRecord, document: MobileTrainingDocument) {
+        if (record.id.isBlank() || document.id.isBlank()) {
+            state = state.copy(error = "Dokument osposobljavanja nije moguće preuzeti.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadPeopleTrainingDocument(
+                recordId = record.id,
+                documentId = document.id,
+                fallbackFileName = document.fileName,
+                fallbackFileType = document.fileType,
+            )
+                .onSuccess { downloaded ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
+                            state = state.copy(
+                                isLoading = false,
+                                notice = if (opened) {
+                                    "Dokument osposobljavanja je spremljen u Preuzimanja / SafeNexus i otvoren."
+                                } else {
+                                    "Dokument osposobljavanja je spremljen u Preuzimanja / SafeNexus."
+                                },
+                                error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje ove vrste dokumenta.",
+                            )
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti dokument osposobljavanja.",
+                            )
+                        }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti dokument osposobljavanja.",
+                    )
+                }
+        }
+    }
+
     fun downloadWorkOrderPdf(context: Context, workOrder: WorkOrder) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "Radni nalog nema ispravan ID za PDF.")
@@ -1666,6 +1738,10 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onSaveFieldInquiry = viewModel::saveFieldInquiry,
                         onConvertFieldInquiry = viewModel::convertFieldInquiryToWorkOrder,
                         onLoadIsznrMeasurementEquipment = viewModel::loadIsznrMeasurementEquipment,
+                        onLoadIsznrPeople = viewModel::loadIsznrPeople,
+                        onDownloadTrainingDocument = { record, document ->
+                            viewModel.downloadPeopleTrainingDocument(context.applicationContext, record, document)
+                        },
                     )
                 } else {
                     MobileRecordDetailScreen(
@@ -4147,6 +4223,8 @@ private fun WorkOrdersScreen(
     onSaveFieldInquiry: (FieldInquiryDraft) -> Unit,
     onConvertFieldInquiry: (MobileRecord) -> Unit,
     onLoadIsznrMeasurementEquipment: (Boolean) -> Unit,
+    onLoadIsznrPeople: (Boolean) -> Unit,
+    onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
     val filtered = remember(state.workOrders, normalizedQuery, state.filter, state.user?.displayName, state.user?.email) {
@@ -4201,6 +4279,9 @@ private fun WorkOrdersScreen(
     val filteredIsznrMeasurementEquipment = remember(state.isznrMeasurementEquipmentRecords, normalizedQuery) {
         state.isznrMeasurementEquipmentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredIsznrPeople = remember(state.isznrPeopleRecords, normalizedQuery) {
+        state.isznrPeopleRecords.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
     var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
@@ -4218,6 +4299,8 @@ private fun WorkOrdersScreen(
             listState.animateScrollToItem(0)
             if (moreFocus == MoreSectionFocus.MeasurementEquipment) {
                 onLoadIsznrMeasurementEquipment(false)
+            } else if (moreFocus == MoreSectionFocus.Training) {
+                onLoadIsznrPeople(false)
             }
         }
     }
@@ -4461,12 +4544,18 @@ private fun WorkOrdersScreen(
                             )
                         }
                         item {
-                            RecordsContent(
-                                title = "Osposobljavanja",
+                            TrainingContent(
                                 records = filteredTraining,
-                                emptyText = "Nema osposobljavanja za prikaz.",
-                                icon = Icons.Rounded.Fingerprint,
+                                isznrRecords = filteredIsznrPeople,
+                                totalCount = filteredTraining.size,
+                                isznrTotalCount = state.isznrPeopleRecords.size,
+                                isznrLoading = state.isznrPeopleLoading,
+                                isznrLoaded = state.isznrPeopleLoaded,
+                                isznrError = state.isznrPeopleError,
+                                displayLimit = 8,
+                                onLoadIsznr = onLoadIsznrPeople,
                                 onOpenRecord = onOpenRecord,
+                                onDownloadDocument = onDownloadTrainingDocument,
                             )
                         }
                     }
@@ -4556,12 +4645,18 @@ private fun WorkOrdersScreen(
                         )
                     }
                     MoreSectionFocus.Training -> item {
-                        RecordsContent(
-                            title = "Osposobljavanja",
+                        TrainingContent(
                             records = filteredTraining,
-                            emptyText = "Nema osposobljavanja za prikaz.",
-                            icon = Icons.Rounded.Fingerprint,
+                            isznrRecords = filteredIsznrPeople,
+                            totalCount = filteredTraining.size,
+                            isznrTotalCount = state.isznrPeopleRecords.size,
+                            isznrLoading = state.isznrPeopleLoading,
+                            isznrLoaded = state.isznrPeopleLoaded,
+                            isznrError = state.isznrPeopleError,
+                            displayLimit = 80,
+                            onLoadIsznr = onLoadIsznrPeople,
                             onOpenRecord = onOpenRecord,
+                            onDownloadDocument = onDownloadTrainingDocument,
                         )
                     }
                 }
@@ -7168,6 +7263,386 @@ private fun ServiceCatalogLine(service: WorkOrderServiceOption) {
                 )
             }
         }
+    }
+}
+
+data class MobileTrainingDocument(
+    val id: String,
+    val fileName: String,
+    val fileType: String,
+    val category: String,
+    val createdAt: String,
+    val isCertificate: Boolean,
+)
+
+private data class MobileTrainingItem(
+    val id: String,
+    val label: String,
+    val shortLabel: String,
+    val status: String,
+    val passedOn: String,
+    val validUntil: String,
+    val validForever: Boolean,
+    val certificateNumber: String,
+    val provider: String,
+    val documentId: String,
+    val documentName: String,
+)
+
+private enum class TrainingTab {
+    Dossiers,
+    Isznr,
+}
+
+private fun parseTrainingItems(record: MobileRecord): List<MobileTrainingItem> {
+    val raw = record.meta["trainingItemsJson"].orEmpty()
+    if (raw.isBlank()) return emptyList()
+    return runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                add(
+                    MobileTrainingItem(
+                        id = item.optString("id").trim(),
+                        label = item.optString("label").trim().ifBlank { "Osposobljavanje" },
+                        shortLabel = item.optString("shortLabel").trim(),
+                        status = item.optString("status").trim().ifBlank { "Evidencija" },
+                        passedOn = item.optString("passedOn").trim(),
+                        validUntil = item.optString("validUntil").trim(),
+                        validForever = item.optBoolean("validForever", false) || item.optString("validForever").equals("true", ignoreCase = true),
+                        certificateNumber = item.optString("certificateNumber").trim(),
+                        provider = item.optString("provider").trim(),
+                        documentId = item.optString("documentId").trim(),
+                        documentName = item.optString("documentName").trim(),
+                    ),
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun parseTrainingDocuments(record: MobileRecord): List<MobileTrainingDocument> {
+    val raw = record.meta["documentsJson"].orEmpty()
+    if (raw.isBlank()) return emptyList()
+    return runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("id").trim()
+                val fileName = item.optString("fileName").trim()
+                if (id.isBlank() && fileName.isBlank()) continue
+                add(
+                    MobileTrainingDocument(
+                        id = id,
+                        fileName = fileName.ifBlank { "Dokument" },
+                        fileType = item.optString("fileType").trim().ifBlank { "application/octet-stream" },
+                        category = item.optString("documentCategory").trim(),
+                        createdAt = item.optString("createdAt").trim(),
+                        isCertificate = item.optBoolean("isCertificate", false) || item.optString("isCertificate").equals("true", ignoreCase = true),
+                    ),
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun trainingStatusColor(status: String): Color {
+    val normalized = status.lowercase(Locale.getDefault())
+    return when {
+        normalized.contains("istek") -> Color(0xFFDC2626)
+        normalized.contains("uskoro") -> Color(0xFFB45309)
+        normalized.contains("nedost") || normalized.contains("gres") || normalized.contains("greš") -> Color(0xFF64748B)
+        normalized.contains("trajno") || normalized.contains("vrijed") || normalized.contains("aktiv") || normalized.contains("znr") -> Color(0xFF059669)
+        else -> Color(0xFF2563EB)
+    }
+}
+
+@Composable
+private fun TrainingContent(
+    records: List<MobileRecord>,
+    isznrRecords: List<MobileRecord>,
+    totalCount: Int,
+    isznrTotalCount: Int,
+    isznrLoading: Boolean,
+    isznrLoaded: Boolean,
+    isznrError: String,
+    displayLimit: Int,
+    onLoadIsznr: (Boolean) -> Unit,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onDownloadDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
+) {
+    var selectedTab by remember { mutableStateOf(TrainingTab.Dossiers) }
+    val linkedIsznrCount = remember(isznrRecords) {
+        isznrRecords.count { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
+    }
+    val tabRecords = remember(records, isznrRecords, selectedTab) {
+        when (selectedTab) {
+            TrainingTab.Dossiers -> records
+            TrainingTab.Isznr -> isznrRecords
+        }
+    }
+    val visibleRecords = remember(tabRecords, displayLimit) { tabRecords.take(displayLimit.coerceAtLeast(1)) }
+
+    LaunchedEffect(selectedTab, isznrLoaded, isznrLoading) {
+        if (selectedTab == TrainingTab.Isznr && !isznrLoaded && !isznrLoading) {
+            onLoadIsznr(false)
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
+        ) {
+            SectionHeader(
+                title = "Osposobljavanja",
+                subtitle = "$totalCount dosjea · $linkedIsznrCount IS ZNR povezano",
+                icon = Icons.Rounded.Fingerprint,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MeasurementEquipmentTabChip(
+                    label = "Dosjei",
+                    count = totalCount,
+                    selected = selectedTab == TrainingTab.Dossiers,
+                    onClick = { selectedTab = TrainingTab.Dossiers },
+                )
+                MeasurementEquipmentTabChip(
+                    label = "IS ZNR",
+                    count = isznrTotalCount,
+                    selected = selectedTab == TrainingTab.Isznr,
+                    onClick = {
+                        selectedTab = TrainingTab.Isznr
+                        onLoadIsznr(false)
+                    },
+                )
+            }
+            if (selectedTab == TrainingTab.Isznr) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (isznrLoaded) "Provjera zaposlenih po OIB-u: strucnjaci, nositelji i ostali." else "IS ZNR provjera se ucitava nakon otvaranja taba.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { onLoadIsznr(true) }, enabled = !isznrLoading) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Osvjezi IS ZNR zaposlenike")
+                    }
+                }
+                AnimatedVisibility(isznrLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                AnimatedVisibility(isznrError.isNotBlank()) {
+                    MessageCard(text = isznrError, isError = true)
+                }
+            }
+
+            if (!isznrLoading && tabRecords.isEmpty()) {
+                Text(
+                    if (selectedTab == TrainingTab.Isznr) "IS ZNR nije vratio evidenciju zaposlenih za prikaz." else "Nema osposobljavanja za prikaz.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else if (tabRecords.isNotEmpty()) {
+                visibleRecords.forEach { record ->
+                    if (selectedTab == TrainingTab.Isznr) {
+                        TrainingIsznrLine(record = record, onOpenRecord = onOpenRecord)
+                    } else {
+                        TrainingRecordLine(
+                            record = record,
+                            onOpenRecord = onOpenRecord,
+                            onDownloadDocument = { document -> onDownloadDocument(record, document) },
+                        )
+                    }
+                }
+                if (tabRecords.size > visibleRecords.size) {
+                    Text(
+                        "Prikazano je prvih ${visibleRecords.size}. Koristi pretragu za suzavanje popisa.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrainingRecordLine(
+    record: MobileRecord,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onDownloadDocument: (MobileTrainingDocument) -> Unit,
+) {
+    val items = remember(record.meta["trainingItemsJson"]) { parseTrainingItems(record) }
+    val documents = remember(record.meta["documentsJson"]) { parseTrainingDocuments(record) }
+    val statusColor = trainingStatusColor(record.status)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenRecord(record) },
+        shape = RoundedCornerShape(18.dp),
+        color = statusColor.copy(alpha = 0.07f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = CircleShape, color = statusColor.copy(alpha = 0.14f)) {
+                    Icon(
+                        Icons.Rounded.Fingerprint,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(9.dp),
+                        tint = statusColor,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(record.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (record.subtitle.isNotBlank()) {
+                        Text(
+                            record.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                TrainingMiniChip(record.status.ifBlank { "Evidencija" }, statusColor)
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                record.meta["oib"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("OIB $it", Color(0xFF64748B)) }
+                record.meta["trainingCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it ospos.", Color(0xFF2563EB)) }
+                record.meta["documentCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it dok.", Color(0xFF7C3AED)) }
+                record.meta["expiredCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it isteklo", Color(0xFFDC2626)) }
+                record.meta["expiringCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it uskoro", Color(0xFFB45309)) }
+            }
+
+            items.take(4).forEach { item ->
+                val itemColor = trainingStatusColor(item.status)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TrainingMiniChip(item.shortLabel.ifBlank { item.status }, itemColor)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(item.label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val dateText = when {
+                            item.validForever -> "Vrijedi trajno"
+                            item.validUntil.isNotBlank() -> "Vrijedi do ${formatDateLabel(item.validUntil).ifBlank { item.validUntil }}"
+                            item.passedOn.isNotBlank() -> "Datum ${formatDateLabel(item.passedOn).ifBlank { item.passedOn }}"
+                            else -> item.provider
+                        }
+                        if (dateText.isNotBlank()) {
+                            Text(
+                                dateText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (documents.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    documents.take(4).forEach { document ->
+                        OutlinedButton(
+                            onClick = { onDownloadDocument(document) },
+                            enabled = document.id.isNotBlank(),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(document.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrainingIsznrLine(record: MobileRecord, onOpenRecord: (MobileRecord) -> Unit) {
+    val linked = record.meta["isznrLinked"].equals("true", ignoreCase = true)
+    val hasError = record.meta["isznrError"].orEmpty().isNotBlank()
+    val accent = if (linked) Color(0xFF059669) else if (hasError) Color(0xFFDC2626) else Color(0xFF64748B)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenRecord(record) },
+        shape = RoundedCornerShape(18.dp),
+        color = accent.copy(alpha = 0.08f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(shape = CircleShape, color = accent.copy(alpha = 0.14f)) {
+                Icon(
+                    if (linked) Icons.Rounded.CheckCircle else Icons.Rounded.Person,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .padding(9.dp),
+                    tint = accent,
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(record.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    record.subtitle.ifBlank { "OIB ${record.meta["oib"].orEmpty()}" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    record.meta["oib"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("OIB $it", Color(0xFF64748B)) }
+                    record.meta["isznrRoles"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFF059669)) }
+                    record.meta["isznrError"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("Greska", Color(0xFFDC2626)) }
+                }
+            }
+            Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.12f)) {
+                Text(
+                    if (linked) "✓" else "—",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = accent,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrainingMiniChip(label: String, accent: Color) {
+    Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.1f)) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            color = accent,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

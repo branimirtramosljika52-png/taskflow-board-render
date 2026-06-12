@@ -204,6 +204,13 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun listIsznrPeople(): Result<List<MobileRecord>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = JSONObject(request("/api/mobile/isznr/people", readTimeoutMs = 60_000))
+            json.optJSONArray("records").toRecords()
+        }
+    }
+
     suspend fun updateWorkOrderStatus(workOrderId: String, status: String): Result<WorkOrder> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
@@ -579,6 +586,34 @@ class SafeNexusApi(
                 fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
                     ?.ifBlank { document.fileType }
                     ?: document.fileType.ifBlank { "application/octet-stream" },
+                bytes = bytes,
+            )
+        }
+    }
+
+    suspend fun downloadPeopleTrainingDocument(
+        recordId: String,
+        documentId: String,
+        fallbackFileName: String,
+        fallbackFileType: String,
+    ): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = "/api/people-training-records/${recordId.pathSegment()}/documents/${documentId.pathSegment()}/download"
+            val connection = openConnection(path, method = "GET", body = null, accept = "*/*")
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti dokument osposobljavanja (${connection.responseCode})."
+                })
+            }
+            DownloadedDocument(
+                fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
+                    .ifBlank { fallbackFileName.ifBlank { "osposobljavanje-dokument" } },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { fallbackFileType }
+                    ?: fallbackFileType.ifBlank { "application/octet-stream" },
                 bytes = bytes,
             )
         }

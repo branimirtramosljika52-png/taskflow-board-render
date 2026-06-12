@@ -99,7 +99,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.93.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.94.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -733,6 +733,10 @@ const ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS = Math.max(
   5000,
   Number(process.env.ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS || 20000) || 20000,
 );
+const ISZNR_PERSON_FETCH_TIMEOUT_MS = Math.max(
+  3000,
+  Number(process.env.ISZNR_PERSON_FETCH_TIMEOUT_MS || 6000) || 6000,
+);
 const ISZNR_MOBILE_INSTRUMENT_MAX_PAGES = Math.max(
   1,
   Number(process.env.ISZNR_MOBILE_INSTRUMENT_MAX_PAGES || 8) || 8,
@@ -740,6 +744,10 @@ const ISZNR_MOBILE_INSTRUMENT_MAX_PAGES = Math.max(
 const ISZNR_MOBILE_INSTRUMENT_MAX_RECORDS = Math.max(
   20,
   Number(process.env.ISZNR_MOBILE_INSTRUMENT_MAX_RECORDS || 500) || 500,
+);
+const ISZNR_MOBILE_PEOPLE_MAX_RECORDS = Math.max(
+  20,
+  Number(process.env.ISZNR_MOBILE_PEOPLE_MAX_RECORDS || 160) || 160,
 );
 const ISZNR_AUTHORIZED_COMPANY_PROBE_ID = String(process.env.ISZNR_AUTHORIZED_COMPANY_PROBE_ID || "").trim();
 const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
@@ -801,6 +809,11 @@ const ISZNR_CONNECTION_TEST_RESOURCE_PATHS = new Set([
   "instruments",
   "companies",
   "experts",
+]);
+const ISZNR_EMPLOYEE_RESOURCE_DEFS = Object.freeze([
+  { path: "experts", role: "expert", label: "Strucnjak ZNR" },
+  { path: "holder_of_authorizations", role: "holder", label: "Nositelj ovlastenja" },
+  { path: "employees", role: "employee", label: "Zaposlenik" },
 ]);
 const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
@@ -17053,6 +17066,380 @@ function buildMobileIsznrInstrumentRecord(item = {}) {
   };
 }
 
+function isMobileTrainingBooleanTrue(value) {
+  return value === true || ["true", "1", "yes", "da"].includes(normalizeInputValue(value).toLowerCase());
+}
+
+function getMobilePeopleTrainingItemDate(item = {}) {
+  return firstMobileRecordValue(item, ["validUntil", "certificateValidUntil", "passedOn", "issuedOn", "date", "trainingDate", "createdAt"]);
+}
+
+function getMobilePeopleTrainingItemStatus(item = {}) {
+  const rawStatus = normalizeInputValue(item.status || item.certificateStatus);
+  if (rawStatus) {
+    return rawStatus;
+  }
+  if (isMobileTrainingBooleanTrue(item.validForever)) {
+    return "Trajno";
+  }
+
+  const validUntil = normalizeInputValue(item.validUntil || item.certificateValidUntil).slice(0, 10);
+  if (validUntil) {
+    const today = new Date().toISOString().slice(0, 10);
+    const days = Math.ceil((Date.parse(validUntil) - Date.parse(today)) / (24 * 60 * 60 * 1000));
+    if (Number.isFinite(days) && days < 0) {
+      return "Isteklo";
+    }
+    if (Number.isFinite(days) && days <= 45) {
+      return "Uskoro";
+    }
+    return "Vrijedi";
+  }
+
+  return normalizeInputValue(item.passedOn || item.issuedOn) ? "Vrijedi" : "Nedostaje";
+}
+
+function getPeopleTrainingAttachmentDocumentId(document = {}) {
+  return normalizeInputValue(document.id || document.documentId || document.sourceDocumentId);
+}
+
+function getPeopleTrainingAttachmentDocumentName(document = {}) {
+  return normalizeInputValue(document.fileName || document.name || document.title) || "Dokument";
+}
+
+function buildMobilePeopleTrainingDocument(document = {}) {
+  const id = getPeopleTrainingAttachmentDocumentId(document);
+  const category = normalizeInputValue(document.documentCategory || document.category);
+  return {
+    id,
+    fileName: getPeopleTrainingAttachmentDocumentName(document),
+    fileType: normalizeInputValue(document.fileType || document.mimeType) || "application/octet-stream",
+    fileSize: Number(document.fileSize || document.size || 0) || 0,
+    documentCategory: category,
+    description: normalizeInputValue(document.description),
+    createdAt: normalizeInputValue(document.createdAt || document.updatedAt),
+    isCertificate: String(category).toLowerCase().includes("certificate")
+      || String(category).toLowerCase().includes("uvjeren")
+      || String(document.sourceType || "").toLowerCase().includes("certificate"),
+  };
+}
+
+function findPeopleTrainingAttachmentDocumentById(record = {}, documentId = "") {
+  const normalizedDocumentId = normalizeInputValue(documentId);
+  if (!normalizedDocumentId) {
+    return null;
+  }
+  return (Array.isArray(record.attachments) ? record.attachments : []).find((document) => (
+    getPeopleTrainingAttachmentDocumentId(document) === normalizedDocumentId
+    || normalizeInputValue(document.sourceDocumentId) === normalizedDocumentId
+  )) || null;
+}
+
+function getMobilePeopleTrainingDocumentForItem(record = {}, item = {}, scopedSnapshot = {}) {
+  const certificateDocumentId = normalizeInputValue(item.certificateDocumentId || item.documentId);
+  if (certificateDocumentId) {
+    const matched = findPeopleTrainingAttachmentDocumentById(record, certificateDocumentId);
+    if (matched) {
+      return matched;
+    }
+  }
+
+  const service = findPeopleTrainingServiceForItem(item, scopedSnapshot) ?? {};
+  const activeGenerated = getActivePeopleTrainingGeneratedDocument(record, item, service);
+  if (activeGenerated) {
+    return activeGenerated;
+  }
+
+  const typeKey = normalizeLookupKey(item.type || item.trainingType || item.label || item.serviceName);
+  const serviceId = normalizeInputValue(item.serviceId || item.serviceCatalogId);
+  return (Array.isArray(record.attachments) ? record.attachments : []).find((attachment) => {
+    const categoryKey = normalizeLookupKey(attachment.documentCategory || attachment.category || "");
+    const descriptionKey = normalizeLookupKey(attachment.description || attachment.fileName || "");
+    return (
+      (typeKey && (categoryKey.includes(typeKey) || descriptionKey.includes(typeKey)))
+      || (serviceId && normalizeInputValue(attachment.serviceId || attachment.serviceCatalogId) === serviceId)
+    );
+  }) || null;
+}
+
+function buildMobilePeopleTrainingItem(record = {}, item = {}, index = 0, scopedSnapshot = {}) {
+  const document = getMobilePeopleTrainingDocumentForItem(record, item, scopedSnapshot);
+  const validUntil = normalizeInputValue(item.validUntil || item.certificateValidUntil).slice(0, 10);
+  const passedOn = normalizeInputValue(item.passedOn || item.issuedOn || item.date || item.trainingDate).slice(0, 10);
+  const status = getMobilePeopleTrainingItemStatus(item);
+  const label = normalizeInputValue(item.label || item.serviceName || item.shortLabel || item.type) || `Osposobljavanje ${index + 1}`;
+  return {
+    id: normalizeInputValue(item.id || item.type || item.serviceId || `training-${index + 1}`),
+    type: normalizeInputValue(item.type || item.trainingType),
+    label,
+    shortLabel: normalizeInputValue(item.shortLabel || item.serviceCode),
+    serviceId: normalizeInputValue(item.serviceId || item.serviceCatalogId),
+    serviceName: normalizeInputValue(item.serviceName),
+    serviceCode: normalizeInputValue(item.serviceCode || item.code || item.shortLabel),
+    status,
+    passedOn,
+    validUntil,
+    validForever: isMobileTrainingBooleanTrue(item.validForever),
+    certificateNumber: normalizeInputValue(item.certificateNumber || item.recordNumber),
+    provider: normalizeInputValue(item.provider || item.examMode || item.learningTestTitle),
+    workOrderNumber: normalizeInputValue(item.workOrderNumber),
+    documentId: getPeopleTrainingAttachmentDocumentId(document),
+    documentName: document ? getPeopleTrainingAttachmentDocumentName(document) : "",
+    documentCategory: normalizeInputValue(document?.documentCategory || document?.category),
+  };
+}
+
+function getMobilePeopleTrainingRecordStatus(items = [], record = {}) {
+  if (items.some((item) => normalizeLookupKey(item.status).includes("istek"))) {
+    return "Isteklo";
+  }
+  if (items.some((item) => normalizeLookupKey(item.status).includes("uskoro"))) {
+    return "Uskoro";
+  }
+  if (items.some((item) => normalizeLookupKey(item.status).includes("nedost"))) {
+    return "Nedostaje";
+  }
+  return normalizeInputValue(record.activityStatus || record.employmentStatus) || (items.length ? "Aktivno" : "Evidencija");
+}
+
+function buildMobilePeopleTrainingRecord(record = {}, scopedSnapshot = {}) {
+  const trainingItems = (Array.isArray(record.trainingItems) ? record.trainingItems : [])
+    .map((item, index) => buildMobilePeopleTrainingItem(record, item, index, scopedSnapshot));
+  const documents = (Array.isArray(record.attachments) ? record.attachments : [])
+    .map(buildMobilePeopleTrainingDocument)
+    .filter((document) => document.id || document.fileName)
+    .slice(0, 30);
+  const expiredCount = trainingItems.filter((item) => normalizeLookupKey(item.status).includes("istek")).length;
+  const expiringCount = trainingItems.filter((item) => normalizeLookupKey(item.status).includes("uskoro")).length;
+  const missingCount = trainingItems.filter((item) => normalizeLookupKey(item.status).includes("nedost")).length;
+  const validCount = Math.max(0, trainingItems.length - expiredCount - expiringCount - missingCount);
+  const nextDate = trainingItems
+    .map((item) => item.validUntil || item.passedOn)
+    .filter(Boolean)
+    .sort()[0] || normalizeInputValue(record.arrivalDate || record.updatedAt || record.createdAt);
+  const title = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ")) || "Osoba";
+  const subtitle = [
+    normalizeInputValue(record.companyName),
+    normalizeInputValue(record.jobTitle || record.workPlace),
+    normalizeInputValue(record.locationName),
+  ].filter(Boolean).join(" - ");
+
+  return {
+    id: normalizeInputValue(record.id),
+    title,
+    subtitle,
+    status: getMobilePeopleTrainingRecordStatus(trainingItems, record),
+    kind: "training",
+    date: nextDate,
+    relatedId: normalizeInputValue(record.id),
+    coordinates: "",
+    meta: {
+      companyName: normalizeInputValue(record.companyName),
+      locationName: normalizeInputValue(record.locationName),
+      jobTitle: normalizeInputValue(record.jobTitle),
+      workPlace: normalizeInputValue(record.workPlace),
+      oib: normalizeInputValue(record.oib),
+      email: normalizeInputValue(record.email),
+      phone: normalizeInputValue(record.phone),
+      validCount: String(validCount),
+      expiringCount: String(expiringCount),
+      expiredCount: String(expiredCount),
+      missingCount: String(missingCount),
+      trainingCount: String(trainingItems.length),
+      documentCount: String(documents.length),
+      trainingItemsJson: JSON.stringify(trainingItems.slice(0, 24)),
+      documentsJson: JSON.stringify(documents),
+    },
+  };
+}
+
+function normalizeIsznrPersonRecord(source = {}, resource = {}) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const id = extractIsznrId(record);
+  const firstName = normalizeInputValue(pickIsznrValue(record, ["firstName", "givenName", "ime"]));
+  const lastName = normalizeInputValue(pickIsznrValue(record, ["lastName", "familyName", "prezime"]));
+  const fullName = normalizeInputValue(pickIsznrValue(record, ["name", "fullName", "displayName", "title", "naziv"]))
+    || [firstName, lastName].filter(Boolean).join(" ");
+  return {
+    id,
+    isznrId: id,
+    role: resource.role,
+    roleLabel: resource.label,
+    oib: normalizeIsznrOib(pickIsznrValue(record, [
+      "oib",
+      "OIB",
+      "personOib",
+      "employeeOib",
+      "personalIdentifier",
+      "personalIdentificationNumber",
+    ])),
+    fullName,
+    firstName,
+    lastName,
+    employerName: normalizeInputValue(pickIsznrValue(record, ["employerName", "companyName", "authorizedCompanyName", "company"])),
+    rawStatus: normalizeInputValue(pickIsznrValue(record, ["status", "state"])),
+  };
+}
+
+async function fetchIsznrPeopleMatchesByOib({
+  baseUrl = "",
+  username = "",
+  password = "",
+  oib = "",
+} = {}) {
+  const normalizedOib = normalizeIsznrOib(oib);
+  if (!/^\d{11}$/.test(normalizedOib)) {
+    return { oib: normalizedOib, matches: [], probes: [] };
+  }
+
+  const probes = await mapIsznrWithConcurrency(ISZNR_EMPLOYEE_RESOURCE_DEFS, 3, async (resource) => {
+    const probe = await fetchIsznrResourceProbe({
+      baseUrl,
+      username,
+      password,
+      resourcePath: resource.path,
+      searchParams: {
+        oib: normalizedOib,
+        pagination: false,
+      },
+      timeoutMs: ISZNR_PERSON_FETCH_TIMEOUT_MS,
+      parseJson: true,
+    });
+    return { ...probe, resource };
+  });
+
+  if (probes.some((probe) => isIsznrAuthFailure(probe))) {
+    const error = createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
+    error.isznrAuthFailure = true;
+    throw error;
+  }
+
+  const matches = probes.flatMap((probe) => {
+    if (!probe.ok) {
+      return [];
+    }
+    const array = getIsznrPayloadArray(probe.payload);
+    const rawItems = array.length > 0 ? array : (probe.payload && typeof probe.payload === "object" ? [probe.payload] : []);
+    return rawItems
+      .map((item) => normalizeIsznrPersonRecord(item, probe.resource))
+      .filter((item) => item?.oib === normalizedOib);
+  });
+
+  const dedupedMatches = [];
+  const seen = new Set();
+  matches.forEach((match) => {
+    const key = [match.role, match.isznrId, match.oib, normalizeLookupKey(match.fullName)].join("|");
+    if (!seen.has(key)) {
+      seen.add(key);
+      dedupedMatches.push(match);
+    }
+  });
+
+  return {
+    oib: normalizedOib,
+    matches: dedupedMatches,
+    probes: probes.map((probe) => ({
+      path: probe.path,
+      status: probe.status,
+      ok: Boolean(probe.ok),
+      role: probe.resource.role,
+      label: probe.resource.label,
+      message: probe.ok ? "Dostupno" : getIsznrResourceProbeMessage(probe),
+    })),
+  };
+}
+
+async function fetchMobileIsznrPeopleList({
+  baseUrl = "",
+  username = "",
+  password = "",
+  peopleTrainingRecords = [],
+  maxRecords = ISZNR_MOBILE_PEOPLE_MAX_RECORDS,
+} = {}) {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const normalizedUsername = normalizeIsznrApiUsername(username);
+  const safePassword = String(password ?? "");
+
+  if (!/^\d{11}$/.test(normalizedUsername)) {
+    throw createRequestError(400, "OIB korisnika za ISZNR mora imati 11 znamenki.");
+  }
+  if (!safePassword) {
+    throw createRequestError(400, "ISZNR lozinka nije spremljena. Spremi ju u Settings prije dohvata zaposlenika.");
+  }
+
+  const candidates = [];
+  const seenOibs = new Set();
+  (Array.isArray(peopleTrainingRecords) ? peopleTrainingRecords : []).forEach((record) => {
+    const oib = normalizeIsznrOib(record.oib);
+    if (!/^\d{11}$/.test(oib) || seenOibs.has(oib)) {
+      return;
+    }
+    seenOibs.add(oib);
+    candidates.push({
+      id: normalizeInputValue(record.id),
+      title: normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ")) || "Osoba",
+      subtitle: [normalizeInputValue(record.companyName), normalizeInputValue(record.jobTitle || record.workPlace)].filter(Boolean).join(" - "),
+      oib,
+    });
+  });
+
+  const limitedCandidates = candidates.slice(0, Math.max(1, Number(maxRecords) || ISZNR_MOBILE_PEOPLE_MAX_RECORDS));
+  const checked = await mapIsznrWithConcurrency(limitedCandidates, 3, async (person) => {
+    try {
+      const result = await fetchIsznrPeopleMatchesByOib({
+        baseUrl: normalizedBaseUrl,
+        username: normalizedUsername,
+        password: safePassword,
+        oib: person.oib,
+      });
+      return { ...person, ...result, error: "" };
+    } catch (error) {
+      if (error?.isznrAuthFailure) {
+        throw error;
+      }
+      return { ...person, matches: [], probes: [], error: error?.message || "ISZNR provjera nije uspjela." };
+    }
+  });
+
+  return {
+    ok: true,
+    count: checked.length,
+    totalPeopleWithOib: candidates.length,
+    recordsLimited: candidates.length > limitedCandidates.length,
+    checkedAt: new Date().toISOString(),
+    items: checked,
+  };
+}
+
+function buildMobileIsznrPersonRecord(entry = {}) {
+  const matches = Array.isArray(entry.matches) ? entry.matches : [];
+  const roleLabels = [...new Set(matches.map((match) => normalizeInputValue(match.roleLabel)).filter(Boolean))];
+  const linked = matches.length > 0;
+  const ids = matches.map((match) => [match.roleLabel, match.isznrId].filter(Boolean).join(" ")).filter(Boolean);
+  return {
+    id: `isznr-person:${entry.oib || entry.id || entry.title}`,
+    title: entry.title || "Osoba",
+    subtitle: entry.subtitle || (entry.oib ? `OIB ${entry.oib}` : ""),
+    status: linked ? roleLabels.join(" + ") : (entry.error ? "Greška" : "Nije u IS ZNR"),
+    kind: "isznr_person",
+    date: entry.checkedAt || "",
+    relatedId: entry.id || "",
+    coordinates: "",
+    meta: {
+      oib: normalizeInputValue(entry.oib),
+      isznrLinked: linked ? "true" : "false",
+      isznrRoles: roleLabels.join(", "),
+      isznrIds: ids.join(", "),
+      isznrError: normalizeInputValue(entry.error),
+      isznrProbeCount: String(Array.isArray(entry.probes) ? entry.probes.length : 0),
+    },
+  };
+}
+
 function isMobileClosedWorkOrderStatus(status = "") {
   const normalized = normalizeInputValue(status)
     .toLowerCase()
@@ -17821,15 +18208,9 @@ async function writeMobileBootstrap(response, user, request) {
     fallbackTitle: "Dokument",
   })));
 
-  const peopleTrainingRecords = limitMobileRecords((scopedSnapshot.peopleTrainingRecords ?? []).map((item) => buildMobileRecordItem(item, {
-    kind: "training",
-    titleKeys: ["fullName", "lastName", "firstName"],
-    subtitleKeys: ["companyName", "jobTitle", "workPlace", "locationName"],
-    statusKeys: ["activityStatus", "employmentStatus"],
-    dateKeys: ["arrivalDate", "updatedAt", "createdAt"],
-    metaKeys: ["companyName", "jobTitle", "workPlace", "oib", "email", "phone"],
-    fallbackTitle: "Osoba",
-  })));
+  const peopleTrainingRecords = limitMobileRecords(
+    (scopedSnapshot.peopleTrainingRecords ?? []).map((item) => buildMobilePeopleTrainingRecord(item, scopedSnapshot)),
+  );
 
   const clientPortalRecords = limitMobileRecords((scopedSnapshot.clientPortalRecords ?? []).map((item) => buildMobileRecordItem(item, {
     kind: "client_portal",
@@ -18284,6 +18665,32 @@ async function handleApiRequest(request, response, url) {
         pagesFetched: result.pagesFetched,
         recordsLimited: Boolean(result.recordsLimited),
         records: limitMobileRecords(result.items.map(buildMobileIsznrInstrumentRecord), ISZNR_MOBILE_INSTRUMENT_MAX_RECORDS),
+      });
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/mobile/isznr/people") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canManagePeopleTrainingRecords(user) && !canUseScopedSnapshotAppPermission(user, scopedSnapshot, "people.manage")) {
+        sendError(response, 403, "Nemate pravo dohvatiti IS ZNR evidenciju zaposlenih.");
+        return true;
+      }
+
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const result = await fetchMobileIsznrPeopleList({
+        baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: storedSettings?.username || "",
+        password: storedSettings?.passwordSecret || "",
+        peopleTrainingRecords: scopedSnapshot.peopleTrainingRecords ?? [],
+        maxRecords: ISZNR_MOBILE_PEOPLE_MAX_RECORDS,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalPeopleWithOib: result.totalPeopleWithOib,
+        checkedAt: result.checkedAt,
+        recordsLimited: Boolean(result.recordsLimited),
+        records: limitMobileRecords(result.items.map(buildMobileIsznrPersonRecord), ISZNR_MOBILE_PEOPLE_MAX_RECORDS),
       });
       return true;
     }
@@ -18804,6 +19211,7 @@ async function handleApiRequest(request, response, url) {
     const safetyAuthorizationMatch = url.pathname.match(/^\/api\/safety-authorizations\/([^/]+)$/);
     const absenceEntryMatch = url.pathname.match(/^\/api\/absence-entries\/([^/]+)$/);
     const peopleTrainingRecordMatch = url.pathname.match(/^\/api\/people-training-records\/([^/]+)$/);
+    const peopleTrainingDocumentDownloadMatch = url.pathname.match(/^\/api\/people-training-records\/([^/]+)\/documents\/([^/]+)\/download$/);
     const peopleTrainingGenerateDocumentsMatch = url.pathname.match(/^\/api\/people-training-records\/([^/]+)\/generate-documents$/);
     const measurementEquipmentExcelExportMatch = url.pathname === "/api/measurement-equipment/export-list-excel";
     const measurementEquipmentZipExportMatch = url.pathname === "/api/measurement-equipment/export-files-zip";
@@ -20215,6 +20623,28 @@ async function handleApiRequest(request, response, url) {
 
       response.setHeader("X-People-Training-Generated", JSON.stringify(summary));
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (peopleTrainingDocumentDownloadMatch && request.method === "GET") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const record = assertInScope(
+        scopedSnapshot.peopleTrainingRecords ?? [],
+        peopleTrainingDocumentDownloadMatch[1],
+        "Evidencija osposobljavanja nije pronađena.",
+      );
+      const document = findPeopleTrainingAttachmentDocumentById(record, peopleTrainingDocumentDownloadMatch[2]);
+
+      if (!document) {
+        sendError(response, 404, "Dokument osposobljavanja nije pronađen.");
+        return true;
+      }
+
+      const stored = await readStoredDocumentBuffer(document);
+      sendBinary(response, 200, stored.buffer, {
+        contentType: stored.mimeType || document.fileType || "application/octet-stream",
+        fileName: document.fileName || "osposobljavanje-dokument",
+      });
       return true;
     }
 
