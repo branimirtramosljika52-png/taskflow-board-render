@@ -1709,6 +1709,11 @@ test("offer HTML template renders escaped commercial data", () => {
         unitPrice: 13.215,
         totalPrice: 26.43,
       },
+      {
+        description: "ADR osposobljavanje",
+        serviceCode: "ADR-001",
+        isIncludedService: true,
+      },
     ],
     subtotal: 26.43,
     taxRate: 25,
@@ -1725,6 +1730,10 @@ test("offer HTML template renders escaped commercial data", () => {
   assert.doesNotMatch(html, /<script>alert/);
   assert.doesNotMatch(html, /\{\{OFFER_NUMBER\}\}/);
   assert.match(html, /offer-html-fixed-plan-table/);
+  assert.match(html, /offer-html-included-services-table/);
+  assert.match(html, /Fiksne stavke ponude/);
+  assert.match(html, /Uključene usluge/);
+  assert.match(html, /ADR osposobljavanje/);
   assert.match(html, /26,43 EUR/);
   assert.match(html, /PDV \(25%\)/);
   assert.match(html, /6,61 EUR/);

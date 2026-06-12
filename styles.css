@@ -5921,6 +5921,16 @@ body.is-offer-editor-open {
   font-size: 0.86rem;
 }
 
+.offer-list-financial-row.is-fixed-base {
+  color: #1e3a8a;
+  font-weight: 800;
+}
+
+.offer-list-financial-row.is-fixed-base strong {
+  color: #1d4ed8;
+  font-size: 0.86rem;
+}
+
 .offer-list-card .work-item-status-dropdown {
   flex: 0 0 auto;
 }
@@ -50380,6 +50390,50 @@ body.is-offer-template-open {
   margin-top: 8px;
 }
 
+.offer-text-template-toolbar,
+.offer-text-placeholder-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.offer-text-template-select-field {
+  flex: 1 1 240px;
+  min-width: min(100%, 240px);
+}
+
+.offer-text-placeholder-row {
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(197, 209, 230, 0.76);
+  border-radius: 14px;
+  background: rgba(248, 251, 255, 0.78);
+}
+
+.offer-text-placeholder-row > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.offer-text-placeholder-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.offer-text-placeholder-button {
+  min-height: 30px;
+  padding-inline: 9px;
+  font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
 .offer-extra-text-toggle {
   width: fit-content;
   min-height: 38px;
@@ -50626,6 +50680,31 @@ body.is-offer-template-open {
   background:
     radial-gradient(circle at top right, rgba(87, 181, 127, 0.06), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 249, 0.94));
+}
+
+.offer-fixed-included-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(134, 183, 155, 0.5);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(87, 181, 127, 0.08), transparent 35%),
+    linear-gradient(180deg, rgba(249, 253, 250, 0.98), rgba(241, 249, 245, 0.94));
+}
+
+.offer-fixed-included-section strong {
+  color: #14532d;
+}
+
+.offer-fixed-included-section p {
+  margin: 3px 0 0;
+}
+
+.offer-fixed-included-add {
+  flex: 0 0 auto;
 }
 
 .offer-item-head-copy {
@@ -51145,6 +51224,11 @@ body.is-offer-template-open {
 
   .contract-annex-actions {
     justify-content: flex-start;
+  }
+
+  .offer-fixed-included-section {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

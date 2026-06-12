@@ -794,6 +794,24 @@ const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const DEFAULT_PURCHASE_ORDER_NOTE = "";
 const OFFER_TEMPLATE_ACCEPT_LABEL = ".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template";
+const OFFER_FIXED_UNIT_OPTIONS = Object.freeze(["kom", "mjerno mjesto", "mj", "god."]);
+const OFFER_TEXT_TEMPLATE_STORAGE_KEY = "safe-nexus-offer-extra-text-templates-v1";
+const OFFER_TEXT_PLACEHOLDER_KEYS = Object.freeze([
+  "COMPANY_NAME",
+  "COMPANY_OIB",
+  "COMPANY_HEADQUARTERS",
+  "LOCATION_SUMMARY",
+  "LOCATION_LIST",
+  "CONTACT_NAME",
+  "OFFER_NUMBER",
+  "OFFER_DATE",
+  "VALID_UNTIL",
+  "SERVICE_LINE",
+  "ITEMS_TABLE",
+  "SUBTOTAL",
+  "TAX_TOTAL",
+  "TOTAL",
+]);
 const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "OFFER_NUMBER", label: "Broj ponude", description: "Generirani broj ponude nakon spremanja." }),
   Object.freeze({ key: "OFFER_TITLE", label: "Naziv ponude", description: "Naslov ponude." }),
@@ -4108,6 +4126,10 @@ const offerTaxRateInput = document.querySelector("#offer-tax-rate");
 const offerNoteInput = document.querySelector("#offer-note");
 const offerExtraTextEnabledInput = document.querySelector("#offer-extra-text-enabled");
 const offerTextBlocks = document.querySelector("#offer-text-blocks");
+const offerTextTemplateSelect = document.querySelector("#offer-text-template-select");
+const offerTextTemplateApplyButton = document.querySelector("#offer-text-template-apply");
+const offerTextTemplateSaveButton = document.querySelector("#offer-text-template-save");
+const offerTextPlaceholderButtons = document.querySelector("#offer-text-placeholder-buttons");
 const offerTextBlock1Input = document.querySelector("#offer-text-block-1");
 const offerTextBlock2Input = document.querySelector("#offer-text-block-2");
 const purchaseOrderDirectionField = document.querySelector("#purchase-order-direction-field");
@@ -51904,7 +51926,7 @@ function getCommercialBreakdownDocumentLabel(entry = {}) {
 }
 
 function buildCommercialItemAmountText(item = {}, currency = "EUR") {
-  if (item?.isIncludedService) {
+  if (isCommercialIncludedServiceItem(item)) {
     return "Uključeno";
   }
   const total = parseOfferMoneyInput(item?.totalPrice, 0);
@@ -51919,6 +51941,10 @@ function buildCommercialItemAmountText(item = {}, currency = "EUR") {
   return getCommercialTableMoneyText(unitPrice, currency);
 }
 
+function isCommercialIncludedServiceItem(item = {}) {
+  return Boolean(item?.isIncludedService || item?.includedService || item?.includedInPlan || item?.included);
+}
+
 function getCommercialOfferMonthlyItems(items = [], offerType = "") {
   const planType = getCommercialItemsTablePlanType(offerType);
   const safeItems = Array.isArray(items) ? items : [];
@@ -51926,7 +51952,7 @@ function getCommercialOfferMonthlyItems(items = [], offerType = "") {
     return safeItems.filter((item) => !hasCommercialItemBreakdownRows(item));
   }
   if (planType === "Fixed Plan") {
-    return safeItems;
+    return safeItems.filter((item) => !isCommercialIncludedServiceItem(item));
   }
   return [];
 }
@@ -52090,7 +52116,92 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
     });
   };
 
+  const buildTableBlock = (tableColumns = columns, tableRows = rows, tableMerges = merges, tableHeaderRows = includeHeader ? ["header"] : []) => ({
+    __docxBlockType: "table",
+    columns: tableColumns,
+    rows: tableRows,
+    headerRows: tableHeaderRows,
+    merges: tableMerges,
+  });
+
+  const buildFixedIncludedServicesTableBlock = (includedItems = []) => {
+    const serviceColumns = [
+      { id: "index", label: "#", width: 42 },
+      { id: "code", label: "Šifra", width: 92 },
+      { id: "description", label: "Usluga uključena u paušal", width: 520 },
+    ];
+    const serviceRows = [
+      {
+        id: "included-header",
+        header: true,
+        cells: serviceColumns.map((column) => buildCommercialTableCellPreview(column.label, {
+          bold: true,
+          fillColor: "#F3F4F6",
+          align: column.id === "index" ? "center" : "left",
+        })),
+      },
+      ...(includedItems.length > 0
+        ? includedItems.map((item, index) => ({
+          id: `included-service-${index + 1}`,
+          cells: [
+            buildCommercialTableCellPreview(String(index + 1), { align: "center" }),
+            buildCommercialTableCellPreview(item?.serviceCode || "", { align: "left", color: "#475569" }),
+            buildCommercialTableCellPreview(item?.description || item?.serviceCode || "Usluga", { align: "left", bold: true }),
+          ],
+        }))
+        : [{
+          id: "included-empty",
+          cells: [
+            buildCommercialTableCellPreview("Nema dodanih uključenih usluga.", { align: "left", color: "#64748B" }),
+            buildCommercialTableCellPreview("", {}),
+            buildCommercialTableCellPreview("", {}),
+          ],
+        }]),
+    ];
+    const serviceMerges = includedItems.length > 0
+      ? []
+      : [{ rowId: "included-empty", columnId: "index", colSpan: serviceColumns.length }];
+
+    return buildTableBlock(serviceColumns, serviceRows, serviceMerges, ["included-header"]);
+  };
+
   if (isFinancialPlan) {
+    if (isFixedPlan && section === "all") {
+      const billableItems = safeItems.filter((item) => !isCommercialIncludedServiceItem(item));
+      const includedItems = safeItems.filter((item) => isCommercialIncludedServiceItem(item));
+      if (billableItems.length === 0) {
+        const rowId = "empty";
+        rows.push({
+          id: rowId,
+          cells: columns.map((column, index) => buildCommercialTableCellPreview(index === 0 ? "Nema dodanih fiksnih stavki." : "", {
+            align: index === columns.length - 1 ? "right" : "left",
+            color: "#64748B",
+          })),
+        });
+        merges.push({ rowId, columnId: "index", colSpan: columns.length });
+      } else {
+        billableItems.forEach((item, index) => {
+          pushFinancialItemRow(item, index);
+        });
+        if (showTotalAmount) {
+          pushFinancialTotals();
+        }
+      }
+
+      if (includedItems.length > 0) {
+        return {
+          __docxBlockType: "blocks",
+          blocks: [
+            { type: "heading", text: "Fiksne stavke ponude", level: 4 },
+            buildTableBlock(),
+            { type: "heading", text: "Uključene usluge", level: 4 },
+            buildFixedIncludedServicesTableBlock(includedItems),
+          ],
+        };
+      }
+      return buildTableBlock();
+    }
+
     if (safeItems.length === 0) {
       const rowId = "empty";
       rows.push({
@@ -52204,11 +52315,7 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
   }
 
   return {
-    __docxBlockType: "table",
-    columns,
-    rows,
-    headerRows: includeHeader ? ["header"] : [],
-    merges,
+    ...buildTableBlock(),
   };
 }
 
@@ -52218,6 +52325,11 @@ function formatCommercialTemplatePlaceholderPreviewValue(value) {
       const rows = Array.isArray(value.rows) ? value.rows : [];
       const bodyRows = rows.filter((row) => !row?.header);
       return `${bodyRows.length} redaka Word tablice`;
+    }
+    if (String(value.__docxBlockType || value.type || "").trim().toLowerCase() === "blocks") {
+      const blocks = Array.isArray(value.blocks) ? value.blocks : [];
+      const tableCount = blocks.filter((block) => String(block?.__docxBlockType || block?.type || "").trim().toLowerCase() === "table").length;
+      return tableCount ? `${tableCount} Word tablice u placeholderu` : `${blocks.length} Word blokova`;
     }
     return "";
   }
@@ -97007,6 +97119,127 @@ function getCommercialDocumentUploadCategoryLabel() {
   return isOutgoingStandaloneOfferMode() ? "Samostalna ponuda" : "Zaprimljena ponuda";
 }
 
+function readOfferExtraTextTemplates() {
+  const stored = readJsonFromLocalStorage(OFFER_TEXT_TEMPLATE_STORAGE_KEY, []);
+  return (Array.isArray(stored) ? stored : [])
+    .map((template) => ({
+      id: String(template?.id || crypto.randomUUID()),
+      label: String(template?.label || "").trim(),
+      textBlock1: String(template?.textBlock1 || "").trim(),
+      textBlock2: String(template?.textBlock2 || "").trim(),
+    }))
+    .filter((template) => template.label && (template.textBlock1 || template.textBlock2));
+}
+
+function writeOfferExtraTextTemplates(templates = []) {
+  writeJsonToLocalStorage(
+    OFFER_TEXT_TEMPLATE_STORAGE_KEY,
+    (Array.isArray(templates) ? templates : [])
+      .map((template) => ({
+        id: String(template.id || crypto.randomUUID()),
+        label: String(template.label || "").trim(),
+        textBlock1: String(template.textBlock1 || "").trim(),
+        textBlock2: String(template.textBlock2 || "").trim(),
+      }))
+      .filter((template) => template.label && (template.textBlock1 || template.textBlock2)),
+  );
+}
+
+function renderOfferExtraTextTemplateControls() {
+  if (offerTextTemplateSelect) {
+    const templates = readOfferExtraTextTemplates();
+    replaceSelectOptions(
+      offerTextTemplateSelect,
+      [
+        { value: "", label: templates.length ? "Odaberi spremljeni tekst" : "Nema spremljenih tekstova" },
+        ...templates.map((template) => ({
+          value: template.id,
+          label: template.label,
+        })),
+      ],
+      "",
+    );
+  }
+
+  if (offerTextPlaceholderButtons) {
+    offerTextPlaceholderButtons.replaceChildren(...OFFER_TEXT_PLACEHOLDER_KEYS.map((key) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost-button offer-text-placeholder-button";
+      button.dataset.offerTextPlaceholder = key;
+      button.textContent = `{{${key}}}`;
+      return button;
+    }));
+  }
+}
+
+function getActiveOfferTextBlockInput() {
+  const active = document.activeElement;
+  if (active === offerTextBlock1Input || active === offerTextBlock2Input) {
+    return active;
+  }
+  return offerTextBlock1Input || offerTextBlock2Input || null;
+}
+
+function insertOfferTextPlaceholder(key = "") {
+  const textarea = getActiveOfferTextBlockInput();
+  const placeholder = `{{${String(key || "").trim()}}}`;
+  if (!textarea || !placeholder.match(/^\{\{[A-Z0-9_]+\}\}$/)) {
+    return;
+  }
+  const start = Number(textarea.selectionStart ?? textarea.value.length);
+  const end = Number(textarea.selectionEnd ?? start);
+  textarea.value = `${textarea.value.slice(0, start)}${placeholder}${textarea.value.slice(end)}`;
+  const nextCaret = start + placeholder.length;
+  textarea.focus();
+  textarea.setSelectionRange(nextCaret, nextCaret);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function applyOfferExtraTextTemplate(templateId = "") {
+  const template = readOfferExtraTextTemplates().find((entry) => String(entry.id) === String(templateId));
+  if (!template) {
+    return;
+  }
+  if (offerTextBlock1Input) {
+    offerTextBlock1Input.value = template.textBlock1 || "";
+  }
+  if (offerTextBlock2Input) {
+    offerTextBlock2Input.value = template.textBlock2 || "";
+  }
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+}
+
+function saveOfferExtraTextTemplate() {
+  const textBlock1 = String(offerTextBlock1Input?.value || "").trim();
+  const textBlock2 = String(offerTextBlock2Input?.value || "").trim();
+  if (!textBlock1 && !textBlock2) {
+    setInlineMessage(offerError, "Upiši dodatni tekst koji želiš spremiti kao template.");
+    return;
+  }
+
+  const fallbackName = (textBlock1 || textBlock2).split(/\s+/).slice(0, 6).join(" ").slice(0, 70) || "Template teksta";
+  const label = String(window.prompt("Naziv templatea", fallbackName) || "").trim();
+  if (!label) {
+    return;
+  }
+
+  const templates = readOfferExtraTextTemplates();
+  writeOfferExtraTextTemplates([
+    ...templates.filter((template) => template.label.toLowerCase() !== label.toLowerCase()),
+    {
+      id: crypto.randomUUID(),
+      label,
+      textBlock1,
+      textBlock2,
+    },
+  ]);
+  renderOfferExtraTextTemplateControls();
+  setInlineMessage(offerError, `Spremljen template dodatnog teksta: ${label}.`, "success");
+}
+
 function syncOfferExtraTextControls() {
   const isPurchaseOrder = isPurchaseOrdersContextActive();
   const quickUploadMode = isCommercialQuickUploadMode();
@@ -97028,6 +97261,9 @@ function syncOfferExtraTextControls() {
   }
   if (offerTextBlocks) {
     offerTextBlocks.hidden = shouldHideExtraTexts || !isOfferExtraTextEnabled();
+  }
+  if (!shouldHideExtraTexts && isOfferExtraTextEnabled()) {
+    renderOfferExtraTextTemplateControls();
   }
 }
 
@@ -98162,7 +98398,7 @@ function openOfferServiceAddMenu(anchorButton = offerAddItemButton) {
   const head = document.createElement("div");
   head.className = "offer-service-add-head";
   const title = document.createElement("strong");
-  title.textContent = isFixedPlan ? "Dodaj fiksnu stavku ili uključene usluge" : "Dodaj usluge";
+  title.textContent = isFixedPlan ? "Dodaj uključene usluge iz kataloga" : "Dodaj usluge";
   const selectAllButton = createActionButton("Odaberi sve", "ghost-button offer-service-add-small", () => {
     menu.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
       checkbox.checked = true;
@@ -98226,7 +98462,7 @@ function openOfferServiceAddMenu(anchorButton = offerAddItemButton) {
     addOfferFormItem(createOfferIncludedServiceDraft());
     closeOfferServiceAddMenu();
   });
-  const addButton = createActionButton("Dodaj odabrane", "primary-button offer-service-add-confirm", () => {
+  const addButton = createActionButton(isFixedPlan ? "Dodaj odabrane kao uključene" : "Dodaj odabrane", "primary-button offer-service-add-confirm", () => {
     const selectedIds = Array.from(menu.querySelectorAll('input[type="checkbox"]:checked'))
       .map((checkbox) => checkbox.value);
     const selectedChoices = choices.filter((choice) => selectedIds.includes(choice.id));
@@ -98371,11 +98607,46 @@ function renderOfferItemRows() {
   const allowBreakdowns = shouldOfferPlanAllowBreakdowns();
   const allowMultipleItems = shouldOfferPlanAllowMultipleItems();
   const activePlanDefinition = getActiveOfferPlanTypeDefinition();
+  const isFixedPlanActive = isOfferPlanEditorActive() && activePlanDefinition.value === "Fixed Plan";
+  const indexedOfferItems = offerFormItems.map((item, index) => ({ type: "item", item, index }));
+  const fixedBillableEntries = isFixedPlanActive
+    ? indexedOfferItems.filter((entry) => !entry.item?.isIncludedService)
+    : indexedOfferItems;
+  const fixedIncludedEntries = isFixedPlanActive
+    ? indexedOfferItems.filter((entry) => Boolean(entry.item?.isIncludedService))
+    : [];
+  const renderEntries = isFixedPlanActive
+    ? [
+      ...fixedBillableEntries,
+      { type: "fixed-included-section", count: fixedIncludedEntries.length },
+      ...fixedIncludedEntries,
+    ]
+    : indexedOfferItems;
 
-  offerItems.replaceChildren(...offerFormItems.map((item, index) => {
+  offerItems.replaceChildren(...renderEntries.map((entry) => {
+    if (entry.type === "fixed-included-section") {
+      const section = document.createElement("div");
+      section.className = "offer-fixed-included-section";
+      const copy = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = "Uključene usluge";
+      const help = document.createElement("p");
+      help.className = "inline-help";
+      help.textContent = entry.count
+        ? `${entry.count} usluga je uključeno u paušal. Dodaj više iz kataloga usluga ili ručno.`
+        : "Dodaj jednu ili više usluga iz kataloga koje ulaze u paušal.";
+      copy.append(title, help);
+      const addIncludedButton = createActionButton("+ Dodaj iz kataloga", "ghost-button offer-fixed-included-add", () => {
+        openOfferServiceAddMenu(offerAddItemButton);
+      });
+      section.append(copy, addIncludedButton);
+      return section;
+    }
+
+    const { item, index } = entry;
     const isMainFeeItem = isOfferMainFeeItemDraft(item);
     const itemShowsBreakdowns = allowBreakdowns && !isMainFeeItem && Boolean(item.showBreakdowns);
-    const isFixedPlanItem = isOfferPlanEditorActive() && activePlanDefinition.value === "Fixed Plan";
+    const isFixedPlanItem = isFixedPlanActive;
     const isFixedIncludedService = isFixedPlanItem && Boolean(item.isIncludedService);
     const row = document.createElement("div");
     row.className = "offer-item-row";
@@ -98450,6 +98721,32 @@ function renderOfferItemRows() {
       }
 
       label.append(span, input);
+      return label;
+    };
+
+    const createSelectField = (labelText, key, options = [], { hidden = false } = {}) => {
+      const label = document.createElement("label");
+      label.className = "field";
+      label.hidden = hidden;
+
+      const span = document.createElement("span");
+      span.textContent = labelText;
+
+      const select = document.createElement("select");
+      const currentValue = String(item[key] ?? "").trim();
+      const selectOptions = [
+        { value: "", label: "Odaberi" },
+        ...options.map((value) => ({ value, label: value })),
+      ];
+      if (currentValue && !selectOptions.some((option) => option.value === currentValue)) {
+        selectOptions.push({ value: currentValue, label: currentValue });
+      }
+      replaceSelectOptions(select, selectOptions, currentValue);
+      select.addEventListener("change", (event) => {
+        updateOfferFormItem(index, key, event.currentTarget.value);
+      });
+
+      label.append(span, select);
       return label;
     };
 
@@ -98535,7 +98832,9 @@ function renderOfferItemRows() {
     });
     descriptionField.classList.add("offer-item-field", "is-description");
 
-    const unitField = createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj...", hidden: isFixedIncludedService || itemShowsBreakdowns });
+    const unitField = isFixedPlanItem
+      ? createSelectField("Jedinica", "unit", OFFER_FIXED_UNIT_OPTIONS, { hidden: isFixedIncludedService || itemShowsBreakdowns })
+      : createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj...", hidden: isFixedIncludedService || itemShowsBreakdowns });
     unitField.classList.add("offer-item-field", "is-unit");
 
     const quantityField = createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal", hidden: isFixedIncludedService || itemShowsBreakdowns });
@@ -100017,16 +100316,19 @@ function createOfferListFinancialSummary(offer = {}) {
 
   const currency = offer.currency || "EUR";
   const taxRate = String(offer.taxRate ?? "").trim();
+  const planType = normalizeOfferPlanTypeValue(offer.serviceLine || "");
   const summary = document.createElement("div");
   summary.className = "offer-list-financial-summary";
 
-  const rows = [
+  const rows = planType === "Fixed Plan" ? [
+    ["Bez PDV-a", formatCurrencyAmount(offer.taxableSubtotal ?? offer.subtotal ?? 0, currency), "is-fixed-base"],
+  ] : [
     ["Bez PDV-a", formatCurrencyAmount(offer.taxableSubtotal ?? offer.subtotal ?? 0, currency), ""],
     [taxRate ? `PDV ${taxRate}%` : "PDV", formatCurrencyAmount(offer.taxTotal ?? 0, currency), ""],
     ["Ukupno s PDV-om", formatCurrencyAmount(offer.total ?? 0, currency), "is-grand"],
   ];
 
-  if (Number(offer.discountTotal || 0) > 0 || Number(offer.discountRate || 0) > 0) {
+  if (planType !== "Fixed Plan" && (Number(offer.discountTotal || 0) > 0 || Number(offer.discountRate || 0) > 0)) {
     rows.unshift(["Međuzbroj", formatCurrencyAmount(offer.subtotal ?? 0, currency), ""]);
     rows.splice(1, 0, [
       Number(offer.discountRate || 0) > 0 ? `Rabat ${offer.discountRate}%` : "Rabat",
@@ -123189,6 +123491,37 @@ offerExtraTextEnabledInput?.addEventListener("change", () => {
   if (state.offerTemplateModalOpen) {
     renderOfferTemplatePlaceholderList();
   }
+});
+
+offerTextTemplateSelect?.addEventListener("change", () => {
+  const selectedValue = offerTextTemplateSelect.value || "";
+  if (selectedValue) {
+    applyOfferExtraTextTemplate(selectedValue);
+    offerTextTemplateSelect.value = "";
+  }
+});
+
+offerTextTemplateApplyButton?.addEventListener("click", () => {
+  const selectedValue = offerTextTemplateSelect?.value || "";
+  if (selectedValue) {
+    applyOfferExtraTextTemplate(selectedValue);
+    if (offerTextTemplateSelect) {
+      offerTextTemplateSelect.value = "";
+    }
+  }
+});
+
+offerTextTemplateSaveButton?.addEventListener("click", () => {
+  saveOfferExtraTextTemplate();
+});
+
+offerTextPlaceholderButtons?.addEventListener("click", (event) => {
+  const button = event.target?.closest?.("[data-offer-text-placeholder]");
+  if (!button) {
+    return;
+  }
+  event.preventDefault();
+  insertOfferTextPlaceholder(button.dataset.offerTextPlaceholder || "");
 });
 
 purchaseOrderDirectionInput?.addEventListener("change", () => {
