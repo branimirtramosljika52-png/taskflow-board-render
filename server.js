@@ -18192,7 +18192,7 @@ async function handleApiRequest(request, response, url) {
         username: storedSettings?.username || "",
         password: storedSettings?.passwordSecret || "",
         page: url.searchParams.get("page") || 1,
-        pagination: url.searchParams.get("pagination") !== "false",
+        pagination: true,
         serialNumber: url.searchParams.get("serialNumber") || "",
         removedBefore: url.searchParams.get("removedBefore") || "",
         removedStrictlyBefore: url.searchParams.get("removedStrictlyBefore") || "",
