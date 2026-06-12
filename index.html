@@ -6422,17 +6422,20 @@
                     <p class="section-kicker">Integracije</p>
                     <h3>ISZNR API</h3>
                   </div>
-                  <button id="settings-isznr-api-save" type="button" class="ghost-button">Spremi ISZNR</button>
+                  <div class="document-template-reference-actions">
+                    <button id="settings-isznr-api-test" type="button" class="ghost-button">Testiraj vezu</button>
+                    <button id="settings-isznr-api-save" type="button" class="ghost-button">Spremi ISZNR</button>
+                  </div>
                 </div>
                 <p class="helper-copy module-copy">Podaci se spremaju za aktivnu organizaciju. Lozinka se ne prikazuje nakon spremanja.</p>
                 <div class="settings-notification-inline">
                   <label class="field field-span-full">
                     <span>API URL</span>
-                    <input id="settings-isznr-api-url" type="url" inputmode="url" autocomplete="off" placeholder="https://..." />
+                    <input id="settings-isznr-api-url" type="url" inputmode="url" autocomplete="off" placeholder="https://isznr.gov.hr/api/v3" />
                   </label>
                   <label class="field">
-                    <span>Korisnik</span>
-                    <input id="settings-isznr-api-username" autocomplete="off" placeholder="ISZNR korisničko ime" />
+                    <span>OIB korisnika</span>
+                    <input id="settings-isznr-api-username" autocomplete="off" inputmode="numeric" maxlength="11" placeholder="OIB korisnika" />
                   </label>
                   <label class="field">
                     <span>Lozinka</span>

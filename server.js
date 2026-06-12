@@ -714,6 +714,11 @@ const OPENWEATHER_CITY_SEARCH_LIMIT = 8;
 const OPENWEATHER_TIMEOUT_MS = 9000;
 const OPENWEATHER_STRONG_WIND_MS = 13.9;
 const OPENWEATHER_DANGEROUS_WIND_MS = 20.8;
+const ISZNR_DEFAULT_API_BASE_URL = "https://isznr.gov.hr/api/v3";
+const ISZNR_TEST_TIMEOUT_MS = Math.max(
+  3000,
+  Number(process.env.ISZNR_TEST_TIMEOUT_MS || 10000) || 10000,
+);
 const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
   Number(process.env.DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES || 28 * 1024 * 1024) || 28 * 1024 * 1024,
@@ -968,6 +973,97 @@ async function fetchOpenWeatherJson(url) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function createRequestError(statusCode = 400, message = "Request failed.") {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function normalizeIsznrApiBaseUrl(value = "") {
+  const raw = String(value ?? "").trim().replace(/\/+$/, "");
+  const candidate = raw || ISZNR_DEFAULT_API_BASE_URL;
+  const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)
+    ? candidate
+    : `https://${candidate}`;
+
+  let parsed;
+  try {
+    parsed = new URL(withProtocol);
+  } catch {
+    throw createRequestError(400, "ISZNR API URL nije ispravan.");
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw createRequestError(400, "ISZNR API URL mora koristiti http ili https.");
+  }
+
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function normalizeIsznrApiUsername(value = "") {
+  return String(value ?? "").trim().replace(/\s+/g, "");
+}
+
+async function testIsznrApiConnection({ baseUrl = "", username = "", password = "" } = {}) {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const normalizedUsername = normalizeIsznrApiUsername(username);
+  const safePassword = String(password ?? "");
+
+  if (!/^\d{11}$/.test(normalizedUsername)) {
+    throw createRequestError(400, "OIB korisnika za ISZNR mora imati 11 znamenki.");
+  }
+  if (!safePassword) {
+    throw createRequestError(400, "Upiši ISZNR lozinku ili prvo spremi postojeću lozinku u Settings.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ISZNR_TEST_TIMEOUT_MS);
+  let result;
+  try {
+    result = await fetch(normalizedBaseUrl, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        authorization: `Basic ${Buffer.from(`${normalizedUsername}:${safePassword}`, "utf8").toString("base64")}`,
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw createRequestError(504, "ISZNR API se nije javio na vrijeme.");
+    }
+    throw createRequestError(502, "ISZNR API nije dostupan s poslužitelja.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const contentType = String(result.headers.get("content-type") || "").trim();
+  if (result.ok) {
+    return {
+      ok: true,
+      status: result.status,
+      contentType,
+      baseUrl: normalizedBaseUrl,
+      message: `ISZNR API veza radi (${result.status}).`,
+    };
+  }
+
+  if (result.status === 401 || result.status === 403) {
+    throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
+  }
+
+  const rootHint = result.status === 404
+    ? " API je dostupan, ali bazni URL nije konkretan resurs. Za dohvat treba odabrati endpoint resursa."
+    : "";
+  return {
+    ok: false,
+    status: result.status,
+    contentType,
+    baseUrl: normalizedBaseUrl,
+    message: `ISZNR API je odgovorio statusom ${result.status}.${rootHint}`,
+  };
 }
 
 function buildOpenWeatherCityLabel(city = {}) {
@@ -19374,6 +19470,27 @@ async function handleApiRequest(request, response, url) {
         apiSettings,
       });
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/isznr/test-connection") {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+        sendError(response, 403, "Nemate pravo testirati ISZNR API postavke.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const passwordInput = typeof body?.password === "string" && body.password
+        ? body.password
+        : "";
+      const result = await testIsznrApiConnection({
+        baseUrl: body?.baseUrl || storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: body?.username || storedSettings?.username || "",
+        password: body?.clearPassword ? passwordInput : (passwordInput || storedSettings?.passwordSecret || ""),
+      });
+      sendJson(response, 200, result);
       return true;
     }
 

@@ -1174,7 +1174,7 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   workOrderServicePointFactors: Object.freeze({}),
 });
 const DEFAULT_ISZNR_API_SETTINGS = Object.freeze({
-  baseUrl: "",
+  baseUrl: "https://isznr.gov.hr/api/v3",
   username: "",
   hasPassword: false,
   updatedAt: null,
@@ -3702,6 +3702,7 @@ const settingsIsznrApiUsernameInput = document.querySelector("#settings-isznr-ap
 const settingsIsznrApiPasswordInput = document.querySelector("#settings-isznr-api-password");
 const settingsIsznrApiClearPasswordInput = document.querySelector("#settings-isznr-api-clear-password");
 const settingsIsznrApiStatus = document.querySelector("#settings-isznr-api-status");
+const settingsIsznrApiTestButton = document.querySelector("#settings-isznr-api-test");
 const settingsIsznrApiSaveButton = document.querySelector("#settings-isznr-api-save");
 const settingsIsznrApiFeedback = document.querySelector("#settings-isznr-api-feedback");
 const documentsSearchInput = document.querySelector("#documents-search");
@@ -9188,7 +9189,8 @@ function normalizeIsznrApiSettings(value = {}) {
     ? value
     : {};
   return {
-    baseUrl: String(source.baseUrl ?? source.url ?? source.apiUrl ?? "").trim(),
+    baseUrl: String(source.baseUrl ?? source.url ?? source.apiUrl ?? "").trim()
+      || DEFAULT_ISZNR_API_SETTINGS.baseUrl,
     username: String(source.username ?? source.user ?? "").trim(),
     hasPassword: Boolean(source.hasPassword),
     updatedAt: source.updatedAt || null,
@@ -33255,6 +33257,10 @@ function renderSettingsIsznrApiSettings() {
     settingsIsznrApiSaveButton.disabled = !canManageSettings;
     settingsIsznrApiSaveButton.hidden = !canManageSettings;
   }
+  if (settingsIsznrApiTestButton) {
+    settingsIsznrApiTestButton.disabled = !canManageSettings;
+    settingsIsznrApiTestButton.hidden = !canManageSettings;
+  }
   if (settingsIsznrApiStatus) {
     const parts = [
       settings.hasPassword ? "Lozinka je spremljena." : "Lozinka nije postavljena.",
@@ -33905,6 +33911,46 @@ async function saveSettingsIsznrApiSettings(options = {}) {
   }
 
   return success;
+}
+
+async function testSettingsIsznrApiConnection() {
+  if (!getCanManageSettings()) {
+    setInlineMessage(settingsIsznrApiFeedback, "Nemate pravo testirati ISZNR API postavke.");
+    return false;
+  }
+
+  if (!state.activeOrganizationId) {
+    setInlineMessage(settingsIsznrApiFeedback, "Odaberi organizaciju prije testiranja ISZNR veze.");
+    return false;
+  }
+
+  if (settingsIsznrApiTestButton) {
+    settingsIsznrApiTestButton.disabled = true;
+  }
+  if (settingsIsznrApiSaveButton) {
+    settingsIsznrApiSaveButton.disabled = true;
+  }
+  setInlineMessage(settingsIsznrApiFeedback, "Testiram ISZNR vezu...", "success");
+
+  try {
+    const result = await apiRequest("/isznr/test-connection", {
+      method: "POST",
+      body: collectSettingsIsznrApiPayload(),
+    });
+    const message = result?.message || "ISZNR API veza je dostupna.";
+    setInlineMessage(settingsIsznrApiFeedback, message, result?.ok === false ? "error" : "success");
+    return Boolean(result?.ok);
+  } catch (error) {
+    setInlineMessage(settingsIsznrApiFeedback, error.message || "ISZNR test veze nije uspio.");
+    return false;
+  } finally {
+    if (settingsIsznrApiTestButton) {
+      settingsIsznrApiTestButton.disabled = !getCanManageSettings();
+    }
+    if (settingsIsznrApiSaveButton) {
+      settingsIsznrApiSaveButton.disabled = !getCanManageSettings();
+    }
+  }
 }
 
 async function saveCompanyRolePermissions(options = {}) {
@@ -128747,6 +128793,10 @@ settingsSaveAllButton?.addEventListener("click", () => {
 
 settingsPushPreferencesSaveButton?.addEventListener("click", () => {
   void saveProfilePushNotificationPreferences();
+});
+
+settingsIsznrApiTestButton?.addEventListener("click", () => {
+  void testSettingsIsznrApiConnection();
 });
 
 settingsIsznrApiSaveButton?.addEventListener("click", () => {
