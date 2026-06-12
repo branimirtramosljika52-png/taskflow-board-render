@@ -1404,6 +1404,7 @@ async function testIsznrApiConnection({
         password: safePassword,
         resourcePath: resource.path,
         searchParams: getIsznrResourceSearchParams(resource, context),
+        timeoutMs: Math.min(ISZNR_RESOURCE_TEST_TIMEOUT_MS, 4500),
       });
       return {
         group: resource.group,
