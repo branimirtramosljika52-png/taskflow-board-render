@@ -97,7 +97,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.88.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.89.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -16073,6 +16073,43 @@ function buildMobileTodoTaskRecord(item = {}) {
   };
 }
 
+function buildMobileOfferRecord(item = {}) {
+  const currency = normalizeInputValue(item.currency || "EUR") || "EUR";
+  const subtotal = Number(item.taxableSubtotal ?? item.subtotal ?? 0) || 0;
+  const total = Number(item.total ?? 0) || 0;
+  const amountLabel = getCommercialMoneyText(subtotal, currency);
+  const totalLabel = getCommercialMoneyText(total, currency);
+  return {
+    id: normalizeInputValue(item.id),
+    title: normalizeInputValue(item.offerNumber || item.externalDocumentNumber || item.title || "Ponuda"),
+    subtitle: [
+      normalizeInputValue(item.title),
+      normalizeInputValue(item.companyName),
+      normalizeInputValue(item.locationName || (Array.isArray(item.selectedLocationNames) ? item.selectedLocationNames.join(", ") : "")),
+    ].filter(Boolean).join(" - "),
+    status: normalizeInputValue(item.status || "draft"),
+    kind: "offer",
+    date: normalizeInputValue(item.offerDate || item.validUntil || item.updatedAt || item.createdAt),
+    relatedId: normalizeInputValue(item.companyId),
+    coordinates: "",
+    meta: {
+      offerNumber: normalizeInputValue(item.offerNumber || item.externalDocumentNumber),
+      title: normalizeInputValue(item.title),
+      companyName: normalizeInputValue(item.companyName),
+      locationName: normalizeInputValue(item.locationName || (Array.isArray(item.selectedLocationNames) ? item.selectedLocationNames.join(", ") : "")),
+      contactName: normalizeInputValue(item.contactName),
+      contactEmail: normalizeInputValue(item.contactEmail),
+      contactPhone: normalizeInputValue(item.contactPhone),
+      serviceLine: normalizeInputValue(item.serviceLine),
+      offerDate: normalizeInputValue(item.offerDate),
+      validUntil: normalizeInputValue(item.validUntil),
+      amountWithoutVat: amountLabel,
+      totalWithVat: totalLabel,
+      currency,
+    },
+  };
+}
+
 function resolveVehicleUsageMode(value = "") {
   const normalized = normalizeInputValue(value).toLowerCase();
   if (["return", "checkin", "check_in", "vracanje", "povrat"].includes(normalized)) {
@@ -16650,6 +16687,7 @@ async function writeMobileBootstrap(response, user, request) {
   const vehicles = limitMobileRecords((scopedSnapshot.vehicles ?? []).map(buildMobileVehicleRecord));
   const fieldInquiries = limitMobileRecords((scopedSnapshot.fieldInquiries ?? []).map(buildMobileFieldInquiryRecord));
   const todoTasks = limitMobileRecords((scopedSnapshot.todoTasks ?? []).map(buildMobileTodoTaskRecord));
+  const offers = limitMobileRecords((scopedSnapshot.offers ?? []).map(buildMobileOfferRecord));
 
   const documentRecords = limitMobileRecords((scopedSnapshot.documentRecords ?? []).map((item) => buildMobileRecordItem(item, {
     kind: "document",
@@ -16718,6 +16756,7 @@ async function writeMobileBootstrap(response, user, request) {
     workOrders,
     fieldInquiries,
     todoTasks,
+    offers,
     companies,
     locations,
     vehicles,

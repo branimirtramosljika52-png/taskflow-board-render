@@ -25,6 +25,7 @@ data class BootstrapData(
     val clientPortalRecords: List<MobileRecord> = emptyList(),
     val rulebooks: List<MobileRecord> = emptyList(),
     val riskAssessmentRecords: List<MobileRecord> = emptyList(),
+    val offers: List<MobileRecord> = emptyList(),
     val fieldInquiries: List<MobileRecord> = emptyList(),
     val todoTasks: List<MobileRecord> = emptyList(),
     val calendarEvents: List<MobileRecord> = emptyList(),

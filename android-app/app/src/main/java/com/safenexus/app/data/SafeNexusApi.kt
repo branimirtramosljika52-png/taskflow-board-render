@@ -91,6 +91,7 @@ class SafeNexusApi(
                 clientPortalRecords = json.optJSONArray("clientPortalRecords").toRecords(),
                 rulebooks = json.optJSONArray("rulebooks").toRecords(),
                 riskAssessmentRecords = json.optJSONArray("riskAssessmentRecords").toRecords(),
+                offers = json.optJSONArray("offers").toRecords(),
                 fieldInquiries = json.optJSONArray("fieldInquiries").toRecords(),
                 todoTasks = json.optJSONArray("todoTasks").toRecords(),
                 calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
@@ -625,6 +626,35 @@ class SafeNexusApi(
             DownloadedDocument(
                 fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
                     .ifBlank { fallbackFileName.ifBlank { "evidencija-vozila.pdf" } },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { "application/pdf" }
+                    ?: "application/pdf",
+                bytes = bytes,
+            )
+        }
+    }
+
+    suspend fun downloadOfferPdf(offerId: String, fallbackFileName: String): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = "/api/offers/${offerId.pathSegment()}/export-pdf"
+            val connection = openConnection(
+                path,
+                method = "POST",
+                body = "{}",
+                accept = "application/pdf",
+                readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
+            )
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti PDF ponude (${connection.responseCode})."
+                })
+            }
+            DownloadedDocument(
+                fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
+                    .ifBlank { fallbackFileName.ifBlank { "ponuda.pdf" } },
                 fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
                     ?.ifBlank { "application/pdf" }
                     ?: "application/pdf",

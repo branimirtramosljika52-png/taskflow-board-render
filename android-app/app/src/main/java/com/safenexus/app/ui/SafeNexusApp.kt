@@ -267,6 +267,7 @@ private enum class MoreSectionFocus(val title: String) {
     Overview("Evidencije"),
     Todo("ToDo"),
     FieldInquiries("Plan terena"),
+    Offers("Ponude"),
     Companies("Tvrtke"),
     Locations("Lokacije"),
     Periodics("Periodika"),
@@ -1366,6 +1367,51 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun downloadOfferPdf(context: Context, offer: MobileRecord) {
+        if (offer.id.isBlank()) {
+            state = state.copy(error = "Ponuda nema ispravan ID za PDF.")
+            return
+        }
+
+        val number = offer.meta["offerNumber"].orEmpty().ifBlank { offer.title }
+        val slug = number
+            .replace(Regex("[^A-Za-z0-9_-]+"), "-")
+            .trim('-')
+            .ifBlank { "ponuda" }
+        val fallbackFileName = "$slug.pdf"
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadOfferPdf(offer.id, fallbackFileName)
+                .onSuccess { downloaded ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
+                            state = state.copy(
+                                isLoading = false,
+                                notice = if (opened) {
+                                    "PDF ponude je spremljen u Preuzimanja / SafeNexus i otvoren."
+                                } else {
+                                    "PDF ponude je spremljen u Preuzimanja / SafeNexus."
+                                },
+                                error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje PDF-a.",
+                            )
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti PDF ponude.",
+                            )
+                        }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti PDF ponude.",
+                    )
+                }
+        }
+    }
+
     fun signWorkOrderPdf(
         context: Context,
         workOrder: WorkOrder,
@@ -1602,6 +1648,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onReserveVehicle = viewModel::createVehicleReservation,
                         onRecordVehicleUsage = viewModel::recordVehicleUsage,
                         onDownloadVehicleEvidencePdf = { vehicle -> viewModel.downloadVehicleEvidencePdf(context.applicationContext, vehicle) },
+                        onDownloadOfferPdf = { offer -> viewModel.downloadOfferPdf(context.applicationContext, offer) },
                     )
                 }
             } else {
@@ -4114,6 +4161,9 @@ private fun WorkOrdersScreen(
     val filteredFieldInquiries = remember(state.data.fieldInquiries, normalizedQuery) {
         state.data.fieldInquiries.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredOffers = remember(state.data.offers, normalizedQuery) {
+        state.data.offers.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
     var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
@@ -4267,6 +4317,7 @@ private fun WorkOrdersScreen(
                         label = when (moreFocus) {
                             MoreSectionFocus.Todo -> "Pretraga ToDo zadataka, statusa, tvrtke ili RN-a"
                             MoreSectionFocus.FieldInquiries -> "Pretraga upita, termina, tvrtke ili RN-a"
+                            MoreSectionFocus.Offers -> "Pretraga ponuda, broja, tvrtke ili statusa"
                             MoreSectionFocus.Companies -> "Pretraga tvrtki, OIB-a i kontakata"
                             MoreSectionFocus.Locations -> "Pretraga lokacija, regija i adresa"
                             MoreSectionFocus.Periodics -> "Pretraga periodike i rokova"
@@ -4305,6 +4356,15 @@ private fun WorkOrdersScreen(
                                     fieldInquiryDialogOpen = true
                                 },
                                 onConvertInquiry = onConvertFieldInquiry,
+                            )
+                        }
+                        item {
+                            RecordsContent(
+                                title = "Ponude",
+                                records = filteredOffers,
+                                emptyText = "Nema ponuda za prikaz.",
+                                icon = Icons.Rounded.Description,
+                                onOpenRecord = onOpenRecord,
                             )
                         }
                         item {
@@ -4377,6 +4437,15 @@ private fun WorkOrdersScreen(
                                 fieldInquiryDialogOpen = true
                             },
                             onConvertInquiry = onConvertFieldInquiry,
+                        )
+                    }
+                    MoreSectionFocus.Offers -> item {
+                        RecordsContent(
+                            title = "Ponude",
+                            records = filteredOffers,
+                            emptyText = "Nema ponuda za prikaz.",
+                            icon = Icons.Rounded.Description,
+                            onOpenRecord = onOpenRecord,
                         )
                     }
                     MoreSectionFocus.Companies -> item {
@@ -4689,6 +4758,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
             MainMenuShortcut("ToDo", "Zadaci, teme i Next Week Job status", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Todo),
             MainMenuShortcut("Plan terena", "Upiti i dogovori prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
+            MainMenuShortcut("Ponude", "Pregled poslanih i primljenih ponuda", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Offers),
             MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business, MoreSectionFocus.Companies),
             MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn, MoreSectionFocus.Locations),
             MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
@@ -6574,7 +6644,7 @@ private fun MoreOverviewHero(data: BootstrapData) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Pregled evidencija", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
-                        "Tvrtke, lokacije, dokumenti, rokovi i temeljna dokumentacija.",
+                        "Tvrtke, lokacije, ponude, dokumenti, rokovi i temeljna dokumentacija.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -6583,6 +6653,7 @@ private fun MoreOverviewHero(data: BootstrapData) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatusCountPill("Tvrtke", data.companies.size, Color(0xFF2563EB))
                 StatusCountPill("Lokacije", data.locations.size, Color(0xFF0F766E))
+                StatusCountPill("Ponude", data.offers.size, Color(0xFF1D4ED8))
                 StatusCountPill("Dokumenti", data.documentRecords.size, Color(0xFF7C3AED))
                 StatusCountPill("Procjene", data.riskAssessmentRecords.size, Color(0xFFB45309))
             }
@@ -7198,6 +7269,7 @@ private fun RecordLine(
 private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Rounded.Work): ImageVector = when (record.kind) {
     "work_order" -> Icons.Rounded.Work
     "field_inquiry" -> Icons.Rounded.EventNote
+    "offer" -> Icons.Rounded.Description
     "todo_task" -> Icons.Rounded.ListAlt
     "vehicle", "vehicle_reservation" -> Icons.Rounded.Business
     "document" -> Icons.Rounded.Mail
@@ -7213,6 +7285,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
 private fun recordKindLabel(kind: String): String = when (kind) {
     "work_order" -> "Radni nalog"
     "field_inquiry" -> "Plan terena"
+    "offer" -> "Ponuda"
     "todo_task" -> "ToDo"
     "vehicle" -> "Vozilo"
     "vehicle_reservation" -> "Rezervacija vozila"
@@ -7225,6 +7298,22 @@ private fun recordKindLabel(kind: String): String = when (kind) {
     "client_portal" -> "Klijentski portal"
     else -> "Zapis"
 }
+
+private val offerDetailMetaKeys = setOf(
+    "offerNumber",
+    "title",
+    "companyName",
+    "locationName",
+    "contactName",
+    "contactEmail",
+    "contactPhone",
+    "serviceLine",
+    "offerDate",
+    "validUntil",
+    "amountWithoutVat",
+    "totalWithVat",
+    "currency",
+)
 
 private fun formatRecordMetaLabel(key: String): String {
     val normalized = key
@@ -8048,6 +8137,7 @@ private fun MobileRecordDetailScreen(
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
     onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
+    onDownloadOfferPdf: (MobileRecord) -> Unit,
 ) {
     BackHandler(onBack = onBack)
     var reservationDialogOpen by remember(record.id) { mutableStateOf(false) }
@@ -8208,6 +8298,20 @@ private fun MobileRecordDetailScreen(
                             }
                         }
                     }
+                    if (record.kind == "offer") {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { onDownloadOfferPdf(record) },
+                                enabled = !isLoading,
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Preuzmi PDF", fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -8266,6 +8370,29 @@ private fun MobileRecordDetailScreen(
                 }
             }
 
+            if (record.kind == "offer") {
+                DetailSection("Ponuda") {
+                    DetailRow(Icons.Rounded.Description, "Broj ponude", record.meta["offerNumber"].orEmpty().ifBlank { record.title })
+                    DetailRow(Icons.Rounded.Business, "Tvrtka", record.meta["companyName"].orEmpty().ifBlank { "Nije upisano" })
+                    DetailRow(Icons.Rounded.LocationOn, "Lokacija", record.meta["locationName"].orEmpty().ifBlank { "Sve lokacije / nije upisano" })
+                    DetailRow(Icons.Rounded.ListAlt, "Vrsta ponude", record.meta["serviceLine"].orEmpty().ifBlank { "Nije upisano" })
+                    DetailRow(Icons.Rounded.CalendarMonth, "Datum ponude", formatDateLabel(record.meta["offerDate"].orEmpty()).ifBlank { record.meta["offerDate"].orEmpty().ifBlank { "Nije upisano" } })
+                    DetailRow(Icons.Rounded.CalendarMonth, "Vrijedi do", formatDateLabel(record.meta["validUntil"].orEmpty()).ifBlank { record.meta["validUntil"].orEmpty().ifBlank { "Nije upisano" } })
+                    DetailRow(Icons.Rounded.Description, "Bez PDV-a", record.meta["amountWithoutVat"].orEmpty().ifBlank { "0,00 EUR" })
+                    DetailRow(Icons.Rounded.CheckCircle, "Ukupno s PDV-om", record.meta["totalWithVat"].orEmpty().ifBlank { "0,00 EUR" })
+                }
+                val contactLines = listOf(
+                    record.meta["contactName"].orEmpty(),
+                    record.meta["contactEmail"].orEmpty(),
+                    record.meta["contactPhone"].orEmpty(),
+                ).filter { it.isNotBlank() }
+                if (contactLines.isNotEmpty()) {
+                    DetailSection("Kontakt") {
+                        DetailRow(Icons.Rounded.Person, "Kontakt osoba", contactLines.joinToString("\n"))
+                    }
+                }
+            }
+
             DetailSection("Osnovno") {
                 DetailRow(recordIcon(record), "Vrsta", recordKindLabel(record.kind))
                 DetailRow(Icons.Rounded.CheckCircle, "Status", record.status.ifBlank { "Nije upisano" })
@@ -8278,9 +8405,14 @@ private fun MobileRecordDetailScreen(
                 }
             }
 
-            if (record.meta.isNotEmpty()) {
+            val visibleMeta = if (record.kind == "offer") {
+                record.meta.filterKeys { key -> key !in offerDetailMetaKeys }
+            } else {
+                record.meta
+            }
+            if (visibleMeta.isNotEmpty()) {
                 DetailSection("Podaci") {
-                    record.meta.entries
+                    visibleMeta.entries
                         .sortedBy { entry -> entry.key }
                         .forEach { entry ->
                             DetailRow(
