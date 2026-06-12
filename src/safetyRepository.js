@@ -3102,6 +3102,206 @@ function sanitizeUser(row) {
   };
 }
 
+function mapOfferRows(offerRows = [], companies = [], locations = []) {
+  const companiesById = new Map(companies.map((company) => [String(company.id), company]));
+  const locationsById = new Map(locations.map((location) => [String(location.id), location]));
+
+  return offerRows.map((row) => {
+    const companyId = dbString(row.company_id);
+    const company = companiesById.get(companyId);
+    const location = locationsById.get(dbString(row.location_id));
+    const rawLocationScope = dbString(row.location_scope).toLowerCase();
+    const locationScope = ["all", "single", "selection", "none"].includes(rawLocationScope)
+      ? (rawLocationScope === "single" && !dbString(row.location_id) ? "none" : rawLocationScope)
+      : (dbString(row.location_id) ? "single" : "none");
+    const companyLocations = locations.filter((entry) => String(entry.companyId) === companyId);
+    const selectedLocationIds = locationScope === "all"
+      ? companyLocations.map((entry) => String(entry.id))
+      : parseJsonArray(row.location_ids_json).map((entry) => dbString(entry)).filter(Boolean);
+    const selectedLocationNames = (locationScope === "all"
+      ? companyLocations.map((entry) => entry.name).filter(Boolean)
+      : parseJsonArray(row.location_names_json).map((entry) => dbString(entry)).filter(Boolean))
+      || [];
+    const hydratedSelectedLocationNames = selectedLocationNames.length > 0
+      ? selectedLocationNames
+      : selectedLocationIds
+        .map((selectedId) => companyLocations.find((entry) => String(entry.id) === selectedId)?.name ?? "")
+        .filter(Boolean);
+    const items = parseJsonArray(row.items_json).map((item) => {
+      const isIncludedService = Boolean(item.isIncludedService || item.includedService || item.includedInPlan || item.included);
+      return {
+        serviceCatalogId: dbString(item.serviceCatalogId),
+        serviceCode: dbString(item.serviceCode),
+        description: dbString(item.description),
+        unit: isIncludedService ? "" : dbString(item.unit),
+        quantity: isIncludedService ? 0 : Number(item.quantity ?? 0) || 0,
+        unitPrice: isIncludedService ? 0 : Number(item.unitPrice ?? 0) || 0,
+        isIncludedService,
+        breakdowns: isIncludedService ? [] : parseJsonArray(item.breakdowns).map((entry) => ({
+          label: dbString(entry.label),
+          priceKind: dbString(entry.priceKind),
+          unitLabel: dbString(entry.unitLabel),
+          recordLabel: dbString(entry.recordLabel ?? entry.label),
+          measurementFrom: dbString(entry.measurementFrom),
+          measurementTo: dbString(entry.measurementTo),
+          amount: Number(entry.amount ?? 0) || 0,
+        })),
+        breakdownTotal: isIncludedService ? 0 : Number(item.breakdownTotal ?? 0) || 0,
+        discountRate: isIncludedService ? 0 : Number(item.discountRate ?? 0) || 0,
+        discountTotal: isIncludedService ? 0 : Number(item.discountTotal ?? 0) || 0,
+        totalPrice: isIncludedService ? 0 : Number(item.totalPrice ?? 0) || 0,
+      };
+    });
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      companyId,
+      companyName: company?.name ?? "",
+      companyOib: company?.oib ?? "",
+      headquarters: company?.headquarters ?? "",
+      locationId: dbString(row.location_id),
+      locationScope,
+      selectedLocationIds,
+      selectedLocationNames: hydratedSelectedLocationNames,
+      locationName: locationScope === "all"
+        ? "Sve lokacije"
+        : locationScope === "selection"
+          ? `${selectedLocationIds.length} od ${companyLocations.length} lokacija`
+          : locationScope === "none"
+            ? "Bez lokacije"
+            : (hydratedSelectedLocationNames[0] || location?.name || ""),
+      region: location?.region ?? "",
+      coordinates: location?.coordinates ?? "",
+      contactSlot: dbString(row.contact_slot),
+      contactName: row.contact_name ?? "",
+      contactPhone: row.contact_phone ?? "",
+      contactEmail: row.contact_email ?? "",
+      offerNumber: row.offer_number ?? "",
+      offerYear: Number(row.offer_year ?? 0) || null,
+      offerSequence: Number(row.offer_sequence ?? 0) || null,
+      offerInitials: row.offer_initials ?? "",
+      offerDirection: dbString(row.offer_direction) || "outgoing",
+      documentMode: dbString(row.document_mode) || "app",
+      internalDocumentNumber: row.internal_document_number ?? "",
+      externalDocumentNumber: row.external_document_number ?? "",
+      title: row.title ?? "",
+      serviceLine: row.service_line ?? "",
+      status: row.status ?? "draft",
+      offerDate: normalizeDateOnly(row.offer_date),
+      validUntil: normalizeDateOnly(row.valid_until),
+      note: row.note ?? "",
+      textBlock1: row.text_block_1 ?? "",
+      textBlock2: row.text_block_2 ?? "",
+      currency: row.currency_code ?? "EUR",
+      taxRate: Number(row.tax_rate ?? 0) || 0,
+      discountRate: Number(row.discount_rate ?? 0) || 0,
+      subtotal: Number(row.subtotal_amount ?? 0) || 0,
+      discountTotal: Number(row.discount_total_amount ?? 0) || 0,
+      taxableSubtotal: Number(row.taxable_subtotal_amount ?? 0) || 0,
+      showTotalAmount: row.show_total_amount == null ? true : Boolean(Number(row.show_total_amount)),
+      taxTotal: Number(row.tax_total_amount ?? 0) || 0,
+      total: Number(row.grand_total_amount ?? 0) || 0,
+      items,
+      documents: parseJsonArray(row.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.fileName && document.dataUrl),
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+}
+
+async function fetchOfferMutationSnapshotFromConnection(connection, { currentOfferId = "" } = {}) {
+  const [companyRows] = await connection.query(`
+    SELECT id, naziv_tvrtke, sjediste, oib
+    FROM firme
+    ORDER BY naziv_tvrtke ASC
+  `);
+
+  const companies = companyRows.map((row) => ({
+    id: String(row.id),
+    name: row.naziv_tvrtke,
+    headquarters: row.sjediste ?? "",
+    oib: row.oib ?? "",
+  }));
+  const companiesByOib = new Map(companies.map((company) => [company.oib, company]));
+
+  const [locationRows] = await connection.query(`
+    SELECT id, firma_oib, lokacija, kontakt_osoba, kontakt_osoba2, kontakt_osoba3,
+           kontakt_broj, kontakt_broj2, kontakt_broj3,
+           kontakt_email, kontakt_email2, kontakt_email3,
+           koordinate, regija, aktivno, vrijeme_promjene, korisnik,
+           naziv_tvrtke, sjediste, periodika, predstavnik_korisnika, napomena
+    FROM lokacije
+    ORDER BY naziv_tvrtke ASC, lokacija ASC
+  `);
+  const [locationContactRows] = await connection.query(`
+    SELECT id, location_id, sort_order, contact_name, contact_phone, contact_email
+    FROM web_location_contacts
+    ORDER BY location_id ASC, sort_order ASC, id ASC
+  `);
+  const locationContactsById = groupLocationContactsByLocationId(locationContactRows);
+  const locations = locationRows.map((row) => {
+    const company = companiesByOib.get(row.firma_oib ?? "");
+    const contacts = locationContactsById.get(String(row.id)) ?? extractLegacyLocationContactsFromRow(row);
+
+    return {
+      id: String(row.id),
+      companyId: company?.id ?? `oib:${row.firma_oib ?? ""}`,
+      name: row.lokacija ?? "",
+      isActive: normalizeActiveValue(row.aktivno),
+      period: row.periodika ?? "",
+      representative: row.predstavnik_korisnika ?? "",
+      coordinates: row.koordinate ?? "",
+      region: row.regija ?? "",
+      note: row.napomena ?? "",
+      contacts,
+      contactName1: contacts[0]?.name ?? "",
+      contactPhone1: contacts[0]?.phone ?? "",
+      contactEmail1: contacts[0]?.email ?? "",
+      contactName2: contacts[1]?.name ?? "",
+      contactPhone2: contacts[1]?.phone ?? "",
+      contactEmail2: contacts[1]?.email ?? "",
+      contactName3: contacts[2]?.name ?? "",
+      contactPhone3: contacts[2]?.phone ?? "",
+      contactEmail3: contacts[2]?.email ?? "",
+      createdAt: normalizeTimestamp(row.vrijeme_promjene),
+      updatedAt: normalizeTimestamp(row.vrijeme_promjene),
+      companyOib: row.firma_oib ?? "",
+      companyName: row.naziv_tvrtke ?? company?.name ?? "",
+      headquarters: row.sjediste ?? company?.headquarters ?? "",
+    };
+  });
+
+  const currentOfferNumericId = Number(currentOfferId) || 0;
+  const [offerRows] = await connection.query(
+    `
+      SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
+             offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note,
+             text_block_1, text_block_2, currency_code,
+             document_mode, internal_document_number, external_document_number,
+             tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
+             show_total_amount, location_ids_json, location_names_json,
+             tax_total_amount, grand_total_amount, items_json,
+             CASE WHEN ? > 0 AND id = ? THEN documents_json ELSE NULL END AS documents_json,
+             contact_slot, contact_name, contact_phone, contact_email,
+             created_by_user_id, created_by_label, created_at, updated_at
+      FROM web_offers
+      ORDER BY id DESC
+    `,
+    [currentOfferNumericId, currentOfferNumericId],
+  );
+
+  return {
+    companies,
+    locations,
+    offers: mapOfferRows(offerRows, companies, locations),
+  };
+}
+
 async function fetchSnapshotFromConnection(connection) {
   const [companyRows] = await connection.query(`
     SELECT id, naziv_tvrtke, sjediste, oib, mbs, nkd_djelatnost, naziv_ugovora, vrsta_ugovora, broj_ugovora,
@@ -3557,105 +3757,7 @@ async function fetchSnapshotFromConnection(connection) {
       id DESC
   `);
 
-  const offers = offerRows.map((row) => {
-    const company = companiesById.get(dbString(row.company_id));
-    const location = locationsById.get(dbString(row.location_id));
-    const rawLocationScope = dbString(row.location_scope).toLowerCase();
-    const locationScope = ["all", "single", "selection", "none"].includes(rawLocationScope)
-      ? (rawLocationScope === "single" && !dbString(row.location_id) ? "none" : rawLocationScope)
-      : (dbString(row.location_id) ? "single" : "none");
-    const companyLocations = locations.filter((entry) => String(entry.companyId) === dbString(row.company_id));
-    const selectedLocationIds = locationScope === "all"
-      ? companyLocations.map((entry) => String(entry.id))
-      : parseJsonArray(row.location_ids_json).map((entry) => dbString(entry)).filter(Boolean);
-    const selectedLocationNames = (locationScope === "all"
-      ? companyLocations.map((entry) => entry.name).filter(Boolean)
-      : parseJsonArray(row.location_names_json).map((entry) => dbString(entry)).filter(Boolean))
-      || [];
-    const hydratedSelectedLocationNames = selectedLocationNames.length > 0
-      ? selectedLocationNames
-      : selectedLocationIds
-        .map((selectedId) => companyLocations.find((entry) => String(entry.id) === selectedId)?.name ?? "")
-        .filter(Boolean);
-    const items = parseJsonArray(row.items_json).map((item) => ({
-      serviceCatalogId: dbString(item.serviceCatalogId),
-      serviceCode: dbString(item.serviceCode),
-      description: dbString(item.description),
-      unit: dbString(item.unit),
-      quantity: Number(item.quantity ?? 0) || 0,
-      unitPrice: Number(item.unitPrice ?? 0) || 0,
-      breakdowns: parseJsonArray(item.breakdowns).map((entry) => ({
-        label: dbString(entry.label),
-        priceKind: dbString(entry.priceKind),
-        unitLabel: dbString(entry.unitLabel),
-        recordLabel: dbString(entry.recordLabel ?? entry.label),
-        measurementFrom: dbString(entry.measurementFrom),
-        measurementTo: dbString(entry.measurementTo),
-        amount: Number(entry.amount ?? 0) || 0,
-      })),
-      breakdownTotal: Number(item.breakdownTotal ?? 0) || 0,
-      discountRate: Number(item.discountRate ?? 0) || 0,
-      discountTotal: Number(item.discountTotal ?? 0) || 0,
-      totalPrice: Number(item.totalPrice ?? 0) || 0,
-    }));
-
-    return {
-      id: String(row.id),
-      organizationId: dbString(row.organization_id),
-      companyId: dbString(row.company_id),
-      companyName: company?.name ?? "",
-      companyOib: company?.oib ?? "",
-      headquarters: company?.headquarters ?? "",
-      locationId: dbString(row.location_id),
-      locationScope,
-      selectedLocationIds,
-      selectedLocationNames: hydratedSelectedLocationNames,
-      locationName: locationScope === "all"
-        ? "Sve lokacije"
-        : locationScope === "selection"
-          ? `${selectedLocationIds.length} od ${companyLocations.length} lokacija`
-          : locationScope === "none"
-            ? "Bez lokacije"
-            : (hydratedSelectedLocationNames[0] || location?.name || ""),
-      region: location?.region ?? "",
-      coordinates: location?.coordinates ?? "",
-      contactSlot: dbString(row.contact_slot),
-      contactName: row.contact_name ?? "",
-      contactPhone: row.contact_phone ?? "",
-      contactEmail: row.contact_email ?? "",
-      offerNumber: row.offer_number ?? "",
-      offerYear: Number(row.offer_year ?? 0) || null,
-      offerSequence: Number(row.offer_sequence ?? 0) || null,
-      offerInitials: row.offer_initials ?? "",
-      offerDirection: dbString(row.offer_direction) || "outgoing",
-      documentMode: dbString(row.document_mode) || "app",
-      internalDocumentNumber: row.internal_document_number ?? "",
-      externalDocumentNumber: row.external_document_number ?? "",
-      title: row.title ?? "",
-      serviceLine: row.service_line ?? "",
-      status: row.status ?? "draft",
-      offerDate: normalizeDateOnly(row.offer_date),
-      validUntil: normalizeDateOnly(row.valid_until),
-      note: row.note ?? "",
-      currency: row.currency_code ?? "EUR",
-      taxRate: Number(row.tax_rate ?? 0) || 0,
-      discountRate: Number(row.discount_rate ?? 0) || 0,
-      subtotal: Number(row.subtotal_amount ?? 0) || 0,
-      discountTotal: Number(row.discount_total_amount ?? 0) || 0,
-      taxableSubtotal: Number(row.taxable_subtotal_amount ?? 0) || 0,
-      showTotalAmount: row.show_total_amount == null ? true : Boolean(Number(row.show_total_amount)),
-      taxTotal: Number(row.tax_total_amount ?? 0) || 0,
-      total: Number(row.grand_total_amount ?? 0) || 0,
-      items,
-      documents: parseJsonArray(row.documents_json)
-        .map((document) => mapStoredAttachmentDocument(document))
-        .filter((document) => document.fileName && document.dataUrl),
-      createdByUserId: dbString(row.created_by_user_id),
-      createdByLabel: row.created_by_label ?? "",
-      createdAt: normalizeTimestamp(row.created_at),
-      updatedAt: normalizeTimestamp(row.updated_at),
-    };
-  });
+  const offers = mapOfferRows(offerRows, companies, locations);
 
   const [publicProcurementRows] = await connection.query(`
     SELECT id, organization_id, title, reference_number, status, deadline, amount, company_id, company_name,
@@ -9081,7 +9183,7 @@ export class MySqlSafetyRepository {
 
     try {
       await connection.beginTransaction();
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection);
       const locationObject = createLocationObject(input, snapshot);
 
       const [result] = await connection.query(
@@ -9434,7 +9536,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection, { currentOfferId: id });
       const draft = createFieldInquiry({
         ...input,
         createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
@@ -9493,7 +9595,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection);
       const current = (snapshot.fieldInquiries ?? []).find((item) => String(item.id) === String(id));
 
       if (!current) {
@@ -10441,7 +10543,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection);
       const numberParts = nextOfferNumber(snapshot.offers ?? [], {
         year: Number(new Date().toISOString().slice(0, 4)),
         initials: deriveOfferInitials(actor?.fullName || actor?.username || input.createdByLabel || ""),
@@ -10534,7 +10636,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection, { currentOfferId: id });
       const current = snapshot.offers.find((item) => item.id === id);
 
       if (!current) {
@@ -10655,7 +10757,7 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchOfferMutationSnapshotFromConnection(connection, { currentOfferId: id });
       const draft = createPublicProcurement({
         ...input,
         createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
