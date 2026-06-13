@@ -3611,7 +3611,9 @@ async function fetchSnapshotFromConnection(connection) {
            izvrsitelj_rn2, izvrsitelji_json, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
            tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
            training_admin_name, training_admin_role, training_admin_phone, training_admin_email,
-           usluge_json, mjerenja_json
+           usluge_json,
+           CASE WHEN COALESCE(mjerenja_json, '') <> '' THEN 1 ELSE 0 END AS has_mjerenja_json,
+           CHAR_LENGTH(COALESCE(mjerenja_json, '')) AS mjerenja_json_size
     FROM radni_nalozi
     ORDER BY datum_rn DESC, id DESC
   `);
@@ -3701,7 +3703,9 @@ async function fetchSnapshotFromConnection(connection) {
         phone: row.training_admin_phone ?? "",
         email: row.training_admin_email ?? "",
       },
-      measurementSheet: normalizeWorkOrderMeasurementSheet(parseJsonObject(row.mjerenja_json)),
+      measurementSheet: null,
+      hasMeasurementSheet: Boolean(Number(row.has_mjerenja_json ?? 0)),
+      measurementSheetSize: Number(row.mjerenja_json_size ?? 0) || 0,
       serviceItems,
       serviceLine: row.usluge ?? "",
       department: row.odjel ?? "",
@@ -5615,6 +5619,11 @@ export class InMemorySafetyRepository {
     const before = (this.snapshot.fieldInquiries ?? []).length;
     this.snapshot.fieldInquiries = (this.snapshot.fieldInquiries ?? []).filter((item) => String(item.id) !== String(id));
     return this.snapshot.fieldInquiries.length !== before;
+  }
+
+  async getWorkOrderMeasurementSheet(id) {
+    const workOrder = this.snapshot.workOrders.find((item) => String(item.id) === String(id));
+    return normalizeWorkOrderMeasurementSheet(workOrder?.measurementSheet) ?? null;
   }
 
   async getWorkOrderActivity(id) {
@@ -9750,7 +9759,16 @@ export class MySqlSafetyRepository {
         return null;
       }
 
-      const next = updateWorkOrder(current, patch, snapshot);
+      const [measurementRows] = await connection.query(
+        "SELECT mjerenja_json FROM radni_nalozi WHERE id = ? LIMIT 1",
+        [Number(id)],
+      );
+      const currentWithMeasurementSheet = {
+        ...current,
+        measurementSheet: normalizeWorkOrderMeasurementSheet(parseJsonObject(measurementRows[0]?.mjerenja_json)) ?? null,
+      };
+
+      const next = updateWorkOrder(currentWithMeasurementSheet, patch, snapshot);
       const activityEntries = buildWorkOrderUpdatedActivityEntries(current, next);
 
       await connection.query(
@@ -10263,6 +10281,20 @@ export class MySqlSafetyRepository {
       );
 
       return rows.map((row) => mapWorkOrderDocumentRow(row));
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getWorkOrderMeasurementSheet(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        "SELECT mjerenja_json FROM radni_nalozi WHERE id = ? LIMIT 1",
+        [Number(id)],
+      );
+      return normalizeWorkOrderMeasurementSheet(parseJsonObject(rows[0]?.mjerenja_json)) ?? null;
     } finally {
       connection.release();
     }

@@ -2582,6 +2582,7 @@ const state = {
     lastFingerprint: "",
     lastSavedAt: "",
     state: "idle",
+    measurementSheetHydrationToken: "",
   },
   activeSidebarGroup: "home",
   activeSidebarItem: "dashboard",
@@ -27489,12 +27490,86 @@ function resetWorkOrderAutoSaveState() {
     lastFingerprint: "",
     lastSavedAt: "",
     state: "idle",
+    measurementSheetHydrationToken: "",
   };
   setWorkOrderSaveState("idle");
 }
 
 function getWorkOrderPayloadFingerprint(payload = buildWorkOrderPayload()) {
   return JSON.stringify(payload);
+}
+
+function workOrderNeedsMeasurementSheetHydration(workOrder = {}) {
+  if (!workOrder?.id) {
+    return false;
+  }
+
+  if (normalizeWorkOrderMeasurementSheet(workOrder.measurementSheet)) {
+    return false;
+  }
+
+  return Boolean(workOrder.hasMeasurementSheet || Number(workOrder.measurementSheetSize || 0) > 0);
+}
+
+async function hydrateWorkOrderMeasurementSheetIfNeeded(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderNeedsMeasurementSheetHydration(workOrder)) {
+    return;
+  }
+
+  const token = `${workOrderId}:${Date.now()}`;
+  state.workOrderAutoSave.measurementSheetHydrationToken = token;
+  setWorkOrderSaveState("pending", "Ucitavam spremljenu Excel tablicu...");
+
+  try {
+    const payload = await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/measurement-sheet`);
+
+    if (
+      String(workOrderIdInput.value || "") !== workOrderId
+      || state.workOrderAutoSave.measurementSheetHydrationToken !== token
+    ) {
+      return;
+    }
+
+    const measurementSheet = normalizeWorkOrderMeasurementSheet(payload?.measurementSheet) ?? null;
+    const hasMeasurementSheet = Boolean(measurementSheet);
+    if (hasMeasurementSheet) {
+      applyMeasurementSheetSnapshot(measurementSheet);
+    }
+
+    state.workOrders = state.workOrders.map((item) => (
+      String(item.id) === workOrderId
+        ? {
+            ...item,
+            measurementSheet,
+            hasMeasurementSheet,
+            measurementSheetSize: hasMeasurementSheet ? Number(item.measurementSheetSize || 0) : 0,
+          }
+        : item
+    ));
+
+    state.workOrderAutoSave.measurementSheetHydrationToken = "";
+    state.workOrderAutoSave.lastFingerprint = getWorkOrderPayloadFingerprint();
+    const hadQueuedChanges = state.workOrderAutoSave.dirty;
+    state.workOrderAutoSave.dirty = false;
+    setWorkOrderSaveState("saved");
+
+    if (hadQueuedChanges) {
+      queueWorkOrderAutoSave();
+    }
+  } catch (error) {
+    if (
+      String(workOrderIdInput.value || "") === workOrderId
+      && state.workOrderAutoSave.measurementSheetHydrationToken === token
+    ) {
+      workOrderError.textContent = error?.message || "Spremljena Excel tablica nije ucitana.";
+      setWorkOrderSaveState("error", "Spremljena Excel tablica nije ucitana.");
+    }
+  } finally {
+    if (state.workOrderAutoSave.measurementSheetHydrationToken === token) {
+      state.workOrderAutoSave.measurementSheetHydrationToken = "";
+    }
+  }
 }
 
 function canAutoSaveWorkOrder(payload = buildWorkOrderPayload()) {
@@ -27567,6 +27642,12 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
     state.workOrderAutoSave.timerId = window.setTimeout(() => {
       void persistWorkOrderAutoSave();
     }, WORK_ORDER_AUTOSAVE_DELAY_MS);
+    return false;
+  }
+
+  if (state.workOrderAutoSave.measurementSheetHydrationToken) {
+    state.workOrderAutoSave.dirty = true;
+    setWorkOrderSaveState("pending", "Ucitavam spremljenu Excel tablicu...");
     return false;
   }
 
@@ -27659,6 +27740,13 @@ function queueWorkOrderAutoSave() {
     clearWorkOrderAutoSaveTimer();
     state.workOrderAutoSave.dirty = false;
     setWorkOrderSaveState("blocked", "Nemas ovlastenje za otvaranje radnih naloga.");
+    return;
+  }
+
+  if (state.workOrderAutoSave.measurementSheetHydrationToken) {
+    clearWorkOrderAutoSaveTimer();
+    state.workOrderAutoSave.dirty = true;
+    setWorkOrderSaveState("pending", "Ucitavam spremljenu Excel tablicu...");
     return;
   }
 
@@ -92839,6 +92927,8 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
     void loadWorkOrderActivity(workOrder.id);
     void loadWorkOrderDocuments(workOrder.id);
   }
+
+  void hydrateWorkOrderMeasurementSheetIfNeeded(workOrder);
 }
 
 function populateOrganizationForm(organization) {

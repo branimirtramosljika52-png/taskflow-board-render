@@ -6018,6 +6018,36 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
   return { pdfBuffer, fileName };
 }
 
+async function hydrateWorkOrderMeasurementSheet(workOrder = {}) {
+  if (!workOrder || typeof workOrder !== "object") {
+    return workOrder;
+  }
+
+  const existingSheet = normalizeWorkOrderMeasurementSheet(workOrder.measurementSheet);
+  if (existingSheet) {
+    return {
+      ...workOrder,
+      measurementSheet: existingSheet,
+      hasMeasurementSheet: true,
+    };
+  }
+
+  if (!workOrder.hasMeasurementSheet && !workOrder.measurementSheetSize) {
+    return workOrder;
+  }
+
+  if (typeof domainRepository.getWorkOrderMeasurementSheet !== "function") {
+    return workOrder;
+  }
+
+  const sheet = await domainRepository.getWorkOrderMeasurementSheet(workOrder.id);
+  return {
+    ...workOrder,
+    measurementSheet: sheet,
+    hasMeasurementSheet: Boolean(sheet),
+  };
+}
+
 function decodeBase64DataUrl(dataUrl = "", allowedMimeTypes = []) {
   const meta = getOpenAiDataUrlMeta(dataUrl);
   if (!meta || !meta.isBase64) {
@@ -19185,11 +19215,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      const workOrder = assertInScope(
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(
         scopedSnapshot.workOrders ?? [],
         mobileWorkOrderDocumentationContextMatch[1],
         "Radni nalog nije pronađen.",
-      );
+      ));
       const workOrderForContext = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, {
         objectId: url.searchParams.get("objectId") ?? "",
       });
@@ -19206,11 +19236,11 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      const workOrder = assertInScope(
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(
         scopedSnapshot.workOrders ?? [],
         mobileWorkOrderGenerateDocumentsJobMatch[1],
         "Radni nalog nije pronaÄ‘en.",
-      );
+      ));
       const job = getMobileDocumentGenerationJob(mobileWorkOrderGenerateDocumentsJobMatch[2], user, workOrder.id);
       if (!job) {
         sendError(response, 404, "Izrada dokumentacije je zavrsila, istekla ili nije pronadena.");
@@ -19230,11 +19260,11 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request).catch(() => ({}));
       const { scopedSnapshot } = await getScopedState(user, request);
-      const workOrder = assertInScope(
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(
         scopedSnapshot.workOrders ?? [],
         mobileWorkOrderGenerateDocumentsMatch[1],
         "Radni nalog nije pronađen.",
-      );
+      ));
       const workOrderForGeneration = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
       const job = startMobileDocumentGenerationJob({
         workOrderId: workOrder.id,
@@ -19683,6 +19713,7 @@ async function handleApiRequest(request, response, url) {
     const workOrderPdfSignatureMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/signature-pdf$/);
     const workOrderPdfDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
+    const workOrderMeasurementSheetMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/measurement-sheet$/);
     const workOrderDocumentsCollectionMatch = url.pathname === "/api/work-order-documents";
     const workOrderDocumentsZipExportMatch = url.pathname === "/api/work-order-documents/export-zip";
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
@@ -22586,10 +22617,21 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (workOrderMeasurementSheetMatch && request.method === "GET") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderMeasurementSheetMatch[1], "Radni nalog nije pronaden.");
+      const hydratedWorkOrder = await hydrateWorkOrderMeasurementSheet(workOrder);
+      sendJson(response, 200, {
+        measurementSheet: normalizeWorkOrderMeasurementSheet(hydratedWorkOrder?.measurementSheet) ?? null,
+        hasMeasurementSheet: Boolean(hydratedWorkOrder?.measurementSheet),
+      });
+      return true;
+    }
+
     if (workOrderPdfExportMatch && request.method === "POST") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfExportMatch[1], "Radni nalog nije pronaden.");
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(scopedSnapshot.workOrders, workOrderPdfExportMatch[1], "Radni nalog nije pronaden."));
       const templateId = String(body?.templateId ?? "").trim();
       const { pdfBuffer, fileName } = await buildWorkOrderPdfExportPayload(workOrder, scopedSnapshot, templateId);
       sendBinary(response, 200, pdfBuffer, {
@@ -22607,7 +22649,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfSaveMatch[1], "Radni nalog nije pronaden.");
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(scopedSnapshot.workOrders, workOrderPdfSaveMatch[1], "Radni nalog nije pronaden."));
       const templateId = String(body?.templateId ?? "").trim();
       const item = await saveGeneratedWorkOrderPdfDocument(workOrderPdfSaveMatch[1], workOrder, scopedSnapshot, user, templateId);
       sendJson(response, 200, { item });
@@ -22628,7 +22670,7 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
-      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfSignatureMatch[1], "Radni nalog nije pronaden.");
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(scopedSnapshot.workOrders, workOrderPdfSignatureMatch[1], "Radni nalog nije pronaden."));
       const templateId = String(body?.templateId ?? "").trim();
       const includeSignerName = body?.includeSignerName !== false;
       const includeSignedAt = body?.includeSignedAt !== false;
@@ -22678,7 +22720,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfDownloadMatch[1], "Radni nalog nije pronaden.");
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(scopedSnapshot.workOrders, workOrderPdfDownloadMatch[1], "Radni nalog nije pronaden."));
       const templateId = String(body?.templateId ?? "").trim();
       const documents = await domainRepository.getWorkOrderDocuments(workOrderPdfDownloadMatch[1]);
       let document = findGeneratedWorkOrderPdfDocument(documents);
