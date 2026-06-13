@@ -3187,6 +3187,25 @@ export class MemoryTenantRepository {
 
   async close() {}
 
+  async getOrganizationContext(actor, requestedOrganizationId) {
+    const accessibleOrganizations = this.organizations.filter((organization) => (
+      normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
+      || mergePrimaryOrganization(actor?.organizationId, actor?.organizationIds).includes(String(organization.id))
+    ));
+    const activeOrganizationId = resolveEffectiveOrganizationId(actor, requestedOrganizationId, accessibleOrganizations);
+    const currentOrganization = accessibleOrganizations.find((item) => item.id === activeOrganizationId) ?? null;
+
+    if (!currentOrganization && normalizeRole(actor?.role) !== ROLE_SUPER_ADMIN) {
+      throw createHttpError(403, "Nemate pristup odabranoj organizaciji.");
+    }
+
+    return {
+      organizations: accessibleOrganizations.map((item) => ({ ...item })),
+      activeOrganizationId,
+      currentOrganization: currentOrganization ? { ...currentOrganization } : null,
+    };
+  }
+
   async getPublicLoginScreen() {
     return pickLoginContent(this.loginContentItems);
   }
@@ -4116,6 +4135,16 @@ export class MySqlTenantRepository {
       activeOrganizationId,
       currentOrganization,
     };
+  }
+
+  async getOrganizationContext(actor, requestedOrganizationId) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      return await this.getContext(connection, actor, requestedOrganizationId);
+    } finally {
+      connection.release();
+    }
   }
 
   async getPublicLoginScreen() {

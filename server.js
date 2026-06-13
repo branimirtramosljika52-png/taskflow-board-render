@@ -2945,6 +2945,66 @@ async function getServiceCatalogMutationScope(user, request) {
   };
 }
 
+async function getLightweightScopedPermissionScope(user, request, permissionKey = "") {
+  const activeOrganizationId = resolveLightweightRequestedOrganizationId(user, request);
+  if (!activeOrganizationId) {
+    return {
+      activeOrganizationId: "",
+      canUse: false,
+      appRolePermissions: [],
+    };
+  }
+
+  if (canManageMasterData(user) || Boolean(user?.appPermissions?.[permissionKey])) {
+    return {
+      activeOrganizationId,
+      canUse: true,
+      appRolePermissions: [],
+    };
+  }
+
+  const appRolePermissions = typeof domainRepository.getAppRolePermissionsForOrganization === "function"
+    ? await domainRepository.getAppRolePermissionsForOrganization(activeOrganizationId)
+    : (await getScopedState(user, request)).scopedSnapshot?.appRolePermissions ?? [];
+
+  return {
+    activeOrganizationId,
+    canUse: hasAppPermission(user, appRolePermissions, permissionKey),
+    appRolePermissions,
+  };
+}
+
+async function getLightweightOrganizationContext(user, request) {
+  const activeOrganizationId = resolveLightweightRequestedOrganizationId(user, request);
+  if (!activeOrganizationId) {
+    return {
+      activeOrganizationId: "",
+      currentOrganization: null,
+      organizations: [],
+    };
+  }
+
+  if (typeof tenantRepository.getOrganizationContext === "function") {
+    return tenantRepository.getOrganizationContext(user, activeOrganizationId);
+  }
+
+  const organizations = Array.isArray(user?.organizations) ? user.organizations : [];
+  return {
+    activeOrganizationId,
+    currentOrganization: organizations.find((item) => String(item.id) === String(activeOrganizationId)) ?? null,
+    organizations,
+  };
+}
+
+function buildPublicIsznrApiSettingsPayload(settings = {}) {
+  return {
+    baseUrl: String(settings?.baseUrl || "").trim(),
+    username: String(settings?.username || "").trim(),
+    hasPassword: Boolean(settings?.hasPassword || settings?.passwordSecret),
+    updatedAt: settings?.updatedAt || null,
+  };
+}
+
 async function canUseScopedAppPermission(user, request, permissionKey = "") {
   if (canManageMasterData(user)) {
     return true;
@@ -18985,13 +19045,13 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/mobile/isznr/instruments") {
-      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
+      const measurementEquipmentScope = await getLightweightScopedPermissionScope(user, request, "measurementEquipment.view");
+      if (!measurementEquipmentScope.canUse) {
         sendError(response, 403, "Nemate pravo dohvatiti IS ZNR mjernu opremu.");
         return true;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
-      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const storedSettings = await domainRepository.getIsznrApiSettings(measurementEquipmentScope.activeOrganizationId);
       const result = await fetchMobileIsznrInstrumentList({
         baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
         username: storedSettings?.username || "",
@@ -21262,8 +21322,13 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/isznr/api-settings") {
-      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+      const settingsScope = await getLightweightScopedPermissionScope(user, request, "settings.manage");
+      if (!settingsScope.canUse) {
         sendError(response, 403, "Nemate pravo spremati ISZNR API postavke.");
+        return true;
+      }
+      if (!settingsScope.activeOrganizationId) {
+        sendError(response, 400, "Odaberi organizaciju prije spremanja ISZNR postavki.");
         return true;
       }
 
@@ -21277,23 +21342,26 @@ async function handleApiRequest(request, response, url) {
         apiSettings.password = body.password;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
-      await domainRepository.upsertIsznrApiSettings({
-        organizationId: scopedSnapshot.activeOrganizationId,
+      const savedSettings = await domainRepository.upsertIsznrApiSettings({
+        organizationId: settingsScope.activeOrganizationId,
         apiSettings,
       });
-      await writeSnapshot(response, user, request);
+      invalidateSnapshotCaches();
+      sendJson(response, 200, {
+        ok: true,
+        isznrApiSettings: buildPublicIsznrApiSettingsPayload(savedSettings),
+      });
       return true;
     }
 
     if (request.method === "POST" && url.pathname === "/api/isznr/api-settings/reveal-password") {
-      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+      const settingsScope = await getLightweightScopedPermissionScope(user, request, "settings.manage");
+      if (!settingsScope.canUse) {
         sendError(response, 403, "Nemate pravo prikazati ISZNR lozinku.");
         return true;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
-      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const storedSettings = await domainRepository.getIsznrApiSettings(settingsScope.activeOrganizationId);
       sendJson(response, 200, {
         ok: true,
         hasPassword: Boolean(storedSettings?.passwordSecret),
@@ -21303,19 +21371,16 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/isznr/test-connection") {
-      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+      const settingsScope = await getLightweightScopedPermissionScope(user, request, "settings.manage");
+      if (!settingsScope.canUse) {
         sendError(response, 403, "Nemate pravo testirati ISZNR API postavke.");
         return true;
       }
 
       const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
-      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
-      const activeOrganization = scopedSnapshot.currentOrganization
-        || (Array.isArray(scopedSnapshot.organizations)
-          ? scopedSnapshot.organizations.find((item) => String(item.id) === String(scopedSnapshot.activeOrganizationId))
-          : null)
-        || {};
+      const storedSettings = await domainRepository.getIsznrApiSettings(settingsScope.activeOrganizationId);
+      const organizationContext = await getLightweightOrganizationContext(user, request);
+      const activeOrganization = organizationContext.currentOrganization || {};
       const passwordInput = typeof body?.password === "string" && body.password
         ? body.password
         : "";
@@ -21331,14 +21396,14 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/isznr/instruments") {
-      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
+      const measurementEquipmentScope = await getLightweightScopedPermissionScope(user, request, "measurementEquipment.view");
+      if (!measurementEquipmentScope.canUse) {
         sendError(response, 403, "Nemate pravo dohvatiti ISZNR mjernu opremu.");
         return true;
       }
 
       const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
-      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const storedSettings = await domainRepository.getIsznrApiSettings(measurementEquipmentScope.activeOrganizationId);
       const result = await fetchMobileIsznrInstrumentList({
         baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
         username: storedSettings?.username || "",

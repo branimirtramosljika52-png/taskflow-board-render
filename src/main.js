@@ -34150,7 +34150,13 @@ async function saveSettingsIsznrApiSettings(options = {}) {
   const success = await runMutation(() => apiRequest("/isznr/api-settings", {
     method: "POST",
     body: collectSettingsIsznrApiPayload(),
-  }), settingsIsznrApiFeedback);
+  }), settingsIsznrApiFeedback, {
+    onSuccessPayload: (payload) => {
+      if (payload?.isznrApiSettings) {
+        state.isznrApiSettings = normalizeIsznrApiSettings(payload.isznrApiSettings);
+      }
+    },
+  });
 
   if (settingsIsznrApiSaveButton) {
     settingsIsznrApiSaveButton.disabled = !getCanManageSettings();
