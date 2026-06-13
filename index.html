@@ -9220,6 +9220,10 @@
                 </div>
 
                 <div id="measurement-equipment-list" class="measurement-equipment-list"></div>
+                <div id="measurement-equipment-isznr-local-status" class="measurement-equipment-isznr-local-status is-neutral">
+                  <span class="measurement-equipment-isznr-local-status-icon">i</span>
+                  <span>IS ZNR kontrola nije još pokrenuta. Dohvati IS ZNR opremu za provjeru ažurnosti registra.</span>
+                </div>
                 <p id="measurement-equipment-empty" class="helper-copy" hidden>Nema opreme za prikaz u odabranoj organizaciji.</p>
               </section>
 
@@ -9266,7 +9270,7 @@
                     <span>Rashodovano do</span>
                     <input id="measurement-equipment-isznr-removed-before" type="date" />
                   </label>
-                  <label class="field">
+                  <label class="field" hidden>
                     <span>Stranica</span>
                     <input id="measurement-equipment-isznr-page" type="number" min="1" step="1" value="1" />
                   </label>
