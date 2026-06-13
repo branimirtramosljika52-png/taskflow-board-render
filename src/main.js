@@ -72831,6 +72831,25 @@ function getServiceCatalogQualificationSelectionKeys() {
   );
 }
 
+function upsertServiceCatalogItemInState(item = null) {
+  if (!item?.id) {
+    return;
+  }
+  const nextItems = [
+    item,
+    ...(state.serviceCatalog ?? []).filter((entry) => String(entry.id) !== String(item.id)),
+  ];
+  state.serviceCatalog = sortServiceCatalogItems(nextItems);
+}
+
+function removeServiceCatalogItemFromState(serviceId = "") {
+  const normalizedId = String(serviceId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+  state.serviceCatalog = (state.serviceCatalog ?? []).filter((entry) => String(entry.id) !== normalizedId);
+}
+
 function getQualificationExamDefinitionByKeyMap() {
   return new Map(getQualificationExamDefinitions().map((definition) => [
     normalizeQualificationAreaKey(definition.key),
@@ -127920,7 +127939,11 @@ serviceCatalogDeleteButton?.addEventListener("click", () => {
 
   void runMutation(() => apiRequest(`/service-catalog/${serviceCatalogId}`, {
     method: "DELETE",
-  }), serviceCatalogError).then((success) => {
+  }), serviceCatalogError, {
+    onSuccessPayload: (payload) => {
+      removeServiceCatalogItemFromState(payload?.deletedId || serviceCatalogId);
+    },
+  }).then((success) => {
     if (success) {
       closeServiceCatalogEditor({ reset: true });
       renderServiceCatalogModule();
@@ -127943,7 +127966,11 @@ serviceCatalogForm?.addEventListener("submit", (event) => {
   void runMutation(() => apiRequest(path, {
     method,
     body: buildServiceCatalogPayload(),
-  }), serviceCatalogError).then((success) => {
+  }), serviceCatalogError, {
+    onSuccessPayload: (payload) => {
+      upsertServiceCatalogItemInState(payload?.item);
+    },
+  }).then((success) => {
     if (success) {
       closeServiceCatalogEditor({ reset: true });
       renderServiceCatalogModule();

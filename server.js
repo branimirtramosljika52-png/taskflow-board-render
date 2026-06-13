@@ -20776,11 +20776,12 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
-      await domainRepository.createServiceCatalogItem({
+      const created = await domainRepository.createServiceCatalogItem({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
-      await writeSnapshot(response, user, request, 201);
+      invalidateSnapshotCaches();
+      sendJson(response, 201, { ok: true, item: created });
       return true;
     }
 
@@ -24040,7 +24041,8 @@ async function handleApiRequest(request, response, url) {
         });
       }
 
-      await writeSnapshot(response, user, request);
+      invalidateSnapshotCaches();
+      sendJson(response, 200, { ok: true, item: updated });
       return true;
     }
 
@@ -24440,7 +24442,8 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response, user, request);
+      invalidateSnapshotCaches();
+      sendJson(response, 200, { ok: true, deletedId: String(serviceCatalogMatch[1]) });
       return true;
     }
 
