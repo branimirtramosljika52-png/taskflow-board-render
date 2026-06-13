@@ -99,7 +99,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.95.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.96.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -815,6 +815,11 @@ const ISZNR_EMPLOYEE_RESOURCE_DEFS = Object.freeze([
   { path: "holder_of_authorizations", role: "holder", label: "Nositelj ovlastenja" },
   { path: "employees", role: "employee", label: "Zaposlenik" },
 ]);
+const ISZNR_PEOPLE_ROLE_TAGS = Object.freeze({
+  expert: "IsZNR_expert",
+  holder: "IsZNR_authorization_holder",
+  employee: "IsZNR_employee",
+});
 const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
   Number(process.env.DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES || 28 * 1024 * 1024) || 28 * 1024 * 1024,
@@ -17428,6 +17433,41 @@ function buildIsznrPeopleCandidatesFromUsers(users = []) {
   return candidates;
 }
 
+function normalizeIsznrPeopleTag(value = "") {
+  const normalized = normalizeLookupKey(value)
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized ? `IsZNR_${normalized}` : "";
+}
+
+function buildIsznrPeopleTags(matches = []) {
+  const tags = new Set();
+  (Array.isArray(matches) ? matches : []).forEach((match) => {
+    const role = normalizeInputValue(match?.role);
+    const roleTag = ISZNR_PEOPLE_ROLE_TAGS[role] || normalizeIsznrPeopleTag(role || match?.roleLabel);
+    if (roleTag) {
+      tags.add(roleTag);
+    }
+  });
+  return [...tags];
+}
+
+function buildIsznrPeopleSyncPayload(entry = {}) {
+  const matches = Array.isArray(entry.matches) ? entry.matches : [];
+  const tags = buildIsznrPeopleTags(matches);
+  return {
+    isznrTags: tags,
+    isznrSync: {
+      linked: tags.length > 0,
+      checkedAt: entry.checkedAt || new Date().toISOString(),
+      roles: tags,
+      roleLabels: [...new Set(matches.map((match) => normalizeInputValue(match.roleLabel)).filter(Boolean))],
+      ids: matches.map((match) => [match.roleLabel, match.isznrId].filter(Boolean).join(" ")).filter(Boolean),
+      error: normalizeInputValue(entry.error),
+    },
+  };
+}
+
 async function fetchMobileIsznrPeopleList({
   baseUrl = "",
   username = "",
@@ -17457,12 +17497,20 @@ async function fetchMobileIsznrPeopleList({
         password: safePassword,
         oib: person.oib,
       });
-      return { ...person, ...result, error: "" };
+      const item = { ...person, ...result, error: "", checkedAt: new Date().toISOString() };
+      return { ...item, ...buildIsznrPeopleSyncPayload(item) };
     } catch (error) {
       if (error?.isznrAuthFailure) {
         throw error;
       }
-      return { ...person, matches: [], probes: [], error: error?.message || "ISZNR provjera nije uspjela." };
+      const item = {
+        ...person,
+        matches: [],
+        probes: [],
+        checkedAt: new Date().toISOString(),
+        error: error?.message || "ISZNR provjera nije uspjela.",
+      };
+      return { ...item, ...buildIsznrPeopleSyncPayload(item) };
     }
   });
 
@@ -17481,6 +17529,7 @@ function buildMobileIsznrPersonRecord(entry = {}) {
   const roleLabels = [...new Set(matches.map((match) => normalizeInputValue(match.roleLabel)).filter(Boolean))];
   const linked = matches.length > 0;
   const ids = matches.map((match) => [match.roleLabel, match.isznrId].filter(Boolean).join(" ")).filter(Boolean);
+  const tags = Array.isArray(entry.isznrTags) ? entry.isznrTags : buildIsznrPeopleTags(matches);
   return {
     id: `isznr-person:${entry.oib || entry.id || entry.title}`,
     title: entry.title || "Osoba",
@@ -17498,10 +17547,76 @@ function buildMobileIsznrPersonRecord(entry = {}) {
       isznrLinked: linked ? "true" : "false",
       isznrRoles: roleLabels.join(", "),
       isznrIds: ids.join(", "),
+      isznrTags: tags.join(", "),
+      isznrTagsJson: JSON.stringify(tags),
       isznrError: normalizeInputValue(entry.error),
       isznrProbeCount: String(Array.isArray(entry.probes) ? entry.probes.length : 0),
     },
   };
+}
+
+async function syncIsznrPeopleTagsToUsers(actor = {}, scopedSnapshot = {}, items = []) {
+  const scopedActor = {
+    ...actor,
+    appPermissions: {
+      ...(scopedSnapshot.appPermissions ?? {}),
+    },
+  };
+  const usersById = new Map((scopedSnapshot.users ?? []).map((user) => [String(user.id), user]));
+  const updatedUsers = [];
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const userId = normalizeInputValue(item.id);
+    const currentUser = usersById.get(userId);
+    if (!currentUser || item.sourceType !== "user") {
+      continue;
+    }
+
+    const currentTags = Array.isArray(currentUser.isznrTags) ? currentUser.isznrTags : [];
+    const currentSync = currentUser.isznrSync && typeof currentUser.isznrSync === "object" ? currentUser.isznrSync : {};
+    let syncPayload = buildIsznrPeopleSyncPayload(item);
+    if (normalizeInputValue(item.error) && syncPayload.isznrTags.length === 0) {
+      syncPayload = {
+        isznrTags: currentTags,
+        isznrSync: {
+          ...syncPayload.isznrSync,
+          linked: currentTags.length > 0,
+          roles: currentTags,
+        },
+      };
+    }
+    const nextTagsSignature = JSON.stringify(syncPayload.isznrTags);
+    const currentTagsSignature = JSON.stringify(currentTags);
+    const nextSyncSignature = JSON.stringify(syncPayload.isznrSync);
+    const currentSyncComparable = {
+      linked: Boolean(currentSync.linked),
+      checkedAt: currentSync.checkedAt || "",
+      roles: Array.isArray(currentSync.roles) ? currentSync.roles : [],
+      roleLabels: Array.isArray(currentSync.roleLabels) ? currentSync.roleLabels : [],
+      ids: Array.isArray(currentSync.ids) ? currentSync.ids : [],
+      error: normalizeInputValue(currentSync.error),
+    };
+
+    if (
+      nextTagsSignature === currentTagsSignature
+      && nextSyncSignature === JSON.stringify(currentSyncComparable)
+    ) {
+      continue;
+    }
+
+    try {
+      const updated = typeof tenantRepository.updateUserIsznrSync === "function"
+        ? await tenantRepository.updateUserIsznrSync(scopedActor, userId, syncPayload)
+        : await tenantRepository.updateUser(scopedActor, userId, syncPayload);
+      if (updated) {
+        updatedUsers.push(updated);
+      }
+    } catch (error) {
+      item.error = item.error || error?.message || "IS ZNR oznake nisu spremljene na People korisnika.";
+    }
+  }
+
+  return updatedUsers;
 }
 
 function isMobileClosedWorkOrderStatus(status = "") {
@@ -18210,6 +18325,8 @@ function buildMobileWorkOrderUserOptions(users = []) {
         fullName,
         email,
         oib: getIsznrUserCandidateOib(user),
+        isznrTags: Array.isArray(user.isznrTags) ? user.isznrTags : [],
+        isznrSync: user.isznrSync && typeof user.isznrSync === "object" ? user.isznrSync : {},
       };
     })
     .filter((user) => user.label)
@@ -18749,6 +18866,7 @@ async function handleApiRequest(request, response, url) {
         users: scopedSnapshot.users ?? [],
         maxRecords: ISZNR_MOBILE_PEOPLE_MAX_RECORDS,
       });
+      const updatedUsers = await syncIsznrPeopleTagsToUsers(user, scopedSnapshot, result.items);
       sendJson(response, 200, {
         ok: true,
         count: result.count,
@@ -18756,6 +18874,7 @@ async function handleApiRequest(request, response, url) {
         checkedAt: result.checkedAt,
         recordsLimited: Boolean(result.recordsLimited),
         records: limitMobileRecords(result.items.map(buildMobileIsznrPersonRecord), ISZNR_MOBILE_PEOPLE_MAX_RECORDS),
+        updatedUsers,
       });
       return true;
     }
@@ -18775,6 +18894,7 @@ async function handleApiRequest(request, response, url) {
         users: scopedSnapshot.users ?? [],
         maxRecords: ISZNR_MOBILE_PEOPLE_MAX_RECORDS,
       });
+      const updatedUsers = await syncIsznrPeopleTagsToUsers(user, scopedSnapshot, result.items);
       sendJson(response, 200, {
         ok: true,
         count: result.count,
@@ -18782,6 +18902,7 @@ async function handleApiRequest(request, response, url) {
         checkedAt: result.checkedAt,
         recordsLimited: Boolean(result.recordsLimited),
         records: limitMobileRecords(result.items.map(buildMobileIsznrPersonRecord), ISZNR_MOBILE_PEOPLE_MAX_RECORDS),
+        updatedUsers,
       });
       return true;
     }

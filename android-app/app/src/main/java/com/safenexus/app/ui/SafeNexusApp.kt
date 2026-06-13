@@ -4286,7 +4286,7 @@ private fun WorkOrdersScreen(
     val filteredPeopleUsers = remember(state.data.workOrderUsers, normalizedQuery) {
         state.data.workOrderUsers.filter { user ->
             normalizedQuery.isBlank() ||
-                listOf(user.label, user.fullName, user.email, user.oib)
+                (listOf(user.label, user.fullName, user.email, user.oib) + user.isznrTags)
                     .any { value -> value.contains(normalizedQuery, ignoreCase = true) }
         }
     }
@@ -4535,7 +4535,6 @@ private fun WorkOrdersScreen(
                                 users = filteredPeopleUsers,
                                 isznrRecords = filteredIsznrPeople,
                                 totalCount = filteredPeopleUsers.size,
-                                isznrTotalCount = state.isznrPeopleRecords.size,
                                 isznrLoading = state.isznrPeopleLoading,
                                 isznrLoaded = state.isznrPeopleLoaded,
                                 isznrError = state.isznrPeopleError,
@@ -4644,7 +4643,6 @@ private fun WorkOrdersScreen(
                             users = filteredPeopleUsers,
                             isznrRecords = filteredIsznrPeople,
                             totalCount = filteredPeopleUsers.size,
-                            isznrTotalCount = state.isznrPeopleRecords.size,
                             isznrLoading = state.isznrPeopleLoading,
                             isznrLoaded = state.isznrPeopleLoaded,
                             isznrError = state.isznrPeopleError,
@@ -7315,11 +7313,6 @@ private data class MobileTrainingItem(
     val documentName: String,
 )
 
-private enum class PeopleTab {
-    Local,
-    Isznr,
-}
-
 private fun parseTrainingItems(record: MobileRecord): List<MobileTrainingItem> {
     val raw = record.meta["trainingItemsJson"].orEmpty()
     if (raw.isBlank()) return emptyList()
@@ -7387,12 +7380,37 @@ private fun trainingStatusColor(status: String): Color {
 
 private fun normalizePeopleOib(value: String): String = value.filter { it.isDigit() }.take(11)
 
+private fun parsePeopleIsznrTags(value: String): List<String> {
+    val normalized = value.trim()
+    if (normalized.isBlank()) return emptyList()
+    if (normalized.startsWith("[")) {
+        return runCatching {
+            val array = JSONArray(normalized)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val tag = array.optString(index).trim()
+                    if (tag.isNotBlank()) add(tag)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+    return normalized.split(",", " ", "\n", "\t")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+}
+
+private fun getPeopleIsznrTags(user: WorkOrderUserOption, record: MobileRecord?): List<String> =
+    (user.isznrTags + parsePeopleIsznrTags(record?.meta?.get("isznrTagsJson").orEmpty()) + parsePeopleIsznrTags(record?.meta?.get("isznrTags").orEmpty()))
+        .map { it.trim() }
+        .filter { it.startsWith("IsZNR") }
+        .distinct()
+
 @Composable
 private fun PeopleDirectoryContent(
     users: List<WorkOrderUserOption>,
     isznrRecords: List<MobileRecord>,
     totalCount: Int,
-    isznrTotalCount: Int,
     isznrLoading: Boolean,
     isznrLoaded: Boolean,
     isznrError: String,
@@ -7400,7 +7418,6 @@ private fun PeopleDirectoryContent(
     onLoadIsznr: (Boolean) -> Unit,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
-    var selectedTab by remember { mutableStateOf(PeopleTab.Local) }
     val isznrByOib = remember(isznrRecords) {
         isznrRecords
             .mapNotNull { record ->
@@ -7414,13 +7431,6 @@ private fun PeopleDirectoryContent(
     }
     val usersWithOib = remember(users) { users.count { user -> normalizePeopleOib(user.oib).isNotBlank() } }
     val visibleUsers = remember(users, displayLimit) { users.take(displayLimit.coerceAtLeast(1)) }
-    val visibleIsznrRecords = remember(isznrRecords, displayLimit) { isznrRecords.take(displayLimit.coerceAtLeast(1)) }
-
-    LaunchedEffect(selectedTab, isznrLoaded, isznrLoading) {
-        if (selectedTab == PeopleTab.Isznr && !isznrLoaded && !isznrLoading) {
-            onLoadIsznr(false)
-        }
-    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -7438,64 +7448,28 @@ private fun PeopleDirectoryContent(
                 subtitle = "$totalCount korisnika · $usersWithOib s OIB-om · $linkedIsznrCount IS ZNR povezano",
                 icon = Icons.Rounded.Person,
             )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MeasurementEquipmentTabChip(
-                    label = "People",
-                    count = totalCount,
-                    selected = selectedTab == PeopleTab.Local,
-                    onClick = { selectedTab = PeopleTab.Local },
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (isznrLoaded) "IS ZNR oznake su upisane na People osobe." else "Osvježi za provjeru OIB-a i dodjelu IS ZNR oznaka.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    modifier = Modifier.weight(1f),
                 )
-                MeasurementEquipmentTabChip(
-                    label = "IS ZNR",
-                    count = isznrTotalCount,
-                    selected = selectedTab == PeopleTab.Isznr,
-                    onClick = {
-                        selectedTab = PeopleTab.Isznr
-                        onLoadIsznr(false)
-                    },
-                )
+                IconButton(onClick = { onLoadIsznr(true) }, enabled = !isznrLoading) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi IS ZNR oznake")
+                }
             }
-
-            if (selectedTab == PeopleTab.Isznr) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        if (isznrLoaded) "Provjera ide po OIB-u iz People modula: stručnjaci, nositelji i ostali." else "Otvori ili osvježi za IS ZNR provjeru po OIB-u.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(onClick = { onLoadIsznr(true) }, enabled = !isznrLoading) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi IS ZNR osobe")
-                    }
-                }
-                AnimatedVisibility(isznrLoading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                AnimatedVisibility(isznrError.isNotBlank()) {
-                    MessageCard(text = isznrError, isError = true)
-                }
-                if (!isznrLoading && isznrRecords.isEmpty()) {
-                    Text(
-                        "IS ZNR nije vratio osobe za prikaz.",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                    )
-                } else {
-                    visibleIsznrRecords.forEach { record ->
-                        PeopleIsznrLine(record = record, onOpenRecord = onOpenRecord)
-                    }
-                    if (isznrRecords.size > visibleIsznrRecords.size) {
-                        Text(
-                            "Prikazano je prvih ${visibleIsznrRecords.size}. Koristi pretragu za sužavanje popisa.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        )
-                    }
-                }
-            } else if (users.isEmpty()) {
+            AnimatedVisibility(isznrLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            AnimatedVisibility(isznrError.isNotBlank()) {
+                MessageCard(text = isznrError, isError = true)
+            }
+            if (users.isEmpty()) {
                 Text(
                     "Nema People korisnika za prikaz.",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
@@ -7530,7 +7504,11 @@ private fun PeopleUserLine(
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
     val oib = normalizePeopleOib(user.oib)
-    val linked = isznrRecord?.meta?.get("isznrLinked").equals("true", ignoreCase = true)
+    val tags = getPeopleIsznrTags(user, isznrRecord)
+    val linked = (
+        isznrRecord?.meta?.get("isznrLinked").equals("true", ignoreCase = true)
+            || tags.isNotEmpty()
+    )
     val hasError = isznrRecord?.meta?.get("isznrError").orEmpty().isNotBlank()
     val accent = when {
         oib.isBlank() -> Color(0xFF64748B)
@@ -7541,7 +7519,7 @@ private fun PeopleUserLine(
     }
     val statusText = when {
         oib.isBlank() -> "Bez OIB-a"
-        linked -> isznrRecord?.status?.ifBlank { "Povezano" } ?: "Povezano"
+        linked -> tags.firstOrNull() ?: isznrRecord?.status?.ifBlank { "Povezano" } ?: "Povezano"
         hasError -> "Greška IS ZNR"
         isznrLoaded -> "Nije pronađeno"
         else -> "Nije provjereno"
@@ -7583,7 +7561,7 @@ private fun PeopleUserLine(
                     if (oib.isNotBlank()) {
                         TrainingMiniChip("OIB $oib", Color(0xFF64748B))
                     }
-                    isznrRecord?.meta?.get("isznrRoles")?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFF059669)) }
+                    tags.forEach { tag -> TrainingMiniChip(tag, Color(0xFF059669)) }
                     isznrRecord?.meta?.get("isznrIds")?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFF2563EB)) }
                 }
             }

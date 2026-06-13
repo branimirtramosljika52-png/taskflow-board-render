@@ -468,6 +468,40 @@ function parseJsonArray(value) {
   }
 }
 
+function normalizeIsznrUserTags(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string" && value.trim().startsWith("[")
+      ? parseJsonArray(value)
+      : String(value ?? "").split(/[,\s]+/);
+  const seen = new Set();
+  return source
+    .map((item) => dbString(item))
+    .filter((item) => /^IsZNR(?:_[A-Za-z0-9]+)*$/.test(item))
+    .filter((item) => {
+      if (seen.has(item)) {
+        return false;
+      }
+      seen.add(item);
+      return true;
+    });
+}
+
+function normalizeUserIsznrSync(value = {}, fallback = {}) {
+  const source = {
+    ...parseJsonObject(fallback, {}),
+    ...parseJsonObject(value, {}),
+  };
+  return {
+    linked: toBooleanFlag(source.linked, false),
+    checkedAt: normalizeTimestamp(source.checkedAt) ?? "",
+    roles: normalizeIsznrUserTags(source.roles ?? source.roleTags ?? []),
+    roleLabels: parseJsonArray(source.roleLabels).map((item) => dbString(item)).filter(Boolean),
+    ids: parseJsonArray(source.ids).map((item) => dbString(item)).filter(Boolean),
+    error: dbString(source.error),
+  };
+}
+
 function mapStoredAttachmentDocument(document = {}) {
   const storedDocument = mapStoredAssetLocation({
     dataUrl: document.dataUrl ?? document.url ?? "",
@@ -1170,6 +1204,8 @@ function sanitizeUser(row) {
   const storedAvatar = mapUserAvatarStorage(row);
   const electricalQualification = mapUserElectricalQualification(row);
   const userDocuments = mapUserDocuments(row);
+  const isznrTags = normalizeIsznrUserTags(row.isznr_tags_json ?? row.isznrTags);
+  const isznrSync = normalizeUserIsznrSync(row.isznr_sync_json ?? row.isznrSync);
 
   return {
     id: String(row.id),
@@ -1215,6 +1251,8 @@ function sanitizeUser(row) {
     avatarStorageUrl: storedAvatar.storageUrl,
     documents: userDocuments,
     electricalQualification,
+    isznrTags,
+    isznrSync,
     mustChangePassword: row.must_change_password === undefined
       ? Boolean(row.mustChangePassword)
       : Boolean(Number(row.must_change_password)),
@@ -1324,6 +1362,8 @@ function normalizeUserInput(input = {}) {
     avatarDataUrl: dbString(input.avatarDataUrl),
     documents,
     electricalQualification,
+    isznrTags: normalizeIsznrUserTags(input.isznrTags ?? input.isznr_tags_json),
+    isznrSync: normalizeUserIsznrSync(input.isznrSync ?? input.isznr_sync_json),
   };
 }
 
@@ -1581,6 +1621,8 @@ async function ensureSchema(connection) {
       avatar_storage_url TEXT NULL,
       electrical_qualification_json LONGTEXT NULL,
       user_documents_json LONGTEXT NULL,
+      isznr_tags_json TEXT NULL,
+      isznr_sync_json LONGTEXT NULL,
       email VARCHAR(255) NOT NULL,
       legacy_username VARCHAR(100) NULL,
       password_hash VARCHAR(255) NOT NULL,
@@ -1833,6 +1875,18 @@ async function ensureSchema(connection) {
     "app_users",
     "user_documents_json",
     "LONGTEXT NULL AFTER electrical_qualification_json",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "isznr_tags_json",
+    "TEXT NULL AFTER user_documents_json",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "isznr_sync_json",
+    "LONGTEXT NULL AFTER isznr_tags_json",
   );
   await ensureColumn(
     connection,
@@ -3523,6 +3577,8 @@ export class MemoryTenantRepository {
       avatarDataUrl: normalized.avatarDataUrl,
       documents: normalizeUserDocuments(normalized.documents),
       electricalQualification: normalizeUserElectricalQualification(normalized.electricalQualification),
+      isznrTags: normalizeIsznrUserTags(normalized.isznrTags),
+      isznrSync: normalizeUserIsznrSync(normalized.isznrSync),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       lastLoginAt: null,
@@ -3582,6 +3638,8 @@ export class MemoryTenantRepository {
       normalized.electricalQualification,
       current.electricalQualification,
     );
+    current.isznrTags = normalizeIsznrUserTags(normalized.isznrTags);
+    current.isznrSync = normalizeUserIsznrSync(normalized.isznrSync);
     current.updatedAt = new Date().toISOString();
 
     if (normalized.password) {
@@ -3590,6 +3648,23 @@ export class MemoryTenantRepository {
       current.mustChangePassword = false;
     }
 
+    return this.getUserById(current.id);
+  }
+
+  async updateUserIsznrSync(actor, userId, patch = {}) {
+    const current = this.users.find((item) => item.id === String(userId));
+
+    if (!current) {
+      return null;
+    }
+
+    if (!canManageOrganizationUsers(actor, current.organizationIds ?? current.organizationId, current.role)) {
+      throw createHttpError(403, "Nemate pravo mijenjati ovog korisnika.");
+    }
+
+    current.isznrTags = normalizeIsznrUserTags(patch.isznrTags);
+    current.isznrSync = normalizeUserIsznrSync(patch.isznrSync);
+    current.updatedAt = new Date().toISOString();
     return this.getUserById(current.id);
   }
 
@@ -4776,8 +4851,9 @@ export class MySqlTenantRepository {
             (organization_id, organization_ids_csv, first_name, last_name, display_name, title, profile_role, oib, phone, address, education,
              client_company_ids_json, client_location_ids_json, client_access_all_locations, avatar_data_url,
              avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
-             electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, must_change_password, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             electrical_qualification_json, user_documents_json, isznr_tags_json, isznr_sync_json,
+             email, legacy_username, password_hash, must_change_password, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
@@ -4801,6 +4877,8 @@ export class MySqlTenantRepository {
           preparedAvatar.storedAvatar.storageUrl || null,
           JSON.stringify(electricalQualification),
           JSON.stringify(preparedUserDocuments.nextDocuments),
+          JSON.stringify(normalized.isznrTags ?? []),
+          JSON.stringify(normalized.isznrSync ?? {}),
           normalized.email,
           normalized.legacyUsername || null,
           passwordHash,
@@ -4938,6 +5016,8 @@ export class MySqlTenantRepository {
         "avatar_storage_url = ?",
         "electrical_qualification_json = ?",
         "user_documents_json = ?",
+        "isznr_tags_json = ?",
+        "isznr_sync_json = ?",
         "email = ?",
         "legacy_username = ?",
         "role = ?",
@@ -4965,6 +5045,8 @@ export class MySqlTenantRepository {
         preparedAvatar.storedAvatar.storageUrl || null,
         JSON.stringify(electricalQualification),
         JSON.stringify(preparedUserDocuments.nextDocuments),
+        JSON.stringify(normalized.isznrTags ?? []),
+        JSON.stringify(normalized.isznrSync ?? {}),
         normalized.email,
         normalized.legacyUsername || null,
         normalized.role,
@@ -4999,6 +5081,52 @@ export class MySqlTenantRepository {
           : [],
       );
       rethrowDatabaseError(error, "Korisnik s tim emailom ili korisnickim imenom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateUserIsznrSync(actor, userId, patch = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT u.*, o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.id = ?
+          LIMIT 1
+        `,
+        [Number(userId)],
+      );
+      const current = rows[0];
+
+      if (!current) {
+        return null;
+      }
+
+      const currentUser = sanitizeUser(current);
+      if (!canManageOrganizationUsers(actor, currentUser.organizationIds, currentUser.role)) {
+        throw createHttpError(403, "Nemate pravo mijenjati ovog korisnika.");
+      }
+
+      await connection.query(
+        `
+          UPDATE app_users
+          SET isznr_tags_json = ?,
+              isznr_sync_json = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [
+          JSON.stringify(normalizeIsznrUserTags(patch.isznrTags)),
+          JSON.stringify(normalizeUserIsznrSync(patch.isznrSync)),
+          Number(userId),
+        ],
+      );
+
+      return this.getUserById(userId);
     } finally {
       connection.release();
     }

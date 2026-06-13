@@ -11516,6 +11516,23 @@ body.is-location-editor-open {
   color: #61728a;
 }
 
+.people-isznr-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.people-isznr-tag {
+  width: auto !important;
+  padding: 4px 8px !important;
+  border-color: rgba(45, 143, 83, 0.2) !important;
+  background: rgba(232, 247, 238, 0.92) !important;
+  color: #2b7a52 !important;
+  font-size: 0.68rem !important;
+  font-weight: 900 !important;
+}
+
 @media (max-width: 720px) {
   .people-isznr-summary,
   .people-isznr-card {

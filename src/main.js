@@ -49538,6 +49538,44 @@ function getPeopleIsznrRecordsByOib() {
   return map;
 }
 
+function parsePeopleIsznrTagsJson(value = "") {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return [];
+  }
+  if (normalized.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(normalized);
+      return Array.isArray(parsed) ? parsed.map((item) => String(item || "").trim()).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+  return normalized.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function getPeopleIsznrTagsForUser(user = {}) {
+  const tags = new Set(parsePeopleIsznrTagsJson(user.isznrTags));
+  const oib = getPeopleUserOib(user);
+  const record = oib ? getPeopleIsznrRecordsByOib().get(oib) : null;
+  parsePeopleIsznrTagsJson(record?.meta?.isznrTagsJson || record?.meta?.isznrTags).forEach((tag) => tags.add(tag));
+  return [...tags].filter((tag) => /^IsZNR/.test(tag));
+}
+
+function applyPeopleIsznrUpdatedUsers(updatedUsers = []) {
+  if (!Array.isArray(updatedUsers) || updatedUsers.length === 0) {
+    return;
+  }
+  const updatesById = new Map(updatedUsers.map((user) => [String(user?.id || ""), user]).filter(([id]) => id));
+  state.users = (state.users ?? []).map((user) => {
+    const updated = updatesById.get(String(user?.id || ""));
+    return updated ? { ...user, ...updated } : user;
+  });
+}
+
 function getPeopleIsznrStatusForUser(user = {}) {
   const isznrState = getPeopleIsznrState();
   const oib = getPeopleUserOib(user);
@@ -49561,9 +49599,10 @@ function getPeopleIsznrStatusForUser(user = {}) {
   }
 
   const linked = String(record?.meta?.isznrLinked || "").toLowerCase() === "true";
+  const tags = getPeopleIsznrTagsForUser(user);
   return {
     kind: linked ? "linked" : "unlinked",
-    label: linked ? (record.status || "Povezano u IS ZNR") : "Nije pronađeno u IS ZNR",
+    label: linked ? (tags.join(", ") || record.status || "Povezano u IS ZNR") : "Nije pronađeno u IS ZNR",
     record,
   };
 }
@@ -49622,7 +49661,19 @@ function renderPeopleIsznrPanel() {
   const isznrState = getPeopleIsznrState();
   const usersWithOib = (state.users ?? []).filter((user) => getPeopleUserOib(user));
   const records = Array.isArray(isznrState.records) ? isznrState.records : [];
-  const linkedCount = records.filter((record) => String(record?.meta?.isznrLinked || "").toLowerCase() === "true").length;
+  const linkedOibs = new Set();
+  records
+    .filter((record) => String(record?.meta?.isznrLinked || "").toLowerCase() === "true")
+    .forEach((record) => {
+      const oib = normalizePeopleIsznrOib(record?.meta?.oib);
+      if (oib) {
+        linkedOibs.add(oib);
+      }
+    });
+  usersWithOib
+    .filter((user) => getPeopleIsznrTagsForUser(user).length > 0)
+    .forEach((user) => linkedOibs.add(getPeopleUserOib(user)));
+  const linkedCount = linkedOibs.size;
   const totalWithOib = Number(isznrState.totalPeopleWithOib) || usersWithOib.length;
   const unlinkedCount = isznrState.loaded ? Math.max(0, totalWithOib - linkedCount) : 0;
 
@@ -49642,45 +49693,10 @@ function renderPeopleIsznrPanel() {
   if (peopleIsznrFeedback) {
     const feedback = isznrState.error
       || (isznrState.loading ? "Provjeravam OIB-e iz People modula u IS ZNR-u..." : "")
-      || (isznrState.checkedAt ? `Zadnja provjera: ${formatCompactDateTime(isznrState.checkedAt)}${isznrState.recordsLimited ? " - prikaz je ograničen." : ""}` : "");
+      || (isznrState.checkedAt ? `Zadnja provjera: ${formatCompactDateTime(isznrState.checkedAt)}. Oznake su upisane na People korisnike.${isznrState.recordsLimited ? " Prikaz je ograničen." : ""}` : "");
     peopleIsznrFeedback.textContent = feedback;
     peopleIsznrFeedback.classList.toggle("is-error", Boolean(isznrState.error));
   }
-
-  if (!peopleIsznrList || !peopleIsznrEmpty) {
-    return;
-  }
-
-  if (isznrState.loading) {
-    const loadingCard = document.createElement("div");
-    loadingCard.className = "offers-empty-card";
-    loadingCard.textContent = "Dohvaćam stručnjake, nositelje i ostale osobe iz IS ZNR-a po People OIB-ima...";
-    peopleIsznrList.replaceChildren(loadingCard);
-    peopleIsznrEmpty.hidden = true;
-    return;
-  }
-
-  if (!isznrState.loaded && !records.length) {
-    peopleIsznrList.replaceChildren();
-    peopleIsznrEmpty.hidden = false;
-    peopleIsznrEmpty.textContent = "Provjeri osobe za prikaz IS ZNR statusa po OIB-u.";
-    return;
-  }
-
-  if (!records.length) {
-    peopleIsznrList.replaceChildren();
-    peopleIsznrEmpty.hidden = false;
-    peopleIsznrEmpty.textContent = "Nema People korisnika s OIB-om za IS ZNR provjeru.";
-    return;
-  }
-
-  const recordsByOib = getPeopleIsznrRecordsByOib();
-  const orderedRecords = [
-    ...usersWithOib.map((user) => recordsByOib.get(getPeopleUserOib(user))).filter(Boolean),
-    ...records.filter((record) => !usersWithOib.some((user) => getPeopleUserOib(user) === normalizePeopleIsznrOib(record?.meta?.oib))),
-  ];
-  peopleIsznrEmpty.hidden = true;
-  peopleIsznrList.replaceChildren(...orderedRecords.map((record) => createPeopleIsznrCard(record)));
 }
 
 async function loadPeopleIsznrRecords({ force = false } = {}) {
@@ -49716,6 +49732,7 @@ async function loadPeopleIsznrRecords({ force = false } = {}) {
     isznrState.checkedAt = payload?.checkedAt || new Date().toISOString();
     isznrState.totalPeopleWithOib = Number(payload?.totalPeopleWithOib) || isznrState.records.length;
     isznrState.recordsLimited = Boolean(payload?.recordsLimited);
+    applyPeopleIsznrUpdatedUsers(payload?.updatedUsers);
   } catch (error) {
     isznrState.error = error.message || "IS ZNR osobe nisu dohvaćene.";
     isznrState.loaded = true;
@@ -49754,6 +49771,13 @@ function createUserIdentityCell(user) {
   }
 
   copy.append(...lines);
+  const isznrTags = getPeopleIsznrTagsForUser(user);
+  if (!isControlPanelUserManagementScope() && isznrTags.length > 0) {
+    const tagRow = document.createElement("div");
+    tagRow.className = "people-isznr-tag-row";
+    tagRow.append(...isznrTags.map((tag) => createMetaPill(tag, "people-isznr-tag")));
+    copy.append(tagRow);
+  }
 
   stack.append(avatar, copy);
   cell.append(stack);

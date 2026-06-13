@@ -1749,6 +1749,7 @@ private fun JSONArray?.toWorkOrderUsers(): List<WorkOrderUserOption> {
                     fullName = item.firstClean("fullName"),
                     email = item.firstClean("email"),
                     oib = item.firstClean("oib"),
+                    isznrTags = item.optJSONArray("isznrTags").toStringList(),
                 ),
             )
         }
