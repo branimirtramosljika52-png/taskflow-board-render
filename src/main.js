@@ -4646,6 +4646,7 @@ const measurementEquipmentTypeInput = document.querySelector("#measurement-equip
 const measurementEquipmentDeviceCodeInput = document.querySelector("#measurement-equipment-device-code");
 const measurementEquipmentSerialNumberInput = document.querySelector("#measurement-equipment-serial-number");
 const measurementEquipmentInventoryNumberInput = document.querySelector("#measurement-equipment-inventory-number");
+const measurementEquipmentIsznrIdInput = document.querySelector("#measurement-equipment-isznr-id");
 const measurementEquipmentEnteredByInput = document.querySelector("#measurement-equipment-entered-by");
 const measurementEquipmentApprovedByInput = document.querySelector("#measurement-equipment-approved-by");
 const measurementEquipmentEntryDateInput = document.querySelector("#measurement-equipment-entry-date");
@@ -53828,6 +53829,7 @@ const MEASUREMENT_EQUIPMENT_CARD_PLACEHOLDER_BASE_DEFINITIONS = Object.freeze([
   { key: "OZNAKA_UREDAJA", label: "Oznaka uređaja" },
   { key: "SERIJSKI_BROJ", label: "Serijski broj" },
   { key: "INV_BROJ", label: "Inventarni broj" },
+  { key: "ISZNR_ID", label: "IS ZNR ID" },
   { key: "MJERNU_OPREMU_UNIO", label: "Mjernu opremu unio" },
   { key: "ODOBRIO", label: "Odobrio" },
   { key: "DATUM_UNOSA", label: "Datum unosa" },
@@ -69923,6 +69925,7 @@ function buildMeasurementEquipmentExportPlaceholders() {
     OZNAKA_UREDAJA: measurementEquipmentDeviceCodeInput?.value || "",
     SERIJSKI_BROJ: measurementEquipmentSerialNumberInput?.value || "",
     INV_BROJ: measurementEquipmentInventoryNumberInput?.value || "",
+    ISZNR_ID: measurementEquipmentIsznrIdInput?.value || "",
     MJERNU_OPREMU_UNIO: measurementEquipmentEnteredByInput?.value || "",
     ODOBRIO: measurementEquipmentApprovedByInput?.value || "",
     DATUM_UNOSA: measurementEquipmentEntryDateInput?.value ? formatCompactDate(measurementEquipmentEntryDateInput.value) : "",
@@ -69983,6 +69986,7 @@ function buildMeasurementEquipmentExportPlaceholdersForItem(item = {}) {
     OZNAKA_UREDAJA: item?.deviceCode || "",
     SERIJSKI_BROJ: item?.serialNumber || "",
     INV_BROJ: item?.inventoryNumber || "",
+    ISZNR_ID: item?.isznrInstrumentId || item?.isznrId || item?.externalIsznrId || "",
     MJERNU_OPREMU_UNIO: item?.enteredBy || "",
     ODOBRIO: item?.approvedBy || "",
     DATUM_UNOSA: item?.entryDate ? formatCompactDate(item.entryDate) : "",
@@ -74768,6 +74772,7 @@ function buildMeasurementEquipmentPayload() {
     deviceCode: measurementEquipmentDeviceCodeInput?.value || "",
     serialNumber: measurementEquipmentSerialNumberInput?.value || "",
     inventoryNumber: measurementEquipmentInventoryNumberInput?.value || "",
+    isznrInstrumentId: measurementEquipmentIsznrIdInput?.value || "",
     enteredBy: measurementEquipmentEnteredByInput?.value || "",
     approvedBy: measurementEquipmentApprovedByInput?.value || "",
     entryDate: measurementEquipmentEntryDateInput?.value || "",
@@ -74839,6 +74844,9 @@ function resetMeasurementEquipmentForm() {
   if (measurementEquipmentSerialNumberInput) {
     measurementEquipmentSerialNumberInput.value = "";
   }
+  if (measurementEquipmentIsznrIdInput) {
+    measurementEquipmentIsznrIdInput.value = "";
+  }
   if (measurementEquipmentEnteredByInput) {
     measurementEquipmentEnteredByInput.value = "";
   }
@@ -74884,6 +74892,9 @@ function hydrateMeasurementEquipmentForm(item) {
   measurementEquipmentDeviceCodeInput.value = item.deviceCode || "";
   measurementEquipmentSerialNumberInput.value = item.serialNumber || "";
   measurementEquipmentInventoryNumberInput.value = item.inventoryNumber || "";
+  if (measurementEquipmentIsznrIdInput) {
+    measurementEquipmentIsznrIdInput.value = item.isznrInstrumentId || item.isznrId || item.externalIsznrId || "";
+  }
   measurementEquipmentEnteredByInput.value = item.enteredBy || "";
   measurementEquipmentApprovedByInput.value = item.approvedBy || "";
   measurementEquipmentEntryDateInput.value = item.entryDate || "";
@@ -75172,7 +75183,7 @@ function renderMeasurementEquipmentIsznrPanel() {
     const meta = document.createElement("p");
     meta.className = "measurement-equipment-card-meta";
     meta.textContent = [
-      item.isznrId ? `ISZNR ID ${item.isznrId}` : "",
+      item.isznrId ? `IS ZNR ID ${item.isznrId}` : "",
       item.serialNumber ? `Ser. ${item.serialNumber}` : "",
     ].filter(Boolean).join(" | ") || "Bez identifikatora";
     copy.append(title, meta);
@@ -75377,7 +75388,7 @@ function renderMeasurementEquipmentModule() {
       item.deviceCode ? `Ozn. ${item.deviceCode}` : "",
       item.serialNumber ? `Ser. ${item.serialNumber}` : "",
       item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
-      item.isznrInstrumentId ? `ISZNR ${item.isznrInstrumentId}` : "",
+      item.isznrInstrumentId ? `IS ZNR ID ${item.isznrInstrumentId}` : "",
     ].filter(Boolean).join(" | ") || "Bez dodatnih podataka";
     copy.append(title, meta);
 

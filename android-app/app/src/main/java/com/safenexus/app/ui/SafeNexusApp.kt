@@ -7971,7 +7971,7 @@ private fun MeasurementEquipmentLine(
                     )
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    if (isznrId.isNotBlank()) MeasurementEquipmentMiniChip("ISZNR $isznrId", accent)
+                    if (isznrId.isNotBlank()) MeasurementEquipmentMiniChip("IS ZNR ID $isznrId", accent)
                     if (serial.isNotBlank()) MeasurementEquipmentMiniChip("Ser. $serial", Color(0xFF2563EB))
                     if (inventory.isNotBlank()) MeasurementEquipmentMiniChip("Inv. $inventory", Color(0xFF7C3AED))
                 }
