@@ -81,6 +81,7 @@ data class WorkOrderUserOption(
     val label: String,
     val fullName: String,
     val email: String,
+    val oib: String,
 )
 
 data class WorkOrderServiceOption(

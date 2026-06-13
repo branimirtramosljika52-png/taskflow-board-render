@@ -4356,6 +4356,36 @@
 
             <p id="user-management-note" class="helper-copy people-management-copy" hidden></p>
 
+            <section id="people-isznr-panel" class="people-isznr-panel" aria-label="IS ZNR osobe">
+              <div class="section-heading people-isznr-head">
+                <div>
+                  <p class="section-kicker">IS ZNR</p>
+                  <h3>Stručnjaci, nositelji i zaposlenici</h3>
+                </div>
+                <button id="people-isznr-refresh" type="button" class="ghost-button">Provjeri osobe</button>
+              </div>
+              <p class="helper-copy people-isznr-copy">
+                Provjera ide po OIB-u iz People korisnika. IS ZNR status ovdje nije dio osposobljavanja.
+              </p>
+              <div class="people-isznr-summary" aria-label="IS ZNR sažetak osoba">
+                <article class="people-isznr-stat">
+                  <span>People s OIB-om</span>
+                  <strong id="people-isznr-count">0</strong>
+                </article>
+                <article class="people-isznr-stat is-linked">
+                  <span>Povezano</span>
+                  <strong id="people-isznr-linked-count">0</strong>
+                </article>
+                <article class="people-isznr-stat is-unlinked">
+                  <span>Nije pronađeno</span>
+                  <strong id="people-isznr-unlinked-count">0</strong>
+                </article>
+              </div>
+              <p id="people-isznr-feedback" class="helper-copy people-isznr-feedback" aria-live="polite"></p>
+              <div id="people-isznr-list" class="people-isznr-list"></div>
+              <p id="people-isznr-empty" class="empty-state" hidden>Provjeri osobe za prikaz IS ZNR statusa po OIB-u.</p>
+            </section>
+
             <div id="people-user-sheets" class="people-user-sheets" role="tablist" aria-label="Prikaz korisnika">
               <button type="button" class="people-user-sheet is-active" data-people-user-sheet="active" aria-selected="true">
                 <strong>Aktivni</strong>

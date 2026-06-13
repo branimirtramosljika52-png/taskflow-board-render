@@ -2038,6 +2038,15 @@ const state = {
   isznrApiSettings: {
     ...DEFAULT_ISZNR_API_SETTINGS,
   },
+  isznrPeople: {
+    records: [],
+    loading: false,
+    loaded: false,
+    error: "",
+    checkedAt: "",
+    totalPeopleWithOib: 0,
+    recordsLimited: false,
+  },
   appCapabilities: [],
   appRolePermissions: normalizeAppRolePermissions([]),
   appPermissions: {},
@@ -6398,6 +6407,14 @@ const peopleWorkspaceCopy = document.querySelector("#people-workspace-copy");
 const peopleUsersPanel = document.querySelector("#people-users-panel");
 const peopleWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-people-workspace-tab]"));
 const userPeopleOnlyElements = Array.from(document.querySelectorAll("[data-user-management-scope=\"people\"]"));
+const peopleIsznrPanel = document.querySelector("#people-isznr-panel");
+const peopleIsznrRefreshButton = document.querySelector("#people-isznr-refresh");
+const peopleIsznrCount = document.querySelector("#people-isznr-count");
+const peopleIsznrLinkedCount = document.querySelector("#people-isznr-linked-count");
+const peopleIsznrUnlinkedCount = document.querySelector("#people-isznr-unlinked-count");
+const peopleIsznrFeedback = document.querySelector("#people-isznr-feedback");
+const peopleIsznrList = document.querySelector("#people-isznr-list");
+const peopleIsznrEmpty = document.querySelector("#people-isznr-empty");
 const peopleTrainingPanel = document.querySelector("#people-training-panel");
 const peopleTrainingEditorBackdrop = document.querySelector("#people-training-editor-backdrop");
 const peopleTrainingImportButton = document.querySelector("#people-training-import-button");
@@ -49479,6 +49496,236 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   };
 }
 
+function normalizePeopleIsznrOib(value = "") {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 11);
+}
+
+function getPeopleUserOib(user = {}) {
+  return normalizePeopleIsznrOib(
+    user?.oib
+    || user?.oibNumber
+    || user?.taxId
+    || user?.personalOib
+    || user?.personalIdentificationNumber
+    || user?.identificationNumber
+    || user?.nationalId,
+  );
+}
+
+function getPeopleIsznrState() {
+  if (!state.isznrPeople || typeof state.isznrPeople !== "object") {
+    state.isznrPeople = {
+      records: [],
+      loading: false,
+      loaded: false,
+      error: "",
+      checkedAt: "",
+      totalPeopleWithOib: 0,
+      recordsLimited: false,
+    };
+  }
+  return state.isznrPeople;
+}
+
+function getPeopleIsznrRecordsByOib() {
+  const map = new Map();
+  (getPeopleIsznrState().records ?? []).forEach((record) => {
+    const oib = normalizePeopleIsznrOib(record?.meta?.oib || record?.oib);
+    if (oib) {
+      map.set(oib, record);
+    }
+  });
+  return map;
+}
+
+function getPeopleIsznrStatusForUser(user = {}) {
+  const isznrState = getPeopleIsznrState();
+  const oib = getPeopleUserOib(user);
+  if (!oib) {
+    return { kind: "pending", label: "Nema OIB za IS ZNR", record: null };
+  }
+  if (isznrState.loading) {
+    return { kind: "pending", label: "Provjera u tijeku", record: null };
+  }
+  if (!isznrState.loaded) {
+    return { kind: "pending", label: "Nije provjereno", record: null };
+  }
+
+  const record = getPeopleIsznrRecordsByOib().get(oib) || null;
+  if (!record) {
+    return { kind: "unlinked", label: "Nije pronađeno u IS ZNR", record: null };
+  }
+
+  if (String(record?.meta?.isznrError || "").trim()) {
+    return { kind: "error", label: "Greška provjere", record };
+  }
+
+  const linked = String(record?.meta?.isznrLinked || "").toLowerCase() === "true";
+  return {
+    kind: linked ? "linked" : "unlinked",
+    label: linked ? (record.status || "Povezano u IS ZNR") : "Nije pronađeno u IS ZNR",
+    record,
+  };
+}
+
+function createPeopleIsznrTableLine(user = {}) {
+  if (isControlPanelUserManagementScope()) {
+    return null;
+  }
+  const status = getPeopleIsznrStatusForUser(user);
+  return createListLine(`IS ZNR: ${status.label}`, `list-tertiary people-isznr-table-status is-${status.kind}`);
+}
+
+function createPeopleIsznrCard(record = {}) {
+  const linked = String(record?.meta?.isznrLinked || "").toLowerCase() === "true";
+  const hasError = Boolean(String(record?.meta?.isznrError || "").trim());
+  const statusClass = linked ? "linked" : hasError ? "error" : "unlinked";
+  const statusLabel = linked
+    ? (record.status || "Povezano")
+    : hasError
+      ? "Greška"
+      : "Nije pronađeno";
+  const card = document.createElement("article");
+  card.className = `people-isznr-card is-${statusClass}`;
+
+  const copy = document.createElement("div");
+  copy.className = "people-isznr-card-copy";
+  const title = document.createElement("strong");
+  title.textContent = record.title || "Osoba";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = record.subtitle || record?.meta?.email || "People korisnik";
+  const details = document.createElement("span");
+  details.textContent = [
+    record?.meta?.oib ? `OIB ${record.meta.oib}` : "",
+    record?.meta?.isznrRoles || "",
+    record?.meta?.isznrIds || "",
+    record?.meta?.isznrError || "",
+  ].filter(Boolean).join(" | ") || "Bez IS ZNR detalja";
+  copy.append(title, subtitle, details);
+
+  const badge = createBadge(statusLabel, `people-isznr-status is-${statusClass}`);
+  card.append(copy, badge);
+  return card;
+}
+
+function renderPeopleIsznrPanel() {
+  if (!peopleIsznrPanel) {
+    return;
+  }
+
+  const isAvailable = !isControlPanelUserManagementScope() && getCanManagePeople();
+  peopleIsznrPanel.hidden = !isAvailable;
+  if (!isAvailable) {
+    return;
+  }
+
+  const isznrState = getPeopleIsznrState();
+  const usersWithOib = (state.users ?? []).filter((user) => getPeopleUserOib(user));
+  const records = Array.isArray(isznrState.records) ? isznrState.records : [];
+  const linkedCount = records.filter((record) => String(record?.meta?.isznrLinked || "").toLowerCase() === "true").length;
+  const totalWithOib = Number(isznrState.totalPeopleWithOib) || usersWithOib.length;
+  const unlinkedCount = isznrState.loaded ? Math.max(0, totalWithOib - linkedCount) : 0;
+
+  if (peopleIsznrRefreshButton) {
+    peopleIsznrRefreshButton.disabled = isznrState.loading;
+    peopleIsznrRefreshButton.textContent = isznrState.loading ? "Provjeravam..." : "Provjeri osobe";
+  }
+  if (peopleIsznrCount) {
+    peopleIsznrCount.textContent = String(totalWithOib);
+  }
+  if (peopleIsznrLinkedCount) {
+    peopleIsznrLinkedCount.textContent = String(linkedCount);
+  }
+  if (peopleIsznrUnlinkedCount) {
+    peopleIsznrUnlinkedCount.textContent = String(unlinkedCount);
+  }
+  if (peopleIsznrFeedback) {
+    const feedback = isznrState.error
+      || (isznrState.loading ? "Provjeravam OIB-e iz People modula u IS ZNR-u..." : "")
+      || (isznrState.checkedAt ? `Zadnja provjera: ${formatCompactDateTime(isznrState.checkedAt)}${isznrState.recordsLimited ? " - prikaz je ograničen." : ""}` : "");
+    peopleIsznrFeedback.textContent = feedback;
+    peopleIsznrFeedback.classList.toggle("is-error", Boolean(isznrState.error));
+  }
+
+  if (!peopleIsznrList || !peopleIsznrEmpty) {
+    return;
+  }
+
+  if (isznrState.loading) {
+    const loadingCard = document.createElement("div");
+    loadingCard.className = "offers-empty-card";
+    loadingCard.textContent = "Dohvaćam stručnjake, nositelje i ostale osobe iz IS ZNR-a po People OIB-ima...";
+    peopleIsznrList.replaceChildren(loadingCard);
+    peopleIsznrEmpty.hidden = true;
+    return;
+  }
+
+  if (!isznrState.loaded && !records.length) {
+    peopleIsznrList.replaceChildren();
+    peopleIsznrEmpty.hidden = false;
+    peopleIsznrEmpty.textContent = "Provjeri osobe za prikaz IS ZNR statusa po OIB-u.";
+    return;
+  }
+
+  if (!records.length) {
+    peopleIsznrList.replaceChildren();
+    peopleIsznrEmpty.hidden = false;
+    peopleIsznrEmpty.textContent = "Nema People korisnika s OIB-om za IS ZNR provjeru.";
+    return;
+  }
+
+  const recordsByOib = getPeopleIsznrRecordsByOib();
+  const orderedRecords = [
+    ...usersWithOib.map((user) => recordsByOib.get(getPeopleUserOib(user))).filter(Boolean),
+    ...records.filter((record) => !usersWithOib.some((user) => getPeopleUserOib(user) === normalizePeopleIsznrOib(record?.meta?.oib))),
+  ];
+  peopleIsznrEmpty.hidden = true;
+  peopleIsznrList.replaceChildren(...orderedRecords.map((record) => createPeopleIsznrCard(record)));
+}
+
+async function loadPeopleIsznrRecords({ force = false } = {}) {
+  const isznrState = getPeopleIsznrState();
+  if (isznrState.loading) {
+    return;
+  }
+  if (!force && isznrState.loaded) {
+    renderPeopleIsznrPanel();
+    return;
+  }
+  if (!getCanManagePeople()) {
+    isznrState.error = "Nemate pravo provjeriti People osobe u IS ZNR-u.";
+    renderPeopleIsznrPanel();
+    return;
+  }
+
+  isznrState.loading = true;
+  isznrState.error = "";
+  renderPeopleIsznrPanel();
+  renderUsers();
+
+  try {
+    const payload = await apiRequestWithTransientRetry("/isznr/people", {
+      method: "POST",
+    }, {
+      maxAttempts: 2,
+      delays: [1500],
+    });
+    isznrState.records = Array.isArray(payload?.records) ? payload.records : [];
+    isznrState.loaded = true;
+    isznrState.error = "";
+    isznrState.checkedAt = payload?.checkedAt || new Date().toISOString();
+    isznrState.totalPeopleWithOib = Number(payload?.totalPeopleWithOib) || isznrState.records.length;
+    isznrState.recordsLimited = Boolean(payload?.recordsLimited);
+  } catch (error) {
+    isznrState.error = error.message || "IS ZNR osobe nisu dohvaćene.";
+    isznrState.loaded = true;
+  } finally {
+    isznrState.loading = false;
+    renderPeopleIsznrPanel();
+    renderUsers();
+  }
+}
+
 function createUserIdentityCell(user) {
   const cell = document.createElement("td");
   const stack = document.createElement("div");
@@ -49500,6 +49747,10 @@ function createUserIdentityCell(user) {
 
   if (!isControlPanelUserManagementScope()) {
     lines.push(createListLine(oib ? `OIB ${oib}` : "OIB nije upisan", "list-tertiary"));
+    const isznrLine = createPeopleIsznrTableLine(user);
+    if (isznrLine) {
+      lines.push(isznrLine);
+    }
   }
 
   copy.append(...lines);
@@ -119883,6 +120134,7 @@ function renderUsers() {
   }
 
   updatePeopleUserSheetChrome(state.users);
+  renderPeopleIsznrPanel();
 
   const activeSheet = normalizePeopleUserSheet(state.peopleUserSheet);
   const scopedUsers = showAccountAccess
@@ -150821,6 +151073,10 @@ peopleUserSheetButtons.forEach((button) => {
     state.peopleUserSheet = nextSheet;
     renderUsers();
   });
+});
+
+peopleIsznrRefreshButton?.addEventListener("click", () => {
+  void loadPeopleIsznrRecords({ force: true });
 });
 
 peopleTrainingNewButton?.addEventListener("click", (event) => {

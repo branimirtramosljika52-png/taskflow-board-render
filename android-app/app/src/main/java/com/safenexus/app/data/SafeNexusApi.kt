@@ -1748,6 +1748,7 @@ private fun JSONArray?.toWorkOrderUsers(): List<WorkOrderUserOption> {
                     label = item.firstClean("label"),
                     fullName = item.firstClean("fullName"),
                     email = item.firstClean("email"),
+                    oib = item.firstClean("oib"),
                 ),
             )
         }

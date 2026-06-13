@@ -99,7 +99,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.94.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.95.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -17383,11 +17383,56 @@ async function fetchIsznrPeopleMatchesByOib({
   };
 }
 
+function getIsznrUserCandidateOib(user = {}) {
+  const qualification = user?.electricalQualification && typeof user.electricalQualification === "object"
+    ? user.electricalQualification
+    : {};
+  return normalizeIsznrOib(
+    user?.oib
+    || user?.oibNumber
+    || user?.taxId
+    || user?.personalOib
+    || user?.personalIdentificationNumber
+    || user?.identificationNumber
+    || user?.nationalId
+    || qualification.oib,
+  );
+}
+
+function buildIsznrPeopleCandidatesFromUsers(users = []) {
+  const candidates = [];
+  const seenOibs = new Set();
+  (Array.isArray(users) ? users : []).forEach((user) => {
+    if (!user || typeof user !== "object") {
+      return;
+    }
+    const oib = getIsznrUserCandidateOib(user);
+    if (!/^\d{11}$/.test(oib) || seenOibs.has(oib)) {
+      return;
+    }
+    seenOibs.add(oib);
+    candidates.push({
+      id: normalizeInputValue(user.id),
+      sourceType: "user",
+      title: getMobileUserDocumentName(user) || "Osoba",
+      subtitle: [
+        normalizeInputValue(user.email),
+        normalizeInputValue(user.profileRole || user.role),
+        user.isActive === false ? "Neaktivan" : "Aktivan",
+      ].filter(Boolean).join(" - "),
+      email: normalizeInputValue(user.email),
+      status: user.isActive === false ? "Neaktivan" : "Aktivan",
+      oib,
+    });
+  });
+  return candidates;
+}
+
 async function fetchMobileIsznrPeopleList({
   baseUrl = "",
   username = "",
   password = "",
-  peopleTrainingRecords = [],
+  users = [],
   maxRecords = ISZNR_MOBILE_PEOPLE_MAX_RECORDS,
 } = {}) {
   const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
@@ -17401,21 +17446,7 @@ async function fetchMobileIsznrPeopleList({
     throw createRequestError(400, "ISZNR lozinka nije spremljena. Spremi ju u Settings prije dohvata zaposlenika.");
   }
 
-  const candidates = [];
-  const seenOibs = new Set();
-  (Array.isArray(peopleTrainingRecords) ? peopleTrainingRecords : []).forEach((record) => {
-    const oib = normalizeIsznrOib(record.oib);
-    if (!/^\d{11}$/.test(oib) || seenOibs.has(oib)) {
-      return;
-    }
-    seenOibs.add(oib);
-    candidates.push({
-      id: normalizeInputValue(record.id),
-      title: normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ")) || "Osoba",
-      subtitle: [normalizeInputValue(record.companyName), normalizeInputValue(record.jobTitle || record.workPlace)].filter(Boolean).join(" - "),
-      oib,
-    });
-  });
+  const candidates = buildIsznrPeopleCandidatesFromUsers(users);
 
   const limitedCandidates = candidates.slice(0, Math.max(1, Number(maxRecords) || ISZNR_MOBILE_PEOPLE_MAX_RECORDS));
   const checked = await mapIsznrWithConcurrency(limitedCandidates, 3, async (person) => {
@@ -17461,6 +17492,9 @@ function buildMobileIsznrPersonRecord(entry = {}) {
     coordinates: "",
     meta: {
       oib: normalizeInputValue(entry.oib),
+      email: normalizeInputValue(entry.email),
+      sourceType: normalizeInputValue(entry.sourceType || "user"),
+      localStatus: normalizeInputValue(entry.status),
       isznrLinked: linked ? "true" : "false",
       isznrRoles: roleLabels.join(", "),
       isznrIds: ids.join(", "),
@@ -18175,6 +18209,7 @@ function buildMobileWorkOrderUserOptions(users = []) {
         label,
         fullName,
         email,
+        oib: getIsznrUserCandidateOib(user),
       };
     })
     .filter((user) => user.label)
@@ -18701,7 +18736,7 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/mobile/isznr/people") {
       const { scopedSnapshot } = await getScopedState(user, request);
-      if (!canManagePeopleTrainingRecords(user) && !canUseScopedSnapshotAppPermission(user, scopedSnapshot, "people.manage")) {
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "people.manage")) {
         sendError(response, 403, "Nemate pravo dohvatiti IS ZNR evidenciju zaposlenih.");
         return true;
       }
@@ -18711,7 +18746,33 @@ async function handleApiRequest(request, response, url) {
         baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
         username: storedSettings?.username || "",
         password: storedSettings?.passwordSecret || "",
-        peopleTrainingRecords: scopedSnapshot.peopleTrainingRecords ?? [],
+        users: scopedSnapshot.users ?? [],
+        maxRecords: ISZNR_MOBILE_PEOPLE_MAX_RECORDS,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalPeopleWithOib: result.totalPeopleWithOib,
+        checkedAt: result.checkedAt,
+        recordsLimited: Boolean(result.recordsLimited),
+        records: limitMobileRecords(result.items.map(buildMobileIsznrPersonRecord), ISZNR_MOBILE_PEOPLE_MAX_RECORDS),
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/isznr/people") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "people.manage")) {
+        sendError(response, 403, "Nemate pravo dohvatiti IS ZNR evidenciju zaposlenih.");
+        return true;
+      }
+
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const result = await fetchMobileIsznrPeopleList({
+        baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: storedSettings?.username || "",
+        password: storedSettings?.passwordSecret || "",
+        users: scopedSnapshot.users ?? [],
         maxRecords: ISZNR_MOBILE_PEOPLE_MAX_RECORDS,
       });
       sendJson(response, 200, {

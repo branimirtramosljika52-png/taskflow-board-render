@@ -273,6 +273,7 @@ private enum class MoreSectionFocus(val title: String) {
     Periodics("Periodika"),
     Documents("Dokumenti"),
     Services("Service liste"),
+    People("People"),
     MeasurementEquipment("Mjerna oprema"),
     Foundation("Pravilnici"),
     Training("Osposobljavanja"),
@@ -4282,6 +4283,13 @@ private fun WorkOrdersScreen(
     val filteredIsznrPeople = remember(state.isznrPeopleRecords, normalizedQuery) {
         state.isznrPeopleRecords.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredPeopleUsers = remember(state.data.workOrderUsers, normalizedQuery) {
+        state.data.workOrderUsers.filter { user ->
+            normalizedQuery.isBlank() ||
+                listOf(user.label, user.fullName, user.email, user.oib)
+                    .any { value -> value.contains(normalizedQuery, ignoreCase = true) }
+        }
+    }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
     var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
@@ -4299,7 +4307,7 @@ private fun WorkOrdersScreen(
             listState.animateScrollToItem(0)
             if (moreFocus == MoreSectionFocus.MeasurementEquipment) {
                 onLoadIsznrMeasurementEquipment(false)
-            } else if (moreFocus == MoreSectionFocus.Training) {
+            } else if (moreFocus == MoreSectionFocus.People) {
                 onLoadIsznrPeople(false)
             }
         }
@@ -4446,6 +4454,7 @@ private fun WorkOrdersScreen(
                             MoreSectionFocus.Periodics -> "Pretraga periodike i rokova"
                             MoreSectionFocus.Documents -> "Pretraga dokumenata"
                             MoreSectionFocus.Services -> "Pretraga service lista"
+                            MoreSectionFocus.People -> "Pretraga People korisnika, OIB-a ili IS ZNR statusa"
                             MoreSectionFocus.MeasurementEquipment -> "Pretraga mjerne opreme, ISZNR ID-a, serijskog ili inv. broja"
                             MoreSectionFocus.Foundation -> "Pretraga pravilnika i procjena"
                             MoreSectionFocus.Training -> "Pretraga osposobljavanja"
@@ -4522,6 +4531,20 @@ private fun WorkOrdersScreen(
                             )
                         }
                         item {
+                            PeopleDirectoryContent(
+                                users = filteredPeopleUsers,
+                                isznrRecords = filteredIsznrPeople,
+                                totalCount = filteredPeopleUsers.size,
+                                isznrTotalCount = state.isznrPeopleRecords.size,
+                                isznrLoading = state.isznrPeopleLoading,
+                                isznrLoaded = state.isznrPeopleLoaded,
+                                isznrError = state.isznrPeopleError,
+                                displayLimit = 8,
+                                onLoadIsznr = onLoadIsznrPeople,
+                                onOpenRecord = onOpenRecord,
+                            )
+                        }
+                        item {
                             MeasurementEquipmentContent(
                                 records = filteredMeasurementEquipment,
                                 isznrRecords = filteredIsznrMeasurementEquipment,
@@ -4546,14 +4569,8 @@ private fun WorkOrdersScreen(
                         item {
                             TrainingContent(
                                 records = filteredTraining,
-                                isznrRecords = filteredIsznrPeople,
                                 totalCount = filteredTraining.size,
-                                isznrTotalCount = state.isznrPeopleRecords.size,
-                                isznrLoading = state.isznrPeopleLoading,
-                                isznrLoaded = state.isznrPeopleLoaded,
-                                isznrError = state.isznrPeopleError,
                                 displayLimit = 8,
-                                onLoadIsznr = onLoadIsznrPeople,
                                 onOpenRecord = onOpenRecord,
                                 onDownloadDocument = onDownloadTrainingDocument,
                             )
@@ -4622,6 +4639,20 @@ private fun WorkOrdersScreen(
                             query = normalizedQuery,
                         )
                     }
+                    MoreSectionFocus.People -> item {
+                        PeopleDirectoryContent(
+                            users = filteredPeopleUsers,
+                            isznrRecords = filteredIsznrPeople,
+                            totalCount = filteredPeopleUsers.size,
+                            isznrTotalCount = state.isznrPeopleRecords.size,
+                            isznrLoading = state.isznrPeopleLoading,
+                            isznrLoaded = state.isznrPeopleLoaded,
+                            isznrError = state.isznrPeopleError,
+                            displayLimit = 80,
+                            onLoadIsznr = onLoadIsznrPeople,
+                            onOpenRecord = onOpenRecord,
+                        )
+                    }
                     MoreSectionFocus.MeasurementEquipment -> item {
                         MeasurementEquipmentContent(
                             records = filteredMeasurementEquipment,
@@ -4647,14 +4678,8 @@ private fun WorkOrdersScreen(
                     MoreSectionFocus.Training -> item {
                         TrainingContent(
                             records = filteredTraining,
-                            isznrRecords = filteredIsznrPeople,
                             totalCount = filteredTraining.size,
-                            isznrTotalCount = state.isznrPeopleRecords.size,
-                            isznrLoading = state.isznrPeopleLoading,
-                            isznrLoaded = state.isznrPeopleLoaded,
-                            isznrError = state.isznrPeopleError,
                             displayLimit = 80,
-                            onLoadIsznr = onLoadIsznrPeople,
                             onOpenRecord = onOpenRecord,
                             onDownloadDocument = onDownloadTrainingDocument,
                         )
@@ -4928,6 +4953,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
             MainMenuShortcut("Periodika", "Rokovi, pregledi i isteci", AppSection.More, Icons.Rounded.CalendarMonth, MoreSectionFocus.Periodics),
             MainMenuShortcut("Service liste", "Pravilnici, mjerna oprema i autorizacije", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Services),
+            MainMenuShortcut("People", "Korisnici, OIB i IS ZNR status", AppSection.More, Icons.Rounded.Person, MoreSectionFocus.People),
             MainMenuShortcut("Mjerna oprema", "Popis opreme i ISZNR oznake", AppSection.More, Icons.Rounded.Work, MoreSectionFocus.MeasurementEquipment),
             MainMenuShortcut("Pravilnici", "Temeljna dokumentacija i procjene", AppSection.More, Icons.Rounded.Lock, MoreSectionFocus.Foundation),
             MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint, MoreSectionFocus.Training),
@@ -7289,8 +7315,8 @@ private data class MobileTrainingItem(
     val documentName: String,
 )
 
-private enum class TrainingTab {
-    Dossiers,
+private enum class PeopleTab {
+    Local,
     Isznr,
 }
 
@@ -7359,9 +7385,11 @@ private fun trainingStatusColor(status: String): Color {
     }
 }
 
+private fun normalizePeopleOib(value: String): String = value.filter { it.isDigit() }.take(11)
+
 @Composable
-private fun TrainingContent(
-    records: List<MobileRecord>,
+private fun PeopleDirectoryContent(
+    users: List<WorkOrderUserOption>,
     isznrRecords: List<MobileRecord>,
     totalCount: Int,
     isznrTotalCount: Int,
@@ -7371,22 +7399,25 @@ private fun TrainingContent(
     displayLimit: Int,
     onLoadIsznr: (Boolean) -> Unit,
     onOpenRecord: (MobileRecord) -> Unit,
-    onDownloadDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
-    var selectedTab by remember { mutableStateOf(TrainingTab.Dossiers) }
+    var selectedTab by remember { mutableStateOf(PeopleTab.Local) }
+    val isznrByOib = remember(isznrRecords) {
+        isznrRecords
+            .mapNotNull { record ->
+                val oib = normalizePeopleOib(record.meta["oib"].orEmpty())
+                if (oib.isBlank()) null else oib to record
+            }
+            .toMap()
+    }
     val linkedIsznrCount = remember(isznrRecords) {
         isznrRecords.count { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
     }
-    val tabRecords = remember(records, isznrRecords, selectedTab) {
-        when (selectedTab) {
-            TrainingTab.Dossiers -> records
-            TrainingTab.Isznr -> isznrRecords
-        }
-    }
-    val visibleRecords = remember(tabRecords, displayLimit) { tabRecords.take(displayLimit.coerceAtLeast(1)) }
+    val usersWithOib = remember(users) { users.count { user -> normalizePeopleOib(user.oib).isNotBlank() } }
+    val visibleUsers = remember(users, displayLimit) { users.take(displayLimit.coerceAtLeast(1)) }
+    val visibleIsznrRecords = remember(isznrRecords, displayLimit) { isznrRecords.take(displayLimit.coerceAtLeast(1)) }
 
     LaunchedEffect(selectedTab, isznrLoaded, isznrLoading) {
-        if (selectedTab == TrainingTab.Isznr && !isznrLoaded && !isznrLoading) {
+        if (selectedTab == PeopleTab.Isznr && !isznrLoaded && !isznrLoading) {
             onLoadIsznr(false)
         }
     }
@@ -7403,41 +7434,42 @@ private fun TrainingContent(
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
             SectionHeader(
-                title = "Osposobljavanja",
-                subtitle = "$totalCount dosjea · $linkedIsznrCount IS ZNR povezano",
-                icon = Icons.Rounded.Fingerprint,
+                title = "People",
+                subtitle = "$totalCount korisnika · $usersWithOib s OIB-om · $linkedIsznrCount IS ZNR povezano",
+                icon = Icons.Rounded.Person,
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 MeasurementEquipmentTabChip(
-                    label = "Dosjei",
+                    label = "People",
                     count = totalCount,
-                    selected = selectedTab == TrainingTab.Dossiers,
-                    onClick = { selectedTab = TrainingTab.Dossiers },
+                    selected = selectedTab == PeopleTab.Local,
+                    onClick = { selectedTab = PeopleTab.Local },
                 )
                 MeasurementEquipmentTabChip(
                     label = "IS ZNR",
                     count = isznrTotalCount,
-                    selected = selectedTab == TrainingTab.Isznr,
+                    selected = selectedTab == PeopleTab.Isznr,
                     onClick = {
-                        selectedTab = TrainingTab.Isznr
+                        selectedTab = PeopleTab.Isznr
                         onLoadIsznr(false)
                     },
                 )
             }
-            if (selectedTab == TrainingTab.Isznr) {
+
+            if (selectedTab == PeopleTab.Isznr) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        if (isznrLoaded) "Provjera zaposlenih po OIB-u: strucnjaci, nositelji i ostali." else "IS ZNR provjera se ucitava nakon otvaranja taba.",
+                        if (isznrLoaded) "Provjera ide po OIB-u iz People modula: stručnjaci, nositelji i ostali." else "Otvori ili osvježi za IS ZNR provjeru po OIB-u.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(onClick = { onLoadIsznr(true) }, enabled = !isznrLoading) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = "Osvjezi IS ZNR zaposlenike")
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi IS ZNR osobe")
                     }
                 }
                 AnimatedVisibility(isznrLoading) {
@@ -7446,26 +7478,161 @@ private fun TrainingContent(
                 AnimatedVisibility(isznrError.isNotBlank()) {
                     MessageCard(text = isznrError, isError = true)
                 }
-            }
-
-            if (!isznrLoading && tabRecords.isEmpty()) {
-                Text(
-                    if (selectedTab == TrainingTab.Isznr) "IS ZNR nije vratio evidenciju zaposlenih za prikaz." else "Nema osposobljavanja za prikaz.",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                )
-            } else if (tabRecords.isNotEmpty()) {
-                visibleRecords.forEach { record ->
-                    if (selectedTab == TrainingTab.Isznr) {
-                        TrainingIsznrLine(record = record, onOpenRecord = onOpenRecord)
-                    } else {
-                        TrainingRecordLine(
-                            record = record,
-                            onOpenRecord = onOpenRecord,
-                            onDownloadDocument = { document -> onDownloadDocument(record, document) },
+                if (!isznrLoading && isznrRecords.isEmpty()) {
+                    Text(
+                        "IS ZNR nije vratio osobe za prikaz.",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    )
+                } else {
+                    visibleIsznrRecords.forEach { record ->
+                        PeopleIsznrLine(record = record, onOpenRecord = onOpenRecord)
+                    }
+                    if (isznrRecords.size > visibleIsznrRecords.size) {
+                        Text(
+                            "Prikazano je prvih ${visibleIsznrRecords.size}. Koristi pretragu za sužavanje popisa.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         )
                     }
                 }
-                if (tabRecords.size > visibleRecords.size) {
+            } else if (users.isEmpty()) {
+                Text(
+                    "Nema People korisnika za prikaz.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                visibleUsers.forEach { user ->
+                    val oib = normalizePeopleOib(user.oib)
+                    PeopleUserLine(
+                        user = user,
+                        isznrRecord = isznrByOib[oib],
+                        isznrLoaded = isznrLoaded,
+                        onOpenRecord = onOpenRecord,
+                    )
+                }
+                if (users.size > visibleUsers.size) {
+                    Text(
+                        "Prikazano je prvih ${visibleUsers.size}. Koristi pretragu za sužavanje popisa.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeopleUserLine(
+    user: WorkOrderUserOption,
+    isznrRecord: MobileRecord?,
+    isznrLoaded: Boolean,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val oib = normalizePeopleOib(user.oib)
+    val linked = isznrRecord?.meta?.get("isznrLinked").equals("true", ignoreCase = true)
+    val hasError = isznrRecord?.meta?.get("isznrError").orEmpty().isNotBlank()
+    val accent = when {
+        oib.isBlank() -> Color(0xFF64748B)
+        linked -> Color(0xFF059669)
+        hasError -> Color(0xFFDC2626)
+        isznrLoaded -> Color(0xFFB45309)
+        else -> Color(0xFF2563EB)
+    }
+    val statusText = when {
+        oib.isBlank() -> "Bez OIB-a"
+        linked -> isznrRecord?.status?.ifBlank { "Povezano" } ?: "Povezano"
+        hasError -> "Greška IS ZNR"
+        isznrLoaded -> "Nije pronađeno"
+        else -> "Nije provjereno"
+    }
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .then(if (isznrRecord != null) Modifier.clickable { onOpenRecord(isznrRecord) } else Modifier)
+
+    Surface(
+        modifier = rowModifier,
+        shape = RoundedCornerShape(18.dp),
+        color = accent.copy(alpha = 0.07f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(shape = CircleShape, color = accent.copy(alpha = 0.14f)) {
+                Icon(
+                    if (linked) Icons.Rounded.CheckCircle else Icons.Rounded.Person,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .padding(9.dp),
+                    tint = accent,
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(user.label.ifBlank { user.fullName.ifBlank { user.email.ifBlank { "People korisnik" } } }, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOf(user.email, user.fullName.takeIf { it != user.label }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "People modul" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (oib.isNotBlank()) {
+                        TrainingMiniChip("OIB $oib", Color(0xFF64748B))
+                    }
+                    isznrRecord?.meta?.get("isznrRoles")?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFF059669)) }
+                    isznrRecord?.meta?.get("isznrIds")?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFF2563EB)) }
+                }
+            }
+            TrainingMiniChip(statusText, accent)
+        }
+    }
+}
+
+@Composable
+private fun TrainingContent(
+    records: List<MobileRecord>,
+    totalCount: Int,
+    displayLimit: Int,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onDownloadDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
+) {
+    val visibleRecords = remember(records, displayLimit) { records.take(displayLimit.coerceAtLeast(1)) }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
+        ) {
+            SectionHeader(
+                title = "Osposobljavanja",
+                subtitle = "$totalCount dosjea",
+                icon = Icons.Rounded.Fingerprint,
+            )
+
+            if (records.isEmpty()) {
+                Text(
+                    "Nema osposobljavanja za prikaz.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                visibleRecords.forEach { record ->
+                    TrainingRecordLine(
+                        record = record,
+                        onOpenRecord = onOpenRecord,
+                        onDownloadDocument = { document -> onDownloadDocument(record, document) },
+                    )
+                }
+                if (records.size > visibleRecords.size) {
                     Text(
                         "Prikazano je prvih ${visibleRecords.size}. Koristi pretragu za suzavanje popisa.",
                         style = MaterialTheme.typography.bodySmall,
@@ -7577,7 +7744,7 @@ private fun TrainingRecordLine(
 }
 
 @Composable
-private fun TrainingIsznrLine(record: MobileRecord, onOpenRecord: (MobileRecord) -> Unit) {
+private fun PeopleIsznrLine(record: MobileRecord, onOpenRecord: (MobileRecord) -> Unit) {
     val linked = record.meta["isznrLinked"].equals("true", ignoreCase = true)
     val hasError = record.meta["isznrError"].orEmpty().isNotBlank()
     val accent = if (linked) Color(0xFF059669) else if (hasError) Color(0xFFDC2626) else Color(0xFF64748B)
