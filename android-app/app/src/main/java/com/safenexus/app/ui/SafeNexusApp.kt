@@ -7808,6 +7808,9 @@ private fun MeasurementEquipmentContent(
     val localIsznrCount = remember(records) {
         records.count { record -> record.meta["isznrLinked"].equals("true", ignoreCase = true) }
     }
+    val isznrAudit = remember(records, isznrRecords) {
+        buildMeasurementEquipmentIsznrAudit(records, isznrRecords)
+    }
     val tabRecords = remember(records, isznrRecords, selectedTab) {
         when (selectedTab) {
             MeasurementEquipmentTab.All -> records
@@ -7896,6 +7899,15 @@ private fun MeasurementEquipmentContent(
                     )
                 }
             }
+            if (selectedTab == MeasurementEquipmentTab.All) {
+                MeasurementEquipmentIsznrAuditCard(
+                    audit = isznrAudit,
+                    isznrLoading = isznrLoading,
+                    isznrLoaded = isznrLoaded,
+                    isznrError = isznrError,
+                    onLoadIsznr = { onLoadIsznr(true) },
+                )
+            }
         }
     }
 }
@@ -7903,6 +7915,158 @@ private fun MeasurementEquipmentContent(
 private enum class MeasurementEquipmentTab {
     All,
     Isznr,
+}
+
+private data class MeasurementEquipmentIsznrAudit(
+    val totalCount: Int,
+    val linkedCount: Int,
+    val probableCount: Int,
+    val missingCount: Int,
+) {
+    val actionCount: Int
+        get() = probableCount + missingCount
+}
+
+private data class MeasurementEquipmentIsznrAuditVisual(
+    val accent: Color,
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+)
+
+private fun buildMeasurementEquipmentIsznrAudit(
+    localRecords: List<MobileRecord>,
+    isznrRecords: List<MobileRecord>,
+): MeasurementEquipmentIsznrAudit {
+    val localIds = localRecords
+        .mapNotNull { record -> record.measurementEquipmentIsznrId().normalizeMeasurementAuditKey().takeIf { it.isNotBlank() } }
+        .toSet()
+    val localSerials = localRecords
+        .flatMap { record -> listOf(record.meta["serialNumber"].orEmpty(), record.meta["inventoryNumber"].orEmpty()) }
+        .map { it.normalizeMeasurementAuditKey() }
+        .filter { it.isNotBlank() }
+        .toSet()
+    val localNames = localRecords
+        .map { it.title.normalizeMeasurementAuditKey() }
+        .filter { it.isNotBlank() }
+        .toSet()
+
+    var linked = 0
+    var probable = 0
+    var missing = 0
+    isznrRecords.forEach { record ->
+        val isznrId = record.measurementEquipmentIsznrId().normalizeMeasurementAuditKey()
+        val serial = record.meta["serialNumber"].orEmpty().normalizeMeasurementAuditKey()
+        val name = record.title.normalizeMeasurementAuditKey()
+        when {
+            isznrId.isNotBlank() && localIds.contains(isznrId) -> linked += 1
+            serial.isNotBlank() && localSerials.contains(serial) -> probable += 1
+            name.isNotBlank() && localNames.contains(name) -> probable += 1
+            else -> missing += 1
+        }
+    }
+    return MeasurementEquipmentIsznrAudit(
+        totalCount = isznrRecords.size,
+        linkedCount = linked,
+        probableCount = probable,
+        missingCount = missing,
+    )
+}
+
+private fun MobileRecord.measurementEquipmentIsznrId(): String =
+    meta["isznrInstrumentId"].orEmpty()
+        .ifBlank { meta["isznrId"].orEmpty() }
+        .ifBlank { meta["externalIsznrId"].orEmpty() }
+        .ifBlank { relatedId }
+
+private fun String.normalizeMeasurementAuditKey(): String =
+    trim()
+        .lowercase(Locale.getDefault())
+        .replace(Regex("\\s+"), " ")
+
+@Composable
+private fun MeasurementEquipmentIsznrAuditCard(
+    audit: MeasurementEquipmentIsznrAudit,
+    isznrLoading: Boolean,
+    isznrLoaded: Boolean,
+    isznrError: String,
+    onLoadIsznr: () -> Unit,
+) {
+    val visual = when {
+        isznrLoading -> MeasurementEquipmentIsznrAuditVisual(
+            accent = Color(0xFF2563EB),
+            title = "Dohvaćam cijeli IS ZNR popis...",
+            subtitle = "Provjeravam uređaje iz državnog registra prema lokalnoj mjernoj opremi.",
+            icon = Icons.Rounded.Refresh,
+        )
+        isznrError.isNotBlank() -> MeasurementEquipmentIsznrAuditVisual(
+            accent = Color(0xFFDC2626),
+            title = "IS ZNR provjera nije uspjela",
+            subtitle = isznrError,
+            icon = Icons.Rounded.ErrorOutline,
+        )
+        !isznrLoaded -> MeasurementEquipmentIsznrAuditVisual(
+            accent = Color(0xFF64748B),
+            title = "IS ZNR kontrola nije pokrenuta",
+            subtitle = "Osvježi IS ZNR opremu za provjeru je li lokalni registar ažuran.",
+            icon = Icons.Rounded.Work,
+        )
+        audit.totalCount == 0 -> MeasurementEquipmentIsznrAuditVisual(
+            accent = Color(0xFF64748B),
+            title = "IS ZNR nije vratio opremu",
+            subtitle = "Nema uređaja za usporedbu s lokalnim registrom.",
+            icon = Icons.Rounded.Work,
+        )
+        audit.actionCount == 0 -> MeasurementEquipmentIsznrAuditVisual(
+            accent = Color(0xFF059669),
+            title = "Svi uređaji su ažurirani",
+            subtitle = "Povezano ${audit.linkedCount}/${audit.totalCount} uređaja iz IS ZNR-a.",
+            icon = Icons.Rounded.CheckCircle,
+        )
+        else -> MeasurementEquipmentIsznrAuditVisual(
+            accent = Color(0xFFB45309),
+            title = "Fali ili treba povezati ${audit.actionCount} uređaja",
+            subtitle = "${audit.missingCount} nema lokalno · ${audit.probableCount} treba IS ZNR ID · povezano ${audit.linkedCount}/${audit.totalCount}.",
+            icon = Icons.Rounded.ErrorOutline,
+        )
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = visual.accent.copy(alpha = 0.1f),
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(shape = CircleShape, color = visual.accent.copy(alpha = 0.14f)) {
+                Icon(
+                    visual.icon,
+                    contentDescription = null,
+                    tint = visual.accent,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .padding(8.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(visual.title, color = visual.accent, fontWeight = FontWeight.Black)
+                Text(
+                    visual.subtitle,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (!isznrLoading) {
+                IconButton(onClick = onLoadIsznr) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi IS ZNR opremu", tint = visual.accent)
+                }
+            }
+        }
+    }
 }
 
 @Composable
