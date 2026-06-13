@@ -19,6 +19,8 @@ import {
   canManageWorkOrders,
   hasAppPermission,
   isClientPortalUser,
+  normalizeRole,
+  ROLE_SUPER_ADMIN,
 } from "./src/accessControl.js";
 import {
   buildAppCapabilitiesPdfBuffer,
@@ -2885,6 +2887,62 @@ function canUseOpenAiIntegration(user) {
 
 function canManagePeopleTrainingRecords(user) {
   return canManageMasterData(user) || isClientPortalUser(user);
+}
+
+function getActorOrganizationIds(user = {}) {
+  const values = [
+    user.organizationId,
+    ...(Array.isArray(user.organizationIds)
+      ? user.organizationIds
+      : String(user.organizationIds || "")
+        .split(",")
+        .map((value) => value.trim())),
+  ];
+  return Array.from(new Set(values.map(normalizeInputValue).filter(Boolean)));
+}
+
+function resolveLightweightRequestedOrganizationId(user = {}, request = null) {
+  const requestedOrganizationId = getRequestedOrganizationId(request);
+  const actorOrganizationIds = getActorOrganizationIds(user);
+
+  if (normalizeRole(user?.role) === ROLE_SUPER_ADMIN) {
+    return requestedOrganizationId || actorOrganizationIds[0] || "";
+  }
+
+  if (requestedOrganizationId && actorOrganizationIds.includes(String(requestedOrganizationId))) {
+    return requestedOrganizationId;
+  }
+
+  return actorOrganizationIds[0] || "";
+}
+
+async function getServiceCatalogMutationScope(user, request) {
+  const activeOrganizationId = resolveLightweightRequestedOrganizationId(user, request);
+  if (!activeOrganizationId) {
+    return {
+      activeOrganizationId: "",
+      canManage: false,
+      appRolePermissions: [],
+    };
+  }
+
+  if (canManageMasterData(user) || Boolean(user?.appPermissions?.["serviceCatalog.create"])) {
+    return {
+      activeOrganizationId,
+      canManage: true,
+      appRolePermissions: [],
+    };
+  }
+
+  const appRolePermissions = typeof domainRepository.getAppRolePermissionsForOrganization === "function"
+    ? await domainRepository.getAppRolePermissionsForOrganization(activeOrganizationId)
+    : (await getScopedState(user, request)).scopedSnapshot?.appRolePermissions ?? [];
+
+  return {
+    activeOrganizationId,
+    canManage: hasAppPermission(user, appRolePermissions, "serviceCatalog.create"),
+    appRolePermissions,
+  };
 }
 
 async function canUseScopedAppPermission(user, request, permissionKey = "") {
@@ -20768,17 +20826,16 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/service-catalog") {
-      if (!(await canUseScopedAppPermission(user, request, "serviceCatalog.create"))) {
+      const serviceCatalogScope = await getServiceCatalogMutationScope(user, request);
+      if (!serviceCatalogScope.canManage) {
         sendError(response, 403, "Nemate pravo upravljati uslugama.");
         return true;
       }
 
       const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
-      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
       const created = await domainRepository.createServiceCatalogItem({
         ...body,
-        organizationId: scopedSnapshot.activeOrganizationId,
+        organizationId: serviceCatalogScope.activeOrganizationId,
       });
       invalidateSnapshotCaches();
       sendJson(response, 201, { ok: true, item: created });
@@ -23925,26 +23982,25 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (serviceCatalogMatch && request.method === "PATCH") {
-      if (!(await canUseScopedAppPermission(user, request, "serviceCatalog.create"))) {
+      const serviceCatalogScope = await getServiceCatalogMutationScope(user, request);
+      if (!serviceCatalogScope.canManage) {
         sendError(response, 403, "Nemate pravo upravljati uslugama.");
         return true;
       }
 
       const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronađena.");
-      assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateServiceCatalogItem(serviceCatalogMatch[1], {
         ...body,
-        organizationId: scopedSnapshot.activeOrganizationId,
+        organizationId: serviceCatalogScope.activeOrganizationId,
       });
 
       if (!updated) {
-        sendError(response, 404, "Usluga nije pronađena.");
+        sendError(response, 404, "Usluga nije pronadena.");
         return true;
       }
 
-      await writeSnapshot(response, user, request);
+      invalidateSnapshotCaches();
+      sendJson(response, 200, { ok: true, item: updated });
       return true;
     }
 
@@ -24428,17 +24484,18 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (serviceCatalogMatch && request.method === "DELETE") {
-      if (!(await canUseScopedAppPermission(user, request, "serviceCatalog.create"))) {
+      const serviceCatalogScope = await getServiceCatalogMutationScope(user, request);
+      if (!serviceCatalogScope.canManage) {
         sendError(response, 403, "Nemate pravo brisati usluge.");
         return true;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.serviceCatalog ?? [], serviceCatalogMatch[1], "Usluga nije pronađena.");
-      const deleted = await domainRepository.deleteServiceCatalogItem(serviceCatalogMatch[1]);
+      const deleted = await domainRepository.deleteServiceCatalogItem(serviceCatalogMatch[1], {
+        organizationId: serviceCatalogScope.activeOrganizationId,
+      });
 
       if (!deleted) {
-        sendError(response, 404, "Usluga nije pronađena.");
+        sendError(response, 404, "Usluga nije pronadena.");
         return true;
       }
 

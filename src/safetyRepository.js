@@ -2466,6 +2466,122 @@ function pickAppRolePermissionFlags(entry = {}) {
   return Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [key, Boolean(entry?.[key])]));
 }
 
+function normalizeServiceCatalogLinkedIds(values = []) {
+  const source = Array.isArray(values) ? values : [];
+  return Array.from(new Set(
+    source
+      .map((value) => dbString(value))
+      .filter(Boolean),
+  ));
+}
+
+function assertServiceCatalogLinkedIdsInScope(input = {}, snapshot = {}) {
+  const templateIds = normalizeServiceCatalogLinkedIds(input.linkedTemplateIds);
+  if (templateIds.length > 0) {
+    const availableTemplateIds = new Set((snapshot.documentTemplates ?? []).map((item) => String(item.id)));
+    const missingTemplateId = templateIds.find((id) => !availableTemplateIds.has(String(id)));
+    if (missingTemplateId) {
+      throw new Error("Template nije dostupan za odabranu organizaciju.");
+    }
+  }
+
+  const learningTestIds = normalizeServiceCatalogLinkedIds(input.linkedLearningTestIds);
+  if (learningTestIds.length > 0) {
+    const availableLearningTestIds = new Set((snapshot.learningTests ?? []).map((item) => String(item.id)));
+    const missingLearningTestId = learningTestIds.find((id) => !availableLearningTestIds.has(String(id)));
+    if (missingLearningTestId) {
+      throw new Error("Ispit nije dostupan za odabranu organizaciju.");
+    }
+  }
+}
+
+async function fetchServiceCatalogMutationSnapshotFromConnection(connection, organizationId = "") {
+  const safeOrganizationId = Number(organizationId);
+  if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+    throw new Error("Organizacija je obavezna za katalog usluga.");
+  }
+
+  const [documentTemplateRows] = await connection.query(
+    `
+      SELECT id, organization_id, title
+      FROM web_document_templates
+      WHERE organization_id = ?
+    `,
+    [safeOrganizationId],
+  );
+  const documentTemplates = documentTemplateRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    title: row.title ?? "",
+  }));
+  const documentTemplatesById = new Map(documentTemplates.map((item) => [String(item.id), item]));
+
+  const [learningTestRows] = await connection.query(
+    `
+      SELECT id, organization_id, title
+      FROM web_learning_tests
+      WHERE organization_id = ?
+    `,
+    [safeOrganizationId],
+  );
+  const learningTests = learningTestRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    title: dbString(row.title),
+  }));
+  const learningTestsById = new Map(learningTests.map((item) => [String(item.id), item]));
+
+  const [serviceCatalogRows] = await connection.query(
+    `
+      SELECT id, organization_id, name, service_code, status, service_type, is_training,
+             validity_months, linked_template_ids_json, linked_learning_test_ids_json,
+             linked_qualification_keys_json, training_certificate_template_json,
+             note, created_at, updated_at
+      FROM web_service_catalog
+      WHERE organization_id = ?
+      ORDER BY service_code ASC, name ASC, id DESC
+    `,
+    [safeOrganizationId],
+  );
+
+  const serviceCatalog = serviceCatalogRows.map((row) => {
+    const templateIds = parseJsonArray(row.linked_template_ids_json).map((value) => dbString(value)).filter(Boolean);
+    const learningTestIds = parseJsonArray(row.linked_learning_test_ids_json).map((value) => dbString(value)).filter(Boolean);
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      name: row.name ?? "",
+      serviceCode: row.service_code ?? "",
+      status: row.status ?? "active",
+      serviceType: dbString(row.service_type) || (row.is_training ? "znr" : "inspection"),
+      isTraining: Boolean(row.is_training),
+      validityMonths: dbString(row.validity_months),
+      linkedTemplateIds: templateIds,
+      linkedTemplateTitles: templateIds
+        .map((templateId) => documentTemplatesById.get(String(templateId))?.title ?? "")
+        .filter(Boolean),
+      linkedLearningTestIds: learningTestIds,
+      linkedLearningTestTitles: learningTestIds
+        .map((testId) => learningTestsById.get(String(testId))?.title ?? "")
+        .filter(Boolean),
+      linkedQualificationKeys: parseJsonArray(row.linked_qualification_keys_json).map((value) => dbString(value)).filter(Boolean),
+      trainingCertificateTemplate: parseJsonArray(row.training_certificate_template_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .find((document) => document.fileName && (document.dataUrl || document.storageUrl)) ?? null,
+      note: row.note ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
+  return {
+    documentTemplates,
+    learningTests,
+    serviceCatalog,
+  };
+}
+
 function mapCompanyRolePermissionEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   if (!organizationId) {
@@ -5005,6 +5121,16 @@ export class InMemorySafetyRepository {
   }
 
   async close() {}
+
+  async getAppRolePermissionsForOrganization(organizationId = "") {
+    const safeOrganizationId = dbString(organizationId);
+    return normalizeAppRolePermissions(
+      (this.snapshot.appRolePermissions ?? []).filter((entry) => String(entry.organizationId) === safeOrganizationId),
+    ).map((entry) => ({
+      organizationId: safeOrganizationId,
+      ...entry,
+    }));
+  }
 
   async authenticateUser(username, password) {
     const userRow = this.users.find((item) => item.korisnicko_ime.toLowerCase() === dbString(username).toLowerCase());
@@ -8990,6 +9116,29 @@ export class MySqlSafetyRepository {
     }
   }
 
+  async getAppRolePermissionsForOrganization(organizationId = "") {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      return normalizeAppRolePermissions([]);
+    }
+
+    const [rows] = await this.pool.query(
+      `
+        SELECT organization_id, profile_role, permissions_json, created_at, updated_at
+        FROM web_app_role_permissions
+        WHERE organization_id = ?
+        ORDER BY profile_role ASC
+      `,
+      [safeOrganizationId],
+    );
+
+    return normalizeAppRolePermissions(rows.map((row) => mapAppRolePermissionEntry(row)).filter(Boolean))
+      .map((entry) => ({
+        organizationId: String(safeOrganizationId),
+        ...entry,
+      }));
+  }
+
   async createCompany(input) {
     const connection = await this.pool.getConnection();
 
@@ -12850,7 +12999,8 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchServiceCatalogMutationSnapshotFromConnection(connection, input.organizationId);
+      assertServiceCatalogLinkedIdsInScope(input, snapshot);
       const draft = createServiceCatalogItem(input, snapshot, () => "pending-service-catalog", () => new Date().toISOString());
       const [result] = await connection.query(
         `
@@ -12893,7 +13043,8 @@ export class MySqlSafetyRepository {
     try {
       await connection.beginTransaction();
 
-      const snapshot = await fetchSnapshotFromConnection(connection);
+      const snapshot = await fetchServiceCatalogMutationSnapshotFromConnection(connection, patch.organizationId);
+      assertServiceCatalogLinkedIdsInScope(patch, snapshot);
       const current = snapshot.serviceCatalog.find((item) => item.id === id);
 
       if (!current) {
@@ -12936,12 +13087,16 @@ export class MySqlSafetyRepository {
     }
   }
 
-  async deleteServiceCatalogItem(id) {
+  async deleteServiceCatalogItem(id, { organizationId = "" } = {}) {
     const connection = await this.pool.getConnection();
 
     try {
       await connection.beginTransaction();
-      const [result] = await connection.query("DELETE FROM web_service_catalog WHERE id = ?", [Number(id)]);
+      const safeOrganizationId = Number(organizationId);
+      const hasOrganizationScope = Number.isFinite(safeOrganizationId) && safeOrganizationId > 0;
+      const [result] = hasOrganizationScope
+        ? await connection.query("DELETE FROM web_service_catalog WHERE id = ? AND organization_id = ?", [Number(id), safeOrganizationId])
+        : await connection.query("DELETE FROM web_service_catalog WHERE id = ?", [Number(id)]);
 
       for (const tableName of ["web_legal_frameworks", "web_measurement_equipment", "web_safety_authorizations"]) {
         const [rows] = await connection.query(
