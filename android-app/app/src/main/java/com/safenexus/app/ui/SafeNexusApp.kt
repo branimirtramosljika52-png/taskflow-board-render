@@ -184,6 +184,7 @@ import com.safenexus.app.data.DashboardStats
 import com.safenexus.app.data.DownloadedDocument
 import com.safenexus.app.data.FieldInquiryDraft
 import com.safenexus.app.data.IsznrManualWorkEquipment
+import com.safenexus.app.data.IsznrRoAttachmentFile
 import com.safenexus.app.data.IsznrRoAssessmentItem
 import com.safenexus.app.data.MobileRecord
 import com.safenexus.app.data.SafeNexusApi
@@ -341,6 +342,8 @@ enum class WorkOrderDocumentCategory(val value: String, val label: String) {
 private const val WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12L * 1024L * 1024L
 private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
 private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES = 5
+private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
+private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES = 12
 
 private val workOrderDocumentAllowedMimeTypes = arrayOf(
     "application/pdf",
@@ -1014,13 +1017,26 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             api.submitWorkOrderIsznrWorkEquipment(workOrderId, normalizedSelection, normalizedManualEquipments)
                 .onSuccess { result ->
+                    val attachmentNotice = when {
+                        result.attachmentSubmitted > 0 && result.attachmentFailed > 0 ->
+                            " Privici: ${result.attachmentSubmitted} poslano, ${result.attachmentFailed} nije prošlo."
+                        result.attachmentSubmitted > 0 ->
+                            " Privici: ${result.attachmentSubmitted} poslano."
+                        result.attachmentFailed > 0 ->
+                            " Privici nisu poslani (${result.attachmentFailed})."
+                        else -> ""
+                    }
+                    val pdfNotice = result.pdfUrl.ifBlank { "" }.let { url ->
+                        if (url.isBlank()) "" else " PDF zapisnik: $url"
+                    }
+                    val successMessage = result.message.ifBlank { "RO zapisnik je poslan u IS ZNR." } + attachmentNotice + pdfNotice
                     state = state.copy(
                         isLoading = false,
-                        notice = result.message.ifBlank { "RO zapisnik je poslan u IS ZNR." },
+                        notice = successMessage,
                         error = "",
                     )
                     loadWorkOrderDocumentationContext(workOrder, objectId)
-                    state = state.copy(notice = result.message.ifBlank { "RO zapisnik je poslan u IS ZNR." })
+                    state = state.copy(notice = successMessage)
                     refreshWorkOrderDocuments()
                 }
                 .onFailure { error ->
@@ -4845,6 +4861,7 @@ private fun IsznrManualWorkEquipment.subtitle(): String =
         inventoryNumber.takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
         (mechanicalItems.size + electricalItems.size).takeIf { it > 0 }?.let { "$it stručnih stavki" }.orEmpty(),
         (hazardRegisterIris.size + harmfulnessRegisterIris.size + strainRegisterIris.size).takeIf { it > 0 }?.let { "$it rizika" }.orEmpty(),
+        attachments.size.takeIf { it > 0 }?.let { "$it slika" }.orEmpty(),
     )
         .map { it.trim() }
         .filter { it.isNotBlank() }
@@ -4941,7 +4958,9 @@ private fun ManualWorkEquipmentDialog(
     onDismiss: () -> Unit,
     onAdd: (IsznrManualWorkEquipment) -> Unit,
 ) {
-    val steps = listOf("Osnovno", "RO opis", "Kontrole", "Rizici", "Zaključak")
+    val steps = listOf("Osnovno", "RO opis", "Kontrole", "Rizici", "Slike", "Zaključak")
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var stepIndex by remember(initialEquipment) { mutableStateOf(0) }
     var name by remember(initialEquipment) { mutableStateOf(initialEquipment.name) }
     var manufacturer by remember(initialEquipment) { mutableStateOf(initialEquipment.manufacturer) }
@@ -4963,6 +4982,37 @@ private fun ManualWorkEquipmentDialog(
     }
     val electricalItems = remember(initialEquipment) {
         mutableStateListOf<IsznrRoAssessmentItem>().apply { addAll(initialEquipment.electricalItems) }
+    }
+    val attachmentFiles = remember(initialEquipment) {
+        mutableStateListOf<IsznrRoAttachmentFile>().apply { addAll(initialEquipment.attachments) }
+    }
+    var attachmentMessage by remember(initialEquipment) { mutableStateOf("") }
+    var attachmentsLoading by remember(initialEquipment) { mutableStateOf(false) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            attachmentsLoading = true
+            attachmentMessage = ""
+            runCatching {
+                buildIsznrRoAttachmentFiles(
+                    context = context.applicationContext,
+                    uris = uris,
+                    existingCount = attachmentFiles.size,
+                )
+            }
+                .onSuccess { files ->
+                    attachmentFiles.addAll(files)
+                    attachmentMessage = if (files.isEmpty()) {
+                        "Nije dodana nijedna slika."
+                    } else {
+                        "${files.size} slika dodano za IS ZNR privitke."
+                    }
+                }
+                .onFailure { error ->
+                    attachmentMessage = error.message ?: "Ne mogu učitati slike."
+                }
+            attachmentsLoading = false
+        }
     }
     var hazardRegisterIris by remember(initialEquipment) { mutableStateOf(initialEquipment.hazardRegisterIris) }
     var harmfulnessRegisterIris by remember(initialEquipment) { mutableStateOf(initialEquipment.harmfulnessRegisterIris) }
@@ -4988,6 +5038,7 @@ private fun ManualWorkEquipmentDialog(
         hazardRegisterIris = hazardRegisterIris,
         harmfulnessRegisterIris = harmfulnessRegisterIris,
         strainRegisterIris = strainRegisterIris,
+        attachments = attachmentFiles.toList(),
     )
 
     AlertDialog(
@@ -5067,6 +5118,72 @@ private fun ManualWorkEquipmentDialog(
                             selectedIris = strainRegisterIris,
                             onSelectedIrisChange = { strainRegisterIris = it },
                         )
+                    }
+                    4 -> {
+                        ManualWorkEquipmentSectionTitle("Slike radne opreme")
+                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Rounded.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Privici za IS ZNR", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "${attachmentFiles.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                        )
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = { imagePicker.launch("image/*") },
+                                    enabled = !attachmentsLoading && attachmentFiles.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (attachmentsLoading) "Učitavam..." else "Dodaj slike")
+                                }
+                                if (attachmentMessage.isNotBlank()) {
+                                    Text(
+                                        attachmentMessage,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    )
+                                }
+                                if (attachmentFiles.isEmpty()) {
+                                    Text(
+                                        "Slike nisu obavezne. Ako ih dodaš, SafeNexus ih šalje kao RO privitke nakon kreiranja zapisnika.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    )
+                                }
+                                attachmentFiles.forEachIndexed { index, file ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(18.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(file.fileName.ifBlank { "Slika ${index + 1}" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(
+                                                listOf(file.fileType, formatFileSizeLabel(file.fileSize)).filter { it.isNotBlank() }.joinToString(" · "),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                            )
+                                        }
+                                        IconButton(onClick = { attachmentFiles.removeAt(index) }, modifier = Modifier.size(32.dp)) {
+                                            Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     else -> {
                         ManualWorkEquipmentSectionTitle("Zaključak")
@@ -17900,6 +18017,35 @@ private suspend fun buildWorkOrderDocumentationAiFiles(
             name = name.withFallbackExtension(mimeType),
             type = mimeType,
             size = bytes.size.toLong(),
+            contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
+        )
+    }
+}
+
+private suspend fun buildIsznrRoAttachmentFiles(
+    context: Context,
+    uris: List<Uri>,
+    existingCount: Int,
+): List<IsznrRoAttachmentFile> = withContext(Dispatchers.IO) {
+    val availableSlots = (ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
+    if (availableSlots <= 0) {
+        error("Možeš dodati najviše $ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika za RO zapisnik.")
+    }
+    uris.take(availableSlots).mapIndexed { index, uri ->
+        val bytes = readUriBytes(context, uri)
+        val name = resolveUriDisplayName(context, uri, existingCount + index, WorkOrderDocumentInputMode.Photos)
+        if (bytes.size.toLong() > ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES) {
+            error("Slika $name mora biti manja od 8 MB.")
+        }
+        val mimeType = resolveUriMimeType(context, uri, name).ifBlank { "image/jpeg" }
+        if (!mimeType.startsWith("image/", ignoreCase = true)) {
+            error("Možeš dodati samo slike za RO privitke.")
+        }
+        IsznrRoAttachmentFile(
+            id = "${System.currentTimeMillis()}-${existingCount + index}-${name.hashCode()}",
+            fileName = name.withFallbackExtension(mimeType),
+            fileType = mimeType,
+            fileSize = bytes.size.toLong(),
             contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
         )
     }

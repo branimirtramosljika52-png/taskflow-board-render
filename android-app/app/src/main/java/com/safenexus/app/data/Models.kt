@@ -236,8 +236,19 @@ data class IsznrWorkEquipmentSubmitResult(
     val message: String = "",
     val isznrId: String = "",
     val recordNumber: String = "",
+    val pdfUrl: String = "",
+    val attachmentSubmitted: Int = 0,
+    val attachmentFailed: Int = 0,
     val equipmentCount: Int = 0,
     val submittedAt: String = "",
+)
+
+data class IsznrRoAttachmentFile(
+    val id: String = "",
+    val fileName: String = "",
+    val fileType: String = "",
+    val fileSize: Long = 0,
+    val contentDataUrl: String = "",
 )
 
 data class IsznrManualWorkEquipment(
@@ -261,6 +272,7 @@ data class IsznrManualWorkEquipment(
     val hazardRegisterIris: List<String> = emptyList(),
     val harmfulnessRegisterIris: List<String> = emptyList(),
     val strainRegisterIris: List<String> = emptyList(),
+    val attachments: List<IsznrRoAttachmentFile> = emptyList(),
 )
 
 data class IsznrRoAssessmentItem(

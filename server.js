@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.109.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.110.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -770,6 +770,14 @@ const ISZNR_MOBILE_PEOPLE_MAX_RECORDS = Math.max(
 const ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS = Math.max(
   20,
   Number(process.env.ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS || 500) || 500,
+);
+const ISZNR_RO_ATTACHMENT_MAX_BYTES = Math.max(
+  1024 * 1024,
+  Number(process.env.ISZNR_RO_ATTACHMENT_MAX_BYTES || 8 * 1024 * 1024) || 8 * 1024 * 1024,
+);
+const ISZNR_RO_ATTACHMENT_MAX_FILES = Math.max(
+  1,
+  Number(process.env.ISZNR_RO_ATTACHMENT_MAX_FILES || 12) || 12,
 );
 const ISZNR_WORK_EQUIPMENT_MAX_PAGES = Math.max(
   1,
@@ -2280,6 +2288,90 @@ async function mutateIsznrJsonResource({
   };
 }
 
+async function mutateIsznrMultipartResource({
+  baseUrl = "",
+  username = "",
+  password = "",
+  resourcePath = "",
+  method = "POST",
+  fields = {},
+  files = [],
+  timeoutMs = ISZNR_WORK_EQUIPMENT_POST_TIMEOUT_MS,
+} = {}) {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const normalizedUsername = normalizeIsznrApiUsername(username);
+  const safePassword = String(password ?? "");
+
+  if (!/^\d{11}$/.test(normalizedUsername)) {
+    throw createRequestError(400, "OIB korisnika za ISZNR mora imati 11 znamenki.");
+  }
+  if (!safePassword) {
+    throw createRequestError(400, "ISZNR lozinka nije spremljena. Spremi ju u Settings prije slanja privitaka.");
+  }
+
+  const requestUrl = buildIsznrResourceUrl(normalizedBaseUrl, resourcePath);
+  const formData = new FormData();
+  Object.entries(fields || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      formData.append(key, String(value));
+    }
+  });
+  (Array.isArray(files) ? files : []).forEach((file) => {
+    if (!file?.fieldName || !Buffer.isBuffer(file.buffer) || file.buffer.length === 0) {
+      return;
+    }
+    formData.append(
+      file.fieldName,
+      new Blob([file.buffer], { type: file.mimeType || "application/octet-stream" }),
+      file.fileName || "prilog",
+    );
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let result;
+  try {
+    result = await fetch(requestUrl, {
+      method: String(method || "POST").toUpperCase(),
+      headers: {
+        ...createIsznrRequestHeaders(normalizedUsername, safePassword),
+        "user-agent": "SafeNexus/1.0",
+      },
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isNetworkTimeoutError(error)) {
+      throw createRequestError(504, "ISZNR API se nije javio na vrijeme kod slanja privitka.");
+    }
+    throw createRequestError(502, "ISZNR API nije dostupan s poslužitelja kod slanja privitka.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const responseText = await result.text().catch(() => "");
+  const responsePayload = parseIsznrJsonPayload(responseText);
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
+      throw createRequestError(400, "ISZNR autentikacija nije uspjela kod slanja privitka.");
+    }
+    const apiMessage = getIsznrApiErrorMessage(responsePayload, responseText);
+    throw createRequestError(
+      result.status || 502,
+      apiMessage ? `ISZNR API je odbio privitak (${result.status}): ${apiMessage}` : `ISZNR API je odbio privitak (${result.status || "nepoznato"}).`,
+    );
+  }
+
+  return {
+    ok: true,
+    status: result.status,
+    path: getIsznrDisplayPath(requestUrl),
+    payload: responsePayload,
+    responseText,
+    submittedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeIsznrRelatedRecord(source = {}) {
   if (!source || typeof source !== "object") {
     return { id: "", name: "", oib: "" };
@@ -2872,6 +2964,74 @@ async function submitIsznrRoFollowUps({
   };
 }
 
+async function submitIsznrRoAttachments({
+  baseUrl = "",
+  username = "",
+  password = "",
+  roRecordId = "",
+  attachmentFiles = [],
+} = {}) {
+  const normalizedRecordId = normalizeInputValue(roRecordId);
+  const files = (Array.isArray(attachmentFiles) ? attachmentFiles : []).slice(0, ISZNR_RO_ATTACHMENT_MAX_FILES);
+  if (!normalizedRecordId || files.length === 0) {
+    return { ok: true, submitted: 0, failed: 0, warnings: [], results: [] };
+  }
+
+  const results = [];
+  for (const file of files) {
+    try {
+      const { mimeType, buffer } = decodeBase64DataUrl(
+        file.contentDataUrl,
+        ["image/png", "image/jpeg", "image/jpg", "image/webp"],
+      );
+      if (buffer.length > ISZNR_RO_ATTACHMENT_MAX_BYTES) {
+        throw new Error(`Slika ${file.fileName || ""} je veća od ${Math.round(ISZNR_RO_ATTACHMENT_MAX_BYTES / 1024 / 1024)} MB.`);
+      }
+      const result = await mutateIsznrMultipartResource({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "ro_attachments",
+        method: "POST",
+        fields: {
+          roRecordID: normalizedRecordId,
+          type: 1,
+        },
+        files: [
+          {
+            fieldName: "image",
+            fileName: file.fileName || "radna-oprema.jpg",
+            mimeType,
+            buffer,
+          },
+        ],
+      });
+      results.push({
+        ok: true,
+        fileName: file.fileName || "",
+        status: result.status,
+        path: result.path,
+        isznrId: extractIsznrId(result.payload || {}),
+      });
+    } catch (error) {
+      results.push({
+        ok: false,
+        fileName: file?.fileName || "",
+        message: error?.message || "IS ZNR privitak nije poslan.",
+      });
+    }
+  }
+
+  const failed = results.filter((item) => !item.ok);
+  return {
+    ok: failed.length === 0,
+    submitted: results.length - failed.length,
+    failed: failed.length,
+    warnings: failed.map((item) => [item.fileName, item.message].filter(Boolean).join(": ")),
+    results,
+  };
+}
+
 async function submitIsznrWorkEquipmentForWorkOrder({
   user = null,
   request = null,
@@ -2904,8 +3064,9 @@ async function submitIsznrWorkEquipmentForWorkOrder({
 
   const activeOrganizationId = scopedSnapshot.activeOrganizationId || resolveLightweightRequestedOrganizationId(user, request);
   const storedSettings = await domainRepository.getIsznrApiSettings(activeOrganizationId);
+  const isznrBaseUrl = storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL;
   const postResult = await mutateIsznrJsonResource({
-    baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+    baseUrl: isznrBaseUrl,
     username: storedSettings?.username || "",
     password: storedSettings?.passwordSecret || "",
     resourcePath: "ro_records",
@@ -2915,12 +3076,20 @@ async function submitIsznrWorkEquipmentForWorkOrder({
   const submitResult = buildIsznrRoRecordSubmitResult(postResult, draft);
   const roRecordIri = buildIsznrApiIri("ro_records", submitResult.isznrId);
   const followUpResult = await submitIsznrRoFollowUps({
-    baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+    baseUrl: isznrBaseUrl,
     username: storedSettings?.username || "",
     password: storedSettings?.passwordSecret || "",
     roRecordIri,
     followUpDrafts: draft.followUpDrafts,
   });
+  const attachmentResult = await submitIsznrRoAttachments({
+    baseUrl: isznrBaseUrl,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    roRecordId: submitResult.isznrId,
+    attachmentFiles: draft.attachmentFiles,
+  });
+  const pdfUrl = buildIsznrRoRecordPdfUrl(isznrBaseUrl, submitResult.isznrId);
 
   await domainRepository.addWorkOrderActivityComment(
     workOrder.id,
@@ -2932,6 +3101,9 @@ async function submitIsznrWorkEquipmentForWorkOrder({
         `Oprema: ${submitResult.equipmentCount}.`,
         followUpResult.submitted ? `RO elementi: ${followUpResult.submitted}.` : "",
         followUpResult.failed ? `Upozorenja: ${followUpResult.failed}.` : "",
+        attachmentResult.submitted ? `Privici: ${attachmentResult.submitted}.` : "",
+        attachmentResult.failed ? `Privici upozorenja: ${attachmentResult.failed}.` : "",
+        pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
         submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
       ].filter(Boolean).join(" "),
     },
@@ -2945,18 +3117,36 @@ async function submitIsznrWorkEquipmentForWorkOrder({
 
   return {
     ...submitResult,
+    pdfUrl,
+    isznrPdfUrl: pdfUrl,
     followUp: followUpResult,
-    message: followUpResult.failed
+    attachments: attachmentResult,
+    legacyMessage: followUpResult.failed
       ? `${submitResult.message} Dodatni RO elementi: ${followUpResult.submitted} poslano, ${followUpResult.failed} nije prošlo.`
       : followUpResult.submitted
         ? `${submitResult.message} Dodatni RO elementi: ${followUpResult.submitted} poslano.`
         : submitResult.message,
+    message: [
+      submitResult.message,
+      followUpResult.failed
+        ? `Dodatni RO elementi: ${followUpResult.submitted} poslano, ${followUpResult.failed} nije prošlo.`
+        : followUpResult.submitted
+          ? `Dodatni RO elementi: ${followUpResult.submitted} poslano.`
+          : "",
+      attachmentResult.failed
+        ? `Privici: ${attachmentResult.submitted} poslano, ${attachmentResult.failed} nije prošlo.`
+        : attachmentResult.submitted
+          ? `Privici: ${attachmentResult.submitted} poslano.`
+          : "",
+      pdfUrl ? `PDF zapisnik: ${pdfUrl}` : "",
+    ].filter(Boolean).join(" "),
     postDraft: {
       ...draft,
       submitted: true,
       submittedAt: submitResult.submittedAt,
       submittedRecordId: submitResult.isznrId,
       submittedRecordNumber: submitResult.recordNumber,
+      submittedPdfUrl: pdfUrl,
     },
   };
 }
@@ -2965,6 +3155,23 @@ function buildIsznrApiIri(resourcePath = "", id = "") {
   const normalizedPath = normalizeInputValue(resourcePath).replace(/^\/+|\/+$/g, "");
   const normalizedId = normalizeInputValue(id);
   return normalizedPath && normalizedId ? `/api/v3/${normalizedPath}/${normalizedId}` : "";
+}
+
+function buildIsznrWebBaseUrl(baseUrl = "") {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const url = new URL(normalizedBaseUrl);
+  url.pathname = url.pathname.replace(/\/api\/v3\/?$/i, "").replace(/\/+$/, "");
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/+$/, "");
+}
+
+function buildIsznrRoRecordPdfUrl(baseUrl = "", recordId = "") {
+  const normalizedId = normalizeInputValue(recordId);
+  if (!normalizedId) {
+    return "";
+  }
+  return `${buildIsznrWebBaseUrl(baseUrl)}/record/ro/${encodeURIComponent(normalizedId)}/generate-record`;
 }
 
 function buildIsznrApiIriList(resourcePath = "", items = []) {
@@ -3177,6 +3384,58 @@ function normalizeIsznrRoAssessmentItems(items = [], resourcePath = "") {
     .filter((item) => item.registerIri || item.customContent || item.label || item.measuredValue);
 }
 
+function normalizeIsznrRoAttachmentFilesForEquipment(equipment = {}) {
+  const sourceFiles = [
+    ...((Array.isArray(equipment.attachments) ? equipment.attachments : [])),
+    ...((Array.isArray(equipment.images) ? equipment.images : [])),
+    ...((Array.isArray(equipment.photos) ? equipment.photos : [])),
+  ];
+  const equipmentLabel = normalizeInputValue(
+    equipment.name
+    || equipment.model
+    || equipment.serialNumber
+    || equipment.inventoryNumber,
+  );
+  return sourceFiles
+    .map((file, index) => {
+      const contentDataUrl = String(file?.contentDataUrl || file?.dataUrl || file?.fileDataUrl || "").trim();
+      const meta = getOpenAiDataUrlMeta(contentDataUrl);
+      const mimeType = normalizeInputValue(file?.fileType || file?.type || meta?.mimeType || "").toLowerCase();
+      if (!contentDataUrl || !mimeType.startsWith("image/")) {
+        return null;
+      }
+      return {
+        id: normalizeInputValue(file?.id),
+        fileName: normalizeInputValue(file?.fileName || file?.name || `${equipmentLabel || "radna-oprema"}-${index + 1}.jpg`).slice(0, 180),
+        fileType: mimeType,
+        fileSize: Math.max(0, Number(file?.fileSize || file?.size) || 0),
+        contentDataUrl,
+        equipmentLabel,
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeIsznrRoAttachmentFiles(manualEquipments = []) {
+  const seen = new Set();
+  return (Array.isArray(manualEquipments) ? manualEquipments : [])
+    .flatMap((equipment) => normalizeIsznrRoAttachmentFilesForEquipment(equipment))
+    .filter((file) => {
+      const key = [
+        file.id,
+        file.fileName,
+        file.fileSize,
+        file.contentDataUrl.slice(0, 80),
+      ].join("|");
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, ISZNR_RO_ATTACHMENT_MAX_FILES);
+}
+
 function normalizeIsznrRoManualEquipmentDetails(equipment = {}) {
   const base = normalizeIsznrRoEquipmentPayload(equipment);
   return {
@@ -3195,6 +3454,7 @@ function normalizeIsznrRoManualEquipmentDetails(equipment = {}) {
     hazardRegisterIris: normalizeIsznrApiIriList(equipment.hazardRegisterIris || equipment.hazards, "hazard_registers"),
     harmfulnessRegisterIris: normalizeIsznrApiIriList(equipment.harmfulnessRegisterIris || equipment.harmfulnesses, "harmfulness_registers"),
     strainRegisterIris: normalizeIsznrApiIriList(equipment.strainRegisterIris || equipment.strains, "strain_registers"),
+    attachments: normalizeIsznrRoAttachmentFilesForEquipment(equipment),
   };
 }
 
@@ -3455,6 +3715,7 @@ function buildIsznrWorkEquipmentPostDraft({
   const selectedEquipmentCandidates = buildIsznrWorkEquipmentCandidates(selectedItems);
   const manualEquipmentRecords = normalizeIsznrRoManualEquipmentPayloads(manualEquipments);
   const manualEquipmentPayload = manualEquipmentRecords.map((equipment) => normalizeIsznrRoEquipmentPayload(equipment));
+  const attachmentFiles = normalizeIsznrRoAttachmentFiles(manualEquipmentRecords);
   const selectedEquipmentPayload = selectedEquipmentCandidates
     .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
     .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber)
@@ -3536,6 +3797,8 @@ function buildIsznrWorkEquipmentPostDraft({
     selectedItemIds: selectedEquipmentCandidates.map((item) => item.key).filter(Boolean),
     selectedEquipmentCandidates,
     manualEquipmentCount: manualEquipmentPayload.length,
+    attachmentCount: attachmentFiles.length,
+    attachmentFiles,
     followUpDrafts,
     people: {
       experts: expertPeople,

@@ -565,6 +565,7 @@ class SafeNexusApi(
                                     .put("hazardRegisterIris", JSONArray(it.hazardRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
                                     .put("harmfulnessRegisterIris", JSONArray(it.harmfulnessRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
                                     .put("strainRegisterIris", JSONArray(it.strainRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
+                                    .put("attachments", JSONArray(it.attachments.map { file -> file.toJsonObject() }))
                             },
                     ),
                 )
@@ -581,6 +582,13 @@ class SafeNexusApi(
                 message = json.firstClean("message").ifBlank { "RO zapisnik je poslan u IS ZNR." },
                 isznrId = json.firstClean("isznrId"),
                 recordNumber = json.firstClean("recordNumber"),
+                pdfUrl = json.firstClean("pdfUrl", "isznrPdfUrl"),
+                attachmentSubmitted = json.optJSONObject("attachments")?.optInt("submitted")
+                    ?: json.optJSONObject("attachment")?.optInt("submitted")
+                    ?: json.optInt("attachmentSubmitted", 0),
+                attachmentFailed = json.optJSONObject("attachments")?.optInt("failed")
+                    ?: json.optJSONObject("attachment")?.optInt("failed")
+                    ?: json.optInt("attachmentFailed", 0),
                 equipmentCount = json.optInt("equipmentCount", selectedItemIds.size + manualEquipments.size),
                 submittedAt = json.firstClean("submittedAt"),
             )
@@ -941,6 +949,14 @@ private fun IsznrRoAssessmentItem.toJsonObject(): JSONObject =
         .put("customContent", customContent.trim())
         .put("measuredValue", measuredValue.trim())
         .put("meetsConditions", meetsConditions)
+
+private fun IsznrRoAttachmentFile.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("id", id.trim())
+        .put("fileName", fileName.trim())
+        .put("fileType", fileType.trim())
+        .put("fileSize", fileSize)
+        .put("contentDataUrl", contentDataUrl.trim())
 
 private fun parseContentDispositionFileName(value: String?): String {
     if (value.isNullOrBlank()) return ""
