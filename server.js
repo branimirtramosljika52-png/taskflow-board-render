@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.107.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.108.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -2662,10 +2662,20 @@ function buildMobileIsznrWorkEquipmentRecord(item = {}) {
       endDate: normalizeInputValue(item.endDate),
       deadlineForNextExamination: normalizeInputValue(item.deadlineForNextExamination),
       finalGrade,
+      equipmentName: normalizeInputValue(equipment.name),
       serialNumber: normalizeInputValue(equipment.serialNumber),
       inventoryNumber: normalizeInputValue(equipment.inventoryNumber),
       manufacturer: normalizeInputValue(equipment.manufacturer),
       model: normalizeInputValue(equipment.model),
+      note: normalizeInputValue(equipment.note),
+      equipmentsTechnicalData: normalizeInputValue(item.equipmentsTechnicalData),
+      equipmentsPurposeDescription: normalizeInputValue(item.equipmentsPurposeDescription),
+      equipmentsWorkspacePosition: normalizeInputValue(item.equipmentsWorkspacePosition),
+      workingSubstancesAndRawMaterials: normalizeInputValue(item.workingSubstancesAndRawMaterials),
+      useAndMaintenance: normalizeInputValue(item.useAndMaintenance),
+      methodsProceduresAndNorms: normalizeInputValue(item.methodsProceduresAndNorms),
+      deficiencies: normalizeInputValue(item.deficiencies),
+      measuresToEliminateDeficiencies: normalizeInputValue(item.measuresToEliminateDeficiencies),
       experts: experts.join(", "),
       signedBy: signedBy.join(", "),
     },

@@ -4333,6 +4333,8 @@ private fun DocumentationWorkEquipmentOptionList(
     var selectedItemIds by remember(options) { mutableStateOf(emptySet<String>()) }
     var manualEquipments by remember(options) { mutableStateOf(emptyList<IsznrManualWorkEquipment>()) }
     var showManualEquipmentDialog by remember(options) { mutableStateOf(false) }
+    var manualEquipmentDialogSeed by remember(options) { mutableStateOf(IsznrManualWorkEquipment()) }
+    var manualEquipmentDialogTitle by remember(options) { mutableStateOf("Nova radna oprema") }
     val filteredOptions = remember(options, selectedFilter, today) {
         options
             .filter { option -> option.matchesWorkEquipmentFilter(selectedFilter, today) }
@@ -4342,6 +4344,9 @@ private fun DocumentationWorkEquipmentOptionList(
                 }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
             )
     }
+    var focusedOptionIndex by remember(options, selectedFilter) { mutableStateOf(0) }
+    val boundedFocusedOptionIndex = if (filteredOptions.isEmpty()) 0 else focusedOptionIndex.coerceIn(0, filteredOptions.lastIndex)
+    val focusedOption = filteredOptions.getOrNull(boundedFocusedOptionIndex)
     val overdueCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Overdue, today) }
     val upcomingCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Upcoming, today) }
     val postDraftReady = postDraftStatus["postDraftReady"].equals("true", ignoreCase = true)
@@ -4365,6 +4370,8 @@ private fun DocumentationWorkEquipmentOptionList(
 
     if (showManualEquipmentDialog) {
         ManualWorkEquipmentDialog(
+            title = manualEquipmentDialogTitle,
+            initialEquipment = manualEquipmentDialogSeed,
             mechanicalOptions = mechanicalOptions,
             electricalOptions = electricalOptions,
             hazardOptions = hazardOptions,
@@ -4501,6 +4508,82 @@ private fun DocumentationWorkEquipmentOptionList(
                 )
             }
         }
+        if (focusedOption != null) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Postojeća radna oprema", fontWeight = FontWeight.Bold)
+                    Text(
+                        "${boundedFocusedOptionIndex + 1}/${filteredOptions.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(focusedOption.label, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    val focusedSubtitle = listOf(
+                        focusedOption.subtitle,
+                        focusedOption.meta["serialNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
+                        focusedOption.meta["inventoryNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
+                        focusedOption.meta["deadlineForNextExamination"].orEmpty().takeIf { it.isNotBlank() }?.let { "Rok ${formatDatePickerLabel(it)}" }.orEmpty(),
+                    ).filter { it.isNotBlank() }.distinct().joinToString(" · ")
+                    if (focusedSubtitle.isNotBlank()) {
+                        Text(
+                            focusedSubtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { focusedOptionIndex = (boundedFocusedOptionIndex - 1).coerceAtLeast(0) },
+                            enabled = boundedFocusedOptionIndex > 0,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text("Natrag")
+                        }
+                        OutlinedButton(
+                            onClick = { focusedOptionIndex = (boundedFocusedOptionIndex + 1).coerceAtMost(filteredOptions.lastIndex) },
+                            enabled = boundedFocusedOptionIndex < filteredOptions.lastIndex,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text("Next")
+                        }
+                        Button(
+                            onClick = {
+                                manualEquipmentDialogSeed = focusedOption.toManualWorkEquipment()
+                                manualEquipmentDialogTitle = "Postojeća radna oprema"
+                                selectedItemIds = selectedItemIds - focusedOption.id
+                                showManualEquipmentDialog = true
+                            },
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text("Otvori")
+                        }
+                        FilterChip(
+                            selected = focusedOption.id in selectedItemIds,
+                            onClick = {
+                                selectedItemIds = if (focusedOption.id in selectedItemIds) {
+                                    selectedItemIds - focusedOption.id
+                                } else {
+                                    selectedItemIds + focusedOption.id
+                                }
+                            },
+                            label = { Text("Odaberi bez uređivanja") },
+                            enabled = enabled && focusedOption.id.isNotBlank(),
+                        )
+                    }
+                }
+            }
+        }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -4546,7 +4629,11 @@ private fun DocumentationWorkEquipmentOptionList(
                             Text("Poništi")
                         }
                         OutlinedButton(
-                            onClick = { showManualEquipmentDialog = true },
+                            onClick = {
+                                manualEquipmentDialogSeed = IsznrManualWorkEquipment()
+                                manualEquipmentDialogTitle = "Nova radna oprema"
+                                showManualEquipmentDialog = true
+                            },
                             enabled = enabled,
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -4673,6 +4760,30 @@ private fun DocumentationWorkEquipmentOptionList(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    manualEquipmentDialogSeed = option.toManualWorkEquipment()
+                                    manualEquipmentDialogTitle = "Postojeća radna oprema"
+                                    selectedItemIds = selectedItemIds - option.id
+                                    showManualEquipmentDialog = true
+                                },
+                                enabled = enabled,
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Text("Otvori")
+                            }
+                            Text(
+                                "Učitaj podatke i prođi korake",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                            )
+                        }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             if (deadline != null) {
                                 AssistChip(
@@ -4697,6 +4808,28 @@ private fun DocumentationWorkEquipmentOptionList(
             }
         }
     }
+}
+
+private fun WorkOrderDocumentationOption.toManualWorkEquipment(): IsznrManualWorkEquipment {
+    val labelParts = label.split(" - ").map { it.trim() }.filter { it.isNotBlank() }
+    val grade = workEquipmentFinalGradeText()
+    return IsznrManualWorkEquipment(
+        name = meta["equipmentName"].orEmpty().ifBlank { labelParts.getOrNull(0).orEmpty().ifBlank { label } },
+        manufacturer = meta["manufacturer"].orEmpty().ifBlank { labelParts.getOrNull(1).orEmpty() },
+        model = meta["model"].orEmpty().ifBlank { labelParts.getOrNull(2).orEmpty() },
+        serialNumber = meta["serialNumber"].orEmpty(),
+        inventoryNumber = meta["inventoryNumber"].orEmpty(),
+        note = meta["note"].orEmpty(),
+        technicalData = meta["equipmentsTechnicalData"].orEmpty(),
+        purposeDescription = meta["equipmentsPurposeDescription"].orEmpty(),
+        workspacePosition = meta["equipmentsWorkspacePosition"].orEmpty().ifBlank { meta["location"].orEmpty() },
+        workingSubstancesAndRawMaterials = meta["workingSubstancesAndRawMaterials"].orEmpty(),
+        useAndMaintenance = meta["useAndMaintenance"].orEmpty(),
+        methodsProceduresAndNorms = meta["methodsProceduresAndNorms"].orEmpty(),
+        deficiencies = meta["deficiencies"].orEmpty(),
+        measuresToEliminateDeficiencies = meta["measuresToEliminateDeficiencies"].orEmpty(),
+        finalGrade = if (grade.contains("ne zadovoljava", ignoreCase = true) || grade.contains("nezadovoljava", ignoreCase = true)) "0" else "1",
+    )
 }
 
 private fun IsznrManualWorkEquipment.isReadyForIsznrPost(): Boolean =
@@ -4796,6 +4929,8 @@ private fun ManualWorkEquipmentCard(
 
 @Composable
 private fun ManualWorkEquipmentDialog(
+    title: String,
+    initialEquipment: IsznrManualWorkEquipment,
     mechanicalOptions: List<WorkOrderDocumentationOption>,
     electricalOptions: List<WorkOrderDocumentationOption>,
     hazardOptions: List<WorkOrderDocumentationOption>,
@@ -4804,26 +4939,32 @@ private fun ManualWorkEquipmentDialog(
     onDismiss: () -> Unit,
     onAdd: (IsznrManualWorkEquipment) -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var manufacturer by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf("") }
-    var serialNumber by remember { mutableStateOf("") }
-    var inventoryNumber by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var technicalData by remember { mutableStateOf("") }
-    var purposeDescription by remember { mutableStateOf("") }
-    var workspacePosition by remember { mutableStateOf("") }
-    var workingSubstancesAndRawMaterials by remember { mutableStateOf("") }
-    var useAndMaintenance by remember { mutableStateOf("") }
-    var methodsProceduresAndNorms by remember { mutableStateOf("") }
-    var deficiencies by remember { mutableStateOf("") }
-    var measuresToEliminateDeficiencies by remember { mutableStateOf("") }
-    var finalGrade by remember { mutableStateOf("1") }
-    val mechanicalItems = remember { mutableStateListOf<IsznrRoAssessmentItem>() }
-    val electricalItems = remember { mutableStateListOf<IsznrRoAssessmentItem>() }
-    var hazardRegisterIris by remember { mutableStateOf(emptyList<String>()) }
-    var harmfulnessRegisterIris by remember { mutableStateOf(emptyList<String>()) }
-    var strainRegisterIris by remember { mutableStateOf(emptyList<String>()) }
+    val steps = listOf("Osnovno", "RO opis", "Kontrole", "Rizici", "Zaključak")
+    var stepIndex by remember(initialEquipment) { mutableStateOf(0) }
+    var name by remember(initialEquipment) { mutableStateOf(initialEquipment.name) }
+    var manufacturer by remember(initialEquipment) { mutableStateOf(initialEquipment.manufacturer) }
+    var model by remember(initialEquipment) { mutableStateOf(initialEquipment.model) }
+    var serialNumber by remember(initialEquipment) { mutableStateOf(initialEquipment.serialNumber) }
+    var inventoryNumber by remember(initialEquipment) { mutableStateOf(initialEquipment.inventoryNumber) }
+    var note by remember(initialEquipment) { mutableStateOf(initialEquipment.note) }
+    var technicalData by remember(initialEquipment) { mutableStateOf(initialEquipment.technicalData) }
+    var purposeDescription by remember(initialEquipment) { mutableStateOf(initialEquipment.purposeDescription) }
+    var workspacePosition by remember(initialEquipment) { mutableStateOf(initialEquipment.workspacePosition) }
+    var workingSubstancesAndRawMaterials by remember(initialEquipment) { mutableStateOf(initialEquipment.workingSubstancesAndRawMaterials) }
+    var useAndMaintenance by remember(initialEquipment) { mutableStateOf(initialEquipment.useAndMaintenance) }
+    var methodsProceduresAndNorms by remember(initialEquipment) { mutableStateOf(initialEquipment.methodsProceduresAndNorms) }
+    var deficiencies by remember(initialEquipment) { mutableStateOf(initialEquipment.deficiencies) }
+    var measuresToEliminateDeficiencies by remember(initialEquipment) { mutableStateOf(initialEquipment.measuresToEliminateDeficiencies) }
+    var finalGrade by remember(initialEquipment) { mutableStateOf(initialEquipment.finalGrade.ifBlank { "1" }) }
+    val mechanicalItems = remember(initialEquipment) {
+        mutableStateListOf<IsznrRoAssessmentItem>().apply { addAll(initialEquipment.mechanicalItems) }
+    }
+    val electricalItems = remember(initialEquipment) {
+        mutableStateListOf<IsznrRoAssessmentItem>().apply { addAll(initialEquipment.electricalItems) }
+    }
+    var hazardRegisterIris by remember(initialEquipment) { mutableStateOf(initialEquipment.hazardRegisterIris) }
+    var harmfulnessRegisterIris by remember(initialEquipment) { mutableStateOf(initialEquipment.harmfulnessRegisterIris) }
+    var strainRegisterIris by remember(initialEquipment) { mutableStateOf(initialEquipment.strainRegisterIris) }
     val equipment = IsznrManualWorkEquipment(
         name = name.trim(),
         manufacturer = manufacturer.trim(),
@@ -4849,76 +4990,118 @@ private fun ManualWorkEquipmentDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Nova radna oprema") },
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title)
+                Text(
+                    "${stepIndex + 1}/${steps.size} · ${steps[stepIndex]}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+        },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ManualWorkEquipmentSectionTitle("Osnovni podaci")
-                OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(manufacturer, { manufacturer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(model, { model = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(serialNumber, { serialNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(inventoryNumber, { inventoryNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(note, { note = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                ManualWorkEquipmentSectionTitle("Opisna RO polja")
-                OutlinedTextField(technicalData, { technicalData = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(purposeDescription, { purposeDescription = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Namjena radne opreme") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(workspacePosition, { workspacePosition = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Položaj u radnom prostoru") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(workingSubstancesAndRawMaterials, { workingSubstancesAndRawMaterials = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Radne tvari i sirovine") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(useAndMaintenance, { useAndMaintenance = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Uporaba i održavanje") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(methodsProceduresAndNorms, { methodsProceduresAndNorms = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Metode, postupci i norme") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                ManualWorkEquipmentAssessmentEditor(
-                    title = "Strojarski dio",
-                    options = mechanicalOptions,
-                    items = mechanicalItems,
-                )
-                ManualWorkEquipmentAssessmentEditor(
-                    title = "Elektro dio",
-                    options = electricalOptions,
-                    items = electricalItems,
-                )
-                ManualWorkEquipmentSectionTitle("Opasnosti, štetnosti i napori")
-                ManualWorkEquipmentRegisterChips(
-                    title = "Opasnosti",
-                    options = hazardOptions,
-                    selectedIris = hazardRegisterIris,
-                    onSelectedIrisChange = { hazardRegisterIris = it },
-                )
-                ManualWorkEquipmentRegisterChips(
-                    title = "Štetnosti",
-                    options = harmfulnessOptions,
-                    selectedIris = harmfulnessRegisterIris,
-                    onSelectedIrisChange = { harmfulnessRegisterIris = it },
-                )
-                ManualWorkEquipmentRegisterChips(
-                    title = "Napori",
-                    options = strainOptions,
-                    selectedIris = strainRegisterIris,
-                    onSelectedIrisChange = { strainRegisterIris = it },
-                )
-                ManualWorkEquipmentSectionTitle("Zaključak")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = finalGrade == "1", onClick = { finalGrade = "1" }, label = { Text("Zadovoljava") })
-                    FilterChip(selected = finalGrade == "0", onClick = { finalGrade = "0" }, label = { Text("Ne zadovoljava") })
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    steps.forEachIndexed { index, step ->
+                        FilterChip(
+                            selected = stepIndex == index,
+                            onClick = { stepIndex = index },
+                            label = { Text(step) },
+                        )
+                    }
                 }
-                OutlinedTextField(deficiencies, { deficiencies = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Nedostaci") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
-                OutlinedTextField(measuresToEliminateDeficiencies, { measuresToEliminateDeficiencies = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mjere za otklanjanje nedostataka") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                when (stepIndex) {
+                    0 -> {
+                        ManualWorkEquipmentSectionTitle("Osnovni podaci")
+                        OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(manufacturer, { manufacturer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(model, { model = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(serialNumber, { serialNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(inventoryNumber, { inventoryNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(note, { note = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                    }
+                    1 -> {
+                        ManualWorkEquipmentSectionTitle("Opisna RO polja")
+                        OutlinedTextField(technicalData, { technicalData = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(purposeDescription, { purposeDescription = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Namjena radne opreme") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(workspacePosition, { workspacePosition = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Položaj u radnom prostoru") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(workingSubstancesAndRawMaterials, { workingSubstancesAndRawMaterials = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Radne tvari i sirovine") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(useAndMaintenance, { useAndMaintenance = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Uporaba i održavanje") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(methodsProceduresAndNorms, { methodsProceduresAndNorms = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Metode, postupci i norme") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                    }
+                    2 -> {
+                        ManualWorkEquipmentAssessmentEditor(
+                            title = "Strojarski dio",
+                            options = mechanicalOptions,
+                            items = mechanicalItems,
+                        )
+                        ManualWorkEquipmentAssessmentEditor(
+                            title = "Elektro dio",
+                            options = electricalOptions,
+                            items = electricalItems,
+                        )
+                    }
+                    3 -> {
+                        ManualWorkEquipmentSectionTitle("Opasnosti, štetnosti i napori")
+                        ManualWorkEquipmentRegisterChips(
+                            title = "Opasnosti",
+                            options = hazardOptions,
+                            selectedIris = hazardRegisterIris,
+                            onSelectedIrisChange = { hazardRegisterIris = it },
+                        )
+                        ManualWorkEquipmentRegisterChips(
+                            title = "Štetnosti",
+                            options = harmfulnessOptions,
+                            selectedIris = harmfulnessRegisterIris,
+                            onSelectedIrisChange = { harmfulnessRegisterIris = it },
+                        )
+                        ManualWorkEquipmentRegisterChips(
+                            title = "Napori",
+                            options = strainOptions,
+                            selectedIris = strainRegisterIris,
+                            onSelectedIrisChange = { strainRegisterIris = it },
+                        )
+                    }
+                    else -> {
+                        ManualWorkEquipmentSectionTitle("Zaključak")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = finalGrade == "1", onClick = { finalGrade = "1" }, label = { Text("Zadovoljava") })
+                            FilterChip(selected = finalGrade == "0", onClick = { finalGrade = "0" }, label = { Text("Ne zadovoljava") })
+                        }
+                        OutlinedTextField(deficiencies, { deficiencies = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Nedostaci") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                        OutlinedTextField(measuresToEliminateDeficiencies, { measuresToEliminateDeficiencies = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mjere za otklanjanje nedostataka") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onAdd(equipment) },
-                enabled = equipment.isReadyForIsznrPost(),
+                onClick = {
+                    if (stepIndex < steps.lastIndex) {
+                        stepIndex += 1
+                    } else {
+                        onAdd(equipment)
+                    }
+                },
+                enabled = stepIndex < steps.lastIndex || equipment.isReadyForIsznrPost(),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Text("Dodaj")
+                Text(if (stepIndex < steps.lastIndex) "Dalje" else "Dodaj")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Odustani")
+            TextButton(onClick = {
+                if (stepIndex > 0) {
+                    stepIndex -= 1
+                } else {
+                    onDismiss()
+                }
+            }) {
+                Text(if (stepIndex > 0) "Natrag" else "Odustani")
             }
         },
     )
