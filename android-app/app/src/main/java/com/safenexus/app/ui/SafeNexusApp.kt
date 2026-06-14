@@ -4504,7 +4504,7 @@ private fun DocumentationWorkEquipmentOptionList(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        if (selectedTotal == 0) "Odaberi ili dodaj opremu za IS ZNR POST" else "$selectedTotal odabrano",
+                        if (selectedTotal == 0) "Odaberi ili dodaj radnu opremu za IS ZNR POST" else "$selectedTotal odabrano",
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -4542,7 +4542,7 @@ private fun DocumentationWorkEquipmentOptionList(
                         ) {
                             Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Nova oprema")
+                            Text("Nova radna oprema")
                         }
                     }
                 }
@@ -4567,7 +4567,7 @@ private fun DocumentationWorkEquipmentOptionList(
         }
         if (manualEquipments.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Nova oprema", fontWeight = FontWeight.Bold)
+                Text("Nova radna oprema", fontWeight = FontWeight.Bold)
                 manualEquipments.forEachIndexed { index, equipment ->
                     ManualWorkEquipmentCard(
                         equipment = equipment,
