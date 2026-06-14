@@ -2081,7 +2081,7 @@ export function normalizeWorkOrderMeasurementSheet(input = null) {
   }
 
   const columns = (Array.isArray(input.columns) ? input.columns : [])
-    .slice(0, 32)
+    .slice(0, 96)
     .map((column, index) => normalizeMeasurementSheetColumnSnapshot(column, index))
     .filter((column, index, items) => (
       column.id

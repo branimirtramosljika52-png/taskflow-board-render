@@ -2089,6 +2089,24 @@ test("measurement sheet normalization keeps validation metadata on editable colu
   assert.equal(normalized.columns[1].validation.sourceColumnId, "col-1");
 });
 
+test("measurement sheet normalization keeps wide Excel based tables", () => {
+  const columns = Array.from({ length: 57 }, (_, index) => ({
+    id: `col-${index + 1}`,
+    label: `Kolona ${index + 1}`,
+  }));
+  const normalized = normalizeWorkOrderMeasurementSheet({
+    columns,
+    rows: [
+      {
+        id: "row-1",
+        cells: Object.fromEntries(columns.map((column) => [column.id, ""])),
+      },
+    ],
+  });
+
+  assert.equal(normalized.columns.length, 57);
+});
+
 test("createWorkOrder pulls snapshot data from selected company and location", () => {
   const state = buildState();
 

@@ -257,3 +257,71 @@ test("measurement formulas support VLOOKUP over cell ranges", () => {
 
   assert.equal(result, "24");
 });
+
+test("measurement formulas support ROW, CONCATENATE and COUNTIF style helpers", () => {
+  const values = new Map([
+    ["A1", "Da"],
+    ["A2", "Ne"],
+    ["A3", "Ne"],
+    ["B1", "Ured"],
+    ["B2", "Skladiste"],
+    ["B3", "Ured"],
+    ["C1", "4"],
+    ["C2", "12"],
+    ["C3", "24"],
+  ]);
+
+  const context = {
+    currentRowIndex: 4,
+    resolveCellReference(reference) {
+      return values.get(reference) ?? "";
+    },
+    resolveRange(startReference, endReference) {
+      assert.equal(startReference, "A1");
+      assert.equal(endReference, "A3");
+      return [["Da"], ["Ne"], ["Ne"]];
+    },
+  };
+
+  assert.equal(evaluateMeasurementFormula("=ROW()", context), 5);
+  assert.equal(evaluateMeasurementFormula("=ROW(B3)", context), 3);
+  assert.equal(evaluateMeasurementFormula('=CONCATENATE("MM ";ROW())', context), "MM 5");
+  assert.equal(evaluateMeasurementFormula('=COUNTIF(A1:A3;"Ne")', context), 2);
+});
+
+test("measurement formulas support COUNTIFS with numeric and text criteria", () => {
+  const values = new Map([
+    ["A1", "Da"],
+    ["A2", "Ne"],
+    ["A3", "Ne"],
+    ["B1", "Ured"],
+    ["B2", "Skladiste"],
+    ["B3", "Ured"],
+    ["C1", "4"],
+    ["C2", "12"],
+    ["C3", "24"],
+  ]);
+
+  const context = {
+    resolveCellReference(reference) {
+      return values.get(reference) ?? "";
+    },
+    resolveRange(startReference, endReference) {
+      const start = String(startReference);
+      const end = String(endReference);
+      if (start === "A1" && end === "A3") {
+        return [["Da"], ["Ne"], ["Ne"]];
+      }
+      if (start === "B1" && end === "B3") {
+        return [["Ured"], ["Skladiste"], ["Ured"]];
+      }
+      if (start === "C1" && end === "C3") {
+        return [["4"], ["12"], ["24"]];
+      }
+      return [];
+    },
+  };
+
+  assert.equal(evaluateMeasurementFormula('=COUNTIFS(A1:A3;"Ne";C1:C3;">10")', context), 2);
+  assert.equal(evaluateMeasurementFormula('=COUNTIFS(B1:B3;"Ured";C1:C3;">=20")', context), 1);
+});

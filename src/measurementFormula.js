@@ -522,11 +522,110 @@ function flattenFormulaValue(value) {
   return [value];
 }
 
+function normalizeCountCriteriaComparable(value) {
+  const normalized = normalizeComparableValue(value);
+  return typeof normalized === "string" ? normalized.trim().toUpperCase() : normalized;
+}
+
+function buildCountCriteriaMatcher(criteria) {
+  const rawCriteria = String(criteria ?? "").trim();
+  const comparisonMatch = rawCriteria.match(/^(<=|>=|<>|=|<|>)(.*)$/);
+
+  if (!comparisonMatch) {
+    const target = normalizeCountCriteriaComparable(criteria);
+    return (value) => normalizeCountCriteriaComparable(value) === target;
+  }
+
+  const [, operator, rawTarget] = comparisonMatch;
+  const target = normalizeCountCriteriaComparable(rawTarget);
+
+  return (value) => {
+    const candidate = normalizeCountCriteriaComparable(value);
+
+    switch (operator) {
+      case "=":
+        return candidate === target;
+      case "<>":
+        return candidate !== target;
+      case ">":
+        return candidate > target;
+      case "<":
+        return candidate < target;
+      case ">=":
+        return candidate >= target;
+      case "<=":
+        return candidate <= target;
+      default:
+        return false;
+    }
+  };
+}
+
+function evaluateCountIf(node, context) {
+  if (node.args.length !== 2) {
+    throw new MeasurementFormulaError("COUNTIF trazi raspon i kriterij.");
+  }
+
+  const values = flattenFormulaValue(evaluateFormulaAst(node.args[0], context));
+  const matcher = buildCountCriteriaMatcher(evaluateFormulaAst(node.args[1], context));
+
+  return values.reduce((count, value) => count + (matcher(value) ? 1 : 0), 0);
+}
+
+function evaluateCountIfs(node, context) {
+  if (node.args.length < 2 || node.args.length % 2 !== 0) {
+    throw new MeasurementFormulaError("COUNTIFS trazi parove raspon/kriterij.");
+  }
+
+  const pairs = [];
+  for (let index = 0; index < node.args.length; index += 2) {
+    pairs.push({
+      values: flattenFormulaValue(evaluateFormulaAst(node.args[index], context)),
+      matcher: buildCountCriteriaMatcher(evaluateFormulaAst(node.args[index + 1], context)),
+    });
+  }
+
+  const length = Math.max(0, Math.min(...pairs.map((pair) => pair.values.length)));
+  let count = 0;
+
+  for (let index = 0; index < length; index += 1) {
+    if (pairs.every((pair) => pair.matcher(pair.values[index]))) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
 function collectFormulaNumberArguments(node, context) {
   return node.args
     .flatMap((argument) => flattenFormulaValue(evaluateFormulaAst(argument, context)))
     .filter((value) => String(value ?? "").trim() !== "")
     .map((value) => coerceToNumber(value));
+}
+
+function evaluateRowFunction(node, context) {
+  if (node.args.length > 1) {
+    throw new MeasurementFormulaError("ROW trazi 0 ili 1 argument.");
+  }
+
+  if (node.args.length === 0) {
+    const currentRowIndex = Number(context.currentRowIndex);
+    return Number.isFinite(currentRowIndex) ? currentRowIndex + 1 : 1;
+  }
+
+  const argument = node.args[0];
+
+  if (argument.type === "cell") {
+    return parseMeasurementCellReference(argument.reference).rowIndex + 1;
+  }
+
+  if (argument.type === "range") {
+    return parseMeasurementCellReference(argument.startReference).rowIndex + 1;
+  }
+
+  const currentRowIndex = Number(context.currentRowIndex);
+  return Number.isFinite(currentRowIndex) ? currentRowIndex + 1 : 1;
 }
 
 function evaluateRowsFunction(node, context) {
@@ -690,6 +789,25 @@ function evaluateFormulaAst(node, context) {
 
       if (node.name === "ROWS") {
         return evaluateRowsFunction(node, context);
+      }
+
+      if (node.name === "ROW") {
+        return evaluateRowFunction(node, context);
+      }
+
+      if (node.name === "COUNTIF") {
+        return evaluateCountIf(node, context);
+      }
+
+      if (node.name === "COUNTIFS") {
+        return evaluateCountIfs(node, context);
+      }
+
+      if (node.name === "CONCATENATE") {
+        return node.args
+          .flatMap((argument) => flattenFormulaValue(evaluateFormulaAst(argument, context)))
+          .map((value) => String(value ?? ""))
+          .join("");
       }
 
       if (node.name === "VLOOKUP") {
