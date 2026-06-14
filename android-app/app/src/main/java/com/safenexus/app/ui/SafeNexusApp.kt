@@ -13366,10 +13366,10 @@ private fun WorkOrderDocumentationWizardDialog(
             .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
             .filter { it.measurementTables.isNotEmpty() }
     }
-    val physicalFactorsMeasurementTemplates = remember(context.templates, isPhysicalFactorsFlow) {
+    val physicalFactorsMeasurementTemplates = remember(context.templates, showPhysicalFactorsFromIsznr) {
         buildPhysicalFactorsMeasurementTemplates(
             templates = context.templates,
-            fallbackToAllTemplates = isPhysicalFactorsFlow,
+            fallbackToAllTemplates = showPhysicalFactorsFromIsznr,
         )
     }
     val allMeasurementTemplates = remember(baseMeasurementTemplates, physicalFactorsMeasurementTemplates) {
