@@ -425,6 +425,8 @@ class SafeNexusApi(
             draft.selectedRulebookIds.forEach { selectedRulebookIds.put(it) }
             val selectedWorkEquipmentRecords = JSONArray()
             draft.selectedWorkEquipmentRecords.forEach { selectedWorkEquipmentRecords.put(it.toJsonObject()) }
+            val selectedWorkEnvironmentRecords = JSONArray()
+            draft.selectedWorkEnvironmentRecords.forEach { selectedWorkEnvironmentRecords.put(it.toJsonObject()) }
             val manualWorkEquipments = JSONArray()
             draft.manualWorkEquipments.forEach { manualWorkEquipments.put(it.toJsonObject()) }
             val executors = JSONArray()
@@ -462,8 +464,10 @@ class SafeNexusApi(
                 .put("selectedLegalFrameworkIds", selectedLegalFrameworkIds)
                 .put("selectedRulebookIds", selectedRulebookIds)
                 .put("selectedWorkEquipmentRecords", selectedWorkEquipmentRecords)
+                .put("selectedWorkEnvironmentRecords", selectedWorkEnvironmentRecords)
                 .put("manualWorkEquipments", manualWorkEquipments)
                 .put("workEquipmentSubmitResult", draft.workEquipmentSubmitResult.toJsonObject())
+                .put("workEnvironmentSubmitResult", draft.workEnvironmentSubmitResult.toJsonObject())
                 .put("signatureMode", draft.signatureMode)
                 .put("validityMonths", draft.validityMonths)
                 .put("electricalValidityMonths", draft.electricalValidityMonths)
@@ -598,6 +602,34 @@ class SafeNexusApi(
                     ?: json.optJSONObject("attachment")?.optInt("failed")
                     ?: json.optInt("attachmentFailed", 0),
                 equipmentCount = json.optInt("equipmentCount", selectedItemIds.size + manualEquipments.size),
+                submittedAt = json.firstClean("submittedAt"),
+            )
+        }
+    }
+
+    suspend fun submitWorkOrderIsznrPhysicalFactors(
+        workOrderId: String,
+        selectedItemIds: List<String>,
+    ): Result<IsznrWorkEquipmentSubmitResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("selectedItemIds", JSONArray(selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }))
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/mobile/work-orders/${workOrderId.pathSegment()}/isznr-work-environment",
+                    method = "POST",
+                    body = payload,
+                    readTimeoutMs = 90_000,
+                ),
+            )
+            IsznrWorkEquipmentSubmitResult(
+                message = json.firstClean("message").ifBlank { "FC zapisnik je poslan u IS ZNR." },
+                isznrId = json.firstClean("isznrId"),
+                recordNumber = json.firstClean("recordNumber"),
+                pdfUrl = json.firstClean("pdfUrl", "isznrPdfUrl"),
+                pdfBridgeUrl = absoluteSafeNexusUrl(json.firstClean("pdfBridgeUrl", "isznrPdfBridgeUrl")),
+                equipmentCount = json.optInt("sourceRecordCount", selectedItemIds.size),
                 submittedAt = json.firstClean("submittedAt"),
             )
         }
@@ -1626,6 +1658,8 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         workEquipmentHarmfulnessOptions = optJSONArray("workEquipmentHarmfulnessOptions").toWorkOrderDocumentationOptions(),
         workEquipmentStrainOptions = optJSONArray("workEquipmentStrainOptions").toWorkOrderDocumentationOptions(),
         workEquipmentStatus = optJSONObject("workEquipmentStatus").toStringMap(),
+        workEnvironmentOptions = optJSONArray("workEnvironmentOptions").toWorkOrderDocumentationOptions(),
+        workEnvironmentStatus = optJSONObject("workEnvironmentStatus").toStringMap(),
         legalFrameworkOptions = optJSONArray("legalFrameworkOptions").toWorkOrderDocumentationOptions(),
         rulebookOptions = optJSONArray("rulebookOptions").toWorkOrderDocumentationOptions(),
         signaturePersonOptions = optJSONArray("signaturePersonOptions").toWorkOrderDocumentationSignatureAreaOptions(),

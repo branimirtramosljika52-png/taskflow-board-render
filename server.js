@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.113.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.115.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -439,7 +439,12 @@ function addCacheBusterToUrl(value = "") {
 }
 
 function isTrustedIsznrRoPdfUrl(value = "", recordId = "") {
+  return isTrustedIsznrRecordPdfUrl(value, recordId, "ro");
+}
+
+function isTrustedIsznrRecordPdfUrl(value = "", recordId = "", recordKind = "ro") {
   const normalizedRecordId = normalizeInputValue(recordId);
+  const normalizedKind = normalizeInputValue(recordKind).toLowerCase() === "fc" ? "fc" : "ro";
   if (!normalizedRecordId) {
     return false;
   }
@@ -447,14 +452,14 @@ function isTrustedIsznrRoPdfUrl(value = "", recordId = "") {
   try {
     const url = new URL(value);
     const trustedHost = ["isznr.gov.hr", "isznrtest.gov.hr"].includes(url.hostname.toLowerCase());
-    const expectedPath = `/record/ro/${encodeURIComponent(normalizedRecordId)}/generate-record`;
+    const expectedPath = `/record/${normalizedKind}/${encodeURIComponent(normalizedRecordId)}/generate-record`;
     return url.protocol === "https:" && trustedHost && url.pathname === expectedPath;
   } catch {
     return false;
   }
 }
 
-function buildIsznrLoginUrlFromRoPdfUrl(value = "") {
+function buildIsznrLoginUrlFromPdfUrl(value = "") {
   const url = new URL(value);
   url.pathname = "/login";
   url.search = "";
@@ -462,13 +467,20 @@ function buildIsznrLoginUrlFromRoPdfUrl(value = "") {
   return url.toString();
 }
 
+function buildIsznrLoginUrlFromRoPdfUrl(value = "") {
+  return buildIsznrLoginUrlFromPdfUrl(value);
+}
+
 function buildIsznrRoRecordPdfBridgePage({
   recordId = "",
   pdfUrl = "",
+  recordKind = "ro",
 } = {}) {
-  const loginUrl = buildIsznrLoginUrlFromRoPdfUrl(pdfUrl);
+  const normalizedKind = normalizeInputValue(recordKind).toLowerCase() === "fc" ? "FC" : "RO";
+  const loginUrl = buildIsznrLoginUrlFromPdfUrl(pdfUrl);
   const retryUrl = addCacheBusterToUrl(pdfUrl);
   const safeRecordId = escapeEmailHtml(recordId);
+  const safeKind = escapeEmailHtml(normalizedKind);
   const safePdfUrl = escapeEmailHtml(pdfUrl);
   const safeLoginUrl = escapeEmailHtml(loginUrl);
   return `<!doctype html>
@@ -476,7 +488,7 @@ function buildIsznrRoRecordPdfBridgePage({
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IS ZNR RO zapisnik ${safeRecordId}</title>
+  <title>IS ZNR ${safeKind} zapisnik ${safeRecordId}</title>
   <style>
     :root {
       color-scheme: light;
@@ -585,7 +597,7 @@ function buildIsznrRoRecordPdfBridgePage({
 </head>
 <body>
   <main>
-    <span class="badge">✓ IS ZNR RO zapisnik ${safeRecordId}</span>
+    <span class="badge">✓ IS ZNR ${safeKind} zapisnik ${safeRecordId}</span>
     <h1>Provjera prijave i preuzimanje</h1>
     <p>Ako već postoji aktivna IS ZNR prijava, zapisnik će se otvoriti ili preuzeti odmah. Ako prijava ne postoji, otvara se IS ZNR prijava i Safe Nexus će pokušati ponovno za 60 sekundi.</p>
     <div id="status" class="status">Pokušavam otvoriti PDF zapisnik...</div>
@@ -1017,6 +1029,10 @@ const ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS = Math.max(
   20,
   Number(process.env.ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS || 500) || 500,
 );
+const ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS = Math.max(
+  20,
+  Number(process.env.ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS || 300) || 300,
+);
 const ISZNR_RO_ATTACHMENT_MAX_BYTES = Math.max(
   1024 * 1024,
   Number(process.env.ISZNR_RO_ATTACHMENT_MAX_BYTES || 8 * 1024 * 1024) || 8 * 1024 * 1024,
@@ -1098,6 +1114,10 @@ const ISZNR_WORK_EQUIPMENT_REGISTER_RESOURCES = Object.freeze([
   { group: "Rizici", label: "Opasnosti", path: "hazard_registers" },
   { group: "Rizici", label: "Štetnosti", path: "harmfulness_registers" },
   { group: "Rizici", label: "Napori", path: "strain_registers" },
+]);
+const ISZNR_PHYSICAL_FACTORS_REGISTER_RESOURCES = Object.freeze([
+  { group: "Propisi", label: "Obveze ispitivanja radnog okoliša", path: "working_environment_obligation_registers" },
+  { group: "Propisi", label: "Zdravstveni zahtjevi FC", path: "fc_health_requirement_registers" },
 ]);
 const ISZNR_EMPLOYEE_RESOURCE_DEFS = Object.freeze([
   { path: "experts", role: "expert", label: "Strucnjak ZNR" },
@@ -3047,6 +3067,908 @@ function buildWorkOrderIsznrWorkEquipmentOptions(items = []) {
     .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
 }
 
+function getIsznrNestedArray(source = {}, keys = []) {
+  if (!source || typeof source !== "object") {
+    return [];
+  }
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (value && typeof value === "object") {
+      if (Array.isArray(value.data)) {
+        return value.data;
+      }
+      if (Array.isArray(value.items)) {
+        return value.items;
+      }
+      if (Array.isArray(value["hydra:member"])) {
+        return value["hydra:member"];
+      }
+    }
+  }
+  return [];
+}
+
+function normalizeIsznrWorkEnvironmentText(value = "") {
+  return normalizeInputValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeIsznrWorkEnvironmentFinalGrade(value = "") {
+  const base = normalizeIsznrFinalGrade(value);
+  const raw = normalizeInputValue(base.label || base.value || value);
+  const normalized = normalizeIsznrWorkEnvironmentText(raw);
+  if (!raw) {
+    return { value: "", label: "" };
+  }
+  if (normalized === "da" || normalized.includes("zadovoljava") && !normalized.includes("ne zadovoljava")) {
+    return { value: raw, label: "Zadovoljava" };
+  }
+  if (normalized === "ne" || normalized.includes("ne zadovoljava") || normalized.includes("nezadovoljava")) {
+    return { value: raw, label: "Ne zadovoljava" };
+  }
+  return { value: raw, label: raw };
+}
+
+function normalizeIsznrWorkEnvironmentSpace(source = {}, index = 0) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const id = extractIsznrId(record) || normalizeInputValue(record.id) || String(index + 1);
+  const code = normalizeInputValue(pickIsznrValue(record, ["code", "oznaka", "mark", "spaceCode", "internalCode"]));
+  const name = normalizeInputValue(pickIsznrValue(record, ["name", "title", "naziv", "spaceName"]));
+  const description = normalizeInputValue(pickIsznrValue(record, ["description", "opis", "purposeDescription"]));
+  const processDescription = normalizeInputValue(pickIsznrValue(record, [
+    "workProcessDescription",
+    "workProcessesDescription",
+    "processDescription",
+    "processesDescription",
+  ]));
+  const equipmentDescription = normalizeInputValue(pickIsznrValue(record, [
+    "workEquipmentDescription",
+    "equipmentDescription",
+    "equipmentsDescription",
+  ]));
+  return {
+    id,
+    code,
+    name: name || code || `Prostor ${index + 1}`,
+    description,
+    processDescription,
+    equipmentDescription,
+  };
+}
+
+function normalizeIsznrWorkEnvironmentMeasurement(source = {}, kind = "", index = 0) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const relatedSpace = normalizeIsznrRelatedRecord(
+    record.fcSpace || record.kcSpace || record.space || record.workingEnvironmentSpace || record.room,
+  );
+  const id = extractIsznrId(record) || normalizeInputValue(record.id) || `${kind || "measurement"}-${index + 1}`;
+  const measured = normalizeInputValue(pickIsznrValue(record, [
+    "measuredValue",
+    "measured",
+    "value",
+    "result",
+    "measurementResult",
+    "equivalentNoiseLevel",
+    "airTemperature",
+    "airFlowSpeed",
+    "relativeAirHumidity",
+    "illumination",
+    "vibration",
+  ]));
+  const allowed = normalizeInputValue(pickIsznrValue(record, [
+    "allowedValue",
+    "permittedValue",
+    "prescribedValue",
+    "limitValue",
+    "gvi",
+    "kgvi",
+  ]));
+  const finalGrade = normalizeIsznrWorkEnvironmentFinalGrade(
+    record.finalGrade || record.satisfies || record.resultSatisfies || record.complies || record.grade,
+  );
+  return {
+    id,
+    kind,
+    spaceId: normalizeInputValue(relatedSpace.id),
+    spaceName: normalizeInputValue(
+      relatedSpace.name
+        || record.spaceName
+        || record.roomName
+        || record.placeName
+        || record.workplaceName,
+    ),
+    measuringPlace: normalizeInputValue(pickIsznrValue(record, [
+      "measuringPlace",
+      "measurementPlace",
+      "place",
+      "name",
+      "description",
+    ])),
+    harmfulness: normalizeInputValue(pickIsznrValue(record, ["harmfulness", "harmfulnessName", "chemicalAgent", "agentName"])),
+    unit: normalizeInputValue(pickIsznrValue(record, ["unit", "measurementUnit"])),
+    measured,
+    allowed,
+    note: normalizeInputValue(pickIsznrValue(record, ["note", "remark", "napomena"])),
+    finalGrade,
+  };
+}
+
+function normalizeIsznrWorkEnvironmentRecord(source = {}, sourceKind = "fc_records") {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const isChemical = sourceKind === "kc_records";
+  const id = extractIsznrId(record);
+  const sourceLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
+  const company = normalizeIsznrRelatedRecord(record.company || record.legalEntity);
+  const authorizedCompany = normalizeIsznrRelatedRecord(record.authorizedCompany);
+  const spaces = getIsznrNestedArray(record, isChemical
+    ? ["kcSpaces", "kc_spaces", "spaces", "workingEnvironmentSpaces"]
+    : ["fcSpaces", "fc_spaces", "spaces", "workingEnvironmentSpaces"])
+    .map((item, index) => normalizeIsznrWorkEnvironmentSpace(item, index))
+    .filter(Boolean);
+  const measurementSpecs = isChemical
+    ? [
+      { keys: ["kcHarmfulnesses", "kc_harmfulnesses", "harmfulnesses"], label: "Štetnost" },
+    ]
+    : [
+      { keys: ["fcIlluminations", "fc_illuminations", "illuminations"], label: "Osvijetljenost" },
+      { keys: ["fcNoises", "fc_noises", "noises"], label: "Buka" },
+      { keys: ["fcMicroClimaticConditions", "fc_micro_climatic_conditions", "microClimaticConditions"], label: "Mikroklimatski uvjeti" },
+      { keys: ["fcVibrations", "fc_vibrations", "vibrations"], label: "Vibracije" },
+    ];
+  const measurements = measurementSpecs.flatMap((spec) =>
+    getIsznrNestedArray(record, spec.keys)
+      .map((item, index) => normalizeIsznrWorkEnvironmentMeasurement(item, spec.label, index))
+      .filter(Boolean),
+  );
+  const finalGradeSources = getIsznrNestedArray(record, isChemical
+    ? ["kcFinalGrades", "kc_final_grades", "finalGrades"]
+    : ["fcFinalGrades", "fc_final_grades", "finalGrades"]);
+  const finalGrades = finalGradeSources
+    .map((item) => normalizeIsznrWorkEnvironmentFinalGrade(item?.finalGrade || item?.grade || item?.result || item?.value || item))
+    .filter((item) => item.label || item.value);
+  const directFinalGrade = normalizeIsznrWorkEnvironmentFinalGrade(
+    record.finalGrade || record.finalScore || record.grade || record.satisfies,
+  );
+  const finalGrade = finalGrades.find((item) => item.label) || directFinalGrade;
+  const typeLabels = normalizeIsznrRelatedArray(record.typesOfExamination || record.examinationTypes || record.types)
+    .map((item) => item.name)
+    .filter(Boolean);
+  const measurementKinds = [...new Set(measurements.map((item) => item.kind).filter(Boolean))];
+  return {
+    id,
+    isznrId: id,
+    sourceKind,
+    sourceLabel,
+    environmentKind: isChemical ? "chemical" : "physical",
+    recordNumber: normalizeInputValue(pickIsznrValue(record, ["recordNumber", "identifier", "internalId", "number"])),
+    internalId: normalizeInputValue(record.internalId),
+    company,
+    authorizedCompany,
+    location: normalizeInputValue(record.location || record.placeOfTesting || record.testingLocation),
+    startDate: normalizeInputValue(record.startDate).slice(0, 10),
+    endDate: normalizeInputValue(record.endDate).slice(0, 10),
+    deadlineForNextExamination: normalizeInputValue(record.deadlineForNextExamination).slice(0, 10),
+    finalGrade,
+    harmfulness: Array.isArray(record.harmfulness) ? record.harmfulness : [],
+    harmfulnessOther: normalizeInputValue(record.harmfulnessOther),
+    typesOfExamination: Array.isArray(record.typesOfExamination) ? record.typesOfExamination : [],
+    technicalDocumentation: normalizeInputValue(record.technicalDocumentation),
+    airTemperature: normalizeInputValue(record.airTemperature),
+    relativeAirHumidity: normalizeInputValue(record.relativeAirHumidity),
+    airFlowSpeed: normalizeInputValue(record.airFlowSpeed),
+    deadlineForNextExaminationNote: normalizeInputValue(record.deadlineForNextExaminationNote),
+    measuresToEliminateDeficiencies: normalizeInputValue(record.measuresToEliminateDeficiencies),
+    types: typeLabels.length ? typeLabels : measurementKinds,
+    instruments: normalizeIsznrRelatedArray(record.instruments),
+    experts: normalizeIsznrRelatedArray(record.experts),
+    signedBy: normalizeIsznrRelatedArray(record.signedBy),
+    healthRequirementRegisters: normalizeIsznrRelatedArray(
+      record.fcHealthRequirementRegister
+        || record.kcHealthRequirementRegister
+        || record.healthRequirementRegister,
+    ),
+    obligationRegisters: normalizeIsznrRelatedArray(
+      record.workingEnvironmentObligationRegister
+        || record.obligationRegister,
+    ),
+    methodsProceduresAndNorms: normalizeInputValue(record.methodsProceduresAndNorms),
+    externalConditionsOther: normalizeInputValue(record.externalConditionsOther),
+    workProcessConditions: normalizeInputValue(record.workProcessConditions),
+    spaces,
+    measurements,
+  };
+}
+
+function buildIsznrWorkEnvironmentSearchParams(filters = {}) {
+  const entries = {
+    "company.oib": normalizeIsznrOib(filters.companyOib || filters["company.oib"]),
+    "startDate[before]": normalizeInputValue(filters.startDateBefore || filters["startDate[before]"]),
+    "startDate[after]": normalizeInputValue(filters.startDateAfter || filters["startDate[after]"]),
+    "endDate[before]": normalizeInputValue(filters.endDateBefore || filters["endDate[before]"]),
+    "endDate[after]": normalizeInputValue(filters.endDateAfter || filters["endDate[after]"]),
+  };
+  return Object.fromEntries(Object.entries(entries).filter(([, value]) => value));
+}
+
+function dedupeIsznrWorkEnvironmentItems(items = []) {
+  const seen = new Set();
+  return (Array.isArray(items) ? items : [])
+    .filter(Boolean)
+    .filter((item) => {
+      const key = [
+        normalizeInputValue(item.sourceKind),
+        normalizeInputValue(item.id || item.isznrId),
+        normalizeInputValue(item.recordNumber),
+        normalizeInputValue(item.location),
+        normalizeInputValue(item.endDate || item.startDate),
+      ].join("|").toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+async function fetchIsznrWorkEnvironmentList({
+  baseUrl = "",
+  username = "",
+  password = "",
+  filters = {},
+  maxPages = ISZNR_WORK_EQUIPMENT_MAX_PAGES,
+  maxRecords = ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS,
+} = {}) {
+  const searchParams = buildIsznrWorkEnvironmentSearchParams(filters);
+  const safeMaxRecords = Math.max(1, Number(maxRecords) || ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS);
+  const sources = [
+    { path: "fc_records", sourceKind: "fc_records", label: "Fizikalni čimbenici" },
+  ];
+  const results = await Promise.all(sources.map(async (source) => {
+    try {
+      const result = await fetchIsznrPagedCollection({
+        baseUrl,
+        username,
+        password,
+        resourcePath: source.path,
+        searchParams,
+        maxPages,
+        maxRecords: safeMaxRecords,
+      });
+      return { ok: true, source, result };
+    } catch (error) {
+      return {
+        ok: false,
+        source,
+        error: error?.message || "IS ZNR radni okoliš nije dohvaćen.",
+      };
+    }
+  }));
+  const failures = results.filter((item) => !item.ok);
+  if (failures.length === results.length) {
+    throw new Error(failures[0]?.error || "IS ZNR radni okoliš nije dohvaćen.");
+  }
+  const items = dedupeIsznrWorkEnvironmentItems(results
+    .filter((item) => item.ok)
+    .flatMap((item) => (item.result.items || [])
+      .map((record) => normalizeIsznrWorkEnvironmentRecord(record, item.source.sourceKind))
+      .filter(Boolean)))
+    .slice(0, safeMaxRecords);
+  const totalItems = results
+    .filter((item) => item.ok)
+    .reduce((sum, item) => sum + (item.result.totalItems ?? item.result.count ?? 0), 0);
+  return {
+    ok: true,
+    count: items.length,
+    totalItems,
+    items,
+    fetchedAt: new Date().toISOString(),
+    pagesFetched: Math.max(0, ...results.filter((item) => item.ok).map((item) => item.result.pagesFetched || 0)),
+    recordsLimited: results.some((item) => item.ok && item.result.recordsLimited) || items.length >= safeMaxRecords,
+    sources: {
+      physical: {
+        ok: results.find((item) => item.source.path === "fc_records")?.ok === true,
+        count: items.filter((item) => item.environmentKind === "physical").length,
+        error: results.find((item) => item.source.path === "fc_records")?.error || "",
+      },
+      chemical: {
+        ok: results.find((item) => item.source.path === "kc_records")?.ok === true,
+        count: items.filter((item) => item.environmentKind === "chemical").length,
+        error: results.find((item) => item.source.path === "kc_records")?.error || "",
+      },
+    },
+    warnings: failures.map((item) => `${item.source.label}: ${item.error}`),
+  };
+}
+
+function buildMobileIsznrWorkEnvironmentRecord(item = {}) {
+  const finalGrade = item.finalGrade?.label || "";
+  const title = normalizeInputValue(item.recordNumber)
+    || `${item.sourceLabel || "Radni okoliš"} ${item.endDate || item.startDate || ""}`.trim()
+    || "IS ZNR radni okoliš";
+  const date = normalizeInputValue(item.endDate || item.startDate);
+  const companyName = normalizeInputValue(item.company?.name);
+  const location = normalizeInputValue(item.location);
+  const spacesCount = Array.isArray(item.spaces) ? item.spaces.length : 0;
+  const measurementsCount = Array.isArray(item.measurements) ? item.measurements.length : 0;
+  const typesLabel = (Array.isArray(item.types) ? item.types : []).map(normalizeInputValue).filter(Boolean).join(", ");
+  const subtitle = [
+    item.sourceLabel,
+    companyName,
+    location,
+    spacesCount ? `${spacesCount} prostora` : "",
+    measurementsCount ? `${measurementsCount} mjerenja` : "",
+    date,
+  ].filter(Boolean).join(" - ");
+  return {
+    id: `isznr-work-environment:${normalizeInputValue(item.id || item.recordNumber || title)}`,
+    title,
+    subtitle,
+    status: finalGrade || item.sourceLabel || "IS ZNR",
+    kind: "isznr_work_environment",
+    date,
+    relatedId: normalizeInputValue(item.isznrId || item.id),
+    coordinates: "",
+    meta: {
+      isznrWorkEnvironmentId: normalizeInputValue(item.isznrId || item.id),
+      isznrRecordId: normalizeInputValue(item.isznrId || item.id),
+      isznrSource: normalizeInputValue(item.sourceKind),
+      isznrSourceLabel: normalizeInputValue(item.sourceLabel),
+      isznrLinked: "true",
+      environmentKind: normalizeInputValue(item.environmentKind),
+      recordNumber: normalizeInputValue(item.recordNumber),
+      companyName,
+      companyOib: normalizeInputValue(item.company?.oib),
+      authorizedCompanyName: normalizeInputValue(item.authorizedCompany?.name),
+      location,
+      startDate: normalizeInputValue(item.startDate),
+      endDate: normalizeInputValue(item.endDate),
+      deadlineForNextExamination: normalizeInputValue(item.deadlineForNextExamination),
+      finalGrade,
+      typesLabel,
+      spacesCount: String(spacesCount),
+      measurementsCount: String(measurementsCount),
+      spacesLabel: (Array.isArray(item.spaces) ? item.spaces : [])
+        .slice(0, 4)
+        .map((space) => space.name || space.code)
+        .filter(Boolean)
+        .join(", "),
+      experts: normalizeIsznrRelatedArray(item.experts).map((entry) => entry.name).filter(Boolean).join(", "),
+      signedBy: normalizeIsznrRelatedArray(item.signedBy).map((entry) => entry.name).filter(Boolean).join(", "),
+      methodsProceduresAndNorms: normalizeInputValue(item.methodsProceduresAndNorms),
+    },
+  };
+}
+
+function buildWorkOrderIsznrWorkEnvironmentOption(item = {}) {
+  const record = buildMobileIsznrWorkEnvironmentRecord(item);
+  if (!record?.id || !record?.title) {
+    return null;
+  }
+  const meta = record.meta || {};
+  return buildMobileDocumentationOption(
+    record.id,
+    [
+      meta.recordNumber || (meta.environmentKind === "chemical" ? "Kemijski čimbenici" : "Fizikalni čimbenici"),
+      meta.location,
+    ].filter(Boolean).join(" - "),
+    [
+      meta.isznrSourceLabel,
+      meta.spacesCount ? `${meta.spacesCount} prostora` : "",
+      meta.measurementsCount ? `${meta.measurementsCount} mjerenja` : "",
+      meta.deadlineForNextExamination ? `Vrijedi do ${formatOfferDocumentDate(meta.deadlineForNextExamination)}` : "",
+    ].filter(Boolean).join(" · "),
+    record.status,
+    meta,
+  );
+}
+
+function buildWorkOrderIsznrWorkEnvironmentOptions(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => buildWorkOrderIsznrWorkEnvironmentOption(item))
+    .filter(Boolean)
+    .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
+}
+
+async function fetchIsznrPhysicalFactorsRegisters({
+  baseUrl = "",
+  username = "",
+  password = "",
+} = {}) {
+  return mapIsznrWithConcurrency(
+    ISZNR_PHYSICAL_FACTORS_REGISTER_RESOURCES,
+    2,
+    async (resource) => {
+      try {
+        const result = await fetchIsznrJsonResource({
+          baseUrl,
+          username,
+          password,
+          resourcePath: resource.path,
+          timeoutMs: ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+        });
+        const items = getIsznrPayloadArray(result.payload)
+          .map((item) => normalizeIsznrRegisterRecord(item, resource))
+          .filter(Boolean);
+        return {
+          ok: true,
+          ...resource,
+          count: items.length,
+          items,
+          fetchedAt: result.fetchedAt,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          ...resource,
+          count: 0,
+          items: [],
+          error: error?.message || "ISZNR FC šifrarnik nije dohvaćen.",
+        };
+      }
+    },
+  );
+}
+
+function buildIsznrPhysicalFactorsRecordSelectionKeys(item = {}) {
+  return [
+    item?.id,
+    item?.isznrId,
+    item?.recordNumber,
+    item?.internalId,
+    item?.id ? `isznr-work-environment:${item.id}` : "",
+    item?.isznrId ? `isznr-work-environment:${item.isznrId}` : "",
+  ]
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean);
+}
+
+function matchesIsznrPhysicalFactorsSelection(item = {}, selectedKeys = new Set()) {
+  if (!selectedKeys || selectedKeys.size === 0) {
+    return false;
+  }
+  return buildIsznrPhysicalFactorsRecordSelectionKeys(item)
+    .some((key) => selectedKeys.has(key) || selectedKeys.has(key.toLowerCase()));
+}
+
+function normalizeIsznrPhysicalFactorsSelection(values = []) {
+  return new Set((Array.isArray(values) ? values : [values])
+    .flatMap((value) => String(value ?? "").split("|"))
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean)
+    .flatMap((value) => [value, value.toLowerCase()]));
+}
+
+function normalizeIsznrIntegerValue(value, fallback = "") {
+  const normalized = normalizeInputValue(value);
+  if (!normalized) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(normalized.replace(",", "."), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeIsznrGradeValue(value, fallback = 1) {
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  const normalized = normalizeIsznrWorkEnvironmentText(value);
+  if (!normalized) {
+    return fallback;
+  }
+  if (normalized === "0" || normalized === "ne" || normalized.includes("ne zadovoljava") || normalized.includes("nezadovoljava")) {
+    return 0;
+  }
+  return 1;
+}
+
+function normalizeIsznrIntegerArray(values = []) {
+  return Array.from(new Set((Array.isArray(values) ? values : [values])
+    .map((value) => {
+      if (value && typeof value === "object") {
+        return normalizeIsznrIntegerValue(value.id || value.value || value.type || value.code, "");
+      }
+      return normalizeIsznrIntegerValue(value, "");
+    })
+    .filter((value) => Number.isFinite(value))));
+}
+
+function inferIsznrPhysicalTypesFromRecord(record = {}) {
+  const direct = normalizeIsznrIntegerArray(record.typesOfExamination);
+  if (direct.length > 0) {
+    return direct;
+  }
+  const labels = (Array.isArray(record.types) ? record.types : [])
+    .map((value) => normalizeIsznrWorkEnvironmentText(value));
+  const types = [];
+  labels.forEach((label) => {
+    if (label.includes("mikro")) types.push(1);
+    if (label.includes("osvijet") || label.includes("osvjet")) types.push(2);
+    if (label.includes("buka")) types.push(3);
+    if (label.includes("vibr")) types.push(4);
+  });
+  return Array.from(new Set(types.length ? types : [1, 2, 3]));
+}
+
+function inferIsznrPhysicalHarmfulnessFromTypes(types = []) {
+  const harmfulness = [];
+  (Array.isArray(types) ? types : []).forEach((type) => {
+    if (type === 1) harmfulness.push(4);
+    if (type === 2) harmfulness.push(7);
+    if (type === 3) harmfulness.push(1);
+    if (type === 4) harmfulness.push(2);
+  });
+  return Array.from(new Set(harmfulness));
+}
+
+function getIsznrRelatedId(source = {}, keys = []) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value && typeof value === "object") {
+      const id = extractIsznrId(value);
+      if (id) return id;
+    }
+    const normalized = normalizeInputValue(value);
+    if (/^\d+$/.test(normalized)) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+async function fetchIsznrPhysicalFactorsRecordDetails({
+  baseUrl = "",
+  username = "",
+  password = "",
+  record = {},
+} = {}) {
+  const recordId = normalizeInputValue(record?.isznrId || record?.id);
+  if (!recordId) {
+    return null;
+  }
+  const spacesResult = await fetchIsznrPagedCollection({
+    baseUrl,
+    username,
+    password,
+    resourcePath: "fc_spaces",
+    searchParams: { "fcRecord.id": recordId },
+    maxPages: 10,
+    maxRecords: 200,
+  }).catch(() => ({ items: [] }));
+  const spaces = getIsznrPayloadArray(spacesResult).length ? getIsznrPayloadArray(spacesResult) : (spacesResult.items || []);
+  const spaceDetails = [];
+  for (const rawSpace of spaces) {
+    const spaceId = extractIsznrId(rawSpace);
+    const [finalGrades, microClimaticConditions, illuminations, noises] = await Promise.all([
+      fetchIsznrPagedCollection({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "fc_final_grades",
+        searchParams: { "fcSpace.id": spaceId },
+        maxPages: 5,
+        maxRecords: 100,
+      }).then((result) => result.items || []).catch(() => []),
+      fetchIsznrPagedCollection({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "fc_micro_climatic_conditions",
+        searchParams: { "fcSpace.id": spaceId },
+        maxPages: 5,
+        maxRecords: 200,
+      }).then((result) => result.items || []).catch(() => []),
+      fetchIsznrPagedCollection({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "fc_illuminations",
+        searchParams: { "fcSpace.id": spaceId },
+        maxPages: 5,
+        maxRecords: 300,
+      }).then((result) => result.items || []).catch(() => []),
+      fetchIsznrPagedCollection({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "fc_noises",
+        searchParams: { "fcSpace.id": spaceId },
+        maxPages: 5,
+        maxRecords: 200,
+      }).then((result) => result.items || []).catch(() => []),
+    ]);
+    spaceDetails.push({
+      id: spaceId,
+      raw: rawSpace,
+      finalGrades,
+      microClimaticConditions,
+      illuminations,
+      noises,
+    });
+  }
+  const vibrations = await fetchIsznrPagedCollection({
+    baseUrl,
+    username,
+    password,
+    resourcePath: "fc_vibrations",
+    searchParams: { "fcRecord.id": recordId },
+    maxPages: 5,
+    maxRecords: 120,
+  }).then((result) => result.items || []).catch(() => []);
+
+  return {
+    recordId,
+    spaces: spaceDetails,
+    vibrations,
+  };
+}
+
+function buildIsznrFcSpacePayload(space = {}) {
+  const raw = space?.raw && typeof space.raw === "object" ? space.raw : space;
+  return {
+    name: normalizeInputValue(raw.name || raw.title || "Prostor"),
+    description: normalizeInputValue(raw.description || raw.purposeDescription) || "Opis prostora nije posebno naveden.",
+    workProcess: normalizeInputValue(raw.workProcess || raw.workProcessDescription || raw.processDescription) || "Opis radnih procesa nije posebno naveden.",
+    workEquipment: normalizeInputValue(raw.workEquipment || raw.workEquipmentDescription || raw.equipmentDescription) || "Popis radne opreme nije posebno naveden.",
+  };
+}
+
+function buildIsznrFcFinalGradePayload(item = {}) {
+  return {
+    typesOfExamination: normalizeIsznrIntegerValue(item.typesOfExamination || item.type, 1),
+    grade: normalizeIsznrGradeValue(item.grade || item.finalGrade, 1),
+  };
+}
+
+function buildIsznrFcMicroPayload(item = {}) {
+  return compactIsznrPayload({
+    measuringPlace: normalizeInputValue(item.measuringPlace || item.measurementPlace || item.name) || "Mjerno mjesto",
+    airTemperature: normalizeInputValue(item.airTemperature) || "0",
+    allowedAirTemperature: normalizeInputValue(item.allowedAirTemperature) || "-",
+    relativeAirHumidity: normalizeInputValue(item.relativeAirHumidity) || "0",
+    allowedRelativeAirHumidity: normalizeInputValue(item.allowedRelativeAirHumidity) || "-",
+    airFlowSpeed: normalizeInputValue(item.airFlowSpeed),
+    allowedAirFlowSpeed: normalizeInputValue(item.allowedAirFlowSpeed),
+    grade: normalizeIsznrGradeValue(item.grade || item.finalGrade, 1),
+  });
+}
+
+function buildIsznrFcIlluminationPayload(item = {}) {
+  return compactIsznrPayload({
+    measuringPlace: normalizeInputValue(item.measuringPlace || item.measurementPlace || item.name) || "Mjerno mjesto",
+    generalIllumination: normalizeIsznrIntegerValue(item.generalIllumination, 0),
+    additionalIllumination: normalizeIsznrIntegerValue(item.additionalIllumination, ""),
+    prescribedIllumination: normalizeIsznrIntegerValue(item.prescribedIllumination, 0),
+    grade: normalizeIsznrGradeValue(item.grade || item.finalGrade, 1),
+  });
+}
+
+function buildIsznrFcNoisePayload(item = {}) {
+  return compactIsznrPayload({
+    measuringPlace: normalizeInputValue(item.measuringPlace || item.measurementPlace || item.name) || "Mjerno mjesto",
+    equivalentNoiseLevel: normalizeInputValue(item.equivalentNoiseLevel) || "0",
+    permittedEquivalentNoiseLevel: normalizeInputValue(item.permittedEquivalentNoiseLevel) || "0",
+    peakNoise: normalizeInputValue(item.peakNoise),
+    noiseExposureTime: normalizeInputValue(item.noiseExposureTime),
+    dailyExposureToNoise: normalizeInputValue(item.dailyExposureToNoise),
+    customFields: Array.isArray(item.customFields) ? item.customFields : [],
+    grade: normalizeIsznrGradeValue(item.grade || item.finalGrade, 1),
+  });
+}
+
+function buildIsznrFcVibrationPayload(item = {}) {
+  const measuringPoints = (Array.isArray(item.measuringPoints) ? item.measuringPoints : [])
+    .map((point, index) => ({
+      name: normalizeInputValue(point.name) || `Mjerno mjesto ${index + 1}`,
+      measuredValueA8: normalizeInputValue(point.measuredValueA8) || "0",
+      customFields: Array.isArray(point.customFields) ? point.customFields : [],
+      grade: normalizeIsznrGradeValue(point.grade || point.finalGrade, 1),
+    }))
+    .filter((point) => point.name && point.measuredValueA8);
+  return compactIsznrPayload({
+    source: normalizeInputValue(item.source) || "Izvor vibracija",
+    type: normalizeIsznrIntegerValue(item.type, 1),
+    bodyPositions: normalizeIsznrIntegerArray(item.bodyPositions),
+    measuringPoints,
+  });
+}
+
+function buildIsznrPhysicalFactorsFollowUpDrafts(detailsByRecordId = new Map(), selectedRecords = []) {
+  const spaceDrafts = [];
+  const followUpDrafts = [];
+  (Array.isArray(selectedRecords) ? selectedRecords : []).forEach((record) => {
+    const recordId = normalizeInputValue(record?.isznrId || record?.id);
+    const details = detailsByRecordId.get(recordId);
+    if (!details) {
+      return;
+    }
+    details.spaces.forEach((space, index) => {
+      const sourceSpaceId = normalizeInputValue(space.id || extractIsznrId(space.raw || {})) || `${recordId}:space:${index + 1}`;
+      spaceDrafts.push({
+        sourceRecordId: recordId,
+        sourceSpaceId,
+        payload: buildIsznrFcSpacePayload(space),
+      });
+      space.finalGrades.forEach((item) => {
+        followUpDrafts.push({
+          resourcePath: "fc_final_grades",
+          scope: "fcSpace",
+          sourceSpaceId,
+          payload: buildIsznrFcFinalGradePayload(item),
+        });
+      });
+      space.microClimaticConditions.forEach((item) => {
+        followUpDrafts.push({
+          resourcePath: "fc_micro_climatic_conditions",
+          scope: "fcSpace",
+          sourceSpaceId,
+          payload: buildIsznrFcMicroPayload(item),
+        });
+      });
+      space.illuminations.forEach((item) => {
+        followUpDrafts.push({
+          resourcePath: "fc_illuminations",
+          scope: "fcSpace",
+          sourceSpaceId,
+          payload: buildIsznrFcIlluminationPayload(item),
+        });
+      });
+      space.noises.forEach((item) => {
+        followUpDrafts.push({
+          resourcePath: "fc_noises",
+          scope: "fcSpace",
+          sourceSpaceId,
+          payload: buildIsznrFcNoisePayload(item),
+        });
+      });
+    });
+    details.vibrations.forEach((item) => {
+      followUpDrafts.push({
+        resourcePath: "fc_vibrations",
+        scope: "fcRecord",
+        sourceRecordId: recordId,
+        payload: buildIsznrFcVibrationPayload(item),
+      });
+    });
+  });
+  return {
+    spaceDrafts: spaceDrafts.filter((draft) => draft.payload.name && draft.payload.description && draft.payload.workProcess && draft.payload.workEquipment),
+    followUpDrafts,
+  };
+}
+
+function buildIsznrPhysicalFactorsPostDraft({
+  workOrder = {},
+  scopedSnapshot = {},
+  isznrResult = {},
+  selectedItemIds = [],
+  selectAll = false,
+  referenceIris = {},
+  common = {},
+  detailsByRecordId = new Map(),
+} = {}) {
+  const items = Array.isArray(isznrResult.items) ? isznrResult.items : [];
+  const registers = Array.isArray(isznrResult.registers) ? isznrResult.registers : [];
+  const selectedKeys = normalizeIsznrPhysicalFactorsSelection(selectedItemIds);
+  const selectedRecords = selectedKeys.size > 0
+    ? items.filter((item) => matchesIsznrPhysicalFactorsSelection(item, selectedKeys))
+    : (selectAll ? items : []);
+  const latestRecord = getLatestIsznrWorkEquipmentRecord(selectedRecords.length ? selectedRecords : items);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const startDate = normalizeDateOnlyValue(common.inspectionDate || workOrder.executionDate || workOrder.openedDate || workOrder.createdAt) || todayIso;
+  const endDate = normalizeDateOnlyValue(common.issuedDate || workOrder.completionDate || workOrder.completedAt || startDate) || startDate;
+  const deadline = normalizeDateOnlyValue(workOrder.dueDate)
+    || normalizeDateOnlyValue(latestRecord.deadlineForNextExamination)
+    || addMonthsToMobileDate(endDate, "36");
+  const companyOib = getWorkOrderCompanyOib(workOrder, scopedSnapshot);
+  const companyIri = buildIsznrApiIri("companies", latestRecord.company?.id)
+    || normalizeInputValue(referenceIris.companyIri);
+  const authorizedCompanyIri = buildIsznrApiIri("authorized_companies", latestRecord.authorizedCompany?.id)
+    || normalizeInputValue(referenceIris.authorizedCompanyIri);
+  const typesOfExamination = inferIsznrPhysicalTypesFromRecord(latestRecord);
+  const harmfulness = normalizeIsznrIntegerArray(latestRecord.harmfulness)
+    .concat(inferIsznrPhysicalHarmfulnessFromTypes(typesOfExamination))
+    .filter((value, index, array) => Number.isFinite(value) && array.indexOf(value) === index);
+  const workingEnvironmentObligationRegister = buildIsznrApiIriList("working_environment_obligation_registers", latestRecord.obligationRegisters || latestRecord.workingEnvironmentObligationRegister)
+    .concat(buildDefaultIsznrRegisterIris(registers, "working_environment_obligation_registers", 1))
+    .filter((value, index, array) => value && array.indexOf(value) === index);
+  const healthRequirementRegister = buildIsznrApiIriList("fc_health_requirement_registers", latestRecord.healthRequirementRegisters || latestRecord.healthRequirementRegister)
+    .concat(buildDefaultIsznrRegisterIris(registers, "fc_health_requirement_registers", 1))
+    .filter((value, index, array) => value && array.indexOf(value) === index);
+  const expertPeople = getIsznrPeopleForWorkOrder(scopedSnapshot, workOrder, "expert");
+  const signedByPeople = getIsznrPeopleForWorkOrder(scopedSnapshot, workOrder, "holder");
+  const instruments = getIsznrMeasurementEquipmentIris(scopedSnapshot);
+  const followUps = buildIsznrPhysicalFactorsFollowUpDrafts(detailsByRecordId, selectedRecords);
+  const location = normalizeInputValue(latestRecord.location) || resolveIsznrWorkOrderLocation(workOrder);
+  const payload = {
+    internalId: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+    authorizedCompany: authorizedCompanyIri,
+    company: companyIri,
+    location,
+    workingEnvironmentObligationRegister,
+    healthRequirementRegister,
+    healthRequirementOther: normalizeInputValue(latestRecord.healthRequirementOther),
+    harmfulness,
+    harmfulnessOther: normalizeInputValue(latestRecord.harmfulnessOther),
+    typesOfExamination,
+    startDate,
+    endDate,
+    technicalDocumentation: normalizeInputValue(latestRecord.technicalDocumentation) || "Tehnička dokumentacija i podaci zatečeni na mjestu ispitivanja.",
+    airTemperature: normalizeInputValue(common.outsideTemperature || latestRecord.airTemperature) || "0",
+    relativeAirHumidity: normalizeInputValue(common.relativeHumidity || latestRecord.relativeAirHumidity) || "0",
+    airFlowSpeed: normalizeInputValue(common.airflowSpeed || latestRecord.airFlowSpeed),
+    externalConditionsOther: normalizeInputValue(common.externalConditionsOther || latestRecord.externalConditionsOther),
+    methodsProceduresAndNorms: normalizeInputValue(latestRecord.methodsProceduresAndNorms) || "Ispitivanje je provedeno prema važećim propisima, normama i pravilima struke.",
+    instruments,
+    workProcessConditions: normalizeInputValue(latestRecord.workProcessConditions) || "Ispitivanje je provedeno u uvjetima redovitog procesa rada.",
+    experts: expertPeople.iris,
+    deadlineForNextExamination: deadline,
+    deadlineForNextExaminationNote: normalizeInputValue(latestRecord.deadlineForNextExaminationNote),
+    signedBy: signedByPeople.iris,
+    measuresToEliminateDeficiencies: normalizeInputValue(latestRecord.measuresToEliminateDeficiencies),
+  };
+  const checklist = [];
+  addIsznrDraftChecklistItem(checklist, "authorizedCompany", "Ovlaštena osoba", payload.authorizedCompany, payload.authorizedCompany ? "IRI je preuzet iz FC/IS ZNR podataka." : "Nedostaje IS ZNR ID ovlaštene osobe.", payload.authorizedCompany);
+  addIsznrDraftChecklistItem(checklist, "company", "Poslodavac u IS ZNR-u", payload.company, payload.company ? "IRI je preuzet za OIB tvrtke." : `Nedostaje IS ZNR company IRI${companyOib ? ` za OIB ${companyOib}` : ""}.`, payload.company);
+  addIsznrDraftChecklistItem(checklist, "location", "Lokacija ispitivanja", payload.location, payload.location ? "Lokacija je popunjena." : "Upiši lokaciju ispitivanja.", payload.location);
+  addIsznrDraftChecklistItem(checklist, "registers", "FC propisi i zahtjevi", payload.workingEnvironmentObligationRegister.length > 0 && payload.healthRequirementRegister.length > 0, "Potrebni su radni okoliš obligation i FC health requirement šifarnici.", `${payload.workingEnvironmentObligationRegister.length}/${payload.healthRequirementRegister.length}`);
+  addIsznrDraftChecklistItem(checklist, "types", "Vrste FC ispitivanja", payload.typesOfExamination.length > 0, "Potrebno je barem jedno FC ispitivanje: mikroklima, osvijetljenost, buka ili vibracije.", payload.typesOfExamination.join(", "));
+  addIsznrDraftChecklistItem(checklist, "dates", "Datumi i rok", Boolean(payload.startDate && payload.endDate && payload.deadlineForNextExamination), "Rok je po defaultu 36 mjeseci od završetka ako RN nema rok.", `${payload.startDate} - ${payload.endDate} / ${payload.deadlineForNextExamination}`);
+  addIsznrDraftChecklistItem(checklist, "conditions", "Vanjski i procesni uvjeti", Boolean(payload.airTemperature && payload.relativeAirHumidity && payload.workProcessConditions), "Temperatura, relativna vlažnost i uvjeti procesa rada moraju biti popunjeni.", "");
+  addIsznrDraftChecklistItem(checklist, "methods", "Metode i tehnička dokumentacija", Boolean(payload.technicalDocumentation && payload.methodsProceduresAndNorms), "Tehnička dokumentacija i metode/norme moraju biti popunjene.", "");
+  addIsznrDraftChecklistItem(checklist, "experts", "Stručnjaci ZNR", payload.experts.length > 0, "Iz People modula se koriste osobe s IS ZNR expert oznakom.", String(payload.experts.length));
+  addIsznrDraftChecklistItem(checklist, "signedBy", "Potpisnici zaključne ocjene", payload.signedBy.length > 0, "Iz People modula se koriste nositelji ovlaštenja.", String(payload.signedBy.length));
+  addIsznrDraftChecklistItem(checklist, "sourceRecord", "Prethodni FC zapisnik", selectedRecords.length > 0, "Odaberi FC zapisnik koji se kopira u novi IS ZNR zapis.", String(selectedRecords.length));
+
+  const missing = checklist.filter((item) => !item.ready);
+  return {
+    mode: "post-ready",
+    writeEnabled: true,
+    ready: missing.length === 0,
+    readyCount: checklist.length - missing.length,
+    missingCount: missing.length,
+    missingLabels: missing.map((item) => item.label),
+    checklist,
+    companyOib,
+    sourceRecordId: normalizeInputValue(latestRecord.isznrId || latestRecord.id),
+    sourceRecordNumber: normalizeInputValue(latestRecord.recordNumber),
+    selectedItemIds: selectedRecords.flatMap(buildIsznrPhysicalFactorsRecordSelectionKeys).filter(Boolean),
+    selectedRecordCount: selectedRecords.length,
+    people: {
+      experts: expertPeople,
+      signedBy: signedByPeople,
+    },
+    payload,
+    spaceDrafts: followUps.spaceDrafts,
+    followUpDrafts: followUps.followUpDrafts,
+    followUp: {
+      fcRecord: "POST /fc_records",
+      spaces: "POST /fc_spaces nakon fcRecord.id",
+      measurements: "POST /fc_micro_climatic_conditions, /fc_illuminations, /fc_noises, /fc_vibrations",
+      finalGrades: "POST /fc_final_grades",
+    },
+  };
+}
+
 function getWorkOrderCompanyOib(workOrder = {}, scopedSnapshot = {}) {
   const company = (scopedSnapshot.companies ?? [])
     .find((item) => String(item?.id || "") === String(workOrder?.companyId || ""));
@@ -3138,6 +4060,375 @@ async function fetchIsznrWorkEquipmentForWorkOrder({
     message: result.count > 0
       ? ""
       : "IS ZNR nije vratio radnu opremu za OIB tvrtke na ovom RN-u.",
+  };
+}
+
+async function fetchIsznrWorkEnvironmentForWorkOrder({
+  user = null,
+  request = null,
+  workOrder = {},
+  scopedSnapshot = {},
+  includeRegisters = false,
+  maxRecords = 80,
+  postDraftSelection = {},
+  common = {},
+} = {}) {
+  void user;
+  const companyOib = getWorkOrderCompanyOib(workOrder, scopedSnapshot);
+  if (!companyOib) {
+    return {
+      ok: true,
+      count: 0,
+      totalItems: 0,
+      items: [],
+      registers: [],
+      mobileRecords: [],
+      options: [],
+      postDraft: null,
+      companyOib: "",
+      fetchedAt: new Date().toISOString(),
+      pagesFetched: 0,
+      recordsLimited: false,
+      message: "RN nema OIB tvrtke pa IS ZNR fizikalni čimbenici nisu dohvaćeni.",
+      sources: {},
+      warnings: [],
+    };
+  }
+
+  const activeOrganizationId = scopedSnapshot.activeOrganizationId || resolveLightweightRequestedOrganizationId(user, request);
+  const storedSettings = await domainRepository.getIsznrApiSettings(activeOrganizationId);
+  const result = await fetchIsznrWorkEnvironmentList({
+    baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    filters: {
+      companyOib,
+    },
+    maxPages: 2,
+    maxRecords,
+  });
+  const registers = includeRegisters
+    ? await fetchIsznrPhysicalFactorsRegisters({
+      baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+      username: storedSettings?.username || "",
+      password: storedSettings?.passwordSecret || "",
+    })
+    : [];
+  const latestRecord = getLatestIsznrWorkEquipmentRecord(result.items);
+  const needsReferenceFallback = !latestRecord.company?.id || !latestRecord.authorizedCompany?.id;
+  const activeOrganization = (scopedSnapshot.organizations ?? [])
+    .find((item) => String(item?.id || "") === String(activeOrganizationId));
+  const referenceIris = needsReferenceFallback
+    ? await resolveIsznrWorkEquipmentReferenceIris({
+      baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+      username: storedSettings?.username || "",
+      password: storedSettings?.passwordSecret || "",
+      companyOib,
+      organizationOib: activeOrganization?.oib || activeOrganization?.OIB || storedSettings?.username || "",
+    })
+    : {};
+  const postDraft = buildIsznrPhysicalFactorsPostDraft({
+    workOrder,
+    scopedSnapshot,
+    isznrResult: {
+      ...result,
+      registers,
+      companyOib,
+    },
+    selectedItemIds: postDraftSelection.selectedItemIds || postDraftSelection.selectedRecordIds || [],
+    selectAll: Boolean(postDraftSelection.selectAll),
+    referenceIris,
+    common,
+  });
+  return {
+    ...result,
+    registers,
+    companyOib,
+    mobileRecords: result.items.map(buildMobileIsznrWorkEnvironmentRecord),
+    options: buildWorkOrderIsznrWorkEnvironmentOptions(result.items),
+    postDraft,
+    message: result.count > 0
+      ? (result.warnings?.length ? `Dio IS ZNR radnog okoliša nije dohvaćen: ${result.warnings.join(" | ")}` : "")
+      : "IS ZNR nije vratio fizikalne čimbenike za OIB tvrtke na ovom RN-u.",
+  };
+}
+
+function buildIsznrFcRecordSubmitResult(postResult = {}, draft = {}) {
+  const normalized = normalizeIsznrWorkEnvironmentRecord(postResult.payload || {}, "fc_records");
+  const id = normalizeInputValue(normalized?.id || extractIsznrId(postResult.payload || {}));
+  const recordNumber = normalizeInputValue(
+    normalized?.recordNumber
+    || postResult.payload?.recordNumber
+    || postResult.payload?.internalId,
+  );
+  return {
+    ok: true,
+    status: postResult.status,
+    submittedAt: postResult.submittedAt,
+    path: postResult.path,
+    record: normalized,
+    isznrId: id,
+    recordNumber,
+    sourceRecordCount: Number(draft.selectedRecordCount || 0),
+    spaceCount: Array.isArray(draft.spaceDrafts) ? draft.spaceDrafts.length : 0,
+    followUpCount: Array.isArray(draft.followUpDrafts) ? draft.followUpDrafts.length : 0,
+    message: recordNumber
+      ? `FC zapisnik ${recordNumber} je poslan u IS ZNR.`
+      : id
+        ? `FC zapisnik je poslan u IS ZNR (ID ${id}).`
+        : "FC zapisnik je poslan u IS ZNR.",
+  };
+}
+
+async function submitIsznrFcFollowUps({
+  baseUrl = "",
+  username = "",
+  password = "",
+  fcRecordIri = "",
+  spaceDrafts = [],
+  followUpDrafts = [],
+} = {}) {
+  const normalizedFcRecordIri = normalizeInputValue(fcRecordIri);
+  const spaces = Array.isArray(spaceDrafts) ? spaceDrafts : [];
+  const drafts = Array.isArray(followUpDrafts) ? followUpDrafts : [];
+  if (!normalizedFcRecordIri || (spaces.length === 0 && drafts.length === 0)) {
+    return { ok: true, submitted: 0, failed: 0, spacesSubmitted: 0, measurementsSubmitted: 0, warnings: [], results: [] };
+  }
+
+  const results = [];
+  const spaceIriBySourceId = new Map();
+  for (const draft of spaces) {
+    const payload = draft?.payload && typeof draft.payload === "object"
+      ? compactIsznrPayload({ ...draft.payload, fcRecord: normalizedFcRecordIri })
+      : null;
+    if (!payload?.name) {
+      continue;
+    }
+    try {
+      const result = await mutateIsznrJsonResource({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "fc_spaces",
+        method: "POST",
+        payload,
+      });
+      const spaceId = extractIsznrId(result.payload || {});
+      const spaceIri = buildIsznrApiIri("fc_spaces", spaceId);
+      if (spaceIri && draft.sourceSpaceId) {
+        spaceIriBySourceId.set(normalizeInputValue(draft.sourceSpaceId), spaceIri);
+      }
+      results.push({ ok: true, resourcePath: "fc_spaces", status: result.status, isznrId: spaceId });
+    } catch (error) {
+      results.push({
+        ok: false,
+        resourcePath: "fc_spaces",
+        message: error?.message || "IS ZNR FC prostor nije poslan.",
+      });
+    }
+  }
+
+  for (const draft of drafts) {
+    const resourcePath = normalizeInputValue(draft?.resourcePath);
+    const basePayload = draft?.payload && typeof draft.payload === "object" ? draft.payload : null;
+    if (!resourcePath || !basePayload) {
+      continue;
+    }
+    const payload = { ...basePayload };
+    if (draft.scope === "fcSpace") {
+      const spaceIri = spaceIriBySourceId.get(normalizeInputValue(draft.sourceSpaceId));
+      if (!spaceIri) {
+        results.push({
+          ok: false,
+          resourcePath,
+          message: "Preskočeno jer povezani FC prostor nije poslan.",
+        });
+        continue;
+      }
+      payload.fcSpace = spaceIri;
+    } else {
+      payload.fcRecord = normalizedFcRecordIri;
+    }
+    try {
+      const result = await mutateIsznrJsonResource({
+        baseUrl,
+        username,
+        password,
+        resourcePath,
+        method: "POST",
+        payload: compactIsznrPayload(payload),
+      });
+      results.push({ ok: true, resourcePath, status: result.status, isznrId: extractIsznrId(result.payload || {}) });
+    } catch (error) {
+      results.push({
+        ok: false,
+        resourcePath,
+        message: error?.message || "IS ZNR FC povezani red nije poslan.",
+      });
+    }
+  }
+
+  const failed = results.filter((item) => !item.ok);
+  return {
+    ok: failed.length === 0,
+    submitted: results.length - failed.length,
+    failed: failed.length,
+    spacesSubmitted: results.filter((item) => item.ok && item.resourcePath === "fc_spaces").length,
+    measurementsSubmitted: results.filter((item) => item.ok && item.resourcePath !== "fc_spaces").length,
+    warnings: failed.map((item) => `${item.resourcePath}: ${item.message}`),
+    results,
+  };
+}
+
+async function submitIsznrPhysicalFactorsForWorkOrder({
+  user = null,
+  request = null,
+  workOrder = {},
+  scopedSnapshot = {},
+  selectedItemIds = [],
+  selectAll = false,
+  common = {},
+} = {}) {
+  const initialResult = await fetchIsznrWorkEnvironmentForWorkOrder({
+    user,
+    request,
+    workOrder,
+    scopedSnapshot,
+    includeRegisters: true,
+    maxRecords: 120,
+    postDraftSelection: {
+      selectedItemIds,
+      selectAll,
+    },
+    common,
+  });
+  const selectedKeys = normalizeIsznrPhysicalFactorsSelection(selectedItemIds);
+  const selectedRecords = selectedKeys.size > 0
+    ? initialResult.items.filter((item) => matchesIsznrPhysicalFactorsSelection(item, selectedKeys))
+    : (selectAll ? initialResult.items : []);
+  if (selectedRecords.length === 0) {
+    throw createRequestError(400, "Odaberi barem jedan prethodni FC zapisnik za slanje u IS ZNR.");
+  }
+
+  const activeOrganizationId = scopedSnapshot.activeOrganizationId || resolveLightweightRequestedOrganizationId(user, request);
+  const storedSettings = await domainRepository.getIsznrApiSettings(activeOrganizationId);
+  const isznrBaseUrl = storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL;
+  const detailsByRecordId = new Map();
+  for (const record of selectedRecords.slice(0, 3)) {
+    const details = await fetchIsznrPhysicalFactorsRecordDetails({
+      baseUrl: isznrBaseUrl,
+      username: storedSettings?.username || "",
+      password: storedSettings?.passwordSecret || "",
+      record,
+    });
+    if (details?.recordId) {
+      detailsByRecordId.set(normalizeInputValue(details.recordId), details);
+    }
+  }
+
+  const companyOib = getWorkOrderCompanyOib(workOrder, scopedSnapshot);
+  const latestRecord = getLatestIsznrWorkEquipmentRecord(initialResult.items);
+  const needsReferenceFallback = !latestRecord.company?.id || !latestRecord.authorizedCompany?.id;
+  const activeOrganization = (scopedSnapshot.organizations ?? [])
+    .find((item) => String(item?.id || "") === String(activeOrganizationId));
+  const referenceIris = needsReferenceFallback
+    ? await resolveIsznrWorkEquipmentReferenceIris({
+      baseUrl: isznrBaseUrl,
+      username: storedSettings?.username || "",
+      password: storedSettings?.passwordSecret || "",
+      companyOib,
+      organizationOib: activeOrganization?.oib || activeOrganization?.OIB || storedSettings?.username || "",
+    })
+    : {};
+  const draft = buildIsznrPhysicalFactorsPostDraft({
+    workOrder,
+    scopedSnapshot,
+    isznrResult: initialResult,
+    selectedItemIds,
+    selectAll,
+    referenceIris,
+    common,
+    detailsByRecordId,
+  });
+  if (!draft?.ready) {
+    throw createRequestError(
+      400,
+      `IS ZNR FC zapisnik nije spreman za slanje. Fali: ${(draft?.missingLabels || []).join(", ") || "obavezni podaci"}.`,
+    );
+  }
+
+  const postResult = await mutateIsznrJsonResource({
+    baseUrl: isznrBaseUrl,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    resourcePath: "fc_records",
+    method: "POST",
+    payload: compactIsznrPayload(draft.payload),
+  });
+  const submitResult = buildIsznrFcRecordSubmitResult(postResult, draft);
+  const fcRecordIri = buildIsznrApiIri("fc_records", submitResult.isznrId);
+  const followUpResult = await submitIsznrFcFollowUps({
+    baseUrl: isznrBaseUrl,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    fcRecordIri,
+    spaceDrafts: draft.spaceDrafts,
+    followUpDrafts: draft.followUpDrafts,
+  });
+  const pdfUrl = buildIsznrFcRecordPdfUrl(isznrBaseUrl, submitResult.isznrId);
+  const pdfBridgeUrl = buildIsznrRecordPdfBridgeUrl("fc", isznrBaseUrl, submitResult.isznrId);
+  const pdfLoginUrl = pdfUrl ? buildIsznrLoginUrlFromPdfUrl(pdfUrl) : "";
+
+  await domainRepository.addWorkOrderActivityComment(
+    workOrder.id,
+    {
+      message: [
+        submitResult.recordNumber
+          ? `IS ZNR FC zapisnik poslan: ${submitResult.recordNumber}.`
+          : `IS ZNR FC zapisnik poslan${submitResult.isznrId ? `, ID ${submitResult.isznrId}` : ""}.`,
+        `Prethodni zapisnici: ${submitResult.sourceRecordCount}.`,
+        followUpResult.submitted ? `FC elementi: ${followUpResult.submitted}.` : "",
+        followUpResult.failed ? `Upozorenja: ${followUpResult.failed}.` : "",
+        pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
+        pdfBridgeUrl ? `Safe Nexus preuzimanje: ${pdfBridgeUrl}.` : "",
+        submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
+      ].filter(Boolean).join(" "),
+    },
+    user,
+  ).catch((error) => {
+    console.warn("[isznr] work environment activity comment failed", {
+      workOrderId: workOrder.id,
+      message: error?.message || "",
+    });
+  });
+
+  return {
+    ...submitResult,
+    pdfUrl,
+    isznrPdfUrl: pdfUrl,
+    pdfBridgeUrl,
+    isznrPdfBridgeUrl: pdfBridgeUrl,
+    pdfLoginUrl,
+    isznrLoginUrl: pdfLoginUrl,
+    followUp: followUpResult,
+    message: [
+      submitResult.message,
+      followUpResult.failed
+        ? `FC elementi: ${followUpResult.submitted} poslano, ${followUpResult.failed} nije prošlo.`
+        : followUpResult.submitted
+          ? `FC elementi: ${followUpResult.submitted} poslano.`
+          : "",
+      pdfUrl ? `PDF zapisnik: ${pdfUrl}` : "",
+    ].filter(Boolean).join(" "),
+    postDraft: {
+      ...draft,
+      submitted: true,
+      submittedAt: submitResult.submittedAt,
+      submittedRecordId: submitResult.isznrId,
+      submittedRecordNumber: submitResult.recordNumber,
+      submittedPdfUrl: pdfUrl,
+      submittedPdfBridgeUrl: pdfBridgeUrl,
+    },
   };
 }
 
@@ -3428,13 +4719,28 @@ function buildIsznrRoRecordPdfUrl(baseUrl = "", recordId = "") {
   return `${buildIsznrWebBaseUrl(baseUrl)}/record/ro/${encodeURIComponent(normalizedId)}/generate-record`;
 }
 
-function buildIsznrRoRecordPdfBridgeUrl(baseUrl = "", recordId = "") {
+function buildIsznrFcRecordPdfUrl(baseUrl = "", recordId = "") {
   const normalizedId = normalizeInputValue(recordId);
-  const pdfUrl = buildIsznrRoRecordPdfUrl(baseUrl, normalizedId);
+  if (!normalizedId) {
+    return "";
+  }
+  return `${buildIsznrWebBaseUrl(baseUrl)}/record/fc/${encodeURIComponent(normalizedId)}/generate-record`;
+}
+
+function buildIsznrRecordPdfBridgeUrl(recordKind = "ro", baseUrl = "", recordId = "") {
+  const normalizedKind = normalizeInputValue(recordKind).toLowerCase() === "fc" ? "fc" : "ro";
+  const normalizedId = normalizeInputValue(recordId);
+  const pdfUrl = normalizedKind === "fc"
+    ? buildIsznrFcRecordPdfUrl(baseUrl, normalizedId)
+    : buildIsznrRoRecordPdfUrl(baseUrl, normalizedId);
   if (!normalizedId || !pdfUrl) {
     return "";
   }
-  return `/isznr/ro-records/${encodeURIComponent(normalizedId)}/pdf?target=${encodeURIComponent(pdfUrl)}`;
+  return `/isznr/${normalizedKind}-records/${encodeURIComponent(normalizedId)}/pdf?target=${encodeURIComponent(pdfUrl)}`;
+}
+
+function buildIsznrRoRecordPdfBridgeUrl(baseUrl = "", recordId = "") {
+  return buildIsznrRecordPdfBridgeUrl("ro", baseUrl, recordId);
 }
 
 function buildIsznrApiIriList(resourcePath = "", items = []) {
@@ -3446,6 +4752,22 @@ function buildIsznrApiIriList(resourcePath = "", items = []) {
       return buildIsznrApiIri(resourcePath, item?.id || item?.isznrId);
     })
     .filter(Boolean)));
+}
+
+function compactIsznrPayload(payload = {}) {
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(payload)
+    .filter(([, value]) => {
+      if (value === "" || value === null || typeof value === "undefined") {
+        return false;
+      }
+      if (Array.isArray(value) && value.length === 0) {
+        return false;
+      }
+      return true;
+    }));
 }
 
 function findIsznrWorkEquipmentRegisterItems(registers = [], path = "") {
@@ -14564,6 +15886,21 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
       } : null))
       .filter((entry) => entry && (entry.id || entry.label))
     : [];
+  const selectedWorkEnvironmentRecords = Array.isArray(source.selectedWorkEnvironmentRecords)
+    ? source.selectedWorkEnvironmentRecords
+      .map((entry) => (entry && typeof entry === "object" ? {
+        id: normalizeInputValue(entry.id),
+        label: normalizeInputValue(entry.label || entry.title || entry.name),
+        subtitle: normalizeInputValue(entry.subtitle),
+        status: normalizeInputValue(entry.status),
+        meta: entry.meta && typeof entry.meta === "object"
+          ? Object.fromEntries(Object.entries(entry.meta)
+            .map(([key, value]) => [normalizeInputValue(key), normalizeInputValue(value)])
+            .filter(([key, value]) => key && value))
+          : {},
+      } : null))
+      .filter((entry) => entry && (entry.id || entry.label))
+    : [];
   const manualWorkEquipments = normalizeIsznrRoManualEquipmentPayloads(
     source.manualWorkEquipments || source.manualWorkEquipment || source.manualEquipments || [],
   );
@@ -14575,6 +15912,15 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     recordNumber: normalizeInputValue(workEquipmentSubmitSource.recordNumber || workEquipmentSubmitSource.submittedRecordNumber),
     pdfUrl: normalizeInputValue(workEquipmentSubmitSource.pdfUrl || workEquipmentSubmitSource.isznrPdfUrl),
     pdfBridgeUrl: normalizeInputValue(workEquipmentSubmitSource.pdfBridgeUrl || workEquipmentSubmitSource.isznrPdfBridgeUrl),
+  };
+  const workEnvironmentSubmitSource = source.workEnvironmentSubmitResult && typeof source.workEnvironmentSubmitResult === "object"
+    ? source.workEnvironmentSubmitResult
+    : {};
+  const workEnvironmentSubmitResult = {
+    isznrId: normalizeInputValue(workEnvironmentSubmitSource.isznrId || workEnvironmentSubmitSource.submittedRecordId),
+    recordNumber: normalizeInputValue(workEnvironmentSubmitSource.recordNumber || workEnvironmentSubmitSource.submittedRecordNumber),
+    pdfUrl: normalizeInputValue(workEnvironmentSubmitSource.pdfUrl || workEnvironmentSubmitSource.isznrPdfUrl),
+    pdfBridgeUrl: normalizeInputValue(workEnvironmentSubmitSource.pdfBridgeUrl || workEnvironmentSubmitSource.isznrPdfBridgeUrl),
   };
   const executors = normalizeMobileDocumentWizardArray(source.executors);
   const additionalRecords = Array.isArray(source.additionalRecords)
@@ -14661,9 +16007,12 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     selectedLegalFrameworkIds,
     selectedRulebookIds,
     selectedWorkEquipmentRecords,
+    selectedWorkEnvironmentRecords,
     manualWorkEquipments,
     workEquipmentSubmitResult,
     workEquipmentRecordNumber: workEquipmentSubmitResult.recordNumber,
+    workEnvironmentSubmitResult,
+    workEnvironmentRecordNumber: workEnvironmentSubmitResult.recordNumber,
     signatureMode: normalizeMobileDocumentSignatureMode(source.signatureMode),
     validityMonths: normalizeMobileDocumentValidityMonths(source.validityMonths, "12"),
     electricalValidityMonths: normalizeMobileDocumentValidityMonths(source.electricalValidityMonths, source.validityMonths || "12"),
@@ -17800,6 +19149,12 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     workEquipmentStatus: scopedSnapshot.isznrWorkEquipmentStatus && typeof scopedSnapshot.isznrWorkEquipmentStatus === "object"
       ? scopedSnapshot.isznrWorkEquipmentStatus
       : {},
+    workEnvironmentOptions: Array.isArray(scopedSnapshot.isznrWorkEnvironmentOptions)
+      ? scopedSnapshot.isznrWorkEnvironmentOptions
+      : [],
+    workEnvironmentStatus: scopedSnapshot.isznrWorkEnvironmentStatus && typeof scopedSnapshot.isznrWorkEnvironmentStatus === "object"
+      ? scopedSnapshot.isznrWorkEnvironmentStatus
+      : {},
     legalFrameworkOptions: buildMobileLegalFrameworkOptions(scopedSnapshot),
     signaturePersonOptions: buildMobileSignaturePersonOptions(scopedSnapshot, [...signatureAreaKeys], workOrder),
   };
@@ -18551,13 +19906,16 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
   }).filter((row) => row.service || row.documentNumber || row.objectName);
   const workEquipmentRows = buildMobileHandoverWorkEquipmentRows(workOrder, common);
   const hasWorkEquipmentRows = workEquipmentRows.length > 0;
+  const workEnvironmentRows = buildMobileHandoverWorkEnvironmentRows(workOrder, common);
+  const hasWorkEnvironmentRows = workEnvironmentRows.length > 0;
   const rows = [
     ...baseRows.filter((row) => (
-      !hasWorkEquipmentRows
-      || !normalizeLookupKey(row.service).includes("radna oprema")
+      (!hasWorkEquipmentRows || !normalizeLookupKey(row.service).includes("radna oprema"))
+      && (!hasWorkEnvironmentRows || !isMobileHandoverWorkEnvironmentServiceText(row.service))
     )),
     ...additionalRows,
     ...workEquipmentRows,
+    ...workEnvironmentRows,
   ];
 
   return {
@@ -18714,6 +20072,100 @@ function buildMobileHandoverWorkEquipmentRows(workOrder = {}, common = {}) {
     note: formatMobileHandoverWorkEquipmentNote(equipment),
     objectName: normalizeInputValue(workOrder.objectName),
   }));
+}
+
+function normalizeMobileHandoverWorkEnvironmentRecord(source = {}) {
+  const record = source && typeof source === "object" ? source : {};
+  const meta = record.meta && typeof record.meta === "object" ? record.meta : {};
+  const recordNumber = normalizeInputValue(meta.recordNumber || record.recordNumber || record.documentNumber || record.label);
+  const sourceLabel = normalizeInputValue(meta.isznrSourceLabel || record.sourceLabel || record.status);
+  const environmentKind = normalizeInputValue(meta.environmentKind || record.environmentKind);
+  const location = normalizeInputValue(meta.location || record.location);
+  const spacesCount = normalizeInputValue(meta.spacesCount || record.spacesCount);
+  const measurementsCount = normalizeInputValue(meta.measurementsCount || record.measurementsCount);
+  const typesLabel = normalizeInputValue(meta.typesLabel || record.typesLabel);
+  const sourceId = normalizeInputValue(
+    record.id
+      || meta.isznrWorkEnvironmentId
+      || meta.isznrRecordId
+      || record.isznrId
+      || record.relatedId
+      || recordNumber
+      || sourceLabel,
+  );
+  return {
+    id: sourceId,
+    recordNumber,
+    sourceLabel,
+    environmentKind,
+    location,
+    spacesCount,
+    measurementsCount,
+    typesLabel,
+  };
+}
+
+function formatMobileHandoverWorkEnvironmentNote(record = {}) {
+  return [
+    record.sourceLabel,
+    record.location,
+    record.spacesCount ? `${record.spacesCount} prostora` : "",
+    record.measurementsCount ? `${record.measurementsCount} mjerenja` : "",
+    record.typesLabel,
+  ].map(normalizeInputValue).filter(Boolean).join("; ");
+}
+
+function isMobileHandoverWorkEnvironmentServiceText(value = "") {
+  const normalized = normalizeIsznrWorkEnvironmentText(value);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized.includes("radna oprema") || normalized.includes("radne opreme")) {
+    return false;
+  }
+  return normalized.includes("radni okolis")
+    || normalized.includes("radnog okolisa")
+    || normalized.includes("fizikalni cimbenici")
+    || normalized.includes("kemijski cimbenici")
+    || normalized === "rok"
+    || normalized.startsWith("rok ");
+}
+
+function buildMobileHandoverWorkEnvironmentRows(workOrder = {}, common = {}) {
+  const selectedRecords = Array.isArray(common.selectedWorkEnvironmentRecords)
+    ? common.selectedWorkEnvironmentRecords
+    : [];
+  const submittedRecordNumber = normalizeInputValue(
+    common.workEnvironmentSubmitResult?.recordNumber
+    || common.workEnvironmentRecordNumber
+    || common.workEnvironmentSubmitResult?.submittedRecordNumber,
+  );
+  const seen = new Set();
+  return selectedRecords
+    .map(normalizeMobileHandoverWorkEnvironmentRecord)
+    .filter((record) => record.recordNumber || record.sourceLabel || record.location)
+    .filter((record) => {
+      const key = [
+        record.recordNumber,
+        record.sourceLabel,
+        record.location,
+      ].map((value) => normalizeInputValue(value).toLowerCase()).join("|");
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .map((record, index) => ({
+      id: `handover-rok-${record.id || index + 1}`,
+      service: record.environmentKind === "chemical"
+        ? "Ispitivanje kemijskih čimbenika radnog okoliša"
+        : "Ispitivanje fizikalnih čimbenika radnog okoliša",
+      documentNumber: submittedRecordNumber || record.recordNumber || normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+      quantity: record.measurementsCount || record.spacesCount || "1",
+      note: formatMobileHandoverWorkEnvironmentNote(record),
+      objectName: normalizeInputValue(workOrder.objectName),
+    }));
 }
 
 function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, common = {}) {
@@ -21282,6 +22734,38 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/mobile/isznr/work-environment") {
+      const measurementEquipmentScope = await getLightweightScopedPermissionScope(user, request, "measurementEquipment.view");
+      if (!measurementEquipmentScope.canUse) {
+        sendError(response, 403, "Nemate pravo dohvatiti IS ZNR radni okoliš.");
+        return true;
+      }
+
+      const storedSettings = await domainRepository.getIsznrApiSettings(measurementEquipmentScope.activeOrganizationId);
+      const result = await fetchIsznrWorkEnvironmentList({
+        baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: storedSettings?.username || "",
+        password: storedSettings?.passwordSecret || "",
+        filters: {
+          companyOib: url.searchParams.get("companyOib") || url.searchParams.get("company.oib") || "",
+        },
+        maxPages: url.searchParams.get("maxPages") || ISZNR_WORK_EQUIPMENT_MAX_PAGES,
+        maxRecords: url.searchParams.get("maxRecords") || ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalItems: result.totalItems,
+        fetchedAt: result.fetchedAt,
+        pagesFetched: result.pagesFetched,
+        recordsLimited: Boolean(result.recordsLimited),
+        sources: result.sources,
+        warnings: result.warnings,
+        records: limitMobileRecords(result.items.map(buildMobileIsznrWorkEnvironmentRecord), ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS),
+      });
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/mobile/isznr/people") {
       const { scopedSnapshot } = await getScopedState(user, request);
       if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "people.manage")) {
@@ -21448,11 +22932,54 @@ async function handleApiRequest(request, response, url) {
           message: error?.message || "IS ZNR radna oprema nije dohvaćena.",
         };
       }
+      try {
+        const isznrWorkEnvironment = await fetchIsznrWorkEnvironmentForWorkOrder({
+          user,
+          request,
+          workOrder: workOrderForContext,
+          scopedSnapshot,
+          includeRegisters: true,
+          maxRecords: 80,
+        });
+        contextSnapshot.isznrWorkEnvironmentOptions = isznrWorkEnvironment.options;
+        contextSnapshot.isznrWorkEnvironmentStatus = {
+          ok: true,
+          companyOib: isznrWorkEnvironment.companyOib,
+          count: isznrWorkEnvironment.count,
+          totalItems: isznrWorkEnvironment.totalItems,
+          fetchedAt: isznrWorkEnvironment.fetchedAt,
+          message: isznrWorkEnvironment.message || "",
+          recordsLimited: Boolean(isznrWorkEnvironment.recordsLimited),
+          physicalCount: String(isznrWorkEnvironment.sources?.physical?.count ?? 0),
+          chemicalCount: String(isznrWorkEnvironment.sources?.chemical?.count ?? 0),
+          postDraftMode: isznrWorkEnvironment.postDraft?.mode || "dry-run",
+          postDraftReady: isznrWorkEnvironment.postDraft?.ready ? "true" : "false",
+          postDraftReadyCount: String(isznrWorkEnvironment.postDraft?.readyCount ?? 0),
+          postDraftMissingCount: String(isznrWorkEnvironment.postDraft?.missingCount ?? 0),
+          postDraftMissingLabels: (isznrWorkEnvironment.postDraft?.missingLabels || []).join(", "),
+          postDraftMissingKeys: (isznrWorkEnvironment.postDraft?.checklist || [])
+            .filter((item) => !item.ready)
+            .map((item) => item.key)
+            .filter(Boolean)
+            .join(", "),
+          postDraftExpertCount: String(isznrWorkEnvironment.postDraft?.people?.experts?.count ?? 0),
+          postDraftExpertLabels: (isznrWorkEnvironment.postDraft?.people?.experts?.labels || []).join(", "),
+          postDraftSignedByCount: String(isznrWorkEnvironment.postDraft?.people?.signedBy?.count ?? 0),
+          postDraftSignedByLabels: (isznrWorkEnvironment.postDraft?.people?.signedBy?.labels || []).join(", "),
+        };
+      } catch (error) {
+        contextSnapshot.isznrWorkEnvironmentOptions = [];
+        contextSnapshot.isznrWorkEnvironmentStatus = {
+          ok: false,
+          message: error?.message || "IS ZNR radni okoliš nije dohvaćen.",
+        };
+      }
       sendJson(response, 200, buildMobileWorkOrderDocumentationContext(workOrderForContext, contextSnapshot));
       return true;
     }
 
     const mobileWorkOrderIsznrWorkEquipmentMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/isznr-work-equipment$/);
+    const mobileWorkOrderIsznrWorkEnvironmentMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/isznr-work-environment$/);
     if (mobileWorkOrderIsznrWorkEquipmentMatch && request.method === "GET") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo dohvatiti radnu opremu za RN.");
@@ -21509,6 +23036,68 @@ async function handleApiRequest(request, response, url) {
         selectedItemIds: body?.selectedItemIds || body?.selectedEquipmentIds || [],
         manualEquipments: body?.manualEquipments || body?.manualEquipment || [],
         selectAll: body?.selectAll === true,
+      });
+      sendJson(response, 201, result);
+      return true;
+    }
+
+    if (mobileWorkOrderIsznrWorkEnvironmentMatch && request.method === "GET") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dohvatiti radni okoliš za RN.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderIsznrWorkEnvironmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await fetchIsznrWorkEnvironmentForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        includeRegisters: url.searchParams.get("includeRegisters") !== "false",
+        maxRecords: url.searchParams.get("maxRecords") || 80,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalItems: result.totalItems,
+        companyOib: result.companyOib,
+        fetchedAt: result.fetchedAt,
+        pagesFetched: result.pagesFetched,
+        recordsLimited: Boolean(result.recordsLimited),
+        message: result.message || "",
+        sources: result.sources,
+        postDraft: result.postDraft,
+        records: limitMobileRecords(result.mobileRecords, ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS),
+      });
+      return true;
+    }
+
+    if (mobileWorkOrderIsznrWorkEnvironmentMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo poslati FC zapisnik u IS ZNR.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderIsznrWorkEnvironmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await submitIsznrPhysicalFactorsForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        selectedItemIds: body?.selectedItemIds || body?.selectedRecordIds || [],
+        selectAll: body?.selectAll === true,
+        common: body?.common && typeof body.common === "object" ? body.common : {},
       });
       sendJson(response, 201, result);
       return true;
@@ -22001,6 +23590,7 @@ async function handleApiRequest(request, response, url) {
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderMeasurementSheetMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/measurement-sheet$/);
     const workOrderIsznrWorkEquipmentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/isznr-work-equipment$/);
+    const workOrderIsznrWorkEnvironmentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/isznr-work-environment$/);
     const workOrderDocumentsCollectionMatch = url.pathname === "/api/work-order-documents";
     const workOrderDocumentsZipExportMatch = url.pathname === "/api/work-order-documents/export-zip";
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
@@ -24983,6 +26573,45 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (workOrderIsznrWorkEnvironmentMatch && request.method === "GET") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dohvatiti radni okoliš za RN.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        workOrderIsznrWorkEnvironmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await fetchIsznrWorkEnvironmentForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        includeRegisters: url.searchParams.get("includeRegisters") !== "false",
+        maxRecords: url.searchParams.get("maxRecords") || 120,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalItems: result.totalItems,
+        companyOib: result.companyOib,
+        fetchedAt: result.fetchedAt,
+        pagesFetched: result.pagesFetched,
+        recordsLimited: Boolean(result.recordsLimited),
+        message: result.message || "",
+        sources: result.sources,
+        warnings: result.warnings,
+        items: result.items,
+        options: result.options,
+        mobileRecords: result.mobileRecords,
+        postDraft: result.postDraft,
+      });
+      return true;
+    }
+
     if (workOrderIsznrWorkEquipmentMatch && request.method === "POST") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo poslati RO zapisnik u IS ZNR.");
@@ -25004,6 +26633,32 @@ async function handleApiRequest(request, response, url) {
         selectedItemIds: body?.selectedItemIds || body?.selectedEquipmentIds || [],
         manualEquipments: body?.manualEquipments || body?.manualEquipment || [],
         selectAll: body?.selectAll === true,
+      });
+      sendJson(response, 201, result);
+      return true;
+    }
+
+    if (workOrderIsznrWorkEnvironmentMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo poslati FC zapisnik u IS ZNR.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        workOrderIsznrWorkEnvironmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await submitIsznrPhysicalFactorsForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        selectedItemIds: body?.selectedItemIds || body?.selectedRecordIds || [],
+        selectAll: body?.selectAll === true,
+        common: body?.common && typeof body.common === "object" ? body.common : {},
       });
       sendJson(response, 201, result);
       return true;
@@ -27290,17 +28945,20 @@ const server = createServer(async (request, response) => {
     }
   }
 
-  const isznrRoPdfBridgeMatch = url.pathname.match(/^\/isznr\/ro-records\/([^/]+)\/pdf$/);
+  const isznrRoPdfBridgeMatch = url.pathname.match(/^\/isznr\/(ro|fc)-records\/([^/]+)\/pdf$/);
   if ((request.method === "GET" || request.method === "HEAD") && isznrRoPdfBridgeMatch) {
-    const recordId = decodeURIComponent(isznrRoPdfBridgeMatch[1] || "").trim();
+    const recordKind = decodeURIComponent(isznrRoPdfBridgeMatch[1] || "ro").trim().toLowerCase() === "fc" ? "fc" : "ro";
+    const recordId = decodeURIComponent(isznrRoPdfBridgeMatch[2] || "").trim();
     const targetUrl = String(
       url.searchParams.get("target")
-      || buildIsznrRoRecordPdfUrl(ISZNR_DEFAULT_API_BASE_URL, recordId)
+      || (recordKind === "fc"
+        ? buildIsznrFcRecordPdfUrl(ISZNR_DEFAULT_API_BASE_URL, recordId)
+        : buildIsznrRoRecordPdfUrl(ISZNR_DEFAULT_API_BASE_URL, recordId))
       || "",
     ).trim();
 
-    if (!isTrustedIsznrRoPdfUrl(targetUrl, recordId)) {
-      writeBufferResponse(response, 400, "Neispravan IS ZNR RO PDF link.", {
+    if (!isTrustedIsznrRecordPdfUrl(targetUrl, recordId, recordKind)) {
+      writeBufferResponse(response, 400, "Neispravan IS ZNR PDF link.", {
         contentType: "text/plain; charset=utf-8",
         headers: NO_STORE_HEADERS,
       });
@@ -27310,6 +28968,7 @@ const server = createServer(async (request, response) => {
     const body = buildIsznrRoRecordPdfBridgePage({
       recordId,
       pdfUrl: targetUrl,
+      recordKind,
     });
     response.setHeader("Content-Security-Policy", ISZNR_RO_PDF_BRIDGE_CSP);
     writeBufferResponse(response, 200, body, {

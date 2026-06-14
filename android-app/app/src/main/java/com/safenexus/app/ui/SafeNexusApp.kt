@@ -424,6 +424,7 @@ data class AppState(
     val isznrPeopleLoaded: Boolean = false,
     val isznrPeopleError: String = "",
     val workEquipmentSubmitResults: Map<String, IsznrWorkEquipmentSubmitResult> = emptyMap(),
+    val physicalFactorsSubmitResults: Map<String, IsznrWorkEquipmentSubmitResult> = emptyMap(),
     val isLoading: Boolean = false,
     val error: String = "",
     val notice: String = "",
@@ -1049,6 +1050,51 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         error = error.message ?: "IS ZNR POST nije uspio.",
+                        notice = "",
+                    )
+                }
+        }
+    }
+
+    fun submitWorkOrderIsznrPhysicalFactors(
+        workOrder: WorkOrder,
+        selectedItemIds: List<String>,
+        objectId: String = "",
+    ) {
+        val workOrderId = workOrder.id.trim()
+        val normalizedSelection = selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (workOrderId.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za IS ZNR slanje.")
+            return
+        }
+        if (normalizedSelection.isEmpty()) {
+            state = state.copy(error = "Odaberi barem jedan prethodni FC zapisnik za slanje u IS ZNR.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "Šaljem FC zapisnik u IS ZNR...")
+        viewModelScope.launch {
+            api.submitWorkOrderIsznrPhysicalFactors(workOrderId, normalizedSelection)
+                .onSuccess { result ->
+                    val pdfNotice = result.pdfUrl.ifBlank { "" }.let { url ->
+                        if (url.isBlank()) "" else " PDF zapisnik: $url"
+                    }
+                    val pdfBridgeUrl = result.pdfBridgeUrl.ifBlank { result.pdfUrl }
+                    val successMessage = result.message.ifBlank { "FC zapisnik je poslan u IS ZNR." } + pdfNotice
+                    state = state.copy(
+                        isLoading = false,
+                        notice = successMessage,
+                        error = "",
+                        pendingExternalUrl = pdfBridgeUrl,
+                        physicalFactorsSubmitResults = state.physicalFactorsSubmitResults + (workOrderId to result),
+                    )
+                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                    state = state.copy(notice = successMessage)
+                    refreshWorkOrderDocuments()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "IS ZNR FC POST nije uspio.",
                         notice = "",
                     )
                 }
@@ -1931,6 +1977,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                 state.documentationContextObjectId == documentationWizardObjectId,
             isLoading = state.isLoading,
             workEquipmentSubmitResult = state.workEquipmentSubmitResults[workOrder.id] ?: IsznrWorkEquipmentSubmitResult(),
+            physicalFactorsSubmitResult = state.physicalFactorsSubmitResults[workOrder.id] ?: IsznrWorkEquipmentSubmitResult(),
             onDismiss = { documentationWizardTarget = null },
             onObjectSelectionChange = { objectId ->
                 documentationWizardObjectId = objectId
@@ -1957,6 +2004,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             },
             onSubmitIsznrWorkEquipment = { selectedItemIds, manualEquipments ->
                 viewModel.submitWorkOrderIsznrWorkEquipment(workOrder, selectedItemIds, manualEquipments, documentationWizardObjectId)
+            },
+            onSubmitIsznrPhysicalFactors = { selectedItemIds ->
+                viewModel.submitWorkOrderIsznrPhysicalFactors(workOrder, selectedItemIds, documentationWizardObjectId)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -4349,6 +4399,175 @@ private fun workEquipmentFilterCount(
     filter: DocumentationWorkEquipmentFilter,
     today: LocalDate,
 ): Int = options.count { it.matchesWorkEquipmentFilter(filter, today) }
+
+private enum class DocumentationPhysicalFactorsFilter(val label: String) {
+    All("Svi FC"),
+    Overdue("Istekli"),
+    Upcoming("Uskoro"),
+    NoDeadline("Bez roka"),
+    Satisfactory("Zadovoljava"),
+    Unsatisfactory("Ne zadovoljava"),
+}
+
+private fun WorkOrderDocumentationOption.physicalFactorsDeadline(): LocalDate? =
+    parseDateOrNull(meta["deadlineForNextExamination"].orEmpty())
+
+private fun WorkOrderDocumentationOption.physicalFactorsFinalGradeText(): String =
+    listOf(meta["finalGrade"].orEmpty(), status)
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
+
+private fun WorkOrderDocumentationOption.matchesPhysicalFactorsFilter(
+    filter: DocumentationPhysicalFactorsFilter,
+    today: LocalDate,
+): Boolean {
+    val deadline = physicalFactorsDeadline()
+    val grade = normalizeDocumentationWorkEquipmentText(physicalFactorsFinalGradeText())
+    return when (filter) {
+        DocumentationPhysicalFactorsFilter.All -> true
+        DocumentationPhysicalFactorsFilter.Overdue -> deadline?.isBefore(today) == true
+        DocumentationPhysicalFactorsFilter.Upcoming -> deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
+        DocumentationPhysicalFactorsFilter.NoDeadline -> deadline == null
+        DocumentationPhysicalFactorsFilter.Satisfactory -> grade.contains("zadovoljava") && !grade.contains("ne zadovoljava")
+        DocumentationPhysicalFactorsFilter.Unsatisfactory -> grade.contains("ne zadovoljava") || grade.contains("nezadovoljava")
+    }
+}
+
+private fun physicalFactorsFilterCount(
+    options: List<WorkOrderDocumentationOption>,
+    filter: DocumentationPhysicalFactorsFilter,
+    today: LocalDate,
+): Int = options.count { it.matchesPhysicalFactorsFilter(filter, today) }
+
+@Composable
+private fun DocumentationPhysicalFactorsOptionList(
+    options: List<WorkOrderDocumentationOption>,
+    emptyText: String,
+    statusMessage: String = "",
+    selectedItemIds: Set<String>,
+    enabled: Boolean = true,
+    onSelectedItemIdsChange: (Set<String>) -> Unit,
+) {
+    val today = remember { LocalDate.now() }
+    var selectedFilter by remember(options) { mutableStateOf(DocumentationPhysicalFactorsFilter.All) }
+    val filteredOptions = remember(options, selectedFilter, today) {
+        options
+            .filter { option -> option.matchesPhysicalFactorsFilter(selectedFilter, today) }
+            .sortedWith(
+                compareBy<WorkOrderDocumentationOption> { option ->
+                    option.physicalFactorsDeadline() ?: LocalDate.MAX
+                }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
+            )
+    }
+    val overdueCount = remember(options, today) { physicalFactorsFilterCount(options, DocumentationPhysicalFactorsFilter.Overdue, today) }
+    val upcomingCount = remember(options, today) { physicalFactorsFilterCount(options, DocumentationPhysicalFactorsFilter.Upcoming, today) }
+    val physicalCount = options.size
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Fizikalni čimbenici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "$physicalCount FC zapisnika · $overdueCount isteklo · $upcomingCount uskoro",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
+                Text(
+                    "${filteredOptions.size}",
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
+        if (statusMessage.isNotBlank()) {
+            Text(
+                statusMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            DocumentationPhysicalFactorsFilter.entries.forEach { filter ->
+                val count = physicalFactorsFilterCount(options, filter, today)
+                FilterChip(
+                    selected = selectedFilter == filter,
+                    enabled = enabled && (count > 0 || filter == DocumentationPhysicalFactorsFilter.All),
+                    onClick = { selectedFilter = filter },
+                    label = { Text("${filter.label} ($count)") },
+                )
+            }
+        }
+        if (filteredOptions.isEmpty()) {
+            Text(emptyText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+        } else {
+            filteredOptions.forEach { option ->
+                val isSelected = selectedItemIds.contains(option.id)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = enabled) {
+                            val next = selectedItemIds.toMutableSet()
+                            if (isSelected) next.remove(option.id) else next.add(option.id)
+                            onSelectedItemIdsChange(next)
+                        },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) Color(0xFFE8F3FF) else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    tonalElevation = 0.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = isSelected,
+                            enabled = enabled,
+                            onCheckedChange = { checked ->
+                                val next = selectedItemIds.toMutableSet()
+                                if (checked) next.add(option.id) else next.remove(option.id)
+                                onSelectedItemIdsChange(next)
+                            },
+                        )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(option.label.ifBlank { "FC zapisnik" }, fontWeight = FontWeight.Bold)
+                            Text(
+                                listOf(
+                                    option.subtitle,
+                                    option.meta["spacesCount"]?.takeIf { it.isNotBlank() }?.let { "$it prostora" },
+                                    option.meta["measurementsCount"]?.takeIf { it.isNotBlank() }?.let { "$it mjerenja" },
+                                    option.meta["deadlineForNextExamination"]?.takeIf { it.isNotBlank() }?.let { "Rok $it" },
+                                ).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                            )
+                            val spaces = option.meta["spacesLabel"].orEmpty()
+                            if (spaces.isNotBlank()) {
+                                Text(
+                                    spaces,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                                )
+                            }
+                        }
+                        if (option.status.isNotBlank()) {
+                            AssistChip(onClick = {}, label = { Text(option.status) })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun DocumentationWorkEquipmentOptionList(
@@ -11974,6 +12193,7 @@ private data class DocumentationFlowTab(
 
 private const val DOCUMENTATION_BASICS_FLOW_KEY = "__basics__"
 private const val DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY = "__work_equipment__"
+private const val DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY = "__physical_factors__"
 private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
 private const val DOCUMENTATION_EXTRA_FLOW_PREFIX = "__extra__"
 
@@ -12006,6 +12226,22 @@ private fun isDocumentationWorkEquipmentService(item: DocumentationServiceFlowIt
         isDocumentationWorkEquipmentText(item.serviceCode) ||
         isDocumentationWorkEquipmentText(item.serviceKey)
 
+private fun isDocumentationPhysicalFactorsText(value: String): Boolean {
+    val normalized = normalizeDocumentationWorkEquipmentText(value)
+    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value)) return false
+    return normalized == "fc" ||
+        normalized.startsWith("fc ") ||
+        normalized.contains("fizikalni cimbenici") ||
+        normalized.contains("fizikalnih cimbenika") ||
+        normalized.contains("radni okolis fizikal") ||
+        normalized.contains("radnog okolisa fizikal")
+}
+
+private fun isDocumentationPhysicalFactorsService(item: DocumentationServiceFlowItem): Boolean =
+    isDocumentationPhysicalFactorsText(item.serviceName) ||
+        isDocumentationPhysicalFactorsText(item.serviceCode) ||
+        isDocumentationPhysicalFactorsText(item.serviceKey)
+
 private fun documentationAdditionalRecordFlowKey(record: DocumentationAdditionalObjectRecord, index: Int): String =
     "$DOCUMENTATION_EXTRA_FLOW_PREFIX:${record.serviceKey}:${record.objectId}:$index"
 
@@ -12013,6 +12249,7 @@ private fun buildDocumentationFlowTabs(
     flowItems: List<DocumentationServiceFlowItem>,
     additionalRecords: List<DocumentationAdditionalObjectRecord>,
     includeWorkEquipmentTab: Boolean = false,
+    includePhysicalFactorsTab: Boolean = false,
 ): List<DocumentationFlowTab> {
     val tabs = mutableListOf(
         DocumentationFlowTab(
@@ -12021,10 +12258,10 @@ private fun buildDocumentationFlowTabs(
         ),
     )
     flowItems.forEachIndexed { serviceIndex, item ->
-        val serviceLabel = if (isDocumentationWorkEquipmentService(item)) {
-            "RO"
-        } else {
-            item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
+        val serviceLabel = when {
+            isDocumentationWorkEquipmentService(item) -> "RO"
+            isDocumentationPhysicalFactorsService(item) -> "FC"
+            else -> item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
         }
         tabs += DocumentationFlowTab(
             key = item.serviceKey,
@@ -12047,6 +12284,12 @@ private fun buildDocumentationFlowTabs(
         tabs += DocumentationFlowTab(
             key = DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY,
             label = "RO",
+        )
+    }
+    if (includePhysicalFactorsTab && flowItems.none { isDocumentationPhysicalFactorsService(it) }) {
+        tabs += DocumentationFlowTab(
+            key = DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY,
+            label = "FC",
         )
     }
     tabs += DocumentationFlowTab(
@@ -12592,6 +12835,7 @@ private fun WorkOrderDocumentationWizardDialog(
     contextLoading: Boolean,
     isLoading: Boolean,
     workEquipmentSubmitResult: IsznrWorkEquipmentSubmitResult = IsznrWorkEquipmentSubmitResult(),
+    physicalFactorsSubmitResult: IsznrWorkEquipmentSubmitResult = IsznrWorkEquipmentSubmitResult(),
     onDismiss: () -> Unit,
     onObjectSelectionChange: (String) -> Unit,
     onCreateObject: (String) -> Unit,
@@ -12604,6 +12848,7 @@ private fun WorkOrderDocumentationWizardDialog(
         (String) -> Unit,
     ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
+    onSubmitIsznrPhysicalFactors: (List<String>) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -12661,11 +12906,22 @@ private fun WorkOrderDocumentationWizardDialog(
         serviceFlowItems.any { isDocumentationWorkEquipmentService(it) } ||
             isDocumentationWorkEquipmentText(workOrder.displayService)
     }
+    val isPhysicalFactorsFlow = remember(serviceFlowItems, workOrder.displayService) {
+        serviceFlowItems.any { isDocumentationPhysicalFactorsService(it) } ||
+            isDocumentationPhysicalFactorsText(workOrder.displayService)
+    }
     val workEquipmentStatusMessage = context.workEquipmentStatus["message"].orEmpty()
     val showWorkEquipmentFromIsznr = isWorkEquipmentFlow ||
         context.workEquipmentOptions.isNotEmpty() ||
         workEquipmentStatusMessage.isNotBlank()
+    val physicalFactorsStatusMessage = context.workEnvironmentStatus["message"].orEmpty()
+    val showPhysicalFactorsFromIsznr = isPhysicalFactorsFlow ||
+        context.workEnvironmentOptions.isNotEmpty() ||
+        physicalFactorsStatusMessage.isNotBlank()
     var selectedWorkEquipmentItemIds by remember(workOrder.id, context.workEquipmentOptions) {
+        mutableStateOf(emptySet<String>())
+    }
+    var selectedPhysicalFactorsItemIds by remember(workOrder.id, context.workEnvironmentOptions) {
         mutableStateOf(emptySet<String>())
     }
     var manualWorkEquipments by remember(workOrder.id, context.workEquipmentOptions) {
@@ -12675,15 +12931,20 @@ private fun WorkOrderDocumentationWizardDialog(
         val selectedIds = selectedWorkEquipmentItemIds.map { it.trim() }.filter { it.isNotBlank() }.toSet()
         context.workEquipmentOptions.filter { option -> selectedIds.contains(option.id.trim()) }
     }
+    val selectedPhysicalFactorsRecords = remember(context.workEnvironmentOptions, selectedPhysicalFactorsItemIds) {
+        val selectedIds = selectedPhysicalFactorsItemIds.map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        context.workEnvironmentOptions.filter { option -> selectedIds.contains(option.id.trim()) }
+    }
     val lastWorkEquipmentSubmitResult = workEquipmentSubmitResult
     var additionalRecords by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
     }
-    val flowTabs = remember(serviceFlowItems, additionalRecords, showWorkEquipmentFromIsznr) {
+    val flowTabs = remember(serviceFlowItems, additionalRecords, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr) {
         buildDocumentationFlowTabs(
             flowItems = serviceFlowItems,
             additionalRecords = additionalRecords,
             includeWorkEquipmentTab = showWorkEquipmentFromIsznr,
+            includePhysicalFactorsTab = showPhysicalFactorsFromIsznr,
         )
     }
     var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
@@ -12701,17 +12962,20 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val workEquipmentFlowSelected = selectedFlowService == DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY ||
         selectedFlowTab?.serviceItem?.let { isDocumentationWorkEquipmentService(it) } == true
+    val physicalFactorsFlowSelected = selectedFlowService == DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY ||
+        selectedFlowTab?.serviceItem?.let { isDocumentationPhysicalFactorsService(it) } == true
     val selectedAdditionalRecord = selectedFlowTab?.additionalRecordIndex?.let { index -> additionalRecords.getOrNull(index) }
-    val selectedFlowItem = remember(serviceFlowItems, selectedFlowTab, selectedAdditionalRecord, workEquipmentFlowSelected) {
+    val selectedFlowItem = remember(serviceFlowItems, selectedFlowTab, selectedAdditionalRecord, workEquipmentFlowSelected, physicalFactorsFlowSelected) {
         selectedFlowTab?.serviceItem ?: when {
             workEquipmentFlowSelected -> null
+            physicalFactorsFlowSelected -> null
             summaryFlowSelected -> null
             basicsFlowSelected -> serviceFlowItems.firstOrNull()
             else -> serviceFlowItems.firstOrNull()
         }
     }
-    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey, summaryFlowSelected, workEquipmentFlowSelected) {
-        if (summaryFlowSelected || workEquipmentFlowSelected) {
+    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey, summaryFlowSelected, workEquipmentFlowSelected, physicalFactorsFlowSelected) {
+        if (summaryFlowSelected || workEquipmentFlowSelected || physicalFactorsFlowSelected) {
             return@remember emptyList()
         }
         val serviceKey = selectedFlowItem?.serviceKey.orEmpty()
@@ -13092,8 +13356,23 @@ private fun WorkOrderDocumentationWizardDialog(
             .map { it.trim() }
             .filter { it.isNotBlank() && it != "equipments" }
     }
+    val physicalFactorsPostMissingLabels = remember(context.workEnvironmentStatus) {
+        context.workEnvironmentStatus["postDraftMissingLabels"].orEmpty()
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+    val physicalFactorsPostBlockingKeys = remember(context.workEnvironmentStatus) {
+        context.workEnvironmentStatus["postDraftMissingKeys"].orEmpty()
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() && it != "sourceRecord" }
+    }
     val selectedWorkEquipmentTotal = selectedWorkEquipmentItemIds.size + readyManualWorkEquipments.size
     val canSubmitWorkEquipmentToIsznr = !formLoading && selectedWorkEquipmentTotal > 0 && workEquipmentPostBlockingKeys.isEmpty()
+    val selectedPhysicalFactorsTotal = selectedPhysicalFactorsItemIds.size
+    val canSubmitPhysicalFactorsToIsznr = !formLoading && selectedPhysicalFactorsTotal > 0 && physicalFactorsPostBlockingKeys.isEmpty()
+    val lastPhysicalFactorsSubmitResult = physicalFactorsSubmitResult
     val selectedFlowIndex = flowTabs.indexOfFirst { it.key == selectedFlowService }.coerceAtLeast(0)
     val previousFlowKey = flowTabs.getOrNull(selectedFlowIndex - 1)?.key
     val nextFlowKey = flowTabs.getOrNull(selectedFlowIndex + 1)?.key
@@ -13395,6 +13674,17 @@ private fun WorkOrderDocumentationWizardDialog(
                             onManualEquipmentsChange = { manualWorkEquipments = it },
                         )
                     }
+                } else if (physicalFactorsFlowSelected) {
+                    WizardSection(title = "FC - Fizikalni čimbenici", icon = Icons.Rounded.Description) {
+                        DocumentationPhysicalFactorsOptionList(
+                            options = context.workEnvironmentOptions,
+                            emptyText = "Nema dohvaćenih FC zapisnika iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
+                            statusMessage = physicalFactorsStatusMessage,
+                            selectedItemIds = selectedPhysicalFactorsItemIds,
+                            enabled = !formLoading,
+                            onSelectedItemIdsChange = { selectedPhysicalFactorsItemIds = it },
+                        )
+                    }
                 } else if (!summaryFlowSelected && !basicsFlowSelected) {
                 WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
                     WorkOrderSelectField(
@@ -13672,6 +13962,11 @@ private fun WorkOrderDocumentationWizardDialog(
                     workEquipmentMissingLabels = workEquipmentPostMissingLabels,
                     canSubmitWorkEquipmentToIsznr = canSubmitWorkEquipmentToIsznr,
                     isSubmittingWorkEquipmentToIsznr = isLoading,
+                    showPhysicalFactorsIsznr = showPhysicalFactorsFromIsznr,
+                    selectedPhysicalFactorsCount = selectedPhysicalFactorsTotal,
+                    physicalFactorsMissingLabels = physicalFactorsPostMissingLabels,
+                    canSubmitPhysicalFactorsToIsznr = canSubmitPhysicalFactorsToIsznr,
+                    isSubmittingPhysicalFactorsToIsznr = isLoading,
                     signatureMode = signatureMode,
                     completedBy = completedBy,
                     completedByOptions = completedByOptions,
@@ -13686,6 +13981,9 @@ private fun WorkOrderDocumentationWizardDialog(
                     onIncludeHandoverProtocol = {},
                     onSubmitWorkEquipmentToIsznr = {
                         onSubmitIsznrWorkEquipment(selectedWorkEquipmentItemIds.toList(), readyManualWorkEquipments)
+                    },
+                    onSubmitPhysicalFactorsToIsznr = {
+                        onSubmitIsznrPhysicalFactors(selectedPhysicalFactorsItemIds.toList())
                     },
                 )
                 }
@@ -13731,8 +14029,10 @@ private fun WorkOrderDocumentationWizardDialog(
                         selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
                         selectedRulebookIds = emptyList(),
                         selectedWorkEquipmentRecords = selectedWorkEquipmentRecords,
+                        selectedWorkEnvironmentRecords = selectedPhysicalFactorsRecords,
                         manualWorkEquipments = readyManualWorkEquipments,
                         workEquipmentSubmitResult = lastWorkEquipmentSubmitResult,
+                        workEnvironmentSubmitResult = lastPhysicalFactorsSubmitResult,
                         signatureMode = signatureMode,
                         validityMonths = primaryValidityMonths,
                         electricalValidityMonths = electricalValidityMonths.trim(),
@@ -15364,6 +15664,11 @@ private fun DocumentationSummarySection(
     workEquipmentMissingLabels: List<String>,
     canSubmitWorkEquipmentToIsznr: Boolean,
     isSubmittingWorkEquipmentToIsznr: Boolean,
+    showPhysicalFactorsIsznr: Boolean,
+    selectedPhysicalFactorsCount: Int,
+    physicalFactorsMissingLabels: List<String>,
+    canSubmitPhysicalFactorsToIsznr: Boolean,
+    isSubmittingPhysicalFactorsToIsznr: Boolean,
     signatureMode: String,
     completedBy: String,
     completedByOptions: List<Pair<String, String>>,
@@ -15377,6 +15682,7 @@ private fun DocumentationSummarySection(
     onHandoverVerifierChange: (String) -> Unit,
     onIncludeHandoverProtocol: (Boolean) -> Unit,
     onSubmitWorkEquipmentToIsznr: () -> Unit,
+    onSubmitPhysicalFactorsToIsznr: () -> Unit,
 ) {
     WizardSection(title = "Sažetak", icon = Icons.Rounded.CheckCircle) {
         DocumentationSummaryRow("RN", workOrder.displayNumber)
@@ -15487,6 +15793,82 @@ private fun DocumentationSummarySection(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             if (isSubmittingWorkEquipmentToIsznr) "Šaljem u IS ZNR..." else "Pošalji RO u IS ZNR",
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
+            }
+        }
+        if (showPhysicalFactorsIsznr) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = if (canSubmitPhysicalFactorsToIsznr) {
+                    Color(0xFFECFDF5)
+                } else {
+                    Color(0xFFFFF7ED)
+                },
+                tonalElevation = 0.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (canSubmitPhysicalFactorsToIsznr) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = if (canSubmitPhysicalFactorsToIsznr) Color(0xFF059669) else Color(0xFFB45309),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("IS ZNR FC", fontWeight = FontWeight.Black)
+                            Text(
+                                if (selectedPhysicalFactorsCount > 0) {
+                                    "$selectedPhysicalFactorsCount FC zapisnik odabran za kopiranje."
+                                } else {
+                                    "Odaberi prethodni FC zapisnik u FC tabu prije slanja."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                            )
+                        }
+                    }
+                    val visibleMissing = physicalFactorsMissingLabels
+                        .filterNot { it.equals("Prethodni FC zapisnik", ignoreCase = true) }
+                    if (selectedPhysicalFactorsCount == 0 || visibleMissing.isNotEmpty()) {
+                        Text(
+                            when {
+                                selectedPhysicalFactorsCount == 0 && visibleMissing.isNotEmpty() ->
+                                    "Fali: prethodni FC zapisnik, ${visibleMissing.joinToString(", ")}"
+                                selectedPhysicalFactorsCount == 0 ->
+                                    "Fali: prethodni FC zapisnik"
+                                else -> "Fali: ${visibleMissing.joinToString(", ")}"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFB45309),
+                        )
+                    }
+                    Button(
+                        onClick = onSubmitPhysicalFactorsToIsznr,
+                        enabled = canSubmitPhysicalFactorsToIsznr && enabled,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        if (isSubmittingPhysicalFactorsToIsznr) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            if (isSubmittingPhysicalFactorsToIsznr) "Šaljem u IS ZNR..." else "Pošalji FC u IS ZNR",
                             fontWeight = FontWeight.Black,
                         )
                     }
