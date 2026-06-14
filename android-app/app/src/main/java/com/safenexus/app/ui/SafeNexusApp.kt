@@ -10772,6 +10772,7 @@ private data class DocumentationFlowTab(
 )
 
 private const val DOCUMENTATION_BASICS_FLOW_KEY = "__basics__"
+private const val DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY = "__work_equipment__"
 private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
 private const val DOCUMENTATION_EXTRA_FLOW_PREFIX = "__extra__"
 
@@ -10810,6 +10811,7 @@ private fun documentationAdditionalRecordFlowKey(record: DocumentationAdditional
 private fun buildDocumentationFlowTabs(
     flowItems: List<DocumentationServiceFlowItem>,
     additionalRecords: List<DocumentationAdditionalObjectRecord>,
+    includeWorkEquipmentTab: Boolean = false,
 ): List<DocumentationFlowTab> {
     val tabs = mutableListOf(
         DocumentationFlowTab(
@@ -10818,7 +10820,11 @@ private fun buildDocumentationFlowTabs(
         ),
     )
     flowItems.forEachIndexed { serviceIndex, item ->
-        val serviceLabel = item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
+        val serviceLabel = if (isDocumentationWorkEquipmentService(item)) {
+            "RO"
+        } else {
+            item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
+        }
         tabs += DocumentationFlowTab(
             key = item.serviceKey,
             label = "${serviceIndex + 1}. $serviceLabel",
@@ -10835,6 +10841,12 @@ private fun buildDocumentationFlowTabs(
                 )
             }
         }
+    }
+    if (includeWorkEquipmentTab && flowItems.none { isDocumentationWorkEquipmentService(it) }) {
+        tabs += DocumentationFlowTab(
+            key = DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY,
+            label = "RO",
+        )
     }
     tabs += DocumentationFlowTab(
         key = DOCUMENTATION_SUMMARY_FLOW_KEY,
@@ -11453,8 +11465,12 @@ private fun WorkOrderDocumentationWizardDialog(
     var additionalRecords by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
     }
-    val flowTabs = remember(serviceFlowItems, additionalRecords) {
-        buildDocumentationFlowTabs(serviceFlowItems, additionalRecords)
+    val flowTabs = remember(serviceFlowItems, additionalRecords, showWorkEquipmentFromIsznr) {
+        buildDocumentationFlowTabs(
+            flowItems = serviceFlowItems,
+            additionalRecords = additionalRecords,
+            includeWorkEquipmentTab = showWorkEquipmentFromIsznr,
+        )
     }
     var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(DOCUMENTATION_BASICS_FLOW_KEY)
@@ -11469,16 +11485,19 @@ private fun WorkOrderDocumentationWizardDialog(
     val selectedFlowTab = remember(flowTabs, selectedFlowService) {
         flowTabs.firstOrNull { it.key == selectedFlowService } ?: flowTabs.firstOrNull()
     }
+    val workEquipmentFlowSelected = selectedFlowService == DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY ||
+        selectedFlowTab?.serviceItem?.let { isDocumentationWorkEquipmentService(it) } == true
     val selectedAdditionalRecord = selectedFlowTab?.additionalRecordIndex?.let { index -> additionalRecords.getOrNull(index) }
-    val selectedFlowItem = remember(serviceFlowItems, selectedFlowTab, selectedAdditionalRecord) {
+    val selectedFlowItem = remember(serviceFlowItems, selectedFlowTab, selectedAdditionalRecord, workEquipmentFlowSelected) {
         selectedFlowTab?.serviceItem ?: when {
+            workEquipmentFlowSelected -> null
             summaryFlowSelected -> null
             basicsFlowSelected -> serviceFlowItems.firstOrNull()
             else -> serviceFlowItems.firstOrNull()
         }
     }
-    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey, summaryFlowSelected) {
-        if (summaryFlowSelected) {
+    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey, summaryFlowSelected, workEquipmentFlowSelected) {
+        if (summaryFlowSelected || workEquipmentFlowSelected) {
             return@remember emptyList()
         }
         val serviceKey = selectedFlowItem?.serviceKey.orEmpty()
@@ -12126,7 +12145,16 @@ private fun WorkOrderDocumentationWizardDialog(
                 }
                 }
 
-                if (!summaryFlowSelected && !basicsFlowSelected) {
+                if (workEquipmentFlowSelected) {
+                    WizardSection(title = "Radna oprema", icon = Icons.Rounded.Work) {
+                        DocumentationReadOnlyOptionList(
+                            label = "IS ZNR radna oprema za ovaj RN",
+                            options = context.workEquipmentOptions,
+                            emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
+                            statusMessage = workEquipmentStatusMessage,
+                        )
+                    }
+                } else if (!summaryFlowSelected && !basicsFlowSelected) {
                 WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
                     WorkOrderSelectField(
                         label = "Objekt / oprema",
@@ -12283,17 +12311,6 @@ private fun WorkOrderDocumentationWizardDialog(
                             onChange = { field, value ->
                                 templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             },
-                        )
-                    }
-                }
-
-                if (showWorkEquipmentFromIsznr) {
-                    WizardSection(title = "Radna oprema", icon = Icons.Rounded.Work) {
-                        DocumentationReadOnlyOptionList(
-                            label = "IS ZNR radna oprema za ovaj RN",
-                            options = context.workEquipmentOptions,
-                            emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
-                            statusMessage = workEquipmentStatusMessage,
                         )
                     }
                 }

@@ -22134,6 +22134,16 @@ body.is-document-template-editor-open .chat-dock {
   align-self: center;
 }
 
+.work-order-document-ro-template-card {
+  border-color: rgba(16, 185, 129, 0.24);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.94), rgba(248, 251, 255, 0.96));
+}
+
+.work-order-document-ro-template-body {
+  display: grid;
+  gap: 10px;
+}
+
 .work-order-document-wizard-common-layout {
   display: grid;
   gap: 14px;
@@ -78898,6 +78908,11 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 
 .work-order-document-template-dock-number {
   background: rgba(124, 92, 255, 0.22);
+}
+
+.work-order-document-template-dock-item.is-ro .work-order-document-template-dock-type,
+.work-order-document-template-dock-item.is-ro .work-order-document-template-dock-number {
+  background: rgba(6, 95, 70, 0.86);
 }
 
 .work-order-document-wizard-footer {

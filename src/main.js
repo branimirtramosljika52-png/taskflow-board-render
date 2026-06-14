@@ -113274,6 +113274,69 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   }
 }
 
+function getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders = []) {
+  const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
+  const allowSmallAutoCheck = selectedWorkOrders.length > 0 && selectedWorkOrders.length <= 3;
+  return selectedWorkOrders.filter((workOrder) => {
+    const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
+    if (shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder, serviceItems)) {
+      return true;
+    }
+    return Boolean(allowSmallAutoCheck && String(workOrder?.companyOib || "").trim());
+  });
+}
+
+function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
+  const stateEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
+  queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder);
+
+  const card = document.createElement("article");
+  card.className = "work-order-document-template-card work-order-document-ro-template-card";
+  card.dataset.workOrderDocumentRoCard = String(workOrder?.id || workOrder?.workOrderNumber || "");
+
+  const head = document.createElement("div");
+  head.className = "work-order-document-template-card-head";
+
+  const copy = document.createElement("div");
+  copy.className = "work-order-document-template-card-copy";
+
+  const title = document.createElement("strong");
+  title.textContent = "RO - Radna oprema";
+
+  const meta = document.createElement("span");
+  meta.textContent = stateEntry.loaded
+    ? `${stateEntry.items.length} IS ZNR stavki${stateEntry.companyOib ? ` | OIB ${stateEntry.companyOib}` : ""}`
+    : "Live dohvat radne opreme iz IS ZNR-a";
+
+  copy.append(title, meta);
+
+  const badges = document.createElement("div");
+  badges.className = "work-order-document-template-card-badges";
+  badges.append(
+    createBadge("RO", "document-template-meta-badge"),
+    createBadge("IS ZNR", "document-template-meta-badge"),
+  );
+
+  head.append(copy, badges);
+
+  const workOrderList = document.createElement("div");
+  workOrderList.className = "work-order-document-template-card-work-orders";
+  const chip = document.createElement("span");
+  chip.className = "work-order-document-template-work-order-chip";
+  chip.textContent = [
+    workOrder?.workOrderNumber || "Bez broja",
+    workOrder?.companyName || "",
+  ].filter(Boolean).join(" · ");
+  workOrderList.append(chip);
+
+  const body = document.createElement("div");
+  body.className = "work-order-document-ro-template-body";
+  appendWorkOrderDocumentIsznrWorkEquipmentBody(body, workOrder, stateEntry);
+
+  card.append(head, workOrderList, body);
+  return card;
+}
+
 function markWorkOrderDocumentWizardRequiredField(target, missing = false) {
   const input = target instanceof HTMLElement ? target : null;
   const field = input?.closest(".field");
@@ -116575,22 +116638,6 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   servicesSection.bodyNode.append(servicesToolbar, serviceList);
 
-  let workEquipmentSectionNode = null;
-  if (shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder, resolvedServiceItems)) {
-    const workEquipmentState = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder.id);
-    const workEquipmentSection = createCollapsibleSection({
-      sectionKey: "work-equipment",
-      titleText: "Radna oprema",
-      descriptionText: workEquipmentState.loaded
-        ? `${workEquipmentState.items.length} stavki iz IS ZNR RO zapisnika`
-        : "Ponuda stare radne opreme za ovaj RN iz IS ZNR-a.",
-      className: "work-order-document-selection-work-equipment-block",
-    });
-    appendWorkOrderDocumentIsznrWorkEquipmentBody(workEquipmentSection.bodyNode, workOrder, workEquipmentState);
-    workEquipmentSectionNode = workEquipmentSection.section;
-    queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder);
-  }
-
   const learningTestRecommendations = getWorkOrderLearningTestRecommendations([workOrder]).recommendations;
   const trainingContext = workOrder.trainingContext ?? {};
   const hasTrainingService = resolvedServiceItems.some((service) => Boolean(service?.isTraining));
@@ -116812,7 +116859,6 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     companyBlock,
     basicSection.section,
     servicesSection.section,
-    ...(workEquipmentSectionNode ? [workEquipmentSectionNode] : []),
     ...(learningSectionNode ? [learningSectionNode] : []),
     peopleSection.section,
     environmentSection.section,
@@ -117143,14 +117189,21 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
   return opened;
 }
 
-function renderWorkOrderDocumentWizardTemplateDock(recommendations = []) {
+function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEquipmentWorkOrders = []) {
   if (!workOrderDocumentWizardTemplateDock) {
     return;
   }
 
   const pairs = recommendations.flatMap((entry) =>
     entry.workOrders.map((workOrder) => ({
+      kind: "template",
       template: entry.template,
+      workOrder,
+    })),
+  ).concat(
+    (Array.isArray(workEquipmentWorkOrders) ? workEquipmentWorkOrders : []).map((workOrder) => ({
+      kind: "workEquipment",
+      template: null,
       workOrder,
     })),
   );
@@ -117173,16 +117226,29 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = []) {
   pairs.forEach(({ template, workOrder }) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "work-order-document-template-dock-item";
-    button.title = `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`;
-    button.setAttribute("aria-label", `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`);
+    button.className = `work-order-document-template-dock-item${template ? "" : " is-ro"}`;
+    button.title = template
+      ? `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`
+      : `Prikaži RO za RN ${workOrder.workOrderNumber || "bez broja"}`;
+    button.setAttribute("aria-label", button.title);
     button.addEventListener("click", () => {
-      openDocumentTemplateFromWizard(template.id, [workOrder]);
+      if (template) {
+        openDocumentTemplateFromWizard(template.id, [workOrder]);
+        return;
+      }
+      const key = String(workOrder?.id || workOrder?.workOrderNumber || "");
+      const escapedKey = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(key)
+        : key.replace(/"/g, "\\\"");
+      const target = workOrderDocumentWizardTemplateList?.querySelector(`[data-work-order-document-ro-card="${escapedKey}"]`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
 
     const templateLabel = document.createElement("span");
     templateLabel.className = "work-order-document-template-dock-type";
-    templateLabel.textContent = String(template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik").trim();
+    templateLabel.textContent = template
+      ? String(template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik").trim()
+      : "RO";
 
     const workOrderLabel = document.createElement("strong");
     workOrderLabel.className = "work-order-document-template-dock-number";
@@ -117286,14 +117352,18 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   }
 
   const { recommendations, unmatchedWorkOrders } = getWorkOrderDocumentTemplateRecommendations(workOrders);
+  const workEquipmentWorkOrders = getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders);
+  const workEquipmentCards = workEquipmentWorkOrders.map((workOrder) =>
+    createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder),
+  );
   const selectedTemplateCount = recommendations.length;
 
   workOrderDocumentWizardTemplateSummary.replaceChildren();
   const summary = document.createElement("div");
   summary.className = "work-order-document-template-summary-card";
   summary.innerHTML = `
-    <strong>${selectedTemplateCount} templatea</strong>
-    <span>${selectedTemplateCount > 0 ? "Pronađeni su iz usluga na odabranim RN-ovima." : "Na odabranim RN-ovima još nema povezanih templatea."}</span>
+    <strong>${selectedTemplateCount} templatea${workEquipmentCards.length ? ` + ${workEquipmentCards.length} RO` : ""}</strong>
+    <span>${selectedTemplateCount > 0 || workEquipmentCards.length > 0 ? "Pronađeni su iz usluga i IS ZNR konteksta na odabranim RN-ovima." : "Na odabranim RN-ovima još nema povezanih templatea."}</span>
   `;
   workOrderDocumentWizardTemplateSummary.append(summary);
 
@@ -117307,16 +117377,16 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     workOrderDocumentWizardTemplateSummary.append(warning);
   }
 
-  if (recommendations.length === 0) {
+  if (recommendations.length === 0 && workEquipmentCards.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (SPR, TZIN...).";
+    empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (SPR, TZIN, RO...).";
     workOrderDocumentWizardTemplateList.replaceChildren(empty);
     renderWorkOrderDocumentWizardTemplateDock([]);
     return;
   }
 
-  workOrderDocumentWizardTemplateList.replaceChildren(...recommendations.map((entry) => {
+  const templateCards = recommendations.map((entry) => {
     const card = document.createElement("article");
     card.className = "work-order-document-template-card";
 
@@ -117388,9 +117458,10 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     footer.append(note, openButton);
     card.append(head, services, workOrderList, footer);
     return card;
-  }));
+  });
 
-  renderWorkOrderDocumentWizardTemplateDock(recommendations);
+  workOrderDocumentWizardTemplateList.replaceChildren(...workEquipmentCards, ...templateCards);
+  renderWorkOrderDocumentWizardTemplateDock(recommendations, workEquipmentWorkOrders);
 }
 
 function renderWorkOrderDocumentWizard() {
