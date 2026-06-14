@@ -12333,6 +12333,7 @@ private data class DocumentationServiceFlowItem(
     val serviceName: String,
     val serviceCode: String,
     val serviceIndex: Int,
+    val validityMonths: String = "",
     val documentNumbers: List<String>,
     val documentNames: List<String>,
     val templateCount: Int,
@@ -12683,11 +12684,66 @@ private fun documentationServiceShortCode(
     return acronym.ifBlank { "USL-${serviceIndex + 1}" }
 }
 
+private fun WorkOrderServiceItem.catalogMatch(services: List<WorkOrderServiceOption>): WorkOrderServiceOption? {
+    val sourceId = serviceId.trim()
+    val sourceCode = normalizeDocumentationWorkEquipmentText(serviceCode)
+    val sourceName = normalizeDocumentationWorkEquipmentText(name)
+    return services.firstOrNull { service ->
+        val catalogId = service.id.trim()
+        val catalogCode = normalizeDocumentationWorkEquipmentText(service.serviceCode)
+        val catalogName = normalizeDocumentationWorkEquipmentText(service.name)
+        (sourceId.isNotBlank() && sourceId == catalogId) ||
+            (sourceCode.isNotBlank() && sourceCode == catalogCode) ||
+            (sourceName.isNotBlank() && sourceName == catalogName)
+    }
+}
+
+private fun WorkOrderServiceItem.toDocumentationServiceFlowItem(
+    serviceIndex: Int,
+    services: List<WorkOrderServiceOption>,
+): DocumentationServiceFlowItem {
+    val catalogMatch = catalogMatch(services)
+    val serviceName = name.ifBlank { serviceCode.ifBlank { serviceId.ifBlank { "Usluga" } } }
+    val shortCode = documentationServiceShortCode(serviceCode, serviceName, serviceIndex)
+    val serviceKey = serviceId
+        .ifBlank { serviceCode }
+        .ifBlank { serviceName }
+        .let { source -> "work-order-service-$serviceIndex-${normalizeDocumentationWorkEquipmentText(source).ifBlank { "service" }}" }
+    return DocumentationServiceFlowItem(
+        serviceKey = serviceKey,
+        serviceName = serviceName,
+        serviceCode = shortCode,
+        serviceIndex = serviceIndex,
+        validityMonths = catalogMatch?.validityMonths.orEmpty(),
+        documentNumbers = emptyList(),
+        documentNames = emptyList(),
+        templateCount = 0,
+    )
+}
+
+private fun DocumentationServiceFlowItem.matchesWorkOrderService(service: WorkOrderServiceItem): Boolean {
+    val itemCode = normalizeDocumentationWorkEquipmentText(serviceCode)
+    val serviceCode = normalizeDocumentationWorkEquipmentText(service.serviceCode)
+    if (itemCode.isNotBlank() && serviceCode.isNotBlank() && itemCode == serviceCode) return true
+
+    val itemName = normalizeDocumentationWorkEquipmentText(serviceName)
+    val serviceName = normalizeDocumentationWorkEquipmentText(service.name)
+    return itemName.isNotBlank() && serviceName.isNotBlank() && itemName == serviceName
+}
+
 private fun buildDocumentationServiceFlowItems(
     templates: List<WorkOrderDocumentationTemplate>,
     workOrder: WorkOrder,
+    services: List<WorkOrderServiceOption>,
 ): List<DocumentationServiceFlowItem> {
+    val workOrderServiceItems = workOrder.serviceDetails
+        .filter { service -> service.name.isNotBlank() || service.serviceCode.isNotBlank() || service.serviceId.isNotBlank() }
+        .mapIndexed { index, service -> service.toDocumentationServiceFlowItem(index, services) }
+
     if (templates.isEmpty()) {
+        if (workOrderServiceItems.isNotEmpty()) {
+            return workOrderServiceItems
+        }
         val fallbackService = workOrder.displayService.takeIf { it != "Bez upisane usluge" }.orEmpty()
         return listOf(
             DocumentationServiceFlowItem(
@@ -12695,13 +12751,14 @@ private fun buildDocumentationServiceFlowItems(
                 serviceName = fallbackService.ifBlank { "Usluga" },
                 serviceCode = "USL-1",
                 serviceIndex = 0,
+                validityMonths = "",
                 documentNumbers = listOf(workOrder.displayNumber).filter { it.isNotBlank() },
                 documentNames = emptyList(),
                 templateCount = 0,
             ),
         )
     }
-    return templates
+    val templateItems = templates
         .groupBy { template -> template.documentationServiceKey() }
         .map { (serviceKey, serviceTemplates) ->
             val firstTemplate = serviceTemplates.minWithOrNull(
@@ -12719,10 +12776,32 @@ private fun buildDocumentationServiceFlowItems(
                 serviceName = serviceName,
                 serviceCode = serviceCode,
                 serviceIndex = serviceIndex,
+                validityMonths = "",
                 documentNumbers = serviceTemplates.mapNotNull { template -> template.documentNumber.ifBlank { null } }.distinct(),
                 documentNames = serviceTemplates.mapNotNull { template -> template.documentName.ifBlank { null } }.distinct(),
                 templateCount = serviceTemplates.size,
             )
+        }
+        .map { item ->
+            val matchedValidity = workOrder.serviceDetails.firstNotNullOfOrNull { service ->
+                if (item.matchesWorkOrderService(service)) service.catalogMatch(services)?.validityMonths?.takeIf { it.isNotBlank() } else null
+            }.orEmpty()
+            if (item.validityMonths.isBlank() && matchedValidity.isNotBlank()) {
+                item.copy(validityMonths = matchedValidity)
+            } else {
+                item
+            }
+        }
+    val missingWorkOrderServices = workOrder.serviceDetails
+        .filter { service -> service.name.isNotBlank() || service.serviceCode.isNotBlank() || service.serviceId.isNotBlank() }
+        .filter { service -> templateItems.none { item -> item.matchesWorkOrderService(service) } }
+        .mapIndexed { index, service -> service.toDocumentationServiceFlowItem(index, services) }
+    return (templateItems + missingWorkOrderServices)
+        .distinctBy { item ->
+            listOf(item.serviceCode, item.serviceName, item.serviceKey)
+                .firstOrNull { it.isNotBlank() }
+                ?.let(::normalizeDocumentationWorkEquipmentText)
+                .orEmpty()
         }
         .sortedWith(compareBy<DocumentationServiceFlowItem> { it.serviceIndex }.thenBy { it.serviceName.lowercase(Locale.getDefault()) })
 }
@@ -13062,8 +13141,8 @@ private fun WorkOrderDocumentationWizardDialog(
             .distinctBy { it.lowercase(Locale.getDefault()) }
             .map { it to it.ifBlank { "Nije odabrano" } }
     }
-    val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
-        buildDocumentationServiceFlowItems(context.templates, workOrder)
+    val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService, workOrder.serviceDetails, services) {
+        buildDocumentationServiceFlowItems(context.templates, workOrder, services)
     }
     val isWorkEquipmentFlow = remember(serviceFlowItems, workOrder.displayService) {
         serviceFlowItems.any { isDocumentationWorkEquipmentService(it) } ||
@@ -13077,10 +13156,7 @@ private fun WorkOrderDocumentationWizardDialog(
     val showWorkEquipmentFromIsznr = isWorkEquipmentFlow ||
         context.workEquipmentOptions.isNotEmpty() ||
         workEquipmentStatusMessage.isNotBlank()
-    val physicalFactorsStatusMessage = context.workEnvironmentStatus["message"].orEmpty()
-    val showPhysicalFactorsFromIsznr = isPhysicalFactorsFlow ||
-        context.workEnvironmentOptions.isNotEmpty() ||
-        physicalFactorsStatusMessage.isNotBlank()
+    val showPhysicalFactorsFromIsznr = isPhysicalFactorsFlow
     var selectedWorkEquipmentItemIds by remember(workOrder.id, context.workEquipmentOptions) {
         mutableStateOf(emptySet<String>())
     }
@@ -13268,6 +13344,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     defaults.serviceValidityMonths[item.serviceValidityKey()]
                         ?: defaults.serviceValidityMonths[item.serviceCode]
                         ?: defaults.serviceValidityMonths[item.serviceName]
+                        ?: item.validityMonths.takeIf { it.isNotBlank() }
                         ?: validityMonths.ifBlank { "12" }
                     )
             },

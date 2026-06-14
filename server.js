@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.120.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.121.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -916,6 +916,13 @@ const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
     serviceCode: "ZDR-001",
     serviceType: "znr",
     note: "Standardna usluga za uvjerenje zdravstvene sposobnosti i psihološku provjeru.",
+  }),
+  Object.freeze({
+    name: "Ispitivanje radnog okoliša - fizikalni čimbenici",
+    serviceCode: "FC",
+    serviceType: "inspection",
+    validityMonths: "36",
+    note: "Standardna usluga za zapisnik fizikalnih čimbenika radnog okoliša i periodiku.",
   }),
   Object.freeze({
     name: "Pregled vida",
@@ -12459,7 +12466,7 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
         organizationId,
         status: "active",
         isTraining: seed.serviceType === "znr",
-        validityMonths: "",
+        validityMonths: seed.validityMonths || "",
         linkedTemplateIds: [],
         linkedLearningTestIds: [],
         linkedQualificationKeys: [],
