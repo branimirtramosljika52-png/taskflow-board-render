@@ -15265,6 +15265,37 @@ private class MobileMeasurementFormulaParser(
                 MobileFormulaValue.scalar(values.maxOrNull() ?: 0.0)
             }
             "COUNT" -> MobileFormulaValue.scalar(numericValues().size.toDouble())
+            "COUNTIF" -> {
+                if (args.size != 2) error("COUNTIF trazi raspon i kriterij.")
+                val values = evaluate(args[0]).flatten()
+                val criterion = evaluate(args[1]).value
+                MobileFormulaValue.scalar(values.count { formulaCriterionMatchesMobile(it, criterion) }.toDouble())
+            }
+            "COUNTIFS" -> {
+                if (args.size < 2 || args.size % 2 != 0) error("COUNTIFS trazi parove raspon/kriterij.")
+                val pairs = args.chunked(2).map { pair ->
+                    evaluate(pair[0]).flatten() to formulaCriterionMatcherMobile(evaluate(pair[1]).value)
+                }
+                val rowCount = pairs.minOfOrNull { it.first.size } ?: 0
+                MobileFormulaValue.scalar(
+                    (0 until rowCount).count { index ->
+                        pairs.all { (values, matcher) -> matcher(values.getOrNull(index)) }
+                    }.toDouble(),
+                )
+            }
+            "CONCATENATE" -> MobileFormulaValue.scalar(
+                args.flatMap { evaluate(it).flatten() }.joinToString("") { formulaScalarTextMobile(it) },
+            )
+            "VLOOKUP" -> {
+                if (args.size !in 3..4) error("VLOOKUP trazi 3 ili 4 argumenta.")
+                val lookupValue = evaluate(args[0]).value
+                val rangeRows = evaluate(args[1]).matrixRows()
+                val columnOffset = kotlin.math.floor(evaluate(args[2]).asNumber()).toInt() - 1
+                if (columnOffset < 0) error("VLOOKUP trazi pozitivan indeks kolone.")
+                val match = rangeRows.firstOrNull { row -> compareFormulaValues(row.firstOrNull(), lookupValue, "=") }
+                    ?: error("VLOOKUP nije pronasao vrijednost.")
+                MobileFormulaValue.scalar(match.getOrNull(columnOffset).orEmptyFormulaValueMobile())
+            }
             "ROW" -> MobileFormulaValue.scalar(evaluateRowFunction(args))
             "ROWS" -> MobileFormulaValue.scalar(evaluateRowsFunction(args))
             "RANDBETWEEN" -> {
@@ -15552,6 +15583,42 @@ private fun compareFormulaValues(left: Any?, right: Any?, operator: String): Boo
     }
 }
 
+private fun Any?.orEmptyFormulaValueMobile(): Any? =
+    this ?: ""
+
+private fun formulaScalarTextMobile(value: Any?): String {
+    val scalar = if (value is List<*>) {
+        value.firstOrNull()?.let { row -> if (row is List<*>) row.firstOrNull() else row }
+    } else {
+        value
+    }
+    return when (scalar) {
+        null -> ""
+        is Number -> formatMeasurementNumberMobile(scalar.toDouble())
+        is Boolean -> if (scalar) "TRUE" else "FALSE"
+        else -> scalar.toString()
+    }
+}
+
+private fun formulaCriterionMatcherMobile(criterion: Any?): (Any?) -> Boolean =
+    { value -> formulaCriterionMatchesMobile(value, criterion) }
+
+private fun formulaCriterionMatchesMobile(value: Any?, criterion: Any?): Boolean {
+    val rawCriterion = formulaScalarTextMobile(criterion).trim()
+    val operator = listOf(">=", "<=", "<>", "=", ">", "<").firstOrNull { rawCriterion.startsWith(it) }
+    if (operator != null) {
+        return compareFormulaValues(value, rawCriterion.removePrefix(operator), operator)
+    }
+    if (rawCriterion.contains("*") || rawCriterion.contains("?")) {
+        val pattern = rawCriterion
+            .replace(".", "\\.")
+            .replace("*", ".*")
+            .replace("?", ".")
+        return Regex("^$pattern$", RegexOption.IGNORE_CASE).matches(formulaScalarTextMobile(value).trim())
+    }
+    return compareFormulaValues(value, rawCriterion, "=")
+}
+
 private fun WorkOrderMeasurementSheet.measurementCellNumeric(
     rowIndex: Int,
     columnIndex: Int,
@@ -15595,7 +15662,10 @@ private fun evaluateMeasurementFormulaValueMobile(
     columnIndex: Int,
     stack: Set<String>,
 ): MobileFormulaValue {
-    val expression = rawFormula.trim().removePrefix("=")
+    val expression = rawFormula.trim()
+        .removePrefix("=")
+        .replace(Regex("'RO-F\\.3'!", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("RO-F\\.3!", RegexOption.IGNORE_CASE), "")
     if (expression.isBlank()) return MobileFormulaValue.scalar(0.0)
     return MobileMeasurementFormulaParser(expression, sheet, rowIndex, columnIndex, stack).parse()
 }
@@ -16163,7 +16233,17 @@ private fun MeasurementTableEditor(
     enabled: Boolean,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
-    val visibleColumns = remember(sheet.columns) { sheet.columns.take(16) }
+    val columnWindowSize = 8
+    var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
+    LaunchedEffect(sheet.columns.size) {
+        val maxStart = (sheet.columns.size - columnWindowSize).coerceAtLeast(0)
+        if (columnWindowStart > maxStart) {
+            columnWindowStart = maxStart
+        }
+    }
+    val visibleColumns = remember(sheet.columns, columnWindowStart) {
+        sheet.columns.drop(columnWindowStart).take(columnWindowSize)
+    }
     val lastMeaningfulRowIndex = remember(sheet.rows, sheet.columns, sheet.headerRows) {
         sheet.lastMeaningfulMeasurementRowIndex()
     }
@@ -16190,6 +16270,12 @@ private fun MeasurementTableEditor(
         val safeColumn = selectedCell.columnIndex.coerceIn(0, (sheet.columns.size - 1).coerceAtLeast(0))
         if (safeRow != selectedCell.rowIndex || safeColumn != selectedCell.columnIndex) {
             selectedCell = MeasurementCellSelection(safeRow, safeColumn)
+        }
+    }
+    LaunchedEffect(columnWindowStart, visibleColumns.size) {
+        val visibleRange = columnWindowStart until (columnWindowStart + visibleColumns.size)
+        if (visibleColumns.isNotEmpty() && selectedCell.columnIndex !in visibleRange) {
+            selectedCell = selectedCell.copy(columnIndex = columnWindowStart)
         }
     }
     val selectedRow = sheet.rows.getOrNull(selectedCell.rowIndex)
@@ -16323,6 +16409,35 @@ private fun MeasurementTableEditor(
                         label = { Text("+ Kolona") },
                     )
                 }
+                if (sheet.columns.size > columnWindowSize) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Kolone ${measurementColumnLabel(columnWindowStart)}-${measurementColumnLabel((columnWindowStart + visibleColumns.size - 1).coerceAtLeast(columnWindowStart))} / ${sheet.columns.size}",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        )
+                        OutlinedButton(
+                            onClick = { columnWindowStart = (columnWindowStart - columnWindowSize).coerceAtLeast(0) },
+                            enabled = enabled && columnWindowStart > 0,
+                        ) {
+                            Text("Preth.")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val maxStart = (sheet.columns.size - columnWindowSize).coerceAtLeast(0)
+                                columnWindowStart = (columnWindowStart + columnWindowSize).coerceAtMost(maxStart)
+                            },
+                            enabled = enabled && columnWindowStart + columnWindowSize < sheet.columns.size,
+                        ) {
+                            Text("Sljed.")
+                        }
+                    }
+                }
                 if (selectedRow != null && selectedColumn != null && selectedEditable) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -16376,7 +16491,9 @@ private fun MeasurementTableEditor(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         MeasurementHeaderCell("", 46, subtle = true)
                         visibleColumns.forEachIndexed { columnIndex, column ->
-                            MeasurementHeaderCell(measurementColumnLabel(columnIndex), column.width)
+                            val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
+                                ?: (columnWindowStart + columnIndex)
+                            MeasurementHeaderCell(measurementColumnLabel(absoluteColumnIndex), column.width)
                         }
                     }
                     visibleRows.forEachIndexed { rowIndex, row ->
@@ -16393,17 +16510,18 @@ private fun MeasurementTableEditor(
                                 }
                             }
                             visibleColumns.forEachIndexed { columnIndex, column ->
-                                val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 } ?: columnIndex
+                                val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
+                                    ?: (columnWindowStart + columnIndex)
                                 MeasurementGridCell(
                                     column = column,
                                     displayValue = sheet.measurementCellDisplay(rowIndex, absoluteColumnIndex),
                                     rawValue = row.cells[column.id].orEmpty(),
                                     cellFormat = row.formats[column.id],
                                     headerRow = sheet.headerRows.contains(row.id),
-                                    selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == columnIndex,
+                                    selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex,
                                     enabled = enabled,
                                     onClick = {
-                                        selectedCell = MeasurementCellSelection(rowIndex, columnIndex)
+                                        selectedCell = MeasurementCellSelection(rowIndex, absoluteColumnIndex)
                                     },
                                     onChange = { value ->
                                         onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
