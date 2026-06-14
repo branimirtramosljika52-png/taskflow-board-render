@@ -183,6 +183,7 @@ import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
 import com.safenexus.app.data.DownloadedDocument
 import com.safenexus.app.data.FieldInquiryDraft
+import com.safenexus.app.data.IsznrManualWorkEquipment
 import com.safenexus.app.data.MobileRecord
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
@@ -983,21 +984,34 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     fun submitWorkOrderIsznrWorkEquipment(
         workOrder: WorkOrder,
         selectedItemIds: List<String>,
+        manualEquipments: List<IsznrManualWorkEquipment> = emptyList(),
         objectId: String = "",
     ) {
         val workOrderId = workOrder.id.trim()
         val normalizedSelection = selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val normalizedManualEquipments = manualEquipments
+            .map {
+                it.copy(
+                    name = it.name.trim(),
+                    manufacturer = it.manufacturer.trim(),
+                    model = it.model.trim(),
+                    serialNumber = it.serialNumber.trim(),
+                    inventoryNumber = it.inventoryNumber.trim(),
+                    note = it.note.trim(),
+                )
+            }
+            .filter { it.name.isNotBlank() || it.manufacturer.isNotBlank() || it.model.isNotBlank() || it.serialNumber.isNotBlank() || it.inventoryNumber.isNotBlank() }
         if (workOrderId.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za IS ZNR slanje.")
             return
         }
-        if (normalizedSelection.isEmpty()) {
+        if (normalizedSelection.isEmpty() && normalizedManualEquipments.isEmpty()) {
             state = state.copy(error = "Odaberi barem jednu radnu opremu za slanje u IS ZNR.", notice = "")
             return
         }
         state = state.copy(isLoading = true, error = "", notice = "Šaljem RO zapisnik u IS ZNR...")
         viewModelScope.launch {
-            api.submitWorkOrderIsznrWorkEquipment(workOrderId, normalizedSelection)
+            api.submitWorkOrderIsznrWorkEquipment(workOrderId, normalizedSelection, normalizedManualEquipments)
                 .onSuccess { result ->
                     state = state.copy(
                         isLoading = false,
@@ -1904,8 +1918,8 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onFailure = onFailure,
                 )
             },
-            onSubmitIsznrWorkEquipment = { selectedItemIds ->
-                viewModel.submitWorkOrderIsznrWorkEquipment(workOrder, selectedItemIds, documentationWizardObjectId)
+            onSubmitIsznrWorkEquipment = { selectedItemIds, manualEquipments ->
+                viewModel.submitWorkOrderIsznrWorkEquipment(workOrder, selectedItemIds, manualEquipments, documentationWizardObjectId)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -4306,11 +4320,13 @@ private fun DocumentationWorkEquipmentOptionList(
     statusMessage: String = "",
     postDraftStatus: Map<String, String> = emptyMap(),
     enabled: Boolean = true,
-    onSubmit: (List<String>) -> Unit = {},
+    onSubmit: (List<String>, List<IsznrManualWorkEquipment>) -> Unit = { _, _ -> },
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
     var selectedItemIds by remember(options) { mutableStateOf(emptySet<String>()) }
+    var manualEquipments by remember(options) { mutableStateOf(emptyList<IsznrManualWorkEquipment>()) }
+    var showManualEquipmentDialog by remember(options) { mutableStateOf(false) }
     val filteredOptions = remember(options, selectedFilter, today) {
         options
             .filter { option -> option.matchesWorkEquipmentFilter(selectedFilter, today) }
@@ -4333,7 +4349,23 @@ private fun DocumentationWorkEquipmentOptionList(
         .split(",")
         .map { it.trim() }
         .filter { it.isNotBlank() && it != "equipments" }
-    val canSubmit = enabled && selectedItemIds.isNotEmpty() && postDraftBlockingKeys.isEmpty()
+    val readyManualEquipments = manualEquipments.filter { it.isReadyForIsznrPost() }
+    val selectedTotal = selectedItemIds.size + readyManualEquipments.size
+    val expertLabels = postDraftStatus["postDraftExpertLabels"].orEmpty()
+    val signedByLabels = postDraftStatus["postDraftSignedByLabels"].orEmpty()
+    val expertCount = postDraftStatus["postDraftExpertCount"].orEmpty().ifBlank { "0" }
+    val signedByCount = postDraftStatus["postDraftSignedByCount"].orEmpty().ifBlank { "0" }
+    val canSubmit = enabled && selectedTotal > 0 && postDraftBlockingKeys.isEmpty()
+
+    if (showManualEquipmentDialog) {
+        ManualWorkEquipmentDialog(
+            onDismiss = { showManualEquipmentDialog = false },
+            onAdd = { equipment ->
+                manualEquipments = manualEquipments + equipment
+                showManualEquipmentDialog = false
+            },
+        )
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
@@ -4420,9 +4452,32 @@ private fun DocumentationWorkEquipmentOptionList(
                 }
             }
         }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Osobe za IS ZNR", fontWeight = FontWeight.Bold)
+                DocumentationWorkEquipmentPeopleRow(
+                    label = "Stručnjaci ZNR",
+                    count = expertCount,
+                    names = expertLabels,
+                    required = "min. 1",
+                )
+                DocumentationWorkEquipmentPeopleRow(
+                    label = "Potpisnici",
+                    count = signedByCount,
+                    names = signedByLabels,
+                    required = "min. 2",
+                )
+            }
+        }
         if (options.isEmpty()) {
             Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
-            return
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             DocumentationWorkEquipmentFilter.entries.forEach { filter ->
@@ -4434,13 +4489,6 @@ private fun DocumentationWorkEquipmentOptionList(
                     enabled = count > 0 || filter == DocumentationWorkEquipmentFilter.All,
                 )
             }
-        }
-        if (filteredOptions.isEmpty()) {
-            Text(
-                "Nema stavki za ovaj filter.",
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-            )
-            return
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -4456,7 +4504,7 @@ private fun DocumentationWorkEquipmentOptionList(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        if (selectedItemIds.isEmpty()) "Odaberi opremu za IS ZNR POST" else "${selectedItemIds.size} odabrano",
+                        if (selectedTotal == 0) "Odaberi ili dodaj opremu za IS ZNR POST" else "$selectedTotal odabrano",
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -4476,12 +4524,25 @@ private fun DocumentationWorkEquipmentOptionList(
                             Text("Prikazane")
                         }
                         OutlinedButton(
-                            onClick = { selectedItemIds = emptySet() },
-                            enabled = enabled && selectedItemIds.isNotEmpty(),
+                            onClick = {
+                                selectedItemIds = emptySet()
+                                manualEquipments = emptyList()
+                            },
+                            enabled = enabled && (selectedItemIds.isNotEmpty() || manualEquipments.isNotEmpty()),
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             Text("Poništi")
+                        }
+                        OutlinedButton(
+                            onClick = { showManualEquipmentDialog = true },
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Nova oprema")
                         }
                     }
                 }
@@ -4493,7 +4554,7 @@ private fun DocumentationWorkEquipmentOptionList(
                     )
                 }
                 Button(
-                    onClick = { onSubmit(selectedItemIds.toList()) },
+                    onClick = { onSubmit(selectedItemIds.toList(), readyManualEquipments) },
                     enabled = canSubmit,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -4504,8 +4565,28 @@ private fun DocumentationWorkEquipmentOptionList(
                 }
             }
         }
+        if (manualEquipments.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Nova oprema", fontWeight = FontWeight.Bold)
+                manualEquipments.forEachIndexed { index, equipment ->
+                    ManualWorkEquipmentCard(
+                        equipment = equipment,
+                        onRemove = {
+                            manualEquipments = manualEquipments.filterIndexed { itemIndex, _ -> itemIndex != index }
+                        },
+                    )
+                }
+            }
+        }
+        if (filteredOptions.isEmpty()) {
+            Text(
+                "Nema stavki za ovaj filter.",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+            return
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            filteredOptions.take(36).forEach { option ->
+            filteredOptions.forEach { option ->
                 val deadline = option.workEquipmentDeadline()
                 val isOverdue = deadline?.isBefore(today) == true
                 val isUpcoming = deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
@@ -4603,15 +4684,154 @@ private fun DocumentationWorkEquipmentOptionList(
                     }
                 }
             }
-            if (filteredOptions.size > 36) {
-                Text(
-                    "Prikazano prvih 36 stavki za odabrani filter.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                )
+        }
+    }
+}
+
+private fun IsznrManualWorkEquipment.isReadyForIsznrPost(): Boolean =
+    name.isNotBlank() && manufacturer.isNotBlank() && model.isNotBlank() && serialNumber.isNotBlank()
+
+private fun IsznrManualWorkEquipment.subtitle(): String =
+    listOf(
+        manufacturer,
+        model,
+        serialNumber.takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
+        inventoryNumber.takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
+    )
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+
+@Composable
+private fun DocumentationWorkEquipmentPeopleRow(
+    label: String,
+    count: String,
+    names: String,
+    required: String,
+) {
+    val hasPeople = count.toIntOrNull()?.let { it > 0 } == true
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(
+            if (hasPeople) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
+            contentDescription = null,
+            tint = if (hasPeople) Color(0xFF059669) else Color(0xFFB45309),
+            modifier = Modifier.size(18.dp),
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("$label · $count", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+            Text(
+                names.ifBlank { "Nije pronađeno u People modulu." },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        AssistChip(onClick = {}, label = { Text(required) })
+    }
+}
+
+@Composable
+private fun ManualWorkEquipmentCard(
+    equipment: IsznrManualWorkEquipment,
+    onRemove: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = if (equipment.isReadyForIsznrPost()) Color(0xFFECFDF5) else Color(0xFFFFF7ED),
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                Icons.Rounded.Add,
+                contentDescription = null,
+                tint = if (equipment.isReadyForIsznrPost()) Color(0xFF059669) else Color(0xFFB45309),
+                modifier = Modifier.size(20.dp),
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(equipment.name.ifBlank { "Nova radna oprema" }, fontWeight = FontWeight.Bold)
+                val subtitle = equipment.subtitle()
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                }
+                if (!equipment.isReadyForIsznrPost()) {
+                    Text(
+                        "Obavezno: naziv, proizvođač, model i serijski broj.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFB45309),
+                    )
+                }
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni opremu", tint = Color(0xFFDC2626))
             }
         }
     }
+}
+
+@Composable
+private fun ManualWorkEquipmentDialog(
+    onDismiss: () -> Unit,
+    onAdd: (IsznrManualWorkEquipment) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var manufacturer by remember { mutableStateOf("") }
+    var model by remember { mutableStateOf("") }
+    var serialNumber by remember { mutableStateOf("") }
+    var inventoryNumber by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    val equipment = IsznrManualWorkEquipment(
+        name = name.trim(),
+        manufacturer = manufacturer.trim(),
+        model = model.trim(),
+        serialNumber = serialNumber.trim(),
+        inventoryNumber = inventoryNumber.trim(),
+        note = note.trim(),
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nova radna oprema") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(manufacturer, { manufacturer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(model, { model = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(serialNumber, { serialNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(inventoryNumber, { inventoryNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(note, { note = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onAdd(equipment) },
+                enabled = equipment.isReadyForIsznrPost(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text("Dodaj")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
 }
 
 private fun List<String>.toggleValue(value: String): List<String> =
@@ -11797,7 +12017,7 @@ private fun WorkOrderDocumentationWizardDialog(
         (WorkOrderDocumentationAiResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
-    onSubmitIsznrWorkEquipment: (List<String>) -> Unit,
+    onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current

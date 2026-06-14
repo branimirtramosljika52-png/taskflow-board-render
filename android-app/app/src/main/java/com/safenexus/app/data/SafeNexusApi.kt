@@ -534,10 +534,26 @@ class SafeNexusApi(
     suspend fun submitWorkOrderIsznrWorkEquipment(
         workOrderId: String,
         selectedItemIds: List<String>,
+        manualEquipments: List<IsznrManualWorkEquipment> = emptyList(),
     ): Result<IsznrWorkEquipmentSubmitResult> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
                 .put("selectedItemIds", JSONArray(selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }))
+                .put(
+                    "manualEquipments",
+                    JSONArray(
+                        manualEquipments
+                            .map {
+                                JSONObject()
+                                    .put("name", it.name.trim())
+                                    .put("manufacturer", it.manufacturer.trim())
+                                    .put("model", it.model.trim())
+                                    .put("serialNumber", it.serialNumber.trim())
+                                    .put("inventoryNumber", it.inventoryNumber.trim())
+                                    .put("note", it.note.trim())
+                            },
+                    ),
+                )
                 .toString()
             val json = JSONObject(
                 request(
@@ -551,7 +567,7 @@ class SafeNexusApi(
                 message = json.firstClean("message").ifBlank { "RO zapisnik je poslan u IS ZNR." },
                 isznrId = json.firstClean("isznrId"),
                 recordNumber = json.firstClean("recordNumber"),
-                equipmentCount = json.optInt("equipmentCount", selectedItemIds.size),
+                equipmentCount = json.optInt("equipmentCount", selectedItemIds.size + manualEquipments.size),
                 submittedAt = json.firstClean("submittedAt"),
             )
         }

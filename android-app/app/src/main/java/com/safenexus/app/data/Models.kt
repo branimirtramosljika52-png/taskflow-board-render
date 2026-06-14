@@ -235,6 +235,15 @@ data class IsznrWorkEquipmentSubmitResult(
     val submittedAt: String = "",
 )
 
+data class IsznrManualWorkEquipment(
+    val name: String = "",
+    val manufacturer: String = "",
+    val model: String = "",
+    val serialNumber: String = "",
+    val inventoryNumber: String = "",
+    val note: String = "",
+)
+
 data class WorkOrderDocumentationDefaults(
     val inspectionDate: String = "",
     val issuedDate: String = "",

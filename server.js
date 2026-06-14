@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.104.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.105.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -2777,6 +2777,7 @@ async function fetchIsznrWorkEquipmentForWorkOrder({
       companyOib,
     },
     selectedItemIds: postDraftSelection.selectedItemIds || postDraftSelection.selectedEquipmentIds || [],
+    manualEquipments: postDraftSelection.manualEquipments || postDraftSelection.manualEquipment || [],
     selectAll: Boolean(postDraftSelection.selectAll),
     referenceIris,
   });
@@ -2819,6 +2820,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
   workOrder = {},
   scopedSnapshot = {},
   selectedItemIds = [],
+  manualEquipments = [],
   selectAll = false,
 } = {}) {
   const result = await fetchIsznrWorkEquipmentForWorkOrder({
@@ -2830,6 +2832,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
     maxRecords: 120,
     postDraftSelection: {
       selectedItemIds,
+      manualEquipments,
       selectAll,
     },
   });
@@ -2959,13 +2962,32 @@ function userMatchesWorkOrderExecutor(user = {}, workOrder = {}) {
 }
 
 function getIsznrPeopleIrisForWorkOrder(scopedSnapshot = {}, workOrder = {}, role = "") {
+  return getIsznrPeopleForWorkOrder(scopedSnapshot, workOrder, role).iris;
+}
+
+function getIsznrPeopleForWorkOrder(scopedSnapshot = {}, workOrder = {}, role = "") {
   const resourcePath = role === "holder" ? "holder_of_authorizations" : "experts";
   const users = Array.isArray(scopedSnapshot.users) ? scopedSnapshot.users : [];
   const preferred = users.filter((user) => userMatchesWorkOrderExecutor(user, workOrder));
   const fallback = users.filter((user) => !preferred.includes(user));
-  const ids = [...preferred, ...fallback]
-    .flatMap((user) => getIsznrPersonRoleIdsFromUser(user, role));
-  return buildIsznrApiIriList(resourcePath, ids);
+  const records = [...preferred, ...fallback]
+    .map((user) => ({
+      label: normalizeInputValue(
+        getMobileUserDocumentName(user)
+        || user.fullName
+        || [user.firstName, user.lastName].filter(Boolean).join(" ")
+        || user.displayName
+        || user.email,
+      ),
+      ids: getIsznrPersonRoleIdsFromUser(user, role),
+    }))
+    .filter((entry) => entry.ids.length > 0);
+  const iris = buildIsznrApiIriList(resourcePath, records.flatMap((entry) => entry.ids));
+  return {
+    iris,
+    labels: Array.from(new Set(records.map((entry) => entry.label).filter(Boolean))),
+    count: iris.length,
+  };
 }
 
 function getIsznrMeasurementEquipmentIris(scopedSnapshot = {}) {
@@ -3022,6 +3044,28 @@ function normalizeIsznrRoEquipmentPayload(equipment = {}) {
     inventoryNumber: normalizeInputValue(equipment.inventoryNumber),
     note: normalizeInputValue(equipment.note),
   };
+}
+
+function normalizeIsznrRoManualEquipmentPayloads(equipments = []) {
+  return (Array.isArray(equipments) ? equipments : [])
+    .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
+    .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber)
+    .filter((equipment, index, array) => {
+      const key = [
+        equipment.serialNumber,
+        equipment.inventoryNumber,
+        equipment.name,
+        equipment.manufacturer,
+        equipment.model,
+      ].join("|").toLowerCase();
+      return array.findIndex((entry) => [
+        entry.serialNumber,
+        entry.inventoryNumber,
+        entry.name,
+        entry.manufacturer,
+        entry.model,
+      ].join("|").toLowerCase() === key) === index;
+    });
 }
 
 function isIsznrRoEquipmentPayloadReady(equipment = {}) {
@@ -3148,6 +3192,7 @@ function buildIsznrWorkEquipmentPostDraft({
   scopedSnapshot = {},
   isznrResult = {},
   selectedItemIds = [],
+  manualEquipments = [],
   selectAll = false,
   referenceIris = {},
 } = {}) {
@@ -3175,14 +3220,18 @@ function buildIsznrWorkEquipmentPostDraft({
   const roHealthRequirementRegister = buildIsznrApiIriList("ro_health_requirement_registers", latestRecord.roHealthRequirementRegister)
     .concat(buildDefaultIsznrRegisterIris(registers, "ro_health_requirement_registers", 1))
     .filter((value, index, array) => value && array.indexOf(value) === index);
-  const experts = getIsznrPeopleIrisForWorkOrder(scopedSnapshot, workOrder, "expert");
-  const signedBy = getIsznrPeopleIrisForWorkOrder(scopedSnapshot, workOrder, "holder");
+  const expertPeople = getIsznrPeopleForWorkOrder(scopedSnapshot, workOrder, "expert");
+  const signedByPeople = getIsznrPeopleForWorkOrder(scopedSnapshot, workOrder, "holder");
+  const experts = expertPeople.iris;
+  const signedBy = signedByPeople.iris;
   const instruments = getIsznrMeasurementEquipmentIris(scopedSnapshot);
   const equipmentCandidates = buildIsznrWorkEquipmentCandidates(items);
   const selectedEquipmentCandidates = buildIsznrWorkEquipmentCandidates(selectedItems);
+  const manualEquipmentPayload = normalizeIsznrRoManualEquipmentPayloads(manualEquipments);
   const selectedEquipmentPayload = selectedEquipmentCandidates
     .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
-    .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber);
+    .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber)
+    .concat(manualEquipmentPayload);
   const location = normalizeInputValue(latestRecord.location) || resolveIsznrWorkOrderLocation(workOrder);
   const equipmentSummary = selectedEquipmentPayload
     .map((equipment) => [
@@ -3249,6 +3298,11 @@ function buildIsznrWorkEquipmentPostDraft({
     equipmentCandidates,
     selectedItemIds: selectedEquipmentCandidates.map((item) => item.key).filter(Boolean),
     selectedEquipmentCandidates,
+    manualEquipmentCount: manualEquipmentPayload.length,
+    people: {
+      experts: expertPeople,
+      signedBy: signedByPeople,
+    },
     payload,
     followUp: {
       roRecord: "POST /ro_records",
@@ -20463,6 +20517,10 @@ async function handleApiRequest(request, response, url) {
             .map((item) => item.key)
             .filter(Boolean)
             .join(", "),
+          postDraftExpertCount: String(isznrWorkEquipment.postDraft?.people?.experts?.count ?? 0),
+          postDraftExpertLabels: (isznrWorkEquipment.postDraft?.people?.experts?.labels || []).join(", "),
+          postDraftSignedByCount: String(isznrWorkEquipment.postDraft?.people?.signedBy?.count ?? 0),
+          postDraftSignedByLabels: (isznrWorkEquipment.postDraft?.people?.signedBy?.labels || []).join(", "),
         };
       } catch (error) {
         contextSnapshot.isznrWorkEquipmentOptions = [];
@@ -20530,6 +20588,7 @@ async function handleApiRequest(request, response, url) {
         workOrder,
         scopedSnapshot,
         selectedItemIds: body?.selectedItemIds || body?.selectedEquipmentIds || [],
+        manualEquipments: body?.manualEquipments || body?.manualEquipment || [],
         selectAll: body?.selectAll === true,
       });
       sendJson(response, 201, result);
@@ -24024,6 +24083,7 @@ async function handleApiRequest(request, response, url) {
         workOrder,
         scopedSnapshot,
         selectedItemIds: body?.selectedItemIds || body?.selectedEquipmentIds || [],
+        manualEquipments: body?.manualEquipments || body?.manualEquipment || [],
         selectAll: body?.selectAll === true,
       });
       sendJson(response, 201, result);
