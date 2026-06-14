@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.116.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.117.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -3856,6 +3856,176 @@ function buildIsznrPhysicalFactorsFollowUpDrafts(detailsByRecordId = new Map(), 
   };
 }
 
+function inferIsznrPhysicalTypesFromManualMeasurements(measurements = []) {
+  const types = [];
+  (Array.isArray(measurements) ? measurements : []).forEach((measurement) => {
+    const type = normalizeIsznrWorkEnvironmentText(measurement?.type);
+    if (type.includes("micro") || type.includes("mikro")) types.push(1);
+    if (type.includes("illum") || type.includes("osvijet") || type.includes("osvjet")) types.push(2);
+    if (type.includes("noise") || type.includes("buka")) types.push(3);
+    if (type.includes("vibr")) types.push(4);
+  });
+  return Array.from(new Set(types));
+}
+
+function normalizeIsznrManualPhysicalFactors(source = {}) {
+  const manual = source && typeof source === "object" ? source : {};
+  const spaces = (Array.isArray(manual.spaces) ? manual.spaces : [])
+    .map((space, index) => {
+      const name = normalizeInputValue(space?.name || space?.label || space?.title);
+      return {
+        id: normalizeInputValue(space?.id) || `manual-space-${index + 1}`,
+        name,
+        description: normalizeInputValue(space?.description) || name || "Prostor",
+        workProcess: normalizeInputValue(space?.workProcess || space?.processDescription) || "Redovni radni proces.",
+        workEquipment: normalizeInputValue(space?.workEquipment || space?.equipmentDescription) || "Radna oprema prema zatecenom stanju.",
+        finalGrade: normalizeIsznrGradeValue(space?.finalGrade || space?.grade, 1),
+      };
+    })
+    .filter((space) => space.name);
+  const measurements = (Array.isArray(manual.measurements) ? manual.measurements : [])
+    .map((measurement, index) => ({
+      id: normalizeInputValue(measurement?.id) || `manual-measurement-${index + 1}`,
+      spaceId: normalizeInputValue(measurement?.spaceId || measurement?.space || measurement?.spaceName),
+      type: normalizeIsznrWorkEnvironmentText(measurement?.type || measurement?.kind || "illumination"),
+      measuringPlace: normalizeInputValue(measurement?.measuringPlace || measurement?.measurementPlace || measurement?.name) || "Mjerno mjesto",
+      measuredValue: normalizeInputValue(measurement?.measuredValue || measurement?.measured || measurement?.value),
+      allowedValue: normalizeInputValue(measurement?.allowedValue || measurement?.permittedValue || measurement?.prescribedValue),
+      note: normalizeInputValue(measurement?.note),
+      finalGrade: normalizeIsznrGradeValue(measurement?.finalGrade || measurement?.grade, 1),
+    }))
+    .filter((measurement) => measurement.measuringPlace && measurement.measuredValue);
+  const typesOfExamination = normalizeIsznrIntegerArray(manual.typesOfExamination || manual.types || [])
+    .concat(inferIsznrPhysicalTypesFromManualMeasurements(measurements))
+    .filter((value, index, array) => Number.isFinite(value) && array.indexOf(value) === index);
+  return {
+    location: normalizeInputValue(manual.location),
+    startDate: normalizeDateOnlyValue(manual.startDate || manual.inspectionDate),
+    endDate: normalizeDateOnlyValue(manual.endDate || manual.issuedDate),
+    deadlineForNextExamination: normalizeDateOnlyValue(manual.deadlineForNextExamination || manual.deadline),
+    technicalDocumentation: normalizeInputValue(manual.technicalDocumentation),
+    methodsProceduresAndNorms: normalizeInputValue(manual.methodsProceduresAndNorms),
+    workProcessConditions: normalizeInputValue(manual.workProcessConditions),
+    airTemperature: normalizeInputValue(manual.airTemperature || manual.outsideTemperature),
+    relativeAirHumidity: normalizeInputValue(manual.relativeAirHumidity || manual.relativeHumidity),
+    airFlowSpeed: normalizeInputValue(manual.airFlowSpeed || manual.airflowSpeed),
+    typesOfExamination,
+    spaces,
+    measurements,
+  };
+}
+
+function getIsznrManualMeasurementResourcePath(type = "") {
+  const normalized = normalizeIsznrWorkEnvironmentText(type);
+  if (normalized.includes("micro") || normalized.includes("mikro")) return "fc_micro_climatic_conditions";
+  if (normalized.includes("noise") || normalized.includes("buka")) return "fc_noises";
+  if (normalized.includes("vibr")) return "fc_vibrations";
+  return "fc_illuminations";
+}
+
+function buildIsznrManualPhysicalMeasurementDraft(measurement = {}, space = {}) {
+  const resourcePath = getIsznrManualMeasurementResourcePath(measurement.type);
+  const base = {
+    measuringPlace: measurement.measuringPlace,
+    grade: measurement.finalGrade,
+  };
+  if (resourcePath === "fc_micro_climatic_conditions") {
+    return {
+      resourcePath,
+      scope: "fcSpace",
+      payload: buildIsznrFcMicroPayload({
+        ...base,
+        airTemperature: measurement.measuredValue,
+        allowedAirTemperature: measurement.allowedValue || "-",
+      }),
+    };
+  }
+  if (resourcePath === "fc_noises") {
+    return {
+      resourcePath,
+      scope: "fcSpace",
+      payload: buildIsznrFcNoisePayload({
+        ...base,
+        equivalentNoiseLevel: measurement.measuredValue,
+        permittedEquivalentNoiseLevel: measurement.allowedValue || "0",
+        customFields: measurement.note ? [{ name: "Napomena", value: measurement.note }] : [],
+      }),
+    };
+  }
+  if (resourcePath === "fc_vibrations") {
+    return {
+      resourcePath,
+      scope: "fcRecord",
+      payload: buildIsznrFcVibrationPayload({
+        source: space?.name || measurement.measuringPlace || "Izvor vibracija",
+        type: 1,
+        measuringPoints: [{
+          name: measurement.measuringPlace,
+          measuredValueA8: measurement.measuredValue,
+          customFields: measurement.note ? [{ name: "Napomena", value: measurement.note }] : [],
+          grade: measurement.finalGrade,
+        }],
+      }),
+    };
+  }
+  return {
+    resourcePath,
+    scope: "fcSpace",
+    payload: buildIsznrFcIlluminationPayload({
+      ...base,
+      generalIllumination: measurement.measuredValue,
+      prescribedIllumination: measurement.allowedValue || "0",
+    }),
+  };
+}
+
+function buildIsznrManualPhysicalFactorsFollowUpDrafts(source = {}) {
+  const manual = normalizeIsznrManualPhysicalFactors(source);
+  if (manual.measurements.length === 0) {
+    return { manual, spaceDrafts: [], followUpDrafts: [] };
+  }
+  const fallbackSpace = manual.spaces[0] || {
+    id: "manual-space-1",
+    name: manual.location || "Prostor",
+    description: "Prostor",
+    workProcess: "Redovni radni proces.",
+    workEquipment: "Radna oprema prema zatecenom stanju.",
+    finalGrade: 1,
+  };
+  const spaces = manual.spaces.length ? manual.spaces : (manual.measurements.length ? [fallbackSpace] : []);
+  const spaceById = new Map(spaces.map((space) => [normalizeInputValue(space.id || space.name), space]));
+  const spaceDrafts = spaces.map((space, index) => ({
+    sourceSpaceId: normalizeInputValue(space.id || space.name) || `manual-space-${index + 1}`,
+    payload: {
+      name: space.name,
+      description: space.description,
+      workProcess: space.workProcess,
+      workEquipment: space.workEquipment,
+    },
+  }));
+  const followUpDrafts = [];
+  spaces.forEach((space, index) => {
+    followUpDrafts.push({
+      resourcePath: "fc_final_grades",
+      scope: "fcSpace",
+      sourceSpaceId: normalizeInputValue(space.id || space.name) || `manual-space-${index + 1}`,
+      payload: buildIsznrFcFinalGradePayload({
+        typesOfExamination: manual.typesOfExamination[0] || 2,
+        grade: space.finalGrade,
+      }),
+    });
+  });
+  manual.measurements.forEach((measurement) => {
+    const space = spaceById.get(normalizeInputValue(measurement.spaceId)) || fallbackSpace;
+    const draft = buildIsznrManualPhysicalMeasurementDraft(measurement, space);
+    followUpDrafts.push({
+      ...draft,
+      sourceSpaceId: normalizeInputValue(space.id || space.name) || "manual-space-1",
+    });
+  });
+  return { manual, spaceDrafts, followUpDrafts };
+}
+
 function buildIsznrPhysicalFactorsPostDraft({
   workOrder = {},
   scopedSnapshot = {},
@@ -3864,6 +4034,7 @@ function buildIsznrPhysicalFactorsPostDraft({
   selectAll = false,
   referenceIris = {},
   common = {},
+  manualPhysicalFactors = {},
   detailsByRecordId = new Map(),
 } = {}) {
   const items = Array.isArray(isznrResult.items) ? isznrResult.items : [];
@@ -3872,11 +4043,15 @@ function buildIsznrPhysicalFactorsPostDraft({
   const selectedRecords = selectedKeys.size > 0
     ? items.filter((item) => matchesIsznrPhysicalFactorsSelection(item, selectedKeys))
     : (selectAll ? items : []);
+  const manualFollowUps = buildIsznrManualPhysicalFactorsFollowUpDrafts(manualPhysicalFactors);
+  const manual = manualFollowUps.manual;
+  const hasManualPhysicalFactors = manualFollowUps.spaceDrafts.length > 0 || manualFollowUps.followUpDrafts.length > 0;
   const latestRecord = getLatestIsznrWorkEquipmentRecord(selectedRecords.length ? selectedRecords : items);
   const todayIso = new Date().toISOString().slice(0, 10);
-  const startDate = normalizeDateOnlyValue(common.inspectionDate || workOrder.executionDate || workOrder.openedDate || workOrder.createdAt) || todayIso;
-  const endDate = normalizeDateOnlyValue(common.issuedDate || workOrder.completionDate || workOrder.completedAt || startDate) || startDate;
-  const deadline = normalizeDateOnlyValue(workOrder.dueDate)
+  const startDate = normalizeDateOnlyValue(common.inspectionDate || manual.startDate || workOrder.executionDate || workOrder.openedDate || workOrder.createdAt) || todayIso;
+  const endDate = normalizeDateOnlyValue(common.issuedDate || manual.endDate || workOrder.completionDate || workOrder.completedAt || startDate) || startDate;
+  const deadline = normalizeDateOnlyValue(manual.deadlineForNextExamination)
+    || normalizeDateOnlyValue(workOrder.dueDate)
     || normalizeDateOnlyValue(latestRecord.deadlineForNextExamination)
     || addMonthsToMobileDate(endDate, "36");
   const companyOib = getWorkOrderCompanyOib(workOrder, scopedSnapshot);
@@ -3884,7 +4059,9 @@ function buildIsznrPhysicalFactorsPostDraft({
     || normalizeInputValue(referenceIris.companyIri);
   const authorizedCompanyIri = buildIsznrApiIri("authorized_companies", latestRecord.authorizedCompany?.id)
     || normalizeInputValue(referenceIris.authorizedCompanyIri);
-  const typesOfExamination = inferIsznrPhysicalTypesFromRecord(latestRecord);
+  const typesOfExamination = manual.typesOfExamination.length
+    ? manual.typesOfExamination
+    : inferIsznrPhysicalTypesFromRecord(latestRecord);
   const harmfulness = normalizeIsznrIntegerArray(latestRecord.harmfulness)
     .concat(inferIsznrPhysicalHarmfulnessFromTypes(typesOfExamination))
     .filter((value, index, array) => Number.isFinite(value) && array.indexOf(value) === index);
@@ -3897,8 +4074,12 @@ function buildIsznrPhysicalFactorsPostDraft({
   const expertPeople = getIsznrPeopleForWorkOrder(scopedSnapshot, workOrder, "expert");
   const signedByPeople = getIsznrPeopleForWorkOrder(scopedSnapshot, workOrder, "holder");
   const instruments = getIsznrMeasurementEquipmentIris(scopedSnapshot);
-  const followUps = buildIsznrPhysicalFactorsFollowUpDrafts(detailsByRecordId, selectedRecords);
-  const location = normalizeInputValue(latestRecord.location) || resolveIsznrWorkOrderLocation(workOrder);
+  const selectedFollowUps = buildIsznrPhysicalFactorsFollowUpDrafts(detailsByRecordId, selectedRecords);
+  const followUps = {
+    spaceDrafts: selectedFollowUps.spaceDrafts.concat(manualFollowUps.spaceDrafts),
+    followUpDrafts: selectedFollowUps.followUpDrafts.concat(manualFollowUps.followUpDrafts),
+  };
+  const location = normalizeInputValue(common.testingLocation || manual.location || latestRecord.location) || resolveIsznrWorkOrderLocation(workOrder);
   const payload = {
     internalId: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
     authorizedCompany: authorizedCompanyIri,
@@ -3926,6 +4107,12 @@ function buildIsznrPhysicalFactorsPostDraft({
     signedBy: signedByPeople.iris,
     measuresToEliminateDeficiencies: normalizeInputValue(latestRecord.measuresToEliminateDeficiencies),
   };
+  if (manual.technicalDocumentation) payload.technicalDocumentation = manual.technicalDocumentation;
+  if (manual.methodsProceduresAndNorms) payload.methodsProceduresAndNorms = manual.methodsProceduresAndNorms;
+  if (manual.workProcessConditions) payload.workProcessConditions = manual.workProcessConditions;
+  if (manual.airTemperature) payload.airTemperature = manual.airTemperature;
+  if (manual.relativeAirHumidity) payload.relativeAirHumidity = manual.relativeAirHumidity;
+  if (manual.airFlowSpeed) payload.airFlowSpeed = manual.airFlowSpeed;
   const checklist = [];
   addIsznrDraftChecklistItem(checklist, "authorizedCompany", "Ovlaštena osoba", payload.authorizedCompany, payload.authorizedCompany ? "IRI je preuzet iz FC/IS ZNR podataka." : "Nedostaje IS ZNR ID ovlaštene osobe.", payload.authorizedCompany);
   addIsznrDraftChecklistItem(checklist, "company", "Poslodavac u IS ZNR-u", payload.company, payload.company ? "IRI je preuzet za OIB tvrtke." : `Nedostaje IS ZNR company IRI${companyOib ? ` za OIB ${companyOib}` : ""}.`, payload.company);
@@ -3937,7 +4124,7 @@ function buildIsznrPhysicalFactorsPostDraft({
   addIsznrDraftChecklistItem(checklist, "methods", "Metode i tehnička dokumentacija", Boolean(payload.technicalDocumentation && payload.methodsProceduresAndNorms), "Tehnička dokumentacija i metode/norme moraju biti popunjene.", "");
   addIsznrDraftChecklistItem(checklist, "experts", "Stručnjaci ZNR", payload.experts.length > 0, "Iz People modula se koriste osobe s IS ZNR expert oznakom.", String(payload.experts.length));
   addIsznrDraftChecklistItem(checklist, "signedBy", "Potpisnici zaključne ocjene", payload.signedBy.length > 0, "Iz People modula se koriste nositelji ovlaštenja.", String(payload.signedBy.length));
-  addIsznrDraftChecklistItem(checklist, "sourceRecord", "Prethodni FC zapisnik", selectedRecords.length > 0, "Odaberi FC zapisnik koji se kopira u novi IS ZNR zapis.", String(selectedRecords.length));
+  addIsznrDraftChecklistItem(checklist, "sourceRecord", "Prethodni FC zapisnik ili novi unos", selectedRecords.length > 0 || hasManualPhysicalFactors, "Odaberi FC zapisnik ili unesi prostore i mjerenja za novi IS ZNR zapis.", selectedRecords.length ? String(selectedRecords.length) : `${manualFollowUps.spaceDrafts.length} prostora / ${manual.measurements.length} mjerenja`);
 
   const missing = checklist.filter((item) => !item.ready);
   return {
@@ -3953,6 +4140,7 @@ function buildIsznrPhysicalFactorsPostDraft({
     sourceRecordNumber: normalizeInputValue(latestRecord.recordNumber),
     selectedItemIds: selectedRecords.flatMap(buildIsznrPhysicalFactorsRecordSelectionKeys).filter(Boolean),
     selectedRecordCount: selectedRecords.length,
+    manualRecordCount: hasManualPhysicalFactors ? 1 : 0,
     people: {
       experts: expertPeople,
       signedBy: signedByPeople,
@@ -4169,7 +4357,7 @@ function buildIsznrFcRecordSubmitResult(postResult = {}, draft = {}) {
     record: normalized,
     isznrId: id,
     recordNumber,
-    sourceRecordCount: Number(draft.selectedRecordCount || 0),
+    sourceRecordCount: Number(draft.selectedRecordCount || 0) + Number(draft.manualRecordCount || 0),
     spaceCount: Array.isArray(draft.spaceDrafts) ? draft.spaceDrafts.length : 0,
     followUpCount: Array.isArray(draft.followUpDrafts) ? draft.followUpDrafts.length : 0,
     message: recordNumber
@@ -4288,6 +4476,7 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
   selectedItemIds = [],
   selectAll = false,
   common = {},
+  manualPhysicalFactors = {},
 } = {}) {
   const initialResult = await fetchIsznrWorkEnvironmentForWorkOrder({
     user,
@@ -4306,8 +4495,9 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
   const selectedRecords = selectedKeys.size > 0
     ? initialResult.items.filter((item) => matchesIsznrPhysicalFactorsSelection(item, selectedKeys))
     : (selectAll ? initialResult.items : []);
-  if (selectedRecords.length === 0) {
-    throw createRequestError(400, "Odaberi barem jedan prethodni FC zapisnik za slanje u IS ZNR.");
+  const manualFollowUps = buildIsznrManualPhysicalFactorsFollowUpDrafts(manualPhysicalFactors);
+  if (selectedRecords.length === 0 && manualFollowUps.spaceDrafts.length === 0 && manualFollowUps.followUpDrafts.length === 0) {
+    throw createRequestError(400, "Odaberi prethodni FC zapisnik ili unesi barem jedan prostor i mjerenje.");
   }
 
   const activeOrganizationId = scopedSnapshot.activeOrganizationId || resolveLightweightRequestedOrganizationId(user, request);
@@ -4348,6 +4538,7 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
     selectAll,
     referenceIris,
     common,
+    manualPhysicalFactors,
     detailsByRecordId,
   });
   if (!draft?.ready) {
@@ -23098,6 +23289,7 @@ async function handleApiRequest(request, response, url) {
         selectedItemIds: body?.selectedItemIds || body?.selectedRecordIds || [],
         selectAll: body?.selectAll === true,
         common: body?.common && typeof body.common === "object" ? body.common : {},
+        manualPhysicalFactors: body?.manualPhysicalFactors || body?.physicalFactors || {},
       });
       sendJson(response, 201, result);
       return true;
@@ -26659,6 +26851,7 @@ async function handleApiRequest(request, response, url) {
         selectedItemIds: body?.selectedItemIds || body?.selectedRecordIds || [],
         selectAll: body?.selectAll === true,
         common: body?.common && typeof body.common === "object" ? body.common : {},
+        manualPhysicalFactors: body?.manualPhysicalFactors || body?.physicalFactors || {},
       });
       sendJson(response, 201, result);
       return true;

@@ -283,6 +283,42 @@ data class IsznrManualWorkEquipment(
     val attachments: List<IsznrRoAttachmentFile> = emptyList(),
 )
 
+data class IsznrManualPhysicalFactors(
+    val location: String = "",
+    val startDate: String = "",
+    val endDate: String = "",
+    val deadlineForNextExamination: String = "",
+    val technicalDocumentation: String = "",
+    val methodsProceduresAndNorms: String = "",
+    val workProcessConditions: String = "",
+    val airTemperature: String = "",
+    val relativeAirHumidity: String = "",
+    val airFlowSpeed: String = "",
+    val typesOfExamination: List<String> = listOf("2", "3"),
+    val spaces: List<IsznrFcSpaceDraft> = listOf(IsznrFcSpaceDraft()),
+    val measurements: List<IsznrFcMeasurementDraft> = listOf(IsznrFcMeasurementDraft()),
+)
+
+data class IsznrFcSpaceDraft(
+    val id: String = "",
+    val name: String = "",
+    val description: String = "",
+    val workProcess: String = "",
+    val workEquipment: String = "",
+    val finalGrade: String = "1",
+)
+
+data class IsznrFcMeasurementDraft(
+    val id: String = "",
+    val spaceId: String = "",
+    val type: String = "illumination",
+    val measuringPlace: String = "",
+    val measuredValue: String = "",
+    val allowedValue: String = "",
+    val note: String = "",
+    val finalGrade: String = "1",
+)
+
 data class IsznrRoAssessmentItem(
     val registerIri: String = "",
     val label: String = "",

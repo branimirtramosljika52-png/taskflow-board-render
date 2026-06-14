@@ -183,6 +183,9 @@ import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
 import com.safenexus.app.data.DownloadedDocument
 import com.safenexus.app.data.FieldInquiryDraft
+import com.safenexus.app.data.IsznrFcMeasurementDraft
+import com.safenexus.app.data.IsznrFcSpaceDraft
+import com.safenexus.app.data.IsznrManualPhysicalFactors
 import com.safenexus.app.data.IsznrManualWorkEquipment
 import com.safenexus.app.data.IsznrRoAttachmentFile
 import com.safenexus.app.data.IsznrRoAssessmentItem
@@ -1059,21 +1062,23 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     fun submitWorkOrderIsznrPhysicalFactors(
         workOrder: WorkOrder,
         selectedItemIds: List<String>,
+        manualPhysicalFactors: IsznrManualPhysicalFactors = IsznrManualPhysicalFactors(),
         objectId: String = "",
     ) {
         val workOrderId = workOrder.id.trim()
         val normalizedSelection = selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val manualReady = manualPhysicalFactors.isReadyForPhysicalFactorsPost()
         if (workOrderId.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za IS ZNR slanje.")
             return
         }
-        if (normalizedSelection.isEmpty()) {
-            state = state.copy(error = "Odaberi barem jedan prethodni FC zapisnik za slanje u IS ZNR.", notice = "")
+        if (normalizedSelection.isEmpty() && !manualReady) {
+            state = state.copy(error = "Odaberi prethodni FC zapisnik ili unesi prostor i mjerenje.", notice = "")
             return
         }
         state = state.copy(isLoading = true, error = "", notice = "Šaljem FC zapisnik u IS ZNR...")
         viewModelScope.launch {
-            api.submitWorkOrderIsznrPhysicalFactors(workOrderId, normalizedSelection)
+            api.submitWorkOrderIsznrPhysicalFactors(workOrderId, normalizedSelection, manualPhysicalFactors)
                 .onSuccess { result ->
                     val pdfNotice = result.pdfUrl.ifBlank { "" }.let { url ->
                         if (url.isBlank()) "" else " PDF zapisnik: $url"
@@ -2005,8 +2010,8 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             onSubmitIsznrWorkEquipment = { selectedItemIds, manualEquipments ->
                 viewModel.submitWorkOrderIsznrWorkEquipment(workOrder, selectedItemIds, manualEquipments, documentationWizardObjectId)
             },
-            onSubmitIsznrPhysicalFactors = { selectedItemIds ->
-                viewModel.submitWorkOrderIsznrPhysicalFactors(workOrder, selectedItemIds, documentationWizardObjectId)
+            onSubmitIsznrPhysicalFactors = { selectedItemIds, manualPhysicalFactors ->
+                viewModel.submitWorkOrderIsznrPhysicalFactors(workOrder, selectedItemIds, manualPhysicalFactors, documentationWizardObjectId)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -4445,8 +4450,10 @@ private fun DocumentationPhysicalFactorsOptionList(
     emptyText: String,
     statusMessage: String = "",
     selectedItemIds: Set<String>,
+    manualPhysicalFactors: IsznrManualPhysicalFactors,
     enabled: Boolean = true,
     onSelectedItemIdsChange: (Set<String>) -> Unit,
+    onManualPhysicalFactorsChange: (IsznrManualPhysicalFactors) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationPhysicalFactorsFilter.All) }
@@ -4493,6 +4500,12 @@ private fun DocumentationPhysicalFactorsOptionList(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
         }
+        DocumentationManualPhysicalFactorsBlocks(
+            value = manualPhysicalFactors,
+            enabled = enabled,
+            onChange = onManualPhysicalFactorsChange,
+        )
+        Text("Prethodni FC zapisnici za kopiranje", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -4565,6 +4578,264 @@ private fun DocumentationPhysicalFactorsOptionList(
                     }
                 }
             }
+        }
+    }
+}
+
+private val physicalFactorsTypeOptions = listOf(
+    "1" to "Mikroklima",
+    "2" to "Osvijetljenost",
+    "3" to "Buka",
+    "4" to "Vibracije",
+)
+
+private val physicalFactorsMeasurementTypeOptions = listOf(
+    "illumination" to "Osvijetljenost",
+    "noise" to "Buka",
+    "micro" to "Mikroklima",
+    "vibration" to "Vibracije",
+)
+
+private val physicalFactorsGradeOptions = listOf(
+    "1" to "Zadovoljava",
+    "0" to "Ne zadovoljava",
+)
+
+@Composable
+private fun DocumentationManualPhysicalFactorsBlocks(
+    value: IsznrManualPhysicalFactors,
+    enabled: Boolean,
+    onChange: (IsznrManualPhysicalFactors) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = Color(0xFFEFF6FF),
+            tonalElevation = 0.dp,
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Novi FC unos", fontWeight = FontWeight.Black)
+                Text(
+                    "Unesi novi zapisnik po blokovima. Sažetak šalje ručni unos i odabrane stare zapise u IS ZNR.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            }
+        }
+        ManualPhysicalFactorsBlock(title = "1. Osnovni podaci") {
+            WorkOrderTextField("Mjesto ispitivanja", value.location, { onChange(value.copy(location = it)) }, enabled)
+            WorkOrderDatePickerField("Datum početka", value.startDate, { onChange(value.copy(startDate = it)) }, enabled)
+            WorkOrderDatePickerField("Datum završetka", value.endDate, { onChange(value.copy(endDate = it)) }, enabled)
+            WorkOrderDatePickerField(
+                "Rok sljedećeg ispitivanja",
+                value.deadlineForNextExamination,
+                { onChange(value.copy(deadlineForNextExamination = it)) },
+                enabled,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                physicalFactorsTypeOptions.forEach { option ->
+                    val selected = value.typesOfExamination.contains(option.first)
+                    FilterChip(
+                        selected = selected,
+                        enabled = enabled,
+                        onClick = {
+                            val nextTypes = if (selected) {
+                                value.typesOfExamination.filterNot { it == option.first }
+                            } else {
+                                value.typesOfExamination + option.first
+                            }
+                            onChange(value.copy(typesOfExamination = nextTypes.distinct()))
+                        },
+                        label = { Text(option.second) },
+                    )
+                }
+            }
+            WorkOrderTextField("Tehnička dokumentacija", value.technicalDocumentation, { onChange(value.copy(technicalDocumentation = it)) }, enabled)
+            WorkOrderTextField("Metode, postupci i norme", value.methodsProceduresAndNorms, { onChange(value.copy(methodsProceduresAndNorms = it)) }, enabled)
+            WorkOrderTextField("Uvjeti procesa rada", value.workProcessConditions, { onChange(value.copy(workProcessConditions = it)) }, enabled)
+            WorkOrderTextField("Temperatura zraka", value.airTemperature, { onChange(value.copy(airTemperature = it)) }, enabled)
+            WorkOrderTextField("Relativna vlaga", value.relativeAirHumidity, { onChange(value.copy(relativeAirHumidity = it)) }, enabled)
+            WorkOrderTextField("Brzina strujanja zraka", value.airFlowSpeed, { onChange(value.copy(airFlowSpeed = it)) }, enabled)
+        }
+        ManualPhysicalFactorsBlock(title = "2. Prostori") {
+            value.spaces.forEachIndexed { index, space ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+                    tonalElevation = 0.dp,
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Prostor ${index + 1}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                            IconButton(
+                                enabled = enabled && value.spaces.size > 1,
+                                onClick = {
+                                    val nextSpaces = value.spaces.filterIndexed { spaceIndex, _ -> spaceIndex != index }
+                                    val validSpaceIds = nextSpaces.map { it.id }.toSet()
+                                    val nextMeasurements = value.measurements.filter { measurement ->
+                                        measurement.spaceId.isBlank() || validSpaceIds.contains(measurement.spaceId)
+                                    }
+                                    onChange(value.copy(spaces = nextSpaces, measurements = nextMeasurements))
+                                },
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni prostor", tint = Color(0xFFDC2626))
+                            }
+                        }
+                        WorkOrderTextField("Naziv prostora *", space.name, { next ->
+                            onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(name = next) else item }))
+                        }, enabled)
+                        WorkOrderTextField("Opis prostora", space.description, { next ->
+                            onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(description = next) else item }))
+                        }, enabled)
+                        WorkOrderTextField("Proces rada", space.workProcess, { next ->
+                            onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(workProcess = next) else item }))
+                        }, enabled)
+                        WorkOrderTextField("Radna oprema u prostoru", space.workEquipment, { next ->
+                            onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(workEquipment = next) else item }))
+                        }, enabled)
+                        WorkOrderSelectField(
+                            label = "Zaključna ocjena",
+                            value = space.finalGrade,
+                            valueLabel = physicalFactorsGradeOptions.firstOrNull { it.first == space.finalGrade }?.second.orEmpty().ifBlank { "Zadovoljava" },
+                            options = physicalFactorsGradeOptions,
+                            enabled = enabled,
+                            onSelect = { next ->
+                                onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(finalGrade = next) else item }))
+                            },
+                        )
+                    }
+                }
+            }
+            OutlinedButton(
+                onClick = {
+                    val nextIndex = value.spaces.size + 1
+                    onChange(
+                        value.copy(
+                            spaces = value.spaces + IsznrFcSpaceDraft(
+                                id = "manual-space-$nextIndex-${System.currentTimeMillis()}",
+                                name = "Prostor $nextIndex",
+                            ),
+                        ),
+                    )
+                },
+                enabled = enabled,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Dodaj prostor")
+            }
+        }
+        ManualPhysicalFactorsBlock(title = "3. Mjerenja") {
+            val spaceOptions = value.spaces.mapIndexed { index, space ->
+                space.id to space.name.ifBlank { "Prostor ${index + 1}" }
+            }.ifEmpty { listOf("" to "Nije odabrano") }
+            value.measurements.forEachIndexed { index, measurement ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+                    tonalElevation = 0.dp,
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Mjerenje ${index + 1}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                            IconButton(
+                                enabled = enabled && value.measurements.size > 1,
+                                onClick = {
+                                    onChange(value.copy(measurements = value.measurements.filterIndexed { measurementIndex, _ -> measurementIndex != index }))
+                                },
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni mjerenje", tint = Color(0xFFDC2626))
+                            }
+                        }
+                        WorkOrderSelectField(
+                            label = "Prostor",
+                            value = measurement.spaceId,
+                            valueLabel = spaceOptions.firstOrNull { it.first == measurement.spaceId }?.second.orEmpty().ifBlank { "Odaberi prostor" },
+                            options = spaceOptions,
+                            enabled = enabled,
+                            onSelect = { next ->
+                                onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(spaceId = next) else item }))
+                            },
+                        )
+                        WorkOrderSelectField(
+                            label = "Vrsta mjerenja",
+                            value = measurement.type,
+                            valueLabel = physicalFactorsMeasurementTypeOptions.firstOrNull { it.first == measurement.type }?.second.orEmpty().ifBlank { "Osvijetljenost" },
+                            options = physicalFactorsMeasurementTypeOptions,
+                            enabled = enabled,
+                            onSelect = { next ->
+                                onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(type = next) else item }))
+                            },
+                        )
+                        WorkOrderTextField("Mjerno mjesto *", measurement.measuringPlace, { next ->
+                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(measuringPlace = next) else item }))
+                        }, enabled)
+                        WorkOrderTextField("Izmjerena vrijednost *", measurement.measuredValue, { next ->
+                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(measuredValue = next) else item }))
+                        }, enabled)
+                        WorkOrderTextField("Dopušteno / granično", measurement.allowedValue, { next ->
+                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(allowedValue = next) else item }))
+                        }, enabled)
+                        WorkOrderTextField("Napomena", measurement.note, { next ->
+                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(note = next) else item }))
+                        }, enabled)
+                        WorkOrderSelectField(
+                            label = "Zaključna ocjena",
+                            value = measurement.finalGrade,
+                            valueLabel = physicalFactorsGradeOptions.firstOrNull { it.first == measurement.finalGrade }?.second.orEmpty().ifBlank { "Zadovoljava" },
+                            options = physicalFactorsGradeOptions,
+                            enabled = enabled,
+                            onSelect = { next ->
+                                onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(finalGrade = next) else item }))
+                            },
+                        )
+                    }
+                }
+            }
+            OutlinedButton(
+                onClick = {
+                    val nextIndex = value.measurements.size + 1
+                    onChange(
+                        value.copy(
+                            measurements = value.measurements + IsznrFcMeasurementDraft(
+                                id = "manual-measurement-$nextIndex-${System.currentTimeMillis()}",
+                                spaceId = value.spaces.firstOrNull()?.id.orEmpty(),
+                            ),
+                        ),
+                    )
+                },
+                enabled = enabled,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Dodaj mjerenje")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualPhysicalFactorsBlock(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, fontWeight = FontWeight.Black)
+            content()
         }
     }
 }
@@ -5085,6 +5356,56 @@ private fun WorkOrderDocumentationOption.toManualWorkEquipment(): IsznrManualWor
 
 private fun IsznrManualWorkEquipment.isReadyForIsznrPost(): Boolean =
     name.isNotBlank() && manufacturer.isNotBlank() && model.isNotBlank() && serialNumber.isNotBlank()
+
+private fun IsznrFcSpaceDraft.isReadyForPhysicalFactorsPost(): Boolean =
+    name.trim().isNotBlank()
+
+private fun IsznrFcMeasurementDraft.isReadyForPhysicalFactorsPost(): Boolean =
+    measuringPlace.trim().isNotBlank() && measuredValue.trim().isNotBlank()
+
+private fun IsznrManualPhysicalFactors.isReadyForPhysicalFactorsPost(): Boolean =
+    spaces.any { it.isReadyForPhysicalFactorsPost() } && measurements.any { it.isReadyForPhysicalFactorsPost() }
+
+private fun defaultManualPhysicalFactorsDraft(
+    workOrder: WorkOrder,
+    inspectionDate: String,
+    issuedDate: String,
+    testingLocation: String,
+    outsideTemperature: String,
+    relativeHumidity: String,
+    airflowSpeed: String,
+): IsznrManualPhysicalFactors {
+    val spaceId = "manual-space-1"
+    val defaultSpaceName = workOrder.objectName
+        .ifBlank { workOrder.locationName }
+        .ifBlank { "Prostor 1" }
+    return IsznrManualPhysicalFactors(
+        location = testingLocation.ifBlank { workOrder.locationName },
+        startDate = inspectionDate,
+        endDate = issuedDate.ifBlank { inspectionDate },
+        deadlineForNextExamination = workOrder.dueDate,
+        technicalDocumentation = "Tehnička dokumentacija i podaci zatečeni na mjestu ispitivanja.",
+        methodsProceduresAndNorms = "Ispitivanje je provedeno prema važećim propisima, normama i pravilima struke.",
+        workProcessConditions = "Ispitivanje je provedeno u uvjetima redovitog procesa rada.",
+        airTemperature = outsideTemperature,
+        relativeAirHumidity = relativeHumidity,
+        airFlowSpeed = airflowSpeed,
+        spaces = listOf(
+            IsznrFcSpaceDraft(
+                id = spaceId,
+                name = defaultSpaceName,
+                description = workOrder.locationName,
+                workProcess = workOrder.description,
+            ),
+        ),
+        measurements = listOf(
+            IsznrFcMeasurementDraft(
+                id = "manual-measurement-1",
+                spaceId = spaceId,
+            ),
+        ),
+    )
+}
 
 private fun IsznrManualWorkEquipment.subtitle(): String =
     listOf(
@@ -12848,7 +13169,7 @@ private fun WorkOrderDocumentationWizardDialog(
         (String) -> Unit,
     ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
-    onSubmitIsznrPhysicalFactors: (List<String>) -> Unit,
+    onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -13016,6 +13337,19 @@ private fun WorkOrderDocumentationWizardDialog(
     var outsideTemperature by remember(workOrder.id, selectedObjectId, defaults.outsideTemperature) { mutableStateOf(defaults.outsideTemperature) }
     var relativeHumidity by remember(workOrder.id, selectedObjectId, defaults.relativeHumidity) { mutableStateOf(defaults.relativeHumidity) }
     var airflowSpeed by remember(workOrder.id, selectedObjectId, defaults.airflowSpeed) { mutableStateOf(defaults.airflowSpeed) }
+    var manualPhysicalFactors by remember(workOrder.id, selectedObjectId) {
+        mutableStateOf(
+            defaultManualPhysicalFactorsDraft(
+                workOrder = workOrder,
+                inspectionDate = inspectionDate,
+                issuedDate = issuedDate,
+                testingLocation = testingLocation,
+                outsideTemperature = outsideTemperature,
+                relativeHumidity = relativeHumidity,
+                airflowSpeed = airflowSpeed,
+            ),
+        )
+    }
     var weather by remember(workOrder.id, selectedObjectId, defaults.weather) { mutableStateOf(defaults.weather) }
     var groundCondition by remember(workOrder.id, selectedObjectId, defaults.groundCondition) { mutableStateOf(defaults.groundCondition) }
     var groundResistance by remember(workOrder.id, selectedObjectId, defaults.groundResistance) { mutableStateOf(defaults.groundResistance) }
@@ -13344,6 +13678,9 @@ private fun WorkOrderDocumentationWizardDialog(
     val readyManualWorkEquipments = remember(manualWorkEquipments) {
         manualWorkEquipments.filter { it.isReadyForIsznrPost() }
     }
+    val manualPhysicalFactorsReady = remember(manualPhysicalFactors) {
+        manualPhysicalFactors.isReadyForPhysicalFactorsPost()
+    }
     val workEquipmentPostMissingLabels = remember(context.workEquipmentStatus) {
         context.workEquipmentStatus["postDraftMissingLabels"].orEmpty()
             .split(",")
@@ -13370,7 +13707,7 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val selectedWorkEquipmentTotal = selectedWorkEquipmentItemIds.size + readyManualWorkEquipments.size
     val canSubmitWorkEquipmentToIsznr = !formLoading && selectedWorkEquipmentTotal > 0 && workEquipmentPostBlockingKeys.isEmpty()
-    val selectedPhysicalFactorsTotal = selectedPhysicalFactorsItemIds.size
+    val selectedPhysicalFactorsTotal = selectedPhysicalFactorsItemIds.size + if (manualPhysicalFactorsReady) 1 else 0
     val canSubmitPhysicalFactorsToIsznr = !formLoading && selectedPhysicalFactorsTotal > 0 && physicalFactorsPostBlockingKeys.isEmpty()
     val lastPhysicalFactorsSubmitResult = physicalFactorsSubmitResult
     val selectedFlowIndex = flowTabs.indexOfFirst { it.key == selectedFlowService }.coerceAtLeast(0)
@@ -13681,8 +14018,10 @@ private fun WorkOrderDocumentationWizardDialog(
                             emptyText = "Nema dohvaćenih FC zapisnika iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
                             statusMessage = physicalFactorsStatusMessage,
                             selectedItemIds = selectedPhysicalFactorsItemIds,
+                            manualPhysicalFactors = manualPhysicalFactors,
                             enabled = !formLoading,
                             onSelectedItemIdsChange = { selectedPhysicalFactorsItemIds = it },
+                            onManualPhysicalFactorsChange = { manualPhysicalFactors = it },
                         )
                     }
                 } else if (!summaryFlowSelected && !basicsFlowSelected) {
@@ -13983,7 +14322,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         onSubmitIsznrWorkEquipment(selectedWorkEquipmentItemIds.toList(), readyManualWorkEquipments)
                     },
                     onSubmitPhysicalFactorsToIsznr = {
-                        onSubmitIsznrPhysicalFactors(selectedPhysicalFactorsItemIds.toList())
+                        onSubmitIsznrPhysicalFactors(selectedPhysicalFactorsItemIds.toList(), manualPhysicalFactors)
                     },
                 )
                 }
@@ -15897,9 +16236,9 @@ private fun DocumentationSummarySection(
                             Text("IS ZNR FC", fontWeight = FontWeight.Black)
                             Text(
                                 if (selectedPhysicalFactorsCount > 0) {
-                                    "$selectedPhysicalFactorsCount FC zapisnik odabran za kopiranje."
+                                    "$selectedPhysicalFactorsCount FC unos spreman za slanje."
                                 } else {
-                                    "Odaberi prethodni FC zapisnik u FC tabu prije slanja."
+                                    "Unesi FC blokove ili odaberi prethodni FC zapisnik."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
@@ -15908,13 +16247,14 @@ private fun DocumentationSummarySection(
                     }
                     val visibleMissing = physicalFactorsMissingLabels
                         .filterNot { it.equals("Prethodni FC zapisnik", ignoreCase = true) }
+                        .filterNot { it.equals("Prethodni FC zapisnik ili novi unos", ignoreCase = true) }
                     if (selectedPhysicalFactorsCount == 0 || visibleMissing.isNotEmpty()) {
                         Text(
                             when {
                                 selectedPhysicalFactorsCount == 0 && visibleMissing.isNotEmpty() ->
-                                    "Fali: prethodni FC zapisnik, ${visibleMissing.joinToString(", ")}"
+                                    "Fali: FC unos, ${visibleMissing.joinToString(", ")}"
                                 selectedPhysicalFactorsCount == 0 ->
-                                    "Fali: prethodni FC zapisnik"
+                                    "Fali: FC unos"
                                 else -> "Fali: ${visibleMissing.joinToString(", ")}"
                             },
                             style = MaterialTheme.typography.labelSmall,

@@ -610,10 +610,22 @@ class SafeNexusApi(
     suspend fun submitWorkOrderIsznrPhysicalFactors(
         workOrderId: String,
         selectedItemIds: List<String>,
+        manualPhysicalFactors: IsznrManualPhysicalFactors = IsznrManualPhysicalFactors(),
     ): Result<IsznrWorkEquipmentSubmitResult> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
                 .put("selectedItemIds", JSONArray(selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }))
+                .put(
+                    "common",
+                    JSONObject()
+                        .put("inspectionDate", manualPhysicalFactors.startDate.trim())
+                        .put("issuedDate", manualPhysicalFactors.endDate.trim())
+                        .put("testingLocation", manualPhysicalFactors.location.trim())
+                        .put("outsideTemperature", manualPhysicalFactors.airTemperature.trim())
+                        .put("relativeHumidity", manualPhysicalFactors.relativeAirHumidity.trim())
+                        .put("airflowSpeed", manualPhysicalFactors.airFlowSpeed.trim()),
+                )
+                .put("manualPhysicalFactors", manualPhysicalFactors.toJsonObject())
                 .toString()
             val json = JSONObject(
                 request(
@@ -629,7 +641,7 @@ class SafeNexusApi(
                 recordNumber = json.firstClean("recordNumber"),
                 pdfUrl = json.firstClean("pdfUrl", "isznrPdfUrl"),
                 pdfBridgeUrl = absoluteSafeNexusUrl(json.firstClean("pdfBridgeUrl", "isznrPdfBridgeUrl")),
-                equipmentCount = json.optInt("sourceRecordCount", selectedItemIds.size),
+                equipmentCount = json.optInt("sourceRecordCount", selectedItemIds.size + if (manualPhysicalFactors.isReadyForIsznrPost()) 1 else 0),
                 submittedAt = json.firstClean("submittedAt"),
             )
         }
@@ -1038,6 +1050,51 @@ private fun IsznrManualWorkEquipment.toJsonObject(): JSONObject =
         .put("harmfulnessRegisterIris", JSONArray(harmfulnessRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
         .put("strainRegisterIris", JSONArray(strainRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
         .put("attachments", JSONArray(attachments.map { file -> file.toJsonObject() }))
+
+private fun IsznrManualPhysicalFactors.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("location", location.trim())
+        .put("startDate", startDate.trim())
+        .put("endDate", endDate.trim())
+        .put("deadlineForNextExamination", deadlineForNextExamination.trim())
+        .put("technicalDocumentation", technicalDocumentation.trim())
+        .put("methodsProceduresAndNorms", methodsProceduresAndNorms.trim())
+        .put("workProcessConditions", workProcessConditions.trim())
+        .put("airTemperature", airTemperature.trim())
+        .put("relativeAirHumidity", relativeAirHumidity.trim())
+        .put("airFlowSpeed", airFlowSpeed.trim())
+        .put("typesOfExamination", JSONArray(typesOfExamination.map { it.trim() }.filter { it.isNotBlank() }))
+        .put("spaces", JSONArray(spaces.filter { it.isReadyForIsznrPost() }.map { it.toJsonObject() }))
+        .put("measurements", JSONArray(measurements.filter { it.isReadyForIsznrPost() }.map { it.toJsonObject() }))
+
+private fun IsznrFcSpaceDraft.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("id", id.trim())
+        .put("name", name.trim())
+        .put("description", description.trim())
+        .put("workProcess", workProcess.trim())
+        .put("workEquipment", workEquipment.trim())
+        .put("finalGrade", finalGrade.trim().ifBlank { "1" })
+
+private fun IsznrFcMeasurementDraft.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("id", id.trim())
+        .put("spaceId", spaceId.trim())
+        .put("type", type.trim())
+        .put("measuringPlace", measuringPlace.trim())
+        .put("measuredValue", measuredValue.trim())
+        .put("allowedValue", allowedValue.trim())
+        .put("note", note.trim())
+        .put("finalGrade", finalGrade.trim().ifBlank { "1" })
+
+private fun IsznrFcSpaceDraft.isReadyForIsznrPost(): Boolean =
+    name.trim().isNotBlank()
+
+private fun IsznrFcMeasurementDraft.isReadyForIsznrPost(): Boolean =
+    measuringPlace.trim().isNotBlank() && measuredValue.trim().isNotBlank()
+
+private fun IsznrManualPhysicalFactors.isReadyForIsznrPost(): Boolean =
+    spaces.any { it.isReadyForIsznrPost() } && measurements.any { it.isReadyForIsznrPost() }
 
 private fun IsznrWorkEquipmentSubmitResult.toJsonObject(): JSONObject =
     JSONObject()
