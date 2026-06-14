@@ -739,6 +739,10 @@ const ISZNR_PERSON_FETCH_TIMEOUT_MS = Math.max(
   3000,
   Number(process.env.ISZNR_PERSON_FETCH_TIMEOUT_MS || 6000) || 6000,
 );
+const ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS = Math.max(
+  5000,
+  Number(process.env.ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS || 14000) || 14000,
+);
 const ISZNR_MOBILE_INSTRUMENT_MAX_PAGES = Math.max(
   1,
   Number(process.env.ISZNR_MOBILE_INSTRUMENT_MAX_PAGES || 250) || 250,
@@ -758,6 +762,14 @@ const ISZNR_INSTRUMENT_PAGE_CONCURRENCY = Math.max(
 const ISZNR_MOBILE_PEOPLE_MAX_RECORDS = Math.max(
   20,
   Number(process.env.ISZNR_MOBILE_PEOPLE_MAX_RECORDS || 160) || 160,
+);
+const ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS = Math.max(
+  20,
+  Number(process.env.ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS || 500) || 500,
+);
+const ISZNR_WORK_EQUIPMENT_MAX_PAGES = Math.max(
+  1,
+  Number(process.env.ISZNR_WORK_EQUIPMENT_MAX_PAGES || 25) || 25,
 );
 const ISZNR_AUTHORIZED_COMPANY_PROBE_ID = String(process.env.ISZNR_AUTHORIZED_COMPANY_PROBE_ID || "").trim();
 const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
@@ -810,7 +822,6 @@ const ISZNR_DOCUMENTED_GET_RESOURCES = Object.freeze([
   { group: "Arhiva", label: "Vrste kemijskih ispitivanja", path: "chemical_types" },
   { group: "Arhiva", label: "Vrste fizikalnih ispitivanja", path: "physical_types" },
   { group: "Arhiva", label: "Osposobljavanja", path: "os_a_cs" },
-  { group: "Arhiva", label: "Ispitivanja radne opreme", path: "ro_a_cs" },
   { group: "Arhiva", label: "Fizikalni čimbenici", path: "fc_a_cs" },
   { group: "Arhiva", label: "Kemijski čimbenici", path: "kc_a_cs" },
   { group: "Arhiva", label: "Biološki čimbenici", path: "bc_a_cs" },
@@ -819,6 +830,16 @@ const ISZNR_CONNECTION_TEST_RESOURCE_PATHS = new Set([
   "instruments",
   "companies",
   "experts",
+  "ro_records",
+]);
+const ISZNR_WORK_EQUIPMENT_REGISTER_RESOURCES = Object.freeze([
+  { group: "Propisi", label: "Obveze ispitivanja", path: "ro_obligation_registers" },
+  { group: "Propisi", label: "Sigurnosno-zdravstveni zahtjevi", path: "ro_health_requirement_registers" },
+  { group: "Kontrole", label: "Strojarski dio", path: "ro_mechanical_engineering_registers" },
+  { group: "Kontrole", label: "Elektro dio", path: "ro_electrical_registers" },
+  { group: "Rizici", label: "Opasnosti", path: "hazard_registers" },
+  { group: "Rizici", label: "Štetnosti", path: "harmfulness_registers" },
+  { group: "Rizici", label: "Napori", path: "strain_registers" },
 ]);
 const ISZNR_EMPLOYEE_RESOURCE_DEFS = Object.freeze([
   { path: "experts", role: "expert", label: "Strucnjak ZNR" },
@@ -2086,6 +2107,548 @@ async function fetchMobileIsznrInstrumentList(options = {}) {
     pagesFetched: 1,
     fetchMode: requestedPagination ? "page" : "unpaginated",
     items: dedupeIsznrInstrumentRecords(result.items).slice(0, maxRecords),
+  };
+}
+
+async function fetchIsznrJsonResource({
+  baseUrl = "",
+  username = "",
+  password = "",
+  resourcePath = "",
+  searchParams = {},
+  timeoutMs = ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+} = {}) {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const normalizedUsername = normalizeIsznrApiUsername(username);
+  const safePassword = String(password ?? "");
+
+  if (!/^\d{11}$/.test(normalizedUsername)) {
+    throw createRequestError(400, "OIB korisnika za ISZNR mora imati 11 znamenki.");
+  }
+  if (!safePassword) {
+    throw createRequestError(400, "ISZNR lozinka nije spremljena. Spremi ju u Settings prije dohvata.");
+  }
+
+  const requestUrl = buildIsznrResourceUrl(normalizedBaseUrl, resourcePath);
+  Object.entries(searchParams || {}).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value
+        .map((entry) => normalizeInputValue(entry))
+        .filter(Boolean)
+        .forEach((entry) => requestUrl.searchParams.append(key, entry));
+      return;
+    }
+    if (value !== undefined && value !== null && value !== "") {
+      requestUrl.searchParams.set(key, String(value));
+    }
+  });
+
+  let result;
+  try {
+    result = await requestIsznrText(requestUrl, {
+      headers: {
+        ...createIsznrRequestHeaders(normalizedUsername, safePassword),
+        "user-agent": "SafeNexus/1.0",
+      },
+      preferIpv4: true,
+      timeoutMs,
+    });
+  } catch (error) {
+    if (isNetworkTimeoutError(error)) {
+      throw createRequestError(504, "ISZNR API se nije javio na vrijeme.");
+    }
+    throw createRequestError(502, "ISZNR API nije dostupan s poslužitelja.");
+  }
+
+  const responseText = result.text || "";
+  const payload = parseIsznrJsonPayload(responseText);
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
+      throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
+    }
+    throw createRequestError(result.status || 502, `ISZNR API je odgovorio statusom ${result.status || "nepoznato"}.`);
+  }
+
+  return {
+    ok: true,
+    status: result.status,
+    path: getIsznrDisplayPath(requestUrl),
+    payload,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeIsznrRelatedRecord(source = {}) {
+  if (!source || typeof source !== "object") {
+    return { id: "", name: "", oib: "" };
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  return {
+    id: extractIsznrId(record),
+    name: normalizeInputValue(pickIsznrValue(record, ["name", "title", "naziv", "fullName", "displayName"])),
+    oib: normalizeIsznrOib(pickIsznrValue(record, ["oib", "OIB", "companyOib", "personOib"])),
+  };
+}
+
+function normalizeIsznrRelatedArray(value = []) {
+  const items = Array.isArray(value) ? value : (value && typeof value === "object" ? [value] : []);
+  return items
+    .map((item) => normalizeIsznrRelatedRecord(item))
+    .filter((item) => item.id || item.name || item.oib);
+}
+
+function normalizeIsznrFinalGrade(value) {
+  const numeric = Number(value);
+  if (numeric === 1) {
+    return { value: "1", label: "Zadovoljava" };
+  }
+  if (numeric === 0) {
+    return { value: "0", label: "Ne zadovoljava" };
+  }
+  return { value: normalizeInputValue(value), label: "" };
+}
+
+function normalizeIsznrWorkEquipmentUnit(source = {}, index = 0) {
+  const attributes = source?.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const id = extractIsznrId(record) || String(index + 1);
+  return {
+    id,
+    serialNumber: normalizeInputValue(pickIsznrValue(record, ["serialNumber", "serial", "tvornickiBroj"])),
+    name: normalizeInputValue(pickIsznrValue(record, ["name", "title", "naziv"])),
+    manufacturer: normalizeInputValue(pickIsznrValue(record, ["manufacturer", "proizvodac"])),
+    model: normalizeInputValue(pickIsznrValue(record, ["model", "type", "tip"])),
+    inventoryNumber: normalizeInputValue(pickIsznrValue(record, ["inventoryNumber", "inventory", "inventarskiBroj"])),
+    note: normalizeInputValue(pickIsznrValue(record, ["note", "description", "napomena"])),
+  };
+}
+
+function normalizeIsznrRoRecord(source = {}) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const id = extractIsznrId(record);
+  const company = normalizeIsznrRelatedRecord(record.company);
+  const authorizedCompany = normalizeIsznrRelatedRecord(record.authorizedCompany);
+  const equipments = (Array.isArray(record.equipments) ? record.equipments : [])
+    .map((item, index) => normalizeIsznrWorkEquipmentUnit(item, index))
+    .filter((item) => item.id || item.name || item.serialNumber || item.inventoryNumber);
+  const finalGrade = normalizeIsznrFinalGrade(record.finalGrade ?? record.finalScore);
+
+  return {
+    id,
+    isznrId: id,
+    sourceKind: "ro_records",
+    sourceLabel: "RO zapisnik",
+    recordNumber: normalizeInputValue(pickIsznrValue(record, ["recordNumber", "identifier", "internalId"])),
+    internalId: normalizeInputValue(record.internalId),
+    company,
+    authorizedCompany,
+    location: normalizeInputValue(record.location),
+    startDate: normalizeInputValue(record.startDate).slice(0, 10),
+    endDate: normalizeInputValue(record.endDate).slice(0, 10),
+    deadlineForNextExamination: normalizeInputValue(record.deadlineForNextExamination).slice(0, 10),
+    finalGrade,
+    experts: normalizeIsznrRelatedArray(record.experts),
+    signedBy: normalizeIsznrRelatedArray(record.signedBy),
+    instruments: normalizeIsznrRelatedArray(record.instruments),
+    equipments,
+  };
+}
+
+function normalizeIsznrRegisterRecord(source = {}, resource = {}) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const id = extractIsznrId(record);
+  const description = normalizeInputValue(pickIsznrValue(record, ["description", "name", "title", "naziv"]));
+  return {
+    id,
+    isznrId: id,
+    group: resource.group || "",
+    label: resource.label || "",
+    path: resource.path || "",
+    description,
+    activeFrom: normalizeInputValue(record.activeFrom).slice(0, 10),
+    activeTo: normalizeInputValue(record.activeTo).slice(0, 10),
+  };
+}
+
+function buildIsznrWorkEquipmentSearchParams(filters = {}) {
+  const entries = {
+    "company.oib": normalizeIsznrOib(filters.companyOib || filters["company.oib"]),
+    "startDate[before]": normalizeInputValue(filters.startDateBefore || filters["startDate[before]"]),
+    "startDate[after]": normalizeInputValue(filters.startDateAfter || filters["startDate[after]"]),
+    "endDate[before]": normalizeInputValue(filters.endDateBefore || filters["endDate[before]"]),
+    "endDate[after]": normalizeInputValue(filters.endDateAfter || filters["endDate[after]"]),
+  };
+  return Object.fromEntries(Object.entries(entries).filter(([, value]) => value));
+}
+
+async function fetchIsznrPagedCollection({
+  baseUrl = "",
+  username = "",
+  password = "",
+  resourcePath = "",
+  searchParams = {},
+  maxPages = ISZNR_WORK_EQUIPMENT_MAX_PAGES,
+  maxRecords = ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS,
+  timeoutMs = ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+} = {}) {
+  const items = [];
+  let totalItems = null;
+  let fetchedAt = "";
+  let pagesFetched = 0;
+  let lastPageCount = 0;
+  const safeMaxPages = Math.max(1, Number(maxPages) || ISZNR_WORK_EQUIPMENT_MAX_PAGES);
+  const safeMaxRecords = Math.max(1, Number(maxRecords) || ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS);
+
+  for (let page = 1; page <= safeMaxPages && items.length < safeMaxRecords; page += 1) {
+    const result = await fetchIsznrJsonResource({
+      baseUrl,
+      username,
+      password,
+      resourcePath,
+      searchParams: {
+        ...searchParams,
+        page,
+      },
+      timeoutMs,
+    });
+    const pageItems = getIsznrPayloadArray(result.payload);
+    pagesFetched += 1;
+    lastPageCount = pageItems.length;
+    totalItems = getIsznrPayloadTotal(result.payload) ?? totalItems;
+    fetchedAt = result.fetchedAt || fetchedAt;
+    items.push(...pageItems);
+
+    if (pageItems.length === 0) {
+      break;
+    }
+    if (totalItems !== null && items.length >= totalItems) {
+      break;
+    }
+    if (totalItems === null && pageItems.length < ISZNR_INSTRUMENT_PAGE_SIZE_GUESS) {
+      break;
+    }
+  }
+
+  const limitedItems = items.slice(0, safeMaxRecords);
+  return {
+    ok: true,
+    count: limitedItems.length,
+    totalItems: totalItems ?? items.length,
+    items: limitedItems,
+    fetchedAt: fetchedAt || new Date().toISOString(),
+    pagesFetched,
+    recordsLimited: items.length > safeMaxRecords
+      || (totalItems !== null && totalItems > safeMaxRecords)
+      || (pagesFetched >= safeMaxPages && lastPageCount >= ISZNR_INSTRUMENT_PAGE_SIZE_GUESS && (totalItems === null || items.length < totalItems)),
+  };
+}
+
+async function fetchIsznrWorkEquipmentRegisters({
+  baseUrl = "",
+  username = "",
+  password = "",
+} = {}) {
+  const groups = await mapIsznrWithConcurrency(
+    ISZNR_WORK_EQUIPMENT_REGISTER_RESOURCES,
+    3,
+    async (resource) => {
+      try {
+        const result = await fetchIsznrJsonResource({
+          baseUrl,
+          username,
+          password,
+          resourcePath: resource.path,
+          timeoutMs: ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+        });
+        const items = getIsznrPayloadArray(result.payload)
+          .map((item) => normalizeIsznrRegisterRecord(item, resource))
+          .filter(Boolean);
+        return {
+          ok: true,
+          ...resource,
+          count: items.length,
+          items,
+          fetchedAt: result.fetchedAt,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          ...resource,
+          count: 0,
+          items: [],
+          error: error?.message || "ISZNR šifrarnik nije dohvaćen.",
+        };
+      }
+    },
+  );
+
+  return groups;
+}
+
+function buildIsznrWorkEquipmentItemsFromRoRecord(record = {}) {
+  const normalized = normalizeIsznrRoRecord(record);
+  if (!normalized) {
+    return [];
+  }
+  if (!normalized.equipments.length) {
+    return [{
+      ...normalized,
+      equipment: null,
+      equipmentType: normalized.recordNumber || "Radna oprema iz RO zapisnika",
+    }];
+  }
+  return normalized.equipments.map((equipment, index) => ({
+    ...normalized,
+    id: `${normalized.id || "record"}:${equipment.id || index + 1}`,
+    isznrId: normalized.id,
+    equipment,
+    equipmentType: [
+      equipment.name,
+      equipment.manufacturer,
+      equipment.model,
+      equipment.serialNumber ? `Ser. ${equipment.serialNumber}` : "",
+      equipment.inventoryNumber ? `Inv. ${equipment.inventoryNumber}` : "",
+    ].filter(Boolean).join(" - "),
+  }));
+}
+
+function dedupeIsznrWorkEquipmentItems(items = []) {
+  const seen = new Set();
+  return (Array.isArray(items) ? items : [])
+    .filter(Boolean)
+    .filter((item) => {
+      const equipment = item.equipment || {};
+      const key = [
+        normalizeInputValue(item.sourceKind),
+        normalizeInputValue(item.isznrId || item.id),
+        normalizeInputValue(item.recordNumber),
+        normalizeInputValue(item.equipmentType),
+        normalizeInputValue(equipment.serialNumber),
+        normalizeInputValue(equipment.inventoryNumber),
+      ].join("|").toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+async function fetchIsznrWorkEquipmentList({
+  baseUrl = "",
+  username = "",
+  password = "",
+  filters = {},
+  includeRegisters = false,
+  maxPages = ISZNR_WORK_EQUIPMENT_MAX_PAGES,
+  maxRecords = ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS,
+} = {}) {
+  const searchParams = buildIsznrWorkEquipmentSearchParams(filters);
+  const safeMaxRecords = Math.max(1, Number(maxRecords) || ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS);
+  const currentRecords = await fetchIsznrPagedCollection({
+    baseUrl,
+    username,
+    password,
+    resourcePath: "ro_records",
+    searchParams,
+    maxPages,
+    maxRecords: safeMaxRecords,
+  });
+
+  const identifierFilter = normalizeInputValue(filters.identifier).toLowerCase();
+  const recordItems = currentRecords.items
+    .flatMap(buildIsznrWorkEquipmentItemsFromRoRecord)
+    .filter((item) => {
+      if (!identifierFilter) {
+        return true;
+      }
+      return [
+        item.recordNumber,
+        item.internalId,
+        item.equipmentType,
+        item.equipment?.serialNumber,
+        item.equipment?.inventoryNumber,
+      ].map((value) => normalizeInputValue(value).toLowerCase()).some((value) => value.includes(identifierFilter));
+    });
+  const items = dedupeIsznrWorkEquipmentItems(recordItems).slice(0, safeMaxRecords);
+  const registers = includeRegisters
+    ? await fetchIsznrWorkEquipmentRegisters({ baseUrl, username, password })
+    : [];
+
+  return {
+    ok: true,
+    count: items.length,
+    totalItems: currentRecords.totalItems ?? recordItems.length,
+    items,
+    registers,
+    fetchedAt: new Date().toISOString(),
+    pagesFetched: currentRecords.pagesFetched,
+    recordsLimited: currentRecords.recordsLimited || items.length >= safeMaxRecords,
+    sources: {
+      records: {
+        count: recordItems.length,
+        totalItems: currentRecords.totalItems,
+        recordsLimited: currentRecords.recordsLimited,
+      },
+    },
+  };
+}
+
+function buildMobileIsznrWorkEquipmentRecord(item = {}) {
+  const finalGrade = item.finalGrade?.label || "";
+  const equipment = item.equipment || {};
+  const title = normalizeInputValue(item.equipmentType)
+    || normalizeInputValue(equipment.name)
+    || normalizeInputValue(item.recordNumber)
+    || "IS ZNR radna oprema";
+  const date = normalizeInputValue(item.dateOfTest || item.endDate || item.dateOfDocument || item.startDate);
+  const companyName = normalizeInputValue(item.company?.name);
+  const location = normalizeInputValue(item.location);
+  const subtitle = [
+    item.recordNumber ? `Zapisnik ${item.recordNumber}` : "",
+    companyName,
+    location,
+    date,
+  ].filter(Boolean).join(" - ");
+  const experts = normalizeIsznrRelatedArray(item.experts).map((entry) => entry.name).filter(Boolean);
+  const signedBy = normalizeIsznrRelatedArray(item.signedBy).map((entry) => entry.name).filter(Boolean);
+
+  return {
+    id: `isznr-work-equipment:${normalizeInputValue(item.id || item.isznrId || item.recordNumber || title)}`,
+    title,
+    subtitle,
+    status: finalGrade || item.sourceLabel || "IS ZNR",
+    kind: "isznr_work_equipment",
+    date,
+    relatedId: normalizeInputValue(item.isznrId || item.id),
+    coordinates: "",
+    meta: {
+      isznrWorkEquipmentId: normalizeInputValue(item.isznrId || item.id),
+      isznrRecordId: normalizeInputValue(item.isznrId || item.id),
+      isznrSource: normalizeInputValue(item.sourceKind),
+      isznrSourceLabel: normalizeInputValue(item.sourceLabel),
+      isznrLinked: "true",
+      recordNumber: normalizeInputValue(item.recordNumber),
+      companyName,
+      companyOib: normalizeInputValue(item.company?.oib),
+      authorizedCompanyName: normalizeInputValue(item.authorizedCompany?.name),
+      location,
+      dateOfTest: normalizeInputValue(item.dateOfTest),
+      dateOfDocument: normalizeInputValue(item.dateOfDocument),
+      startDate: normalizeInputValue(item.startDate),
+      endDate: normalizeInputValue(item.endDate),
+      deadlineForNextExamination: normalizeInputValue(item.deadlineForNextExamination),
+      finalGrade,
+      serialNumber: normalizeInputValue(equipment.serialNumber),
+      inventoryNumber: normalizeInputValue(equipment.inventoryNumber),
+      manufacturer: normalizeInputValue(equipment.manufacturer),
+      model: normalizeInputValue(equipment.model),
+      experts: experts.join(", "),
+      signedBy: signedBy.join(", "),
+    },
+  };
+}
+
+function buildWorkOrderIsznrWorkEquipmentOption(item = {}) {
+  const record = buildMobileIsznrWorkEquipmentRecord(item);
+  if (!record?.id || !record?.title) {
+    return null;
+  }
+  const meta = record.meta || {};
+  return buildMobileDocumentationOption(
+    record.id,
+    record.title,
+    [
+      meta.recordNumber ? `Zapisnik ${meta.recordNumber}` : "",
+      meta.serialNumber ? `Ser. ${meta.serialNumber}` : "",
+      meta.inventoryNumber ? `Inv. ${meta.inventoryNumber}` : "",
+      meta.deadlineForNextExamination ? `Vrijedi do ${formatOfferDocumentDate(meta.deadlineForNextExamination)}` : "",
+    ].filter(Boolean).join(" · "),
+    record.status,
+    meta,
+  );
+}
+
+function buildWorkOrderIsznrWorkEquipmentOptions(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => buildWorkOrderIsznrWorkEquipmentOption(item))
+    .filter(Boolean)
+    .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
+}
+
+function getWorkOrderCompanyOib(workOrder = {}, scopedSnapshot = {}) {
+  const company = (scopedSnapshot.companies ?? [])
+    .find((item) => String(item?.id || "") === String(workOrder?.companyId || ""));
+  return normalizeIsznrOib(
+    workOrder.companyOib
+    || workOrder.oib
+    || workOrder.companyOIB
+    || company?.oib
+    || company?.OIB
+    || company?.taxNumber
+    || company?.vatNumber
+    || "",
+  );
+}
+
+async function fetchIsznrWorkEquipmentForWorkOrder({
+  user = null,
+  request = null,
+  workOrder = {},
+  scopedSnapshot = {},
+  includeRegisters = false,
+  maxRecords = 80,
+} = {}) {
+  void user;
+  const companyOib = getWorkOrderCompanyOib(workOrder, scopedSnapshot);
+  if (!companyOib) {
+    return {
+      ok: true,
+      count: 0,
+      totalItems: 0,
+      items: [],
+      registers: [],
+      mobileRecords: [],
+      options: [],
+      companyOib: "",
+      fetchedAt: new Date().toISOString(),
+      pagesFetched: 0,
+      recordsLimited: false,
+      message: "RN nema OIB tvrtke pa IS ZNR radna oprema nije dohvaćena.",
+    };
+  }
+
+  const activeOrganizationId = scopedSnapshot.activeOrganizationId || resolveLightweightRequestedOrganizationId(user, request);
+  const storedSettings = await domainRepository.getIsznrApiSettings(activeOrganizationId);
+  const result = await fetchIsznrWorkEquipmentList({
+    baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    filters: {
+      companyOib,
+    },
+    includeRegisters,
+    maxPages: 2,
+    maxRecords,
+  });
+  const mobileRecords = result.items.map(buildMobileIsznrWorkEquipmentRecord);
+  return {
+    ...result,
+    companyOib,
+    mobileRecords,
+    options: buildWorkOrderIsznrWorkEquipmentOptions(result.items),
+    message: result.count > 0
+      ? ""
+      : "IS ZNR nije vratio radnu opremu za OIB tvrtke na ovom RN-u.",
   };
 }
 
@@ -15759,6 +16322,12 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       testingLocation: resolveMobileWorkOrderTestingLocation(workOrder, {}),
     },
     measurementEquipmentOptions: buildMobileMeasurementEquipmentOptions(scopedSnapshot),
+    workEquipmentOptions: Array.isArray(scopedSnapshot.isznrWorkEquipmentOptions)
+      ? scopedSnapshot.isznrWorkEquipmentOptions
+      : [],
+    workEquipmentStatus: scopedSnapshot.isznrWorkEquipmentStatus && typeof scopedSnapshot.isznrWorkEquipmentStatus === "object"
+      ? scopedSnapshot.isznrWorkEquipmentStatus
+      : {},
     legalFrameworkOptions: buildMobileLegalFrameworkOptions(scopedSnapshot),
     signaturePersonOptions: buildMobileSignaturePersonOptions(scopedSnapshot, [...signatureAreaKeys], workOrder),
   };
@@ -19108,6 +19677,40 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/mobile/isznr/work-equipment") {
+      const measurementEquipmentScope = await getLightweightScopedPermissionScope(user, request, "measurementEquipment.view");
+      if (!measurementEquipmentScope.canUse) {
+        sendError(response, 403, "Nemate pravo dohvatiti IS ZNR radnu opremu.");
+        return true;
+      }
+
+      const storedSettings = await domainRepository.getIsznrApiSettings(measurementEquipmentScope.activeOrganizationId);
+      const result = await fetchIsznrWorkEquipmentList({
+        baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: storedSettings?.username || "",
+        password: storedSettings?.passwordSecret || "",
+        filters: {
+          companyOib: url.searchParams.get("companyOib") || url.searchParams.get("company.oib") || "",
+          identifier: url.searchParams.get("identifier") || "",
+        },
+        includeRegisters: url.searchParams.get("includeRegisters") === "true",
+        maxPages: url.searchParams.get("maxPages") || ISZNR_WORK_EQUIPMENT_MAX_PAGES,
+        maxRecords: url.searchParams.get("maxRecords") || ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalItems: result.totalItems,
+        fetchedAt: result.fetchedAt,
+        pagesFetched: result.pagesFetched,
+        recordsLimited: Boolean(result.recordsLimited),
+        sources: result.sources,
+        registers: result.registers,
+        records: limitMobileRecords(result.items.map(buildMobileIsznrWorkEquipmentRecord), ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS),
+      });
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/mobile/isznr/people") {
       const { scopedSnapshot } = await getScopedState(user, request);
       if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "people.manage")) {
@@ -19224,7 +19827,68 @@ async function handleApiRequest(request, response, url) {
         objectId: url.searchParams.get("objectId") ?? "",
       });
       const contextSnapshot = await buildMobileDocumentationContextSnapshot(workOrderForContext, scopedSnapshot);
+      try {
+        const isznrWorkEquipment = await fetchIsznrWorkEquipmentForWorkOrder({
+          user,
+          request,
+          workOrder: workOrderForContext,
+          scopedSnapshot,
+          includeRegisters: false,
+          maxRecords: 80,
+        });
+        contextSnapshot.isznrWorkEquipmentOptions = isznrWorkEquipment.options;
+        contextSnapshot.isznrWorkEquipmentStatus = {
+          ok: true,
+          companyOib: isznrWorkEquipment.companyOib,
+          count: isznrWorkEquipment.count,
+          totalItems: isznrWorkEquipment.totalItems,
+          fetchedAt: isznrWorkEquipment.fetchedAt,
+          message: isznrWorkEquipment.message || "",
+          recordsLimited: Boolean(isznrWorkEquipment.recordsLimited),
+        };
+      } catch (error) {
+        contextSnapshot.isznrWorkEquipmentOptions = [];
+        contextSnapshot.isznrWorkEquipmentStatus = {
+          ok: false,
+          message: error?.message || "IS ZNR radna oprema nije dohvaćena.",
+        };
+      }
       sendJson(response, 200, buildMobileWorkOrderDocumentationContext(workOrderForContext, contextSnapshot));
+      return true;
+    }
+
+    const mobileWorkOrderIsznrWorkEquipmentMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/isznr-work-equipment$/);
+    if (mobileWorkOrderIsznrWorkEquipmentMatch && request.method === "GET") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dohvatiti radnu opremu za RN.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderIsznrWorkEquipmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await fetchIsznrWorkEquipmentForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        includeRegisters: url.searchParams.get("includeRegisters") === "true",
+        maxRecords: url.searchParams.get("maxRecords") || 80,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalItems: result.totalItems,
+        companyOib: result.companyOib,
+        fetchedAt: result.fetchedAt,
+        pagesFetched: result.pagesFetched,
+        recordsLimited: Boolean(result.recordsLimited),
+        message: result.message || "",
+        records: limitMobileRecords(result.mobileRecords, ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS),
+      });
       return true;
     }
 
@@ -19714,6 +20378,7 @@ async function handleApiRequest(request, response, url) {
     const workOrderPdfDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderMeasurementSheetMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/measurement-sheet$/);
+    const workOrderIsznrWorkEquipmentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/isznr-work-equipment$/);
     const workOrderDocumentsCollectionMatch = url.pathname === "/api/work-order-documents";
     const workOrderDocumentsZipExportMatch = url.pathname === "/api/work-order-documents/export-zip";
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
@@ -21452,6 +22117,37 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/isznr/work-equipment") {
+      const measurementEquipmentScope = await getLightweightScopedPermissionScope(user, request, "measurementEquipment.view");
+      if (!measurementEquipmentScope.canUse) {
+        sendError(response, 403, "Nemate pravo dohvatiti ISZNR radnu opremu.");
+        return true;
+      }
+
+      const storedSettings = await domainRepository.getIsznrApiSettings(measurementEquipmentScope.activeOrganizationId);
+      const result = await fetchIsznrWorkEquipmentList({
+        baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+        username: storedSettings?.username || "",
+        password: storedSettings?.passwordSecret || "",
+        filters: {
+          companyOib: url.searchParams.get("companyOib") || url.searchParams.get("company.oib") || "",
+          identifier: url.searchParams.get("identifier") || "",
+          startDateBefore: url.searchParams.get("startDateBefore") || "",
+          startDateAfter: url.searchParams.get("startDateAfter") || "",
+          endDateBefore: url.searchParams.get("endDateBefore") || "",
+          endDateAfter: url.searchParams.get("endDateAfter") || "",
+        },
+        includeRegisters: url.searchParams.get("includeRegisters") !== "false",
+        maxPages: url.searchParams.get("maxPages") || ISZNR_WORK_EQUIPMENT_MAX_PAGES,
+        maxRecords: url.searchParams.get("maxRecords") || ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS,
+      });
+      sendJson(response, 200, {
+        ...result,
+        mobileRecords: result.items.map(buildMobileIsznrWorkEquipmentRecord),
+      });
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/isznr/instruments/sync") {
       const canCreateMeasurementEquipment = await canUseScopedAppPermission(user, request, "measurementEquipment.create");
       const canEditMeasurementEquipment = await canUseScopedAppPermission(user, request, "measurementEquipment.edit");
@@ -22624,6 +23320,42 @@ async function handleApiRequest(request, response, url) {
       sendJson(response, 200, {
         measurementSheet: normalizeWorkOrderMeasurementSheet(hydratedWorkOrder?.measurementSheet) ?? null,
         hasMeasurementSheet: Boolean(hydratedWorkOrder?.measurementSheet),
+      });
+      return true;
+    }
+
+    if (workOrderIsznrWorkEquipmentMatch && request.method === "GET") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dohvatiti radnu opremu za RN.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        workOrderIsznrWorkEquipmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await fetchIsznrWorkEquipmentForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        includeRegisters: url.searchParams.get("includeRegisters") === "true",
+        maxRecords: url.searchParams.get("maxRecords") || 120,
+      });
+      sendJson(response, 200, {
+        ok: true,
+        count: result.count,
+        totalItems: result.totalItems,
+        companyOib: result.companyOib,
+        fetchedAt: result.fetchedAt,
+        pagesFetched: result.pagesFetched,
+        recordsLimited: Boolean(result.recordsLimited),
+        message: result.message || "",
+        items: result.items,
+        options: result.options,
+        mobileRecords: result.mobileRecords,
       });
       return true;
     }

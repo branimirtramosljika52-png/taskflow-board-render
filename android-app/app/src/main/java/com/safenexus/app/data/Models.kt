@@ -220,6 +220,8 @@ data class WorkOrderDocumentationContext(
     val measurementTableCount: Int = 0,
     val defaults: WorkOrderDocumentationDefaults = WorkOrderDocumentationDefaults(),
     val measurementEquipmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val workEquipmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val workEquipmentStatus: Map<String, String> = emptyMap(),
     val legalFrameworkOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val rulebookOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val signaturePersonOptions: List<WorkOrderDocumentationSignatureAreaOptions> = emptyList(),

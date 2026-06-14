@@ -4135,6 +4135,89 @@ private fun DocumentationMultiSelectField(
     }
 }
 
+@Composable
+private fun DocumentationReadOnlyOptionList(
+    label: String,
+    options: List<WorkOrderDocumentationOption>,
+    emptyText: String,
+    statusMessage: String = "",
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            if (options.isNotEmpty()) {
+                Text(
+                    "${options.size} IS ZNR",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        if (statusMessage.isNotBlank()) {
+            Text(
+                statusMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+        }
+        if (options.isEmpty()) {
+            Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            return
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.take(32).forEach { option ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(
+                            Icons.Rounded.Work,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(option.label, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            val subtitle = listOf(option.subtitle, option.status)
+                                .map { it.trim() }
+                                .filter { it.isNotBlank() }
+                                .distinct()
+                                .joinToString(" · ")
+                            if (subtitle.isNotBlank()) {
+                                Text(
+                                    subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (options.size > 32) {
+            Text(
+                "Prikazano prvih 32 stavki za brzi mobilni pregled.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+            )
+        }
+    }
+}
+
 private fun List<String>.toggleValue(value: String): List<String> =
     if (value in this) filterNot { it == value } else this + value
 
@@ -10697,6 +10780,30 @@ private fun DocumentationServiceFlowItem.serviceValidityKey(): String =
         .firstOrNull { it.isNotBlank() }
         .orEmpty()
 
+private fun normalizeDocumentationWorkEquipmentText(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace("č", "c")
+        .replace("ć", "c")
+        .replace("ž", "z")
+        .replace("š", "s")
+        .replace("đ", "d")
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+private fun isDocumentationWorkEquipmentText(value: String): Boolean {
+    val normalized = normalizeDocumentationWorkEquipmentText(value)
+    return normalized.contains("radna oprema") ||
+        normalized.contains("radne opreme") ||
+        normalized == "ro" ||
+        normalized.startsWith("ro ")
+}
+
+private fun isDocumentationWorkEquipmentService(item: DocumentationServiceFlowItem): Boolean =
+    isDocumentationWorkEquipmentText(item.serviceName) ||
+        isDocumentationWorkEquipmentText(item.serviceCode) ||
+        isDocumentationWorkEquipmentText(item.serviceKey)
+
 private fun documentationAdditionalRecordFlowKey(record: DocumentationAdditionalObjectRecord, index: Int): String =
     "$DOCUMENTATION_EXTRA_FLOW_PREFIX:${record.serviceKey}:${record.objectId}:$index"
 
@@ -11335,6 +11442,14 @@ private fun WorkOrderDocumentationWizardDialog(
     val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
         buildDocumentationServiceFlowItems(context.templates, workOrder)
     }
+    val isWorkEquipmentFlow = remember(serviceFlowItems, workOrder.displayService) {
+        serviceFlowItems.any { isDocumentationWorkEquipmentService(it) } ||
+            isDocumentationWorkEquipmentText(workOrder.displayService)
+    }
+    val workEquipmentStatusMessage = context.workEquipmentStatus["message"].orEmpty()
+    val showWorkEquipmentFromIsznr = isWorkEquipmentFlow ||
+        context.workEquipmentOptions.isNotEmpty() ||
+        workEquipmentStatusMessage.isNotBlank()
     var additionalRecords by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
     }
@@ -12168,6 +12283,17 @@ private fun WorkOrderDocumentationWizardDialog(
                             onChange = { field, value ->
                                 templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             },
+                        )
+                    }
+                }
+
+                if (showWorkEquipmentFromIsznr) {
+                    WizardSection(title = "Radna oprema", icon = Icons.Rounded.Work) {
+                        DocumentationReadOnlyOptionList(
+                            label = "IS ZNR radna oprema za ovaj RN",
+                            options = context.workEquipmentOptions,
+                            emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
+                            statusMessage = workEquipmentStatusMessage,
                         )
                     }
                 }

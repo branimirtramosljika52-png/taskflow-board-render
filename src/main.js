@@ -2465,6 +2465,7 @@ const state = {
     },
     overrides: {},
     learningDrafts: {},
+    isznrWorkEquipment: {},
   },
   workOrderBatch: {
     pending: false,
@@ -75269,7 +75270,9 @@ function renderMeasurementEquipmentIsznrLocalStatus() {
 }
 
 function renderMeasurementEquipmentTabShell() {
-  const activeTab = state.measurementEquipmentActiveTab === "isznr" ? "isznr" : "local";
+  const activeTab = ["local", "isznr"].includes(state.measurementEquipmentActiveTab)
+    ? state.measurementEquipmentActiveTab
+    : "local";
   state.measurementEquipmentActiveTab = activeTab;
 
   measurementEquipmentTabButtons.forEach((button) => {
@@ -112973,6 +112976,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     tipkaloAuthorizationHolderUserId: "",
   };
   state.workOrderDocumentWizard.learningDrafts = {};
+  state.workOrderDocumentWizard.isznrWorkEquipment = {};
 
   if (closeWizard) {
     state.workOrderDocumentWizard.open = false;
@@ -113003,6 +113007,7 @@ function toggleWorkOrderDocumentSelection(workOrderId, forceValue = null) {
 
   if (!shouldSelect) {
     delete state.workOrderDocumentWizard.overrides?.[normalizedId];
+    delete state.workOrderDocumentWizard.isznrWorkEquipment?.[normalizedId];
   }
 
   if (state.workOrderDocumentWizard.selectedIds.size === 0) {
@@ -113032,6 +113037,7 @@ function setVisibleWorkOrderDocumentSelection(selectAll = false) {
     } else {
       nextSelected.delete(normalizedId);
       delete state.workOrderDocumentWizard.overrides?.[normalizedId];
+      delete state.workOrderDocumentWizard.isznrWorkEquipment?.[normalizedId];
     }
   });
 
@@ -113055,6 +113061,217 @@ function setVisibleWorkOrderDocumentSelection(selectAll = false) {
 
 function renderWorkOrderDocumentWizardCompanyStrip(workOrders = []) {
   void workOrders;
+}
+
+function normalizeWorkOrderDocumentWorkEquipmentText(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isWorkOrderDocumentWorkEquipmentText(value = "") {
+  const normalized = normalizeWorkOrderDocumentWorkEquipmentText(value);
+  return normalized.includes("radna oprema")
+    || normalized.includes("radne opreme")
+    || normalized === "ro"
+    || normalized.startsWith("ro ");
+}
+
+function isWorkOrderDocumentWorkEquipmentService(service = {}) {
+  return [
+    service?.name,
+    service?.serviceName,
+    service?.title,
+    service?.serviceCode,
+    service?.code,
+    service?.shortCode,
+    service?.serviceGroup,
+  ].some((value) => isWorkOrderDocumentWorkEquipmentText(value));
+}
+
+function shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder = {}, serviceItems = []) {
+  const stateEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
+  return Boolean(
+    stateEntry.loaded
+    || stateEntry.loading
+    || stateEntry.error
+    || stateEntry.message
+    || isWorkOrderDocumentWorkEquipmentText(workOrder?.serviceLine)
+    || isWorkOrderDocumentWorkEquipmentText(workOrder?.displayService)
+    || (Array.isArray(serviceItems) && serviceItems.some((service) => isWorkOrderDocumentWorkEquipmentService(service)))
+  );
+}
+
+function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!state.workOrderDocumentWizard.isznrWorkEquipment || typeof state.workOrderDocumentWizard.isznrWorkEquipment !== "object") {
+    state.workOrderDocumentWizard.isznrWorkEquipment = {};
+  }
+  if (!state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId]) {
+    state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId] = {
+      loading: false,
+      loaded: false,
+      queued: false,
+      error: "",
+      message: "",
+      items: [],
+      options: [],
+      companyOib: "",
+      fetchedAt: "",
+      totalItems: null,
+      recordsLimited: false,
+    };
+  }
+  return state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId];
+}
+
+async function loadWorkOrderDocumentIsznrWorkEquipment(workOrder = {}, { force = false } = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+  if (entry.loading || (entry.loaded && !force)) {
+    return;
+  }
+  entry.loading = true;
+  entry.error = "";
+  entry.message = "";
+  renderWorkOrderDocumentWizard();
+
+  try {
+    const payload = await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/isznr-work-equipment?maxRecords=120`);
+    entry.items = Array.isArray(payload?.items) ? payload.items : [];
+    entry.options = Array.isArray(payload?.options) ? payload.options : [];
+    entry.companyOib = String(payload?.companyOib || "").trim();
+    entry.fetchedAt = payload?.fetchedAt || new Date().toISOString();
+    entry.totalItems = payload?.totalItems ?? null;
+    entry.recordsLimited = Boolean(payload?.recordsLimited);
+    entry.message = String(payload?.message || "").trim();
+    entry.loaded = true;
+  } catch (error) {
+    entry.error = error?.message || "IS ZNR radna oprema nije dohvaćena.";
+    entry.loaded = true;
+  } finally {
+    entry.loading = false;
+    renderWorkOrderDocumentWizard();
+  }
+}
+
+function queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+  if (entry.loading || entry.loaded || entry.queued) {
+    return;
+  }
+  entry.queued = true;
+  requestAnimationFrame(() => {
+    const current = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+    current.queued = false;
+    void loadWorkOrderDocumentIsznrWorkEquipment(workOrder);
+  });
+}
+
+function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {}, stateEntry = {}) {
+  const toolbar = document.createElement("div");
+  toolbar.className = "work-order-document-work-equipment-toolbar";
+
+  const summary = document.createElement("span");
+  summary.className = "work-order-document-selection-helper";
+  summary.textContent = stateEntry.loading
+    ? "Dohvaćam RO zapise iz IS ZNR-a..."
+    : stateEntry.loaded
+      ? `${stateEntry.items.length} stavki${stateEntry.companyOib ? ` · OIB ${stateEntry.companyOib}` : ""}`
+      : "Dohvat ide iz IS ZNR RO zapisnika za tvrtku na ovom RN-u.";
+
+  const refreshButton = document.createElement("button");
+  refreshButton.type = "button";
+  refreshButton.className = "ghost-button";
+  refreshButton.textContent = stateEntry.loading ? "Dohvaćam..." : (stateEntry.loaded ? "Osvježi" : "Dohvati iz IS ZNR-a");
+  refreshButton.disabled = Boolean(stateEntry.loading);
+  refreshButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void loadWorkOrderDocumentIsznrWorkEquipment(workOrder, { force: true });
+  });
+
+  toolbar.append(summary, refreshButton);
+  bodyNode.append(toolbar);
+
+  if (stateEntry.error) {
+    const error = document.createElement("p");
+    error.className = "form-error work-order-document-work-equipment-message";
+    error.textContent = stateEntry.error;
+    bodyNode.append(error);
+    return;
+  }
+
+  if (stateEntry.message) {
+    const message = document.createElement("p");
+    message.className = "helper-copy module-copy work-order-document-work-equipment-message";
+    message.textContent = stateEntry.message;
+    bodyNode.append(message);
+  }
+
+  const items = Array.isArray(stateEntry.items) ? stateEntry.items : [];
+  if (stateEntry.loading && !items.length) {
+    const loading = document.createElement("p");
+    loading.className = "helper-copy module-copy";
+    loading.textContent = "Čitam radnu opremu iz IS ZNR-a...";
+    bodyNode.append(loading);
+    return;
+  }
+
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = stateEntry.loaded
+      ? "Za ovaj RN trenutno nema dohvaćene radne opreme iz IS ZNR-a."
+      : "Radna oprema će se ponuditi ovdje prije popunjavanja zapisnika.";
+    bodyNode.append(empty);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "work-order-document-work-equipment-list";
+  items.slice(0, 24).forEach((item) => {
+    const equipment = item.equipment || {};
+    const card = document.createElement("article");
+    card.className = "work-order-document-work-equipment-card";
+
+    const title = document.createElement("strong");
+    title.textContent = item.equipmentType || equipment.name || item.recordNumber || "Radna oprema";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      item.recordNumber ? `Zapisnik ${item.recordNumber}` : "",
+      equipment.serialNumber ? `Ser. ${equipment.serialNumber}` : "",
+      equipment.inventoryNumber ? `Inv. ${equipment.inventoryNumber}` : "",
+      item.deadlineForNextExamination ? `Rok ${formatCompactDate(item.deadlineForNextExamination)}` : "",
+      item.location || "",
+    ].filter(Boolean).join(" · ") || "IS ZNR RO zapis";
+
+    const badge = createBadge(item.finalGrade?.label || "IS ZNR", "document-template-meta-badge");
+    card.append(title, meta, badge);
+    list.append(card);
+  });
+  bodyNode.append(list);
+
+  if (items.length > 24 || stateEntry.recordsLimited) {
+    const limited = document.createElement("p");
+    limited.className = "helper-copy module-copy";
+    limited.textContent = stateEntry.recordsLimited
+      ? "Dohvat je ograničen. Za uži popis koristi OIB/oznaku kroz IS ZNR ili otvori web pregled."
+      : `Prikazano prvih 24 od ${items.length} stavki.`;
+    bodyNode.append(limited);
+  }
 }
 
 function markWorkOrderDocumentWizardRequiredField(target, missing = false) {
@@ -116358,6 +116575,22 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   servicesSection.bodyNode.append(servicesToolbar, serviceList);
 
+  let workEquipmentSectionNode = null;
+  if (shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder, resolvedServiceItems)) {
+    const workEquipmentState = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder.id);
+    const workEquipmentSection = createCollapsibleSection({
+      sectionKey: "work-equipment",
+      titleText: "Radna oprema",
+      descriptionText: workEquipmentState.loaded
+        ? `${workEquipmentState.items.length} stavki iz IS ZNR RO zapisnika`
+        : "Ponuda stare radne opreme za ovaj RN iz IS ZNR-a.",
+      className: "work-order-document-selection-work-equipment-block",
+    });
+    appendWorkOrderDocumentIsznrWorkEquipmentBody(workEquipmentSection.bodyNode, workOrder, workEquipmentState);
+    workEquipmentSectionNode = workEquipmentSection.section;
+    queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder);
+  }
+
   const learningTestRecommendations = getWorkOrderLearningTestRecommendations([workOrder]).recommendations;
   const trainingContext = workOrder.trainingContext ?? {};
   const hasTrainingService = resolvedServiceItems.some((service) => Boolean(service?.isTraining));
@@ -116579,6 +116812,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     companyBlock,
     basicSection.section,
     servicesSection.section,
+    ...(workEquipmentSectionNode ? [workEquipmentSectionNode] : []),
     ...(learningSectionNode ? [learningSectionNode] : []),
     peopleSection.section,
     environmentSection.section,
@@ -127648,7 +127882,8 @@ measurementEquipmentSortInput?.addEventListener("change", () => {
 
 measurementEquipmentTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    const tab = button.dataset.measurementEquipmentTab === "isznr" ? "isznr" : "local";
+    const requestedTab = button.dataset.measurementEquipmentTab || "local";
+    const tab = ["local", "isznr"].includes(requestedTab) ? requestedTab : "local";
     state.measurementEquipmentActiveTab = tab;
     renderMeasurementEquipmentModule();
   });

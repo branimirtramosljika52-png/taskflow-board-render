@@ -204,6 +204,13 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun listIsznrWorkEquipment(): Result<List<MobileRecord>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = JSONObject(request("/api/mobile/isznr/work-equipment?maxRecords=200", readTimeoutMs = 90_000))
+            json.optJSONArray("records").toRecords()
+        }
+    }
+
     suspend fun listIsznrPeople(): Result<List<MobileRecord>> = withContext(Dispatchers.IO) {
         runCatching {
             val json = JSONObject(request("/api/mobile/isznr/people", readTimeoutMs = 60_000))
@@ -1471,6 +1478,8 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         measurementTableCount = optInt("measurementTableCount", 0),
         defaults = optJSONObject("defaults").toWorkOrderDocumentationDefaults(),
         measurementEquipmentOptions = optJSONArray("measurementEquipmentOptions").toWorkOrderDocumentationOptions(),
+        workEquipmentOptions = optJSONArray("workEquipmentOptions").toWorkOrderDocumentationOptions(),
+        workEquipmentStatus = optJSONObject("workEquipmentStatus").toStringMap(),
         legalFrameworkOptions = optJSONArray("legalFrameworkOptions").toWorkOrderDocumentationOptions(),
         rulebookOptions = optJSONArray("rulebookOptions").toWorkOrderDocumentationOptions(),
         signaturePersonOptions = optJSONArray("signaturePersonOptions").toWorkOrderDocumentationSignatureAreaOptions(),
