@@ -186,6 +186,7 @@ import com.safenexus.app.data.FieldInquiryDraft
 import com.safenexus.app.data.IsznrManualWorkEquipment
 import com.safenexus.app.data.IsznrRoAttachmentFile
 import com.safenexus.app.data.IsznrRoAssessmentItem
+import com.safenexus.app.data.IsznrWorkEquipmentSubmitResult
 import com.safenexus.app.data.MobileRecord
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
@@ -422,6 +423,7 @@ data class AppState(
     val isznrPeopleLoading: Boolean = false,
     val isznrPeopleLoaded: Boolean = false,
     val isznrPeopleError: String = "",
+    val workEquipmentSubmitResults: Map<String, IsznrWorkEquipmentSubmitResult> = emptyMap(),
     val isLoading: Boolean = false,
     val error: String = "",
     val notice: String = "",
@@ -1037,6 +1039,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         notice = successMessage,
                         error = "",
                         pendingExternalUrl = pdfBridgeUrl,
+                        workEquipmentSubmitResults = state.workEquipmentSubmitResults + (workOrderId to result),
                     )
                     loadWorkOrderDocumentationContext(workOrder, objectId)
                     state = state.copy(notice = successMessage)
@@ -1927,6 +1930,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                 state.documentationContextWorkOrderId == workOrder.id &&
                 state.documentationContextObjectId == documentationWizardObjectId,
             isLoading = state.isLoading,
+            workEquipmentSubmitResult = state.workEquipmentSubmitResults[workOrder.id] ?: IsznrWorkEquipmentSubmitResult(),
             onDismiss = { documentationWizardTarget = null },
             onObjectSelectionChange = { objectId ->
                 documentationWizardObjectId = objectId
@@ -12587,6 +12591,7 @@ private fun WorkOrderDocumentationWizardDialog(
     context: WorkOrderDocumentationContext,
     contextLoading: Boolean,
     isLoading: Boolean,
+    workEquipmentSubmitResult: IsznrWorkEquipmentSubmitResult = IsznrWorkEquipmentSubmitResult(),
     onDismiss: () -> Unit,
     onObjectSelectionChange: (String) -> Unit,
     onCreateObject: (String) -> Unit,
@@ -12666,6 +12671,11 @@ private fun WorkOrderDocumentationWizardDialog(
     var manualWorkEquipments by remember(workOrder.id, context.workEquipmentOptions) {
         mutableStateOf(emptyList<IsznrManualWorkEquipment>())
     }
+    val selectedWorkEquipmentRecords = remember(context.workEquipmentOptions, selectedWorkEquipmentItemIds) {
+        val selectedIds = selectedWorkEquipmentItemIds.map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        context.workEquipmentOptions.filter { option -> selectedIds.contains(option.id.trim()) }
+    }
+    val lastWorkEquipmentSubmitResult = workEquipmentSubmitResult
     var additionalRecords by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
     }
@@ -13720,6 +13730,9 @@ private fun WorkOrderDocumentationWizardDialog(
                         selectedEquipmentIds = selectedEquipmentIds.toList(),
                         selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
                         selectedRulebookIds = emptyList(),
+                        selectedWorkEquipmentRecords = selectedWorkEquipmentRecords,
+                        manualWorkEquipments = readyManualWorkEquipments,
+                        workEquipmentSubmitResult = lastWorkEquipmentSubmitResult,
                         signatureMode = signatureMode,
                         validityMonths = primaryValidityMonths,
                         electricalValidityMonths = electricalValidityMonths.trim(),

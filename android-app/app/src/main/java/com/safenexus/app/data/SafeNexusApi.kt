@@ -423,6 +423,10 @@ class SafeNexusApi(
             draft.selectedLegalFrameworkIds.forEach { selectedLegalFrameworkIds.put(it) }
             val selectedRulebookIds = JSONArray()
             draft.selectedRulebookIds.forEach { selectedRulebookIds.put(it) }
+            val selectedWorkEquipmentRecords = JSONArray()
+            draft.selectedWorkEquipmentRecords.forEach { selectedWorkEquipmentRecords.put(it.toJsonObject()) }
+            val manualWorkEquipments = JSONArray()
+            draft.manualWorkEquipments.forEach { manualWorkEquipments.put(it.toJsonObject()) }
             val executors = JSONArray()
             draft.executors.forEach { executors.put(it) }
             val additionalRecords = JSONArray()
@@ -457,6 +461,9 @@ class SafeNexusApi(
                 .put("selectedEquipmentIds", selectedEquipmentIds)
                 .put("selectedLegalFrameworkIds", selectedLegalFrameworkIds)
                 .put("selectedRulebookIds", selectedRulebookIds)
+                .put("selectedWorkEquipmentRecords", selectedWorkEquipmentRecords)
+                .put("manualWorkEquipments", manualWorkEquipments)
+                .put("workEquipmentSubmitResult", draft.workEquipmentSubmitResult.toJsonObject())
                 .put("signatureMode", draft.signatureMode)
                 .put("validityMonths", draft.validityMonths)
                 .put("electricalValidityMonths", draft.electricalValidityMonths)
@@ -967,6 +974,50 @@ private fun IsznrRoAttachmentFile.toJsonObject(): JSONObject =
         .put("fileType", fileType.trim())
         .put("fileSize", fileSize)
         .put("contentDataUrl", contentDataUrl.trim())
+
+private fun WorkOrderDocumentationOption.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("id", id.trim())
+        .put("label", label.trim())
+        .put("subtitle", subtitle.trim())
+        .put("status", status.trim())
+        .put("meta", meta.toJsonObject())
+
+private fun IsznrManualWorkEquipment.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("name", name.trim())
+        .put("manufacturer", manufacturer.trim())
+        .put("model", model.trim())
+        .put("serialNumber", serialNumber.trim())
+        .put("inventoryNumber", inventoryNumber.trim())
+        .put("note", note.trim())
+        .put("technicalData", technicalData.trim())
+        .put("purposeDescription", purposeDescription.trim())
+        .put("workspacePosition", workspacePosition.trim())
+        .put("workingSubstancesAndRawMaterials", workingSubstancesAndRawMaterials.trim())
+        .put("useAndMaintenance", useAndMaintenance.trim())
+        .put("methodsProceduresAndNorms", methodsProceduresAndNorms.trim())
+        .put("deficiencies", deficiencies.trim())
+        .put("measuresToEliminateDeficiencies", measuresToEliminateDeficiencies.trim())
+        .put("finalGrade", finalGrade.trim().ifBlank { "1" })
+        .put("mechanicalItems", JSONArray(mechanicalItems.map { item -> item.toJsonObject() }))
+        .put("electricalItems", JSONArray(electricalItems.map { item -> item.toJsonObject() }))
+        .put("hazardRegisterIris", JSONArray(hazardRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
+        .put("harmfulnessRegisterIris", JSONArray(harmfulnessRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
+        .put("strainRegisterIris", JSONArray(strainRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
+        .put("attachments", JSONArray(attachments.map { file -> file.toJsonObject() }))
+
+private fun IsznrWorkEquipmentSubmitResult.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("message", message.trim())
+        .put("isznrId", isznrId.trim())
+        .put("recordNumber", recordNumber.trim())
+        .put("pdfUrl", pdfUrl.trim())
+        .put("pdfBridgeUrl", pdfBridgeUrl.trim())
+        .put("attachmentSubmitted", attachmentSubmitted)
+        .put("attachmentFailed", attachmentFailed)
+        .put("equipmentCount", equipmentCount)
+        .put("submittedAt", submittedAt.trim())
 
 private fun parseContentDispositionFileName(value: String?): String {
     if (value.isNullOrBlank()) return ""

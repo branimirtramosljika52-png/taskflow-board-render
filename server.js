@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.112.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.113.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -14549,6 +14549,33 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
   const selectedEquipmentIds = normalizeMobileDocumentWizardArray(source.selectedEquipmentIds || source.measurementEquipmentIds);
   const selectedLegalFrameworkIds = normalizeMobileDocumentWizardArray(source.selectedLegalFrameworkIds || source.legalFrameworkIds);
   const selectedRulebookIds = normalizeMobileDocumentWizardArray(source.selectedRulebookIds || source.rulebookIds);
+  const selectedWorkEquipmentRecords = Array.isArray(source.selectedWorkEquipmentRecords)
+    ? source.selectedWorkEquipmentRecords
+      .map((entry) => (entry && typeof entry === "object" ? {
+        id: normalizeInputValue(entry.id),
+        label: normalizeInputValue(entry.label || entry.title || entry.name),
+        subtitle: normalizeInputValue(entry.subtitle),
+        status: normalizeInputValue(entry.status),
+        meta: entry.meta && typeof entry.meta === "object"
+          ? Object.fromEntries(Object.entries(entry.meta)
+            .map(([key, value]) => [normalizeInputValue(key), normalizeInputValue(value)])
+            .filter(([key, value]) => key && value))
+          : {},
+      } : null))
+      .filter((entry) => entry && (entry.id || entry.label))
+    : [];
+  const manualWorkEquipments = normalizeIsznrRoManualEquipmentPayloads(
+    source.manualWorkEquipments || source.manualWorkEquipment || source.manualEquipments || [],
+  );
+  const workEquipmentSubmitSource = source.workEquipmentSubmitResult && typeof source.workEquipmentSubmitResult === "object"
+    ? source.workEquipmentSubmitResult
+    : {};
+  const workEquipmentSubmitResult = {
+    isznrId: normalizeInputValue(workEquipmentSubmitSource.isznrId || workEquipmentSubmitSource.submittedRecordId),
+    recordNumber: normalizeInputValue(workEquipmentSubmitSource.recordNumber || workEquipmentSubmitSource.submittedRecordNumber),
+    pdfUrl: normalizeInputValue(workEquipmentSubmitSource.pdfUrl || workEquipmentSubmitSource.isznrPdfUrl),
+    pdfBridgeUrl: normalizeInputValue(workEquipmentSubmitSource.pdfBridgeUrl || workEquipmentSubmitSource.isznrPdfBridgeUrl),
+  };
   const executors = normalizeMobileDocumentWizardArray(source.executors);
   const additionalRecords = Array.isArray(source.additionalRecords)
     ? source.additionalRecords.map((entry, index) => ({
@@ -14633,6 +14660,10 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     selectedEquipmentIds,
     selectedLegalFrameworkIds,
     selectedRulebookIds,
+    selectedWorkEquipmentRecords,
+    manualWorkEquipments,
+    workEquipmentSubmitResult,
+    workEquipmentRecordNumber: workEquipmentSubmitResult.recordNumber,
     signatureMode: normalizeMobileDocumentSignatureMode(source.signatureMode),
     validityMonths: normalizeMobileDocumentValidityMonths(source.validityMonths, "12"),
     electricalValidityMonths: normalizeMobileDocumentValidityMonths(source.electricalValidityMonths, source.validityMonths || "12"),
@@ -18518,7 +18549,16 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
       objectName,
     };
   }).filter((row) => row.service || row.documentNumber || row.objectName);
-  const rows = [...baseRows, ...additionalRows];
+  const workEquipmentRows = buildMobileHandoverWorkEquipmentRows(workOrder, common);
+  const hasWorkEquipmentRows = workEquipmentRows.length > 0;
+  const rows = [
+    ...baseRows.filter((row) => (
+      !hasWorkEquipmentRows
+      || !normalizeLookupKey(row.service).includes("radna oprema")
+    )),
+    ...additionalRows,
+    ...workEquipmentRows,
+  ];
 
   return {
     type: "handover_protocol",
@@ -18584,6 +18624,96 @@ function buildMobileHandoverTemplateRows(protocol = {}) {
       USLUGA_S_OBJEKTOM: formatWorkOrderTemplateServiceWithObject(service, objectName),
     };
   });
+}
+
+function normalizeMobileHandoverWorkEquipmentRecord(source = {}) {
+  const record = source && typeof source === "object" ? source : {};
+  const meta = record.meta && typeof record.meta === "object" ? record.meta : {};
+  const equipment = record.equipment && typeof record.equipment === "object" ? record.equipment : {};
+  const equipmentName = normalizeInputValue(
+    meta.equipmentName
+      || equipment.name
+      || record.equipmentName
+      || record.name
+      || record.label
+      || record.title
+      || record.equipmentType,
+  );
+  const manufacturer = normalizeInputValue(meta.manufacturer || equipment.manufacturer || record.manufacturer);
+  const model = normalizeInputValue(meta.model || equipment.model || record.model || record.type);
+  const serialNumber = normalizeInputValue(meta.serialNumber || equipment.serialNumber || record.serialNumber);
+  const inventoryNumber = normalizeInputValue(meta.inventoryNumber || equipment.inventoryNumber || record.inventoryNumber);
+  const recordNumber = normalizeInputValue(meta.recordNumber || record.recordNumber || record.documentNumber);
+  const sourceId = normalizeInputValue(
+    record.id
+      || meta.isznrWorkEquipmentId
+      || meta.isznrRecordId
+      || record.isznrId
+      || record.relatedId
+      || serialNumber
+      || inventoryNumber
+      || equipmentName,
+  );
+  return {
+    id: sourceId,
+    equipmentName,
+    manufacturer,
+    model,
+    serialNumber,
+    inventoryNumber,
+    recordNumber,
+  };
+}
+
+function formatMobileHandoverWorkEquipmentNote(equipment = {}) {
+  return [
+    equipment.equipmentName,
+    equipment.manufacturer,
+    equipment.model,
+    equipment.serialNumber,
+    equipment.inventoryNumber,
+  ].map(normalizeInputValue).filter(Boolean).join("; ");
+}
+
+function buildMobileHandoverWorkEquipmentRows(workOrder = {}, common = {}) {
+  const submittedRecordNumber = normalizeInputValue(
+    common.workEquipmentSubmitResult?.recordNumber
+      || common.workEquipmentRecordNumber
+      || common.submittedWorkEquipmentRecordNumber,
+  );
+  const selectedRecords = Array.isArray(common.selectedWorkEquipmentRecords)
+    ? common.selectedWorkEquipmentRecords
+    : [];
+  const manualRecords = Array.isArray(common.manualWorkEquipments)
+    ? common.manualWorkEquipments
+    : [];
+  const rows = [
+    ...selectedRecords.map(normalizeMobileHandoverWorkEquipmentRecord),
+    ...manualRecords.map(normalizeMobileHandoverWorkEquipmentRecord),
+  ].filter((equipment) => equipment.equipmentName || equipment.manufacturer || equipment.model || equipment.serialNumber || equipment.inventoryNumber);
+  const seen = new Set();
+  return rows.filter((equipment) => {
+    const key = [
+      equipment.recordNumber,
+      equipment.equipmentName,
+      equipment.manufacturer,
+      equipment.model,
+      equipment.serialNumber,
+      equipment.inventoryNumber,
+    ].map((value) => normalizeInputValue(value).toLowerCase()).join("|");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  }).map((equipment, index) => ({
+    id: `handover-ro-${equipment.id || index + 1}`,
+    service: "Ispitivanje radne opreme",
+    documentNumber: submittedRecordNumber || equipment.recordNumber || normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+    quantity: "1",
+    note: formatMobileHandoverWorkEquipmentNote(equipment),
+    objectName: normalizeInputValue(workOrder.objectName),
+  }));
 }
 
 function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, common = {}) {

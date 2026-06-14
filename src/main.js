@@ -66144,6 +66144,113 @@ function buildDocumentTemplateRuntimeServiceDocumentNumber(service = {}, workOrd
   return [workOrderNumber, serviceCode].filter(Boolean).join("-");
 }
 
+function normalizeDocumentTemplateRuntimeWorkEquipmentHandoverRecord(source = {}, recordNumberOverride = "") {
+  const record = source && typeof source === "object" ? source : {};
+  const meta = record.meta && typeof record.meta === "object" ? record.meta : {};
+  const equipment = record.equipment && typeof record.equipment === "object" ? record.equipment : {};
+  const equipmentName = String(
+    meta.equipmentName
+    || equipment.name
+    || record.equipmentName
+    || record.name
+    || record.label
+    || record.title
+    || record.equipmentType
+    || ""
+  ).trim();
+  const manufacturer = String(meta.manufacturer || equipment.manufacturer || record.manufacturer || "").trim();
+  const model = String(meta.model || equipment.model || record.model || record.type || "").trim();
+  const serialNumber = String(meta.serialNumber || equipment.serialNumber || record.serialNumber || "").trim();
+  const inventoryNumber = String(meta.inventoryNumber || equipment.inventoryNumber || record.inventoryNumber || "").trim();
+  const recordNumber = String(
+    recordNumberOverride
+    || meta.recordNumber
+    || record.recordNumber
+    || record.documentNumber
+    || ""
+  ).trim();
+  const id = String(
+    record.id
+    || meta.isznrWorkEquipmentId
+    || meta.isznrRecordId
+    || record.isznrId
+    || record.relatedId
+    || serialNumber
+    || inventoryNumber
+    || equipmentName
+    || ""
+  ).trim();
+
+  return {
+    id,
+    equipmentName,
+    manufacturer,
+    model,
+    serialNumber,
+    inventoryNumber,
+    recordNumber,
+  };
+}
+
+function formatDocumentTemplateRuntimeWorkEquipmentHandoverNote(equipment = {}) {
+  return [
+    equipment.equipmentName,
+    equipment.manufacturer,
+    equipment.model,
+    equipment.serialNumber,
+    equipment.inventoryNumber,
+  ].map((value) => String(value || "").trim()).filter(Boolean).join("; ");
+}
+
+function buildDocumentTemplateRuntimeWorkEquipmentHandoverRows(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return [];
+  }
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+  const selectedIds = new Set((Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean));
+  const postResult = entry.postResult && typeof entry.postResult === "object" ? entry.postResult : {};
+  const postDraft = postResult.postDraft && typeof postResult.postDraft === "object" ? postResult.postDraft : {};
+  const submittedRecordNumber = String(postResult.recordNumber || postResult.submittedRecordNumber || postDraft.submittedRecordNumber || "").trim();
+  const selectedItems = selectedIds.size > 0
+    ? (Array.isArray(entry.items) ? entry.items : []).filter((item) => selectedIds.has(String(item?.id || "").trim()))
+    : [];
+  const submittedEquipments = Array.isArray(postDraft.payload?.equipments)
+    ? postDraft.payload.equipments
+    : [];
+  const sourceItems = selectedItems.length > 0 ? selectedItems : submittedEquipments;
+  const seen = new Set();
+
+  return sourceItems
+    .map((item) => normalizeDocumentTemplateRuntimeWorkEquipmentHandoverRecord(item, submittedRecordNumber))
+    .filter((equipment) => equipment.equipmentName || equipment.manufacturer || equipment.model || equipment.serialNumber || equipment.inventoryNumber)
+    .filter((equipment) => {
+      const key = [
+        equipment.recordNumber,
+        equipment.equipmentName,
+        equipment.manufacturer,
+        equipment.model,
+        equipment.serialNumber,
+        equipment.inventoryNumber,
+      ].map((value) => String(value || "").trim().toLowerCase()).join("|");
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .map((equipment, index) => ({
+      id: `handover-ro-${equipment.id || index + 1}`,
+      service: "Ispitivanje radne opreme",
+      documentNumber: equipment.recordNumber || String(workOrder.workOrderNumber || "").trim(),
+      quantity: "1",
+      note: formatDocumentTemplateRuntimeWorkEquipmentHandoverNote(equipment),
+      objectName: String(workOrder.objectName || "").trim(),
+    }));
+}
+
 function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumentTemplateDraft(), workOrder = {}) {
   const normalizedServices = getDocumentTemplateRuntimeIncludedServiceEntries(workOrder);
   const locationObject = getDocumentTemplateRuntimeObjectForWorkOrder(workOrder);
@@ -66152,6 +66259,8 @@ function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumen
   const rawServices = Array.isArray(override?.serviceItems)
     ? override.serviceItems
     : (Array.isArray(workOrder?.serviceItems) ? workOrder.serviceItems : []);
+  const workEquipmentRows = buildDocumentTemplateRuntimeWorkEquipmentHandoverRows(workOrder);
+  const hasWorkEquipmentRows = workEquipmentRows.length > 0;
   const rows = normalizedServices.map(({ service, index }) => {
     const rawService = rawServices[index] && typeof rawServices[index] === "object" ? rawServices[index] : {};
     const mergedService = { ...rawService, ...service };
@@ -66163,7 +66272,12 @@ function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumen
       note: getDocumentTemplateHandoverServiceNote(mergedService),
       objectName,
     };
-  });
+  }).filter((row) => (
+    !hasWorkEquipmentRows
+    || !isWorkOrderDocumentWorkEquipmentText(row.service)
+  ));
+
+  rows.push(...workEquipmentRows);
 
   if (rows.length > 0) {
     return rows;
