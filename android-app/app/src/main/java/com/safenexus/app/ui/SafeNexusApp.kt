@@ -96,6 +96,7 @@ import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
@@ -4262,6 +4263,7 @@ private fun DocumentationWorkEquipmentOptionList(
     options: List<WorkOrderDocumentationOption>,
     emptyText: String,
     statusMessage: String = "",
+    postDraftStatus: Map<String, String> = emptyMap(),
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
@@ -4276,6 +4278,13 @@ private fun DocumentationWorkEquipmentOptionList(
     }
     val overdueCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Overdue, today) }
     val upcomingCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Upcoming, today) }
+    val postDraftReady = postDraftStatus["postDraftReady"].equals("true", ignoreCase = true)
+    val postDraftReadyCount = postDraftStatus["postDraftReadyCount"].orEmpty()
+    val postDraftMissingCount = postDraftStatus["postDraftMissingCount"].orEmpty()
+    val postDraftMissingLabels = postDraftStatus["postDraftMissingLabels"].orEmpty()
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
@@ -4306,6 +4315,61 @@ private fun DocumentationWorkEquipmentOptionList(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
+        }
+        if (postDraftReadyCount.isNotBlank() || postDraftMissingCount.isNotBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = if (postDraftReady) Color(0xFFECFDF5) else Color(0xFFFFF7ED),
+                tonalElevation = 0.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (postDraftReady) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = if (postDraftReady) Color(0xFF059669) else Color(0xFFB45309),
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (postDraftReady) "IS ZNR POST priprema spremna" else "IS ZNR POST priprema",
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "Dry-run: ništa se ne šalje u IS ZNR.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            )
+                        }
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    if (postDraftReady) {
+                                        "$postDraftReadyCount spremno"
+                                    } else {
+                                        "Fali $postDraftMissingCount"
+                                    },
+                                )
+                            },
+                        )
+                    }
+                    if (postDraftMissingLabels.isNotEmpty()) {
+                        Text(
+                            "Fali: ${postDraftMissingLabels.take(4).joinToString(", ")}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                    }
+                }
+            }
         }
         if (options.isEmpty()) {
             Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
@@ -12349,6 +12413,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             options = context.workEquipmentOptions,
                             emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
                             statusMessage = workEquipmentStatusMessage,
+                            postDraftStatus = context.workEquipmentStatus,
                         )
                     }
                 } else if (!summaryFlowSelected && !basicsFlowSelected) {

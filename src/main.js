@@ -113126,6 +113126,7 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
       totalItems: null,
       recordsLimited: false,
       filter: "all",
+      postDraft: null,
     };
   }
   return state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId];
@@ -113146,7 +113147,7 @@ async function loadWorkOrderDocumentIsznrWorkEquipment(workOrder = {}, { force =
   renderWorkOrderDocumentWizard();
 
   try {
-    const payload = await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/isznr-work-equipment?maxRecords=120`);
+    const payload = await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/isznr-work-equipment?maxRecords=120&includeRegisters=true`);
     entry.items = Array.isArray(payload?.items) ? payload.items : [];
     entry.options = Array.isArray(payload?.options) ? payload.options : [];
     entry.companyOib = String(payload?.companyOib || "").trim();
@@ -113154,6 +113155,7 @@ async function loadWorkOrderDocumentIsznrWorkEquipment(workOrder = {}, { force =
     entry.totalItems = payload?.totalItems ?? null;
     entry.recordsLimited = Boolean(payload?.recordsLimited);
     entry.message = String(payload?.message || "").trim();
+    entry.postDraft = payload?.postDraft && typeof payload.postDraft === "object" ? payload.postDraft : null;
     entry.loaded = true;
   } catch (error) {
     entry.error = error?.message || "IS ZNR radna oprema nije dohvaćena.";
@@ -113263,6 +113265,69 @@ function getWorkOrderDocumentWorkEquipmentFilterCounts(items = [], today = getWo
   }, {});
 }
 
+function appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, postDraft = null) {
+  if (!postDraft || typeof postDraft !== "object") {
+    return;
+  }
+
+  const panel = document.createElement("section");
+  panel.className = `work-order-document-isznr-post-draft${postDraft.ready ? " is-ready" : " is-missing"}`;
+
+  const header = document.createElement("div");
+  header.className = "work-order-document-isznr-post-draft-header";
+
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = postDraft.ready ? "IS ZNR POST priprema spremna" : "IS ZNR POST priprema";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = postDraft.writeEnabled
+    ? "Slanje je omogućeno."
+    : "Dry-run: ništa se ne šalje u IS ZNR.";
+  copy.append(title, subtitle);
+
+  const badge = createBadge(
+    postDraft.ready
+      ? `${postDraft.readyCount || 0} spremno`
+      : `Fali ${postDraft.missingCount || 0}`,
+    "document-template-meta-badge",
+  );
+  header.append(copy, badge);
+  panel.append(header);
+
+  const checklist = Array.isArray(postDraft.checklist) ? postDraft.checklist : [];
+  if (checklist.length > 0) {
+    const list = document.createElement("div");
+    list.className = "work-order-document-isznr-post-draft-checklist";
+    checklist.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = `work-order-document-isznr-post-draft-row${item.ready ? " is-ok" : " is-missing"}`;
+      const mark = document.createElement("span");
+      mark.textContent = item.ready ? "✓" : "!";
+      const label = document.createElement("strong");
+      label.textContent = item.label || item.key || "Stavka";
+      const detail = document.createElement("small");
+      detail.textContent = item.detail || item.value || "";
+      row.append(mark, label, detail);
+      list.append(row);
+    });
+    panel.append(list);
+  }
+
+  const payload = postDraft.payload && typeof postDraft.payload === "object" ? postDraft.payload : null;
+  if (payload) {
+    const details = document.createElement("details");
+    details.className = "work-order-document-isznr-post-draft-preview";
+    const summary = document.createElement("summary");
+    summary.textContent = "Payload preview";
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(payload, null, 2);
+    details.append(summary, pre);
+    panel.append(details);
+  }
+
+  bodyNode.append(panel);
+}
+
 function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {}, stateEntry = {}) {
   const toolbar = document.createElement("div");
   toolbar.className = "work-order-document-work-equipment-toolbar";
@@ -113287,6 +113352,7 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
 
   toolbar.append(summary, refreshButton);
   bodyNode.append(toolbar);
+  appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, stateEntry.postDraft);
 
   if (stateEntry.error) {
     const error = document.createElement("p");
