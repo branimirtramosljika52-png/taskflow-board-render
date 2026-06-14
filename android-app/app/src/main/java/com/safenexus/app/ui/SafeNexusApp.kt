@@ -4446,30 +4446,13 @@ private fun physicalFactorsFilterCount(
 
 @Composable
 private fun DocumentationPhysicalFactorsOptionList(
-    options: List<WorkOrderDocumentationOption>,
-    emptyText: String,
-    statusMessage: String = "",
-    selectedItemIds: Set<String>,
     manualPhysicalFactors: IsznrManualPhysicalFactors,
+    measurementTemplates: List<WorkOrderDocumentationTemplate>,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
     enabled: Boolean = true,
-    onSelectedItemIdsChange: (Set<String>) -> Unit,
     onManualPhysicalFactorsChange: (IsznrManualPhysicalFactors) -> Unit,
+    onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
 ) {
-    val today = remember { LocalDate.now() }
-    var selectedFilter by remember(options) { mutableStateOf(DocumentationPhysicalFactorsFilter.All) }
-    val filteredOptions = remember(options, selectedFilter, today) {
-        options
-            .filter { option -> option.matchesPhysicalFactorsFilter(selectedFilter, today) }
-            .sortedWith(
-                compareBy<WorkOrderDocumentationOption> { option ->
-                    option.physicalFactorsDeadline() ?: LocalDate.MAX
-                }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
-            )
-    }
-    val overdueCount = remember(options, today) { physicalFactorsFilterCount(options, DocumentationPhysicalFactorsFilter.Overdue, today) }
-    val upcomingCount = remember(options, today) { physicalFactorsFilterCount(options, DocumentationPhysicalFactorsFilter.Upcoming, today) }
-    val physicalCount = options.size
-
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -4479,106 +4462,28 @@ private fun DocumentationPhysicalFactorsOptionList(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Fizikalni čimbenici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "$physicalCount FC zapisnika · $overdueCount isteklo · $upcomingCount uskoro",
+                    "Novi FC zapisnik po blokovima iz predloška",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             }
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
                 Text(
-                    "${filteredOptions.size}",
+                    if (manualPhysicalFactors.isReadyForPhysicalFactorsPost()) "Spremno" else "Unos",
                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Black,
                 )
             }
         }
-        if (statusMessage.isNotBlank()) {
-            Text(
-                statusMessage,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-            )
-        }
         DocumentationManualPhysicalFactorsBlocks(
             value = manualPhysicalFactors,
+            measurementTemplates = measurementTemplates,
+            measurementSheets = measurementSheets,
             enabled = enabled,
             onChange = onManualPhysicalFactorsChange,
+            onMeasurementSheetChange = onMeasurementSheetChange,
         )
-        Text("Prethodni FC zapisnici za kopiranje", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            DocumentationPhysicalFactorsFilter.entries.forEach { filter ->
-                val count = physicalFactorsFilterCount(options, filter, today)
-                FilterChip(
-                    selected = selectedFilter == filter,
-                    enabled = enabled && (count > 0 || filter == DocumentationPhysicalFactorsFilter.All),
-                    onClick = { selectedFilter = filter },
-                    label = { Text("${filter.label} ($count)") },
-                )
-            }
-        }
-        if (filteredOptions.isEmpty()) {
-            Text(emptyText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
-        } else {
-            filteredOptions.forEach { option ->
-                val isSelected = selectedItemIds.contains(option.id)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = enabled) {
-                            val next = selectedItemIds.toMutableSet()
-                            if (isSelected) next.remove(option.id) else next.add(option.id)
-                            onSelectedItemIdsChange(next)
-                        },
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (isSelected) Color(0xFFE8F3FF) else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                    tonalElevation = 0.dp,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = isSelected,
-                            enabled = enabled,
-                            onCheckedChange = { checked ->
-                                val next = selectedItemIds.toMutableSet()
-                                if (checked) next.add(option.id) else next.remove(option.id)
-                                onSelectedItemIdsChange(next)
-                            },
-                        )
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(option.label.ifBlank { "FC zapisnik" }, fontWeight = FontWeight.Bold)
-                            Text(
-                                listOf(
-                                    option.subtitle,
-                                    option.meta["spacesCount"]?.takeIf { it.isNotBlank() }?.let { "$it prostora" },
-                                    option.meta["measurementsCount"]?.takeIf { it.isNotBlank() }?.let { "$it mjerenja" },
-                                    option.meta["deadlineForNextExamination"]?.takeIf { it.isNotBlank() }?.let { "Rok $it" },
-                                ).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                            )
-                            val spaces = option.meta["spacesLabel"].orEmpty()
-                            if (spaces.isNotBlank()) {
-                                Text(
-                                    spaces,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
-                                )
-                            }
-                        }
-                        if (option.status.isNotBlank()) {
-                            AssistChip(onClick = {}, label = { Text(option.status) })
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -4604,8 +4509,11 @@ private val physicalFactorsGradeOptions = listOf(
 @Composable
 private fun DocumentationManualPhysicalFactorsBlocks(
     value: IsznrManualPhysicalFactors,
+    measurementTemplates: List<WorkOrderDocumentationTemplate>,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
     enabled: Boolean,
     onChange: (IsznrManualPhysicalFactors) -> Unit,
+    onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Surface(
@@ -4729,91 +4637,25 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             }
         }
         ManualPhysicalFactorsBlock(title = "3. Mjerenja") {
-            val spaceOptions = value.spaces.mapIndexed { index, space ->
-                space.id to space.name.ifBlank { "Prostor ${index + 1}" }
-            }.ifEmpty { listOf("" to "Nije odabrano") }
-            value.measurements.forEachIndexed { index, measurement ->
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
-                    tonalElevation = 0.dp,
-                ) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Mjerenje ${index + 1}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                            IconButton(
-                                enabled = enabled && value.measurements.size > 1,
-                                onClick = {
-                                    onChange(value.copy(measurements = value.measurements.filterIndexed { measurementIndex, _ -> measurementIndex != index }))
-                                },
-                            ) {
-                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni mjerenje", tint = Color(0xFFDC2626))
-                            }
-                        }
-                        WorkOrderSelectField(
-                            label = "Prostor",
-                            value = measurement.spaceId,
-                            valueLabel = spaceOptions.firstOrNull { it.first == measurement.spaceId }?.second.orEmpty().ifBlank { "Odaberi prostor" },
-                            options = spaceOptions,
+            if (measurementTemplates.isEmpty()) {
+                Text(
+                    "FC predložak nema Excel tablicu za mjerenja. Dodaj tablicu u Template Development pa će se ovdje prikazati isti sheet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                measurementTemplates.forEach { template ->
+                    template.measurementTables.forEach { table ->
+                        val stateKey = measurementSheetStateKey(template, table)
+                        MeasurementTableEditor(
+                            template = template,
+                            table = table,
+                            sheet = measurementSheets[stateKey] ?: table.sheet,
                             enabled = enabled,
-                            onSelect = { next ->
-                                onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(spaceId = next) else item }))
-                            },
-                        )
-                        WorkOrderSelectField(
-                            label = "Vrsta mjerenja",
-                            value = measurement.type,
-                            valueLabel = physicalFactorsMeasurementTypeOptions.firstOrNull { it.first == measurement.type }?.second.orEmpty().ifBlank { "Osvijetljenost" },
-                            options = physicalFactorsMeasurementTypeOptions,
-                            enabled = enabled,
-                            onSelect = { next ->
-                                onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(type = next) else item }))
-                            },
-                        )
-                        WorkOrderTextField("Mjerno mjesto *", measurement.measuringPlace, { next ->
-                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(measuringPlace = next) else item }))
-                        }, enabled)
-                        WorkOrderTextField("Izmjerena vrijednost *", measurement.measuredValue, { next ->
-                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(measuredValue = next) else item }))
-                        }, enabled)
-                        WorkOrderTextField("Dopušteno / granično", measurement.allowedValue, { next ->
-                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(allowedValue = next) else item }))
-                        }, enabled)
-                        WorkOrderTextField("Napomena", measurement.note, { next ->
-                            onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(note = next) else item }))
-                        }, enabled)
-                        WorkOrderSelectField(
-                            label = "Zaključna ocjena",
-                            value = measurement.finalGrade,
-                            valueLabel = physicalFactorsGradeOptions.firstOrNull { it.first == measurement.finalGrade }?.second.orEmpty().ifBlank { "Zadovoljava" },
-                            options = physicalFactorsGradeOptions,
-                            enabled = enabled,
-                            onSelect = { next ->
-                                onChange(value.copy(measurements = value.measurements.mapIndexed { i, item -> if (i == index) item.copy(finalGrade = next) else item }))
-                            },
+                            onSheetChange = { nextSheet -> onMeasurementSheetChange(stateKey, nextSheet) },
                         )
                     }
                 }
-            }
-            OutlinedButton(
-                onClick = {
-                    val nextIndex = value.measurements.size + 1
-                    onChange(
-                        value.copy(
-                            measurements = value.measurements + IsznrFcMeasurementDraft(
-                                id = "manual-measurement-$nextIndex-${System.currentTimeMillis()}",
-                                spaceId = value.spaces.firstOrNull()?.id.orEmpty(),
-                            ),
-                        ),
-                    )
-                },
-                enabled = enabled,
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Dodaj mjerenje")
             }
         }
     }
@@ -13524,6 +13366,12 @@ private fun WorkOrderDocumentationWizardDialog(
             .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
             .filter { it.measurementTables.isNotEmpty() }
     }
+    val physicalFactorsMeasurementTemplates = remember(context.templates, isPhysicalFactorsFlow) {
+        buildPhysicalFactorsMeasurementTemplates(
+            templates = context.templates,
+            fallbackToAllTemplates = isPhysicalFactorsFlow,
+        )
+    }
     val measurementTemplates = remember(activeTemplates) {
         activeTemplates
             .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
@@ -13542,6 +13390,13 @@ private fun WorkOrderDocumentationWizardDialog(
         defaults.templateFieldSheets,
     ) {
         mutableStateOf(defaultMeasurementSheetValues(allMeasurementTemplates, defaults))
+    }
+    val manualPhysicalFactorsForSubmit = remember(manualPhysicalFactors, physicalFactorsMeasurementTemplates, measurementSheets) {
+        buildManualPhysicalFactorsForSubmit(
+            value = manualPhysicalFactors,
+            measurementTemplates = physicalFactorsMeasurementTemplates,
+            measurementSheets = measurementSheets,
+        )
     }
     var aiFiles by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<WorkOrderDocumentationAiFile>()) }
     var aiLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
@@ -13678,8 +13533,8 @@ private fun WorkOrderDocumentationWizardDialog(
     val readyManualWorkEquipments = remember(manualWorkEquipments) {
         manualWorkEquipments.filter { it.isReadyForIsznrPost() }
     }
-    val manualPhysicalFactorsReady = remember(manualPhysicalFactors) {
-        manualPhysicalFactors.isReadyForPhysicalFactorsPost()
+    val manualPhysicalFactorsReady = remember(manualPhysicalFactorsForSubmit) {
+        manualPhysicalFactorsForSubmit.isReadyForPhysicalFactorsPost()
     }
     val workEquipmentPostMissingLabels = remember(context.workEquipmentStatus) {
         context.workEquipmentStatus["postDraftMissingLabels"].orEmpty()
@@ -13707,7 +13562,7 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val selectedWorkEquipmentTotal = selectedWorkEquipmentItemIds.size + readyManualWorkEquipments.size
     val canSubmitWorkEquipmentToIsznr = !formLoading && selectedWorkEquipmentTotal > 0 && workEquipmentPostBlockingKeys.isEmpty()
-    val selectedPhysicalFactorsTotal = selectedPhysicalFactorsItemIds.size + if (manualPhysicalFactorsReady) 1 else 0
+    val selectedPhysicalFactorsTotal = if (manualPhysicalFactorsReady) 1 else 0
     val canSubmitPhysicalFactorsToIsznr = !formLoading && selectedPhysicalFactorsTotal > 0 && physicalFactorsPostBlockingKeys.isEmpty()
     val lastPhysicalFactorsSubmitResult = physicalFactorsSubmitResult
     val selectedFlowIndex = flowTabs.indexOfFirst { it.key == selectedFlowService }.coerceAtLeast(0)
@@ -14014,14 +13869,12 @@ private fun WorkOrderDocumentationWizardDialog(
                 } else if (physicalFactorsFlowSelected) {
                     WizardSection(title = "FC - Fizikalni čimbenici", icon = Icons.Rounded.Description) {
                         DocumentationPhysicalFactorsOptionList(
-                            options = context.workEnvironmentOptions,
-                            emptyText = "Nema dohvaćenih FC zapisnika iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
-                            statusMessage = physicalFactorsStatusMessage,
-                            selectedItemIds = selectedPhysicalFactorsItemIds,
                             manualPhysicalFactors = manualPhysicalFactors,
+                            measurementTemplates = physicalFactorsMeasurementTemplates,
+                            measurementSheets = measurementSheets,
                             enabled = !formLoading,
-                            onSelectedItemIdsChange = { selectedPhysicalFactorsItemIds = it },
                             onManualPhysicalFactorsChange = { manualPhysicalFactors = it },
+                            onMeasurementSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
                         )
                     }
                 } else if (!summaryFlowSelected && !basicsFlowSelected) {
@@ -14322,7 +14175,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         onSubmitIsznrWorkEquipment(selectedWorkEquipmentItemIds.toList(), readyManualWorkEquipments)
                     },
                     onSubmitPhysicalFactorsToIsznr = {
-                        onSubmitIsznrPhysicalFactors(selectedPhysicalFactorsItemIds.toList(), manualPhysicalFactors)
+                        onSubmitIsznrPhysicalFactors(emptyList(), manualPhysicalFactorsForSubmit)
                     },
                 )
                 }
@@ -14681,6 +14534,156 @@ private fun defaultMeasurementSheetValues(
             }
         }
     }
+
+private fun WorkOrderDocumentationTemplate.isPhysicalFactorsTemplate(): Boolean =
+    listOf(serviceName, serviceCode, documentType, title)
+        .any(::isDocumentationPhysicalFactorsText)
+
+private fun buildPhysicalFactorsMeasurementTemplates(
+    templates: List<WorkOrderDocumentationTemplate>,
+    fallbackToAllTemplates: Boolean,
+): List<WorkOrderDocumentationTemplate> {
+    val withSheets = templates
+        .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
+        .filter { it.measurementTables.isNotEmpty() }
+    val matching = withSheets.filter { it.isPhysicalFactorsTemplate() }
+    return matching.ifEmpty { if (fallbackToAllTemplates) withSheets else emptyList() }
+}
+
+private fun normalizePhysicalFactorsSheetLookup(value: String): String =
+    normalizeMeasurementQuickLookup(value)
+
+private fun WorkOrderMeasurementColumn.physicalFactorsLookup(): String =
+    normalizePhysicalFactorsSheetLookup("${id} ${label} ${placeholder}")
+
+private fun physicalFactorsColumnMatching(
+    sheet: WorkOrderMeasurementSheet,
+    vararg aliases: String,
+    exclude: List<String> = emptyList(),
+): WorkOrderMeasurementColumn? {
+    val normalizedAliases = aliases.map(::normalizePhysicalFactorsSheetLookup).filter { it.isNotBlank() }
+    val normalizedExcludes = exclude.map(::normalizePhysicalFactorsSheetLookup).filter { it.isNotBlank() }
+    return sheet.columns.firstOrNull { column ->
+        val lookup = column.physicalFactorsLookup()
+        normalizedAliases.any { lookup.contains(it) } &&
+            normalizedExcludes.none { lookup.contains(it) }
+    }
+}
+
+private fun inferPhysicalFactorsMeasurementType(value: String): String {
+    val lookup = normalizePhysicalFactorsSheetLookup(value)
+    return when {
+        lookup.contains("mikro") || lookup.contains("temperatura") || lookup.contains("vlaga") -> "micro"
+        lookup.contains("buka") || lookup.contains("db") || lookup.contains("noise") -> "noise"
+        lookup.contains("vibr") -> "vibration"
+        else -> "illumination"
+    }
+}
+
+private fun physicalFactorsGradeValue(value: String): String {
+    val lookup = normalizePhysicalFactorsSheetLookup(value)
+    return when {
+        lookup.isBlank() -> "1"
+        lookup == "0" || lookup.contains("ne zadovoljava") || lookup.contains("nezadovoljava") || lookup == "ne" -> "0"
+        else -> "1"
+    }
+}
+
+private fun physicalFactorsSheetCell(
+    sheet: WorkOrderMeasurementSheet,
+    row: WorkOrderMeasurementRow,
+    rowIndex: Int,
+    column: WorkOrderMeasurementColumn?,
+): String {
+    val target = column ?: return ""
+    val columnIndex = sheet.columns.indexOfFirst { it.id == target.id }
+    return if (columnIndex >= 0) {
+        sheet.measurementCellDisplay(rowIndex, columnIndex).ifBlank { row.cells[target.id].orEmpty() }.trim()
+    } else {
+        row.cells[target.id].orEmpty().trim()
+    }
+}
+
+private fun buildPhysicalFactorsMeasurementsFromSheet(
+    template: WorkOrderDocumentationTemplate,
+    table: WorkOrderMeasurementTable,
+    sheet: WorkOrderMeasurementSheet,
+    spaces: List<IsznrFcSpaceDraft>,
+): List<IsznrFcMeasurementDraft> {
+    if (sheet.columns.isEmpty() || sheet.rows.isEmpty()) return emptyList()
+    val spaceColumn = physicalFactorsColumnMatching(sheet, "prostor", "prostorija", "lokacija", "room")
+    val typeColumn = physicalFactorsColumnMatching(sheet, "vrsta", "tip", "cimbenik", "faktor", "parametar")
+    val placeColumn = physicalFactorsColumnMatching(
+        sheet,
+        "mjerno mjesto",
+        "mjesto ispitivanja",
+        "pozicija",
+        "opis",
+        "naziv",
+        exclude = listOf("broj mjernih", "dopu", "granic", "propis", "norm"),
+    ) ?: sheet.columns.firstOrNull { column ->
+        column.isEditableMeasurementColumn() &&
+            column != spaceColumn &&
+            column != typeColumn &&
+            !column.physicalFactorsLookup().contains("r br")
+    }
+    val measuredColumn = physicalFactorsColumnMatching(
+        sheet,
+        "izmjer",
+        "mjeren",
+        "rezultat",
+        "vrijednost",
+        "ocitana",
+        exclude = listOf("dopu", "granic", "propis", "norm", "napomena"),
+    )
+    val allowedColumn = physicalFactorsColumnMatching(sheet, "dopu", "granic", "propis", "norm", "zahtjev")
+    val noteColumn = physicalFactorsColumnMatching(sheet, "napomena", "opaska", "komentar")
+    val gradeColumn = physicalFactorsColumnMatching(sheet, "ocjena", "zadovoljava", "zakljucak")
+    val defaultType = inferPhysicalFactorsMeasurementType("${template.title} ${template.documentType} ${table.label} ${table.key}")
+    val fallbackSpaceId = spaces.firstOrNull()?.id.orEmpty()
+
+    return sheet.rows.mapIndexedNotNull { rowIndex, row ->
+        if (row.id in sheet.headerRows) return@mapIndexedNotNull null
+        if (!row.isMeasurementRowMeaningful(sheet.columns)) return@mapIndexedNotNull null
+        val measuredValue = physicalFactorsSheetCell(sheet, row, rowIndex, measuredColumn)
+        val measuringPlace = physicalFactorsSheetCell(sheet, row, rowIndex, placeColumn)
+            .ifBlank { physicalFactorsSheetCell(sheet, row, rowIndex, spaceColumn) }
+        if (measuredValue.isBlank() || measuringPlace.isBlank()) return@mapIndexedNotNull null
+        val rowSpaceLabel = physicalFactorsSheetCell(sheet, row, rowIndex, spaceColumn)
+        val rowType = physicalFactorsSheetCell(sheet, row, rowIndex, typeColumn)
+        val spaceId = spaces.firstOrNull { space ->
+            val spaceName = normalizePhysicalFactorsSheetLookup(space.name)
+            val rowSpace = normalizePhysicalFactorsSheetLookup(rowSpaceLabel)
+            rowSpace.isNotBlank() && spaceName.isNotBlank() && (rowSpace == spaceName || rowSpace.contains(spaceName) || spaceName.contains(rowSpace))
+        }?.id.orEmpty().ifBlank { fallbackSpaceId }
+        val note = physicalFactorsSheetCell(sheet, row, rowIndex, noteColumn)
+        val gradeText = physicalFactorsSheetCell(sheet, row, rowIndex, gradeColumn)
+        IsznrFcMeasurementDraft(
+            id = "${table.key.ifBlank { table.id }}-${row.id.ifBlank { rowIndex.toString() }}",
+            spaceId = spaceId,
+            type = rowType.takeIf { it.isNotBlank() }?.let(::inferPhysicalFactorsMeasurementType) ?: defaultType,
+            measuringPlace = measuringPlace,
+            measuredValue = measuredValue,
+            allowedValue = physicalFactorsSheetCell(sheet, row, rowIndex, allowedColumn),
+            note = note,
+            finalGrade = physicalFactorsGradeValue(gradeText),
+        )
+    }
+}
+
+private fun buildManualPhysicalFactorsForSubmit(
+    value: IsznrManualPhysicalFactors,
+    measurementTemplates: List<WorkOrderDocumentationTemplate>,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+): IsznrManualPhysicalFactors {
+    val sheetMeasurements = measurementTemplates.flatMap { template ->
+        template.measurementTables.flatMap { table ->
+            val sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet
+            buildPhysicalFactorsMeasurementsFromSheet(template, table, sheet, value.spaces)
+        }
+    }
+    return if (sheetMeasurements.isEmpty()) value else value.copy(measurements = sheetMeasurements)
+}
 
 private fun buildMeasurementSheetPayload(
     templates: List<WorkOrderDocumentationTemplate>,
