@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.110.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.111.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -415,6 +415,252 @@ function buildAndroidPlainDownloadPage() {
   <p><a href="${apiApkUrl}">3. API download</a></p>
   <p><a href="${assetApkUrl}">4. Static APK link</a></p>
   <p>Datoteka: ${MOBILE_ANDROID_APK_FILE_NAME}</p>
+</body>
+</html>`;
+}
+
+const ISZNR_RO_PDF_BRIDGE_CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "form-action https://isznr.gov.hr https://isznrtest.gov.hr",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "frame-src https://isznr.gov.hr https://isznrtest.gov.hr",
+].join("; ");
+
+function addCacheBusterToUrl(value = "") {
+  const url = new URL(value);
+  url.searchParams.set("_sn_retry", String(Date.now()));
+  return url.toString();
+}
+
+function isTrustedIsznrRoPdfUrl(value = "", recordId = "") {
+  const normalizedRecordId = normalizeInputValue(recordId);
+  if (!normalizedRecordId) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    const trustedHost = ["isznr.gov.hr", "isznrtest.gov.hr"].includes(url.hostname.toLowerCase());
+    const expectedPath = `/record/ro/${encodeURIComponent(normalizedRecordId)}/generate-record`;
+    return url.protocol === "https:" && trustedHost && url.pathname === expectedPath;
+  } catch {
+    return false;
+  }
+}
+
+function buildIsznrLoginUrlFromRoPdfUrl(value = "") {
+  const url = new URL(value);
+  url.pathname = "/login";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function buildIsznrRoRecordPdfBridgePage({
+  recordId = "",
+  pdfUrl = "",
+} = {}) {
+  const loginUrl = buildIsznrLoginUrlFromRoPdfUrl(pdfUrl);
+  const retryUrl = addCacheBusterToUrl(pdfUrl);
+  const safeRecordId = escapeEmailHtml(recordId);
+  const safePdfUrl = escapeEmailHtml(pdfUrl);
+  const safeLoginUrl = escapeEmailHtml(loginUrl);
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IS ZNR RO zapisnik ${safeRecordId}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #dbe7ff;
+      --blue: #2563eb;
+      --green: #059669;
+      --orange: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 18% 12%, #dbeafe 0, transparent 32%), var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(100%, 620px);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 26px;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #ecfdf5;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    h1 { margin: 16px 0 8px; font-size: clamp(30px, 7vw, 42px); line-height: 1.05; letter-spacing: 0; }
+    p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.55; }
+    .status {
+      margin-top: 20px;
+      padding: 16px;
+      border: 1px solid #bfdbfe;
+      border-radius: 18px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    .countdown {
+      display: grid;
+      place-items: center;
+      width: 96px;
+      height: 96px;
+      margin: 22px auto 8px;
+      border-radius: 50%;
+      background: conic-gradient(var(--blue) var(--progress, 100%), #e2e8f0 0);
+      color: var(--blue);
+      font-size: 34px;
+      font-weight: 900;
+      box-shadow: inset 0 0 0 10px #ffffff;
+    }
+    .actions { display: grid; gap: 10px; margin-top: 22px; }
+    a.button, button.button {
+      min-height: 52px;
+      border: 0;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 13px 16px;
+      background: var(--blue);
+      color: white;
+      text-decoration: none;
+      font-weight: 850;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    a.secondary, button.secondary {
+      background: #ffffff;
+      color: var(--blue);
+      border: 1px solid #bfdbfe;
+    }
+    .hint {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #fff7ed;
+      color: var(--orange);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .raw {
+      margin-top: 12px;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+      color: #475569;
+    }
+    iframe { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">✓ IS ZNR RO zapisnik ${safeRecordId}</span>
+    <h1>Provjera prijave i preuzimanje</h1>
+    <p>Ako već postoji aktivna IS ZNR prijava, zapisnik će se otvoriti ili preuzeti odmah. Ako prijava ne postoji, otvara se IS ZNR prijava i Safe Nexus će pokušati ponovno za 60 sekundi.</p>
+    <div id="status" class="status">Pokušavam otvoriti PDF zapisnik...</div>
+    <div id="countdown" class="countdown">60</div>
+    <div class="actions">
+      <button id="retryNow" class="button" type="button">Pokušaj odmah ponovno</button>
+      <a id="loginLink" class="button secondary" href="${safeLoginUrl}" target="isznr-ro-record" rel="noopener">Otvori IS ZNR prijavu</a>
+      <a class="secondary button" href="${safePdfUrl}" target="isznr-ro-record" rel="noopener">Direktni IS ZNR PDF link</a>
+    </div>
+    <p class="hint">Ostavi ovu Safe Nexus stranicu otvorenu nakon prijave. Kad se prijaviš u IS ZNR, automatski retry će ponovno zatražiti zapisnik.</p>
+    <p class="raw">${safePdfUrl}</p>
+  </main>
+  <iframe id="probe" title="IS ZNR provjera prijave"></iframe>
+  <script>
+    const pdfUrl = ${JSON.stringify(pdfUrl)};
+    const loginUrl = ${JSON.stringify(loginUrl)};
+    const retryUrl = ${JSON.stringify(retryUrl)};
+    const statusNode = document.getElementById("status");
+    const countdownNode = document.getElementById("countdown");
+    const probe = document.getElementById("probe");
+    let remaining = 60;
+    let attempt = 0;
+    let timer = null;
+
+    function withRetry(value) {
+      const url = new URL(value);
+      url.searchParams.set("_sn_retry", String(Date.now()));
+      return url.toString();
+    }
+
+    function setStatus(text) {
+      statusNode.textContent = text;
+    }
+
+    function openTarget(value) {
+      const popup = window.open(value, "isznr-ro-record");
+      if (!popup) {
+        probe.src = withRetry(value);
+        return false;
+      }
+      popup.focus?.();
+      return true;
+    }
+
+    function tryDownload() {
+      attempt += 1;
+      const opened = openTarget(attempt === 1 ? pdfUrl : withRetry(pdfUrl));
+      setStatus(opened
+        ? "Pokušaj " + attempt + ": ako nisi prijavljen, IS ZNR prozor će te odvesti na prijavu. Nakon prijave retry kreće automatski."
+        : "Pokušaj " + attempt + ": preglednik je blokirao novi prozor pa pokušavam u pozadini. Ako treba, klikni 'Otvori IS ZNR prijavu'.");
+      remaining = 60;
+      updateCountdown();
+    }
+
+    function updateCountdown() {
+      countdownNode.textContent = String(remaining);
+      countdownNode.style.setProperty("--progress", Math.max(0, Math.min(100, remaining / 60 * 100)) + "%");
+    }
+
+    function tick() {
+      remaining -= 1;
+      updateCountdown();
+      if (remaining <= 0) {
+        tryDownload();
+      }
+    }
+
+    document.getElementById("retryNow").addEventListener("click", tryDownload);
+    document.getElementById("loginLink").addEventListener("click", () => {
+      setStatus("Otvori IS ZNR prijavu, prijavi se i ostavi ovu stranicu otvorenu. Retry ide automatski.");
+    });
+
+    tryDownload();
+    timer = window.setInterval(tick, 1000);
+  </script>
 </body>
 </html>`;
 }
@@ -3090,6 +3336,8 @@ async function submitIsznrWorkEquipmentForWorkOrder({
     attachmentFiles: draft.attachmentFiles,
   });
   const pdfUrl = buildIsznrRoRecordPdfUrl(isznrBaseUrl, submitResult.isznrId);
+  const pdfBridgeUrl = buildIsznrRoRecordPdfBridgeUrl(isznrBaseUrl, submitResult.isznrId);
+  const pdfLoginUrl = pdfUrl ? buildIsznrLoginUrlFromRoPdfUrl(pdfUrl) : "";
 
   await domainRepository.addWorkOrderActivityComment(
     workOrder.id,
@@ -3104,6 +3352,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
         attachmentResult.submitted ? `Privici: ${attachmentResult.submitted}.` : "",
         attachmentResult.failed ? `Privici upozorenja: ${attachmentResult.failed}.` : "",
         pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
+        pdfBridgeUrl ? `Safe Nexus preuzimanje: ${pdfBridgeUrl}.` : "",
         submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
       ].filter(Boolean).join(" "),
     },
@@ -3119,6 +3368,10 @@ async function submitIsznrWorkEquipmentForWorkOrder({
     ...submitResult,
     pdfUrl,
     isznrPdfUrl: pdfUrl,
+    pdfBridgeUrl,
+    isznrPdfBridgeUrl: pdfBridgeUrl,
+    pdfLoginUrl,
+    isznrLoginUrl: pdfLoginUrl,
     followUp: followUpResult,
     attachments: attachmentResult,
     legacyMessage: followUpResult.failed
@@ -3147,6 +3400,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
       submittedRecordId: submitResult.isznrId,
       submittedRecordNumber: submitResult.recordNumber,
       submittedPdfUrl: pdfUrl,
+      submittedPdfBridgeUrl: pdfBridgeUrl,
     },
   };
 }
@@ -3172,6 +3426,15 @@ function buildIsznrRoRecordPdfUrl(baseUrl = "", recordId = "") {
     return "";
   }
   return `${buildIsznrWebBaseUrl(baseUrl)}/record/ro/${encodeURIComponent(normalizedId)}/generate-record`;
+}
+
+function buildIsznrRoRecordPdfBridgeUrl(baseUrl = "", recordId = "") {
+  const normalizedId = normalizeInputValue(recordId);
+  const pdfUrl = buildIsznrRoRecordPdfUrl(baseUrl, normalizedId);
+  if (!normalizedId || !pdfUrl) {
+    return "";
+  }
+  return `/isznr/ro-records/${encodeURIComponent(normalizedId)}/pdf?target=${encodeURIComponent(pdfUrl)}`;
 }
 
 function buildIsznrApiIriList(resourcePath = "", items = []) {
@@ -26895,6 +27158,35 @@ const server = createServer(async (request, response) => {
       redirect(response, "/?loginError=server");
       return;
     }
+  }
+
+  const isznrRoPdfBridgeMatch = url.pathname.match(/^\/isznr\/ro-records\/([^/]+)\/pdf$/);
+  if ((request.method === "GET" || request.method === "HEAD") && isznrRoPdfBridgeMatch) {
+    const recordId = decodeURIComponent(isznrRoPdfBridgeMatch[1] || "").trim();
+    const targetUrl = String(
+      url.searchParams.get("target")
+      || buildIsznrRoRecordPdfUrl(ISZNR_DEFAULT_API_BASE_URL, recordId)
+      || "",
+    ).trim();
+
+    if (!isTrustedIsznrRoPdfUrl(targetUrl, recordId)) {
+      writeBufferResponse(response, 400, "Neispravan IS ZNR RO PDF link.", {
+        contentType: "text/plain; charset=utf-8",
+        headers: NO_STORE_HEADERS,
+      });
+      return;
+    }
+
+    const body = buildIsznrRoRecordPdfBridgePage({
+      recordId,
+      pdfUrl: targetUrl,
+    });
+    response.setHeader("Content-Security-Policy", ISZNR_RO_PDF_BRIDGE_CSP);
+    writeBufferResponse(response, 200, body, {
+      contentType: "text/html; charset=utf-8",
+      headers: NO_STORE_HEADERS,
+    });
+    return;
   }
 
   if ((request.method === "GET" || request.method === "HEAD")

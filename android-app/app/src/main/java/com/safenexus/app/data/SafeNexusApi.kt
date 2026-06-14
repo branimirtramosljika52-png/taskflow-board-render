@@ -583,6 +583,7 @@ class SafeNexusApi(
                 isznrId = json.firstClean("isznrId"),
                 recordNumber = json.firstClean("recordNumber"),
                 pdfUrl = json.firstClean("pdfUrl", "isznrPdfUrl"),
+                pdfBridgeUrl = absoluteSafeNexusUrl(json.firstClean("pdfBridgeUrl", "isznrPdfBridgeUrl")),
                 attachmentSubmitted = json.optJSONObject("attachments")?.optInt("submitted")
                     ?: json.optJSONObject("attachment")?.optInt("submitted")
                     ?: json.optInt("attachmentSubmitted", 0),
@@ -593,6 +594,15 @@ class SafeNexusApi(
                 submittedAt = json.firstClean("submittedAt"),
             )
         }
+    }
+
+    private fun absoluteSafeNexusUrl(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed.isBlank()) return ""
+        if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
+            return trimmed
+        }
+        return if (trimmed.startsWith("/")) "$baseUrl$trimmed" else "$baseUrl/$trimmed"
     }
 
     suspend fun prepareWorkOrderDocumentationAi(

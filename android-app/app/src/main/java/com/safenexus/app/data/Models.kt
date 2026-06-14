@@ -237,6 +237,7 @@ data class IsznrWorkEquipmentSubmitResult(
     val isznrId: String = "",
     val recordNumber: String = "",
     val pdfUrl: String = "",
+    val pdfBridgeUrl: String = "",
     val attachmentSubmitted: Int = 0,
     val attachmentFailed: Int = 0,
     val equipmentCount: Int = 0,

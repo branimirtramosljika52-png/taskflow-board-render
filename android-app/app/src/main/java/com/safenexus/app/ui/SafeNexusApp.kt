@@ -425,6 +425,7 @@ data class AppState(
     val isLoading: Boolean = false,
     val error: String = "",
     val notice: String = "",
+    val pendingExternalUrl: String = "",
 )
 
 class SafeNexusViewModel(application: Application) : AndroidViewModel(application) {
@@ -1029,11 +1030,13 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     val pdfNotice = result.pdfUrl.ifBlank { "" }.let { url ->
                         if (url.isBlank()) "" else " PDF zapisnik: $url"
                     }
+                    val pdfBridgeUrl = result.pdfBridgeUrl.ifBlank { result.pdfUrl }
                     val successMessage = result.message.ifBlank { "RO zapisnik je poslan u IS ZNR." } + attachmentNotice + pdfNotice
                     state = state.copy(
                         isLoading = false,
                         notice = successMessage,
                         error = "",
+                        pendingExternalUrl = pdfBridgeUrl,
                     )
                     loadWorkOrderDocumentationContext(workOrder, objectId)
                     state = state.copy(notice = successMessage)
@@ -1046,6 +1049,12 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         notice = "",
                     )
                 }
+        }
+    }
+
+    fun clearPendingExternalUrl() {
+        if (state.pendingExternalUrl.isNotBlank()) {
+            state = state.copy(pendingExternalUrl = "")
         }
     }
 
@@ -1657,6 +1666,13 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
 fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     val state = viewModel.state
     val context = LocalContext.current
+    LaunchedEffect(state.pendingExternalUrl) {
+        val url = state.pendingExternalUrl.trim()
+        if (url.isNotBlank()) {
+            openExternalUrl(context, url)
+            viewModel.clearPendingExternalUrl()
+        }
+    }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.registerPushToken()
     }
@@ -18154,6 +18170,20 @@ private fun saveDownloadedDocument(context: Context, document: DownloadedDocumen
     }
 
     return cacheDownloadedDocument(context, document)
+}
+
+private fun openExternalUrl(context: Context, url: String): Boolean {
+    val trimmed = url.trim()
+    if (trimmed.isBlank()) return false
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
 }
 
 private fun openCachedDocument(context: Context, uri: Uri, mimeType: String): Boolean {

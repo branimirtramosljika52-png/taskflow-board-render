@@ -113180,6 +113180,29 @@ function getWorkOrderDocumentIsznrPostBlockingLabels(postDraft = null) {
     .filter(Boolean);
 }
 
+function getIsznrRoPdfActionUrl(result = {}) {
+  return String(
+    result?.pdfBridgeUrl
+    || result?.isznrPdfBridgeUrl
+    || result?.pdfUrl
+    || result?.isznrPdfUrl
+    || "",
+  ).trim();
+}
+
+function openIsznrRoPdfDownloadFlow(result = {}) {
+  const actionUrl = getIsznrRoPdfActionUrl(result);
+  if (!actionUrl) {
+    return false;
+  }
+  try {
+    const opened = window.open(actionUrl, "_blank", "noopener");
+    return Boolean(opened);
+  } catch {
+    return false;
+  }
+}
+
 async function submitWorkOrderDocumentIsznrWorkEquipment(workOrder = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
@@ -113218,11 +113241,16 @@ async function submitWorkOrderDocumentIsznrWorkEquipment(workOrder = {}) {
     entry.postResult = payload;
     entry.postDraft = payload?.postDraft && typeof payload.postDraft === "object" ? payload.postDraft : entry.postDraft;
     entry.message = payload?.message || "RO zapisnik je poslan u IS ZNR.";
+    const openedPdfFlow = openIsznrRoPdfDownloadFlow(payload);
+    if (!openedPdfFlow && getIsznrRoPdfActionUrl(payload)) {
+      entry.message = `${entry.message} Otvori gumb za IS ZNR PDF zapisnik ako se prozor nije otvorio.`;
+    }
+    const postMessage = entry.message;
     entry.selectedItemIds = [];
     await loadWorkOrderDocumentIsznrWorkEquipment(workOrder, { force: true });
     const refreshedEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
     refreshedEntry.postResult = payload;
-    refreshedEntry.message = payload?.message || refreshedEntry.message || "RO zapisnik je poslan u IS ZNR.";
+    refreshedEntry.message = postMessage || payload?.message || refreshedEntry.message || "RO zapisnik je poslan u IS ZNR.";
   } catch (error) {
     entry.error = error?.message || "IS ZNR POST nije uspio.";
   } finally {
@@ -113422,11 +113450,23 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   if (stateEntry.postResult?.message) {
     const result = document.createElement("p");
     result.className = "helper-copy module-copy work-order-document-work-equipment-message is-success";
-    result.textContent = [
+    const resultText = [
       stateEntry.postResult.message,
       stateEntry.postResult.recordNumber ? `Broj: ${stateEntry.postResult.recordNumber}` : "",
       stateEntry.postResult.isznrId ? `ID: ${stateEntry.postResult.isznrId}` : "",
     ].filter(Boolean).join(" · ");
+    result.textContent = resultText;
+    const pdfActionUrl = getIsznrRoPdfActionUrl(stateEntry.postResult);
+    if (pdfActionUrl) {
+      const openPdfLink = document.createElement("a");
+      openPdfLink.className = "ghost-button";
+      openPdfLink.href = pdfActionUrl;
+      openPdfLink.target = "_blank";
+      openPdfLink.rel = "noopener";
+      openPdfLink.textContent = "Otvori / preuzmi IS ZNR zapisnik";
+      openPdfLink.style.marginLeft = "10px";
+      result.append(document.createTextNode(" "), openPdfLink);
+    }
     bodyNode.append(result);
   }
 
