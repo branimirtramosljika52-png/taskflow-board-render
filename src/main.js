@@ -113125,6 +113125,7 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
       fetchedAt: "",
       totalItems: null,
       recordsLimited: false,
+      filter: "all",
     };
   }
   return state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId];
@@ -113178,6 +113179,88 @@ function queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder = {}) {
     current.queued = false;
     void loadWorkOrderDocumentIsznrWorkEquipment(workOrder);
   });
+}
+
+const WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS = Object.freeze([
+  { key: "all", label: "Sva oprema" },
+  { key: "overdue", label: "Istekla" },
+  { key: "upcoming", label: "Uskoro" },
+  { key: "no-deadline", label: "Bez roka" },
+  { key: "satisfactory", label: "Zadovoljava" },
+  { key: "unsatisfactory", label: "Ne zadovoljava" },
+]);
+
+function parseWorkOrderDocumentWorkEquipmentDate(value = "") {
+  const normalized = String(value || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+  const parsed = new Date(`${normalized}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getWorkOrderDocumentWorkEquipmentToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function getWorkOrderDocumentWorkEquipmentDeadline(item = {}) {
+  return parseWorkOrderDocumentWorkEquipmentDate(item.deadlineForNextExamination);
+}
+
+function getWorkOrderDocumentWorkEquipmentGrade(item = {}) {
+  return String(item.finalGrade?.label || item.finalGrade || "").trim();
+}
+
+function normalizeWorkOrderDocumentWorkEquipmentGrade(value = "") {
+  return normalizeSearchText(value).replace(/\s+/g, " ").trim();
+}
+
+function getWorkOrderDocumentWorkEquipmentFilterKind(item = {}, today = getWorkOrderDocumentWorkEquipmentToday()) {
+  const deadline = getWorkOrderDocumentWorkEquipmentDeadline(item);
+  const grade = normalizeWorkOrderDocumentWorkEquipmentGrade(getWorkOrderDocumentWorkEquipmentGrade(item));
+  const isOverdue = Boolean(deadline && deadline < today);
+  const upcomingLimit = new Date(today);
+  upcomingLimit.setDate(today.getDate() + 30);
+  const isUpcoming = Boolean(deadline && deadline >= today && deadline <= upcomingLimit);
+  const isUnsatisfactory = grade.includes("ne zadovoljava") || grade.includes("nezadovoljava");
+  const isSatisfactory = !isUnsatisfactory && grade.includes("zadovoljava");
+  return {
+    deadline,
+    isOverdue,
+    isUpcoming,
+    isUnsatisfactory,
+    isSatisfactory,
+  };
+}
+
+function matchesWorkOrderDocumentWorkEquipmentFilter(item = {}, filterKey = "all", today = getWorkOrderDocumentWorkEquipmentToday()) {
+  const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
+  switch (filterKey) {
+    case "overdue":
+      return kind.isOverdue;
+    case "upcoming":
+      return kind.isUpcoming;
+    case "no-deadline":
+      return !kind.deadline;
+    case "satisfactory":
+      return kind.isSatisfactory;
+    case "unsatisfactory":
+      return kind.isUnsatisfactory;
+    case "all":
+    default:
+      return true;
+  }
+}
+
+function getWorkOrderDocumentWorkEquipmentFilterCounts(items = [], today = getWorkOrderDocumentWorkEquipmentToday()) {
+  return WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.reduce((counts, filter) => {
+    counts[filter.key] = (Array.isArray(items) ? items : []).filter((item) =>
+      matchesWorkOrderDocumentWorkEquipmentFilter(item, filter.key, today),
+    ).length;
+    return counts;
+  }, {});
 }
 
 function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {}, stateEntry = {}) {
@@ -113239,12 +113322,58 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     return;
   }
 
+  const today = getWorkOrderDocumentWorkEquipmentToday();
+  const counts = getWorkOrderDocumentWorkEquipmentFilterCounts(items, today);
+  const activeFilter = WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.some((filter) => filter.key === stateEntry.filter)
+    ? stateEntry.filter
+    : "all";
+  const filterRow = document.createElement("div");
+  filterRow.className = "work-order-document-work-equipment-filters";
+  WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.forEach((filter) => {
+    const count = counts[filter.key] || 0;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `work-order-document-work-equipment-filter${activeFilter === filter.key ? " is-active" : ""}`;
+    button.disabled = count === 0 && filter.key !== "all";
+    button.textContent = `${filter.label} (${count})`;
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      stateEntry.filter = filter.key;
+      renderWorkOrderDocumentWizard();
+    });
+    filterRow.append(button);
+  });
+  bodyNode.append(filterRow);
+
+  const filteredItems = items
+    .filter((item) => matchesWorkOrderDocumentWorkEquipmentFilter(item, activeFilter, today))
+    .sort((left, right) => {
+      const leftDeadline = getWorkOrderDocumentWorkEquipmentDeadline(left)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const rightDeadline = getWorkOrderDocumentWorkEquipmentDeadline(right)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
+      return String(left.equipmentType || left.recordNumber || "").localeCompare(String(right.equipmentType || right.recordNumber || ""), "hr", { numeric: true, sensitivity: "base" });
+    });
+
+  if (!filteredItems.length) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema radne opreme za odabrani filter.";
+    bodyNode.append(empty);
+    return;
+  }
+
   const list = document.createElement("div");
   list.className = "work-order-document-work-equipment-list";
-  items.slice(0, 24).forEach((item) => {
+  filteredItems.slice(0, 24).forEach((item) => {
     const equipment = item.equipment || {};
+    const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
     const card = document.createElement("article");
-    card.className = "work-order-document-work-equipment-card";
+    card.className = [
+      "work-order-document-work-equipment-card",
+      kind.isOverdue || kind.isUnsatisfactory ? "is-alert" : "",
+      kind.isUpcoming ? "is-upcoming" : "",
+      kind.isSatisfactory ? "is-ok" : "",
+    ].filter(Boolean).join(" ");
 
     const title = document.createElement("strong");
     title.textContent = item.equipmentType || equipment.name || item.recordNumber || "Radna oprema";
@@ -113258,18 +113387,18 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
       item.location || "",
     ].filter(Boolean).join(" · ") || "IS ZNR RO zapis";
 
-    const badge = createBadge(item.finalGrade?.label || "IS ZNR", "document-template-meta-badge");
+    const badge = createBadge(getWorkOrderDocumentWorkEquipmentGrade(item) || "IS ZNR", "document-template-meta-badge");
     card.append(title, meta, badge);
     list.append(card);
   });
   bodyNode.append(list);
 
-  if (items.length > 24 || stateEntry.recordsLimited) {
+  if (filteredItems.length > 24 || stateEntry.recordsLimited) {
     const limited = document.createElement("p");
     limited.className = "helper-copy module-copy";
     limited.textContent = stateEntry.recordsLimited
       ? "Dohvat je ograničen. Za uži popis koristi OIB/oznaku kroz IS ZNR ili otvori web pregled."
-      : `Prikazano prvih 24 od ${items.length} stavki.`;
+      : `Prikazano prvih 24 od ${filteredItems.length} stavki za odabrani filter.`;
     bodyNode.append(limited);
   }
 }

@@ -4218,6 +4218,204 @@ private fun DocumentationReadOnlyOptionList(
     }
 }
 
+private enum class DocumentationWorkEquipmentFilter(val label: String) {
+    All("Sva oprema"),
+    Overdue("Istekla"),
+    Upcoming("Uskoro"),
+    NoDeadline("Bez roka"),
+    Satisfactory("Zadovoljava"),
+    Unsatisfactory("Ne zadovoljava"),
+}
+
+private fun WorkOrderDocumentationOption.workEquipmentDeadline(): LocalDate? =
+    parseDateOrNull(meta["deadlineForNextExamination"].orEmpty())
+
+private fun WorkOrderDocumentationOption.workEquipmentFinalGradeText(): String =
+    listOf(meta["finalGrade"].orEmpty(), status)
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
+
+private fun WorkOrderDocumentationOption.matchesWorkEquipmentFilter(
+    filter: DocumentationWorkEquipmentFilter,
+    today: LocalDate,
+): Boolean {
+    val deadline = workEquipmentDeadline()
+    val grade = normalizeDocumentationWorkEquipmentText(workEquipmentFinalGradeText())
+    return when (filter) {
+        DocumentationWorkEquipmentFilter.All -> true
+        DocumentationWorkEquipmentFilter.Overdue -> deadline?.isBefore(today) == true
+        DocumentationWorkEquipmentFilter.Upcoming -> deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
+        DocumentationWorkEquipmentFilter.NoDeadline -> deadline == null
+        DocumentationWorkEquipmentFilter.Satisfactory -> grade.contains("zadovoljava") && !grade.contains("ne zadovoljava")
+        DocumentationWorkEquipmentFilter.Unsatisfactory -> grade.contains("ne zadovoljava") || grade.contains("nezadovoljava")
+    }
+}
+
+private fun workEquipmentFilterCount(
+    options: List<WorkOrderDocumentationOption>,
+    filter: DocumentationWorkEquipmentFilter,
+    today: LocalDate,
+): Int = options.count { it.matchesWorkEquipmentFilter(filter, today) }
+
+@Composable
+private fun DocumentationWorkEquipmentOptionList(
+    options: List<WorkOrderDocumentationOption>,
+    emptyText: String,
+    statusMessage: String = "",
+) {
+    val today = remember { LocalDate.now() }
+    var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
+    val filteredOptions = remember(options, selectedFilter, today) {
+        options
+            .filter { option -> option.matchesWorkEquipmentFilter(selectedFilter, today) }
+            .sortedWith(
+                compareBy<WorkOrderDocumentationOption> { option ->
+                    option.workEquipmentDeadline() ?: LocalDate.MAX
+                }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
+            )
+    }
+    val overdueCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Overdue, today) }
+    val upcomingCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Upcoming, today) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Pregled radne opreme", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "${options.size} IS ZNR stavki · $overdueCount isteklo · $upcomingCount uskoro",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
+                Text(
+                    "${filteredOptions.size}",
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
+        if (statusMessage.isNotBlank()) {
+            Text(
+                statusMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+        }
+        if (options.isEmpty()) {
+            Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            return
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DocumentationWorkEquipmentFilter.entries.forEach { filter ->
+                val count = workEquipmentFilterCount(options, filter, today)
+                FilterChip(
+                    selected = selectedFilter == filter,
+                    onClick = { selectedFilter = filter },
+                    label = { Text("${filter.label} ($count)") },
+                    enabled = count > 0 || filter == DocumentationWorkEquipmentFilter.All,
+                )
+            }
+        }
+        if (filteredOptions.isEmpty()) {
+            Text(
+                "Nema stavki za ovaj filter.",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+            return
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            filteredOptions.take(36).forEach { option ->
+                val deadline = option.workEquipmentDeadline()
+                val isOverdue = deadline?.isBefore(today) == true
+                val isUpcoming = deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
+                val grade = option.workEquipmentFinalGradeText()
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = when {
+                        isOverdue -> Color(0xFFFFE4E6)
+                        isUpcoming -> Color(0xFFFFF7ED)
+                        grade.contains("ne zadovoljava", ignoreCase = true) -> Color(0xFFFFE4E6)
+                        grade.contains("zadovoljava", ignoreCase = true) -> Color(0xFFECFDF5)
+                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
+                    },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(
+                            Icons.Rounded.Work,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = when {
+                                isOverdue -> Color(0xFFDC2626)
+                                isUpcoming -> Color(0xFFB45309)
+                                else -> MaterialTheme.colorScheme.primary
+                            },
+                        )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(option.label, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            val subtitle = listOf(
+                                option.subtitle,
+                                option.meta["recordNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Zapisnik $it" }.orEmpty(),
+                                option.meta["serialNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
+                                option.meta["inventoryNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
+                            )
+                                .map { it.trim() }
+                                .filter { it.isNotBlank() }
+                                .distinct()
+                                .joinToString(" · ")
+                            if (subtitle.isNotBlank()) {
+                                Text(
+                                    subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                if (deadline != null) {
+                                    AssistChip(
+                                        onClick = {},
+                                        label = {
+                                            Text(
+                                                if (isOverdue) {
+                                                    "Isteklo ${formatDatePickerLabel(deadline.toString())}"
+                                                } else {
+                                                    "Rok ${formatDatePickerLabel(deadline.toString())}"
+                                                },
+                                            )
+                                        },
+                                    )
+                                }
+                                if (grade.isNotBlank()) {
+                                    AssistChip(onClick = {}, label = { Text(grade, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (filteredOptions.size > 36) {
+                Text(
+                    "Prikazano prvih 36 stavki za odabrani filter.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                )
+            }
+        }
+    }
+}
+
 private fun List<String>.toggleValue(value: String): List<String> =
     if (value in this) filterNot { it == value } else this + value
 
@@ -12147,8 +12345,7 @@ private fun WorkOrderDocumentationWizardDialog(
 
                 if (workEquipmentFlowSelected) {
                     WizardSection(title = "Radna oprema", icon = Icons.Rounded.Work) {
-                        DocumentationReadOnlyOptionList(
-                            label = "IS ZNR radna oprema za ovaj RN",
+                        DocumentationWorkEquipmentOptionList(
                             options = context.workEquipmentOptions,
                             emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
                             statusMessage = workEquipmentStatusMessage,
