@@ -221,6 +221,11 @@ data class WorkOrderDocumentationContext(
     val defaults: WorkOrderDocumentationDefaults = WorkOrderDocumentationDefaults(),
     val measurementEquipmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val workEquipmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val workEquipmentMechanicalOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val workEquipmentElectricalOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val workEquipmentHazardOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val workEquipmentHarmfulnessOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    val workEquipmentStrainOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val workEquipmentStatus: Map<String, String> = emptyMap(),
     val legalFrameworkOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val rulebookOptions: List<WorkOrderDocumentationOption> = emptyList(),
@@ -242,6 +247,28 @@ data class IsznrManualWorkEquipment(
     val serialNumber: String = "",
     val inventoryNumber: String = "",
     val note: String = "",
+    val technicalData: String = "",
+    val purposeDescription: String = "",
+    val workspacePosition: String = "",
+    val workingSubstancesAndRawMaterials: String = "",
+    val useAndMaintenance: String = "",
+    val methodsProceduresAndNorms: String = "",
+    val deficiencies: String = "",
+    val measuresToEliminateDeficiencies: String = "",
+    val finalGrade: String = "1",
+    val mechanicalItems: List<IsznrRoAssessmentItem> = emptyList(),
+    val electricalItems: List<IsznrRoAssessmentItem> = emptyList(),
+    val hazardRegisterIris: List<String> = emptyList(),
+    val harmfulnessRegisterIris: List<String> = emptyList(),
+    val strainRegisterIris: List<String> = emptyList(),
+)
+
+data class IsznrRoAssessmentItem(
+    val registerIri: String = "",
+    val label: String = "",
+    val customContent: String = "",
+    val measuredValue: String = "",
+    val meetsConditions: Boolean = true,
 )
 
 data class WorkOrderDocumentationDefaults(

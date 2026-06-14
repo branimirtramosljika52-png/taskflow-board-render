@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.106.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.107.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -2814,6 +2814,54 @@ function buildIsznrRoRecordSubmitResult(postResult = {}, draft = {}) {
   };
 }
 
+async function submitIsznrRoFollowUps({
+  baseUrl = "",
+  username = "",
+  password = "",
+  roRecordIri = "",
+  followUpDrafts = [],
+} = {}) {
+  const drafts = Array.isArray(followUpDrafts) ? followUpDrafts : [];
+  if (!roRecordIri || drafts.length === 0) {
+    return { ok: true, submitted: 0, failed: 0, warnings: [] };
+  }
+  const results = [];
+  for (const draft of drafts) {
+    const resourcePath = normalizeInputValue(draft?.resourcePath);
+    const payload = draft?.payload && typeof draft.payload === "object"
+      ? { ...draft.payload, roRecord: roRecordIri }
+      : null;
+    if (!resourcePath || !payload) {
+      continue;
+    }
+    try {
+      const result = await mutateIsznrJsonResource({
+        baseUrl,
+        username,
+        password,
+        resourcePath,
+        method: "POST",
+        payload,
+      });
+      results.push({ ok: true, resourcePath, status: result.status });
+    } catch (error) {
+      results.push({
+        ok: false,
+        resourcePath,
+        message: error?.message || "IS ZNR dodatni RO element nije poslan.",
+      });
+    }
+  }
+  const failed = results.filter((item) => !item.ok);
+  return {
+    ok: failed.length === 0,
+    submitted: results.length - failed.length,
+    failed: failed.length,
+    warnings: failed.map((item) => `${item.resourcePath}: ${item.message}`),
+    results,
+  };
+}
+
 async function submitIsznrWorkEquipmentForWorkOrder({
   user = null,
   request = null,
@@ -2855,6 +2903,14 @@ async function submitIsznrWorkEquipmentForWorkOrder({
     payload: draft.payload,
   });
   const submitResult = buildIsznrRoRecordSubmitResult(postResult, draft);
+  const roRecordIri = buildIsznrApiIri("ro_records", submitResult.isznrId);
+  const followUpResult = await submitIsznrRoFollowUps({
+    baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    roRecordIri,
+    followUpDrafts: draft.followUpDrafts,
+  });
 
   await domainRepository.addWorkOrderActivityComment(
     workOrder.id,
@@ -2864,6 +2920,8 @@ async function submitIsznrWorkEquipmentForWorkOrder({
           ? `IS ZNR RO zapisnik poslan: ${submitResult.recordNumber}.`
           : `IS ZNR RO zapisnik poslan${submitResult.isznrId ? `, ID ${submitResult.isznrId}` : ""}.`,
         `Oprema: ${submitResult.equipmentCount}.`,
+        followUpResult.submitted ? `RO elementi: ${followUpResult.submitted}.` : "",
+        followUpResult.failed ? `Upozorenja: ${followUpResult.failed}.` : "",
         submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
       ].filter(Boolean).join(" "),
     },
@@ -2877,6 +2935,12 @@ async function submitIsznrWorkEquipmentForWorkOrder({
 
   return {
     ...submitResult,
+    followUp: followUpResult,
+    message: followUpResult.failed
+      ? `${submitResult.message} Dodatni RO elementi: ${followUpResult.submitted} poslano, ${followUpResult.failed} nije prošlo.`
+      : followUpResult.submitted
+        ? `${submitResult.message} Dodatni RO elementi: ${followUpResult.submitted} poslano.`
+        : submitResult.message,
     postDraft: {
       ...draft,
       submitted: true,
@@ -2916,6 +2980,25 @@ function buildDefaultIsznrRegisterIris(registers = [], path = "", limit = 1) {
     .filter((item) => !normalizeInputValue(item.activeTo))
     .slice(0, Math.max(1, Number(limit) || 1));
   return buildIsznrApiIriList(path, items);
+}
+
+function buildMobileIsznrWorkEquipmentRegisterOptions(registers = [], path = "") {
+  return findIsznrWorkEquipmentRegisterItems(registers, path)
+    .filter((item) => !normalizeInputValue(item.activeTo))
+    .map((item) => buildMobileDocumentationOption(
+      buildIsznrApiIri(path, item.id || item.isznrId),
+      item.description || item.name || item.label || `IS ZNR ${item.id || item.isznrId}`,
+      item.activeFrom ? `Aktivno od ${formatOfferDocumentDate(item.activeFrom)}` : "",
+      "",
+      {
+        isznrId: item.id || item.isznrId,
+        resourcePath: path,
+        activeFrom: item.activeFrom,
+        activeTo: item.activeTo,
+      },
+    ))
+    .filter(Boolean)
+    .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
 }
 
 function resolveIsznrWorkOrderLocation(workOrder = {}) {
@@ -3046,9 +3129,68 @@ function normalizeIsznrRoEquipmentPayload(equipment = {}) {
   };
 }
 
+function normalizeIsznrApiIriValue(value = "", resourcePath = "") {
+  const normalized = normalizeInputValue(value);
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.startsWith("/api/v3/")) {
+    return normalized;
+  }
+  if (/^\d+$/.test(normalized) && resourcePath) {
+    return buildIsznrApiIri(resourcePath, normalized);
+  }
+  return "";
+}
+
+function normalizeIsznrApiIriList(values = [], resourcePath = "") {
+  return Array.from(new Set((Array.isArray(values) ? values : [values])
+    .map((value) => normalizeIsznrApiIriValue(value, resourcePath))
+    .filter(Boolean)));
+}
+
+function normalizeIsznrRoAssessmentItems(items = [], resourcePath = "") {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const registerIri = normalizeIsznrApiIriValue(item?.registerIri || item?.register || item?.iri || item?.id, resourcePath);
+      const label = normalizeInputValue(item?.label || item?.description || item?.name);
+      const customContent = normalizeInputValue(item?.customContent || item?.content || item?.text);
+      const measuredValue = normalizeInputValue(item?.measuredValue || item?.value || item?.note);
+      return {
+        registerIri,
+        label,
+        customContent,
+        measuredValue,
+        meetsConditions: normalizeRequestBoolean(item?.meetsConditions, true) ? 1 : 0,
+      };
+    })
+    .filter((item) => item.registerIri || item.customContent || item.label || item.measuredValue);
+}
+
+function normalizeIsznrRoManualEquipmentDetails(equipment = {}) {
+  const base = normalizeIsznrRoEquipmentPayload(equipment);
+  return {
+    ...base,
+    technicalData: normalizeInputValue(equipment.technicalData || equipment.equipmentsTechnicalData),
+    purposeDescription: normalizeInputValue(equipment.purposeDescription || equipment.equipmentsPurposeDescription),
+    workspacePosition: normalizeInputValue(equipment.workspacePosition || equipment.equipmentsWorkspacePosition),
+    workingSubstancesAndRawMaterials: normalizeInputValue(equipment.workingSubstancesAndRawMaterials),
+    useAndMaintenance: normalizeInputValue(equipment.useAndMaintenance),
+    methodsProceduresAndNorms: normalizeInputValue(equipment.methodsProceduresAndNorms),
+    deficiencies: normalizeInputValue(equipment.deficiencies),
+    measuresToEliminateDeficiencies: normalizeInputValue(equipment.measuresToEliminateDeficiencies),
+    finalGrade: normalizeInputValue(equipment.finalGrade || "1") === "0" ? 0 : 1,
+    mechanicalItems: normalizeIsznrRoAssessmentItems(equipment.mechanicalItems, "ro_mechanical_engineering_registers"),
+    electricalItems: normalizeIsznrRoAssessmentItems(equipment.electricalItems, "ro_electrical_registers"),
+    hazardRegisterIris: normalizeIsznrApiIriList(equipment.hazardRegisterIris || equipment.hazards, "hazard_registers"),
+    harmfulnessRegisterIris: normalizeIsznrApiIriList(equipment.harmfulnessRegisterIris || equipment.harmfulnesses, "harmfulness_registers"),
+    strainRegisterIris: normalizeIsznrApiIriList(equipment.strainRegisterIris || equipment.strains, "strain_registers"),
+  };
+}
+
 function normalizeIsznrRoManualEquipmentPayloads(equipments = []) {
   return (Array.isArray(equipments) ? equipments : [])
-    .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
+    .map((equipment) => normalizeIsznrRoManualEquipmentDetails(equipment))
     .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber)
     .filter((equipment, index, array) => {
       const key = [
@@ -3066,6 +3208,80 @@ function normalizeIsznrRoManualEquipmentPayloads(equipments = []) {
         entry.model,
       ].join("|").toLowerCase() === key) === index;
     });
+}
+
+function buildIsznrManualEquipmentFieldSummary(equipments = [], field = "", fallback = "") {
+  const values = (Array.isArray(equipments) ? equipments : [])
+    .map((equipment) => {
+      const value = normalizeInputValue(equipment?.[field]);
+      if (!value) {
+        return "";
+      }
+      const label = normalizeInputValue(equipment?.name || equipment?.model || equipment?.serialNumber);
+      return equipments.length > 1 && label ? `${label}: ${value}` : value;
+    })
+    .filter(Boolean);
+  return values.length ? values.join("\n") : normalizeInputValue(fallback);
+}
+
+function buildIsznrRoElementPayloads(manualEquipments = [], itemKey = "", resourcePath = "", registerField = "") {
+  return (Array.isArray(manualEquipments) ? manualEquipments : [])
+    .flatMap((equipment) => (Array.isArray(equipment?.[itemKey]) ? equipment[itemKey] : [])
+      .map((item) => {
+        const payload = {
+          meetsConditions: Number(item.meetsConditions) === 0 ? 0 : 1,
+        };
+        if (item.registerIri) {
+          payload[registerField] = item.registerIri;
+        }
+        const content = item.customContent || (!item.registerIri ? item.label : "");
+        if (content) {
+          const equipmentName = normalizeInputValue(equipment.name || equipment.model || equipment.serialNumber);
+          payload.customContent = manualEquipments.length > 1 && equipmentName
+            ? `${equipmentName}: ${content}`
+            : content;
+        }
+        if (item.measuredValue) {
+          payload.measuredValue = item.measuredValue;
+        }
+        return {
+          resourcePath,
+          payload,
+        };
+      }))
+    .filter((draft) => draft.payload[registerField] || draft.payload.customContent || draft.payload.measuredValue);
+}
+
+function buildIsznrRoRiskPayloads(manualEquipments = []) {
+  const drafts = [];
+  (Array.isArray(manualEquipments) ? manualEquipments : []).forEach((equipment) => {
+    normalizeIsznrApiIriList(equipment.harmfulnessRegisterIris, "harmfulness_registers").forEach((iri) => {
+      drafts.push({ resourcePath: "ro_risk_indications", payload: { type: 1, harmfulnessRegister: iri } });
+    });
+    normalizeIsznrApiIriList(equipment.hazardRegisterIris, "hazard_registers").forEach((iri) => {
+      drafts.push({ resourcePath: "ro_risk_indications", payload: { type: 2, hazardRegister: iri } });
+    });
+    normalizeIsznrApiIriList(equipment.strainRegisterIris, "strain_registers").forEach((iri) => {
+      drafts.push({ resourcePath: "ro_risk_indications", payload: { type: 3, strainRegister: iri } });
+    });
+  });
+  const seen = new Set();
+  return drafts.filter((draft) => {
+    const key = JSON.stringify(draft.payload);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildIsznrRoFollowUpDrafts(manualEquipments = []) {
+  return [
+    ...buildIsznrRoElementPayloads(manualEquipments, "mechanicalItems", "ro_mechanical_engineerings", "roMechanicalEngineeringRegister"),
+    ...buildIsznrRoElementPayloads(manualEquipments, "electricalItems", "ro_electricals", "roElectricalRegister"),
+    ...buildIsznrRoRiskPayloads(manualEquipments),
+  ];
 }
 
 function isIsznrRoEquipmentPayloadReady(equipment = {}) {
@@ -3227,7 +3443,8 @@ function buildIsznrWorkEquipmentPostDraft({
   const instruments = getIsznrMeasurementEquipmentIris(scopedSnapshot);
   const equipmentCandidates = buildIsznrWorkEquipmentCandidates(items);
   const selectedEquipmentCandidates = buildIsznrWorkEquipmentCandidates(selectedItems);
-  const manualEquipmentPayload = normalizeIsznrRoManualEquipmentPayloads(manualEquipments);
+  const manualEquipmentRecords = normalizeIsznrRoManualEquipmentPayloads(manualEquipments);
+  const manualEquipmentPayload = manualEquipmentRecords.map((equipment) => normalizeIsznrRoEquipmentPayload(equipment));
   const selectedEquipmentPayload = selectedEquipmentCandidates
     .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
     .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber)
@@ -3243,6 +3460,16 @@ function buildIsznrWorkEquipmentPostDraft({
     ].filter(Boolean).join(" - "))
     .filter(Boolean)
     .join("; ");
+  const manualTechnicalData = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "technicalData");
+  const manualPurposeDescription = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "purposeDescription");
+  const manualWorkspacePosition = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "workspacePosition");
+  const manualWorkingSubstances = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "workingSubstancesAndRawMaterials");
+  const manualUseAndMaintenance = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "useAndMaintenance");
+  const manualMethods = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "methodsProceduresAndNorms");
+  const manualDeficiencies = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "deficiencies");
+  const manualMeasures = buildIsznrManualEquipmentFieldSummary(manualEquipmentRecords, "measuresToEliminateDeficiencies");
+  const manualFinalGrade = manualEquipmentRecords.some((equipment) => Number(equipment.finalGrade) === 0) ? 0 : 1;
+  const followUpDrafts = buildIsznrRoFollowUpDrafts(manualEquipmentRecords);
   const defaultTechnicalData = equipmentSummary || "Tehnički podaci radne opreme nisu posebno navedeni.";
 
   const payload = {
@@ -3254,22 +3481,22 @@ function buildIsznrWorkEquipmentPostDraft({
     roHealthRequirementRegister,
     roHealthRequirementOther: normalizeInputValue(latestRecord.roHealthRequirementOther),
     equipments: selectedEquipmentPayload,
-    equipmentsTechnicalData: normalizeInputValue(latestRecord.equipmentsTechnicalData) || defaultTechnicalData,
-    equipmentsPurposeDescription: normalizeInputValue(latestRecord.equipmentsPurposeDescription) || "Radna oprema koristi se prema svojoj namjeni i uputama proizvođača.",
-    equipmentsWorkspacePosition: normalizeInputValue(latestRecord.equipmentsWorkspacePosition) || location || "Na mjestu rada kod poslodavca.",
-    workingSubstancesAndRawMaterials: normalizeInputValue(latestRecord.workingSubstancesAndRawMaterials) || "Nisu posebno navedene radne tvari i sirovine.",
+    equipmentsTechnicalData: manualTechnicalData || normalizeInputValue(latestRecord.equipmentsTechnicalData) || defaultTechnicalData,
+    equipmentsPurposeDescription: manualPurposeDescription || normalizeInputValue(latestRecord.equipmentsPurposeDescription) || "Radna oprema koristi se prema svojoj namjeni i uputama proizvođača.",
+    equipmentsWorkspacePosition: manualWorkspacePosition || normalizeInputValue(latestRecord.equipmentsWorkspacePosition) || location || "Na mjestu rada kod poslodavca.",
+    workingSubstancesAndRawMaterials: manualWorkingSubstances || normalizeInputValue(latestRecord.workingSubstancesAndRawMaterials) || "Nisu posebno navedene radne tvari i sirovine.",
     startDate,
     endDate,
-    useAndMaintenance: normalizeInputValue(latestRecord.useAndMaintenance) || "Uporaba i održavanje provjeravaju se prema uputama proizvođača i pravilima sigurnog rada.",
-    methodsProceduresAndNorms: normalizeInputValue(latestRecord.methodsProceduresAndNorms) || "Pregled i ispitivanje provedeni su prema važećim propisima, normama i pravilima struke.",
+    useAndMaintenance: manualUseAndMaintenance || normalizeInputValue(latestRecord.useAndMaintenance) || "Uporaba i održavanje provjeravaju se prema uputama proizvođača i pravilima sigurnog rada.",
+    methodsProceduresAndNorms: manualMethods || normalizeInputValue(latestRecord.methodsProceduresAndNorms) || "Pregled i ispitivanje provedeni su prema važećim propisima, normama i pravilima struke.",
     instruments,
     experts,
     deadlineForNextExamination: deadline,
     deadlineForNextExaminationNote: normalizeInputValue(latestRecord.deadlineForNextExaminationNote),
-    finalGrade: 1,
+    finalGrade: manualFinalGrade,
     signedBy,
-    deficiencies: "",
-    measuresToEliminateDeficiencies: "",
+    deficiencies: manualDeficiencies,
+    measuresToEliminateDeficiencies: manualMeasures,
   };
 
   const checklist = [];
@@ -3299,6 +3526,7 @@ function buildIsznrWorkEquipmentPostDraft({
     selectedItemIds: selectedEquipmentCandidates.map((item) => item.key).filter(Boolean),
     selectedEquipmentCandidates,
     manualEquipmentCount: manualEquipmentPayload.length,
+    followUpDrafts,
     people: {
       experts: expertPeople,
       signedBy: signedByPeople,
@@ -16987,6 +17215,21 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     workEquipmentOptions: Array.isArray(scopedSnapshot.isznrWorkEquipmentOptions)
       ? scopedSnapshot.isznrWorkEquipmentOptions
       : [],
+    workEquipmentMechanicalOptions: Array.isArray(scopedSnapshot.isznrWorkEquipmentMechanicalOptions)
+      ? scopedSnapshot.isznrWorkEquipmentMechanicalOptions
+      : [],
+    workEquipmentElectricalOptions: Array.isArray(scopedSnapshot.isznrWorkEquipmentElectricalOptions)
+      ? scopedSnapshot.isznrWorkEquipmentElectricalOptions
+      : [],
+    workEquipmentHazardOptions: Array.isArray(scopedSnapshot.isznrWorkEquipmentHazardOptions)
+      ? scopedSnapshot.isznrWorkEquipmentHazardOptions
+      : [],
+    workEquipmentHarmfulnessOptions: Array.isArray(scopedSnapshot.isznrWorkEquipmentHarmfulnessOptions)
+      ? scopedSnapshot.isznrWorkEquipmentHarmfulnessOptions
+      : [],
+    workEquipmentStrainOptions: Array.isArray(scopedSnapshot.isznrWorkEquipmentStrainOptions)
+      ? scopedSnapshot.isznrWorkEquipmentStrainOptions
+      : [],
     workEquipmentStatus: scopedSnapshot.isznrWorkEquipmentStatus && typeof scopedSnapshot.isznrWorkEquipmentStatus === "object"
       ? scopedSnapshot.isznrWorkEquipmentStatus
       : {},
@@ -20499,6 +20742,11 @@ async function handleApiRequest(request, response, url) {
           maxRecords: 80,
         });
         contextSnapshot.isznrWorkEquipmentOptions = isznrWorkEquipment.options;
+        contextSnapshot.isznrWorkEquipmentMechanicalOptions = buildMobileIsznrWorkEquipmentRegisterOptions(isznrWorkEquipment.registers, "ro_mechanical_engineering_registers");
+        contextSnapshot.isznrWorkEquipmentElectricalOptions = buildMobileIsznrWorkEquipmentRegisterOptions(isznrWorkEquipment.registers, "ro_electrical_registers");
+        contextSnapshot.isznrWorkEquipmentHazardOptions = buildMobileIsznrWorkEquipmentRegisterOptions(isznrWorkEquipment.registers, "hazard_registers");
+        contextSnapshot.isznrWorkEquipmentHarmfulnessOptions = buildMobileIsznrWorkEquipmentRegisterOptions(isznrWorkEquipment.registers, "harmfulness_registers");
+        contextSnapshot.isznrWorkEquipmentStrainOptions = buildMobileIsznrWorkEquipmentRegisterOptions(isznrWorkEquipment.registers, "strain_registers");
         contextSnapshot.isznrWorkEquipmentStatus = {
           ok: true,
           companyOib: isznrWorkEquipment.companyOib,
@@ -20524,6 +20772,11 @@ async function handleApiRequest(request, response, url) {
         };
       } catch (error) {
         contextSnapshot.isznrWorkEquipmentOptions = [];
+        contextSnapshot.isznrWorkEquipmentMechanicalOptions = [];
+        contextSnapshot.isznrWorkEquipmentElectricalOptions = [];
+        contextSnapshot.isznrWorkEquipmentHazardOptions = [];
+        contextSnapshot.isznrWorkEquipmentHarmfulnessOptions = [];
+        contextSnapshot.isznrWorkEquipmentStrainOptions = [];
         contextSnapshot.isznrWorkEquipmentStatus = {
           ok: false,
           message: error?.message || "IS ZNR radna oprema nije dohvaćena.",

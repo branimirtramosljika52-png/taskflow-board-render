@@ -551,6 +551,20 @@ class SafeNexusApi(
                                     .put("serialNumber", it.serialNumber.trim())
                                     .put("inventoryNumber", it.inventoryNumber.trim())
                                     .put("note", it.note.trim())
+                                    .put("technicalData", it.technicalData.trim())
+                                    .put("purposeDescription", it.purposeDescription.trim())
+                                    .put("workspacePosition", it.workspacePosition.trim())
+                                    .put("workingSubstancesAndRawMaterials", it.workingSubstancesAndRawMaterials.trim())
+                                    .put("useAndMaintenance", it.useAndMaintenance.trim())
+                                    .put("methodsProceduresAndNorms", it.methodsProceduresAndNorms.trim())
+                                    .put("deficiencies", it.deficiencies.trim())
+                                    .put("measuresToEliminateDeficiencies", it.measuresToEliminateDeficiencies.trim())
+                                    .put("finalGrade", it.finalGrade.trim().ifBlank { "1" })
+                                    .put("mechanicalItems", JSONArray(it.mechanicalItems.map { item -> item.toJsonObject() }))
+                                    .put("electricalItems", JSONArray(it.electricalItems.map { item -> item.toJsonObject() }))
+                                    .put("hazardRegisterIris", JSONArray(it.hazardRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
+                                    .put("harmfulnessRegisterIris", JSONArray(it.harmfulnessRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
+                                    .put("strainRegisterIris", JSONArray(it.strainRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
                             },
                     ),
                 )
@@ -919,6 +933,14 @@ class SafeNexusApi(
 
 private fun String.pathSegment(): String =
     URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")
+
+private fun IsznrRoAssessmentItem.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("registerIri", registerIri.trim())
+        .put("label", label.trim())
+        .put("customContent", customContent.trim())
+        .put("measuredValue", measuredValue.trim())
+        .put("meetsConditions", meetsConditions)
 
 private fun parseContentDispositionFileName(value: String?): String {
     if (value.isNullOrBlank()) return ""
@@ -1521,6 +1543,11 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         defaults = optJSONObject("defaults").toWorkOrderDocumentationDefaults(),
         measurementEquipmentOptions = optJSONArray("measurementEquipmentOptions").toWorkOrderDocumentationOptions(),
         workEquipmentOptions = optJSONArray("workEquipmentOptions").toWorkOrderDocumentationOptions(),
+        workEquipmentMechanicalOptions = optJSONArray("workEquipmentMechanicalOptions").toWorkOrderDocumentationOptions(),
+        workEquipmentElectricalOptions = optJSONArray("workEquipmentElectricalOptions").toWorkOrderDocumentationOptions(),
+        workEquipmentHazardOptions = optJSONArray("workEquipmentHazardOptions").toWorkOrderDocumentationOptions(),
+        workEquipmentHarmfulnessOptions = optJSONArray("workEquipmentHarmfulnessOptions").toWorkOrderDocumentationOptions(),
+        workEquipmentStrainOptions = optJSONArray("workEquipmentStrainOptions").toWorkOrderDocumentationOptions(),
         workEquipmentStatus = optJSONObject("workEquipmentStatus").toStringMap(),
         legalFrameworkOptions = optJSONArray("legalFrameworkOptions").toWorkOrderDocumentationOptions(),
         rulebookOptions = optJSONArray("rulebookOptions").toWorkOrderDocumentationOptions(),

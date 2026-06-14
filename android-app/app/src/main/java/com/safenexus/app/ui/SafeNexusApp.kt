@@ -184,6 +184,7 @@ import com.safenexus.app.data.DashboardStats
 import com.safenexus.app.data.DownloadedDocument
 import com.safenexus.app.data.FieldInquiryDraft
 import com.safenexus.app.data.IsznrManualWorkEquipment
+import com.safenexus.app.data.IsznrRoAssessmentItem
 import com.safenexus.app.data.MobileRecord
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
@@ -4319,6 +4320,11 @@ private fun DocumentationWorkEquipmentOptionList(
     emptyText: String,
     statusMessage: String = "",
     postDraftStatus: Map<String, String> = emptyMap(),
+    mechanicalOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    electricalOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    hazardOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    harmfulnessOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    strainOptions: List<WorkOrderDocumentationOption> = emptyList(),
     enabled: Boolean = true,
     onSubmit: (List<String>, List<IsznrManualWorkEquipment>) -> Unit = { _, _ -> },
 ) {
@@ -4359,6 +4365,11 @@ private fun DocumentationWorkEquipmentOptionList(
 
     if (showManualEquipmentDialog) {
         ManualWorkEquipmentDialog(
+            mechanicalOptions = mechanicalOptions,
+            electricalOptions = electricalOptions,
+            hazardOptions = hazardOptions,
+            harmfulnessOptions = harmfulnessOptions,
+            strainOptions = strainOptions,
             onDismiss = { showManualEquipmentDialog = false },
             onAdd = { equipment ->
                 manualEquipments = manualEquipments + equipment
@@ -4697,6 +4708,8 @@ private fun IsznrManualWorkEquipment.subtitle(): String =
         model,
         serialNumber.takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
         inventoryNumber.takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
+        (mechanicalItems.size + electricalItems.size).takeIf { it > 0 }?.let { "$it stručnih stavki" }.orEmpty(),
+        (hazardRegisterIris.size + harmfulnessRegisterIris.size + strainRegisterIris.size).takeIf { it > 0 }?.let { "$it rizika" }.orEmpty(),
     )
         .map { it.trim() }
         .filter { it.isNotBlank() }
@@ -4783,6 +4796,11 @@ private fun ManualWorkEquipmentCard(
 
 @Composable
 private fun ManualWorkEquipmentDialog(
+    mechanicalOptions: List<WorkOrderDocumentationOption>,
+    electricalOptions: List<WorkOrderDocumentationOption>,
+    hazardOptions: List<WorkOrderDocumentationOption>,
+    harmfulnessOptions: List<WorkOrderDocumentationOption>,
+    strainOptions: List<WorkOrderDocumentationOption>,
     onDismiss: () -> Unit,
     onAdd: (IsznrManualWorkEquipment) -> Unit,
 ) {
@@ -4792,6 +4810,20 @@ private fun ManualWorkEquipmentDialog(
     var serialNumber by remember { mutableStateOf("") }
     var inventoryNumber by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var technicalData by remember { mutableStateOf("") }
+    var purposeDescription by remember { mutableStateOf("") }
+    var workspacePosition by remember { mutableStateOf("") }
+    var workingSubstancesAndRawMaterials by remember { mutableStateOf("") }
+    var useAndMaintenance by remember { mutableStateOf("") }
+    var methodsProceduresAndNorms by remember { mutableStateOf("") }
+    var deficiencies by remember { mutableStateOf("") }
+    var measuresToEliminateDeficiencies by remember { mutableStateOf("") }
+    var finalGrade by remember { mutableStateOf("1") }
+    val mechanicalItems = remember { mutableStateListOf<IsznrRoAssessmentItem>() }
+    val electricalItems = remember { mutableStateListOf<IsznrRoAssessmentItem>() }
+    var hazardRegisterIris by remember { mutableStateOf(emptyList<String>()) }
+    var harmfulnessRegisterIris by remember { mutableStateOf(emptyList<String>()) }
+    var strainRegisterIris by remember { mutableStateOf(emptyList<String>()) }
     val equipment = IsznrManualWorkEquipment(
         name = name.trim(),
         manufacturer = manufacturer.trim(),
@@ -4799,6 +4831,20 @@ private fun ManualWorkEquipmentDialog(
         serialNumber = serialNumber.trim(),
         inventoryNumber = inventoryNumber.trim(),
         note = note.trim(),
+        technicalData = technicalData.trim(),
+        purposeDescription = purposeDescription.trim(),
+        workspacePosition = workspacePosition.trim(),
+        workingSubstancesAndRawMaterials = workingSubstancesAndRawMaterials.trim(),
+        useAndMaintenance = useAndMaintenance.trim(),
+        methodsProceduresAndNorms = methodsProceduresAndNorms.trim(),
+        deficiencies = deficiencies.trim(),
+        measuresToEliminateDeficiencies = measuresToEliminateDeficiencies.trim(),
+        finalGrade = finalGrade,
+        mechanicalItems = mechanicalItems.toList(),
+        electricalItems = electricalItems.toList(),
+        hazardRegisterIris = hazardRegisterIris,
+        harmfulnessRegisterIris = harmfulnessRegisterIris,
+        strainRegisterIris = strainRegisterIris,
     )
 
     AlertDialog(
@@ -4809,12 +4855,56 @@ private fun ManualWorkEquipmentDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                ManualWorkEquipmentSectionTitle("Osnovni podaci")
                 OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                 OutlinedTextField(manufacturer, { manufacturer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                 OutlinedTextField(model, { model = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                 OutlinedTextField(serialNumber, { serialNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                 OutlinedTextField(inventoryNumber, { inventoryNumber = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                 OutlinedTextField(note, { note = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                ManualWorkEquipmentSectionTitle("Opisna RO polja")
+                OutlinedTextField(technicalData, { technicalData = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(purposeDescription, { purposeDescription = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Namjena radne opreme") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(workspacePosition, { workspacePosition = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Položaj u radnom prostoru") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(workingSubstancesAndRawMaterials, { workingSubstancesAndRawMaterials = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Radne tvari i sirovine") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(useAndMaintenance, { useAndMaintenance = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Uporaba i održavanje") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(methodsProceduresAndNorms, { methodsProceduresAndNorms = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Metode, postupci i norme") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                ManualWorkEquipmentAssessmentEditor(
+                    title = "Strojarski dio",
+                    options = mechanicalOptions,
+                    items = mechanicalItems,
+                )
+                ManualWorkEquipmentAssessmentEditor(
+                    title = "Elektro dio",
+                    options = electricalOptions,
+                    items = electricalItems,
+                )
+                ManualWorkEquipmentSectionTitle("Opasnosti, štetnosti i napori")
+                ManualWorkEquipmentRegisterChips(
+                    title = "Opasnosti",
+                    options = hazardOptions,
+                    selectedIris = hazardRegisterIris,
+                    onSelectedIrisChange = { hazardRegisterIris = it },
+                )
+                ManualWorkEquipmentRegisterChips(
+                    title = "Štetnosti",
+                    options = harmfulnessOptions,
+                    selectedIris = harmfulnessRegisterIris,
+                    onSelectedIrisChange = { harmfulnessRegisterIris = it },
+                )
+                ManualWorkEquipmentRegisterChips(
+                    title = "Napori",
+                    options = strainOptions,
+                    selectedIris = strainRegisterIris,
+                    onSelectedIrisChange = { strainRegisterIris = it },
+                )
+                ManualWorkEquipmentSectionTitle("Zaključak")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = finalGrade == "1", onClick = { finalGrade = "1" }, label = { Text("Zadovoljava") })
+                    FilterChip(selected = finalGrade == "0", onClick = { finalGrade = "0" }, label = { Text("Ne zadovoljava") })
+                }
+                OutlinedTextField(deficiencies, { deficiencies = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Nedostaci") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
+                OutlinedTextField(measuresToEliminateDeficiencies, { measuresToEliminateDeficiencies = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Mjere za otklanjanje nedostataka") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp))
             }
         },
         confirmButton = {
@@ -4832,6 +4922,185 @@ private fun ManualWorkEquipmentDialog(
             }
         },
     )
+}
+
+@Composable
+private fun ManualWorkEquipmentSectionTitle(title: String) {
+    Text(
+        title,
+        modifier = Modifier.padding(top = 8.dp),
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Black,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Composable
+private fun ManualWorkEquipmentAssessmentEditor(
+    title: String,
+    options: List<WorkOrderDocumentationOption>,
+    items: MutableList<IsznrRoAssessmentItem>,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedOption by remember(options) { mutableStateOf<WorkOrderDocumentationOption?>(null) }
+    var customContent by remember { mutableStateOf("") }
+    var measuredValue by remember { mutableStateOf("") }
+    var meetsConditions by remember { mutableStateOf(true) }
+
+    ManualWorkEquipmentSectionTitle(title)
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text(selectedOption?.label ?: "Odaberi IS ZNR stavku")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.take(80).forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        onClick = {
+                            selectedOption = option
+                            customContent = ""
+                            expanded = false
+                        },
+                    )
+                }
+                if (options.isEmpty()) {
+                    DropdownMenuItem(text = { Text("Nema IS ZNR stavki") }, onClick = { expanded = false })
+                }
+            }
+            OutlinedTextField(
+                value = customContent,
+                onValueChange = {
+                    customContent = it
+                    if (it.isNotBlank()) selectedOption = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Vlastiti sadržaj") },
+                minLines = 2,
+                maxLines = 4,
+                shape = RoundedCornerShape(14.dp),
+            )
+            OutlinedTextField(
+                value = measuredValue,
+                onValueChange = { measuredValue = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Napomena / izmjerene vrijednosti") },
+                minLines = 2,
+                maxLines = 4,
+                shape = RoundedCornerShape(14.dp),
+            )
+            FilterChip(
+                selected = meetsConditions,
+                onClick = { meetsConditions = !meetsConditions },
+                label = { Text(if (meetsConditions) "Zadovoljava" else "Ne zadovoljava") },
+            )
+            Button(
+                onClick = {
+                    val option = selectedOption
+                    items.add(
+                        IsznrRoAssessmentItem(
+                            registerIri = option?.id.orEmpty(),
+                            label = option?.label.orEmpty(),
+                            customContent = customContent.trim(),
+                            measuredValue = measuredValue.trim(),
+                            meetsConditions = meetsConditions,
+                        ),
+                    )
+                    selectedOption = null
+                    customContent = ""
+                    measuredValue = ""
+                    meetsConditions = true
+                },
+                enabled = selectedOption != null || customContent.isNotBlank() || measuredValue.isNotBlank(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Dodaj stavku")
+            }
+            items.forEachIndexed { index, item ->
+                ManualWorkEquipmentAssessmentChip(item = item, onRemove = { items.removeAt(index) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualWorkEquipmentAssessmentChip(
+    item: IsznrRoAssessmentItem,
+    onRemove: () -> Unit,
+) {
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                if (item.meetsConditions) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                contentDescription = null,
+                tint = if (item.meetsConditions) Color(0xFF059669) else Color(0xFFDC2626),
+                modifier = Modifier.size(18.dp),
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    item.label.ifBlank { item.customContent.ifBlank { "Stavka" } },
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (item.measuredValue.isNotBlank()) {
+                    Text(
+                        item.measuredValue,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni stavku", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualWorkEquipmentRegisterChips(
+    title: String,
+    options: List<WorkOrderDocumentationOption>,
+    selectedIris: List<String>,
+    onSelectedIrisChange: (List<String>) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        if (options.isEmpty()) {
+            Text(
+                "Nema dohvaćenog IS ZNR šifarnika.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            )
+            return
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.take(24).forEach { option ->
+                val selected = option.id in selectedIris
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelectedIrisChange(selectedIris.toggleValue(option.id)) },
+                    label = { Text(option.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+            if (options.size > 24) {
+                AssistChip(onClick = {}, label = { Text("+${options.size - 24}") })
+            }
+        }
+    }
 }
 
 private fun List<String>.toggleValue(value: String): List<String> =
@@ -12769,6 +13038,11 @@ private fun WorkOrderDocumentationWizardDialog(
                             emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
                             statusMessage = workEquipmentStatusMessage,
                             postDraftStatus = context.workEquipmentStatus,
+                            mechanicalOptions = context.workEquipmentMechanicalOptions,
+                            electricalOptions = context.workEquipmentElectricalOptions,
+                            hazardOptions = context.workEquipmentHazardOptions,
+                            harmfulnessOptions = context.workEquipmentHarmfulnessOptions,
+                            strainOptions = context.workEquipmentStrainOptions,
                             enabled = !formLoading,
                             onSubmit = onSubmitIsznrWorkEquipment,
                         )
