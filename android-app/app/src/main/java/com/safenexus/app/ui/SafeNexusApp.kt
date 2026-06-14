@@ -4330,6 +4330,7 @@ private fun DocumentationWorkEquipmentOptionList(
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
+    var selectedLocation by remember(options) { mutableStateOf("") }
     var selectedItemIds by remember(options) { mutableStateOf(emptySet<String>()) }
     var manualEquipments by remember(options) { mutableStateOf(emptyList<IsznrManualWorkEquipment>()) }
     var showManualEquipmentDialog by remember(options) { mutableStateOf(false) }
@@ -4344,9 +4345,25 @@ private fun DocumentationWorkEquipmentOptionList(
                 }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
             )
     }
-    var focusedOptionIndex by remember(options, selectedFilter) { mutableStateOf(0) }
-    val boundedFocusedOptionIndex = if (filteredOptions.isEmpty()) 0 else focusedOptionIndex.coerceIn(0, filteredOptions.lastIndex)
-    val focusedOption = filteredOptions.getOrNull(boundedFocusedOptionIndex)
+    val availableLocations = remember(filteredOptions) {
+        filteredOptions
+            .map { it.meta["location"].orEmpty().trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedBy { it.lowercase(Locale.getDefault()) }
+    }
+    LaunchedEffect(availableLocations, selectedLocation) {
+        if (selectedLocation.isNotBlank() && selectedLocation !in availableLocations) {
+            selectedLocation = ""
+        }
+    }
+    val locationFilteredOptions = remember(filteredOptions, selectedLocation) {
+        if (selectedLocation.isBlank()) {
+            filteredOptions
+        } else {
+            filteredOptions.filter { it.meta["location"].orEmpty().trim() == selectedLocation }
+        }
+    }
     val overdueCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Overdue, today) }
     val upcomingCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Upcoming, today) }
     val postDraftReady = postDraftStatus["postDraftReady"].equals("true", ignoreCase = true)
@@ -4401,7 +4418,7 @@ private fun DocumentationWorkEquipmentOptionList(
             }
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
                 Text(
-                    "${filteredOptions.size}",
+                    "${locationFilteredOptions.size}",
                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Black,
@@ -4508,79 +4525,64 @@ private fun DocumentationWorkEquipmentOptionList(
                 )
             }
         }
-        if (focusedOption != null) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Postojeća radna oprema", fontWeight = FontWeight.Bold)
-                    Text(
-                        "${boundedFocusedOptionIndex + 1}/${filteredOptions.size}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(focusedOption.label, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    val focusedSubtitle = listOf(
-                        focusedOption.subtitle,
-                        focusedOption.meta["serialNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
-                        focusedOption.meta["inventoryNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
-                        focusedOption.meta["deadlineForNextExamination"].orEmpty().takeIf { it.isNotBlank() }?.let { "Rok ${formatDatePickerLabel(it)}" }.orEmpty(),
-                    ).filter { it.isNotBlank() }.distinct().joinToString(" · ")
-                    if (focusedSubtitle.isNotBlank()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Popis postojeće opreme", fontWeight = FontWeight.Bold)
                         Text(
-                            focusedSubtitle,
+                            if (selectedLocation.isBlank()) {
+                                "Sve lokacije · ${locationFilteredOptions.size} stavki"
+                            } else {
+                                "$selectedLocation · ${locationFilteredOptions.size} stavki"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                            maxLines = 3,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                    Icon(Icons.Rounded.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+                if (availableLocations.isNotEmpty()) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { focusedOptionIndex = (boundedFocusedOptionIndex - 1).coerceAtLeast(0) },
-                            enabled = boundedFocusedOptionIndex > 0,
-                            shape = RoundedCornerShape(14.dp),
-                        ) {
-                            Text("Natrag")
-                        }
-                        OutlinedButton(
-                            onClick = { focusedOptionIndex = (boundedFocusedOptionIndex + 1).coerceAtMost(filteredOptions.lastIndex) },
-                            enabled = boundedFocusedOptionIndex < filteredOptions.lastIndex,
-                            shape = RoundedCornerShape(14.dp),
-                        ) {
-                            Text("Next")
-                        }
-                        Button(
-                            onClick = {
-                                manualEquipmentDialogSeed = focusedOption.toManualWorkEquipment()
-                                manualEquipmentDialogTitle = "Postojeća radna oprema"
-                                selectedItemIds = selectedItemIds - focusedOption.id
-                                showManualEquipmentDialog = true
-                            },
-                            enabled = enabled,
-                            shape = RoundedCornerShape(14.dp),
-                        ) {
-                            Text("Otvori")
-                        }
                         FilterChip(
-                            selected = focusedOption.id in selectedItemIds,
-                            onClick = {
-                                selectedItemIds = if (focusedOption.id in selectedItemIds) {
-                                    selectedItemIds - focusedOption.id
-                                } else {
-                                    selectedItemIds + focusedOption.id
-                                }
-                            },
-                            label = { Text("Odaberi bez uređivanja") },
-                            enabled = enabled && focusedOption.id.isNotBlank(),
+                            selected = selectedLocation.isBlank(),
+                            onClick = { selectedLocation = "" },
+                            label = { Text("Sve lokacije (${filteredOptions.size})") },
                         )
+                        availableLocations.forEach { locationName ->
+                            val count = filteredOptions.count { it.meta["location"].orEmpty().trim() == locationName }
+                            FilterChip(
+                                selected = selectedLocation == locationName,
+                                onClick = { selectedLocation = locationName },
+                                label = {
+                                    Text(
+                                        "$locationName ($count)",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
                     }
+                } else {
+                    Text(
+                        "IS ZNR nije vratio lokacije za ovu opremu.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
                 }
             }
         }
@@ -4609,9 +4611,9 @@ private fun DocumentationWorkEquipmentOptionList(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                selectedItemIds = selectedItemIds + filteredOptions.map { it.id }.filter { it.isNotBlank() }
+                                selectedItemIds = selectedItemIds + locationFilteredOptions.map { it.id }.filter { it.isNotBlank() }
                             },
-                            enabled = enabled && filteredOptions.isNotEmpty(),
+                            enabled = enabled && locationFilteredOptions.isNotEmpty(),
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
@@ -4676,15 +4678,15 @@ private fun DocumentationWorkEquipmentOptionList(
                 }
             }
         }
-        if (filteredOptions.isEmpty()) {
+        if (locationFilteredOptions.isEmpty()) {
             Text(
-                "Nema stavki za ovaj filter.",
+                "Nema stavki za ovaj filter ili lokaciju.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
             return
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            filteredOptions.forEach { option ->
+            locationFilteredOptions.forEach { option ->
                 val deadline = option.workEquipmentDeadline()
                 val isOverdue = deadline?.isBefore(today) == true
                 val isUpcoming = deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
