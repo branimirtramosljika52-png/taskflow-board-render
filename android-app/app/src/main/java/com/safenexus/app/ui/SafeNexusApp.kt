@@ -4451,32 +4451,38 @@ private fun DocumentationWorkEquipmentOptionList(
                 modifier = Modifier.padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         if (selectedItemIds.isEmpty()) "Odaberi opremu za IS ZNR POST" else "${selectedItemIds.size} odabrano",
-                        modifier = Modifier.weight(1f),
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    OutlinedButton(
-                        onClick = {
-                            selectedItemIds = selectedItemIds + filteredOptions.map { it.id }.filter { it.isNotBlank() }
-                        },
-                        enabled = enabled && filteredOptions.isNotEmpty(),
-                        shape = RoundedCornerShape(14.dp),
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Prikazane")
-                    }
-                    OutlinedButton(
-                        onClick = { selectedItemIds = emptySet() },
-                        enabled = enabled && selectedItemIds.isNotEmpty(),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Text("Poništi")
+                        OutlinedButton(
+                            onClick = {
+                                selectedItemIds = selectedItemIds + filteredOptions.map { it.id }.filter { it.isNotBlank() }
+                            },
+                            enabled = enabled && filteredOptions.isNotEmpty(),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text("Prikazane")
+                        }
+                        OutlinedButton(
+                            onClick = { selectedItemIds = emptySet() },
+                            enabled = enabled && selectedItemIds.isNotEmpty(),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text("Poništi")
+                        }
                     }
                 }
                 if (postDraftBlockingKeys.isNotEmpty()) {
@@ -4517,74 +4523,83 @@ private fun DocumentationWorkEquipmentOptionList(
                         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
                     },
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(
-                            Icons.Rounded.Work,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = when {
-                                selected -> MaterialTheme.colorScheme.primary
-                                isOverdue -> Color(0xFFDC2626)
-                                isUpcoming -> Color(0xFFB45309)
-                                else -> MaterialTheme.colorScheme.primary
-                            },
-                        )
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(option.label, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            val subtitle = listOf(
-                                option.subtitle,
-                                option.meta["recordNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Zapisnik $it" }.orEmpty(),
-                                option.meta["serialNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
-                                option.meta["inventoryNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Work,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = when {
+                                    selected -> MaterialTheme.colorScheme.primary
+                                    isOverdue -> Color(0xFFDC2626)
+                                    isUpcoming -> Color(0xFFB45309)
+                                    else -> MaterialTheme.colorScheme.primary
+                                },
                             )
-                                .map { it.trim() }
-                                .filter { it.isNotBlank() }
-                                .distinct()
-                                .joinToString(" · ")
-                            if (subtitle.isNotBlank()) {
-                                Text(
-                                    subtitle,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
+                            Text(
+                                option.label,
+                                modifier = Modifier.weight(1f),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Checkbox(
+                                checked = selected,
+                                onCheckedChange = { checked ->
+                                    selectedItemIds = if (checked) {
+                                        selectedItemIds + option.id
+                                    } else {
+                                        selectedItemIds - option.id
+                                    }
+                                },
+                                enabled = enabled && option.id.isNotBlank(),
+                            )
+                        }
+                        val subtitle = listOf(
+                            option.subtitle,
+                            option.meta["recordNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Zapisnik $it" }.orEmpty(),
+                            option.meta["serialNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
+                            option.meta["inventoryNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
+                        )
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .joinToString(" · ")
+                        if (subtitle.isNotBlank()) {
+                            Text(
+                                subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            if (deadline != null) {
+                                AssistChip(
+                                    onClick = {},
+                                    label = {
+                                        Text(
+                                            if (isOverdue) {
+                                                "Isteklo ${formatDatePickerLabel(deadline.toString())}"
+                                            } else {
+                                                "Rok ${formatDatePickerLabel(deadline.toString())}"
+                                            },
+                                        )
+                                    },
                                 )
                             }
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                if (deadline != null) {
-                                    AssistChip(
-                                        onClick = {},
-                                        label = {
-                                            Text(
-                                                if (isOverdue) {
-                                                    "Isteklo ${formatDatePickerLabel(deadline.toString())}"
-                                                } else {
-                                                    "Rok ${formatDatePickerLabel(deadline.toString())}"
-                                                },
-                                            )
-                                        },
-                                    )
-                                }
-                                if (grade.isNotBlank()) {
-                                    AssistChip(onClick = {}, label = { Text(grade, maxLines = 1, overflow = TextOverflow.Ellipsis) })
-                                }
+                            if (grade.isNotBlank()) {
+                                AssistChip(onClick = {}, label = { Text(grade, maxLines = 1, overflow = TextOverflow.Ellipsis) })
                             }
                         }
-                        Checkbox(
-                            checked = selected,
-                            onCheckedChange = { checked ->
-                                selectedItemIds = if (checked) {
-                                    selectedItemIds + option.id
-                                } else {
-                                    selectedItemIds - option.id
-                                }
-                            },
-                            enabled = enabled && option.id.isNotBlank(),
-                        )
                     }
                 }
             }
