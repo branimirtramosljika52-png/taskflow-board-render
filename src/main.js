@@ -113127,6 +113127,9 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
       recordsLimited: false,
       filter: "all",
       postDraft: null,
+      selectedItemIds: [],
+      submitting: false,
+      postResult: null,
     };
   }
   return state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId];
@@ -113156,12 +113159,74 @@ async function loadWorkOrderDocumentIsznrWorkEquipment(workOrder = {}, { force =
     entry.recordsLimited = Boolean(payload?.recordsLimited);
     entry.message = String(payload?.message || "").trim();
     entry.postDraft = payload?.postDraft && typeof payload.postDraft === "object" ? payload.postDraft : null;
+    const itemIds = new Set(entry.items.map((item) => String(item?.id || "").trim()).filter(Boolean));
+    entry.selectedItemIds = (Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
+      .filter((id) => itemIds.has(String(id || "").trim()));
     entry.loaded = true;
   } catch (error) {
     entry.error = error?.message || "IS ZNR radna oprema nije dohvaćena.";
     entry.loaded = true;
   } finally {
     entry.loading = false;
+    renderWorkOrderDocumentWizard();
+  }
+}
+
+function getWorkOrderDocumentIsznrPostBlockingLabels(postDraft = null) {
+  const checklist = Array.isArray(postDraft?.checklist) ? postDraft.checklist : [];
+  return checklist
+    .filter((item) => !item.ready && item.key !== "equipments")
+    .map((item) => item.label || item.key || "Obavezni podatak")
+    .filter(Boolean);
+}
+
+async function submitWorkOrderDocumentIsznrWorkEquipment(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+  const selectedItemIds = (Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(entry.postDraft);
+  if (selectedItemIds.length === 0) {
+    entry.error = "Odaberi barem jednu radnu opremu za slanje u IS ZNR.";
+    renderWorkOrderDocumentWizard();
+    return;
+  }
+  if (blockingLabels.length > 0) {
+    entry.error = `IS ZNR POST nije spreman. Fali: ${blockingLabels.join(", ")}.`;
+    renderWorkOrderDocumentWizard();
+    return;
+  }
+  const confirmMessage = `Poslati ${selectedItemIds.length} stavki radne opreme u IS ZNR za RN ${workOrder.workOrderNumber || workOrder.number || ""}?`;
+  if (!window.confirm(confirmMessage)) {
+    return;
+  }
+  entry.submitting = true;
+  entry.error = "";
+  entry.message = "Šaljem RO zapisnik u IS ZNR...";
+  renderWorkOrderDocumentWizard();
+  try {
+    const payload = await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/isznr-work-equipment`, {
+      method: "POST",
+      body: {
+        selectedItemIds,
+      },
+    });
+    entry.postResult = payload;
+    entry.postDraft = payload?.postDraft && typeof payload.postDraft === "object" ? payload.postDraft : entry.postDraft;
+    entry.message = payload?.message || "RO zapisnik je poslan u IS ZNR.";
+    entry.selectedItemIds = [];
+    await loadWorkOrderDocumentIsznrWorkEquipment(workOrder, { force: true });
+    const refreshedEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+    refreshedEntry.postResult = payload;
+    refreshedEntry.message = payload?.message || refreshedEntry.message || "RO zapisnik je poslan u IS ZNR.";
+  } catch (error) {
+    entry.error = error?.message || "IS ZNR POST nije uspio.";
+  } finally {
+    entry.submitting = false;
     renderWorkOrderDocumentWizard();
   }
 }
@@ -113281,7 +113346,7 @@ function appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, postDraft = null
   title.textContent = postDraft.ready ? "IS ZNR POST priprema spremna" : "IS ZNR POST priprema";
   const subtitle = document.createElement("span");
   subtitle.textContent = postDraft.writeEnabled
-    ? "Slanje je omogućeno."
+    ? "Slanje je omogućeno nakon odabira opreme."
     : "Dry-run: ništa se ne šalje u IS ZNR.";
   copy.append(title, subtitle);
 
@@ -113353,6 +113418,17 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   toolbar.append(summary, refreshButton);
   bodyNode.append(toolbar);
   appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, stateEntry.postDraft);
+
+  if (stateEntry.postResult?.message) {
+    const result = document.createElement("p");
+    result.className = "helper-copy module-copy work-order-document-work-equipment-message is-success";
+    result.textContent = [
+      stateEntry.postResult.message,
+      stateEntry.postResult.recordNumber ? `Broj: ${stateEntry.postResult.recordNumber}` : "",
+      stateEntry.postResult.isznrId ? `ID: ${stateEntry.postResult.isznrId}` : "",
+    ].filter(Boolean).join(" · ");
+    bodyNode.append(result);
+  }
 
   if (stateEntry.error) {
     const error = document.createElement("p");
@@ -113428,10 +113504,58 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     return;
   }
 
+  const selectedIds = new Set((Array.isArray(stateEntry.selectedItemIds) ? stateEntry.selectedItemIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean));
+  const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft);
+  const selectionBar = document.createElement("div");
+  selectionBar.className = "work-order-document-work-equipment-selection";
+  const selectionCopy = document.createElement("span");
+  selectionCopy.textContent = selectedIds.size > 0
+    ? `${selectedIds.size} odabrano za IS ZNR POST`
+    : "Odaberi opremu koju šalješ u IS ZNR.";
+  const selectVisibleButton = document.createElement("button");
+  selectVisibleButton.type = "button";
+  selectVisibleButton.className = "ghost-button";
+  selectVisibleButton.textContent = "Odaberi prikazane";
+  selectVisibleButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const next = new Set(selectedIds);
+    filteredItems.forEach((item) => {
+      const itemId = String(item?.id || "").trim();
+      if (itemId) next.add(itemId);
+    });
+    stateEntry.selectedItemIds = [...next];
+    renderWorkOrderDocumentWizard();
+  });
+  const clearSelectionButton = document.createElement("button");
+  clearSelectionButton.type = "button";
+  clearSelectionButton.className = "ghost-button";
+  clearSelectionButton.textContent = "Poništi";
+  clearSelectionButton.disabled = selectedIds.size === 0 || stateEntry.submitting;
+  clearSelectionButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    stateEntry.selectedItemIds = [];
+    renderWorkOrderDocumentWizard();
+  });
+  const submitButton = document.createElement("button");
+  submitButton.type = "button";
+  submitButton.className = "primary-action-button";
+  submitButton.textContent = stateEntry.submitting ? "Šaljem..." : "Pošalji u IS ZNR";
+  submitButton.disabled = stateEntry.submitting || selectedIds.size === 0 || blockingLabels.length > 0;
+  submitButton.title = blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "";
+  submitButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void submitWorkOrderDocumentIsznrWorkEquipment(workOrder);
+  });
+  selectionBar.append(selectionCopy, selectVisibleButton, clearSelectionButton, submitButton);
+  bodyNode.append(selectionBar);
+
   const list = document.createElement("div");
   list.className = "work-order-document-work-equipment-list";
   filteredItems.slice(0, 24).forEach((item) => {
     const equipment = item.equipment || {};
+    const itemId = String(item?.id || "").trim();
     const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
     const card = document.createElement("article");
     card.className = [
@@ -113439,7 +113563,28 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
       kind.isOverdue || kind.isUnsatisfactory ? "is-alert" : "",
       kind.isUpcoming ? "is-upcoming" : "",
       kind.isSatisfactory ? "is-ok" : "",
+      selectedIds.has(itemId) ? "is-selected" : "",
     ].filter(Boolean).join(" ");
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selectedIds.has(itemId);
+    checkbox.disabled = !itemId || stateEntry.submitting;
+    checkbox.setAttribute("aria-label", "Odaberi radnu opremu za IS ZNR POST");
+    checkbox.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    checkbox.addEventListener("change", (event) => {
+      event.stopPropagation();
+      const next = new Set(selectedIds);
+      if (checkbox.checked) {
+        next.add(itemId);
+      } else {
+        next.delete(itemId);
+      }
+      stateEntry.selectedItemIds = [...next];
+      renderWorkOrderDocumentWizard();
+    });
 
     const title = document.createElement("strong");
     title.textContent = item.equipmentType || equipment.name || item.recordNumber || "Radna oprema";
@@ -113454,7 +113599,18 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     ].filter(Boolean).join(" · ") || "IS ZNR RO zapis";
 
     const badge = createBadge(getWorkOrderDocumentWorkEquipmentGrade(item) || "IS ZNR", "document-template-meta-badge");
-    card.append(title, meta, badge);
+    card.addEventListener("click", () => {
+      if (!itemId || stateEntry.submitting) return;
+      const next = new Set(selectedIds);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      stateEntry.selectedItemIds = [...next];
+      renderWorkOrderDocumentWizard();
+    });
+    card.append(checkbox, title, meta, badge);
     list.append(card);
   });
   bodyNode.append(list);

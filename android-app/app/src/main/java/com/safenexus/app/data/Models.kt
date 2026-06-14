@@ -227,6 +227,14 @@ data class WorkOrderDocumentationContext(
     val signaturePersonOptions: List<WorkOrderDocumentationSignatureAreaOptions> = emptyList(),
 )
 
+data class IsznrWorkEquipmentSubmitResult(
+    val message: String = "",
+    val isznrId: String = "",
+    val recordNumber: String = "",
+    val equipmentCount: Int = 0,
+    val submittedAt: String = "",
+)
+
 data class WorkOrderDocumentationDefaults(
     val inspectionDate: String = "",
     val issuedDate: String = "",

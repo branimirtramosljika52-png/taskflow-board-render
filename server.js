@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.102.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.103.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -742,6 +742,10 @@ const ISZNR_PERSON_FETCH_TIMEOUT_MS = Math.max(
 const ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS = Math.max(
   5000,
   Number(process.env.ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS || 14000) || 14000,
+);
+const ISZNR_WORK_EQUIPMENT_POST_TIMEOUT_MS = Math.max(
+  5000,
+  Number(process.env.ISZNR_WORK_EQUIPMENT_POST_TIMEOUT_MS || 30000) || 30000,
 );
 const ISZNR_MOBILE_INSTRUMENT_MAX_PAGES = Math.max(
   1,
@@ -1559,13 +1563,21 @@ function summarizeNetworkError(error = {}) {
 }
 
 function requestTextWithHttpsIpv4(requestUrl, {
+  method = "GET",
   headers = {},
+  body = null,
   timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
 } = {}) {
   return new Promise((resolveRequest, rejectRequest) => {
+    const bodyText = body === null || body === undefined ? null : String(body);
     const requestOptions = {
-      method: "GET",
-      headers,
+      method: String(method || "GET").toUpperCase(),
+      headers: bodyText
+        ? {
+          ...headers,
+          "content-length": Buffer.byteLength(bodyText),
+        }
+        : headers,
       timeout: timeoutMs,
       lookup(hostname, options, callback) {
         dnsLookup(hostname, { ...options, family: 4 }, callback);
@@ -1591,25 +1603,31 @@ function requestTextWithHttpsIpv4(requestUrl, {
       clientRequest.destroy(timeoutError);
     });
     clientRequest.on("error", rejectRequest);
+    if (bodyText) {
+      clientRequest.write(bodyText);
+    }
     clientRequest.end();
   });
 }
 
 async function requestIsznrText(requestUrl, {
+  method = "GET",
   headers = {},
+  body = null,
   timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
   preferIpv4 = false,
 } = {}) {
   if (preferIpv4 && requestUrl?.protocol === "https:") {
-    return requestTextWithHttpsIpv4(requestUrl, { headers, timeoutMs });
+    return requestTextWithHttpsIpv4(requestUrl, { method, headers, body, timeoutMs });
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const result = await fetch(requestUrl, {
-      method: "GET",
+      method: String(method || "GET").toUpperCase(),
       headers,
+      body: body === null || body === undefined ? undefined : String(body),
       signal: controller.signal,
     });
     const text = await result.text().catch(() => "");
@@ -1622,7 +1640,7 @@ async function requestIsznrText(requestUrl, {
     };
   } catch (fetchError) {
     try {
-      return await requestTextWithHttpsIpv4(requestUrl, { headers, timeoutMs });
+      return await requestTextWithHttpsIpv4(requestUrl, { method, headers, body, timeoutMs });
     } catch (fallbackError) {
       console.warn("[isznr] request failed", {
         path: requestUrl.pathname,
@@ -2178,6 +2196,90 @@ async function fetchIsznrJsonResource({
   };
 }
 
+function getIsznrApiErrorMessage(payload = null, responseText = "") {
+  if (payload && typeof payload === "object") {
+    const direct = normalizeInputValue(
+      payload["hydra:description"]
+      || payload.detail
+      || payload.message
+      || payload.error
+      || payload.title,
+    );
+    const violations = Array.isArray(payload.violations)
+      ? payload.violations
+        .map((item) => [item.propertyPath, item.message].map(normalizeInputValue).filter(Boolean).join(": "))
+        .filter(Boolean)
+      : [];
+    return [direct, violations.slice(0, 4).join("; ")].filter(Boolean).join(" - ");
+  }
+  return normalizeInputValue(responseText).slice(0, 500);
+}
+
+async function mutateIsznrJsonResource({
+  baseUrl = "",
+  username = "",
+  password = "",
+  resourcePath = "",
+  method = "POST",
+  payload = {},
+  timeoutMs = ISZNR_WORK_EQUIPMENT_POST_TIMEOUT_MS,
+} = {}) {
+  const normalizedBaseUrl = normalizeIsznrApiBaseUrl(baseUrl);
+  const normalizedUsername = normalizeIsznrApiUsername(username);
+  const safePassword = String(password ?? "");
+
+  if (!/^\d{11}$/.test(normalizedUsername)) {
+    throw createRequestError(400, "OIB korisnika za ISZNR mora imati 11 znamenki.");
+  }
+  if (!safePassword) {
+    throw createRequestError(400, "ISZNR lozinka nije spremljena. Spremi ju u Settings prije slanja.");
+  }
+
+  const requestUrl = buildIsznrResourceUrl(normalizedBaseUrl, resourcePath);
+  const body = JSON.stringify(payload ?? {});
+  let result;
+  try {
+    result = await requestIsznrText(requestUrl, {
+      method,
+      body,
+      headers: {
+        ...createIsznrRequestHeaders(normalizedUsername, safePassword),
+        "content-type": "application/ld+json; charset=utf-8",
+        "user-agent": "SafeNexus/1.0",
+      },
+      preferIpv4: true,
+      timeoutMs,
+    });
+  } catch (error) {
+    if (isNetworkTimeoutError(error)) {
+      throw createRequestError(504, "ISZNR API se nije javio na vrijeme kod slanja.");
+    }
+    throw createRequestError(502, "ISZNR API nije dostupan s poslužitelja kod slanja.");
+  }
+
+  const responseText = result.text || "";
+  const responsePayload = parseIsznrJsonPayload(responseText);
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
+      throw createRequestError(400, "ISZNR autentikacija nije uspjela. Provjeri OIB korisnika i lozinku.");
+    }
+    const apiMessage = getIsznrApiErrorMessage(responsePayload, responseText);
+    throw createRequestError(
+      result.status || 502,
+      apiMessage ? `ISZNR API je odbio slanje (${result.status}): ${apiMessage}` : `ISZNR API je odbio slanje (${result.status || "nepoznato"}).`,
+    );
+  }
+
+  return {
+    ok: true,
+    status: result.status,
+    path: getIsznrDisplayPath(requestUrl),
+    payload: responsePayload,
+    responseText,
+    submittedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeIsznrRelatedRecord(source = {}) {
   if (!source || typeof source !== "object") {
     return { id: "", name: "", oib: "" };
@@ -2619,6 +2721,7 @@ async function fetchIsznrWorkEquipmentForWorkOrder({
   scopedSnapshot = {},
   includeRegisters = false,
   maxRecords = 80,
+  postDraftSelection = {},
 } = {}) {
   void user;
   const companyOib = getWorkOrderCompanyOib(workOrder, scopedSnapshot);
@@ -2653,6 +2756,19 @@ async function fetchIsznrWorkEquipmentForWorkOrder({
     maxRecords,
   });
   const mobileRecords = result.items.map(buildMobileIsznrWorkEquipmentRecord);
+  const latestRecord = getLatestIsznrWorkEquipmentRecord(result.items);
+  const needsReferenceFallback = !latestRecord.company?.id || !latestRecord.authorizedCompany?.id;
+  const activeOrganization = (scopedSnapshot.organizations ?? [])
+    .find((item) => String(item?.id || "") === String(activeOrganizationId));
+  const referenceIris = needsReferenceFallback
+    ? await resolveIsznrWorkEquipmentReferenceIris({
+      baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+      username: storedSettings?.username || "",
+      password: storedSettings?.passwordSecret || "",
+      companyOib,
+      organizationOib: activeOrganization?.oib || activeOrganization?.OIB || storedSettings?.username || "",
+    })
+    : {};
   const postDraft = buildIsznrWorkEquipmentPostDraft({
     workOrder,
     scopedSnapshot,
@@ -2660,6 +2776,9 @@ async function fetchIsznrWorkEquipmentForWorkOrder({
       ...result,
       companyOib,
     },
+    selectedItemIds: postDraftSelection.selectedItemIds || postDraftSelection.selectedEquipmentIds || [],
+    selectAll: Boolean(postDraftSelection.selectAll),
+    referenceIris,
   });
   return {
     ...result,
@@ -2670,6 +2789,98 @@ async function fetchIsznrWorkEquipmentForWorkOrder({
     message: result.count > 0
       ? ""
       : "IS ZNR nije vratio radnu opremu za OIB tvrtke na ovom RN-u.",
+  };
+}
+
+function buildIsznrRoRecordSubmitResult(postResult = {}, draft = {}) {
+  const normalized = normalizeIsznrRoRecord(postResult.payload || {});
+  const id = normalizeInputValue(normalized?.id || extractIsznrId(postResult.payload || {}));
+  const recordNumber = normalizeInputValue(normalized?.recordNumber || postResult.payload?.recordNumber);
+  return {
+    ok: true,
+    status: postResult.status,
+    submittedAt: postResult.submittedAt,
+    path: postResult.path,
+    record: normalized,
+    isznrId: id,
+    recordNumber,
+    equipmentCount: Array.isArray(draft.payload?.equipments) ? draft.payload.equipments.length : 0,
+    message: recordNumber
+      ? `RO zapisnik ${recordNumber} je poslan u IS ZNR.`
+      : id
+        ? `RO zapisnik je poslan u IS ZNR (ID ${id}).`
+        : "RO zapisnik je poslan u IS ZNR.",
+  };
+}
+
+async function submitIsznrWorkEquipmentForWorkOrder({
+  user = null,
+  request = null,
+  workOrder = {},
+  scopedSnapshot = {},
+  selectedItemIds = [],
+  selectAll = false,
+} = {}) {
+  const result = await fetchIsznrWorkEquipmentForWorkOrder({
+    user,
+    request,
+    workOrder,
+    scopedSnapshot,
+    includeRegisters: true,
+    maxRecords: 120,
+    postDraftSelection: {
+      selectedItemIds,
+      selectAll,
+    },
+  });
+  const draft = result.postDraft;
+  if (!draft?.ready) {
+    throw createRequestError(
+      400,
+      `IS ZNR RO zapisnik nije spreman za slanje. Fali: ${(draft?.missingLabels || []).join(", ") || "obavezni podaci"}.`,
+    );
+  }
+
+  const activeOrganizationId = scopedSnapshot.activeOrganizationId || resolveLightweightRequestedOrganizationId(user, request);
+  const storedSettings = await domainRepository.getIsznrApiSettings(activeOrganizationId);
+  const postResult = await mutateIsznrJsonResource({
+    baseUrl: storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    resourcePath: "ro_records",
+    method: "POST",
+    payload: draft.payload,
+  });
+  const submitResult = buildIsznrRoRecordSubmitResult(postResult, draft);
+
+  await domainRepository.addWorkOrderActivityComment(
+    workOrder.id,
+    {
+      message: [
+        submitResult.recordNumber
+          ? `IS ZNR RO zapisnik poslan: ${submitResult.recordNumber}.`
+          : `IS ZNR RO zapisnik poslan${submitResult.isznrId ? `, ID ${submitResult.isznrId}` : ""}.`,
+        `Oprema: ${submitResult.equipmentCount}.`,
+        submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
+      ].filter(Boolean).join(" "),
+    },
+    user,
+  ).catch((error) => {
+    console.warn("[isznr] work order activity comment failed", {
+      workOrderId: workOrder.id,
+      message: error?.message || "",
+    });
+  });
+
+  return {
+    ...submitResult,
+    postDraft: {
+      ...draft,
+      submitted: true,
+      submittedAt: submitResult.submittedAt,
+      submittedRecordId: submitResult.isznrId,
+      submittedRecordNumber: submitResult.recordNumber,
+    },
   };
 }
 
@@ -2762,17 +2973,70 @@ function getIsznrMeasurementEquipmentIris(scopedSnapshot = {}) {
   return buildIsznrApiIriList(
     "instruments",
     items
+      .filter((item) => {
+        const note = normalizeLookupKey(item?.note);
+        return !note.includes("isznr rashodovano") && !note.includes("is znr rashodovano");
+      })
       .map((item) => getMeasurementEquipmentIsznrInstrumentId(item))
       .filter(Boolean),
   );
 }
 
+function buildIsznrWorkEquipmentItemSelectionKeys(item = {}) {
+  const equipment = item?.equipment || {};
+  return [
+    item?.id,
+    item?.isznrId,
+    item?.recordNumber,
+    equipment.id,
+    equipment.serialNumber,
+    equipment.inventoryNumber,
+    item?.equipmentType,
+  ]
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean);
+}
+
+function matchesIsznrWorkEquipmentSelection(item = {}, selectedKeys = new Set()) {
+  if (!selectedKeys || selectedKeys.size === 0) {
+    return false;
+  }
+  return buildIsznrWorkEquipmentItemSelectionKeys(item)
+    .some((key) => selectedKeys.has(key) || selectedKeys.has(key.toLowerCase()));
+}
+
+function normalizeIsznrWorkEquipmentSelection(values = []) {
+  return new Set((Array.isArray(values) ? values : [values])
+    .flatMap((value) => String(value ?? "").split("|"))
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean)
+    .flatMap((value) => [value, value.toLowerCase()]));
+}
+
+function normalizeIsznrRoEquipmentPayload(equipment = {}) {
+  return {
+    serialNumber: normalizeInputValue(equipment.serialNumber),
+    name: normalizeInputValue(equipment.name),
+    manufacturer: normalizeInputValue(equipment.manufacturer),
+    model: normalizeInputValue(equipment.model),
+    inventoryNumber: normalizeInputValue(equipment.inventoryNumber),
+    note: normalizeInputValue(equipment.note),
+  };
+}
+
+function isIsznrRoEquipmentPayloadReady(equipment = {}) {
+  return Boolean(equipment.serialNumber && equipment.name && equipment.manufacturer && equipment.model);
+}
+
 function buildIsznrWorkEquipmentCandidates(items = []) {
   const seen = new Set();
   return (Array.isArray(items) ? items : [])
-    .map((item) => item?.equipment)
-    .filter((equipment) => equipment && (equipment.name || equipment.serialNumber || equipment.inventoryNumber))
-    .filter((equipment) => {
+    .map((item) => ({
+      item,
+      equipment: item?.equipment,
+    }))
+    .filter(({ equipment }) => equipment && (equipment.name || equipment.serialNumber || equipment.inventoryNumber))
+    .filter(({ equipment }) => {
       const key = [
         normalizeInputValue(equipment.serialNumber),
         normalizeInputValue(equipment.inventoryNumber),
@@ -2786,13 +3050,13 @@ function buildIsznrWorkEquipmentCandidates(items = []) {
       seen.add(key);
       return true;
     })
-    .map((equipment) => ({
-      serialNumber: normalizeInputValue(equipment.serialNumber),
-      name: normalizeInputValue(equipment.name),
-      manufacturer: normalizeInputValue(equipment.manufacturer),
-      model: normalizeInputValue(equipment.model),
-      inventoryNumber: normalizeInputValue(equipment.inventoryNumber),
-      note: normalizeInputValue(equipment.note),
+    .map(({ item, equipment }) => ({
+      key: buildIsznrWorkEquipmentItemSelectionKeys(item)[0] || "",
+      itemId: normalizeInputValue(item?.id),
+      sourceRecordId: normalizeInputValue(item?.isznrId || item?.sourceRecordId),
+      sourceRecordNumber: normalizeInputValue(item?.recordNumber),
+      label: normalizeInputValue(item?.equipmentType || equipment.name),
+      ...normalizeIsznrRoEquipmentPayload(equipment),
     }));
 }
 
@@ -2803,6 +3067,70 @@ function getLatestIsznrWorkEquipmentRecord(items = []) {
       const rightDate = normalizeInputValue(right.endDate || right.startDate);
       return rightDate.localeCompare(leftDate);
     })[0] || {};
+}
+
+async function resolveIsznrCollectionIri({
+  baseUrl = "",
+  username = "",
+  password = "",
+  resourcePath = "",
+  searchParams = {},
+  match = () => true,
+} = {}) {
+  const result = await fetchIsznrPagedCollection({
+    baseUrl,
+    username,
+    password,
+    resourcePath,
+    searchParams,
+    maxPages: 2,
+    maxRecords: 40,
+    timeoutMs: ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+  });
+  const item = (Array.isArray(result.items) ? result.items : []).find((entry) => {
+    try {
+      return match(entry);
+    } catch {
+      return false;
+    }
+  }) || result.items?.[0];
+  const id = extractIsznrId(item || {});
+  return id ? buildIsznrApiIri(resourcePath, id) : "";
+}
+
+async function resolveIsznrWorkEquipmentReferenceIris({
+  baseUrl = "",
+  username = "",
+  password = "",
+  companyOib = "",
+  organizationOib = "",
+} = {}) {
+  const normalizedCompanyOib = normalizeIsznrOib(companyOib);
+  const normalizedOrganizationOib = normalizeIsznrOib(organizationOib || username);
+  const [companyIri, authorizedCompanyIri] = await Promise.all([
+    normalizedCompanyOib
+      ? resolveIsznrCollectionIri({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "companies",
+        searchParams: { oib: normalizedCompanyOib },
+        match: (item) => normalizeIsznrOib(item?.oib || item?.OIB) === normalizedCompanyOib,
+      }).catch(() => "")
+      : "",
+    resolveIsznrCollectionIri({
+      baseUrl,
+      username,
+      password,
+      resourcePath: "authorized_companies",
+      match: (item) => !normalizedOrganizationOib
+        || normalizeIsznrOib(item?.oib || item?.OIB) === normalizedOrganizationOib,
+    }).catch(() => ""),
+  ]);
+  return {
+    companyIri,
+    authorizedCompanyIri,
+  };
 }
 
 function addIsznrDraftChecklistItem(list, key, label, ready, detail = "", value = "") {
@@ -2819,10 +3147,17 @@ function buildIsznrWorkEquipmentPostDraft({
   workOrder = {},
   scopedSnapshot = {},
   isznrResult = {},
+  selectedItemIds = [],
+  selectAll = false,
+  referenceIris = {},
 } = {}) {
   const items = Array.isArray(isznrResult.items) ? isznrResult.items : [];
   const registers = Array.isArray(isznrResult.registers) ? isznrResult.registers : [];
   const latestRecord = getLatestIsznrWorkEquipmentRecord(items);
+  const selectedKeys = normalizeIsznrWorkEquipmentSelection(selectedItemIds);
+  const selectedItems = selectedKeys.size > 0
+    ? items.filter((item) => matchesIsznrWorkEquipmentSelection(item, selectedKeys))
+    : (selectAll ? items : []);
   const todayIso = new Date().toISOString().slice(0, 10);
   const startDate = normalizeDateOnlyValue(workOrder.executionDate || workOrder.openedDate || workOrder.createdAt) || todayIso;
   const endDate = normalizeDateOnlyValue(workOrder.completionDate || workOrder.completedAt) || todayIso;
@@ -2830,8 +3165,10 @@ function buildIsznrWorkEquipmentPostDraft({
     || normalizeDateOnlyValue(latestRecord.deadlineForNextExamination)
     || addMonthsToMobileDate(endDate, "36");
   const companyOib = getWorkOrderCompanyOib(workOrder, scopedSnapshot);
-  const companyIri = buildIsznrApiIri("companies", latestRecord.company?.id);
-  const authorizedCompanyIri = buildIsznrApiIri("authorized_companies", latestRecord.authorizedCompany?.id);
+  const companyIri = buildIsznrApiIri("companies", latestRecord.company?.id)
+    || normalizeInputValue(referenceIris.companyIri);
+  const authorizedCompanyIri = buildIsznrApiIri("authorized_companies", latestRecord.authorizedCompany?.id)
+    || normalizeInputValue(referenceIris.authorizedCompanyIri);
   const roObligationRegister = buildIsznrApiIriList("ro_obligation_registers", latestRecord.roObligationRegister)
     .concat(buildDefaultIsznrRegisterIris(registers, "ro_obligation_registers", 1))
     .filter((value, index, array) => value && array.indexOf(value) === index);
@@ -2842,7 +3179,22 @@ function buildIsznrWorkEquipmentPostDraft({
   const signedBy = getIsznrPeopleIrisForWorkOrder(scopedSnapshot, workOrder, "holder");
   const instruments = getIsznrMeasurementEquipmentIris(scopedSnapshot);
   const equipmentCandidates = buildIsznrWorkEquipmentCandidates(items);
+  const selectedEquipmentCandidates = buildIsznrWorkEquipmentCandidates(selectedItems);
+  const selectedEquipmentPayload = selectedEquipmentCandidates
+    .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
+    .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber);
   const location = normalizeInputValue(latestRecord.location) || resolveIsznrWorkOrderLocation(workOrder);
+  const equipmentSummary = selectedEquipmentPayload
+    .map((equipment) => [
+      equipment.name,
+      equipment.manufacturer,
+      equipment.model,
+      equipment.serialNumber ? `ser. ${equipment.serialNumber}` : "",
+      equipment.inventoryNumber ? `inv. ${equipment.inventoryNumber}` : "",
+    ].filter(Boolean).join(" - "))
+    .filter(Boolean)
+    .join("; ");
+  const defaultTechnicalData = equipmentSummary || "Tehnički podaci radne opreme nisu posebno navedeni.";
 
   const payload = {
     internalId: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
@@ -2852,15 +3204,15 @@ function buildIsznrWorkEquipmentPostDraft({
     roObligationRegister,
     roHealthRequirementRegister,
     roHealthRequirementOther: normalizeInputValue(latestRecord.roHealthRequirementOther),
-    equipments: [],
-    equipmentsTechnicalData: normalizeInputValue(latestRecord.equipmentsTechnicalData),
-    equipmentsPurposeDescription: normalizeInputValue(latestRecord.equipmentsPurposeDescription),
-    equipmentsWorkspacePosition: normalizeInputValue(latestRecord.equipmentsWorkspacePosition),
-    workingSubstancesAndRawMaterials: normalizeInputValue(latestRecord.workingSubstancesAndRawMaterials),
+    equipments: selectedEquipmentPayload,
+    equipmentsTechnicalData: normalizeInputValue(latestRecord.equipmentsTechnicalData) || defaultTechnicalData,
+    equipmentsPurposeDescription: normalizeInputValue(latestRecord.equipmentsPurposeDescription) || "Radna oprema koristi se prema svojoj namjeni i uputama proizvođača.",
+    equipmentsWorkspacePosition: normalizeInputValue(latestRecord.equipmentsWorkspacePosition) || location || "Na mjestu rada kod poslodavca.",
+    workingSubstancesAndRawMaterials: normalizeInputValue(latestRecord.workingSubstancesAndRawMaterials) || "Nisu posebno navedene radne tvari i sirovine.",
     startDate,
     endDate,
-    useAndMaintenance: normalizeInputValue(latestRecord.useAndMaintenance),
-    methodsProceduresAndNorms: normalizeInputValue(latestRecord.methodsProceduresAndNorms),
+    useAndMaintenance: normalizeInputValue(latestRecord.useAndMaintenance) || "Uporaba i održavanje provjeravaju se prema uputama proizvođača i pravilima sigurnog rada.",
+    methodsProceduresAndNorms: normalizeInputValue(latestRecord.methodsProceduresAndNorms) || "Pregled i ispitivanje provedeni su prema važećim propisima, normama i pravilima struke.",
     instruments,
     experts,
     deadlineForNextExamination: deadline,
@@ -2876,16 +3228,16 @@ function buildIsznrWorkEquipmentPostDraft({
   addIsznrDraftChecklistItem(checklist, "company", "Poslodavac u IS ZNR-u", payload.company, payload.company ? "IRI je preuzet iz prethodnog RO zapisa za isti OIB." : `Nedostaje IS ZNR company IRI${companyOib ? ` za OIB ${companyOib}` : ""}.`, payload.company);
   addIsznrDraftChecklistItem(checklist, "location", "Lokacija ispitivanja", payload.location, payload.location ? "Lokacija je popunjena." : "Upiši lokaciju ispitivanja.", payload.location);
   addIsznrDraftChecklistItem(checklist, "registers", "RO propisi i zahtjevi", payload.roObligationRegister.length > 0 && payload.roHealthRequirementRegister.length > 0, "Potrebni su RO obligation i health requirement šifarnici.", `${payload.roObligationRegister.length}/${payload.roHealthRequirementRegister.length}`);
-  addIsznrDraftChecklistItem(checklist, "equipments", "Odabrana radna oprema", payload.equipments.length > 0, equipmentCandidates.length > 0 ? `${equipmentCandidates.length} kandidata pronađeno; treba odabrati što se šalje.` : "Nema opreme kandidata za slanje.", String(equipmentCandidates.length));
+  addIsznrDraftChecklistItem(checklist, "equipments", "Odabrana radna oprema", payload.equipments.length > 0 && payload.equipments.every(isIsznrRoEquipmentPayloadReady), equipmentCandidates.length > 0 ? `${payload.equipments.length}/${equipmentCandidates.length} odabrano za slanje.` : "Nema opreme kandidata za slanje.", String(payload.equipments.length));
   addIsznrDraftChecklistItem(checklist, "descriptions", "Opisna RO polja", Boolean(payload.equipmentsTechnicalData && payload.equipmentsPurposeDescription && payload.equipmentsWorkspacePosition && payload.workingSubstancesAndRawMaterials && payload.useAndMaintenance && payload.methodsProceduresAndNorms), "Tehnički podaci, namjena, položaj, tvari, upute i metode moraju biti popunjeni.", "");
   addIsznrDraftChecklistItem(checklist, "dates", "Datumi i rok", Boolean(payload.startDate && payload.endDate && payload.deadlineForNextExamination), "Rok je po defaultu 36 mjeseci od završetka ako RN nema rok.", `${payload.startDate} - ${payload.endDate} / ${payload.deadlineForNextExamination}`);
   addIsznrDraftChecklistItem(checklist, "experts", "Stručnjaci ZNR", payload.experts.length > 0, "Iz People modula se koriste osobe s IS ZNR expert oznakom.", String(payload.experts.length));
-  addIsznrDraftChecklistItem(checklist, "signedBy", "Potpisnik zaključne ocjene", payload.signedBy.length > 0, "Iz People modula se koristi nositelj ovlaštenja.", String(payload.signedBy.length));
+  addIsznrDraftChecklistItem(checklist, "signedBy", "Potpisnici zaključne ocjene", payload.signedBy.length >= 2, "IS ZNR za RO traži najmanje 2 nositelja ovlaštenja iz People modula.", String(payload.signedBy.length));
 
   const missing = checklist.filter((item) => !item.ready);
   return {
-    mode: "dry-run",
-    writeEnabled: false,
+    mode: "post-ready",
+    writeEnabled: true,
     ready: missing.length === 0,
     readyCount: checklist.length - missing.length,
     missingCount: missing.length,
@@ -2895,6 +3247,8 @@ function buildIsznrWorkEquipmentPostDraft({
     sourceRecordId: normalizeInputValue(latestRecord.isznrId || latestRecord.id),
     sourceRecordNumber: normalizeInputValue(latestRecord.recordNumber),
     equipmentCandidates,
+    selectedItemIds: selectedEquipmentCandidates.map((item) => item.key).filter(Boolean),
+    selectedEquipmentCandidates,
     payload,
     followUp: {
       roRecord: "POST /ro_records",
@@ -20104,6 +20458,11 @@ async function handleApiRequest(request, response, url) {
           postDraftReadyCount: String(isznrWorkEquipment.postDraft?.readyCount ?? 0),
           postDraftMissingCount: String(isznrWorkEquipment.postDraft?.missingCount ?? 0),
           postDraftMissingLabels: (isznrWorkEquipment.postDraft?.missingLabels || []).join(", "),
+          postDraftMissingKeys: (isznrWorkEquipment.postDraft?.checklist || [])
+            .filter((item) => !item.ready)
+            .map((item) => item.key)
+            .filter(Boolean)
+            .join(", "),
         };
       } catch (error) {
         contextSnapshot.isznrWorkEquipmentOptions = [];
@@ -20149,6 +20508,31 @@ async function handleApiRequest(request, response, url) {
         postDraft: result.postDraft,
         records: limitMobileRecords(result.mobileRecords, ISZNR_MOBILE_WORK_EQUIPMENT_MAX_RECORDS),
       });
+      return true;
+    }
+
+    if (mobileWorkOrderIsznrWorkEquipmentMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo poslati RO zapisnik u IS ZNR.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderIsznrWorkEquipmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await submitIsznrWorkEquipmentForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        selectedItemIds: body?.selectedItemIds || body?.selectedEquipmentIds || [],
+        selectAll: body?.selectAll === true,
+      });
+      sendJson(response, 201, result);
       return true;
     }
 
@@ -23618,6 +24002,31 @@ async function handleApiRequest(request, response, url) {
         mobileRecords: result.mobileRecords,
         postDraft: result.postDraft,
       });
+      return true;
+    }
+
+    if (workOrderIsznrWorkEquipmentMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo poslati RO zapisnik u IS ZNR.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        workOrderIsznrWorkEquipmentMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const result = await submitIsznrWorkEquipmentForWorkOrder({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        selectedItemIds: body?.selectedItemIds || body?.selectedEquipmentIds || [],
+        selectAll: body?.selectAll === true,
+      });
+      sendJson(response, 201, result);
       return true;
     }
 

@@ -531,6 +531,32 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun submitWorkOrderIsznrWorkEquipment(
+        workOrderId: String,
+        selectedItemIds: List<String>,
+    ): Result<IsznrWorkEquipmentSubmitResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("selectedItemIds", JSONArray(selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }))
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/mobile/work-orders/${workOrderId.pathSegment()}/isznr-work-equipment",
+                    method = "POST",
+                    body = payload,
+                    readTimeoutMs = 90_000,
+                ),
+            )
+            IsznrWorkEquipmentSubmitResult(
+                message = json.firstClean("message").ifBlank { "RO zapisnik je poslan u IS ZNR." },
+                isznrId = json.firstClean("isznrId"),
+                recordNumber = json.firstClean("recordNumber"),
+                equipmentCount = json.optInt("equipmentCount", selectedItemIds.size),
+                submittedAt = json.firstClean("submittedAt"),
+            )
+        }
+    }
+
     suspend fun prepareWorkOrderDocumentationAi(
         workOrderId: String,
         workOrderNumber: String,

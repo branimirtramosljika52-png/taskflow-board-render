@@ -980,6 +980,44 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun submitWorkOrderIsznrWorkEquipment(
+        workOrder: WorkOrder,
+        selectedItemIds: List<String>,
+        objectId: String = "",
+    ) {
+        val workOrderId = workOrder.id.trim()
+        val normalizedSelection = selectedItemIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (workOrderId.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za IS ZNR slanje.")
+            return
+        }
+        if (normalizedSelection.isEmpty()) {
+            state = state.copy(error = "Odaberi barem jednu radnu opremu za slanje u IS ZNR.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "Šaljem RO zapisnik u IS ZNR...")
+        viewModelScope.launch {
+            api.submitWorkOrderIsznrWorkEquipment(workOrderId, normalizedSelection)
+                .onSuccess { result ->
+                    state = state.copy(
+                        isLoading = false,
+                        notice = result.message.ifBlank { "RO zapisnik je poslan u IS ZNR." },
+                        error = "",
+                    )
+                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                    state = state.copy(notice = result.message.ifBlank { "RO zapisnik je poslan u IS ZNR." })
+                    refreshWorkOrderDocuments()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "IS ZNR POST nije uspio.",
+                        notice = "",
+                    )
+                }
+        }
+    }
+
     fun updateWorkOrderExecutors(workOrder: WorkOrder, executors: List<String>) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za spremanje izvršitelja.")
@@ -1865,6 +1903,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
+            },
+            onSubmitIsznrWorkEquipment = { selectedItemIds ->
+                viewModel.submitWorkOrderIsznrWorkEquipment(workOrder, selectedItemIds, documentationWizardObjectId)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -4264,9 +4305,12 @@ private fun DocumentationWorkEquipmentOptionList(
     emptyText: String,
     statusMessage: String = "",
     postDraftStatus: Map<String, String> = emptyMap(),
+    enabled: Boolean = true,
+    onSubmit: (List<String>) -> Unit = {},
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
+    var selectedItemIds by remember(options) { mutableStateOf(emptySet<String>()) }
     val filteredOptions = remember(options, selectedFilter, today) {
         options
             .filter { option -> option.matchesWorkEquipmentFilter(selectedFilter, today) }
@@ -4285,6 +4329,11 @@ private fun DocumentationWorkEquipmentOptionList(
         .split(",")
         .map { it.trim() }
         .filter { it.isNotBlank() }
+    val postDraftBlockingKeys = postDraftStatus["postDraftMissingKeys"].orEmpty()
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() && it != "equipments" }
+    val canSubmit = enabled && selectedItemIds.isNotEmpty() && postDraftBlockingKeys.isEmpty()
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
@@ -4343,7 +4392,7 @@ private fun DocumentationWorkEquipmentOptionList(
                                 fontWeight = FontWeight.Bold,
                             )
                             Text(
-                                "Dry-run: ništa se ne šalje u IS ZNR.",
+                                "Slanje je omogućeno nakon odabira opreme.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                             )
@@ -4393,16 +4442,74 @@ private fun DocumentationWorkEquipmentOptionList(
             )
             return
         }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+        ) {
+            Column(
+                modifier = Modifier.padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (selectedItemIds.isEmpty()) "Odaberi opremu za IS ZNR POST" else "${selectedItemIds.size} odabrano",
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            selectedItemIds = selectedItemIds + filteredOptions.map { it.id }.filter { it.isNotBlank() }
+                        },
+                        enabled = enabled && filteredOptions.isNotEmpty(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text("Prikazane")
+                    }
+                    OutlinedButton(
+                        onClick = { selectedItemIds = emptySet() },
+                        enabled = enabled && selectedItemIds.isNotEmpty(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text("Poništi")
+                    }
+                }
+                if (postDraftBlockingKeys.isNotEmpty()) {
+                    Text(
+                        "Fali prije slanja: ${postDraftMissingLabels.filterNot { it.equals("Odabrana radna oprema", ignoreCase = true) }.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFB45309),
+                    )
+                }
+                Button(
+                    onClick = { onSubmit(selectedItemIds.toList()) },
+                    enabled = canSubmit,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Pošalji u IS ZNR", fontWeight = FontWeight.Black)
+                }
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             filteredOptions.take(36).forEach { option ->
                 val deadline = option.workEquipmentDeadline()
                 val isOverdue = deadline?.isBefore(today) == true
                 val isUpcoming = deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
                 val grade = option.workEquipmentFinalGradeText()
+                val selected = selectedItemIds.contains(option.id)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     color = when {
+                        selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
                         isOverdue -> Color(0xFFFFE4E6)
                         isUpcoming -> Color(0xFFFFF7ED)
                         grade.contains("ne zadovoljava", ignoreCase = true) -> Color(0xFFFFE4E6)
@@ -4420,6 +4527,7 @@ private fun DocumentationWorkEquipmentOptionList(
                             contentDescription = null,
                             modifier = Modifier.size(20.dp),
                             tint = when {
+                                selected -> MaterialTheme.colorScheme.primary
                                 isOverdue -> Color(0xFFDC2626)
                                 isUpcoming -> Color(0xFFB45309)
                                 else -> MaterialTheme.colorScheme.primary
@@ -4466,6 +4574,17 @@ private fun DocumentationWorkEquipmentOptionList(
                                 }
                             }
                         }
+                        Checkbox(
+                            checked = selected,
+                            onCheckedChange = { checked ->
+                                selectedItemIds = if (checked) {
+                                    selectedItemIds + option.id
+                                } else {
+                                    selectedItemIds - option.id
+                                }
+                            },
+                            enabled = enabled && option.id.isNotBlank(),
+                        )
                     }
                 }
             }
@@ -11663,6 +11782,7 @@ private fun WorkOrderDocumentationWizardDialog(
         (WorkOrderDocumentationAiResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onSubmitIsznrWorkEquipment: (List<String>) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -12414,6 +12534,8 @@ private fun WorkOrderDocumentationWizardDialog(
                             emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
                             statusMessage = workEquipmentStatusMessage,
                             postDraftStatus = context.workEquipmentStatus,
+                            enabled = !formLoading,
+                            onSubmit = onSubmitIsznrWorkEquipment,
                         )
                     }
                 } else if (!summaryFlowSelected && !basicsFlowSelected) {
