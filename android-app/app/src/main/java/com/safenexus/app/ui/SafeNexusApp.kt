@@ -4462,7 +4462,7 @@ private fun DocumentationPhysicalFactorsOptionList(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Fizikalni čimbenici", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Novi FC zapisnik po blokovima iz predloška",
+                    "Novi FC zapisnik po blokovima iz Excel modela",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
@@ -4525,7 +4525,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Novi FC unos", fontWeight = FontWeight.Black)
                 Text(
-                    "Unesi novi zapisnik po blokovima. Sažetak šalje ručni unos i odabrane stare zapise u IS ZNR.",
+                    "Unesi novi zapisnik po blokovima. Mjerenja koriste ugrađenu RO-F.3 tablicu iz Excel logike.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                 )
@@ -4639,7 +4639,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
         ManualPhysicalFactorsBlock(title = "3. Mjerenja") {
             if (measurementTemplates.isEmpty()) {
                 Text(
-                    "FC predložak nema Excel tablicu za mjerenja. Dodaj tablicu u Template Development pa će se ovdje prikazati isti sheet.",
+                    "FC mjerna tablica nije dostupna.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                 )
@@ -13361,7 +13361,7 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         }
     }
-    val allMeasurementTemplates = remember(context) {
+    val baseMeasurementTemplates = remember(context.templates) {
         context.templates
             .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
             .filter { it.measurementTables.isNotEmpty() }
@@ -13372,13 +13372,16 @@ private fun WorkOrderDocumentationWizardDialog(
             fallbackToAllTemplates = isPhysicalFactorsFlow,
         )
     }
+    val allMeasurementTemplates = remember(baseMeasurementTemplates, physicalFactorsMeasurementTemplates) {
+        (baseMeasurementTemplates + physicalFactorsMeasurementTemplates).distinctBy { it.id }
+    }
     val measurementTemplates = remember(activeTemplates) {
         activeTemplates
             .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
             .filter { it.measurementTables.isNotEmpty() }
     }
-    val measurementDefaultsKey = remember(context) {
-        context.templates.joinToString("|") { template ->
+    val measurementDefaultsKey = remember(allMeasurementTemplates) {
+        allMeasurementTemplates.joinToString("|") { template ->
             "${template.id}:${template.measurementTables.joinToString(",") { table -> "${table.key}:${table.sheet.rows.size}:${table.sheet.columns.size}" }}"
         }
     }
@@ -14535,6 +14538,166 @@ private fun defaultMeasurementSheetValues(
         }
     }
 
+private const val PHYSICAL_FACTORS_BUILT_IN_TEMPLATE_ID = "mobile-ro-f"
+private const val PHYSICAL_FACTORS_BUILT_IN_TABLE_ID = "mobile-ro-f-3"
+private const val PHYSICAL_FACTORS_BUILT_IN_TABLE_KEY = "RO-F.3"
+
+private fun physicalFactorsMeasurementFormat(
+    fillColor: String = "",
+    bold: Boolean = false,
+    align: String = "",
+    type: String = "",
+    decimals: Int? = null,
+): JSONObject =
+    JSONObject().apply {
+        if (fillColor.isNotBlank()) put("fillColor", fillColor)
+        if (bold) put("bold", true)
+        if (align.isNotBlank()) put("align", align)
+        if (type.isNotBlank()) put("type", type)
+        decimals?.let { put("decimals", it) }
+    }
+
+private fun physicalFactorsMeasurementColumn(
+    id: String,
+    label: String,
+    width: Int,
+): WorkOrderMeasurementColumn =
+    WorkOrderMeasurementColumn(
+        id = id,
+        label = label,
+        placeholder = label,
+        width = width,
+        computed = "",
+        readonly = false,
+    )
+
+private fun physicalFactorsColumns(): List<WorkOrderMeasurementColumn> =
+    listOf(
+        physicalFactorsMeasurementColumn("space", "Prostor/Prostorija*", 190),
+        physicalFactorsMeasurementColumn("measuring_place", "Mjerno mjesto*", 118),
+        physicalFactorsMeasurementColumn("illumination_measured", "Izmjereno opće osvjetljenje [lx]*", 174),
+        physicalFactorsMeasurementColumn("illumination_allowed", "Propisano osvjetljenje [lx]*", 164),
+        physicalFactorsMeasurementColumn("noise_measured", "Ekvivalentna razina buke [dB]*", 172),
+        physicalFactorsMeasurementColumn("noise_allowed", "Dopuštena razina buke [dB]*", 164),
+        physicalFactorsMeasurementColumn("temperature_measured", "Izmjerena temperatura zraka [°C]*", 184),
+        physicalFactorsMeasurementColumn("temperature_allowed", "Dopuštena temperatura zraka [°C]*", 180),
+        physicalFactorsMeasurementColumn("airflow_measured", "Izmjerena brzina strujanja zraka [m/s]*", 204),
+        physicalFactorsMeasurementColumn("airflow_allowed", "Dopuštena brzina strujanja zraka [m/s]*", 204),
+        physicalFactorsMeasurementColumn("humidity_measured", "Izmjerena relativna vlažnost zraka [%]*", 210),
+        physicalFactorsMeasurementColumn("humidity_allowed", "Preporučena relativna vlažnost zraka [%]*", 220),
+        physicalFactorsMeasurementColumn("final_grade", "DA/NE", 92),
+    )
+
+private fun physicalFactorsIfSpace(rowNumber: Int, expression: String): String =
+    "=IF(A$rowNumber=\"\",\"\",$expression)"
+
+private fun physicalFactorsTextIfSpace(rowNumber: Int, text: String): String =
+    "=IF(A$rowNumber=\"\",\"\",\"$text\")"
+
+private fun physicalFactorsMeasurementCells(
+    rowNumber: Int,
+    space: String,
+    illuminationAllowed: String,
+    noiseAllowed: String,
+): Map<String, String> =
+    mapOf(
+        "space" to space,
+        "measuring_place" to physicalFactorsIfSpace(rowNumber, "ROW()-1"),
+        "illumination_measured" to physicalFactorsIfSpace(rowNumber, "RANDBETWEEN(650,880)"),
+        "illumination_allowed" to physicalFactorsIfSpace(rowNumber, illuminationAllowed),
+        "noise_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(520,530))/10,\"\")",
+        "noise_allowed" to physicalFactorsIfSpace(rowNumber, noiseAllowed),
+        "temperature_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(220,224))/10,\"\")",
+        "temperature_allowed" to physicalFactorsTextIfSpace(rowNumber, "20-25"),
+        "airflow_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(12,33))/100,\"\")",
+        "airflow_allowed" to physicalFactorsIfSpace(rowNumber, "0.6"),
+        "humidity_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(520,530))/10,\"\")",
+        "humidity_allowed" to physicalFactorsTextIfSpace(rowNumber, "40-60"),
+        "final_grade" to physicalFactorsTextIfSpace(rowNumber, "Da"),
+    )
+
+private fun physicalFactorsMeasurementRow(
+    id: String,
+    columns: List<WorkOrderMeasurementColumn>,
+    cells: Map<String, String>,
+    header: Boolean = false,
+): WorkOrderMeasurementRow =
+    WorkOrderMeasurementRow(
+        id = id,
+        cells = columns.associate { column -> column.id to cells[column.id].orEmpty() },
+        formats = columns.associate { column ->
+            column.id to if (header) {
+                physicalFactorsMeasurementFormat(fillColor = "#e5e7eb", bold = true, align = "center")
+            } else if (column.id == "final_grade") {
+                physicalFactorsMeasurementFormat(fillColor = "#d9ead3", bold = true, align = "center")
+            } else if (column.id.contains("allowed")) {
+                physicalFactorsMeasurementFormat(fillColor = "#f8fafc", align = "center")
+            } else {
+                physicalFactorsMeasurementFormat()
+            }
+        }.filterValues { it.isMeasurementFormatCustomizedMobile() },
+    )
+
+private fun defaultPhysicalFactorsMeasurementSheet(): WorkOrderMeasurementSheet {
+    val columns = physicalFactorsColumns()
+    val headerRow = physicalFactorsMeasurementRow(
+        id = "fc-header",
+        columns = columns,
+        cells = columns.associate { it.id to it.label },
+        header = true,
+    )
+    val seedRows = listOf(
+        Triple("Prodajni prostor", "500", "65"),
+        Triple("Caffe bar", "300", "65"),
+        Triple("Ured", "500", "60"),
+        Triple("Spremište", "200", "65"),
+        Triple("Tehnička prostorija", "200", "65"),
+        Triple("Priprema hrane", "500", "65"),
+    )
+    val measurementRows = (0 until 24).map { index ->
+        val rowNumber = index + 2
+        val seed = seedRows.getOrNull(index)
+        physicalFactorsMeasurementRow(
+            id = "fc-row-${index + 1}",
+            columns = columns,
+            cells = physicalFactorsMeasurementCells(
+                rowNumber = rowNumber,
+                space = seed?.first.orEmpty(),
+                illuminationAllowed = seed?.second ?: "500",
+                noiseAllowed = seed?.third ?: "65",
+            ),
+        )
+    }
+    return WorkOrderMeasurementSheet(
+        columns = columns,
+        rows = listOf(headerRow) + measurementRows,
+        headerRows = listOf(headerRow.id),
+    )
+}
+
+private fun defaultPhysicalFactorsMeasurementTemplate(): WorkOrderDocumentationTemplate =
+    WorkOrderDocumentationTemplate(
+        id = PHYSICAL_FACTORS_BUILT_IN_TEMPLATE_ID,
+        title = "Fizikalni čimbenici",
+        documentType = "FC",
+        serviceName = "Radni okoliš - fizikalni čimbenici",
+        serviceCode = "FC",
+        dataSourceType = "mobile_builtin_excel",
+        dataSourceTitle = "CISTA.xlsm - RO-F.3",
+        fields = emptyList(),
+        measurementTables = listOf(
+            WorkOrderMeasurementTable(
+                id = PHYSICAL_FACTORS_BUILT_IN_TABLE_ID,
+                key = PHYSICAL_FACTORS_BUILT_IN_TABLE_KEY,
+                tokenKey = "RO_F_3",
+                label = "3. Mjerenja",
+                helpText = "Ugrađena tablica prema RO-F.3 sheetu: prostor, mjerno mjesto, osvjetljenje, buka i mikroklima.",
+                summary = "RO-F.3 - 13 kolona - ugrađeni Excel model",
+                sheet = defaultPhysicalFactorsMeasurementSheet(),
+            ),
+        ),
+    )
+
 private fun WorkOrderDocumentationTemplate.isPhysicalFactorsTemplate(): Boolean =
     listOf(serviceName, serviceCode, documentType, title)
         .any(::isDocumentationPhysicalFactorsText)
@@ -14543,11 +14706,13 @@ private fun buildPhysicalFactorsMeasurementTemplates(
     templates: List<WorkOrderDocumentationTemplate>,
     fallbackToAllTemplates: Boolean,
 ): List<WorkOrderDocumentationTemplate> {
+    if (fallbackToAllTemplates) {
+        return listOf(defaultPhysicalFactorsMeasurementTemplate())
+    }
     val withSheets = templates
         .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
         .filter { it.measurementTables.isNotEmpty() }
-    val matching = withSheets.filter { it.isPhysicalFactorsTemplate() }
-    return matching.ifEmpty { if (fallbackToAllTemplates) withSheets else emptyList() }
+    return withSheets.filter { it.isPhysicalFactorsTemplate() }
 }
 
 private fun normalizePhysicalFactorsSheetLookup(value: String): String =
@@ -14604,6 +14769,74 @@ private fun physicalFactorsSheetCell(
     }
 }
 
+private fun WorkOrderMeasurementSheet.physicalFactorsColumnById(id: String): WorkOrderMeasurementColumn? =
+    columns.firstOrNull { it.id == id }
+
+private fun WorkOrderMeasurementSheet.isBuiltInPhysicalFactorsSheet(): Boolean =
+    physicalFactorsColumnById("illumination_measured") != null &&
+        physicalFactorsColumnById("noise_measured") != null &&
+        physicalFactorsColumnById("temperature_measured") != null &&
+        physicalFactorsColumnById("humidity_measured") != null
+
+private fun physicalFactorsSpaceIdForLabel(
+    spaces: List<IsznrFcSpaceDraft>,
+    label: String,
+): String {
+    val normalizedLabel = normalizePhysicalFactorsSheetLookup(label)
+    return spaces.firstOrNull { space ->
+        val normalizedSpace = normalizePhysicalFactorsSheetLookup(space.name)
+        normalizedLabel.isNotBlank() &&
+            normalizedSpace.isNotBlank() &&
+            (normalizedLabel == normalizedSpace || normalizedLabel.contains(normalizedSpace) || normalizedSpace.contains(normalizedLabel))
+    }?.id.orEmpty().ifBlank { spaces.firstOrNull()?.id.orEmpty() }
+}
+
+private fun buildBuiltInPhysicalFactorsMeasurementsFromSheet(
+    table: WorkOrderMeasurementTable,
+    sheet: WorkOrderMeasurementSheet,
+    spaces: List<IsznrFcSpaceDraft>,
+): List<IsznrFcMeasurementDraft> {
+    if (!sheet.isBuiltInPhysicalFactorsSheet()) return emptyList()
+    val spaceColumn = sheet.physicalFactorsColumnById("space")
+    val placeColumn = sheet.physicalFactorsColumnById("measuring_place")
+    val gradeColumn = sheet.physicalFactorsColumnById("final_grade")
+    val measuredColumns = listOf(
+        Triple("illumination", "Osvijetljenost", "illumination_measured" to "illumination_allowed"),
+        Triple("noise", "Buka", "noise_measured" to "noise_allowed"),
+        Triple("micro", "Temperatura zraka", "temperature_measured" to "temperature_allowed"),
+        Triple("micro", "Brzina strujanja zraka", "airflow_measured" to "airflow_allowed"),
+        Triple("micro", "Relativna vlažnost zraka", "humidity_measured" to "humidity_allowed"),
+    )
+    return sheet.rows.flatMapIndexed { rowIndex, row ->
+        if (row.id in sheet.headerRows) return@flatMapIndexed emptyList()
+        val spaceLabel = physicalFactorsSheetCell(sheet, row, rowIndex, spaceColumn)
+        if (spaceLabel.isBlank()) return@flatMapIndexed emptyList()
+        val placeLabel = physicalFactorsSheetCell(sheet, row, rowIndex, placeColumn)
+        val measuringPlace = listOf(placeLabel, spaceLabel)
+            .filter { it.isNotBlank() }
+            .joinToString(" - ")
+            .ifBlank { spaceLabel }
+        val spaceId = physicalFactorsSpaceIdForLabel(spaces, spaceLabel)
+        val finalGrade = physicalFactorsGradeValue(physicalFactorsSheetCell(sheet, row, rowIndex, gradeColumn))
+        measuredColumns.mapNotNull { (type, note, columnIds) ->
+            val measuredColumn = sheet.physicalFactorsColumnById(columnIds.first)
+            val allowedColumn = sheet.physicalFactorsColumnById(columnIds.second)
+            val measuredValue = physicalFactorsSheetCell(sheet, row, rowIndex, measuredColumn)
+            if (measuredValue.isBlank()) return@mapNotNull null
+            IsznrFcMeasurementDraft(
+                id = "${table.key.ifBlank { table.id }}-${row.id}-${columnIds.first}",
+                spaceId = spaceId,
+                type = type,
+                measuringPlace = measuringPlace,
+                measuredValue = measuredValue,
+                allowedValue = physicalFactorsSheetCell(sheet, row, rowIndex, allowedColumn),
+                note = note,
+                finalGrade = finalGrade,
+            )
+        }
+    }
+}
+
 private fun buildPhysicalFactorsMeasurementsFromSheet(
     template: WorkOrderDocumentationTemplate,
     table: WorkOrderMeasurementTable,
@@ -14611,6 +14844,11 @@ private fun buildPhysicalFactorsMeasurementsFromSheet(
     spaces: List<IsznrFcSpaceDraft>,
 ): List<IsznrFcMeasurementDraft> {
     if (sheet.columns.isEmpty() || sheet.rows.isEmpty()) return emptyList()
+    if (table.id == PHYSICAL_FACTORS_BUILT_IN_TABLE_ID || sheet.isBuiltInPhysicalFactorsSheet()) {
+        buildBuiltInPhysicalFactorsMeasurementsFromSheet(table, sheet, spaces)
+            .takeIf { it.isNotEmpty() }
+            ?.let { return it }
+    }
     val spaceColumn = physicalFactorsColumnMatching(sheet, "prostor", "prostorija", "lokacija", "room")
     val typeColumn = physicalFactorsColumnMatching(sheet, "vrsta", "tip", "cimbenik", "faktor", "parametar")
     val placeColumn = physicalFactorsColumnMatching(
