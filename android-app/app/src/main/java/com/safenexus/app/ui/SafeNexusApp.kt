@@ -4375,6 +4375,11 @@ private enum class DocumentationWorkEquipmentFilter(val label: String) {
     Unsatisfactory("Ne zadovoljava"),
 }
 
+private enum class DocumentationWorkEquipmentScope(val label: String) {
+    Employer("Poslodavac"),
+    Location("Lokacija RN-a"),
+}
+
 private fun WorkOrderDocumentationOption.workEquipmentDeadline(): LocalDate? =
     parseDateOrNull(meta["deadlineForNextExamination"].orEmpty())
 
@@ -4404,6 +4409,20 @@ private fun workEquipmentFilterCount(
     filter: DocumentationWorkEquipmentFilter,
     today: LocalDate,
 ): Int = options.count { it.matchesWorkEquipmentFilter(filter, today) }
+
+private fun WorkOrderDocumentationOption.matchesWorkEquipmentLocation(locationName: String): Boolean {
+    val target = locationName.normalizedPickerText()
+    if (target.isBlank()) return false
+    return listOf(
+        meta["location"].orEmpty(),
+        meta["locationName"].orEmpty(),
+        meta["testingLocation"].orEmpty(),
+        subtitle,
+    )
+        .map { it.normalizedPickerText() }
+        .filter { it.isNotBlank() }
+        .any { candidate -> candidate == target || candidate.contains(target) || target.contains(candidate) }
+}
 
 private enum class DocumentationPhysicalFactorsFilter(val label: String) {
     All("Svi FC"),
@@ -5222,6 +5241,8 @@ private fun ManualPhysicalFactorsBlock(
 @Composable
 private fun DocumentationWorkEquipmentOptionList(
     options: List<WorkOrderDocumentationOption>,
+    companyName: String,
+    locationName: String,
     emptyText: String,
     statusMessage: String = "",
     postDraftStatus: Map<String, String> = emptyMap(),
@@ -5238,7 +5259,9 @@ private fun DocumentationWorkEquipmentOptionList(
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
-    var selectedLocation by remember(options) { mutableStateOf("") }
+    var selectedScope by remember(options, locationName) {
+        mutableStateOf(if (locationName.isNotBlank()) DocumentationWorkEquipmentScope.Location else DocumentationWorkEquipmentScope.Employer)
+    }
     var showManualEquipmentDialog by remember(options) { mutableStateOf(false) }
     var manualEquipmentDialogSeed by remember(options) { mutableStateOf(IsznrManualWorkEquipment()) }
     var manualEquipmentDialogTitle by remember(options) { mutableStateOf("Nova radna oprema") }
@@ -5251,23 +5274,13 @@ private fun DocumentationWorkEquipmentOptionList(
                 }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
             )
     }
-    val availableLocations = remember(filteredOptions) {
-        filteredOptions
-            .map { it.meta["location"].orEmpty().trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .sortedBy { it.lowercase(Locale.getDefault()) }
+    val locationOptions = remember(filteredOptions, locationName) {
+        filteredOptions.filter { option -> option.matchesWorkEquipmentLocation(locationName) }
     }
-    LaunchedEffect(availableLocations, selectedLocation) {
-        if (selectedLocation.isNotBlank() && selectedLocation !in availableLocations) {
-            selectedLocation = ""
-        }
-    }
-    val locationFilteredOptions = remember(filteredOptions, selectedLocation) {
-        if (selectedLocation.isBlank()) {
-            filteredOptions
-        } else {
-            filteredOptions.filter { it.meta["location"].orEmpty().trim() == selectedLocation }
+    val visibleOptions = remember(filteredOptions, locationOptions, selectedScope) {
+        when (selectedScope) {
+            DocumentationWorkEquipmentScope.Employer -> filteredOptions
+            DocumentationWorkEquipmentScope.Location -> locationOptions
         }
     }
     val overdueCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Overdue, today) }
@@ -5322,7 +5335,7 @@ private fun DocumentationWorkEquipmentOptionList(
             }
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
                 Text(
-                    "${locationFilteredOptions.size}",
+                    "${visibleOptions.size}",
                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Black,
@@ -5400,15 +5413,19 @@ private fun DocumentationWorkEquipmentOptionList(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Osobe za IS ZNR", fontWeight = FontWeight.Bold)
+                Text("Osnovni podaci RO", fontWeight = FontWeight.Bold)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DocumentationWorkEquipmentInfoPill("Poslodavac", companyName.ifBlank { "Nije upisano" })
+                    DocumentationWorkEquipmentInfoPill("Lokacija RN-a", locationName.ifBlank { "Nije upisana" })
+                }
                 DocumentationWorkEquipmentPeopleRow(
-                    label = "Stručnjaci ZNR",
+                    label = "Ispitivači / stručnjaci ZNR",
                     count = expertCount,
                     names = expertLabels,
                     required = "min. 1",
                 )
                 DocumentationWorkEquipmentPeopleRow(
-                    label = "Potpisnici",
+                    label = "Nositelji / potpisnici",
                     count = signedByCount,
                     names = signedByLabels,
                     required = "min. 2",
@@ -5436,7 +5453,7 @@ private fun DocumentationWorkEquipmentOptionList(
         ) {
             Column(
                 modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -5444,12 +5461,12 @@ private fun DocumentationWorkEquipmentOptionList(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Popis postojeće opreme", fontWeight = FontWeight.Bold)
+                        Text("IS ZNR popis radne opreme", fontWeight = FontWeight.Bold)
                         Text(
-                            if (selectedLocation.isBlank()) {
-                                "Sve lokacije · ${locationFilteredOptions.size} stavki"
+                            if (selectedScope == DocumentationWorkEquipmentScope.Location) {
+                                "${locationName.ifBlank { "Lokacija RN-a" }} · ${visibleOptions.size} stavki"
                             } else {
-                                "$selectedLocation · ${locationFilteredOptions.size} stavki"
+                                "${companyName.ifBlank { "Poslodavac" }} · ${visibleOptions.size} stavki"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
@@ -5457,33 +5474,34 @@ private fun DocumentationWorkEquipmentOptionList(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Icon(Icons.Rounded.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        if (selectedScope == DocumentationWorkEquipmentScope.Location) Icons.Rounded.LocationOn else Icons.Rounded.Business,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
                 }
-                if (availableLocations.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = selectedLocation.isBlank(),
-                            onClick = { selectedLocation = "" },
-                            label = { Text("Sve lokacije (${filteredOptions.size})") },
-                        )
-                        availableLocations.forEach { locationName ->
-                            val count = filteredOptions.count { it.meta["location"].orEmpty().trim() == locationName }
-                            FilterChip(
-                                selected = selectedLocation == locationName,
-                                onClick = { selectedLocation = locationName },
-                                label = {
-                                    Text(
-                                        "$locationName ($count)",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                            )
-                        }
-                    }
-                } else {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = selectedScope == DocumentationWorkEquipmentScope.Employer,
+                        onClick = { selectedScope = DocumentationWorkEquipmentScope.Employer },
+                        label = { Text("Poslodavac (${filteredOptions.size})") },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Business, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                    )
+                    FilterChip(
+                        selected = selectedScope == DocumentationWorkEquipmentScope.Location,
+                        onClick = { selectedScope = DocumentationWorkEquipmentScope.Location },
+                        label = { Text("Lokacija (${locationOptions.size})") },
+                        enabled = locationName.isNotBlank(),
+                        leadingIcon = {
+                            Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                    )
+                }
+                if (selectedScope == DocumentationWorkEquipmentScope.Location && locationOptions.isEmpty()) {
                     Text(
-                        "IS ZNR nije vratio lokacije za ovu opremu.",
+                        "Za ovu lokaciju nema pronađene radne opreme u IS ZNR popisu. Prebaci na Poslodavac ako trebaš preuzeti opremu s druge lokacije.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -5515,9 +5533,9 @@ private fun DocumentationWorkEquipmentOptionList(
                     ) {
                         OutlinedButton(
                             onClick = {
-                                onSelectedItemIdsChange(selectedItemIds + locationFilteredOptions.map { it.id }.filter { it.isNotBlank() })
+                                onSelectedItemIdsChange(selectedItemIds + visibleOptions.map { it.id }.filter { it.isNotBlank() })
                             },
-                            enabled = enabled && locationFilteredOptions.isNotEmpty(),
+                            enabled = enabled && visibleOptions.isNotEmpty(),
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
@@ -5537,7 +5555,7 @@ private fun DocumentationWorkEquipmentOptionList(
                         OutlinedButton(
                             onClick = {
                                 manualEquipmentDialogSeed = IsznrManualWorkEquipment()
-                                manualEquipmentDialogTitle = "Nova radna oprema"
+                                manualEquipmentDialogTitle = "Nova radna oprema - stupac"
                                 showManualEquipmentDialog = true
                             },
                             enabled = enabled,
@@ -5546,7 +5564,7 @@ private fun DocumentationWorkEquipmentOptionList(
                         ) {
                             Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Nova radna oprema")
+                            Text("Dodaj stupac")
                         }
                     }
                 }
@@ -5566,7 +5584,7 @@ private fun DocumentationWorkEquipmentOptionList(
         }
         if (manualEquipments.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Nova radna oprema", fontWeight = FontWeight.Bold)
+                Text("Novi stupci radne opreme", fontWeight = FontWeight.Bold)
                 manualEquipments.forEachIndexed { index, equipment ->
                     ManualWorkEquipmentCard(
                         equipment = equipment,
@@ -5577,15 +5595,15 @@ private fun DocumentationWorkEquipmentOptionList(
                 }
             }
         }
-        if (locationFilteredOptions.isEmpty()) {
+        if (visibleOptions.isEmpty()) {
             Text(
-                "Nema stavki za ovaj filter ili lokaciju.",
+                "Nema stavki za ovaj filter ili tab.",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
             return
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            locationFilteredOptions.forEach { option ->
+            visibleOptions.forEach { option ->
                 val deadline = option.workEquipmentDeadline()
                 val isOverdue = deadline?.isBefore(today) == true
                 val isUpcoming = deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
@@ -5799,6 +5817,36 @@ private fun IsznrManualWorkEquipment.subtitle(): String =
         .joinToString(" · ")
 
 @Composable
+private fun DocumentationWorkEquipmentInfoPill(
+    label: String,
+    value: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun DocumentationWorkEquipmentPeopleRow(
     label: String,
     count: String,
@@ -5841,38 +5889,80 @@ private fun ManualWorkEquipmentCard(
         shape = RoundedCornerShape(14.dp),
         color = if (equipment.isReadyForIsznrPost()) Color(0xFFECFDF5) else Color(0xFFFFF7ED),
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                Icons.Rounded.Add,
-                contentDescription = null,
-                tint = if (equipment.isReadyForIsznrPost()) Color(0xFF059669) else Color(0xFFB45309),
-                modifier = Modifier.size(20.dp),
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(equipment.name.ifBlank { "Nova radna oprema" }, fontWeight = FontWeight.Bold)
-                val subtitle = equipment.subtitle()
-                if (subtitle.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = null,
+                    tint = if (equipment.isReadyForIsznrPost()) Color(0xFF059669) else Color(0xFFB45309),
+                    modifier = Modifier.size(20.dp),
+                )
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(equipment.name.ifBlank { "Novi stupac radne opreme" }, fontWeight = FontWeight.Bold)
                     Text(
-                        subtitle,
+                        if (equipment.isReadyForIsznrPost()) "Spremno za slanje kroz Sažetak" else "Dopuni osnovne podatke prije slanja",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
                 }
-                if (!equipment.isReadyForIsznrPost()) {
-                    Text(
-                        "Obavezno: naziv, proizvođač, model i serijski broj.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFB45309),
-                    )
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Rounded.Delete, contentDescription = "Ukloni opremu", tint = Color(0xFFDC2626))
                 }
             }
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni opremu", tint = Color(0xFFDC2626))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ManualWorkEquipmentColumnCell("Naziv", equipment.name)
+                ManualWorkEquipmentColumnCell("Proizvođač", equipment.manufacturer)
+                ManualWorkEquipmentColumnCell("Tip / model", equipment.model)
+                ManualWorkEquipmentColumnCell("Serijski", equipment.serialNumber)
+                ManualWorkEquipmentColumnCell("Inv.", equipment.inventoryNumber.ifBlank { "-" })
+                ManualWorkEquipmentColumnCell("Kontrole", "${equipment.mechanicalItems.size + equipment.electricalItems.size}")
+                ManualWorkEquipmentColumnCell("Rizici", "${equipment.hazardRegisterIris.size + equipment.harmfulnessRegisterIris.size + equipment.strainRegisterIris.size}")
+                ManualWorkEquipmentColumnCell("Slike", "${equipment.attachments.size}")
             }
+            if (!equipment.isReadyForIsznrPost()) {
+                Text(
+                    "Obavezno: naziv, proizvođač, model i serijski broj.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFB45309),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualWorkEquipmentColumnCell(
+    label: String,
+    value: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+            )
+            Text(
+                value.ifBlank { "-" },
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -6001,6 +6091,11 @@ private fun ManualWorkEquipmentDialog(
                 when (stepIndex) {
                     0 -> {
                         ManualWorkEquipmentSectionTitle("Osnovni podaci")
+                        Text(
+                            "Jedna nova radna oprema = jedan stupac u RO zapisniku.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
                         OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                         OutlinedTextField(manufacturer, { manufacturer = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, shape = RoundedCornerShape(14.dp))
                         OutlinedTextField(model, { model = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, shape = RoundedCornerShape(14.dp))
@@ -14466,6 +14561,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     WizardSection(title = "Radna oprema", icon = Icons.Rounded.Work) {
                         DocumentationWorkEquipmentOptionList(
                             options = context.workEquipmentOptions,
+                            companyName = workOrder.companyName,
+                            locationName = workOrder.locationName,
                             emptyText = "Nema dohvaćene radne opreme iz IS ZNR-a za OIB tvrtke na ovom RN-u.",
                             statusMessage = workEquipmentStatusMessage,
                             postDraftStatus = context.workEquipmentStatus,
