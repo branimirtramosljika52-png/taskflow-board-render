@@ -19240,7 +19240,14 @@ function getMobileQualifiedExecutorUsers(scopedSnapshot = {}, workOrder = {}, ca
     .filter((user) => getMobileUserLookupValues(user).some((candidate) => executorSet.has(candidate)));
 }
 
-function findMobilePreferredSignatureUser(scopedSnapshot = {}, workOrder = {}, capability = "inspect", signatureArea = "elektro", fallbackIds = []) {
+function findMobilePreferredSignatureUser(
+  scopedSnapshot = {},
+  workOrder = {},
+  capability = "inspect",
+  signatureArea = "elektro",
+  fallbackIds = [],
+  { allowFirstQualifiedFallback = true } = {},
+) {
   const executorMatch = getMobileQualifiedExecutorUsers(scopedSnapshot, workOrder, capability, signatureArea)[0];
   if (executorMatch) {
     return executorMatch;
@@ -19255,7 +19262,9 @@ function findMobilePreferredSignatureUser(scopedSnapshot = {}, workOrder = {}, c
   if (fallbackMatch) {
     return fallbackMatch;
   }
-  return getMobileQualifiedUsersForArea(scopedSnapshot, capability, signatureArea)[0] || null;
+  return allowFirstQualifiedFallback
+    ? getMobileQualifiedUsersForArea(scopedSnapshot, capability, signatureArea)[0] || null
+    : null;
 }
 
 function buildMobileSignaturePersonOptions(scopedSnapshot = {}, signatureAreas = [], workOrder = {}) {
@@ -19287,6 +19296,7 @@ function buildMobileSignaturePersonOptions(scopedSnapshot = {}, signatureAreas =
       "authorize",
       area,
       defaultInspectorIds,
+      { allowFirstQualifiedFallback: false },
     );
     return {
       key: area,

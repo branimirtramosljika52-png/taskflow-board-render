@@ -69484,7 +69484,13 @@ function getWorkOrderDocumentSignatureAreaGroupsForAreas(areas = []) {
   ));
 }
 
-function findPreferredWorkOrderDocumentWizardPerson(workOrder = {}, capability = "inspect", signatureArea = "elektro", fallbackIds = []) {
+function findPreferredWorkOrderDocumentWizardPerson(
+  workOrder = {},
+  capability = "inspect",
+  signatureArea = "elektro",
+  fallbackIds = [],
+  { allowFirstQualifiedFallback = true } = {},
+) {
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
   const executorMatch = resolveQualifiedWorkOrderUsers(workOrder, capability, normalizedArea)[0] || null;
   if (executorMatch) {
@@ -69498,7 +69504,9 @@ function findPreferredWorkOrderDocumentWizardPerson(workOrder = {}, capability =
     return fallbackMatch;
   }
 
-  return getQualifiedUsersForSignatureArea(capability, normalizedArea)[0] || null;
+  return allowFirstQualifiedFallback
+    ? getQualifiedUsersForSignatureArea(capability, normalizedArea)[0] || null
+    : null;
 }
 
 function buildWorkOrderDocumentWizardPersonDefaults(workOrder = {}, signatureArea = "elektro") {
@@ -69513,6 +69521,7 @@ function buildWorkOrderDocumentWizardPersonDefaults(workOrder = {}, signatureAre
     "authorize",
     normalizedArea,
     inspectorIds,
+    { allowFirstQualifiedFallback: false },
   );
   const patch = {};
 
@@ -69565,6 +69574,7 @@ function ensureWorkOrderDocumentWizardPersonDefaults(workOrders = getAllSelected
           "authorize",
           normalizedArea,
           executorInspectorIds,
+          { allowFirstQualifiedFallback: false },
         ))
         .find(Boolean);
       if (authorizationUser?.id) {
