@@ -22831,6 +22831,60 @@ body.is-document-template-editor-open .chat-dock {
   justify-content: flex-start;
 }
 
+.work-order-document-ro-ai-batch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.work-order-document-ro-ai-batch-option {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid rgba(196, 208, 232, 0.9);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #10203d;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease, background 0.16s ease;
+}
+
+.work-order-document-ro-ai-batch-option:hover:not(:disabled),
+.work-order-document-ro-ai-batch-option.is-active {
+  border-color: rgba(37, 99, 235, 0.48);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.98));
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.12);
+}
+
+.work-order-document-ro-ai-batch-option:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.work-order-document-ro-ai-batch-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.work-order-document-ro-ai-batch-option strong {
+  color: #0f172a;
+  font-size: 0.8rem;
+  font-weight: 920;
+}
+
+.work-order-document-ro-ai-batch-option span,
+.work-order-document-ro-ai-batch-hint {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.work-order-document-ro-ai-batch-hint {
+  margin: 0;
+}
+
 .work-order-document-ro-ai-model {
   width: auto;
   min-width: 132px;
@@ -23194,6 +23248,10 @@ body.is-document-template-editor-open .chat-dock {
   .work-order-document-ro-ai-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .work-order-document-ro-ai-batch {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -56409,7 +56409,13 @@ function getDocumentTemplateRuntimeAiMeasurementColumns(template = {}) {
   return columns;
 }
 
-function getDocumentTemplateRuntimeAiPayloadFiles(files = []) {
+function getDocumentTemplateRuntimeAiPayloadFiles(files = [], options = {}) {
+  const maxInlineFiles = Math.max(
+    0,
+    Number.isFinite(Number(options.maxInlineFiles))
+      ? Math.floor(Number(options.maxInlineFiles))
+      : DOCUMENT_TEMPLATE_RUNTIME_AI_MAX_INLINE_FILES,
+  );
   let inlineCount = 0;
   return (Array.isArray(files) ? files : []).map((file) => {
     const base = {
@@ -56420,7 +56426,7 @@ function getDocumentTemplateRuntimeAiPayloadFiles(files = []) {
       lastModified: Number(file?.lastModified || 0),
       inlineReady: Boolean(file?.inlineReady || file?.contentDataUrl),
     };
-    if (file?.contentDataUrl && inlineCount < DOCUMENT_TEMPLATE_RUNTIME_AI_MAX_INLINE_FILES) {
+    if (file?.contentDataUrl && inlineCount < maxInlineFiles) {
       inlineCount += 1;
       return {
         ...base,
@@ -113857,11 +113863,31 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
       aiError: "",
       aiResult: null,
       aiModelTier: "standard",
+      aiBatchMode: "batch",
       submitting: false,
       postResult: null,
     };
   }
   return state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId];
+}
+
+const WORK_ORDER_DOCUMENT_RO_AI_MAX_FILES = 32;
+const WORK_ORDER_DOCUMENT_RO_AI_MAX_BATCH_INLINE_FILES = 10;
+const WORK_ORDER_DOCUMENT_RO_AI_BATCH_MODES = [
+  {
+    key: "batch",
+    label: "Auto više opreme",
+    description: "Web upload: slike idu kronološki, NexAI razdvaja više strojeva u više stavki.",
+  },
+  {
+    key: "single",
+    label: "Jedna oprema",
+    description: "Sve dodane slike/PDF čitaj kao jedan stroj.",
+  },
+];
+
+function normalizeWorkOrderDocumentRoAiBatchMode(value = "") {
+  return String(value || "").trim() === "single" ? "single" : "batch";
 }
 
 function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
@@ -113946,16 +113972,78 @@ function getReadyWorkOrderDocumentRoManualEquipments(entry = {}) {
     .filter((equipment) => equipment.name || equipment.manufacturer || equipment.model || equipment.serialNumber || equipment.inventoryNumber);
 }
 
-function getWorkOrderDocumentRoAiFilesForAttachments(entry = {}, equipmentIndex = 0) {
+function getWorkOrderDocumentRoAiImageFiles(entry = {}) {
   return (Array.isArray(entry.aiFiles) ? entry.aiFiles : [])
     .filter((file) => file?.contentDataUrl && String(file.type || "").startsWith("image/"))
-    .slice(equipmentIndex * 4, equipmentIndex * 4 + 4)
+    .map((file, index) => ({ ...file, aiFileIndex: index + 1 }));
+}
+
+function normalizeWorkOrderDocumentRoAiIndexList(values = [], maxLength = 0) {
+  const raw = Array.isArray(values) ? values : [values];
+  const numbers = raw
+    .flatMap((value) => String(value ?? "").split(/[,\s;]+/))
+    .map((value) => Number.parseInt(String(value || "").trim(), 10))
+    .filter((value) => Number.isFinite(value));
+  const hasZero = numbers.some((value) => value === 0);
+  return [...new Set(numbers
+    .map((value) => (hasZero ? value + 1 : value))
+    .filter((value) => value >= 1 && (!maxLength || value <= maxLength)))];
+}
+
+function getWorkOrderDocumentRoAiSuggestionImageIndexes(suggestion = {}, maxLength = 0) {
+  const directIndexes = normalizeWorkOrderDocumentRoAiIndexList([
+    ...(Array.isArray(suggestion.imageIndexes) ? suggestion.imageIndexes : []),
+    ...(Array.isArray(suggestion.sourceImageIndexes) ? suggestion.sourceImageIndexes : []),
+    ...(Array.isArray(suggestion.sourceFileIndexes) ? suggestion.sourceFileIndexes : []),
+    ...(Array.isArray(suggestion.fileIndexes) ? suggestion.fileIndexes : []),
+  ], maxLength);
+  if (directIndexes.length) {
+    return directIndexes;
+  }
+  const start = Number.parseInt(String(suggestion.groupStartIndex ?? suggestion.imageGroupStartIndex ?? ""), 10);
+  const end = Number.parseInt(String(suggestion.groupEndIndex ?? suggestion.imageGroupEndIndex ?? ""), 10);
+  if (Number.isFinite(start) && Number.isFinite(end)) {
+    const from = Math.max(1, Math.min(start, end));
+    const to = maxLength ? Math.min(Math.max(start, end), maxLength) : Math.max(start, end);
+    return Array.from({ length: Math.max(0, to - from + 1) }, (_, index) => from + index);
+  }
+  return [];
+}
+
+function getWorkOrderDocumentRoAiSuggestionFileNames(suggestion = {}) {
+  return normalizeAiConfigListLocal([
+    ...(Array.isArray(suggestion.sourceFileNames) ? suggestion.sourceFileNames : []),
+    ...(Array.isArray(suggestion.sourceFiles) ? suggestion.sourceFiles : []),
+    ...(Array.isArray(suggestion.fileNames) ? suggestion.fileNames : []),
+    ...(Array.isArray(suggestion.imageFileNames) ? suggestion.imageFileNames : []),
+    suggestion.sourceFile,
+  ], 24).map((value) => String(value || "").toLowerCase());
+}
+
+function getWorkOrderDocumentRoAiFilesForAttachments(entry = {}, equipmentIndex = 0, suggestion = {}) {
+  const imageFiles = getWorkOrderDocumentRoAiImageFiles(entry);
+  const selectedByIndex = new Set(getWorkOrderDocumentRoAiSuggestionImageIndexes(suggestion, imageFiles.length));
+  const selectedByName = new Set(getWorkOrderDocumentRoAiSuggestionFileNames(suggestion));
+  let selectedFiles = [];
+
+  if (selectedByIndex.size || selectedByName.size) {
+    selectedFiles = imageFiles.filter((file) => (
+      selectedByIndex.has(file.aiFileIndex)
+      || selectedByName.has(String(file.name || "").toLowerCase())
+    ));
+  }
+
+  if (!selectedFiles.length) {
+    selectedFiles = imageFiles.slice(equipmentIndex * 4, equipmentIndex * 4 + 4);
+  }
+
+  return selectedFiles
     .map((file) => ({
       fileName: String(file.name || "slika-radne-opreme").trim(),
       fileType: String(file.type || "image/jpeg").trim(),
       fileSize: Number(file.size || 0) || 0,
       dataUrl: String(file.contentDataUrl || "").trim(),
-      description: "NexAI upload za radnu opremu",
+      description: file.aiFileIndex ? `NexAI upload za radnu opremu · slika ${file.aiFileIndex}` : "NexAI upload za radnu opremu",
     }));
 }
 
@@ -114139,6 +114227,11 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         confidence: "high | medium | low",
         reason: "kratko objašnjenje",
         sourceFile: "datoteka iz koje je podatak izvučen",
+        sourceFileNames: ["nazivi datoteka/slika koje pripadaju ovoj opremi"],
+        imageIndexes: [1, 2, 3],
+        groupStartIndex: 1,
+        groupEndIndex: 3,
+        groupingReason: "zašto te slike pripadaju istoj opremi",
         mechanicalItems: [{ registerIri: "IRI iz šifrarnika ili prazno", label: "naziv stavke", meetsConditions: 1, customContent: "" }],
         electricalItems: [{ registerIri: "IRI iz šifrarnika ili prazno", label: "naziv stavke", meetsConditions: 1, customContent: "" }],
         hazardRegisterIris: ["IRI opasnosti iz hazard_registers"],
@@ -114153,6 +114246,14 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
 
 function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
   const settings = getWorkEquipmentAiSettings();
+  const aiBatchMode = normalizeWorkOrderDocumentRoAiBatchMode(entry.aiBatchMode || "batch");
+  const aiFiles = (Array.isArray(entry.aiFiles) ? entry.aiFiles : []).map((file, index) => ({
+    index: index + 1,
+    name: String(file?.name || ""),
+    type: String(file?.type || ""),
+    size: Number(file?.size || 0) || 0,
+    inlineReady: Boolean(file?.inlineReady || file?.contentDataUrl),
+  }));
   return {
     workOrder: {
       id: String(workOrder?.id || ""),
@@ -114166,6 +114267,11 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
     settings,
     profiles: settings.profiles,
     profileLearningInstruction: "Odaberi najbliži osnovni profil iz profiles. Ako oprema pripada tom profilu, ali nema odgovarajuću potkategoriju/varijantu, vrati profileVariantName i kratku profileVariantInstruction umjesto stvaranja novog osnovnog profila.",
+    uploadMode: aiBatchMode,
+    uploadedFiles: aiFiles,
+    uploadGroupingInstruction: aiBatchMode === "batch"
+      ? "Ovo je WEB batch upload za radnu opremu. Ako slike/PDF prikazuju više strojeva, obavezno vrati više workEquipments. Slike su kronološke: uzastopne slike istog stroja drži u istoj grupi, a nova slika cijelog stroja ili nova natpisna pločica najčešće označava početak nove opreme. Za svaku opremu vrati imageIndexes ili sourceFileNames kako bi aplikacija povezala slike uz pravi stroj. Android upload nije batch i tamo se obrađuje jedna oprema po unosu."
+      : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
@@ -114207,9 +114313,12 @@ async function addWorkOrderDocumentRoAiFiles(files, workOrder = {}) {
     incoming.forEach((file) => {
       fileMap.set(String(file.id || file.name), file);
     });
-    entry.aiFiles = Array.from(fileMap.values()).slice(0, 16);
+    entry.aiFiles = Array.from(fileMap.values()).slice(0, WORK_ORDER_DOCUMENT_RO_AI_MAX_FILES);
     const inlineCount = entry.aiFiles.filter((file) => file.inlineReady || file.contentDataUrl).length;
-    entry.aiMessage = `${entry.aiFiles.length} datoteka spremno · ${inlineCount} ide direktno u NexAI analizu.`;
+    const mode = normalizeWorkOrderDocumentRoAiBatchMode(entry.aiBatchMode || "batch");
+    entry.aiMessage = mode === "batch"
+      ? `${entry.aiFiles.length} datoteka spremno · ${inlineCount} čitljivo. Web batch će pokušati razdvojiti više opreme po redoslijedu slika.`
+      : `${entry.aiFiles.length} datoteka spremno · ${inlineCount} čitljivo za jednu opremu.`;
   } catch (error) {
     entry.aiError = error?.message || "NexAI datoteke nisu učitane.";
   } finally {
@@ -114250,7 +114359,7 @@ function applyWorkOrderDocumentRoAiResult(workOrder = {}, entry = {}, result = {
       source: "ai",
       attachments: suggestion.attachments?.length
         ? suggestion.attachments
-        : getWorkOrderDocumentRoAiFilesForAttachments(entry, index),
+        : getWorkOrderDocumentRoAiFilesForAttachments(entry, index, suggestion),
     }, index);
     const key = [
       manual.serialNumber,
@@ -114306,7 +114415,11 @@ async function runWorkOrderDocumentRoAi(workOrder = {}) {
         workOrderNumber: workOrder?.workOrderNumber || workOrder?.number || "",
         context,
         settings: context.settings,
-        files: getDocumentTemplateRuntimeAiPayloadFiles(entry.aiFiles),
+        files: getDocumentTemplateRuntimeAiPayloadFiles(entry.aiFiles, {
+          maxInlineFiles: normalizeWorkOrderDocumentRoAiBatchMode(entry.aiBatchMode || "batch") === "batch"
+            ? WORK_ORDER_DOCUMENT_RO_AI_MAX_BATCH_INLINE_FILES
+            : DOCUMENT_TEMPLATE_RUNTIME_AI_MAX_INLINE_FILES,
+        }),
         expectedJsonShape: context.expectedJsonShape,
       },
     });
@@ -114957,6 +115070,39 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
   });
   actions.append(fileInput, addButton, modelSelect, runButton);
   panel.append(actions);
+
+  const batchMode = normalizeWorkOrderDocumentRoAiBatchMode(stateEntry.aiBatchMode || "batch");
+  const batchModeRow = document.createElement("div");
+  batchModeRow.className = "work-order-document-ro-ai-batch";
+  WORK_ORDER_DOCUMENT_RO_AI_BATCH_MODES.forEach((mode) => {
+    const modeButton = document.createElement("button");
+    modeButton.type = "button";
+    modeButton.className = `work-order-document-ro-ai-batch-option${batchMode === mode.key ? " is-active" : ""}`;
+    modeButton.disabled = Boolean(stateEntry.aiLoading);
+    modeButton.setAttribute("aria-pressed", batchMode === mode.key ? "true" : "false");
+    const modeLabel = document.createElement("strong");
+    modeLabel.textContent = mode.label;
+    const modeCopy = document.createElement("span");
+    modeCopy.textContent = mode.description;
+    modeButton.append(modeLabel, modeCopy);
+    modeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      stateEntry.aiBatchMode = mode.key;
+      stateEntry.aiMessage = mode.key === "batch"
+        ? "Web batch uključen: dodaj više slika kronološki, NexAI će ih razdvojiti po opremi."
+        : "Jedna oprema: sve dodane datoteke čitaju se kao jedan stroj.";
+      renderWorkOrderDocumentWizard();
+    });
+    batchModeRow.append(modeButton);
+  });
+  panel.append(batchModeRow);
+
+  if (batchMode === "batch") {
+    const batchHint = document.createElement("p");
+    batchHint.className = "helper-copy module-copy work-order-document-ro-ai-batch-hint";
+    batchHint.textContent = "Za više opreme na webu ubaci slike redom: stroj, pločica, detalji; zatim sljedeći stroj, pločica, detalji. NexAI će vratiti zasebne RO stavke.";
+    panel.append(batchHint);
+  }
 
   if (stateEntry.aiMessage) {
     const message = document.createElement("p");
