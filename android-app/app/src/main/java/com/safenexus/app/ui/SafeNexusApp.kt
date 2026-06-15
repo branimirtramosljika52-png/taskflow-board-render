@@ -4595,6 +4595,14 @@ private fun DocumentationManualPhysicalFactorsBlocks(
     onChange: (IsznrManualPhysicalFactors) -> Unit,
     onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
 ) {
+    val derivedSpaceGrades = remember(value.spaces, value.measurements, measurementTemplates, measurementSheets) {
+        val sheetMeasurements = buildPhysicalFactorsMeasurementsFromSheets(value, measurementTemplates, measurementSheets)
+        physicalFactorsDerivedSpaceGrades(
+            spaces = value.spaces,
+            measurements = sheetMeasurements.ifEmpty { value.measurements },
+        )
+    }
+
     fun addMeasurementRowFromTemplate(template: PhysicalFactorsSpaceTemplate) {
         val measurementTable = measurementTemplates
             .flatMap { documentationTemplate -> documentationTemplate.measurementTables.map { table -> documentationTemplate to table } }
@@ -4715,6 +4723,8 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                 }
             }
             value.spaces.forEachIndexed { index, space ->
+                val effectiveFinalGrade = derivedSpaceGrades[space.id].orEmpty().ifBlank { space.finalGrade.ifBlank { "1" } }
+                val finalGradePositive = effectiveFinalGrade != "0"
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -4750,18 +4760,39 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                         WorkOrderTextField("Radna oprema u prostoru", space.workEquipment, { next ->
                             onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(workEquipment = next) else item }))
                         }, enabled)
-                        WorkOrderSelectField(
-                            label = "Zaključna ocjena",
-                            value = space.finalGrade,
-                            valueLabel = physicalFactorsGradeOptions.firstOrNull { it.first == space.finalGrade }?.second.orEmpty().ifBlank { "Zadovoljava" },
-                            options = physicalFactorsGradeOptions,
-                            enabled = enabled,
-                            onSelect = { next ->
-                                onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(finalGrade = next) else item }))
-                            },
-                        )
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (finalGradePositive) Color(0xFFE8F7EF) else Color(0xFFFFEBEE),
+                            tonalElevation = 0.dp,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    if (finalGradePositive) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = if (finalGradePositive) Color(0xFF15803D) else Color(0xFFDC2626),
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Zaključna ocjena prostora", fontWeight = FontWeight.Black)
+                                    Text(
+                                        if (finalGradePositive) "Sva mjerna mjesta zadovoljavaju" else "Postoji mjerno mjesto koje ne zadovoljava",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                                    )
+                                }
+                                Text(
+                                    if (finalGradePositive) "Zadovoljava" else "Ne zadovoljava",
+                                    fontWeight = FontWeight.Black,
+                                    color = if (finalGradePositive) Color(0xFF15803D) else Color(0xFFDC2626),
+                                )
+                            }
+                        }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            AssistChip(onClick = {}, label = { Text(if (space.finalGrade == "0") "Ne zadovoljava" else "Zadovoljava") })
+                            AssistChip(onClick = {}, label = { Text(if (finalGradePositive) "Zadovoljava" else "Ne zadovoljava") })
                             if (space.workEquipment.isNotBlank()) {
                                 AssistChip(onClick = {}, label = { Text("Oprema upisana") })
                             }
@@ -15174,18 +15205,49 @@ private fun buildPhysicalFactorsMeasurementsFromSheet(
     }
 }
 
-private fun buildManualPhysicalFactorsForSubmit(
+private fun buildPhysicalFactorsMeasurementsFromSheets(
     value: IsznrManualPhysicalFactors,
     measurementTemplates: List<WorkOrderDocumentationTemplate>,
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
-): IsznrManualPhysicalFactors {
-    val sheetMeasurements = measurementTemplates.flatMap { template ->
+): List<IsznrFcMeasurementDraft> =
+    measurementTemplates.flatMap { template ->
         template.measurementTables.flatMap { table ->
             val sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet
             buildPhysicalFactorsMeasurementsFromSheet(template, table, sheet, value.spaces)
         }
     }
-    return if (sheetMeasurements.isEmpty()) value else value.copy(measurements = sheetMeasurements)
+
+private fun physicalFactorsDerivedSpaceGrades(
+    spaces: List<IsznrFcSpaceDraft>,
+    measurements: List<IsznrFcMeasurementDraft>,
+): Map<String, String> {
+    if (spaces.isEmpty() || measurements.isEmpty()) return emptyMap()
+    return spaces.mapNotNull { space ->
+        val relatedMeasurements = measurements.filter { measurement ->
+            measurement.spaceId.isNotBlank() &&
+                measurement.spaceId == space.id &&
+                measurement.isReadyForPhysicalFactorsPost()
+        }
+        if (relatedMeasurements.isEmpty()) {
+            null
+        } else {
+            space.id to if (relatedMeasurements.any { it.finalGrade.trim() == "0" }) "0" else "1"
+        }
+    }.toMap()
+}
+
+private fun buildManualPhysicalFactorsForSubmit(
+    value: IsznrManualPhysicalFactors,
+    measurementTemplates: List<WorkOrderDocumentationTemplate>,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+): IsznrManualPhysicalFactors {
+    val sheetMeasurements = buildPhysicalFactorsMeasurementsFromSheets(value, measurementTemplates, measurementSheets)
+    val submitMeasurements = sheetMeasurements.ifEmpty { value.measurements }
+    val derivedGrades = physicalFactorsDerivedSpaceGrades(value.spaces, submitMeasurements)
+    val submitSpaces = value.spaces.map { space ->
+        derivedGrades[space.id]?.let { finalGrade -> space.copy(finalGrade = finalGrade) } ?: space
+    }
+    return value.copy(spaces = submitSpaces, measurements = submitMeasurements)
 }
 
 private fun buildMeasurementSheetPayload(
