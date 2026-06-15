@@ -82074,9 +82074,7 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   }
 }
 
-#work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-people-grid,
-#work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body,
-#work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-grid {
+#work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
@@ -82086,29 +82084,18 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   min-width: 0;
 }
 
-#work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-card,
-#work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-block,
-#work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-person-block {
+#work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-card {
   min-width: 0;
 }
 
-#work-order-document-wizard-sheet-fc-panel .work-order-document-randomize-field {
-  grid-column: 1 / -1;
-}
-
 @media (max-width: 1180px) {
-  #work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-people-grid,
-  #work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body,
-  #work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-grid {
+  #work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  #work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-people-grid,
-  #work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body,
-  #work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-grid,
-  #work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-person-area-grid {
+  #work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
