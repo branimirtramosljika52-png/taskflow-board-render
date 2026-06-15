@@ -417,6 +417,10 @@ class SafeNexusApi(
             draft.electricalInspectorUserIds.forEach { electricalInspectorIds.put(it) }
             val tipkaloInspectorIds = JSONArray()
             draft.tipkaloInspectorUserIds.forEach { tipkaloInspectorIds.put(it) }
+            val workEquipmentInspectorIds = JSONArray()
+            draft.workEquipmentInspectorUserIds.forEach { workEquipmentInspectorIds.put(it) }
+            val workEnvironmentInspectorIds = JSONArray()
+            draft.workEnvironmentInspectorUserIds.forEach { workEnvironmentInspectorIds.put(it) }
             val selectedEquipmentIds = JSONArray()
             draft.selectedEquipmentIds.forEach { selectedEquipmentIds.put(it) }
             val selectedLegalFrameworkIds = JSONArray()
@@ -483,6 +487,12 @@ class SafeNexusApi(
                 .put("tipkaloInspectorUserIds", tipkaloInspectorIds)
                 .put("tipkaloInspectorUserId", draft.tipkaloInspectorUserId)
                 .put("tipkaloAuthorizationHolderUserId", draft.tipkaloAuthorizationHolderUserId)
+                .put("radna_opremaInspectorUserIds", workEquipmentInspectorIds)
+                .put("radna_opremaInspectorUserId", draft.workEquipmentInspectorUserId)
+                .put("radna_opremaAuthorizationHolderUserId", draft.workEquipmentAuthorizationHolderUserId)
+                .put("radni_okolisInspectorUserIds", workEnvironmentInspectorIds)
+                .put("radni_okolisInspectorUserId", draft.workEnvironmentInspectorUserId)
+                .put("radni_okolisAuthorizationHolderUserId", draft.workEnvironmentAuthorizationHolderUserId)
                 .put("handoverVerifierUserId", draft.handoverVerifierUserId)
                 .put("fieldValues", draft.fieldValues.toJsonObject())
                 .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())

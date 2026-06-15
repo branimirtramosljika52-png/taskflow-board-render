@@ -13250,6 +13250,8 @@ private fun inferDocumentationSignatureAreas(
     return when {
         Regex("\\b(tzin|tipkalo)\\b").containsMatchIn(text) || text.contains("isklop napona") -> listOf("tipkalo")
         Regex("\\b(spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("elektro")
+        Regex("\\bro\\b").containsMatchIn(text) || text.contains("radna oprema") || text.contains("radne opreme") -> listOf("radna_oprema")
+        Regex("\\bfc\\b").containsMatchIn(text) || text.contains("radni okoli") || text.contains("fizikalni") -> listOf("radni_okolis")
         else -> listOf("elektro")
     }
 }
@@ -13262,6 +13264,8 @@ private fun List<WorkOrderDocumentationSignatureAreaOptions>.areaOptions(key: St
             label = when (normalizedKey) {
                 "tipkalo", "tzin" -> "Tipkalo za isklop napona"
                 "elektro" -> "Sigurnosna panik rasvjeta"
+                "radna_oprema", "ro" -> "Radna oprema"
+                "radni_okolis", "fc" -> "Radni okoliš"
                 else -> normalizedKey.replace('_', ' ').replaceFirstChar { it.titlecase(Locale.getDefault()) }
             },
         )
@@ -13380,6 +13384,53 @@ private fun buildDocumentationPersonFieldRules(templates: List<WorkOrderDocument
         }
 }
 
+private fun ensureDocumentationPersonFieldRulesForFlows(
+    baseRules: List<DocumentationPersonFieldRule>,
+    includeWorkEquipment: Boolean,
+    includePhysicalFactors: Boolean,
+): List<DocumentationPersonFieldRule> {
+    val rules = baseRules.toMutableList()
+    fun ensureRule(
+        signatureArea: String,
+        role: String,
+        label: String,
+        multiple: Boolean,
+        priority: Int,
+    ) {
+        val normalizedArea = normalizeDocumentationSignatureAreaKey(signatureArea)
+        val existingIndex = rules.indexOfFirst { normalizeDocumentationSignatureAreaKey(it.signatureArea) == normalizedArea && it.role == role }
+        if (existingIndex >= 0) {
+            rules[existingIndex] = rules[existingIndex].copy(
+                label = label,
+                multiple = rules[existingIndex].multiple || multiple,
+                required = rules[existingIndex].required || true,
+            )
+            return
+        }
+        rules += DocumentationPersonFieldRule(
+            id = "flow::$normalizedArea::$role",
+            label = label,
+            signatureArea = normalizedArea,
+            role = role,
+            multiple = multiple,
+            required = true,
+            helpText = "",
+            priority = priority,
+        )
+    }
+
+    if (includeWorkEquipment) {
+        ensureRule("radna_oprema", "inspect", "Ispitivač radne opreme", true, -20)
+        ensureRule("radna_oprema", "authorize", "Odgovorna osoba radne opreme", false, -19)
+    }
+    if (includePhysicalFactors) {
+        ensureRule("radni_okolis", "inspect", "Ispitivač radnog okoliša", true, -18)
+        ensureRule("radni_okolis", "authorize", "Odgovorna osoba radnog okoliša", false, -17)
+    }
+
+    return rules.sortedWith(compareBy<DocumentationPersonFieldRule> { it.priority }.thenBy { it.label.lowercase(Locale.getDefault()) })
+}
+
 private data class DocumentationEnvironmentVisibility(
     val outsideTemperature: Boolean = false,
     val relativeHumidity: Boolean = false,
@@ -13391,6 +13442,16 @@ private data class DocumentationEnvironmentVisibility(
     val any: Boolean
         get() = outsideTemperature || relativeHumidity || airflowSpeed || weather || groundCondition || groundResistance
 }
+
+private fun documentationEnvironmentVisibilityAll(): DocumentationEnvironmentVisibility =
+    DocumentationEnvironmentVisibility(
+        outsideTemperature = true,
+        relativeHumidity = true,
+        airflowSpeed = true,
+        weather = true,
+        groundCondition = true,
+        groundResistance = true,
+    )
 
 private fun buildDocumentationEnvironmentVisibility(templates: List<WorkOrderDocumentationTemplate>): DocumentationEnvironmentVisibility {
     val lookup = normalizeTemplateFieldLookup(
@@ -13614,6 +13675,14 @@ private data class DocumentationStandardValues(
     val tipkaloInspectorLabel: String,
     val tipkaloAuthorizationHolderUserId: String,
     val tipkaloAuthorizationHolderLabel: String,
+    val workEquipmentInspectorUserId: String,
+    val workEquipmentInspectorLabel: String,
+    val workEquipmentAuthorizationHolderUserId: String,
+    val workEquipmentAuthorizationHolderLabel: String,
+    val workEnvironmentInspectorUserId: String,
+    val workEnvironmentInspectorLabel: String,
+    val workEnvironmentAuthorizationHolderUserId: String,
+    val workEnvironmentAuthorizationHolderLabel: String,
     val selectedEquipmentCount: Int,
     val selectedLegalCount: Int,
 )
@@ -13636,6 +13705,8 @@ private fun standardDocumentationSignatureValue(
         when (area) {
             "tipkalo", "tzin" -> standard.tipkaloAuthorizationHolderLabel.ifBlank { standard.tipkaloAuthorizationHolderUserId }
             "elektro" -> standard.electricalAuthorizationHolderLabel.ifBlank { standard.electricalAuthorizationHolderUserId }
+            "radna_oprema", "ro" -> standard.workEquipmentAuthorizationHolderLabel.ifBlank { standard.workEquipmentAuthorizationHolderUserId }
+            "radni_okolis", "fc" -> standard.workEnvironmentAuthorizationHolderLabel.ifBlank { standard.workEnvironmentAuthorizationHolderUserId }
             else -> standard.authorizationHolderLabel.ifBlank { standard.authorizationHolderUserId }
         }
 
@@ -13643,6 +13714,8 @@ private fun standardDocumentationSignatureValue(
         when (area) {
             "tipkalo", "tzin" -> standard.tipkaloInspectorLabel.ifBlank { standard.tipkaloInspectorUserId }
             "elektro" -> standard.electricalInspectorLabel.ifBlank { standard.electricalInspectorUserId }
+            "radna_oprema", "ro" -> standard.workEquipmentInspectorLabel.ifBlank { standard.workEquipmentInspectorUserId }
+            "radni_okolis", "fc" -> standard.workEnvironmentInspectorLabel.ifBlank { standard.workEnvironmentInspectorUserId }
             else -> standard.inspectorLabel.ifBlank { standard.inspectorUserId }
         }
 
@@ -13692,6 +13765,18 @@ private fun standardDocumentationValueForLookup(lookup: String, standard: Docume
             standard.electricalInspectorLabel
         lookup.contains("tipkalo") && (lookup.contains("ispitivac") || lookup.contains("ispitivao") || lookup.contains("inspector")) ->
             standard.tipkaloInspectorLabel
+        (lookup.contains("radna oprema") || lookup.contains("radne opreme") || lookup.contains(" ro ")) &&
+            (lookup.contains("nositelj") || lookup.contains("holder") || lookup.contains("ovlast") || lookup.contains("odgovorna")) ->
+            standard.workEquipmentAuthorizationHolderLabel
+        (lookup.contains("radni okolis") || lookup.contains("radnog okolisa") || lookup.contains(" fc ") || lookup.contains("fizikalni")) &&
+            (lookup.contains("nositelj") || lookup.contains("holder") || lookup.contains("ovlast") || lookup.contains("odgovorna")) ->
+            standard.workEnvironmentAuthorizationHolderLabel
+        (lookup.contains("radna oprema") || lookup.contains("radne opreme") || lookup.contains(" ro ")) &&
+            (lookup.contains("ispitivac") || lookup.contains("ispitivao") || lookup.contains("inspector")) ->
+            standard.workEquipmentInspectorLabel
+        (lookup.contains("radni okolis") || lookup.contains("radnog okolisa") || lookup.contains(" fc ") || lookup.contains("fizikalni")) &&
+            (lookup.contains("ispitivac") || lookup.contains("ispitivao") || lookup.contains("inspector")) ->
+            standard.workEnvironmentInspectorLabel
         lookup.contains("nositelj") || lookup.contains("authorization holder") || lookup.contains("holder") ->
             standard.authorizationHolderLabel
         lookup.contains("ispitivac") || lookup.contains("ispitivao") || lookup.contains("inspector") ->
@@ -14125,6 +14210,12 @@ private fun WorkOrderDocumentationWizardDialog(
     var tipkaloInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
     var tipkaloInspectorUserIds by remember(workOrder.id) { mutableStateOf(emptySet<String>()) }
     var tipkaloAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
+    var workEquipmentInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
+    var workEquipmentInspectorUserIds by remember(workOrder.id) { mutableStateOf(emptySet<String>()) }
+    var workEquipmentAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
+    var workEnvironmentInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
+    var workEnvironmentInspectorUserIds by remember(workOrder.id) { mutableStateOf(emptySet<String>()) }
+    var workEnvironmentAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
     val allPromptTemplates = remember(context) {
         context.templates
             .map { template -> template.copy(fields = template.fields.filter { it.label.isNotBlank() }) }
@@ -14138,11 +14229,15 @@ private fun WorkOrderDocumentationWizardDialog(
     val blockTemplates = remember(activeTemplates) {
         activeTemplates.filter { template -> template.fieldBlocks.isNotEmpty() }
     }
-    val allPersonRules = remember(context.templates) {
-        buildDocumentationPersonFieldRules(context.templates)
+    val allPersonRules = remember(context.templates, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr) {
+        ensureDocumentationPersonFieldRulesForFlows(
+            baseRules = buildDocumentationPersonFieldRules(context.templates),
+            includeWorkEquipment = showWorkEquipmentFromIsznr,
+            includePhysicalFactors = showPhysicalFactorsFromIsznr,
+        )
     }
-    val environmentVisibility = remember(context.templates) {
-        buildDocumentationEnvironmentVisibility(context.templates)
+    val environmentVisibility = remember {
+        documentationEnvironmentVisibilityAll()
     }
     var additionalRecordTarget by remember(workOrder.id) {
         mutableStateOf<DocumentationServiceFlowItem?>(null)
@@ -14184,6 +14279,24 @@ private fun WorkOrderDocumentationWizardDialog(
                     }
                     if (electricalAuthorizationHolderUserId.isBlank() && defaultAuthorization.isNotBlank()) {
                         electricalAuthorizationHolderUserId = defaultAuthorization
+                    }
+                }
+                "radna_oprema", "ro" -> {
+                    if (workEquipmentInspectorUserIds.isEmpty() && defaultInspectors.isNotEmpty()) {
+                        workEquipmentInspectorUserIds = defaultInspectors
+                        workEquipmentInspectorUserId = defaultInspectors.firstOrNull().orEmpty()
+                    }
+                    if (workEquipmentAuthorizationHolderUserId.isBlank() && defaultAuthorization.isNotBlank()) {
+                        workEquipmentAuthorizationHolderUserId = defaultAuthorization
+                    }
+                }
+                "radni_okolis", "fc" -> {
+                    if (workEnvironmentInspectorUserIds.isEmpty() && defaultInspectors.isNotEmpty()) {
+                        workEnvironmentInspectorUserIds = defaultInspectors
+                        workEnvironmentInspectorUserId = defaultInspectors.firstOrNull().orEmpty()
+                    }
+                    if (workEnvironmentAuthorizationHolderUserId.isBlank() && defaultAuthorization.isNotBlank()) {
+                        workEnvironmentAuthorizationHolderUserId = defaultAuthorization
                     }
                 }
                 else -> {
@@ -14357,6 +14470,20 @@ private fun WorkOrderDocumentationWizardDialog(
             .joinToString(", "),
         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
         tipkaloAuthorizationHolderLabel = userLabelById[tipkaloAuthorizationHolderUserId].orEmpty().takeIf { tipkaloAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
+        workEquipmentInspectorUserId = workEquipmentInspectorUserId,
+        workEquipmentInspectorLabel = workEquipmentInspectorUserIds
+            .ifEmpty { setOf(workEquipmentInspectorUserId).filter { it.isNotBlank() }.toSet() }
+            .mapNotNull { userLabelById[it] }
+            .joinToString(", "),
+        workEquipmentAuthorizationHolderUserId = workEquipmentAuthorizationHolderUserId,
+        workEquipmentAuthorizationHolderLabel = userLabelById[workEquipmentAuthorizationHolderUserId].orEmpty().takeIf { workEquipmentAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
+        workEnvironmentInspectorUserId = workEnvironmentInspectorUserId,
+        workEnvironmentInspectorLabel = workEnvironmentInspectorUserIds
+            .ifEmpty { setOf(workEnvironmentInspectorUserId).filter { it.isNotBlank() }.toSet() }
+            .mapNotNull { userLabelById[it] }
+            .joinToString(", "),
+        workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
+        workEnvironmentAuthorizationHolderLabel = userLabelById[workEnvironmentAuthorizationHolderUserId].orEmpty().takeIf { workEnvironmentAuthorizationHolderUserId.isNotBlank() }.orEmpty(),
         selectedEquipmentCount = selectedEquipmentIds.size,
         selectedLegalCount = selectedLegalFrameworkIds.size,
     )
@@ -14682,6 +14809,20 @@ private fun WorkOrderDocumentationWizardDialog(
                         },
                         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
                         onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
+                        workEquipmentInspectorUserIds = workEquipmentInspectorUserIds,
+                        onWorkEquipmentInspectorUserIdsChange = {
+                            workEquipmentInspectorUserIds = it
+                            workEquipmentInspectorUserId = it.firstOrNull().orEmpty()
+                        },
+                        workEquipmentAuthorizationHolderUserId = workEquipmentAuthorizationHolderUserId,
+                        onWorkEquipmentAuthorizationHolderUserIdChange = { workEquipmentAuthorizationHolderUserId = it },
+                        workEnvironmentInspectorUserIds = workEnvironmentInspectorUserIds,
+                        onWorkEnvironmentInspectorUserIdsChange = {
+                            workEnvironmentInspectorUserIds = it
+                            workEnvironmentInspectorUserId = it.firstOrNull().orEmpty()
+                        },
+                        workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
+                        onWorkEnvironmentAuthorizationHolderUserIdChange = { workEnvironmentAuthorizationHolderUserId = it },
                         enabled = !formLoading,
                     )
                     if (showWorkEquipmentFromIsznr) {
@@ -15090,6 +15231,12 @@ private fun WorkOrderDocumentationWizardDialog(
                         tipkaloInspectorUserIds = tipkaloInspectorUserIds.toList(),
                         tipkaloInspectorUserId = tipkaloInspectorUserId.ifBlank { tipkaloInspectorUserIds.firstOrNull().orEmpty() },
                         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                        workEquipmentInspectorUserIds = workEquipmentInspectorUserIds.toList(),
+                        workEquipmentInspectorUserId = workEquipmentInspectorUserId.ifBlank { workEquipmentInspectorUserIds.firstOrNull().orEmpty() },
+                        workEquipmentAuthorizationHolderUserId = workEquipmentAuthorizationHolderUserId,
+                        workEnvironmentInspectorUserIds = workEnvironmentInspectorUserIds.toList(),
+                        workEnvironmentInspectorUserId = workEnvironmentInspectorUserId.ifBlank { workEnvironmentInspectorUserIds.firstOrNull().orEmpty() },
+                        workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
                         handoverVerifierUserId = handoverVerifierUserId,
                         fieldValues = templatePayload.first,
                         templateFieldValues = templatePayload.second,
@@ -19038,6 +19185,14 @@ private fun DocumentationServicePeopleSection(
     onTipkaloInspectorUserIdsChange: (Set<String>) -> Unit,
     tipkaloAuthorizationHolderUserId: String,
     onTipkaloAuthorizationHolderUserIdChange: (String) -> Unit,
+    workEquipmentInspectorUserIds: Set<String>,
+    onWorkEquipmentInspectorUserIdsChange: (Set<String>) -> Unit,
+    workEquipmentAuthorizationHolderUserId: String,
+    onWorkEquipmentAuthorizationHolderUserIdChange: (String) -> Unit,
+    workEnvironmentInspectorUserIds: Set<String>,
+    onWorkEnvironmentInspectorUserIdsChange: (Set<String>) -> Unit,
+    workEnvironmentAuthorizationHolderUserId: String,
+    onWorkEnvironmentAuthorizationHolderUserIdChange: (String) -> Unit,
     enabled: Boolean,
 ) {
     if (personRules.isEmpty()) {
@@ -19051,21 +19206,29 @@ private fun DocumentationServicePeopleSection(
             val inspectorSelection = when (area) {
                 "tipkalo", "tzin" -> tipkaloInspectorUserIds
                 "elektro" -> electricalInspectorUserIds
+                "radna_oprema", "ro" -> workEquipmentInspectorUserIds
+                "radni_okolis", "fc" -> workEnvironmentInspectorUserIds
                 else -> inspectorUserIds
             }
             val authorizationSelection = when (area) {
                 "tipkalo", "tzin" -> tipkaloAuthorizationHolderUserId
                 "elektro" -> electricalAuthorizationHolderUserId
+                "radna_oprema", "ro" -> workEquipmentAuthorizationHolderUserId
+                "radni_okolis", "fc" -> workEnvironmentAuthorizationHolderUserId
                 else -> authorizationHolderUserId
             }
             val onInspectorChange: (Set<String>) -> Unit = when (area) {
                 "tipkalo", "tzin" -> onTipkaloInspectorUserIdsChange
                 "elektro" -> onElectricalInspectorUserIdsChange
+                "radna_oprema", "ro" -> onWorkEquipmentInspectorUserIdsChange
+                "radni_okolis", "fc" -> onWorkEnvironmentInspectorUserIdsChange
                 else -> onInspectorUserIdsChange
             }
             val onAuthorizationChange: (String) -> Unit = when (area) {
                 "tipkalo", "tzin" -> onTipkaloAuthorizationHolderUserIdChange
                 "elektro" -> onElectricalAuthorizationHolderUserIdChange
+                "radna_oprema", "ro" -> onWorkEquipmentAuthorizationHolderUserIdChange
+                "radni_okolis", "fc" -> onWorkEnvironmentAuthorizationHolderUserIdChange
                 else -> onAuthorizationHolderUserIdChange
             }
 

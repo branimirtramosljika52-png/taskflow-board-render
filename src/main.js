@@ -2468,6 +2468,12 @@ const state = {
       tipkaloInspectorUserIds: [],
       tipkaloInspectorUserId: "",
       tipkaloAuthorizationHolderUserId: "",
+      radna_opremaInspectorUserIds: [],
+      radna_opremaInspectorUserId: "",
+      radna_opremaAuthorizationHolderUserId: "",
+      radni_okolisInspectorUserIds: [],
+      radni_okolisInspectorUserId: "",
+      radni_okolisAuthorizationHolderUserId: "",
     },
     overrides: {},
     learningDrafts: {},
@@ -2526,6 +2532,12 @@ const state = {
       tipkaloInspectorUserIds: [],
       tipkaloInspectorUserId: "",
       tipkaloAuthorizationHolderUserId: "",
+      radna_opremaInspectorUserIds: [],
+      radna_opremaInspectorUserId: "",
+      radna_opremaAuthorizationHolderUserId: "",
+      radni_okolisInspectorUserIds: [],
+      radni_okolisInspectorUserId: "",
+      radni_okolisAuthorizationHolderUserId: "",
     },
     overrides: {},
     aiAssistant: {
@@ -61964,6 +61976,24 @@ function getQualificationAreaFieldKey(signatureArea = "elektro") {
     .replace(/^_+|_+$/g, "") || "elektro";
 }
 
+function getWorkOrderDocumentSignaturePersonDisplayLabels(definition = {}, capability = "inspect") {
+  const area = normalizeQualificationAreaKey(definition.key || definition.signatureArea || "");
+  if (area === "radna_oprema" || area === "ro") {
+    return capability === "authorize"
+      ? { label: "Odgovorna osoba radne opreme", summaryLabel: "RO odgovorna osoba" }
+      : { label: "Ispitivač radne opreme", summaryLabel: "RO ispitivač" };
+  }
+  if (area === "radni_okolis" || area === "fc") {
+    return capability === "authorize"
+      ? { label: "Odgovorna osoba radnog okoliša", summaryLabel: "Radni okoliš odgovorna osoba" }
+      : { label: "Ispitivač radnog okoliša", summaryLabel: "Radni okoliš ispitivač" };
+  }
+  const baseLabel = definition.label || definition.title || area;
+  return capability === "authorize"
+    ? { label: `Odgovorna osoba ${baseLabel}`, summaryLabel: `${baseLabel} odgovorna osoba` }
+    : { label: `Ispitivači ${baseLabel}`, summaryLabel: `${baseLabel} ispitivači` };
+}
+
 function getWorkOrderDocumentSignaturePersonFields() {
   const legacyFields = new Map(WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.map((definition) => [
     `${definition.signatureArea}:${definition.capability}`,
@@ -61975,14 +62005,16 @@ function getWorkOrderDocumentSignaturePersonFields() {
     const fieldKey = getQualificationAreaFieldKey(area);
     const inspectLegacy = legacyFields.get(`${area}:inspect`);
     const authorizeLegacy = legacyFields.get(`${area}:authorize`);
+    const inspectLabels = getWorkOrderDocumentSignaturePersonDisplayLabels(definition, "inspect");
+    const authorizeLabels = getWorkOrderDocumentSignaturePersonDisplayLabels(definition, "authorize");
     return [
       {
         listFieldName: inspectLegacy?.listFieldName || `${fieldKey}InspectorUserIds`,
         fieldName: inspectLegacy?.fieldName || `${fieldKey}InspectorUserId`,
         capability: "inspect",
         signatureArea: area,
-        label: inspectLegacy?.label || `Ispitivači ${definition.label || definition.title || area}`,
-        summaryLabel: inspectLegacy?.summaryLabel || `${definition.label || definition.title || area} ispitivači`,
+        label: inspectLegacy?.label || inspectLabels.label,
+        summaryLabel: inspectLegacy?.summaryLabel || inspectLabels.summaryLabel,
         emptyLabel: inspectLegacy?.emptyLabel || "Odaberi ispitivače",
         multiple: true,
       },
@@ -61990,8 +62022,8 @@ function getWorkOrderDocumentSignaturePersonFields() {
         fieldName: authorizeLegacy?.fieldName || `${fieldKey}AuthorizationHolderUserId`,
         capability: "authorize",
         signatureArea: area,
-        label: authorizeLegacy?.label || `Odgovorna osoba ${definition.label || definition.title || area}`,
-        summaryLabel: authorizeLegacy?.summaryLabel || `${definition.label || definition.title || area} odgovorna osoba`,
+        label: authorizeLegacy?.label || authorizeLabels.label,
+        summaryLabel: authorizeLegacy?.summaryLabel || authorizeLabels.summaryLabel,
         emptyLabel: authorizeLegacy?.emptyLabel || "Odaberi odgovornu osobu",
       },
     ];
@@ -113612,6 +113644,12 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     tipkaloInspectorUserIds: [],
     tipkaloInspectorUserId: "",
     tipkaloAuthorizationHolderUserId: "",
+    radna_opremaInspectorUserIds: [],
+    radna_opremaInspectorUserId: "",
+    radna_opremaAuthorizationHolderUserId: "",
+    radni_okolisInspectorUserIds: [],
+    radni_okolisInspectorUserId: "",
+    radni_okolisAuthorizationHolderUserId: "",
   };
   state.workOrderDocumentWizard.learningDrafts = {};
   state.workOrderDocumentWizard.isznrWorkEquipment = {};
@@ -115851,7 +115889,7 @@ function syncWorkOrderDocumentWizardCommonInputs() {
         const field = document.createElement("label");
         field.className = "field";
         const fieldLabel = document.createElement("span");
-        fieldLabel.textContent = definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači";
+        fieldLabel.textContent = definition.label || (definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači");
         const slot = document.createElement("div");
         slot.className = "work-order-document-wizard-control-slot";
         const multiple = Boolean(definition.multiple);
@@ -117257,6 +117295,12 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       tipkaloInspectorUserIds: [],
       tipkaloInspectorUserId: "",
       tipkaloAuthorizationHolderUserId: "",
+      radna_opremaInspectorUserIds: [],
+      radna_opremaInspectorUserId: "",
+      radna_opremaAuthorizationHolderUserId: "",
+      radni_okolisInspectorUserIds: [],
+      radni_okolisInspectorUserId: "",
+      radni_okolisAuthorizationHolderUserId: "",
     },
     overrides: {},
   };
@@ -117377,6 +117421,8 @@ function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
   const inspectorUserIds = normalizeQualifiedUserIdList(source.inspectorUserIds ?? []);
   const electricalInspectorUserIds = normalizeQualifiedUserIdList(source.electricalInspectorUserIds ?? []);
   const tipkaloInspectorUserIds = normalizeQualifiedUserIdList(source.tipkaloInspectorUserIds ?? []);
+  const workEquipmentInspectorUserIds = normalizeQualifiedUserIdList(source.radna_opremaInspectorUserIds ?? source.workEquipmentInspectorUserIds ?? []);
+  const workEnvironmentInspectorUserIds = normalizeQualifiedUserIdList(source.radni_okolisInspectorUserIds ?? source.workEnvironmentInspectorUserIds ?? []);
 
   return {
     inspectionDate: normalizeDateInputValue(source.inspectionDate ?? ""),
@@ -117405,6 +117451,12 @@ function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
     tipkaloInspectorUserIds,
     tipkaloInspectorUserId: String(source.tipkaloInspectorUserId ?? tipkaloInspectorUserIds[0] ?? "").trim(),
     tipkaloAuthorizationHolderUserId: String(source.tipkaloAuthorizationHolderUserId ?? "").trim(),
+    radna_opremaInspectorUserIds: workEquipmentInspectorUserIds,
+    radna_opremaInspectorUserId: String(source.radna_opremaInspectorUserId ?? source.workEquipmentInspectorUserId ?? workEquipmentInspectorUserIds[0] ?? "").trim(),
+    radna_opremaAuthorizationHolderUserId: String(source.radna_opremaAuthorizationHolderUserId ?? source.workEquipmentAuthorizationHolderUserId ?? "").trim(),
+    radni_okolisInspectorUserIds: workEnvironmentInspectorUserIds,
+    radni_okolisInspectorUserId: String(source.radni_okolisInspectorUserId ?? source.workEnvironmentInspectorUserId ?? workEnvironmentInspectorUserIds[0] ?? "").trim(),
+    radni_okolisAuthorizationHolderUserId: String(source.radni_okolisAuthorizationHolderUserId ?? source.workEnvironmentAuthorizationHolderUserId ?? "").trim(),
   };
 }
 
@@ -117824,6 +117876,36 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       tipkaloAuthorizationHolderUserId: String(
         state.workOrderDocumentWizard.common?.tipkaloAuthorizationHolderUserId ?? "",
       ).trim(),
+      radna_opremaInspectorUserIds: normalizeQualifiedUserIdList(
+        state.workOrderDocumentWizard.common?.radna_opremaInspectorUserIds
+          ?? state.workOrderDocumentWizard.common?.workEquipmentInspectorUserIds
+          ?? [],
+      ),
+      radna_opremaInspectorUserId: String(
+        state.workOrderDocumentWizard.common?.radna_opremaInspectorUserId
+          ?? state.workOrderDocumentWizard.common?.workEquipmentInspectorUserId
+          ?? "",
+      ).trim(),
+      radna_opremaAuthorizationHolderUserId: String(
+        state.workOrderDocumentWizard.common?.radna_opremaAuthorizationHolderUserId
+          ?? state.workOrderDocumentWizard.common?.workEquipmentAuthorizationHolderUserId
+          ?? "",
+      ).trim(),
+      radni_okolisInspectorUserIds: normalizeQualifiedUserIdList(
+        state.workOrderDocumentWizard.common?.radni_okolisInspectorUserIds
+          ?? state.workOrderDocumentWizard.common?.workEnvironmentInspectorUserIds
+          ?? [],
+      ),
+      radni_okolisInspectorUserId: String(
+        state.workOrderDocumentWizard.common?.radni_okolisInspectorUserId
+          ?? state.workOrderDocumentWizard.common?.workEnvironmentInspectorUserId
+          ?? "",
+      ).trim(),
+      radni_okolisAuthorizationHolderUserId: String(
+        state.workOrderDocumentWizard.common?.radni_okolisAuthorizationHolderUserId
+          ?? state.workOrderDocumentWizard.common?.workEnvironmentAuthorizationHolderUserId
+          ?? "",
+      ).trim(),
     },
     overrides: Object.fromEntries(
       Object.entries(state.workOrderDocumentWizard.overrides ?? {})
@@ -118242,6 +118324,29 @@ function getWorkOrderServiceQualificationKeys(service = {}) {
   ));
   const linkedServiceCatalogItem = getServiceCatalogItemForWorkOrderService(service);
   getServiceCatalogQualificationKeys(linkedServiceCatalogItem).forEach((key) => keys.add(key));
+  const text = normalizeSearchText([
+    service?.serviceCode,
+    service?.code,
+    service?.name,
+    service?.serviceName,
+    service?.title,
+    linkedServiceCatalogItem?.serviceCode,
+    linkedServiceCatalogItem?.code,
+    linkedServiceCatalogItem?.name,
+    linkedServiceCatalogItem?.title,
+  ].filter(Boolean).join(" "));
+  if (/\bro\b/.test(text) || text.includes("radna oprema") || text.includes("radne opreme")) {
+    keys.add("radna_oprema");
+  }
+  if (
+    /\bfc\b/.test(text)
+    || text.includes("radni okolis")
+    || text.includes("radnog okolisa")
+    || text.includes("fizikalni cimbenici")
+    || text.includes("fizikalnih cimbenika")
+  ) {
+    keys.add("radni_okolis");
+  }
   return [...keys].filter(Boolean);
 }
 
@@ -119196,7 +119301,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
     fields.forEach((definition) => {
       areaFields.append(createPickerField({
-        label: definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači",
+        label: definition.label || (definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači"),
         capability: definition.capability,
         signatureArea: definition.signatureArea,
         multiple: Boolean(definition.multiple),

@@ -16103,6 +16103,12 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
   const inspectorUserIds = normalizeMobileDocumentWizardArray(source.inspectorUserIds);
   const electricalInspectorUserIds = normalizeMobileDocumentWizardArray(source.electricalInspectorUserIds);
   const tipkaloInspectorUserIds = normalizeMobileDocumentWizardArray(source.tipkaloInspectorUserIds);
+  const workEquipmentInspectorUserIds = normalizeMobileDocumentWizardArray(
+    source.radna_opremaInspectorUserIds || source.workEquipmentInspectorUserIds,
+  );
+  const workEnvironmentInspectorUserIds = normalizeMobileDocumentWizardArray(
+    source.radni_okolisInspectorUserIds || source.workEnvironmentInspectorUserIds,
+  );
   const selectedEquipmentIds = normalizeMobileDocumentWizardArray(source.selectedEquipmentIds || source.measurementEquipmentIds);
   const selectedLegalFrameworkIds = normalizeMobileDocumentWizardArray(source.selectedLegalFrameworkIds || source.legalFrameworkIds);
   const selectedRulebookIds = normalizeMobileDocumentWizardArray(source.selectedRulebookIds || source.rulebookIds);
@@ -16269,6 +16275,12 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     tipkaloInspectorUserIds,
     tipkaloInspectorUserId: normalizeInputValue(source.tipkaloInspectorUserId) || tipkaloInspectorUserIds[0] || "",
     tipkaloAuthorizationHolderUserId: normalizeInputValue(source.tipkaloAuthorizationHolderUserId),
+    radna_opremaInspectorUserIds: workEquipmentInspectorUserIds,
+    radna_opremaInspectorUserId: normalizeInputValue(source.radna_opremaInspectorUserId || source.workEquipmentInspectorUserId) || workEquipmentInspectorUserIds[0] || "",
+    radna_opremaAuthorizationHolderUserId: normalizeInputValue(source.radna_opremaAuthorizationHolderUserId || source.workEquipmentAuthorizationHolderUserId),
+    radni_okolisInspectorUserIds: workEnvironmentInspectorUserIds,
+    radni_okolisInspectorUserId: normalizeInputValue(source.radni_okolisInspectorUserId || source.workEnvironmentInspectorUserId) || workEnvironmentInspectorUserIds[0] || "",
+    radni_okolisAuthorizationHolderUserId: normalizeInputValue(source.radni_okolisAuthorizationHolderUserId || source.workEnvironmentAuthorizationHolderUserId),
     fieldValues,
     templateFieldValues,
     fieldSheets,
@@ -16461,6 +16473,22 @@ function uniqueMobileSignatureEntries(entries = []) {
 
 function getMobileDocumentSignatureInspectorIds(common = {}, signatureArea = "elektro") {
   const area = normalizeMobileQualificationAreaKey(signatureArea);
+  if (area === "radna_oprema" || area === "ro") {
+    const ids = normalizeMobileDocumentWizardArray(common.radna_opremaInspectorUserIds?.length > 0
+      ? common.radna_opremaInspectorUserIds
+      : [common.radna_opremaInspectorUserId || common.workEquipmentInspectorUserId]);
+    if (ids.length > 0) {
+      return ids;
+    }
+  }
+  if (area === "radni_okolis" || area === "fc") {
+    const ids = normalizeMobileDocumentWizardArray(common.radni_okolisInspectorUserIds?.length > 0
+      ? common.radni_okolisInspectorUserIds
+      : [common.radni_okolisInspectorUserId || common.workEnvironmentInspectorUserId]);
+    if (ids.length > 0) {
+      return ids;
+    }
+  }
   if (area === "tipkalo" || area === "tzin") {
     const ids = normalizeMobileDocumentWizardArray(common.tipkaloInspectorUserIds?.length > 0
       ? common.tipkaloInspectorUserIds
@@ -16484,6 +16512,18 @@ function getMobileDocumentSignatureInspectorIds(common = {}, signatureArea = "el
 
 function getMobileDocumentSignatureAuthorizationIds(common = {}, signatureArea = "elektro") {
   const area = normalizeMobileQualificationAreaKey(signatureArea);
+  if (area === "radna_oprema" || area === "ro") {
+    const id = normalizeInputValue(common.radna_opremaAuthorizationHolderUserId || common.workEquipmentAuthorizationHolderUserId);
+    if (id) {
+      return [id];
+    }
+  }
+  if (area === "radni_okolis" || area === "fc") {
+    const id = normalizeInputValue(common.radni_okolisAuthorizationHolderUserId || common.workEnvironmentAuthorizationHolderUserId);
+    if (id) {
+      return [id];
+    }
+  }
   if (area === "tipkalo" || area === "tzin") {
     const id = normalizeInputValue(common.tipkaloAuthorizationHolderUserId);
     if (id) {
@@ -16617,10 +16657,18 @@ function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {
   const tipkaloInspectorUsers = getMobileUsersByIds(scopedSnapshot, common.tipkaloInspectorUserIds?.length > 0
     ? common.tipkaloInspectorUserIds
     : [common.tipkaloInspectorUserId]);
+  const workEquipmentInspectorUsers = getMobileUsersByIds(scopedSnapshot, common.radna_opremaInspectorUserIds?.length > 0
+    ? common.radna_opremaInspectorUserIds
+    : [common.radna_opremaInspectorUserId || common.workEquipmentInspectorUserId]);
+  const workEnvironmentInspectorUsers = getMobileUsersByIds(scopedSnapshot, common.radni_okolisInspectorUserIds?.length > 0
+    ? common.radni_okolisInspectorUserIds
+    : [common.radni_okolisInspectorUserId || common.workEnvironmentInspectorUserId]);
   const selectedInspectorUsers = uniqueMobileUsers([
     ...generalInspectorUsers,
     ...electricalInspectorUsers,
     ...tipkaloInspectorUsers,
+    ...workEquipmentInspectorUsers,
+    ...workEnvironmentInspectorUsers,
   ]);
   const inspectorUsers = selectedInspectorUsers.length > 0
     ? selectedInspectorUsers
@@ -16631,6 +16679,16 @@ function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {
   const electricalAuthorizationHolder = findMobileScopedUserById(scopedSnapshot, common.electricalAuthorizationHolderUserId);
   const tipkaloInspector = tipkaloInspectorUsers[0] || primaryInspector;
   const tipkaloAuthorizationHolder = findMobileScopedUserById(scopedSnapshot, common.tipkaloAuthorizationHolderUserId);
+  const workEquipmentInspector = workEquipmentInspectorUsers[0] || primaryInspector;
+  const workEquipmentAuthorizationHolder = findMobileScopedUserById(
+    scopedSnapshot,
+    common.radna_opremaAuthorizationHolderUserId || common.workEquipmentAuthorizationHolderUserId,
+  );
+  const workEnvironmentInspector = workEnvironmentInspectorUsers[0] || primaryInspector;
+  const workEnvironmentAuthorizationHolder = findMobileScopedUserById(
+    scopedSnapshot,
+    common.radni_okolisAuthorizationHolderUserId || common.workEnvironmentAuthorizationHolderUserId,
+  );
   const inspectorNames = inspectorUsers.map(getMobileUserDocumentName).filter(Boolean).join(", ") || executorNames;
   const inspectorNamesWithTitles = inspectorUsers.map(formatMobileUserWithTitle).filter(Boolean).join(", ") || inspectorNames;
   const firstInspectorName = getMobileUserDocumentName(primaryInspector)
@@ -16655,6 +16713,10 @@ function buildMobileInspectionPersonPlaceholders(common = {}, scopedSnapshot = {
     ELEKTRO_OVLASTENIK: getMobileUserDocumentName(electricalAuthorizationHolder),
     TIPKALO_ISPITIVAC: getMobileUserDocumentName(tipkaloInspector),
     TIPKALO_OVLASTENIK: getMobileUserDocumentName(tipkaloAuthorizationHolder),
+    RADNA_OPREMA_ISPITIVAC: getMobileUserDocumentName(workEquipmentInspector),
+    RADNA_OPREMA_OVLASTENIK: getMobileUserDocumentName(workEquipmentAuthorizationHolder),
+    RADNI_OKOLIS_ISPITIVAC: getMobileUserDocumentName(workEnvironmentInspector),
+    RADNI_OKOLIS_OVLASTENIK: getMobileUserDocumentName(workEnvironmentAuthorizationHolder),
     ...buildMobileQualifiedUserPlaceholders("QUALIFIED_INSPECTOR", primaryInspector),
     ...buildMobileQualifiedUserPlaceholders("QUALIFIED_AUTHORIZATION_HOLDER", authorizationHolder),
   };
@@ -16689,6 +16751,12 @@ function buildMobileSignatureGroup(common = {}, scopedSnapshot = {}) {
     ...(common.tipkaloInspectorUserIds || []),
     common.tipkaloInspectorUserId,
     common.tipkaloAuthorizationHolderUserId,
+    ...(common.radna_opremaInspectorUserIds || []),
+    common.radna_opremaInspectorUserId,
+    common.radna_opremaAuthorizationHolderUserId,
+    ...(common.radni_okolisInspectorUserIds || []),
+    common.radni_okolisInspectorUserId,
+    common.radni_okolisAuthorizationHolderUserId,
   ]);
   const selectedUsers = getMobileUsersByIds(scopedSnapshot, candidateIds);
   const users = selectedUsers.length > 0
@@ -18990,6 +19058,12 @@ function getMobileQualificationAreaLabel(signatureArea = "elektro") {
   if (key === "tipkalo" || key === "tzin") {
     return "Tipkalo za isklop napona";
   }
+  if (key === "radna_oprema" || key === "ro") {
+    return "Radna oprema";
+  }
+  if (key === "radni_okolis" || key === "fc") {
+    return "Radni okoliš";
+  }
   return key
     .split(/[_-]+/g)
     .filter(Boolean)
@@ -19018,6 +19092,18 @@ function getMobileServiceQualificationKeys(service = {}, scopedSnapshot = {}) {
   }
   if (/\b(spr|panik)\b/.test(text) || text.includes("panik rasvjet") || text.includes("panic")) {
     keys.add("elektro");
+  }
+  if (/\bro\b/.test(text) || text.includes("radna oprema") || text.includes("radne opreme")) {
+    keys.add("radna_oprema");
+  }
+  if (
+    /\bfc\b/.test(text)
+    || text.includes("radni okolis")
+    || text.includes("radnog okolisa")
+    || text.includes("fizikalni cimbenici")
+    || text.includes("fizikalnih cimbenika")
+  ) {
+    keys.add("radni_okolis");
   }
 
   return [...keys].filter(Boolean);
