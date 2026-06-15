@@ -2005,6 +2005,11 @@ const state = {
   jobAiSettings: {
     aiInstructions: {},
   },
+  workEquipmentAiSettings: {
+    fieldInstructions: {},
+    registryInstructions: {},
+    profiles: [],
+  },
   riskPpeCatalog: [],
   riskAssessments: [],
   riskAssessmentReportTemplate: null,
@@ -3696,6 +3701,19 @@ const settingsWorkOrderServiceFactorsList = document.querySelector("#settings-wo
 const settingsJobAiFields = document.querySelector("#settings-job-ai-fields");
 const settingsJobAiSaveButton = document.querySelector("#settings-job-ai-save");
 const settingsJobAiFeedback = document.querySelector("#settings-job-ai-feedback");
+const settingsWorkEquipmentAiSaveButton = document.querySelector("#settings-work-equipment-ai-save");
+const settingsWorkEquipmentAiRefreshButton = document.querySelector("#settings-work-equipment-ai-refresh");
+const settingsWorkEquipmentAiFeedback = document.querySelector("#settings-work-equipment-ai-feedback");
+const settingsWorkEquipmentAiGeneralInput = document.querySelector("#settings-work-equipment-ai-general");
+const settingsWorkEquipmentAiExtractionInput = document.querySelector("#settings-work-equipment-ai-extraction");
+const settingsWorkEquipmentAiMatchingInput = document.querySelector("#settings-work-equipment-ai-matching");
+const settingsWorkEquipmentAiReviewInput = document.querySelector("#settings-work-equipment-ai-review");
+const settingsWorkEquipmentAiModeInput = document.querySelector("#settings-work-equipment-ai-mode");
+const settingsWorkEquipmentAiFields = document.querySelector("#settings-work-equipment-ai-fields");
+const settingsWorkEquipmentAiProfiles = document.querySelector("#settings-work-equipment-ai-profiles");
+const settingsWorkEquipmentAiAddProfileButton = document.querySelector("#settings-work-equipment-ai-add-profile");
+const settingsWorkEquipmentAiRegisters = document.querySelector("#settings-work-equipment-ai-registers");
+const settingsWorkEquipmentAiRegisterSummary = document.querySelector("#settings-work-equipment-ai-register-summary");
 const settingsPushPreferencesGrid = document.querySelector("#settings-push-preferences-grid");
 const settingsPushPreferencesSaveButton = document.querySelector("#settings-push-preferences-save");
 const settingsPushPreferencesFeedback = document.querySelector("#settings-push-preferences-feedback");
@@ -3703,6 +3721,9 @@ let settingsJobAiInstructionDrafts = {};
 let settingsJobAiDraftInitialized = false;
 let settingsJobAiActiveModalKey = "";
 let settingsJobAiModalElements = null;
+let settingsWorkEquipmentAiRegisterGroups = [];
+let settingsWorkEquipmentAiRegisterGroupsLoaded = false;
+let settingsWorkEquipmentAiProfileDrafts = [];
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
 const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
@@ -9777,6 +9798,8 @@ function applySnapshot(payload, options = {}) {
   state.purchaseOrders = payload.purchaseOrders ?? [];
   state.jobs = payload.jobs ?? [];
   state.jobAiSettings = normalizeJobAiSettings(payload.jobAiSettings ?? {});
+  state.workEquipmentAiSettings = normalizeWorkEquipmentAiSettings(payload.workEquipmentAiSettings ?? {});
+  settingsWorkEquipmentAiProfileDrafts = [];
   state.riskPpeCatalog = normalizeRiskPpeCatalog(payload.riskPpeCatalog ?? []);
   state.riskAssessments = payload.riskAssessments ?? [];
   state.riskAssessmentReportTemplate = payload.riskAssessmentReportTemplate
@@ -33647,6 +33670,7 @@ function renderSettingsModule() {
   const periodicsVisualSettings = getPeriodicsVisualSettings();
   const jobAiSettings = getJobAiSettings();
   const canManageJobNexAi = getCanManageJobNexAiSettings();
+  const workEquipmentAiSettings = getWorkEquipmentAiSettings();
 
   syncSettingsOrganizationLogo();
   syncSettingsDocumentStamp();
@@ -33761,6 +33785,7 @@ function renderSettingsModule() {
   renderSettingsWorkOrderServiceFactors(periodicsVisualSettings);
   renderSettingsWorkOrderPointsPreview(periodicsVisualSettings);
   renderSettingsJobAiFields(jobAiSettings);
+  renderSettingsWorkEquipmentAi(workEquipmentAiSettings);
 
   if (settingsSaveAllButton) {
     settingsSaveAllButton.disabled = !canManageSettings;
@@ -33780,6 +33805,7 @@ function renderSettingsModule() {
     settingsPeriodicsVisualFeedback,
     settingsWorkOrderPointsFeedback,
     settingsIsznrApiFeedback,
+    settingsWorkEquipmentAiFeedback,
   ].forEach((feedbackNode) => {
     if (!feedbackNode) {
       return;
@@ -34475,6 +34501,7 @@ async function saveAllSettingsBlocks() {
   );
   const isznrApiPayload = collectSettingsIsznrApiPayload();
   const jobAiInstructions = normalizeJobAiInstructionDrafts(collectSettingsJobAiInstructions());
+  const workEquipmentAiSettings = collectSettingsWorkEquipmentAiSettings();
 
   if (settingsMeasurementLeadDaysInput) settingsMeasurementLeadDaysInput.value = String(measurementLeadDays);
   if (settingsMeasurementRepeatDaysInput) settingsMeasurementRepeatDaysInput.value = String(measurementRepeatEveryDays);
@@ -34507,6 +34534,7 @@ async function saveAllSettingsBlocks() {
     settingsWorkOrderPointsFeedback,
     settingsIsznrApiFeedback,
     settingsJobAiFeedback,
+    settingsWorkEquipmentAiFeedback,
   ].forEach((feedbackNode) => setInlineMessage(feedbackNode, ""));
 
   if (settingsSaveAllButton) {
@@ -34572,6 +34600,12 @@ async function saveAllSettingsBlocks() {
         aiInstructions: jobAiInstructions,
       },
     });
+    payload = await apiRequest("/work-equipment/ai-settings", {
+      method: "POST",
+      body: {
+        settings: workEquipmentAiSettings,
+      },
+    });
 
     if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
       applySnapshot(payload);
@@ -34599,6 +34633,7 @@ async function saveAllSettingsBlocks() {
       settingsWorkOrderPointsFeedback,
       settingsIsznrApiFeedback,
       settingsJobAiFeedback,
+      settingsWorkEquipmentAiFeedback,
     ].forEach((feedbackNode) => setInlineMessage(feedbackNode, successMessage, "success"));
     return true;
   } catch (error) {
@@ -113738,18 +113773,365 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
       message: "",
       items: [],
       options: [],
+      registers: [],
       companyOib: "",
       fetchedAt: "",
       totalItems: null,
       recordsLimited: false,
+      scope: "locations",
+      locationKey: "",
       filter: "all",
       postDraft: null,
       selectedItemIds: [],
+      manualEquipments: [],
+      aiFiles: [],
+      aiLoading: false,
+      aiMessage: "",
+      aiError: "",
+      aiResult: null,
+      aiModelTier: "standard",
       submitting: false,
       postResult: null,
     };
   }
   return state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId];
+}
+
+function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const source = item && typeof item === "object" ? item : { label: item };
+      const registerIri = String(source.registerIri || source.iri || source["@id"] || source.register || "").trim();
+      const label = String(source.label || source.name || source.title || source.customContent || "").trim();
+      const customContent = String(source.customContent || (!registerIri ? label : "") || "").trim();
+      return {
+        registerIri,
+        label,
+        customContent,
+        meetsConditions: Number(source.meetsConditions) === 0 || String(source.meetsConditions).toLowerCase() === "false" ? 0 : 1,
+        measuredValue: String(source.measuredValue || source.value || "").trim(),
+      };
+    })
+    .filter((item) => item.registerIri || item.label || item.customContent || item.measuredValue)
+    .slice(0, 80);
+}
+
+function normalizeWorkOrderDocumentRoIriList(values = []) {
+  return normalizeAiConfigListLocal(values, 120)
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function normalizeWorkOrderDocumentRoManualEquipment(equipment = {}, index = 0) {
+  const source = equipment && typeof equipment === "object" ? equipment : {};
+  const finalGradeValue = String(source.finalGrade || source.grade || "1").toLowerCase();
+  const serialNumber = String(source.serialNumber || source.serial || "").trim();
+  const inventoryNumber = String(source.inventoryNumber || source.inventory || "").trim();
+  const name = String(source.name || source.equipmentName || source.type || "").trim();
+  const manufacturer = String(source.manufacturer || source.producer || "").trim();
+  const model = String(source.model || source.typeModel || source.type || "").trim();
+  const attachments = (Array.isArray(source.attachments) ? source.attachments : [])
+    .map((file) => ({
+      fileName: String(file?.fileName || file?.name || "").trim(),
+      fileType: String(file?.fileType || file?.type || file?.mimeType || "").trim(),
+      fileSize: Number(file?.fileSize || file?.size || 0) || 0,
+      dataUrl: String(file?.dataUrl || file?.contentDataUrl || "").trim(),
+      description: String(file?.description || "").trim(),
+    }))
+    .filter((file) => file.fileName && file.dataUrl)
+    .slice(0, 12);
+  return {
+    id: String(source.id || "").trim() || createClientSideId(`ro-manual-${index + 1}`),
+    source: String(source.source || "ai").trim(),
+    profileId: String(source.profileId || "").trim(),
+    profileName: String(source.profileName || "").trim(),
+    confidence: normalizeAiConfidenceLevelLocal(source.confidence || "medium"),
+    name,
+    manufacturer,
+    model,
+    serialNumber,
+    inventoryNumber,
+    technicalData: String(source.technicalData || "").trim(),
+    purposeDescription: String(source.purposeDescription || "").trim(),
+    workspacePosition: String(source.workspacePosition || "").trim(),
+    workingSubstancesAndRawMaterials: String(source.workingSubstancesAndRawMaterials || "").trim(),
+    useAndMaintenance: String(source.useAndMaintenance || "").trim(),
+    methodsProceduresAndNorms: String(source.methodsProceduresAndNorms || "").trim(),
+    deficiencies: String(source.deficiencies || "").trim(),
+    measuresToEliminateDeficiencies: String(source.measuresToEliminateDeficiencies || "").trim(),
+    finalGrade: finalGradeValue === "0" || finalGradeValue.includes("ne zadovoljava") ? 0 : 1,
+    mechanicalItems: normalizeWorkOrderDocumentRoManualAssessmentItems(source.mechanicalItems),
+    electricalItems: normalizeWorkOrderDocumentRoManualAssessmentItems(source.electricalItems),
+    hazardRegisterIris: normalizeWorkOrderDocumentRoIriList(source.hazardRegisterIris || source.hazards),
+    harmfulnessRegisterIris: normalizeWorkOrderDocumentRoIriList(source.harmfulnessRegisterIris || source.harmfulnesses),
+    strainRegisterIris: normalizeWorkOrderDocumentRoIriList(source.strainRegisterIris || source.strains),
+    attachments,
+    aiReason: String(source.reason || source.aiReason || "").trim(),
+    sourceFile: String(source.sourceFile || "").trim(),
+  };
+}
+
+function getReadyWorkOrderDocumentRoManualEquipments(entry = {}) {
+  return (Array.isArray(entry.manualEquipments) ? entry.manualEquipments : [])
+    .map((equipment, index) => normalizeWorkOrderDocumentRoManualEquipment(equipment, index))
+    .filter((equipment) => equipment.name || equipment.manufacturer || equipment.model || equipment.serialNumber || equipment.inventoryNumber);
+}
+
+function getWorkOrderDocumentRoAiFilesForAttachments(entry = {}, equipmentIndex = 0) {
+  return (Array.isArray(entry.aiFiles) ? entry.aiFiles : [])
+    .filter((file) => file?.contentDataUrl && String(file.type || "").startsWith("image/"))
+    .slice(equipmentIndex * 4, equipmentIndex * 4 + 4)
+    .map((file) => ({
+      fileName: String(file.name || "slika-radne-opreme").trim(),
+      fileType: String(file.type || "image/jpeg").trim(),
+      fileSize: Number(file.size || 0) || 0,
+      dataUrl: String(file.contentDataUrl || "").trim(),
+      description: "NexAI upload za radnu opremu",
+    }));
+}
+
+function getWorkEquipmentAiRegisterPromptGroups(entry = {}) {
+  const groups = [];
+  const sourceGroups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) && settingsWorkEquipmentAiRegisterGroups.length
+    ? settingsWorkEquipmentAiRegisterGroups
+    : (Array.isArray(entry?.registers) ? entry.registers : []);
+  (Array.isArray(sourceGroups) ? sourceGroups : []).forEach((group) => {
+    const items = (Array.isArray(group.items) ? group.items : [])
+      .slice(0, 120)
+      .map((item) => ({
+        key: getWorkEquipmentAiRegisterKey(item, group),
+        id: String(item.id || item["@id"] || item.iri || "").trim(),
+        iri: String(item.iri || item["@id"] || "").trim(),
+        label: String(item.label || item.name || item.title || "").trim(),
+        code: String(item.code || "").trim(),
+      }))
+      .filter((item) => item.key || item.iri || item.label);
+    if (items.length) {
+      groups.push({
+        group: String(group.group || "").trim(),
+        label: String(group.label || "").trim(),
+        path: String(group.path || "").trim(),
+        items,
+      });
+    }
+  });
+  return groups;
+}
+
+function buildWorkOrderDocumentRoAiExpectedJsonShape() {
+  return {
+    workEquipments: [
+      {
+        name: "Naziv radne opreme",
+        manufacturer: "Proizvođač ako je vidljiv",
+        model: "Tip ili model ako je vidljiv",
+        serialNumber: "Serijski broj ako je vidljiv",
+        inventoryNumber: "Inventarski broj ako je vidljiv",
+        technicalData: "Tehnički podaci, npr. snaga, nosivost, napon, tlak",
+        purposeDescription: "Namjena opreme",
+        workspacePosition: "Mjesto rada ili položaj u prostoru",
+        workingSubstancesAndRawMaterials: "Radne tvari/sirovine ako postoje",
+        useAndMaintenance: "Korištenje i održavanje",
+        methodsProceduresAndNorms: "Metode, postupci i norme",
+        deficiencies: "Nedostaci ili bez vidljivih nedostataka",
+        measuresToEliminateDeficiencies: "Mjere za uklanjanje nedostataka",
+        finalGrade: "1 za zadovoljava, 0 za ne zadovoljava",
+        profileId: "id odabranog profila ako odgovara",
+        profileName: "naziv profila ako odgovara",
+        confidence: "high | medium | low",
+        reason: "kratko objašnjenje",
+        sourceFile: "datoteka iz koje je podatak izvučen",
+        mechanicalItems: [{ registerIri: "IRI iz šifrarnika ili prazno", label: "naziv stavke", meetsConditions: 1, customContent: "" }],
+        electricalItems: [{ registerIri: "IRI iz šifrarnika ili prazno", label: "naziv stavke", meetsConditions: 1, customContent: "" }],
+        hazardRegisterIris: ["IRI opasnosti iz hazard_registers"],
+        harmfulnessRegisterIris: ["IRI štetnosti iz harmfulness_registers"],
+        strainRegisterIris: ["IRI napora iz strain_registers"],
+      },
+    ],
+    warnings: ["što korisnik treba provjeriti"],
+    summary: "kratak sažetak rezultata",
+  };
+}
+
+function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
+  const settings = getWorkEquipmentAiSettings();
+  return {
+    workOrder: {
+      id: String(workOrder?.id || ""),
+      number: String(workOrder?.workOrderNumber || workOrder?.number || ""),
+      companyName: String(workOrder?.companyName || ""),
+      companyOib: String(workOrder?.companyOib || entry.companyOib || ""),
+      locationName: String(workOrder?.locationName || ""),
+      locationAddress: String(workOrder?.locationAddress || ""),
+      serviceLine: String(workOrder?.serviceLine || workOrder?.displayService || ""),
+    },
+    settings,
+    profiles: settings.profiles,
+    fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
+    registers: getWorkEquipmentAiRegisterPromptGroups(entry),
+    existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
+      id: String(item.id || ""),
+      recordNumber: String(item.recordNumber || ""),
+      equipmentType: String(item.equipmentType || ""),
+      name: String(item.equipment?.name || ""),
+      manufacturer: String(item.equipment?.manufacturer || ""),
+      model: String(item.equipment?.model || ""),
+      serialNumber: String(item.equipment?.serialNumber || ""),
+      inventoryNumber: String(item.equipment?.inventoryNumber || ""),
+      deadlineForNextExamination: String(item.deadlineForNextExamination || ""),
+      finalGrade: String(item.finalGrade?.label || item.finalGrade || ""),
+    })),
+    localHistory: getWorkOrderDocumentRoLocalHistory(workOrder),
+    expectedJsonShape: buildWorkOrderDocumentRoAiExpectedJsonShape(),
+  };
+}
+
+async function addWorkOrderDocumentRoAiFiles(files, workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+  const fileList = Array.from(files ?? []);
+  if (!fileList.length) {
+    return;
+  }
+  entry.aiLoading = true;
+  entry.aiError = "";
+  entry.aiMessage = "Učitavam slike/PDF za NexAI...";
+  renderWorkOrderDocumentWizard();
+  try {
+    const incoming = (await Promise.all(fileList.map(createDocumentTemplateRuntimeAiFileMeta)))
+      .filter((file) => file.name);
+    const fileMap = new Map((Array.isArray(entry.aiFiles) ? entry.aiFiles : [])
+      .map((file) => [String(file.id || file.name), file]));
+    incoming.forEach((file) => {
+      fileMap.set(String(file.id || file.name), file);
+    });
+    entry.aiFiles = Array.from(fileMap.values()).slice(0, 16);
+    const inlineCount = entry.aiFiles.filter((file) => file.inlineReady || file.contentDataUrl).length;
+    entry.aiMessage = `${entry.aiFiles.length} datoteka spremno · ${inlineCount} ide direktno u NexAI analizu.`;
+  } catch (error) {
+    entry.aiError = error?.message || "NexAI datoteke nisu učitane.";
+  } finally {
+    entry.aiLoading = false;
+    renderWorkOrderDocumentWizard();
+  }
+}
+
+function removeWorkOrderDocumentRoAiFile(workOrder = {}, fileId = "") {
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
+  entry.aiFiles = (Array.isArray(entry.aiFiles) ? entry.aiFiles : [])
+    .filter((file) => String(file.id || file.name) !== String(fileId));
+  entry.aiMessage = entry.aiFiles.length ? `${entry.aiFiles.length} datoteka ostaje za NexAI.` : "";
+  renderWorkOrderDocumentWizard();
+}
+
+function applyWorkOrderDocumentRoAiResult(workOrder = {}, entry = {}, result = {}) {
+  const suggestions = Array.isArray(result?.workEquipments)
+    ? result.workEquipments
+    : (Array.isArray(result?.equipments) ? result.equipments : []);
+  if (!suggestions.length) {
+    entry.aiMessage = result?.summary || "NexAI nije pronašao radnu opremu za automatsko popunjavanje.";
+    return 0;
+  }
+  const existing = new Map(getReadyWorkOrderDocumentRoManualEquipments(entry).map((equipment) => [
+    [
+      equipment.serialNumber,
+      equipment.inventoryNumber,
+      equipment.name,
+      equipment.manufacturer,
+      equipment.model,
+    ].join("|").toLowerCase(),
+    equipment,
+  ]));
+  suggestions.forEach((suggestion, index) => {
+    const manual = normalizeWorkOrderDocumentRoManualEquipment({
+      ...suggestion,
+      source: "ai",
+      attachments: suggestion.attachments?.length
+        ? suggestion.attachments
+        : getWorkOrderDocumentRoAiFilesForAttachments(entry, index),
+    }, index);
+    const key = [
+      manual.serialNumber,
+      manual.inventoryNumber,
+      manual.name,
+      manual.manufacturer,
+      manual.model,
+    ].join("|").toLowerCase();
+    if (key.replace(/\|/g, "").trim()) {
+      existing.set(key, manual);
+    }
+  });
+  entry.manualEquipments = Array.from(existing.values());
+  const warnings = Array.isArray(result?.warnings) ? result.warnings.filter(Boolean) : [];
+  entry.aiResult = result;
+  entry.aiMessage = [
+    result?.summary || `NexAI je pripremio ${suggestions.length} stavki radne opreme.`,
+    warnings.length ? `Provjeri: ${warnings.slice(0, 3).join("; ")}` : "",
+  ].filter(Boolean).join(" ");
+  return suggestions.length;
+}
+
+async function runWorkOrderDocumentRoAi(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
+  if (!Array.isArray(entry.aiFiles) || entry.aiFiles.length === 0) {
+    entry.aiError = "Prvo dodaj slike ili PDF za NexAI.";
+    renderWorkOrderDocumentWizard();
+    return;
+  }
+  entry.aiLoading = true;
+  entry.aiError = "";
+  entry.aiMessage = "NexAI čita radnu opremu i priprema prijedlog...";
+  renderWorkOrderDocumentWizard();
+  try {
+    if (!settingsWorkEquipmentAiRegisterGroupsLoaded) {
+      await loadSettingsWorkEquipmentAiRegisters({ force: false });
+    }
+    const modelTier = normalizeDocumentTemplateRuntimeAiModelTier(entry.aiModelTier || "standard");
+    const context = buildWorkOrderDocumentRoAiContext(workOrder, entry);
+    const payload = await apiRequest("/ai/openai/prepare", {
+      method: "POST",
+      body: {
+        dryRun: false,
+        modelTier,
+        purpose: "work-equipment-image-pdf-prefill",
+        organizationId: state.activeOrganizationId,
+        workOrderId,
+        workOrderNumber: workOrder?.workOrderNumber || workOrder?.number || "",
+        context,
+        settings: context.settings,
+        files: getDocumentTemplateRuntimeAiPayloadFiles(entry.aiFiles),
+        expectedJsonShape: context.expectedJsonShape,
+      },
+    });
+    const result = getDocumentTemplateRuntimeAiResultObject(payload);
+    if (!result) {
+      entry.aiMessage = payload?.dryRun
+        ? "NexAI dry-run je spreman, ali server nije uključen za live popunjavanje."
+        : "NexAI je odgovorio bez čitljivog JSON rezultata.";
+      entry.aiResult = payload;
+      return;
+    }
+    applyWorkOrderDocumentRoAiResult(workOrder, entry, result);
+  } catch (error) {
+    entry.aiError = error?.message || "NexAI popunjavanje radne opreme nije uspjelo.";
+  } finally {
+    entry.aiLoading = false;
+    renderWorkOrderDocumentWizard();
+  }
+}
+
+function removeWorkOrderDocumentRoManualEquipment(workOrder = {}, manualId = "") {
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
+  entry.manualEquipments = (Array.isArray(entry.manualEquipments) ? entry.manualEquipments : [])
+    .filter((equipment) => String(equipment.id || "") !== String(manualId));
+  renderWorkOrderDocumentWizard();
 }
 
 async function loadWorkOrderDocumentIsznrWorkEquipment(workOrder = {}, { force = false } = {}) {
@@ -113770,6 +114152,11 @@ async function loadWorkOrderDocumentIsznrWorkEquipment(workOrder = {}, { force =
     const payload = await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/isznr-work-equipment?maxRecords=120&includeRegisters=true`);
     entry.items = Array.isArray(payload?.items) ? payload.items : [];
     entry.options = Array.isArray(payload?.options) ? payload.options : [];
+    entry.registers = Array.isArray(payload?.registers) ? payload.registers : [];
+    if (entry.registers.length && !settingsWorkEquipmentAiRegisterGroupsLoaded) {
+      settingsWorkEquipmentAiRegisterGroups = entry.registers;
+      settingsWorkEquipmentAiRegisterGroupsLoaded = true;
+    }
     entry.companyOib = String(payload?.companyOib || "").trim();
     entry.fetchedAt = payload?.fetchedAt || new Date().toISOString();
     entry.totalItems = payload?.totalItems ?? null;
@@ -113832,9 +114219,10 @@ async function submitWorkOrderDocumentIsznrWorkEquipment(workOrder = {}) {
   const selectedItemIds = (Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
     .map((value) => String(value || "").trim())
     .filter(Boolean);
+  const manualEquipments = getReadyWorkOrderDocumentRoManualEquipments(entry);
   const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(entry.postDraft);
-  if (selectedItemIds.length === 0) {
-    entry.error = "Odaberi barem jednu radnu opremu za slanje u IS ZNR.";
+  if (selectedItemIds.length === 0 && manualEquipments.length === 0) {
+    entry.error = "Odaberi postojeću ili dodaj novu radnu opremu za slanje u IS ZNR.";
     renderWorkOrderDocumentWizard();
     return;
   }
@@ -113843,7 +114231,7 @@ async function submitWorkOrderDocumentIsznrWorkEquipment(workOrder = {}) {
     renderWorkOrderDocumentWizard();
     return;
   }
-  const confirmMessage = `Poslati ${selectedItemIds.length} stavki radne opreme u IS ZNR za RN ${workOrder.workOrderNumber || workOrder.number || ""}?`;
+  const confirmMessage = `Poslati ${selectedItemIds.length + manualEquipments.length} stavki radne opreme u IS ZNR za RN ${workOrder.workOrderNumber || workOrder.number || ""}?`;
   if (!window.confirm(confirmMessage)) {
     return;
   }
@@ -113856,6 +114244,7 @@ async function submitWorkOrderDocumentIsznrWorkEquipment(workOrder = {}) {
       method: "POST",
       body: {
         selectedItemIds,
+        manualEquipments,
       },
     });
     entry.postResult = payload;
@@ -113867,6 +114256,7 @@ async function submitWorkOrderDocumentIsznrWorkEquipment(workOrder = {}) {
     }
     const postMessage = entry.message;
     entry.selectedItemIds = [];
+    entry.manualEquipments = [];
     await loadWorkOrderDocumentIsznrWorkEquipment(workOrder, { force: true });
     const refreshedEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId);
     refreshedEntry.postResult = payload;
@@ -113903,6 +114293,11 @@ const WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS = Object.freeze([
   { key: "no-deadline", label: "Bez roka" },
   { key: "satisfactory", label: "Zadovoljava" },
   { key: "unsatisfactory", label: "Ne zadovoljava" },
+]);
+
+const WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES = Object.freeze([
+  { key: "employer", label: "Sva oprema poslodavca" },
+  { key: "locations", label: "Oprema po lokacijama" },
 ]);
 
 function parseWorkOrderDocumentWorkEquipmentDate(value = "") {
@@ -113976,6 +114371,126 @@ function getWorkOrderDocumentWorkEquipmentFilterCounts(items = [], today = getWo
     ).length;
     return counts;
   }, {});
+}
+
+function getWorkOrderDocumentWorkEquipmentLocationLabel(item = {}) {
+  const equipment = item.equipment || {};
+  return [
+    item.location,
+    item.locationName,
+    item.testingLocation,
+    item.meta?.location,
+    item.meta?.locationName,
+    item.meta?.testingLocation,
+    equipment.location,
+    equipment.locationName,
+  ]
+    .map((value) => String(value || "").trim())
+    .find(Boolean) || "";
+}
+
+function normalizeWorkOrderDocumentWorkEquipmentLocationKey(value = "") {
+  return normalizeSearchText(value).replace(/\s+/g, " ").trim();
+}
+
+function getWorkOrderDocumentWorkEquipmentLocationGroups(items = [], workOrder = {}) {
+  const groupsByKey = new Map();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const label = getWorkOrderDocumentWorkEquipmentLocationLabel(item).trim() || "Bez lokacije";
+    const key = normalizeWorkOrderDocumentWorkEquipmentLocationKey(label) || "bez-lokacije";
+    const current = groupsByKey.get(key) || { key, label, count: 0, rnLocation: false };
+    current.count += 1;
+    groupsByKey.set(key, current);
+  });
+  const rnLocationKey = normalizeWorkOrderDocumentWorkEquipmentLocationKey(workOrder?.locationName || "");
+  const groups = Array.from(groupsByKey.values())
+    .map((group) => ({
+      ...group,
+      rnLocation: Boolean(rnLocationKey && (group.key === rnLocationKey || group.key.includes(rnLocationKey) || rnLocationKey.includes(group.key))),
+    }))
+    .sort((left, right) => {
+      if (left.rnLocation !== right.rnLocation) return left.rnLocation ? -1 : 1;
+      return String(left.label || "").localeCompare(String(right.label || ""), "hr", { numeric: true, sensitivity: "base" });
+    });
+  return groups;
+}
+
+function getWorkOrderDocumentWorkEquipmentDefaultLocationKey(items = [], workOrder = {}, currentKey = "") {
+  const groups = getWorkOrderDocumentWorkEquipmentLocationGroups(items, workOrder);
+  if (!groups.length) return "";
+  if (currentKey && groups.some((group) => group.key === currentKey)) {
+    return currentKey;
+  }
+  return groups.find((group) => group.rnLocation)?.key || groups[0].key;
+}
+
+function matchesWorkOrderDocumentWorkEquipmentLocationKey(item = {}, locationKey = "") {
+  const normalizedKey = String(locationKey || "").trim();
+  if (!normalizedKey) return true;
+  const itemKey = normalizeWorkOrderDocumentWorkEquipmentLocationKey(getWorkOrderDocumentWorkEquipmentLocationLabel(item));
+  if (!itemKey) return normalizedKey === "bez-lokacije";
+  return itemKey === normalizedKey || itemKey.includes(normalizedKey) || normalizedKey.includes(itemKey);
+}
+
+function getWorkOrderDocumentRoLocalHistory(workOrder = {}) {
+  const companyId = String(workOrder?.companyId || "").trim();
+  const locationId = String(workOrder?.locationId || "").trim();
+  const companyName = String(workOrder?.companyName || "").trim();
+  const locationName = String(workOrder?.locationName || "").trim();
+  const workOrders = (Array.isArray(state.workOrders) ? state.workOrders : [])
+    .filter((item) => String(item?.id || "") !== String(workOrder?.id || ""))
+    .filter((item) => !companyId || String(item?.companyId || "") === companyId)
+    .filter((item) => (
+      isWorkOrderDocumentWorkEquipmentText(item?.serviceLine)
+      || isWorkOrderDocumentWorkEquipmentText(item?.displayService)
+      || isWorkOrderDocumentWorkEquipmentText(getWorkOrderServiceSummary(item))
+      || getWorkOrderDocumentWizardResolvedServiceItems(item).some((service) => isWorkOrderDocumentWorkEquipmentService(service))
+    ))
+    .slice(0, 30)
+    .map((item) => ({
+      id: String(item.id || ""),
+      number: String(item.workOrderNumber || item.number || ""),
+      status: String(item.status || ""),
+      companyName: String(item.companyName || companyName || ""),
+      locationName: String(item.locationName || ""),
+      sameLocation: Boolean(locationId && String(item.locationId || "") === locationId),
+      service: String(getWorkOrderServiceSummary(item) || item.serviceLine || item.displayService || ""),
+      openedDate: String(item.openedDate || item.createdAt || ""),
+      executionDate: String(item.executionDate || ""),
+      completedAt: String(item.completedAt || item.completionDate || ""),
+    }));
+  const documents = (Array.isArray(state.documentRecords) ? state.documentRecords : [])
+    .filter((record) => !companyId || String(record?.companyId || "") === companyId)
+    .filter((record) => !locationId || !record?.locationId || String(record.locationId || "") === locationId)
+    .filter((record) => {
+      const haystack = [
+        record?.title,
+        record?.documentTitle,
+        record?.templateTitle,
+        record?.recordNumber,
+        record?.type,
+        record?.serviceName,
+        record?.serviceLine,
+      ].join(" ");
+      return isWorkOrderDocumentWorkEquipmentText(haystack);
+    })
+    .slice(0, 30)
+    .map((record) => ({
+      id: String(record.id || ""),
+      title: String(record.title || record.documentTitle || record.templateTitle || "RO dokument"),
+      recordNumber: String(record.recordNumber || record.documentNumber || ""),
+      companyName: String(record.companyName || companyName || ""),
+      locationName: String(record.locationName || locationName || ""),
+      sameLocation: Boolean(locationId && String(record.locationId || "") === locationId),
+      expirationDate: String(record.expirationDate || ""),
+      inspectionDate: String(record.inspectionDate || record.issuedDate || ""),
+      workOrderNumber: String(record.workOrderNumber || ""),
+    }));
+  return {
+    rule: "Prije prijedloga nove opreme usporedi slike/PDF s lokalnom SafeNexus povijesti. Ako se poklapa serijski broj, inventarski broj, proizvođač/model ili lokacija, predloži popunjavanje iz prethodnog zapisa i jasno navedi izvor.",
+    workOrders,
+    documents,
+  };
 }
 
 function appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, postDraft = null, { includePreview = true } = {}) {
@@ -114178,6 +114693,147 @@ function renderWorkOrderDocumentWizardCommonRoSection(workOrders = getAllSelecte
   });
 }
 
+function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry = {}) {
+  const panel = document.createElement("section");
+  panel.className = "work-order-document-ro-ai-panel";
+
+  const header = document.createElement("div");
+  header.className = "work-order-document-ro-ai-head";
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = "NexAI iz slika/PDF-a";
+  const subtitle = document.createElement("span");
+  const readyManual = getReadyWorkOrderDocumentRoManualEquipments(stateEntry);
+  subtitle.textContent = readyManual.length
+    ? `${readyManual.length} nova oprema spremna za zapisnik`
+    : "Dodaj natpisne pločice, slike stroja ili stari PDF pa NexAI popuni opremu.";
+  copy.append(title, subtitle);
+  const badge = createBadge(`${(stateEntry.aiFiles || []).length} dat.`, "document-template-meta-badge");
+  header.append(copy, badge);
+  panel.append(header);
+
+  const actions = document.createElement("div");
+  actions.className = "work-order-document-ro-ai-actions";
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*,application/pdf,.pdf,.txt,.csv,.json,.xml";
+  fileInput.multiple = true;
+  fileInput.hidden = true;
+  fileInput.addEventListener("change", () => {
+    const files = Array.from(fileInput.files ?? []);
+    fileInput.value = "";
+    void addWorkOrderDocumentRoAiFiles(files, workOrder);
+  });
+  const addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.className = "ghost-button";
+  addButton.textContent = "+ Slike/PDF";
+  addButton.disabled = Boolean(stateEntry.aiLoading);
+  addButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    fileInput.click();
+  });
+  const modelSelect = document.createElement("select");
+  modelSelect.className = "work-order-document-ro-ai-model";
+  DOCUMENT_TEMPLATE_RUNTIME_AI_MODEL_TIERS.forEach((option) => {
+    const item = document.createElement("option");
+    item.value = option.value;
+    item.textContent = option.label;
+    item.selected = option.value === normalizeDocumentTemplateRuntimeAiModelTier(stateEntry.aiModelTier || "standard");
+    modelSelect.append(item);
+  });
+  modelSelect.disabled = Boolean(stateEntry.aiLoading);
+  modelSelect.addEventListener("change", () => {
+    stateEntry.aiModelTier = normalizeDocumentTemplateRuntimeAiModelTier(modelSelect.value);
+  });
+  const runButton = document.createElement("button");
+  runButton.type = "button";
+  runButton.className = "primary-action-button";
+  runButton.textContent = stateEntry.aiLoading ? "Čitam..." : "NexAI popuni";
+  runButton.disabled = Boolean(stateEntry.aiLoading) || !(Array.isArray(stateEntry.aiFiles) && stateEntry.aiFiles.length);
+  runButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void runWorkOrderDocumentRoAi(workOrder);
+  });
+  actions.append(fileInput, addButton, modelSelect, runButton);
+  panel.append(actions);
+
+  if (stateEntry.aiMessage) {
+    const message = document.createElement("p");
+    message.className = "helper-copy module-copy work-order-document-work-equipment-message is-success";
+    message.textContent = stateEntry.aiMessage;
+    panel.append(message);
+  }
+  if (stateEntry.aiError) {
+    const error = document.createElement("p");
+    error.className = "form-error work-order-document-work-equipment-message";
+    error.textContent = stateEntry.aiError;
+    panel.append(error);
+  }
+
+  const files = Array.isArray(stateEntry.aiFiles) ? stateEntry.aiFiles : [];
+  if (files.length) {
+    const fileList = document.createElement("div");
+    fileList.className = "work-order-document-ro-ai-files";
+    files.forEach((file) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "ghost-button";
+      chip.title = "Makni datoteku";
+      chip.textContent = `${file.inlineReady || file.contentDataUrl ? "✓" : "•"} ${file.name || "datoteka"}`;
+      chip.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeWorkOrderDocumentRoAiFile(workOrder, file.id || file.name);
+      });
+      fileList.append(chip);
+    });
+    panel.append(fileList);
+  }
+
+  const manualEquipments = getReadyWorkOrderDocumentRoManualEquipments(stateEntry);
+  if (manualEquipments.length) {
+    const list = document.createElement("div");
+    list.className = "work-order-document-ro-manual-list";
+    manualEquipments.forEach((equipment) => {
+      const card = document.createElement("article");
+      card.className = "work-order-document-ro-manual-card";
+      const titleNode = document.createElement("strong");
+      titleNode.textContent = [
+        equipment.name || "Radna oprema",
+        equipment.manufacturer,
+        equipment.model,
+      ].filter(Boolean).join(" - ");
+      const meta = document.createElement("span");
+      meta.textContent = [
+        equipment.serialNumber ? `Ser. ${equipment.serialNumber}` : "",
+        equipment.inventoryNumber ? `Inv. ${equipment.inventoryNumber}` : "",
+        equipment.profileName ? `Profil ${equipment.profileName}` : "",
+        equipment.attachments?.length ? `${equipment.attachments.length} slika` : "",
+      ].filter(Boolean).join(" · ") || "Nova oprema";
+      const detail = document.createElement("small");
+      detail.textContent = [
+        equipment.mechanicalItems?.length ? `${equipment.mechanicalItems.length} strojarskih stavki` : "",
+        equipment.electricalItems?.length ? `${equipment.electricalItems.length} elektro stavki` : "",
+        equipment.hazardRegisterIris?.length ? `${equipment.hazardRegisterIris.length} opasnosti` : "",
+        equipment.finalGrade === 0 ? "Ne zadovoljava" : "Zadovoljava",
+      ].filter(Boolean).join(" · ");
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "ghost-button";
+      removeButton.textContent = "Ukloni";
+      removeButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        removeWorkOrderDocumentRoManualEquipment(workOrder, equipment.id);
+      });
+      card.append(titleNode, meta, detail, removeButton);
+      list.append(card);
+    });
+    panel.append(list);
+  }
+
+  bodyNode.append(panel);
+}
+
 function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {}, stateEntry = {}) {
   const toolbar = document.createElement("div");
   toolbar.className = "work-order-document-work-equipment-toolbar";
@@ -114206,6 +114862,8 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   basicsHint.className = "helper-copy module-copy work-order-document-work-equipment-message";
   basicsHint.textContent = "Osnovni RO podaci i IS ZNR POST priprema nalaze se u tabu Osnovno.";
   bodyNode.append(basicsHint);
+
+  appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder, stateEntry);
 
   if (stateEntry.postResult?.message) {
     const result = document.createElement("p");
@@ -114246,6 +114904,7 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   }
 
   const items = Array.isArray(stateEntry.items) ? stateEntry.items : [];
+  const readyManualEquipments = getReadyWorkOrderDocumentRoManualEquipments(stateEntry);
   if (stateEntry.loading && !items.length) {
     const loading = document.createElement("p");
     loading.className = "helper-copy module-copy";
@@ -114261,11 +114920,80 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
       ? "Za ovaj RN trenutno nema dohvaćene radne opreme iz IS ZNR-a."
       : "Radna oprema će se ponuditi ovdje prije popunjavanja zapisnika.";
     bodyNode.append(empty);
+    if (readyManualEquipments.length > 0) {
+      const manualSubmitBar = document.createElement("div");
+      manualSubmitBar.className = "work-order-document-work-equipment-selection";
+      const copy = document.createElement("span");
+      copy.textContent = `${readyManualEquipments.length} nove opreme spremno za IS ZNR POST.`;
+      const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft);
+      const submitButton = document.createElement("button");
+      submitButton.type = "button";
+      submitButton.className = "primary-action-button";
+      submitButton.textContent = stateEntry.submitting ? "Šaljem..." : "Pošalji u IS ZNR";
+      submitButton.disabled = stateEntry.submitting || blockingLabels.length > 0;
+      submitButton.title = blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "";
+      submitButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void submitWorkOrderDocumentIsznrWorkEquipment(workOrder);
+      });
+      manualSubmitBar.append(copy, submitButton);
+      bodyNode.append(manualSubmitBar);
+    }
     return;
   }
 
+  const locationGroups = getWorkOrderDocumentWorkEquipmentLocationGroups(items, workOrder);
+  const activeScope = WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES.some((scope) => scope.key === stateEntry.scope)
+    ? stateEntry.scope
+    : "locations";
+  stateEntry.scope = activeScope;
+  stateEntry.locationKey = getWorkOrderDocumentWorkEquipmentDefaultLocationKey(items, workOrder, stateEntry.locationKey);
+
+  const scopeRow = document.createElement("div");
+  scopeRow.className = "work-order-document-work-equipment-scope";
+  WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES.forEach((scope) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `work-order-document-work-equipment-scope-button${activeScope === scope.key ? " is-active" : ""}`;
+    button.textContent = scope.key === "employer"
+      ? `${scope.label} (${items.length})`
+      : `${scope.label} (${locationGroups.length})`;
+    button.disabled = scope.key === "locations" && locationGroups.length === 0;
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      stateEntry.scope = scope.key;
+      if (scope.key === "locations") {
+        stateEntry.locationKey = getWorkOrderDocumentWorkEquipmentDefaultLocationKey(items, workOrder, stateEntry.locationKey);
+      }
+      renderWorkOrderDocumentWizard();
+    });
+    scopeRow.append(button);
+  });
+  bodyNode.append(scopeRow);
+
+  if (activeScope === "locations" && locationGroups.length > 0) {
+    const locationRow = document.createElement("div");
+    locationRow.className = "work-order-document-work-equipment-locations";
+    locationGroups.forEach((group) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `work-order-document-work-equipment-location${stateEntry.locationKey === group.key ? " is-active" : ""}${group.rnLocation ? " is-rn-location" : ""}`;
+      button.textContent = `${group.label}${group.rnLocation ? " · RN" : ""} (${group.count})`;
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        stateEntry.locationKey = group.key;
+        renderWorkOrderDocumentWizard();
+      });
+      locationRow.append(button);
+    });
+    bodyNode.append(locationRow);
+  }
+
+  const scopedItems = activeScope === "locations"
+    ? items.filter((item) => matchesWorkOrderDocumentWorkEquipmentLocationKey(item, stateEntry.locationKey))
+    : items;
   const today = getWorkOrderDocumentWorkEquipmentToday();
-  const counts = getWorkOrderDocumentWorkEquipmentFilterCounts(items, today);
+  const counts = getWorkOrderDocumentWorkEquipmentFilterCounts(scopedItems, today);
   const activeFilter = WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.some((filter) => filter.key === stateEntry.filter)
     ? stateEntry.filter
     : "all";
@@ -114287,7 +115015,7 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   });
   bodyNode.append(filterRow);
 
-  const filteredItems = items
+  const filteredItems = scopedItems
     .filter((item) => matchesWorkOrderDocumentWorkEquipmentFilter(item, activeFilter, today))
     .sort((left, right) => {
       const leftDeadline = getWorkOrderDocumentWorkEquipmentDeadline(left)?.getTime() ?? Number.MAX_SAFE_INTEGER;
@@ -114299,7 +115027,9 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   if (!filteredItems.length) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema radne opreme za odabrani filter.";
+    empty.textContent = activeScope === "locations"
+      ? "Nema radne opreme za odabranu lokaciju i filter."
+      : "Nema radne opreme za odabrani filter.";
     bodyNode.append(empty);
     return;
   }
@@ -114307,12 +115037,13 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   const selectedIds = new Set((Array.isArray(stateEntry.selectedItemIds) ? stateEntry.selectedItemIds : [])
     .map((value) => String(value || "").trim())
     .filter(Boolean));
+  const manualEquipments = readyManualEquipments;
   const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft);
   const selectionBar = document.createElement("div");
   selectionBar.className = "work-order-document-work-equipment-selection";
   const selectionCopy = document.createElement("span");
-  selectionCopy.textContent = selectedIds.size > 0
-    ? `${selectedIds.size} odabrano za IS ZNR POST`
+  selectionCopy.textContent = selectedIds.size > 0 || manualEquipments.length > 0
+    ? `${selectedIds.size} postojeće · ${manualEquipments.length} nove opreme za IS ZNR POST`
     : "Odaberi opremu koju šalješ u IS ZNR.";
   const selectVisibleButton = document.createElement("button");
   selectVisibleButton.type = "button";
@@ -114342,7 +115073,7 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   submitButton.type = "button";
   submitButton.className = "primary-action-button";
   submitButton.textContent = stateEntry.submitting ? "Šaljem..." : "Pošalji u IS ZNR";
-  submitButton.disabled = stateEntry.submitting || selectedIds.size === 0 || blockingLabels.length > 0;
+  submitButton.disabled = stateEntry.submitting || (selectedIds.size === 0 && manualEquipments.length === 0) || blockingLabels.length > 0;
   submitButton.title = blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "";
   submitButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -114353,7 +115084,7 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
 
   const list = document.createElement("div");
   list.className = "work-order-document-work-equipment-list";
-  filteredItems.slice(0, 24).forEach((item) => {
+  filteredItems.forEach((item) => {
     const equipment = item.equipment || {};
     const itemId = String(item?.id || "").trim();
     const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
@@ -114415,12 +115146,10 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   });
   bodyNode.append(list);
 
-  if (filteredItems.length > 24 || stateEntry.recordsLimited) {
+  if (stateEntry.recordsLimited) {
     const limited = document.createElement("p");
     limited.className = "helper-copy module-copy";
-    limited.textContent = stateEntry.recordsLimited
-      ? "Dohvat je ograničen. Za uži popis koristi OIB/oznaku kroz IS ZNR ili otvori web pregled."
-      : `Prikazano prvih 24 od ${filteredItems.length} stavki za odabrani filter.`;
+    limited.textContent = "Dohvat je ograničen. Za uži popis koristi OIB/oznaku kroz IS ZNR ili otvori web pregled.";
     bodyNode.append(limited);
   }
 }
@@ -131903,6 +132632,46 @@ settingsJobAiFields?.addEventListener("click", (event) => {
   openSettingsJobAiModal(button.dataset.settingsJobAiOpen || "");
 });
 
+settingsWorkEquipmentAiSaveButton?.addEventListener("click", () => {
+  void saveSettingsWorkEquipmentAiSettings();
+});
+
+settingsWorkEquipmentAiRefreshButton?.addEventListener("click", () => {
+  void loadSettingsWorkEquipmentAiRegisters({ force: true });
+});
+
+settingsWorkEquipmentAiAddProfileButton?.addEventListener("click", () => {
+  if (!getCanManageSettings()) {
+    return;
+  }
+  settingsWorkEquipmentAiProfileDrafts = [
+    ...collectSettingsWorkEquipmentAiProfiles(),
+    normalizeWorkEquipmentAiProfile({
+      id: createClientSideId("ro-ai-profile"),
+      name: "Novi profil",
+      generalInstruction: "",
+      breakdownInstruction: "",
+    }),
+  ];
+  renderSettingsWorkEquipmentAi(collectSettingsWorkEquipmentAiSettings());
+});
+
+settingsWorkEquipmentAiProfiles?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const button = target?.closest("[data-ro-ai-profile-remove]");
+  if (!(button instanceof HTMLElement) || !getCanManageSettings()) {
+    return;
+  }
+  event.preventDefault();
+  const index = Number.parseInt(String(button.dataset.roAiProfileRemove || ""), 10);
+  settingsWorkEquipmentAiProfileDrafts = collectSettingsWorkEquipmentAiProfiles()
+    .filter((_, itemIndex) => itemIndex !== index);
+  renderSettingsWorkEquipmentAi({
+    ...collectSettingsWorkEquipmentAiSettings(),
+    profiles: settingsWorkEquipmentAiProfileDrafts,
+  });
+});
+
 settingsOrganizationLogoUploadButton?.addEventListener("click", () => {
   settingsOrganizationLogoFileInput?.click();
 });
@@ -138724,6 +139493,170 @@ function normalizeJobAiSettings(value = {}) {
   };
 }
 
+const WORK_EQUIPMENT_AI_STYLE_LABELS = Object.freeze({
+  professional: "stručno i jasno",
+  short: "kratko",
+  detailed: "detaljno",
+  legal: "formalno / dokumentacijski",
+});
+
+const WORK_EQUIPMENT_AI_CONFIDENCE_LABELS = Object.freeze({
+  high: "visoka",
+  medium: "srednja",
+  low: "niska",
+});
+
+const WORK_EQUIPMENT_AI_FIELD_DEFINITIONS = Object.freeze([
+  { key: "name", group: "Identifikacija", label: "Naziv opreme", placeholder: "npr. Viličar, kompresor, stroj za oštrenje..." },
+  { key: "manufacturer", group: "Identifikacija", label: "Proizvođač", placeholder: "Prednost ima natpisna pločica." },
+  { key: "model", group: "Identifikacija", label: "Tip / model", placeholder: "Upiši točno kako piše na pločici." },
+  { key: "serialNumber", group: "Identifikacija", label: "Serijski broj", placeholder: "Ne miješati sa inventarskim brojem." },
+  { key: "inventoryNumber", group: "Identifikacija", label: "Inventarski broj", placeholder: "Ako je vidljiv na naljepnici ili dokumentu." },
+  { key: "technicalData", group: "Opis i tehnički podaci", label: "Tehnički podaci", placeholder: "Nosivost, snaga, napon, tlak, godina i bitni parametri." },
+  { key: "purposeDescription", group: "Opis i tehnički podaci", label: "Namjena", placeholder: "Za što se oprema koristi na toj lokaciji." },
+  { key: "workspacePosition", group: "Opis i tehnički podaci", label: "Položaj / mjesto rada", placeholder: "Gdje je oprema smještena i u kojem prostoru se koristi." },
+  { key: "workingSubstancesAndRawMaterials", group: "Opis i tehnički podaci", label: "Radne tvari i sirovine", placeholder: "Ako oprema koristi ulje, plin, kemikalije, materijal obrade..." },
+  { key: "useAndMaintenance", group: "Pregled", label: "Korištenje i održavanje", placeholder: "Uputa, servis, održavanje, sigurnosni uvjeti." },
+  { key: "methodsProceduresAndNorms", group: "Pregled", label: "Metode, postupci i norme", placeholder: "Koji propisi/norme se primjenjuju na ovu vrstu opreme." },
+  { key: "deficiencies", group: "Pregled", label: "Nedostaci", placeholder: "Vidljivi nedostaci ili stanje bez nedostataka." },
+  { key: "measuresToEliminateDeficiencies", group: "Pregled", label: "Mjere za uklanjanje nedostataka", placeholder: "Ako postoje nedostaci, što treba napraviti." },
+  { key: "finalGrade", group: "Pregled", label: "Zaključna ocjena", placeholder: "Zadovoljava / Ne zadovoljava prema nalazima." },
+]);
+
+function normalizeWorkEquipmentAiInstructionConfig(config = {}) {
+  const source = config && typeof config === "object" ? config : {};
+  const style = String(source.style || "professional").trim();
+  const confidence = String(source.confidenceRequired || source.confidence || "medium").trim().toLowerCase();
+  return {
+    instruction: String(source.instruction || "").trim(),
+    mustInclude: String(source.mustInclude || "").trim(),
+    avoid: String(source.avoid || "").trim(),
+    style: WORK_EQUIPMENT_AI_STYLE_LABELS[style] ? style : "professional",
+    textLength: String(source.textLength || "").trim(),
+    defaultValue: String(source.defaultValue || "").trim(),
+    fallbackValue: String(source.fallbackValue || "").trim(),
+    examples: String(source.examples || "").trim(),
+    confidenceRequired: WORK_EQUIPMENT_AI_CONFIDENCE_LABELS[confidence] ? confidence : "medium",
+  };
+}
+
+function hasWorkEquipmentAiInstructionConfig(config = {}) {
+  const normalized = normalizeWorkEquipmentAiInstructionConfig(config);
+  return Boolean(
+    normalized.instruction
+    || normalized.mustInclude
+    || normalized.avoid
+    || normalized.style !== "professional"
+    || normalized.textLength
+    || normalized.defaultValue
+    || normalized.fallbackValue
+    || normalized.examples
+    || normalized.confidenceRequired !== "medium"
+  );
+}
+
+function normalizeWorkEquipmentAiInstructionMap(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, config]) => [String(key || "").trim(), normalizeWorkEquipmentAiInstructionConfig(config)])
+      .filter(([key, config]) => key && hasWorkEquipmentAiInstructionConfig(config)),
+  );
+}
+
+function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
+  const source = profile && typeof profile === "object" ? profile : {};
+  const id = String(source.id || "").trim() || createClientSideId(`ro-ai-profile-${index + 1}`);
+  const fieldDefaults = source.fieldDefaults && typeof source.fieldDefaults === "object" ? source.fieldDefaults : {};
+  const registerDefaults = source.registerDefaults && typeof source.registerDefaults === "object" ? source.registerDefaults : {};
+  return {
+    id,
+    name: String(source.name || source.label || "").trim().slice(0, 160),
+    aliases: normalizeAiConfigListLocal(source.aliases || source.synonyms || source.alias, 40),
+    generalInstruction: String(source.generalInstruction || source.instruction || "").trim().slice(0, 4000),
+    breakdownInstruction: String(source.breakdownInstruction || source.breakdown || source.details || "").trim().slice(0, 6000),
+    appliesWhen: String(source.appliesWhen || "").trim().slice(0, 2000),
+    avoid: String(source.avoid || "").trim().slice(0, 2000),
+    fieldDefaults: {
+      technicalData: String(fieldDefaults.technicalData || source.technicalData || "").trim().slice(0, 2000),
+      purposeDescription: String(fieldDefaults.purposeDescription || source.purposeDescription || "").trim().slice(0, 2000),
+      workspacePosition: String(fieldDefaults.workspacePosition || source.workspacePosition || "").trim().slice(0, 2000),
+      useAndMaintenance: String(fieldDefaults.useAndMaintenance || source.useAndMaintenance || "").trim().slice(0, 2000),
+      methodsProceduresAndNorms: String(fieldDefaults.methodsProceduresAndNorms || source.methodsProceduresAndNorms || "").trim().slice(0, 2000),
+    },
+    registerDefaults: {
+      mechanical: normalizeAiConfigListLocal(registerDefaults.mechanical || source.mechanicalRegisterIris, 80),
+      electrical: normalizeAiConfigListLocal(registerDefaults.electrical || source.electricalRegisterIris, 80),
+      hazards: normalizeAiConfigListLocal(registerDefaults.hazards || source.hazardRegisterIris, 80),
+      harmfulnesses: normalizeAiConfigListLocal(registerDefaults.harmfulnesses || source.harmfulnessRegisterIris, 80),
+      strains: normalizeAiConfigListLocal(registerDefaults.strains || source.strainRegisterIris, 80),
+    },
+  };
+}
+
+function hasWorkEquipmentAiProfile(profile = {}) {
+  const normalized = normalizeWorkEquipmentAiProfile(profile);
+  return Boolean(
+    normalized.name
+    || normalized.aliases.length
+    || normalized.generalInstruction
+    || normalized.breakdownInstruction
+    || normalized.appliesWhen
+    || normalized.avoid
+    || Object.values(normalized.fieldDefaults).some(Boolean)
+    || Object.values(normalized.registerDefaults).some((list) => list.length > 0)
+  );
+}
+
+function createDefaultWorkEquipmentAiProfiles() {
+  return [
+    {
+      id: createClientSideId("ro-ai-profile-forklift"),
+      name: "Viličar",
+      aliases: ["viličar", "viljuškar", "forklift", "Linde", "Still", "Jungheinrich"],
+      generalInstruction: "Prepoznaj viličar prema obliku stroja, vilicama, natpisnoj pločici, nosivosti i pogonskom sustavu. Serijski broj i tip imaju prednost pred slobodnim opisom.",
+      breakdownInstruction: "U razradi obrati pažnju na stabilnost, kočnice, upravljački sustav, zaštitu vozača, vilice, lanac, hidrauliku, signalizaciju i stanje baterije ili plinske instalacije ako je vidljiva.",
+      appliesWhen: "Koristi ovaj profil kada slika ili dokument jasno prikazuje radnu opremu za podizanje/prijevoz tereta s vilicama.",
+      avoid: "Ne koristi za ručne paletare bez pogona ako nije jasno da se radi o viličaru.",
+    },
+    {
+      id: createClientSideId("ro-ai-profile-compressor"),
+      name: "Kompresor",
+      aliases: ["kompresor", "compressor", "Atlas Copco", "KAESER"],
+      generalInstruction: "Prepoznaj kompresor prema spremniku, agregatu, oznaci tlaka, proizvođaču i natpisnoj pločici.",
+      breakdownInstruction: "Razradi sigurnosni ventil, tlačnu posudu, manometar, zaštite rotirajućih dijelova, električni priključak i tragove curenja ili oštećenja.",
+    },
+    {
+      id: createClientSideId("ro-ai-profile-machine"),
+      name: "Stroj / alatni stroj",
+      aliases: ["stroj", "tokarilica", "glodalica", "brusilica", "preša", "alatni stroj"],
+      generalInstruction: "Ako nije moguće precizno odrediti vrstu, zadrži naziv s pločice i označi da korisnik provjeri klasifikaciju.",
+      breakdownInstruction: "Razradi zaštite pokretnih dijelova, upravljačke elemente, stop tipkalo, električnu sigurnost, radni prostor, stabilnost i pristup.",
+    },
+  ].map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
+}
+
+function normalizeWorkEquipmentAiSettings(value = {}) {
+  const source = Array.isArray(value)
+    ? (value.find((entry) => String(entry?.organizationId ?? "") === String(state.activeOrganizationId ?? "")) ?? value[0] ?? {})
+    : (value && typeof value === "object" ? value : {});
+  const autoFillMode = String(source.autoFillMode || "").trim();
+  return {
+    organizationId: String(source.organizationId ?? state.activeOrganizationId ?? "").trim(),
+    generalInstruction: String(source.generalInstruction || "").trim().slice(0, 8000),
+    extractionInstruction: String(source.extractionInstruction || "").trim().slice(0, 8000),
+    matchingInstruction: String(source.matchingInstruction || "").trim().slice(0, 4000),
+    reviewInstruction: String(source.reviewInstruction || "").trim().slice(0, 4000),
+    autoFillMode: ["suggest", "fill_empty", "fill_all"].includes(autoFillMode) ? autoFillMode : "fill_empty",
+    fieldInstructions: normalizeWorkEquipmentAiInstructionMap(source.fieldInstructions),
+    registryInstructions: normalizeWorkEquipmentAiInstructionMap(source.registryInstructions),
+    profiles: (Array.isArray(source.profiles) ? source.profiles : [])
+      .slice(0, 60)
+      .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index))
+      .filter(hasWorkEquipmentAiProfile),
+  };
+}
+
 function normalizeRiskPpeCanonicalText(value = "") {
   return String(value || "")
     .normalize("NFD")
@@ -139494,6 +140427,379 @@ function closeSettingsJobAiModal() {
   }
   settingsJobAiActiveModalKey = "";
   document.body.classList.remove("is-settings-job-ai-modal-open");
+}
+
+function getWorkEquipmentAiSettings() {
+  return normalizeWorkEquipmentAiSettings(state.workEquipmentAiSettings);
+}
+
+function getSettingsWorkEquipmentAiProfilesForRender(settings = getWorkEquipmentAiSettings()) {
+  const profiles = Array.isArray(settingsWorkEquipmentAiProfileDrafts) && settingsWorkEquipmentAiProfileDrafts.length > 0
+    ? settingsWorkEquipmentAiProfileDrafts
+    : settings.profiles;
+  return (profiles.length > 0 ? profiles : createDefaultWorkEquipmentAiProfiles())
+    .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
+}
+
+function getWorkEquipmentAiRegisterKey(item = {}, group = {}) {
+  const itemId = String(item.iri || item["@id"] || item.id || "").trim();
+  return itemId ? `${group.path || group.label || "register"}:${itemId}` : "";
+}
+
+function renderWorkEquipmentAiInstructionMiniForm(config = {}, key = "", options = {}) {
+  const disabled = options.disabled ? "disabled" : "";
+  const placeholder = options.placeholder || "Kako NexAI treba koristiti ovu stavku...";
+  const label = options.label || "Uputa";
+  return `
+    <div class="settings-work-equipment-ai-card-grid" data-ro-ai-instruction="${escapeHtml(key)}">
+      <label class="field field-span-full">
+        <span>${escapeHtml(label)}</span>
+        <textarea data-ro-ai-instruction-field="instruction" rows="3" placeholder="${escapeHtml(placeholder)}" ${disabled}>${escapeHtml(config.instruction)}</textarea>
+      </label>
+      <label class="field">
+        <span>Mora uključiti</span>
+        <input data-ro-ai-instruction-field="mustInclude" value="${escapeHtml(config.mustInclude)}" placeholder="bitni pojmovi ili uvjeti" ${disabled} />
+      </label>
+      <label class="field">
+        <span>Ne smije</span>
+        <input data-ro-ai-instruction-field="avoid" value="${escapeHtml(config.avoid)}" placeholder="kada ne predložiti / ne popuniti" ${disabled} />
+      </label>
+      <label class="field">
+        <span>Stil</span>
+        <select data-ro-ai-instruction-field="style" ${disabled}>
+          ${Object.entries(WORK_EQUIPMENT_AI_STYLE_LABELS).map(([value, text]) => (
+            `<option value="${escapeHtml(value)}"${value === config.style ? " selected" : ""}>${escapeHtml(text)}</option>`
+          )).join("")}
+        </select>
+      </label>
+      <label class="field">
+        <span>Sigurnost</span>
+        <select data-ro-ai-instruction-field="confidenceRequired" ${disabled}>
+          ${Object.entries(WORK_EQUIPMENT_AI_CONFIDENCE_LABELS).map(([value, text]) => (
+            `<option value="${escapeHtml(value)}"${value === config.confidenceRequired ? " selected" : ""}>${escapeHtml(text)}</option>`
+          )).join("")}
+        </select>
+      </label>
+      <label class="field">
+        <span>Default</span>
+        <input data-ro-ai-instruction-field="defaultValue" value="${escapeHtml(config.defaultValue)}" placeholder="opcionalno" ${disabled} />
+      </label>
+      <label class="field">
+        <span>Primjeri</span>
+        <input data-ro-ai-instruction-field="examples" value="${escapeHtml(config.examples)}" placeholder="npr. 2-3 tipična primjera" ${disabled} />
+      </label>
+    </div>
+  `;
+}
+
+function collectWorkEquipmentAiInstructionFromNode(node = null) {
+  if (!node) {
+    return normalizeWorkEquipmentAiInstructionConfig();
+  }
+  return normalizeWorkEquipmentAiInstructionConfig({
+    instruction: node.querySelector('[data-ro-ai-instruction-field="instruction"]')?.value || "",
+    mustInclude: node.querySelector('[data-ro-ai-instruction-field="mustInclude"]')?.value || "",
+    avoid: node.querySelector('[data-ro-ai-instruction-field="avoid"]')?.value || "",
+    style: node.querySelector('[data-ro-ai-instruction-field="style"]')?.value || "professional",
+    confidenceRequired: node.querySelector('[data-ro-ai-instruction-field="confidenceRequired"]')?.value || "medium",
+    defaultValue: node.querySelector('[data-ro-ai-instruction-field="defaultValue"]')?.value || "",
+    examples: node.querySelector('[data-ro-ai-instruction-field="examples"]')?.value || "",
+  });
+}
+
+function renderSettingsWorkEquipmentAiFields(settings = getWorkEquipmentAiSettings()) {
+  if (!settingsWorkEquipmentAiFields) {
+    return;
+  }
+  const canManage = getCanManageSettings();
+  const cards = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS.map((field) => {
+    const config = normalizeWorkEquipmentAiInstructionConfig(settings.fieldInstructions[field.key] ?? {});
+    const configured = hasWorkEquipmentAiInstructionConfig(config);
+    const card = document.createElement("article");
+    card.className = `settings-work-equipment-ai-field-card${configured ? " is-configured" : ""}`;
+    card.dataset.roAiField = field.key;
+    card.innerHTML = `
+      <div class="settings-work-equipment-ai-card-head">
+        <div>
+          <strong>${escapeHtml(field.label)}</strong>
+          <small>${escapeHtml(field.group)} · ${escapeHtml(field.placeholder || "")}</small>
+        </div>
+        <span class="settings-work-equipment-ai-badge">${configured ? "uređeno" : "default"}</span>
+      </div>
+      ${renderWorkEquipmentAiInstructionMiniForm(config, field.key, {
+        disabled: !canManage,
+        placeholder: field.placeholder || "Kako NexAI treba popuniti ovo polje.",
+      })}
+    `;
+    return card;
+  });
+  settingsWorkEquipmentAiFields.replaceChildren(...cards);
+}
+
+function renderSettingsWorkEquipmentAiProfiles(settings = getWorkEquipmentAiSettings()) {
+  if (!settingsWorkEquipmentAiProfiles) {
+    return;
+  }
+  const canManage = getCanManageSettings();
+  const profiles = getSettingsWorkEquipmentAiProfilesForRender(settings);
+  settingsWorkEquipmentAiProfileDrafts = profiles;
+  if (!profiles.length) {
+    const empty = document.createElement("p");
+    empty.className = "settings-work-equipment-ai-empty";
+    empty.textContent = "Dodaj profil opreme, npr. viličar, kompresor ili alatni stroj.";
+    settingsWorkEquipmentAiProfiles.replaceChildren(empty);
+    return;
+  }
+  settingsWorkEquipmentAiProfiles.replaceChildren(...profiles.map((profile, index) => {
+    const configured = hasWorkEquipmentAiProfile(profile);
+    const card = document.createElement("article");
+    card.className = `settings-work-equipment-ai-profile-card${configured ? " is-configured" : ""}`;
+    card.dataset.roAiProfileIndex = String(index);
+    card.innerHTML = `
+      <div class="settings-work-equipment-ai-card-head">
+        <div>
+          <strong>${escapeHtml(profile.name || `Profil ${index + 1}`)}</strong>
+          <small>${escapeHtml(profile.aliases.join(", ") || "Bez aliasa")}</small>
+        </div>
+        <button type="button" class="ghost-button" data-ro-ai-profile-remove="${index}" ${canManage ? "" : "disabled"}>Ukloni</button>
+      </div>
+      <div class="settings-work-equipment-ai-card-grid">
+        <label class="field">
+          <span>Naziv profila</span>
+          <input data-ro-ai-profile-field="name" value="${escapeHtml(profile.name)}" placeholder="npr. Viličar" ${canManage ? "" : "disabled"} />
+        </label>
+        <label class="field">
+          <span>Aliasi</span>
+          <input data-ro-ai-profile-field="aliases" value="${escapeHtml(profile.aliases.join(", "))}" placeholder="viličar, forklift, Linde..." ${canManage ? "" : "disabled"} />
+        </label>
+        <label class="field field-span-full">
+          <span>Opća uputa</span>
+          <textarea data-ro-ai-profile-field="generalInstruction" rows="3" placeholder="Kako prepoznati ovu vrstu opreme..." ${canManage ? "" : "disabled"}>${escapeHtml(profile.generalInstruction)}</textarea>
+        </label>
+        <label class="field field-span-full">
+          <span>Razrada</span>
+          <textarea data-ro-ai-profile-field="breakdownInstruction" rows="4" placeholder="Što se gleda kod strojarskog, elektro dijela, rizika i zaključka..." ${canManage ? "" : "disabled"}>${escapeHtml(profile.breakdownInstruction)}</textarea>
+        </label>
+        <label class="field">
+          <span>Koristi kada</span>
+          <textarea data-ro-ai-profile-field="appliesWhen" rows="2" placeholder="Uvjeti kada je profil primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(profile.appliesWhen)}</textarea>
+        </label>
+        <label class="field">
+          <span>Ne koristi kada</span>
+          <textarea data-ro-ai-profile-field="avoid" rows="2" placeholder="Situacije u kojima profil nije primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(profile.avoid)}</textarea>
+        </label>
+      </div>
+    `;
+    return card;
+  }));
+}
+
+function renderSettingsWorkEquipmentAiRegisters(settings = getWorkEquipmentAiSettings()) {
+  if (!settingsWorkEquipmentAiRegisters) {
+    return;
+  }
+  const groups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [];
+  const loadedCount = groups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
+  if (settingsWorkEquipmentAiRegisterSummary) {
+    settingsWorkEquipmentAiRegisterSummary.textContent = settingsWorkEquipmentAiRegisterGroupsLoaded
+      ? `${loadedCount} stavki`
+      : "Nije učitano";
+  }
+  if (!groups.length) {
+    const empty = document.createElement("p");
+    empty.className = "settings-work-equipment-ai-empty";
+    empty.textContent = "Klikni Osvježi šifrarnike da povučemo strojarski dio, elektro dio, opasnosti, štetnosti i napore iz IS ZNR-a.";
+    settingsWorkEquipmentAiRegisters.replaceChildren(empty);
+    return;
+  }
+  const canManage = getCanManageSettings();
+  const cards = [];
+  groups.forEach((group) => {
+    (Array.isArray(group.items) ? group.items : []).slice(0, 80).forEach((item) => {
+      const key = getWorkEquipmentAiRegisterKey(item, group);
+      if (!key) {
+        return;
+      }
+      const config = normalizeWorkEquipmentAiInstructionConfig(settings.registryInstructions[key] ?? {});
+      const configured = hasWorkEquipmentAiInstructionConfig(config);
+      const card = document.createElement("article");
+      card.className = `settings-work-equipment-ai-register-card${configured ? " is-configured" : ""}`;
+      card.dataset.roAiRegister = key;
+      card.innerHTML = `
+        <div class="settings-work-equipment-ai-card-head">
+          <div>
+            <strong>${escapeHtml(item.label || item.name || item.title || item.id || "Šifrarnik")}</strong>
+            <small>${escapeHtml([group.group, group.label, item.code || item.id].filter(Boolean).join(" · "))}</small>
+          </div>
+          <span class="settings-work-equipment-ai-badge">${configured ? "uputa" : "default"}</span>
+        </div>
+        ${renderWorkEquipmentAiInstructionMiniForm(config, key, {
+          disabled: !canManage,
+          label: "Kada NexAI smije predložiti ovu stavku",
+          placeholder: "Opiši vidljive uvjete, opremu ili tekst zbog kojih se ovaj redak smije dodati.",
+        })}
+      `;
+      cards.push(card);
+    });
+  });
+  settingsWorkEquipmentAiRegisters.replaceChildren(...(cards.length ? cards : [(() => {
+    const empty = document.createElement("p");
+    empty.className = "settings-work-equipment-ai-empty";
+    empty.textContent = "IS ZNR je odgovorio, ali nema šifrarnika za prikaz.";
+    return empty;
+  })()]));
+}
+
+function collectSettingsWorkEquipmentAiProfiles() {
+  if (!settingsWorkEquipmentAiProfiles) {
+    return getSettingsWorkEquipmentAiProfilesForRender();
+  }
+  return Array.from(settingsWorkEquipmentAiProfiles.querySelectorAll("[data-ro-ai-profile-index]"))
+    .map((card, index) => normalizeWorkEquipmentAiProfile({
+      id: settingsWorkEquipmentAiProfileDrafts[index]?.id || "",
+      name: card.querySelector('[data-ro-ai-profile-field="name"]')?.value || "",
+      aliases: card.querySelector('[data-ro-ai-profile-field="aliases"]')?.value || "",
+      generalInstruction: card.querySelector('[data-ro-ai-profile-field="generalInstruction"]')?.value || "",
+      breakdownInstruction: card.querySelector('[data-ro-ai-profile-field="breakdownInstruction"]')?.value || "",
+      appliesWhen: card.querySelector('[data-ro-ai-profile-field="appliesWhen"]')?.value || "",
+      avoid: card.querySelector('[data-ro-ai-profile-field="avoid"]')?.value || "",
+    }, index))
+    .filter(hasWorkEquipmentAiProfile);
+}
+
+function collectSettingsWorkEquipmentAiSettings() {
+  const fieldInstructions = {};
+  settingsWorkEquipmentAiFields?.querySelectorAll("[data-ro-ai-field]").forEach((card) => {
+    const key = String(card.dataset.roAiField || "").trim();
+    const config = collectWorkEquipmentAiInstructionFromNode(card.querySelector("[data-ro-ai-instruction]"));
+    if (key && hasWorkEquipmentAiInstructionConfig(config)) {
+      fieldInstructions[key] = config;
+    }
+  });
+
+  const registryInstructions = {};
+  settingsWorkEquipmentAiRegisters?.querySelectorAll("[data-ro-ai-register]").forEach((card) => {
+    const key = String(card.dataset.roAiRegister || "").trim();
+    const config = collectWorkEquipmentAiInstructionFromNode(card.querySelector("[data-ro-ai-instruction]"));
+    if (key && hasWorkEquipmentAiInstructionConfig(config)) {
+      registryInstructions[key] = config;
+    }
+  });
+
+  return normalizeWorkEquipmentAiSettings({
+    organizationId: state.activeOrganizationId,
+    generalInstruction: settingsWorkEquipmentAiGeneralInput?.value || "",
+    extractionInstruction: settingsWorkEquipmentAiExtractionInput?.value || "",
+    matchingInstruction: settingsWorkEquipmentAiMatchingInput?.value || "",
+    reviewInstruction: settingsWorkEquipmentAiReviewInput?.value || "",
+    autoFillMode: settingsWorkEquipmentAiModeInput?.value || "fill_empty",
+    fieldInstructions,
+    registryInstructions,
+    profiles: collectSettingsWorkEquipmentAiProfiles(),
+  });
+}
+
+function renderSettingsWorkEquipmentAi(settings = getWorkEquipmentAiSettings()) {
+  const normalized = normalizeWorkEquipmentAiSettings(settings);
+  const canManage = getCanManageSettings();
+  if (settingsWorkEquipmentAiGeneralInput && document.activeElement !== settingsWorkEquipmentAiGeneralInput) {
+    settingsWorkEquipmentAiGeneralInput.value = normalized.generalInstruction;
+  }
+  if (settingsWorkEquipmentAiExtractionInput && document.activeElement !== settingsWorkEquipmentAiExtractionInput) {
+    settingsWorkEquipmentAiExtractionInput.value = normalized.extractionInstruction;
+  }
+  if (settingsWorkEquipmentAiMatchingInput && document.activeElement !== settingsWorkEquipmentAiMatchingInput) {
+    settingsWorkEquipmentAiMatchingInput.value = normalized.matchingInstruction;
+  }
+  if (settingsWorkEquipmentAiReviewInput && document.activeElement !== settingsWorkEquipmentAiReviewInput) {
+    settingsWorkEquipmentAiReviewInput.value = normalized.reviewInstruction;
+  }
+  if (settingsWorkEquipmentAiModeInput) {
+    settingsWorkEquipmentAiModeInput.value = normalized.autoFillMode;
+  }
+  [
+    settingsWorkEquipmentAiGeneralInput,
+    settingsWorkEquipmentAiExtractionInput,
+    settingsWorkEquipmentAiMatchingInput,
+    settingsWorkEquipmentAiReviewInput,
+    settingsWorkEquipmentAiModeInput,
+  ].forEach((input) => {
+    if (input) input.disabled = !canManage;
+  });
+  if (settingsWorkEquipmentAiSaveButton) {
+    settingsWorkEquipmentAiSaveButton.hidden = !canManage;
+    settingsWorkEquipmentAiSaveButton.disabled = !canManage;
+  }
+  if (settingsWorkEquipmentAiRefreshButton) {
+    settingsWorkEquipmentAiRefreshButton.disabled = !canManage || !state.activeOrganizationId;
+  }
+  if (settingsWorkEquipmentAiAddProfileButton) {
+    settingsWorkEquipmentAiAddProfileButton.disabled = !canManage;
+  }
+  renderSettingsWorkEquipmentAiFields(normalized);
+  renderSettingsWorkEquipmentAiProfiles(normalized);
+  renderSettingsWorkEquipmentAiRegisters(normalized);
+}
+
+async function loadSettingsWorkEquipmentAiRegisters({ force = false } = {}) {
+  if (settingsWorkEquipmentAiRegisterGroupsLoaded && !force) {
+    return settingsWorkEquipmentAiRegisterGroups;
+  }
+  if (settingsWorkEquipmentAiRefreshButton) {
+    settingsWorkEquipmentAiRefreshButton.disabled = true;
+  }
+  setInlineMessage(settingsWorkEquipmentAiFeedback, "Dohvaćam IS ZNR šifrarnike za radnu opremu...", "success");
+  try {
+    const payload = await apiRequest("/isznr/work-equipment?includeRegisters=true&maxRecords=1");
+    settingsWorkEquipmentAiRegisterGroups = Array.isArray(payload?.registers) ? payload.registers : [];
+    settingsWorkEquipmentAiRegisterGroupsLoaded = true;
+    renderSettingsWorkEquipmentAi(collectSettingsWorkEquipmentAiSettings());
+    const count = settingsWorkEquipmentAiRegisterGroups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
+    setInlineMessage(settingsWorkEquipmentAiFeedback, `IS ZNR šifrarnici su učitani (${count} stavki).`, "success");
+    return settingsWorkEquipmentAiRegisterGroups;
+  } catch (error) {
+    setInlineMessage(settingsWorkEquipmentAiFeedback, error?.message || "IS ZNR šifrarnici nisu dohvaćeni.");
+    return [];
+  } finally {
+    if (settingsWorkEquipmentAiRefreshButton) {
+      settingsWorkEquipmentAiRefreshButton.disabled = !getCanManageSettings();
+    }
+  }
+}
+
+async function saveSettingsWorkEquipmentAiSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "RO NexAI upute su spremljene.";
+  if (!getCanManageSettings()) {
+    setInlineMessage(settingsWorkEquipmentAiFeedback, "Nemate pravo spremati RO NexAI upute.");
+    return false;
+  }
+  if (!state.activeOrganizationId) {
+    setInlineMessage(settingsWorkEquipmentAiFeedback, "Odaberi organizaciju prije spremanja RO NexAI uputa.");
+    return false;
+  }
+  if (settingsWorkEquipmentAiSaveButton) {
+    settingsWorkEquipmentAiSaveButton.disabled = true;
+  }
+  const settings = collectSettingsWorkEquipmentAiSettings();
+  const success = await runMutation(() => apiRequest("/work-equipment/ai-settings", {
+    method: "POST",
+    body: { settings },
+  }), settingsWorkEquipmentAiFeedback);
+  if (settingsWorkEquipmentAiSaveButton) {
+    settingsWorkEquipmentAiSaveButton.disabled = !getCanManageSettings();
+  }
+  if (success) {
+    state.workEquipmentAiSettings = normalizeWorkEquipmentAiSettings({
+      ...settings,
+      organizationId: state.activeOrganizationId,
+    });
+    settingsWorkEquipmentAiProfileDrafts = state.workEquipmentAiSettings.profiles;
+    renderSettingsWorkEquipmentAi(state.workEquipmentAiSettings);
+    setInlineMessage(settingsWorkEquipmentAiFeedback, successMessage, "success");
+  }
+  return success;
 }
 
 function applyJobAiInstructionToText(text = "", kind = "description") {

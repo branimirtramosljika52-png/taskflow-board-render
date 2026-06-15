@@ -52,6 +52,7 @@ import {
   nextPurchaseOrderNumber,
   sortVehicleReservations,
   syncLocationFieldsFromWorkOrder,
+  normalizeWorkEquipmentAiSettings,
   updateCompany,
   updateContract,
   updateContractTemplate,
@@ -2158,6 +2159,22 @@ function mapJobAiSettingsEntry(row = {}) {
   };
 }
 
+function mapWorkEquipmentAiSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  return {
+    ...normalizeWorkEquipmentAiSettings({
+      organizationId,
+      ...(parseJsonObject(row.settings_json) ?? {}),
+    }),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 const RISK_PPE_BODY_PARTS = new Set(["head", "eyes", "hearing", "respiratory", "hands", "body", "feet", "fall", "other"]);
 
 function normalizeRiskPpeBodyPart(value = "") {
@@ -4160,6 +4177,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapJobAiSettingsEntry(row))
     .filter(Boolean);
 
+  const [workEquipmentAiSettingsRows] = await connection.query(`
+    SELECT organization_id, settings_json, created_at, updated_at
+    FROM web_work_equipment_ai_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const workEquipmentAiSettings = workEquipmentAiSettingsRows
+    .map((row) => mapWorkEquipmentAiSettingsEntry(row))
+    .filter(Boolean);
+
   const [riskPpeCatalogRows] = await connection.query(`
     SELECT id, organization_id, name, category, body_part, norm, standard_code, description,
            image_url, source_ref, source_url, is_custom, created_by_user_id, created_by_label,
@@ -4963,6 +4990,7 @@ async function fetchSnapshotFromConnection(connection) {
     riskAssessments,
     jobs,
     jobAiSettings,
+    workEquipmentAiSettings,
     riskPpeCatalog,
     contracts,
     contractTemplates,
@@ -5074,6 +5102,7 @@ export class InMemorySafetyRepository {
       riskAssessments: [],
       jobs: [],
       jobAiSettings: [],
+      workEquipmentAiSettings: [],
       riskPpeCatalog: [],
       contracts: [],
       contractTemplates: [],
@@ -5290,6 +5319,23 @@ export class InMemorySafetyRepository {
         aiInstructions: Object.fromEntries(
           Object.entries(item.aiInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
         ),
+      })),
+      workEquipmentAiSettings: this.snapshot.workEquipmentAiSettings.map((item) => ({
+        ...item,
+        fieldInstructions: Object.fromEntries(
+          Object.entries(item.fieldInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
+        ),
+        registryInstructions: Object.fromEntries(
+          Object.entries(item.registryInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
+        ),
+        profiles: (item.profiles ?? []).map((profile) => ({
+          ...profile,
+          aliases: [...(profile.aliases ?? [])],
+          fieldDefaults: { ...(profile.fieldDefaults ?? {}) },
+          registerDefaults: Object.fromEntries(
+            Object.entries(profile.registerDefaults ?? {}).map(([key, values]) => [key, [...(values ?? [])]]),
+          ),
+        })),
       })),
       riskPpeCatalog: this.snapshot.riskPpeCatalog.map((item) => ({ ...item })),
       contracts: this.snapshot.contracts.map((item) => ({
@@ -6358,6 +6404,41 @@ export class InMemorySafetyRepository {
     }
 
     return this.snapshot.jobAiSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
+  async upsertWorkEquipmentAiSettings({ organizationId = "", settings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za RO NexAI upute.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      ...normalizeWorkEquipmentAiSettings({
+        ...settings,
+        organizationId: safeOrganizationId,
+      }),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.workEquipmentAiSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.workEquipmentAiSettings[currentIndex];
+      this.snapshot.workEquipmentAiSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.workEquipmentAiSettings.push(nextEntry);
+    }
+
+    return this.snapshot.workEquipmentAiSettings.find((entry) => (
       String(entry.organizationId) === safeOrganizationId
     )) ?? nextEntry;
   }
@@ -8077,6 +8158,16 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_job_ai_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_work_equipment_ai_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        settings_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_work_equipment_ai_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -11886,6 +11977,34 @@ export class MySqlSafetyRepository {
     return {
       organizationId: String(safeOrganizationId),
       aiInstructions: normalizedInstructions,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async upsertWorkEquipmentAiSettings({ organizationId = "", settings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za RO NexAI upute.");
+    }
+
+    const normalizedSettings = normalizeWorkEquipmentAiSettings({
+      ...settings,
+      organizationId: String(safeOrganizationId),
+    });
+    await this.pool.query(
+      `
+        INSERT INTO web_work_equipment_ai_settings (organization_id, settings_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          settings_json = VALUES(settings_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [safeOrganizationId, JSON.stringify(normalizedSettings)],
+    );
+
+    return {
+      ...normalizedSettings,
+      organizationId: String(safeOrganizationId),
       updatedAt: new Date().toISOString(),
     };
   }

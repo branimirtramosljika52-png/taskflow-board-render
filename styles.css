@@ -5368,6 +5368,171 @@ body.is-profile-modal-open {
     linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
 }
 
+.settings-work-equipment-ai-panel {
+  border-color: rgba(14, 165, 233, 0.24);
+  background:
+    radial-gradient(circle at 4% 0%, rgba(59, 130, 246, 0.10), transparent 34%),
+    radial-gradient(circle at 100% 8%, rgba(34, 197, 94, 0.09), transparent 30%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(244, 249, 255, 0.97));
+}
+
+.settings-work-equipment-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.settings-work-equipment-ai-actions .ghost-button {
+  height: 34px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.settings-work-equipment-ai-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.settings-work-equipment-ai-block {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(190, 204, 226, 0.82);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 28px rgba(40, 55, 95, 0.055);
+}
+
+.settings-work-equipment-ai-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-work-equipment-ai-block-head strong {
+  color: #10203d;
+  font-size: 0.88rem;
+  font-weight: 950;
+}
+
+.settings-work-equipment-ai-block-head span,
+.settings-work-equipment-ai-badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.09);
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.settings-work-equipment-ai-fields,
+.settings-work-equipment-ai-profiles,
+.settings-work-equipment-ai-registers {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-work-equipment-ai-field-card,
+.settings-work-equipment-ai-profile-card,
+.settings-work-equipment-ai-register-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.settings-work-equipment-ai-field-card.is-configured,
+.settings-work-equipment-ai-profile-card.is-configured,
+.settings-work-equipment-ai-register-card.is-configured {
+  border-color: rgba(34, 197, 94, 0.52);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.96), rgba(255, 255, 255, 0.92));
+}
+
+.settings-work-equipment-ai-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-work-equipment-ai-card-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-work-equipment-ai-card-head strong {
+  overflow: hidden;
+  color: #111b36;
+  font-size: 0.83rem;
+  font-weight: 920;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-work-equipment-ai-card-head small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-work-equipment-ai-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-work-equipment-ai-card-grid .field-span-full,
+.settings-work-equipment-ai-block .field-span-full {
+  grid-column: 1 / -1;
+}
+
+.settings-work-equipment-ai-card-grid textarea,
+.settings-work-equipment-ai-block textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.settings-work-equipment-ai-profile-card textarea {
+  min-height: 82px;
+}
+
+.settings-work-equipment-ai-registers-block {
+  grid-column: 1 / -1;
+}
+
+.settings-work-equipment-ai-registers {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-work-equipment-ai-register-card textarea {
+  min-height: 62px;
+}
+
+.settings-work-equipment-ai-empty {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.72);
+  border-radius: 14px;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 760;
+  text-align: center;
+}
+
 .settings-job-ai-fields {
   display: grid;
   gap: 12px;
@@ -5683,6 +5848,9 @@ body.is-settings-job-ai-modal-open {
     grid-template-columns: 1fr;
   }
 
+  .settings-work-equipment-ai-layout,
+  .settings-work-equipment-ai-card-grid,
+  .settings-work-equipment-ai-registers,
   .settings-service-factors-head,
   .settings-service-factor-row,
   .settings-job-ai-rulebook,
@@ -22105,6 +22273,116 @@ body.is-document-template-editor-open .chat-dock {
   font-weight: 800;
 }
 
+.work-order-document-ro-ai-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(147, 197, 253, 0.72);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 34%),
+    linear-gradient(135deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.96));
+}
+
+.work-order-document-ro-ai-head,
+.work-order-document-ro-ai-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.work-order-document-ro-ai-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.work-order-document-ro-ai-head strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.work-order-document-ro-ai-head span {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.work-order-document-ro-ai-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.work-order-document-ro-ai-model {
+  width: auto;
+  min-width: 132px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(196, 208, 232, 0.92);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #13213f;
+  font-size: 0.78rem;
+  font-weight: 820;
+}
+
+.work-order-document-ro-ai-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.work-order-document-ro-ai-files .ghost-button {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-ro-manual-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.work-order-document-ro-manual-card {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(134, 239, 172, 0.8);
+  border-radius: 16px;
+  background: rgba(240, 253, 244, 0.82);
+}
+
+.work-order-document-ro-manual-card strong,
+.work-order-document-ro-manual-card span,
+.work-order-document-ro-manual-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.work-order-document-ro-manual-card strong {
+  color: #10203d;
+  font-size: 0.82rem;
+  font-weight: 920;
+}
+
+.work-order-document-ro-manual-card span,
+.work-order-document-ro-manual-card small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.work-order-document-ro-manual-card .ghost-button {
+  justify-self: start;
+  height: 30px;
+  padding: 0 10px;
+}
+
 .work-order-document-isznr-post-draft {
   display: grid;
   gap: 10px;
@@ -22223,12 +22501,30 @@ body.is-document-template-editor-open .chat-dock {
   line-height: 1.45;
 }
 
+.work-order-document-work-equipment-scope,
+.work-order-document-work-equipment-locations,
 .work-order-document-work-equipment-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
 }
 
+.work-order-document-work-equipment-scope {
+  padding: 8px;
+  border: 1px solid rgba(147, 197, 253, 0.42);
+  border-radius: 16px;
+  background: rgba(239, 246, 255, 0.66);
+}
+
+.work-order-document-work-equipment-locations {
+  padding: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.94);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.work-order-document-work-equipment-scope-button,
+.work-order-document-work-equipment-location,
 .work-order-document-work-equipment-filter {
   min-height: 30px;
   border: 1px solid rgba(148, 163, 184, 0.42);
@@ -22241,12 +22537,36 @@ body.is-document-template-editor-open .chat-dock {
   cursor: pointer;
 }
 
+.work-order-document-work-equipment-scope-button {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.work-order-document-work-equipment-location {
+  background: rgba(248, 250, 252, 0.96);
+}
+
+.work-order-document-work-equipment-scope-button.is-active,
+.work-order-document-work-equipment-location.is-active,
 .work-order-document-work-equipment-filter.is-active {
   border-color: rgba(37, 99, 235, 0.36);
   background: #eaf2ff;
   color: #1d4ed8;
 }
 
+.work-order-document-work-equipment-location.is-rn-location {
+  border-color: rgba(34, 197, 94, 0.42);
+  background: rgba(236, 253, 245, 0.94);
+  color: #047857;
+}
+
+.work-order-document-work-equipment-location.is-rn-location.is-active {
+  border-color: rgba(37, 99, 235, 0.36);
+  background: linear-gradient(135deg, #eaf2ff, #ecfdf5);
+  color: #1d4ed8;
+}
+
+.work-order-document-work-equipment-scope-button:disabled,
 .work-order-document-work-equipment-filter:disabled {
   cursor: not-allowed;
   opacity: 0.42;
@@ -22349,8 +22669,15 @@ body.is-document-template-editor-open .chat-dock {
 }
 
 @media (max-width: 760px) {
-  .work-order-document-work-equipment-list {
+  .work-order-document-work-equipment-list,
+  .work-order-document-ro-manual-list {
     grid-template-columns: 1fr;
+  }
+
+  .work-order-document-ro-ai-head,
+  .work-order-document-ro-ai-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

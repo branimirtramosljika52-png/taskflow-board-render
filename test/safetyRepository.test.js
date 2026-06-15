@@ -581,6 +581,57 @@ test("in-memory safety repository stores Jobs NexAI settings per organization", 
   assert.equal(snapshot.jobAiSettings[0].aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].workNote, "Popunjava se samo za stvarni rad na visini.");
 });
 
+test("in-memory safety repository stores work equipment NexAI settings per organization", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const saved = await repository.upsertWorkEquipmentAiSettings({
+    organizationId: "org-1",
+    settings: {
+      generalInstruction: "Read plates and technical documentation first.",
+      extractionInstruction: "Split equipment when images show different serial numbers.",
+      autoFillMode: "fill_empty",
+      fieldInstructions: {
+        serialNumber: {
+          instruction: "Use serial number from the equipment plate.",
+          mustInclude: "plate source",
+        },
+      },
+      registryInstructions: {
+        "mechanical:/api/v3/ro_mechanical/1": {
+          instruction: "Use for forklifts with lifting mast.",
+          confidenceRequired: "high",
+        },
+      },
+      profiles: [
+        {
+          name: "Forklift",
+          aliases: ["vilicar", "forklift"],
+          generalInstruction: "Treat this as mobile lifting equipment.",
+          breakdownInstruction: "Check mast, forks, brakes and steering.",
+          registerDefaults: {
+            mechanical: ["/api/v3/ro_mechanical/1"],
+          },
+          fieldDefaults: {
+            purposeDescription: "Transport and lifting of loads.",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(saved.generalInstruction, "Read plates and technical documentation first.");
+  assert.equal(saved.fieldInstructions.serialNumber.mustInclude, "plate source");
+  assert.equal(saved.registryInstructions["mechanical:/api/v3/ro_mechanical/1"].confidenceRequired, "high");
+  assert.equal(saved.profiles[0].aliases.length, 2);
+  assert.equal(saved.profiles[0].registerDefaults.mechanical[0], "/api/v3/ro_mechanical/1");
+
+  const snapshot = await repository.getSnapshot();
+  assert.equal(snapshot.workEquipmentAiSettings.length, 1);
+  assert.equal(snapshot.workEquipmentAiSettings[0].profiles[0].fieldDefaults.purposeDescription, "Transport and lifting of loads.");
+  assert.equal(snapshot.workEquipmentAiSettings[0].profiles[0].breakdownInstruction, "Check mast, forks, brakes and steering.");
+});
+
 test("learning test scoring supports single, multiple and ordered answers", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();

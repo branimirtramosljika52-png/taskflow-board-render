@@ -4413,16 +4413,61 @@ private fun workEquipmentFilterCount(
 private fun WorkOrderDocumentationOption.matchesWorkEquipmentLocation(locationName: String): Boolean {
     val target = locationName.normalizedPickerText()
     if (target.isBlank()) return false
-    return listOf(
+    return matchesWorkEquipmentLocationKey(target)
+}
+
+private data class DocumentationWorkEquipmentLocationGroup(
+    val key: String,
+    val label: String,
+    val count: Int,
+    val rnLocation: Boolean,
+)
+
+private fun WorkOrderDocumentationOption.workEquipmentLocationLabel(): String =
+    listOf(
         meta["location"].orEmpty(),
         meta["locationName"].orEmpty(),
         meta["testingLocation"].orEmpty(),
         subtitle,
     )
-        .map { it.normalizedPickerText() }
-        .filter { it.isNotBlank() }
-        .any { candidate -> candidate == target || candidate.contains(target) || target.contains(candidate) }
+        .map { it.trim() }
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
+
+private fun workEquipmentLocationKey(value: String): String =
+    value.normalizedPickerText().ifBlank { "bez-lokacije" }
+
+private fun WorkOrderDocumentationOption.matchesWorkEquipmentLocationKey(locationKey: String): Boolean {
+    val target = locationKey.trim()
+    if (target.isBlank()) return true
+    val candidate = workEquipmentLocationKey(workEquipmentLocationLabel())
+    return candidate == target || candidate.contains(target) || target.contains(candidate)
 }
+
+private fun buildDocumentationWorkEquipmentLocationGroups(
+    options: List<WorkOrderDocumentationOption>,
+    rnLocationName: String,
+): List<DocumentationWorkEquipmentLocationGroup> {
+    val rnKey = rnLocationName.normalizedPickerText()
+    return options
+        .groupBy { option -> workEquipmentLocationKey(option.workEquipmentLocationLabel()) }
+        .map { (key, groupedOptions) ->
+            val rawLabel = groupedOptions.firstOrNull()?.workEquipmentLocationLabel().orEmpty()
+            DocumentationWorkEquipmentLocationGroup(
+                key = key,
+                label = rawLabel.ifBlank { "Bez lokacije" },
+                count = groupedOptions.size,
+                rnLocation = rnKey.isNotBlank() && (key == rnKey || key.contains(rnKey) || rnKey.contains(key)),
+            )
+        }
+        .sortedWith(
+            compareByDescending<DocumentationWorkEquipmentLocationGroup> { it.rnLocation }
+                .thenBy { it.label.lowercase(Locale.getDefault()) },
+        )
+}
+
+private fun defaultDocumentationWorkEquipmentLocationKey(groups: List<DocumentationWorkEquipmentLocationGroup>): String =
+    groups.firstOrNull { it.rnLocation }?.key ?: groups.firstOrNull()?.key.orEmpty()
 
 private enum class DocumentationPhysicalFactorsFilter(val label: String) {
     All("Svi FC"),
@@ -5274,8 +5319,22 @@ private fun DocumentationWorkEquipmentOptionList(
                 }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
             )
     }
-    val locationOptions = remember(filteredOptions, locationName) {
-        filteredOptions.filter { option -> option.matchesWorkEquipmentLocation(locationName) }
+    val locationGroups = remember(options, locationName) {
+        buildDocumentationWorkEquipmentLocationGroups(options, locationName)
+    }
+    var selectedLocationKey by remember(options, locationName) {
+        mutableStateOf(defaultDocumentationWorkEquipmentLocationKey(locationGroups))
+    }
+    LaunchedEffect(locationGroups, selectedScope) {
+        if (selectedScope == DocumentationWorkEquipmentScope.Location && locationGroups.none { it.key == selectedLocationKey }) {
+            selectedLocationKey = defaultDocumentationWorkEquipmentLocationKey(locationGroups)
+        }
+    }
+    val selectedLocationGroup = remember(locationGroups, selectedLocationKey) {
+        locationGroups.firstOrNull { it.key == selectedLocationKey }
+    }
+    val locationOptions = remember(filteredOptions, selectedLocationKey) {
+        filteredOptions.filter { option -> option.matchesWorkEquipmentLocationKey(selectedLocationKey) }
     }
     val visibleOptions = remember(filteredOptions, locationOptions, selectedScope) {
         when (selectedScope) {
@@ -5374,7 +5433,7 @@ private fun DocumentationWorkEquipmentOptionList(
                         Text("IS ZNR popis radne opreme", fontWeight = FontWeight.Bold)
                         Text(
                             if (selectedScope == DocumentationWorkEquipmentScope.Location) {
-                                "${locationName.ifBlank { "Lokacija RN-a" }} · ${visibleOptions.size} stavki"
+                                "${selectedLocationGroup?.label ?: locationName.ifBlank { "Lokacija" }} · ${visibleOptions.size} stavki"
                             } else {
                                 "${companyName.ifBlank { "Poslodavac" }} · ${visibleOptions.size} stavki"
                             },
@@ -5401,17 +5460,39 @@ private fun DocumentationWorkEquipmentOptionList(
                     )
                     FilterChip(
                         selected = selectedScope == DocumentationWorkEquipmentScope.Location,
-                        onClick = { selectedScope = DocumentationWorkEquipmentScope.Location },
-                        label = { Text("Lokacija (${locationOptions.size})") },
-                        enabled = locationName.isNotBlank(),
+                        onClick = {
+                            selectedScope = DocumentationWorkEquipmentScope.Location
+                            if (selectedLocationKey.isBlank()) {
+                                selectedLocationKey = defaultDocumentationWorkEquipmentLocationKey(locationGroups)
+                            }
+                        },
+                        label = { Text("Po lokacijama (${locationGroups.size})") },
+                        enabled = locationGroups.isNotEmpty(),
                         leadingIcon = {
                             Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
                         },
                     )
                 }
+                if (selectedScope == DocumentationWorkEquipmentScope.Location && locationGroups.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        locationGroups.forEach { group ->
+                            FilterChip(
+                                selected = selectedLocationKey == group.key,
+                                onClick = { selectedLocationKey = group.key },
+                                label = {
+                                    Text(
+                                        "${group.label}${if (group.rnLocation) " · RN" else ""} (${group.count})",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
                 if (selectedScope == DocumentationWorkEquipmentScope.Location && locationOptions.isEmpty()) {
                     Text(
-                        "Za ovu lokaciju nema pronađene radne opreme u IS ZNR popisu. Prebaci na Poslodavac ako trebaš preuzeti opremu s druge lokacije.",
+                        "Za odabranu lokaciju nema pronađene radne opreme u IS ZNR popisu. Prebaci na Poslodavac ili odaberi drugu lokaciju ako trebaš preuzeti opremu.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )

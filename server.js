@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.126.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.128.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -6159,9 +6159,12 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
   const files = Array.isArray(body.files) ? body.files : [];
   const fields = Array.isArray(body.fields) ? body.fields : [];
   const columns = Array.isArray(body.columns) ? body.columns : [];
+  const customExpectedJsonShape = body.expectedJsonShape && typeof body.expectedJsonShape === "object"
+    ? body.expectedJsonShape
+    : null;
   return {
     language: "hr-HR",
-    instruction: "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
+    instruction: "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Ako je expectedJsonShape posebno zadan za purpose, postuj taj oblik. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
     purpose: String(body.purpose || "document-template-runtime-ai-prefill").slice(0, 120),
     organizationId: String(body.organizationId || ""),
     templateId: String(body.templateId || ""),
@@ -6169,6 +6172,8 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
     workOrderNumber: String(body.workOrderNumber || ""),
     actorId: user?.id || null,
     model: selectedModel,
+    context: body.context && typeof body.context === "object" ? body.context : {},
+    settings: body.settings && typeof body.settings === "object" ? body.settings : {},
     files: files.map(sanitizeOpenAiFileForPrompt),
     fields: fields.map(buildOpenAiFieldForPrompt),
     measurementColumns: columns.map((column) => ({
@@ -6187,7 +6192,7 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
       helpText: String(column?.helpText || ""),
       aiMapping: column?.aiMapping ?? {},
     })),
-    expectedJsonShape: {
+    expectedJsonShape: customExpectedJsonShape || {
       fieldSuggestions: [
         {
           fieldId: "id polja iz fields",
@@ -6338,6 +6343,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Ti si AI asistent za SafeNexus zapisnike.",
       "Analiziras stare zapisnike, PDF-ove, slike i tekst te predlazes vrijednosti za web polja i Excel tablice.",
       "Odgovori samo validnim JSON objektom. Ako nisi siguran, confidence mora biti low i vrijednost ne smije biti izmisljena.",
+      "Ako korisnikov context sadrzi purpose-specific expectedJsonShape, vrati JSON tocno u tom obliku i koristi settings kao prioritetna pravila.",
       "Za polja ciji je fieldType longtext ili ciji ai.format trazi dugi opis nemoj vracati kratki sazetak. Postuj trazenu duljinu, broj odlomaka i strukturu iz aiDescription, ai.format i validationRules.",
       "Za obicna text polja fieldSuggestions[].value uvijek mora biti plain text string. Za longtext polja fieldSuggestions[].value mora biti jedan string: plain text ili, ako ai.format izricito trazi rich text/HTML, siguran HTML fragment s oznakama p, h2, h3, strong, em, ul, ol, li, table, tr, th, td i br. Nemoj vracati blocks, rows, markdown JSON ni objekt za longtext polja.",
       "Za polje fields[].type === system_description value u fieldSuggestions mora biti objekt oblika { blocks: [{ title, sectionSubtitle, rows: [{ subtitle, description, lineCount }] }] }. Razdvoji vece cjeline u vise blocks s jasnim naslovima. Koristi redove iz fields[].systemRows kada odgovaraju, npr. Proizvodac, Tip, Teh. podaci i opisni red, ali izostavi prazne/neprimjenjive redove. Opci blok smije imati samo opisni red. Nemoj vracati cijeli Opis sustava kao obican string ako su dostupni blokovi.",
@@ -24863,6 +24869,22 @@ async function handleApiRequest(request, response, url) {
       await domainRepository.upsertJobAiSettings({
         organizationId: scopedSnapshot.activeOrganizationId,
         aiInstructions: body?.aiInstructions ?? {},
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/work-equipment/ai-settings") {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+        sendError(response, 403, "Nemate pravo upravljati RO NexAI uputama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertWorkEquipmentAiSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        settings: body?.settings ?? body ?? {},
       });
       await writeSnapshot(response, user, request);
       return true;

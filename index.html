@@ -6682,6 +6682,73 @@
                 <div id="settings-job-ai-fields" class="settings-job-ai-fields"></div>
                 <p id="settings-job-ai-feedback" class="form-error" aria-live="polite"></p>
               </section>
+              <section class="panel settings-notifications-panel settings-work-equipment-ai-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Radna oprema · NexAI</p>
+                    <h3>AI profili, polja i šifrarnici</h3>
+                  </div>
+                  <div class="settings-work-equipment-ai-actions">
+                    <button id="settings-work-equipment-ai-refresh" type="button" class="ghost-button">Osvježi šifrarnike</button>
+                    <button id="settings-work-equipment-ai-save" type="button" class="ghost-button">Spremi RO NexAI</button>
+                  </div>
+                </div>
+                <p class="helper-copy module-copy">Ove upute vrijede za upload slika/PDF-a kod izrade RO zapisnika. Opći dio opisuje globalna pravila, profili opreme opisuju npr. viličar, kompresor ili stroj, a šifrarnici govore NexAI-ju kada smije predložiti strojarski, elektro ili rizik redak iz IS ZNR-a.</p>
+                <div class="settings-work-equipment-ai-layout">
+                  <article class="settings-work-equipment-ai-block">
+                    <div class="settings-work-equipment-ai-block-head">
+                      <strong>Opće upute</strong>
+                      <span>globalno</span>
+                    </div>
+                    <label class="field field-span-full">
+                      <span>Opći opis kako čitati radnu opremu</span>
+                      <textarea id="settings-work-equipment-ai-general" rows="4" placeholder="Npr. iz fotografije ili PDF-a prepoznaj naziv opreme, proizvođača, tip/model, serijski i inventarski broj. Ne izmišljaj ako nije vidljivo."></textarea>
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Što vaditi iz slika/PDF-a</span>
+                      <textarea id="settings-work-equipment-ai-extraction" rows="3" placeholder="Npr. natpisna pločica ima prednost nad slobodnim tekstom; redoslijed slika čuvaj kronološki; ako ima više strojeva razdvoji ih."></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Način automatskog popunjavanja</span>
+                      <select id="settings-work-equipment-ai-mode">
+                        <option value="suggest">Samo prijedlog</option>
+                        <option value="fill_empty">Popuni prazna polja</option>
+                        <option value="fill_all">Popuni sve</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Provjera / matching</span>
+                      <textarea id="settings-work-equipment-ai-matching" rows="3" placeholder="Kako usporediti novu opremu s postojećom, npr. po serijskom broju, inventarskom broju, tipu i lokaciji."></textarea>
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Uputa za završnu provjeru</span>
+                      <textarea id="settings-work-equipment-ai-review" rows="3" placeholder="Što korisnik mora ručno provjeriti prije slanja u IS ZNR."></textarea>
+                    </label>
+                  </article>
+                  <article class="settings-work-equipment-ai-block">
+                    <div class="settings-work-equipment-ai-block-head">
+                      <strong>Polja radne opreme</strong>
+                      <span>opći opis + razrada</span>
+                    </div>
+                    <div id="settings-work-equipment-ai-fields" class="settings-work-equipment-ai-fields"></div>
+                  </article>
+                  <article class="settings-work-equipment-ai-block settings-work-equipment-ai-profiles-block">
+                    <div class="settings-work-equipment-ai-block-head">
+                      <strong>Profili opreme</strong>
+                      <button id="settings-work-equipment-ai-add-profile" type="button" class="ghost-button">+ Profil</button>
+                    </div>
+                    <div id="settings-work-equipment-ai-profiles" class="settings-work-equipment-ai-profiles"></div>
+                  </article>
+                  <article class="settings-work-equipment-ai-block settings-work-equipment-ai-registers-block">
+                    <div class="settings-work-equipment-ai-block-head">
+                      <strong>IS ZNR šifrarnici</strong>
+                      <span id="settings-work-equipment-ai-register-summary">Nije učitano</span>
+                    </div>
+                    <div id="settings-work-equipment-ai-registers" class="settings-work-equipment-ai-registers"></div>
+                  </article>
+                </div>
+                <p id="settings-work-equipment-ai-feedback" class="form-error" aria-live="polite"></p>
+              </section>
               <div class="settings-module-actions">
                 <button id="settings-save-all" type="button" class="primary-button">Spremi postavke</button>
               </div>

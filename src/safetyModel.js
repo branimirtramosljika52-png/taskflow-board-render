@@ -6357,6 +6357,121 @@ export function normalizeJobAiInstructions(value = {}) {
   );
 }
 
+const WORK_EQUIPMENT_AI_STYLE_VALUES = new Set(["professional", "short", "detailed", "legal"]);
+const WORK_EQUIPMENT_AI_CONFIDENCE_VALUES = new Set(["high", "medium", "low"]);
+
+function normalizeWorkEquipmentAiInstructionConfig(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const style = normalizeText(source.style) || "professional";
+  const confidence = normalizeText(source.confidenceRequired || source.confidence).toLowerCase();
+  return {
+    instruction: normalizeText(source.instruction),
+    mustInclude: normalizeText(source.mustInclude),
+    avoid: normalizeText(source.avoid),
+    style: WORK_EQUIPMENT_AI_STYLE_VALUES.has(style) ? style : "professional",
+    textLength: normalizeText(source.textLength),
+    defaultValue: normalizeText(source.defaultValue),
+    fallbackValue: normalizeText(source.fallbackValue),
+    examples: normalizeText(source.examples),
+    confidenceRequired: WORK_EQUIPMENT_AI_CONFIDENCE_VALUES.has(confidence) ? confidence : "medium",
+  };
+}
+
+function hasWorkEquipmentAiInstructionConfig(value = {}) {
+  const config = normalizeWorkEquipmentAiInstructionConfig(value);
+  return Boolean(
+    config.instruction
+    || config.mustInclude
+    || config.avoid
+    || config.style !== "professional"
+    || config.textLength
+    || config.defaultValue
+    || config.fallbackValue
+    || config.examples
+    || config.confidenceRequired !== "medium"
+  );
+}
+
+function normalizeWorkEquipmentAiInstructionMap(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, config]) => [normalizeText(key), normalizeWorkEquipmentAiInstructionConfig(config)])
+      .filter(([key, config]) => key && hasWorkEquipmentAiInstructionConfig(config)),
+  );
+}
+
+function normalizeWorkEquipmentAiProfile(value = {}, index = 0) {
+  const source = value && typeof value === "object" ? value : {};
+  const id = normalizeText(source.id) || `ro-ai-profile-${index + 1}`;
+  const name = normalizeText(source.name || source.label).slice(0, 160);
+  const aliases = normalizeAiConfigList(source.aliases || source.synonyms || source.alias)
+    .slice(0, 40);
+  const registerDefaults = source.registerDefaults && typeof source.registerDefaults === "object"
+    ? source.registerDefaults
+    : {};
+  const fieldDefaults = source.fieldDefaults && typeof source.fieldDefaults === "object"
+    ? source.fieldDefaults
+    : {};
+  return {
+    id,
+    name,
+    aliases,
+    generalInstruction: normalizeText(source.generalInstruction || source.instruction).slice(0, 4000),
+    breakdownInstruction: normalizeText(source.breakdownInstruction || source.breakdown || source.details).slice(0, 6000),
+    appliesWhen: normalizeText(source.appliesWhen).slice(0, 2000),
+    avoid: normalizeText(source.avoid).slice(0, 2000),
+    fieldDefaults: {
+      technicalData: normalizeText(fieldDefaults.technicalData || source.technicalData).slice(0, 2000),
+      purposeDescription: normalizeText(fieldDefaults.purposeDescription || source.purposeDescription).slice(0, 2000),
+      workspacePosition: normalizeText(fieldDefaults.workspacePosition || source.workspacePosition).slice(0, 2000),
+      useAndMaintenance: normalizeText(fieldDefaults.useAndMaintenance || source.useAndMaintenance).slice(0, 2000),
+      methodsProceduresAndNorms: normalizeText(fieldDefaults.methodsProceduresAndNorms || source.methodsProceduresAndNorms).slice(0, 2000),
+    },
+    registerDefaults: {
+      mechanical: normalizeAiConfigList(registerDefaults.mechanical || source.mechanicalRegisterIris).slice(0, 80),
+      electrical: normalizeAiConfigList(registerDefaults.electrical || source.electricalRegisterIris).slice(0, 80),
+      hazards: normalizeAiConfigList(registerDefaults.hazards || source.hazardRegisterIris).slice(0, 80),
+      harmfulnesses: normalizeAiConfigList(registerDefaults.harmfulnesses || source.harmfulnessRegisterIris).slice(0, 80),
+      strains: normalizeAiConfigList(registerDefaults.strains || source.strainRegisterIris).slice(0, 80),
+    },
+  };
+}
+
+function hasWorkEquipmentAiProfile(value = {}) {
+  const profile = normalizeWorkEquipmentAiProfile(value);
+  return Boolean(
+    profile.name
+    || profile.aliases.length
+    || profile.generalInstruction
+    || profile.breakdownInstruction
+    || profile.appliesWhen
+    || profile.avoid
+    || Object.values(profile.fieldDefaults).some(Boolean)
+    || Object.values(profile.registerDefaults).some((list) => list.length > 0)
+  );
+}
+
+export function normalizeWorkEquipmentAiSettings(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    organizationId: normalizeText(source.organizationId),
+    generalInstruction: normalizeText(source.generalInstruction).slice(0, 8000),
+    extractionInstruction: normalizeText(source.extractionInstruction).slice(0, 8000),
+    matchingInstruction: normalizeText(source.matchingInstruction).slice(0, 4000),
+    reviewInstruction: normalizeText(source.reviewInstruction).slice(0, 4000),
+    autoFillMode: ["suggest", "fill_empty", "fill_all"].includes(normalizeText(source.autoFillMode))
+      ? normalizeText(source.autoFillMode)
+      : "fill_empty",
+    fieldInstructions: normalizeWorkEquipmentAiInstructionMap(source.fieldInstructions),
+    registryInstructions: normalizeWorkEquipmentAiInstructionMap(source.registryInstructions),
+    profiles: (Array.isArray(source.profiles) ? source.profiles : [])
+      .slice(0, 60)
+      .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index))
+      .filter(hasWorkEquipmentAiProfile),
+  };
+}
+
 function normalizeJobConditions(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   return {
