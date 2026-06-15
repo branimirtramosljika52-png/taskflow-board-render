@@ -113907,6 +113907,8 @@ function normalizeWorkOrderDocumentRoManualEquipment(equipment = {}, index = 0) 
     source: String(source.source || "ai").trim(),
     profileId: String(source.profileId || "").trim(),
     profileName: String(source.profileName || "").trim(),
+    profileVariantName: String(source.profileVariantName || source.variantName || source.subcategory || "").trim(),
+    profileMatchReason: String(source.profileMatchReason || "").trim(),
     confidence: normalizeAiConfidenceLevelLocal(source.confidence || "medium"),
     name,
     manufacturer,
@@ -113950,6 +113952,131 @@ function getWorkOrderDocumentRoAiFilesForAttachments(entry = {}, equipmentIndex 
       dataUrl: String(file.contentDataUrl || "").trim(),
       description: "NexAI upload za radnu opremu",
     }));
+}
+
+function normalizeWorkEquipmentAiLearningKey(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0111\u0110]/g, "d")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("hr")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function findWorkEquipmentAiProfileForVariantLearning(profiles = [], suggestion = {}) {
+  const normalizedProfiles = (Array.isArray(profiles) ? profiles : []).map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
+  const profileId = String(suggestion.profileId || "").trim();
+  if (profileId) {
+    const byId = normalizedProfiles.find((profile) => String(profile.id || "") === profileId);
+    if (byId) return byId;
+  }
+
+  const profileName = normalizeWorkEquipmentAiLearningKey(suggestion.profileName || "");
+  if (profileName) {
+    const byName = normalizedProfiles.find((profile) => {
+      const terms = [profile.name, ...profile.aliases].map(normalizeWorkEquipmentAiLearningKey).filter(Boolean);
+      return terms.some((term) => term === profileName || profileName.includes(term) || term.includes(profileName));
+    });
+    if (byName) return byName;
+  }
+
+  const searchable = normalizeWorkEquipmentAiLearningKey([
+    suggestion.name,
+    suggestion.manufacturer,
+    suggestion.model,
+    suggestion.profileMatchReason,
+    suggestion.reason,
+  ].join(" "));
+  if (searchable) {
+    const scored = normalizedProfiles
+      .map((profile) => {
+        const terms = [profile.name, ...profile.aliases].map(normalizeWorkEquipmentAiLearningKey).filter((term) => term && term !== "osnovno");
+        const score = terms.reduce((sum, term) => sum + (searchable.includes(term) ? 1 : 0), 0);
+        return { profile, score };
+      })
+      .sort((a, b) => b.score - a.score);
+    if (scored[0]?.score > 0) {
+      return scored[0].profile;
+    }
+  }
+
+  return normalizedProfiles.find((profile) => normalizeWorkEquipmentAiLearningKey(profile.name) === "osnovno")
+    || normalizedProfiles[0]
+    || normalizeWorkEquipmentAiProfile({ name: "Osnovno" });
+}
+
+function workEquipmentAiProfileHasVariant(profile = {}, variantName = "") {
+  const key = normalizeWorkEquipmentAiLearningKey(variantName);
+  if (!key) {
+    return true;
+  }
+  return normalizeWorkEquipmentAiProfile(profile).variants.some((variant) => {
+    const terms = [variant.name, ...variant.aliases].map(normalizeWorkEquipmentAiLearningKey).filter(Boolean);
+    return terms.some((term) => term === key || term.includes(key) || key.includes(term));
+  });
+}
+
+async function learnWorkEquipmentAiProfileVariantsFromResult(result = {}) {
+  const suggestions = Array.isArray(result?.workEquipments)
+    ? result.workEquipments
+    : (Array.isArray(result?.equipments) ? result.equipments : []);
+  if (!suggestions.length || !state.activeOrganizationId) {
+    return 0;
+  }
+  const settings = getWorkEquipmentAiSettings();
+  const profiles = (settings.profiles.length ? settings.profiles : createDefaultWorkEquipmentAiProfiles())
+    .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
+  let addedCount = 0;
+
+  suggestions.forEach((suggestion) => {
+    const variantName = String(suggestion?.profileVariantName || suggestion?.variantName || suggestion?.subcategory || "").trim();
+    if (!variantName) {
+      return;
+    }
+    const target = findWorkEquipmentAiProfileForVariantLearning(profiles, suggestion);
+    const profileIndex = profiles.findIndex((profile) => String(profile.id || "") === String(target.id || ""));
+    if (profileIndex < 0 || workEquipmentAiProfileHasVariant(profiles[profileIndex], variantName)) {
+      return;
+    }
+    profiles[profileIndex] = normalizeWorkEquipmentAiProfile({
+      ...profiles[profileIndex],
+      variants: [
+        ...profiles[profileIndex].variants,
+        normalizeWorkEquipmentAiProfileVariant({
+          name: variantName,
+          aliases: suggestion.profileVariantAliases || "",
+          appliesWhen: suggestion.profileMatchReason || suggestion.reason || "",
+          extraInstruction: suggestion.profileVariantInstruction || "",
+          source: "nexai",
+          firstSeenAt: new Date().toISOString(),
+        }, profiles[profileIndex].variants.length),
+      ],
+    }, profileIndex);
+    addedCount += 1;
+  });
+
+  if (!addedCount) {
+    return 0;
+  }
+
+  const nextSettings = normalizeWorkEquipmentAiSettings({
+    ...settings,
+    organizationId: state.activeOrganizationId,
+    profiles,
+  });
+  state.workEquipmentAiSettings = nextSettings;
+  settingsWorkEquipmentAiProfileDrafts = nextSettings.profiles;
+  settingsWorkEquipmentAiDraftInitialized = true;
+  try {
+    await apiRequest("/work-equipment/ai-settings", {
+      method: "POST",
+      body: { settings: nextSettings },
+    });
+  } catch (error) {
+    console.warn("RO NexAI variant learning was not persisted", error);
+  }
+  return addedCount;
 }
 
 function getWorkEquipmentAiRegisterPromptGroups(entry = {}) {
@@ -114000,6 +114127,10 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         finalGrade: "1 za zadovoljava, 0 za ne zadovoljava",
         profileId: "id odabranog profila ako odgovara",
         profileName: "naziv profila ako odgovara",
+        profileVariantName: "potkategorija unutar najbližeg profila, npr. električni, UNP, dizel",
+        profileVariantAliases: ["drugi nazivi za istu potkategoriju"],
+        profileVariantInstruction: "kratka razlika u odnosu na osnovni profil ako je nova potkategorija",
+        profileMatchReason: "zašto je odabran profil i potkategorija",
         confidence: "high | medium | low",
         reason: "kratko objašnjenje",
         sourceFile: "datoteka iz koje je podatak izvučen",
@@ -114029,6 +114160,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
     },
     settings,
     profiles: settings.profiles,
+    profileLearningInstruction: "Odaberi najbliži osnovni profil iz profiles. Ako oprema pripada tom profilu, ali nema odgovarajuću potkategoriju/varijantu, vrati profileVariantName i kratku profileVariantInstruction umjesto stvaranja novog osnovnog profila.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
@@ -114133,6 +114265,7 @@ function applyWorkOrderDocumentRoAiResult(workOrder = {}, entry = {}, result = {
     result?.summary || `NexAI je pripremio ${suggestions.length} stavki radne opreme.`,
     warnings.length ? `Provjeri: ${warnings.slice(0, 3).join("; ")}` : "",
   ].filter(Boolean).join(" ");
+  void learnWorkEquipmentAiProfileVariantsFromResult(result);
   return suggestions.length;
 }
 
@@ -139905,6 +140038,36 @@ function normalizeWorkEquipmentAiQuickQuestions(value = []) {
     .filter(hasWorkEquipmentAiQuickQuestion);
 }
 
+function normalizeWorkEquipmentAiProfileVariant(variant = {}, index = 0) {
+  const source = variant && typeof variant === "object" ? variant : {};
+  return {
+    id: String(source.id || "").trim() || createClientSideId(`ro-ai-variant-${index + 1}`),
+    name: String(source.name || source.label || source.variantName || source.subcategory || "").trim().slice(0, 160),
+    aliases: normalizeAiConfigListLocal(source.aliases || source.synonyms || source.alias, 40),
+    appliesWhen: String(source.appliesWhen || source.matchingHint || "").trim().slice(0, 2000),
+    extraInstruction: String(source.extraInstruction || source.instruction || source.description || "").trim().slice(0, 3000),
+    source: String(source.source || "manual").trim().slice(0, 60),
+    firstSeenAt: String(source.firstSeenAt || "").trim(),
+  };
+}
+
+function hasWorkEquipmentAiProfileVariant(variant = {}) {
+  const normalized = normalizeWorkEquipmentAiProfileVariant(variant);
+  return Boolean(
+    normalized.name
+    || normalized.aliases.length
+    || normalized.appliesWhen
+    || normalized.extraInstruction
+  );
+}
+
+function normalizeWorkEquipmentAiProfileVariants(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, 80)
+    .map((variant, index) => normalizeWorkEquipmentAiProfileVariant(variant, index))
+    .filter(hasWorkEquipmentAiProfileVariant);
+}
+
 function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
   const source = profile && typeof profile === "object" ? profile : {};
   const id = String(source.id || "").trim() || createClientSideId(`ro-ai-profile-${index + 1}`);
@@ -139921,6 +140084,7 @@ function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
     avoid: String(source.avoid || "").trim().slice(0, 2000),
     sentenceBank,
     quickQuestions: normalizeWorkEquipmentAiQuickQuestions(source.quickQuestions || source.questions || source.fieldQuestions),
+    variants: normalizeWorkEquipmentAiProfileVariants(source.variants || source.subcategories || source.children),
     fieldDefaults: {
       technicalData: String(fieldDefaults.technicalData || source.technicalData || "").trim().slice(0, 2000),
       purposeDescription: String(fieldDefaults.purposeDescription || source.purposeDescription || "").trim().slice(0, 2000),
@@ -139949,6 +140113,7 @@ function hasWorkEquipmentAiProfile(profile = {}) {
     || normalized.avoid
     || hasWorkEquipmentAiSentenceBank(normalized.sentenceBank)
     || normalized.quickQuestions.length
+    || normalized.variants.length
     || Object.values(normalized.fieldDefaults).some(Boolean)
     || Object.values(normalized.registerDefaults).some((list) => list.length > 0)
   );
@@ -139957,65 +140122,24 @@ function hasWorkEquipmentAiProfile(profile = {}) {
 function createDefaultWorkEquipmentAiProfiles() {
   return [
     {
-      id: createClientSideId("ro-ai-profile-forklift"),
-      name: "Viličar",
-      aliases: ["viličar", "viljuškar", "forklift", "Linde", "Still", "Jungheinrich"],
-      generalInstruction: "Prepoznaj viličar prema obliku stroja, vilicama, natpisnoj pločici, nosivosti i pogonskom sustavu. Serijski broj i tip imaju prednost pred slobodnim opisom.",
-      breakdownInstruction: "U razradi obrati pažnju na stabilnost, kočnice, upravljački sustav, zaštitu vozača, vilice, lanac, hidrauliku, signalizaciju i stanje baterije ili plinske instalacije ako je vidljiva.",
-      appliesWhen: "Koristi ovaj profil kada slika ili dokument jasno prikazuje radnu opremu za podizanje/prijevoz tereta s vilicama.",
-      avoid: "Ne koristi za ručne paletare bez pogona ako nije jasno da se radi o viličaru.",
+      id: createClientSideId("ro-ai-profile-basic"),
+      name: "Osnovno",
+      aliases: ["osnovno", "radna oprema", "nepoznata oprema", "opći profil"],
+      generalInstruction: "Koristi ovaj profil kada ne postoji specifičan profil za prepoznatu radnu opremu ili kada NexAI nije dovoljno siguran. Popuni samo podatke koji su vidljivi na slici/PDF-u ili postoje u prethodnom zapisniku.",
+      breakdownInstruction: "Kod osnovnog profila ne dodaj specifične strojarske, elektro, opasnosti, štetnosti ili napore bez jasnog izvora ili ručne potvrde korisnika. Zaključnu ocjenu ostavi za provjeru ako nema dovoljno podataka.",
+      appliesWhen: "Koristi kao siguran fallback za novu ili neobrađenu radnu opremu.",
+      avoid: "Ne koristi kao zamjenu za specifični profil kada je korisnik već definirao profil za tu vrstu opreme.",
       sentenceBank: {
-        positive: "Viličar je pregledom i funkcionalnom probom zadovoljio zahtjeve sigurnog rada.",
-        negative: "Na viličaru su utvrđeni nedostaci koji mogu utjecati na siguran rad i potrebno ih je ukloniti prije uporabe.",
-        notApplicable: "Stavka nije primjenjiva na pregledani tip viličara.",
-        recommendations: "Nedostatke ukloniti prema uputama proizvođača i ponoviti provjeru prije redovne uporabe.",
-        conclusion: "Zaključak se temelji na vizualnom pregledu, funkcionalnoj probi i raspoloživoj dokumentaciji.",
-      },
-      quickQuestions: [
-        { label: "Koji teret je dignut pri probi?", type: "number", unit: "kg", aiHint: "Koristi za opis funkcionalne probe podizanja tereta." },
-        { label: "Je li upravljanje ispravno?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
-        { label: "Jesu li kočnice ispravne?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
-        { label: "Ima li curenja hidraulike?", type: "yes_no", aiHint: "Ako ima curenja, predloži nedostatak i mjeru." },
-        { label: "Je li signalizacija ispravna?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije provjereno"] },
-      ],
-    },
-    {
-      id: createClientSideId("ro-ai-profile-compressor"),
-      name: "Kompresor",
-      aliases: ["kompresor", "compressor", "Atlas Copco", "KAESER"],
-      generalInstruction: "Prepoznaj kompresor prema spremniku, agregatu, oznaci tlaka, proizvođaču i natpisnoj pločici.",
-      breakdownInstruction: "Razradi sigurnosni ventil, tlačnu posudu, manometar, zaštite rotirajućih dijelova, električni priključak i tragove curenja ili oštećenja.",
-      sentenceBank: {
-        positive: "Kompresor je pregledom zadovoljio propisane sigurnosne uvjete rada.",
-        negative: "Na kompresoru su utvrđeni nedostaci koje je potrebno ukloniti prije daljnje uporabe.",
-        notApplicable: "Stavka nije primjenjiva na pregledani kompresor.",
-        recommendations: "Provjeriti sigurnosni ventil, manometar i zaštite prema uputama proizvođača.",
-        conclusion: "Ocjena se temelji na stanju opreme, dostupnoj dokumentaciji i funkcionalnoj provjeri.",
-      },
-      quickQuestions: [
-        { label: "Radni tlak", type: "number", unit: "bar" },
-        { label: "Je li sigurnosni ventil prisutan i ispravan?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije provjereno"], required: true },
-        { label: "Je li manometar čitljiv?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"] },
-        { label: "Ima li tragova curenja zraka ili ulja?", type: "yes_no" },
-      ],
-    },
-    {
-      id: createClientSideId("ro-ai-profile-machine"),
-      name: "Stroj / alatni stroj",
-      aliases: ["stroj", "tokarilica", "glodalica", "brusilica", "preša", "alatni stroj"],
-      generalInstruction: "Ako nije moguće precizno odrediti vrstu, zadrži naziv s pločice i označi da korisnik provjeri klasifikaciju.",
-      breakdownInstruction: "Razradi zaštite pokretnih dijelova, upravljačke elemente, stop tipkalo, električnu sigurnost, radni prostor, stabilnost i pristup.",
-      sentenceBank: {
-        positive: "Radna oprema je pregledom zadovoljila zahtjeve sigurnog rada.",
-        negative: "Utvrđeni su nedostaci koji zahtijevaju uklanjanje prije uporabe radne opreme.",
+        positive: "Radna oprema je pregledom zadovoljila zahtjeve sigurnog rada, uz podatke vidljive iz dokumentacije i pregleda.",
+        negative: "Na radnoj opremi su utvrđeni nedostaci koje je potrebno ukloniti prije uporabe.",
         notApplicable: "Stavka nije primjenjiva na pregledanu radnu opremu.",
-        recommendations: "Nedostatke ukloniti i dokumentirati provedenu provjeru prije ponovne uporabe.",
-        conclusion: "Zaključna ocjena temelji se na pregledu vidljivog stanja, funkcionalnoj provjeri i dostupnim podacima.",
+        recommendations: "Nedostatke ukloniti i po potrebi ponoviti provjeru prije redovne uporabe.",
+        conclusion: "Zaključak se temelji na dostupnim podacima, vizualnom pregledu i ručno potvrđenim nalazima.",
       },
       quickQuestions: [
-        { label: "Je li stop tipka ispravna?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
-        { label: "Jesu li zaštite pokretnih dijelova postavljene?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
-        { label: "Je li radni prostor oko stroja slobodan?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava"] },
+        { label: "Koja je vrsta radne opreme?", type: "text", required: true, aiHint: "Koristi za varijantu opreme i prijedlog novog profila ako se ista vrsta ponavlja." },
+        { label: "Je li oprema pregledana funkcionalno?", type: "yes_no", aiHint: "Ako nije, zaključak treba tražiti ručnu potvrdu." },
+        { label: "Je li oprema zadovoljila pregled?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Za provjeru"], required: true },
         { label: "Napomena ispitivača", type: "note" },
       ],
     },
@@ -141129,6 +141253,7 @@ function getSettingsWorkEquipmentAiProfileSummary(profile = {}) {
   const sentenceCount = Object.values(normalized.sentenceBank).filter(Boolean).length;
   return [
     normalized.aliases.length ? normalized.aliases.slice(0, 5).join(", ") : "Bez aliasa",
+    normalized.variants.length ? `${normalized.variants.length} potkategorija` : "",
     sentenceCount ? `${sentenceCount} rečenica` : "",
     normalized.quickQuestions.length ? `${normalized.quickQuestions.length} pitanja` : "",
     registerCount ? `${registerCount} IS ZNR stavki` : "",
@@ -141245,6 +141370,48 @@ function renderSettingsWorkEquipmentAiProfileSentenceBank(profile = {}, canManag
   `).join("");
 }
 
+function renderSettingsWorkEquipmentAiProfileVariant(variant = {}, index = 0, canManage = false) {
+  const normalized = normalizeWorkEquipmentAiProfileVariant(variant, index);
+  return `
+    <article class="settings-work-equipment-ai-variant-card" data-ro-ai-profile-variant="${index}">
+      <div class="settings-work-equipment-ai-question-head">
+        <strong>${escapeHtml(normalized.name || `Potkategorija ${index + 1}`)}</strong>
+        <button type="button" class="icon-button danger" data-ro-ai-profile-variant-remove="${index}" ${canManage ? "" : "disabled"} aria-label="Ukloni potkategoriju">×</button>
+      </div>
+      <div class="settings-work-equipment-ai-card-grid">
+        <label class="field">
+          <span>Naziv potkategorije</span>
+          <input data-ro-ai-profile-variant-field="name" value="${escapeHtml(normalized.name)}" placeholder="npr. Električni, UNP, dizel..." ${canManage ? "" : "disabled"} />
+        </label>
+        <label class="field">
+          <span>Aliasi</span>
+          <input data-ro-ai-profile-variant-field="aliases" value="${escapeHtml(normalized.aliases.join(", "))}" placeholder="elektro, baterijski, LPG..." ${canManage ? "" : "disabled"} />
+        </label>
+        <label class="field field-span-full">
+          <span>Kada vrijedi</span>
+          <textarea data-ro-ai-profile-variant-field="appliesWhen" rows="2" placeholder="Što NexAI mora vidjeti da odabere ovu potkategoriju." ${canManage ? "" : "disabled"}>${escapeHtml(normalized.appliesWhen)}</textarea>
+        </label>
+        <label class="field field-span-full">
+          <span>Dodatna uputa</span>
+          <textarea data-ro-ai-profile-variant-field="extraInstruction" rows="2" placeholder="Samo razlika u odnosu na osnovni profil." ${canManage ? "" : "disabled"}>${escapeHtml(normalized.extraInstruction)}</textarea>
+        </label>
+      </div>
+    </article>
+  `;
+}
+
+function renderSettingsWorkEquipmentAiProfileVariants(profile = {}, canManage = false) {
+  const normalized = normalizeWorkEquipmentAiProfile(profile);
+  const variants = normalized.variants.length ? normalized.variants : [];
+  const variantCards = variants.map((variant, index) => renderSettingsWorkEquipmentAiProfileVariant(variant, index, canManage)).join("");
+  return `
+    <div class="settings-work-equipment-ai-variant-list">
+      ${variantCards || `<p class="settings-work-equipment-ai-empty">Dodaj potkategorije samo kad ti trebaju, npr. električni ili UNP unutar profila Viličari.</p>`}
+    </div>
+    <button type="button" class="ghost-button settings-work-equipment-ai-add-question" data-ro-ai-profile-variant-add ${canManage ? "" : "disabled"}>+ Potkategorija</button>
+  `;
+}
+
 function renderSettingsWorkEquipmentAiProfileQuickQuestion(question = {}, index = 0, canManage = false) {
   const normalized = normalizeWorkEquipmentAiQuickQuestion(question, index);
   const typeOptions = WORK_EQUIPMENT_AI_QUICK_QUESTION_TYPES.map((type) => `
@@ -141344,6 +141511,18 @@ function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
       aiHint: getField("aiHint")?.value || "",
     }, questionIndex);
   });
+  const variants = Array.from(node.querySelectorAll("[data-ro-ai-profile-variant]")).map((card, variantIndex) => {
+    const getField = (field) => card.querySelector(`[data-ro-ai-profile-variant-field="${field}"]`);
+    return normalizeWorkEquipmentAiProfileVariant({
+      id: settingsWorkEquipmentAiProfileDrafts[index]?.variants?.[variantIndex]?.id || "",
+      name: getField("name")?.value || "",
+      aliases: getField("aliases")?.value || "",
+      appliesWhen: getField("appliesWhen")?.value || "",
+      extraInstruction: getField("extraInstruction")?.value || "",
+      source: settingsWorkEquipmentAiProfileDrafts[index]?.variants?.[variantIndex]?.source || "manual",
+      firstSeenAt: settingsWorkEquipmentAiProfileDrafts[index]?.variants?.[variantIndex]?.firstSeenAt || "",
+    }, variantIndex);
+  });
   return normalizeWorkEquipmentAiProfile({
     id: settingsWorkEquipmentAiProfileDrafts[index]?.id || "",
     name: node.querySelector('[data-ro-ai-profile-field="name"]')?.value || "",
@@ -141354,6 +141533,7 @@ function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
     avoid: node.querySelector('[data-ro-ai-profile-field="avoid"]')?.value || "",
     sentenceBank,
     quickQuestions,
+    variants,
     fieldDefaults,
     registerDefaults,
   }, index);
@@ -141465,6 +141645,14 @@ function renderSettingsWorkEquipmentAiProfileModalBody(profile = {}, index = 0, 
             <textarea data-ro-ai-profile-field="avoid" rows="2" placeholder="Situacije u kojima profil nije primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(normalized.avoid)}</textarea>
           </label>
         </div>
+      </section>
+      <section class="settings-work-equipment-ai-modal-section">
+        <div class="settings-work-equipment-ai-group-head">
+          <strong>Potkategorije profila</strong>
+          <span>${normalized.variants.length} varijanti</span>
+        </div>
+        <p class="settings-work-equipment-ai-section-copy">Ovo su varijante unutar istog osnovnog profila. Ako NexAI pronađe novu varijantu, može ju dodati ovdje umjesto da otvara novi profil.</p>
+        ${renderSettingsWorkEquipmentAiProfileVariants(normalized, canManage)}
       </section>
       <section class="settings-work-equipment-ai-modal-section">
         <div class="settings-work-equipment-ai-group-head">
@@ -141646,7 +141834,9 @@ function ensureSettingsWorkEquipmentAiModal() {
     }
     const addButton = target.closest("[data-ro-ai-profile-question-add]");
     const removeButton = target.closest("[data-ro-ai-profile-question-remove]");
-    if (!(addButton instanceof HTMLElement) && !(removeButton instanceof HTMLElement)) {
+    const addVariantButton = target.closest("[data-ro-ai-profile-variant-add]");
+    const removeVariantButton = target.closest("[data-ro-ai-profile-variant-remove]");
+    if (!(addButton instanceof HTMLElement) && !(removeButton instanceof HTMLElement) && !(addVariantButton instanceof HTMLElement) && !(removeVariantButton instanceof HTMLElement)) {
       return;
     }
     event.preventDefault();
@@ -141670,6 +141860,19 @@ function ensureSettingsWorkEquipmentAiModal() {
     if (removeButton instanceof HTMLElement) {
       const questionIndex = Number.parseInt(String(removeButton.dataset.roAiProfileQuestionRemove || ""), 10);
       current.quickQuestions = current.quickQuestions.filter((_, itemIndex) => itemIndex !== questionIndex);
+    }
+    if (addVariantButton instanceof HTMLElement) {
+      current.variants = [
+        ...current.variants,
+        normalizeWorkEquipmentAiProfileVariant({
+          name: "Nova potkategorija",
+          source: "manual",
+        }, current.variants.length),
+      ];
+    }
+    if (removeVariantButton instanceof HTMLElement) {
+      const variantIndex = Number.parseInt(String(removeVariantButton.dataset.roAiProfileVariantRemove || ""), 10);
+      current.variants = current.variants.filter((_, itemIndex) => itemIndex !== variantIndex);
     }
     settingsWorkEquipmentAiProfileDrafts[safeIndex] = normalizeWorkEquipmentAiProfile(current, safeIndex);
     rerenderSettingsWorkEquipmentAiActiveProfileModal();

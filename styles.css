@@ -5805,12 +5805,14 @@ body.is-profile-modal-open {
   line-height: 1.45;
 }
 
-.settings-work-equipment-ai-question-list {
+.settings-work-equipment-ai-question-list,
+.settings-work-equipment-ai-variant-list {
   display: grid;
   gap: 10px;
 }
 
-.settings-work-equipment-ai-question-card {
+.settings-work-equipment-ai-question-card,
+.settings-work-equipment-ai-variant-card {
   display: grid;
   gap: 10px;
   min-width: 0;
