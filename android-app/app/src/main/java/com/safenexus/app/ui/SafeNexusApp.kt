@@ -4512,8 +4512,36 @@ private data class PhysicalFactorsSpaceTemplate(
     val description: String,
     val workProcess: String,
     val workEquipment: String,
-    val illuminationAllowed: String,
-    val noiseAllowed: String,
+    val temperatureAllowed: String = "20-25",
+    val temperatureMin: String = "22",
+    val temperatureMax: String = "22,4",
+    val humidityAllowed: String = "40-60",
+    val humidityMin: String = "52",
+    val humidityMax: String = "53",
+    val airflowAllowed: String = "0,6",
+    val airflowMin: String = "0,12",
+    val airflowMax: String = "0,33",
+    val illuminationAllowed: String = "500",
+    val illuminationMin: String = "650",
+    val illuminationMax: String = "880",
+    val noiseAllowed: String = "65",
+    val noiseMin: String = "52",
+    val noiseMax: String = "53",
+    val handArmVibrationLimit: String = "",
+    val handArmVibrationWarning: String = "",
+    val handArmVibrationMin: String = "",
+    val handArmVibrationMax: String = "",
+    val wholeBodyVibrationLimit: String = "",
+    val wholeBodyVibrationWarning: String = "",
+    val wholeBodyVibrationMin: String = "",
+    val wholeBodyVibrationMax: String = "",
+)
+
+private data class PhysicalFactorsSpaceDialogTarget(
+    val title: String,
+    val index: Int?,
+    val originalName: String,
+    val draft: IsznrFcSpaceDraft,
 )
 
 private val physicalFactorsSpaceTemplates = listOf(
@@ -4523,8 +4551,20 @@ private val physicalFactorsSpaceTemplates = listOf(
         description = "Prodajni prostor benzinske postaje zatvoreni je, klimatizirani prostor namijenjen obavljanju maloprodaje goriva, maziva, napitaka, prehrambenih proizvoda i autoopreme. Prostor je uređen tako da omogućava sigurno kretanje zaposlenika i kupaca te nesmetano obavljanje prodajnih i blagajničkih poslova.",
         workProcess = "U prodajnom prostoru obavljaju se poslovi prodaje robe, naplate putem blagajne i POS uređaja, zaprimanja robe, slaganja proizvoda na police te održavanja čistoće i urednosti radnog prostora.",
         workEquipment = "Rashladne vitrine, blagajne, hladnjaci, škrinje, aparati za kavu i sl.",
-        illuminationAllowed = "500",
+        temperatureAllowed = "20-25",
+        temperatureMin = "23",
+        temperatureMax = "23,2",
+        humidityAllowed = "40-60",
+        humidityMin = "51,1",
+        humidityMax = "51,3",
+        airflowMin = "0,09",
+        airflowMax = "0,15",
+        illuminationAllowed = "300",
+        illuminationMin = "611",
+        illuminationMax = "754",
         noiseAllowed = "65",
+        noiseMin = "49,8",
+        noiseMax = "50",
     ),
     PhysicalFactorsSpaceTemplate(
         id = "office",
@@ -4532,8 +4572,20 @@ private val physicalFactorsSpaceTemplates = listOf(
         description = "Ured je zatvoreni radni prostor namijenjen obavljanju administrativnih, organizacijskih i računovodstvenih poslova. Prostor je opremljen uredskim namještajem, računalima, pisačima i drugim sredstvima potrebnim za obradu i pohranu podataka te komunikaciju.",
         workProcess = "U uredu se obavljaju poslovi vezani uz administraciju, vođenje evidencija, izradu dokumenata, komunikaciju putem telefona i elektroničke pošte te obradu i arhiviranje podataka.",
         workEquipment = "Uredska i IT oprema, računala, pisači i prateća oprema.",
+        temperatureAllowed = "20-25",
+        temperatureMin = "22,7",
+        temperatureMax = "22,9",
+        humidityAllowed = "40-60",
+        humidityMin = "51,3",
+        humidityMax = "51,5",
+        airflowMin = "0,10",
+        airflowMax = "0,14",
         illuminationAllowed = "500",
+        illuminationMin = "698",
+        illuminationMax = "770",
         noiseAllowed = "60",
+        noiseMin = "46,7",
+        noiseMax = "46,9",
     ),
     PhysicalFactorsSpaceTemplate(
         id = "storage",
@@ -4541,8 +4593,20 @@ private val physicalFactorsSpaceTemplates = listOf(
         description = "Spremište je zatvoreni prostor namijenjen privremenom skladištenju robe, ambalaže, sredstava za čišćenje i druge radne opreme potrebne za svakodnevno poslovanje.",
         workProcess = "U spremištu se obavljaju poslovi zaprimanja, slaganja, razvrstavanja i izdavanja robe i materijala koji se koriste u prodajnom prostoru.",
         workEquipment = "Police, regali, rashladne vitrine, hladnjaci i prateća skladišna oprema.",
+        temperatureAllowed = "20-25",
+        temperatureMin = "21,8",
+        temperatureMax = "22",
+        humidityAllowed = "40-60",
+        humidityMin = "50,1",
+        humidityMax = "50,3",
+        airflowMin = "0,05",
+        airflowMax = "0,06",
         illuminationAllowed = "200",
+        illuminationMin = "220",
+        illuminationMax = "300",
         noiseAllowed = "65",
+        noiseMin = "47,1",
+        noiseMax = "47,3",
     ),
     PhysicalFactorsSpaceTemplate(
         id = "technical",
@@ -4550,8 +4614,24 @@ private val physicalFactorsSpaceTemplates = listOf(
         description = "Tehnički prostor je zatvoreni i neprodajni prostor namijenjen smještaju tehničkih sustava i uređaja koji osiguravaju radne uvjete u objektu, poput sustava grijanja, hlađenja, ventilacije, elektroinstalacija i ostalih tehničkih instalacija.",
         workProcess = "U tehničkom prostoru obavljaju se povremeni poslovi kontrole, podešavanja i održavanja sustava grijanja, hlađenja, ventilacije i elektroinstalacija.",
         workEquipment = "Oprema za GHV, elektroinstalacijska oprema i servisna oprema po potrebi.",
+        temperatureAllowed = "20-25",
+        temperatureMin = "23,4",
+        temperatureMax = "23,6",
+        humidityAllowed = "40-60",
+        humidityMin = "48",
+        humidityMax = "48,2",
+        airflowMin = "0,12",
+        airflowMax = "0,15",
         illuminationAllowed = "200",
+        illuminationMin = "215",
+        illuminationMax = "342",
         noiseAllowed = "65",
+        noiseMin = "61,2",
+        noiseMax = "61,4",
+        handArmVibrationLimit = "5",
+        handArmVibrationWarning = "2,5",
+        wholeBodyVibrationLimit = "1,15",
+        wholeBodyVibrationWarning = "0,5",
     ),
     PhysicalFactorsSpaceTemplate(
         id = "caffe",
@@ -4574,7 +4654,25 @@ private val physicalFactorsSpaceTemplates = listOf(
 )
 
 private fun IsznrFcSpaceDraft.isBlankPhysicalFactorsSpaceDraft(): Boolean =
-    name.isBlank() && description.isBlank() && workProcess.isBlank() && workEquipment.isBlank()
+    name.isBlank() &&
+        description.isBlank() &&
+        workProcess.isBlank() &&
+        workEquipment.isBlank() &&
+        temperatureAllowed.isBlank() &&
+        temperatureMin.isBlank() &&
+        temperatureMax.isBlank() &&
+        humidityAllowed.isBlank() &&
+        humidityMin.isBlank() &&
+        humidityMax.isBlank() &&
+        airflowAllowed.isBlank() &&
+        airflowMin.isBlank() &&
+        airflowMax.isBlank() &&
+        illuminationAllowed.isBlank() &&
+        illuminationMin.isBlank() &&
+        illuminationMax.isBlank() &&
+        noiseAllowed.isBlank() &&
+        noiseMin.isBlank() &&
+        noiseMax.isBlank()
 
 private fun PhysicalFactorsSpaceTemplate.toSpaceDraft(id: String): IsznrFcSpaceDraft =
     IsznrFcSpaceDraft(
@@ -4584,7 +4682,215 @@ private fun PhysicalFactorsSpaceTemplate.toSpaceDraft(id: String): IsznrFcSpaceD
         workProcess = workProcess,
         workEquipment = workEquipment,
         finalGrade = "1",
+        temperatureAllowed = temperatureAllowed,
+        temperatureMin = temperatureMin,
+        temperatureMax = temperatureMax,
+        humidityAllowed = humidityAllowed,
+        humidityMin = humidityMin,
+        humidityMax = humidityMax,
+        airflowAllowed = airflowAllowed,
+        airflowMin = airflowMin,
+        airflowMax = airflowMax,
+        illuminationAllowed = illuminationAllowed,
+        illuminationMin = illuminationMin,
+        illuminationMax = illuminationMax,
+        noiseAllowed = noiseAllowed,
+        noiseMin = noiseMin,
+        noiseMax = noiseMax,
+        handArmVibrationLimit = handArmVibrationLimit,
+        handArmVibrationWarning = handArmVibrationWarning,
+        handArmVibrationMin = handArmVibrationMin,
+        handArmVibrationMax = handArmVibrationMax,
+        wholeBodyVibrationLimit = wholeBodyVibrationLimit,
+        wholeBodyVibrationWarning = wholeBodyVibrationWarning,
+        wholeBodyVibrationMin = wholeBodyVibrationMin,
+        wholeBodyVibrationMax = wholeBodyVibrationMax,
     )
+
+private fun defaultPhysicalFactorsSpaceDraft(id: String, name: String = "Prostor"): IsznrFcSpaceDraft =
+    IsznrFcSpaceDraft(
+        id = id,
+        name = name,
+        finalGrade = "1",
+        temperatureAllowed = "20-25",
+        temperatureMin = "22",
+        temperatureMax = "22,4",
+        humidityAllowed = "40-60",
+        humidityMin = "52",
+        humidityMax = "53",
+        airflowAllowed = "0,6",
+        airflowMin = "0,12",
+        airflowMax = "0,33",
+        illuminationAllowed = "500",
+        illuminationMin = "650",
+        illuminationMax = "880",
+        noiseAllowed = "65",
+        noiseMin = "52",
+        noiseMax = "53",
+    )
+
+@Composable
+private fun PhysicalFactorsLimitFields(
+    title: String,
+    allowedLabel: String,
+    allowed: String,
+    min: String,
+    max: String,
+    enabled: Boolean,
+    onAllowedChange: (String) -> Unit,
+    onMinChange: (String) -> Unit,
+    onMaxChange: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        tonalElevation = 0.dp,
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, fontWeight = FontWeight.Black)
+            WorkOrderTextField(allowedLabel, allowed, onAllowedChange, enabled)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.weight(1f)) {
+                    WorkOrderTextField("MIN", min, onMinChange, enabled)
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    WorkOrderTextField("MAX", max, onMaxChange, enabled)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhysicalFactorsSpaceDialog(
+    target: PhysicalFactorsSpaceDialogTarget,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (PhysicalFactorsSpaceDialogTarget, IsznrFcSpaceDraft) -> Unit,
+) {
+    var draft by remember(target) { mutableStateOf(target.draft) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(target.title, fontWeight = FontWeight.Black)
+                Text(
+                    "Vrijednosti su prema RO-F.2: dopušteno, min i max.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 620.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                WorkOrderTextField("Naziv prostora *", draft.name, { draft = draft.copy(name = it) }, enabled)
+                WorkOrderTextField("Opis prostora", draft.description, { draft = draft.copy(description = it) }, enabled)
+                WorkOrderTextField("Proces rada", draft.workProcess, { draft = draft.copy(workProcess = it) }, enabled)
+                WorkOrderTextField("Radna oprema u prostoru", draft.workEquipment, { draft = draft.copy(workEquipment = it) }, enabled)
+                PhysicalFactorsLimitFields(
+                    title = "Temperatura zraka [°C]",
+                    allowedLabel = "Dopušteno",
+                    allowed = draft.temperatureAllowed,
+                    min = draft.temperatureMin,
+                    max = draft.temperatureMax,
+                    enabled = enabled,
+                    onAllowedChange = { draft = draft.copy(temperatureAllowed = it) },
+                    onMinChange = { draft = draft.copy(temperatureMin = it) },
+                    onMaxChange = { draft = draft.copy(temperatureMax = it) },
+                )
+                PhysicalFactorsLimitFields(
+                    title = "Relativna vlažnost [%]",
+                    allowedLabel = "Preporučeno",
+                    allowed = draft.humidityAllowed,
+                    min = draft.humidityMin,
+                    max = draft.humidityMax,
+                    enabled = enabled,
+                    onAllowedChange = { draft = draft.copy(humidityAllowed = it) },
+                    onMinChange = { draft = draft.copy(humidityMin = it) },
+                    onMaxChange = { draft = draft.copy(humidityMax = it) },
+                )
+                PhysicalFactorsLimitFields(
+                    title = "Brzina strujanja zraka [m/s]",
+                    allowedLabel = "Dopušteno",
+                    allowed = draft.airflowAllowed,
+                    min = draft.airflowMin,
+                    max = draft.airflowMax,
+                    enabled = enabled,
+                    onAllowedChange = { draft = draft.copy(airflowAllowed = it) },
+                    onMinChange = { draft = draft.copy(airflowMin = it) },
+                    onMaxChange = { draft = draft.copy(airflowMax = it) },
+                )
+                PhysicalFactorsLimitFields(
+                    title = "Osvijetljenost [lx]",
+                    allowedLabel = "Potrebna osvijetljenost",
+                    allowed = draft.illuminationAllowed,
+                    min = draft.illuminationMin,
+                    max = draft.illuminationMax,
+                    enabled = enabled,
+                    onAllowedChange = { draft = draft.copy(illuminationAllowed = it) },
+                    onMinChange = { draft = draft.copy(illuminationMin = it) },
+                    onMaxChange = { draft = draft.copy(illuminationMax = it) },
+                )
+                PhysicalFactorsLimitFields(
+                    title = "Buka [dB]",
+                    allowedLabel = "Dopuštena buka",
+                    allowed = draft.noiseAllowed,
+                    min = draft.noiseMin,
+                    max = draft.noiseMax,
+                    enabled = enabled,
+                    onAllowedChange = { draft = draft.copy(noiseAllowed = it) },
+                    onMinChange = { draft = draft.copy(noiseMin = it) },
+                    onMaxChange = { draft = draft.copy(noiseMax = it) },
+                )
+                PhysicalFactorsLimitFields(
+                    title = "Vibracije šaka-ruka A(8)",
+                    allowedLabel = "Granična vrijednost",
+                    allowed = draft.handArmVibrationLimit,
+                    min = draft.handArmVibrationMin,
+                    max = draft.handArmVibrationMax,
+                    enabled = enabled,
+                    onAllowedChange = { draft = draft.copy(handArmVibrationLimit = it) },
+                    onMinChange = { draft = draft.copy(handArmVibrationMin = it) },
+                    onMaxChange = { draft = draft.copy(handArmVibrationMax = it) },
+                )
+                WorkOrderTextField("Upozoravajuća vrijednost šaka-ruka", draft.handArmVibrationWarning, { draft = draft.copy(handArmVibrationWarning = it) }, enabled)
+                PhysicalFactorsLimitFields(
+                    title = "Vibracije cijelo tijelo A(8)",
+                    allowedLabel = "Granična vrijednost",
+                    allowed = draft.wholeBodyVibrationLimit,
+                    min = draft.wholeBodyVibrationMin,
+                    max = draft.wholeBodyVibrationMax,
+                    enabled = enabled,
+                    onAllowedChange = { draft = draft.copy(wholeBodyVibrationLimit = it) },
+                    onMinChange = { draft = draft.copy(wholeBodyVibrationMin = it) },
+                    onMaxChange = { draft = draft.copy(wholeBodyVibrationMax = it) },
+                )
+                WorkOrderTextField("Upozoravajuća vrijednost cijelo tijelo", draft.wholeBodyVibrationWarning, { draft = draft.copy(wholeBodyVibrationWarning = it) }, enabled)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(target, draft.copy(name = draft.name.trim())) },
+                enabled = enabled && draft.name.trim().isNotBlank(),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text("Spremi prostor", fontWeight = FontWeight.Black)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
+}
 
 @Composable
 private fun DocumentationManualPhysicalFactorsBlocks(
@@ -4602,8 +4908,16 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             measurements = sheetMeasurements.ifEmpty { value.measurements },
         )
     }
+    var spaceDialogTarget by remember { mutableStateOf<PhysicalFactorsSpaceDialogTarget?>(null) }
 
-    fun addMeasurementRowFromTemplate(template: PhysicalFactorsSpaceTemplate) {
+    fun editableSpaces(): List<IsznrFcSpaceDraft> =
+        if (value.spaces.size == 1 && value.spaces.first().isBlankPhysicalFactorsSpaceDraft()) {
+            emptyList()
+        } else {
+            value.spaces
+        }
+
+    fun addMeasurementRowFromSpace(space: IsznrFcSpaceDraft, originalName: String = "") {
         val measurementTable = measurementTemplates
             .flatMap { documentationTemplate -> documentationTemplate.measurementTables.map { table -> documentationTemplate to table } }
             .firstOrNull { (_, table) -> table.id == PHYSICAL_FACTORS_BUILT_IN_TABLE_ID || table.sheet.isBuiltInPhysicalFactorsSheet() }
@@ -4611,22 +4925,55 @@ private fun DocumentationManualPhysicalFactorsBlocks(
         val (documentationTemplate, table) = measurementTable
         val stateKey = measurementSheetStateKey(documentationTemplate, table)
         val currentSheet = measurementSheets[stateKey] ?: table.sheet
-        val nextSheet = currentSheet.withPhysicalFactorsSpaceTemplateRow(template)
+        val nextSheet = currentSheet.withPhysicalFactorsSpaceDraftRow(space, originalName)
         if (nextSheet != currentSheet) {
             onMeasurementSheetChange(stateKey, nextSheet)
         }
     }
 
-    fun addSpaceFromTemplate(template: PhysicalFactorsSpaceTemplate) {
+    fun openTemplateDialog(template: PhysicalFactorsSpaceTemplate) {
         val timestamp = System.currentTimeMillis()
-        val existingSpaces = if (value.spaces.size == 1 && value.spaces.first().isBlankPhysicalFactorsSpaceDraft()) {
-            emptyList()
+        val nextSpace = template.toSpaceDraft("manual-space-${template.id}-${editableSpaces().size + 1}-$timestamp")
+        spaceDialogTarget = PhysicalFactorsSpaceDialogTarget(
+            title = "Dodaj prostor - ${template.name}",
+            index = null,
+            originalName = "",
+            draft = nextSpace,
+        )
+    }
+
+    fun openBlankSpaceDialog() {
+        val nextIndex = editableSpaces().size + 1
+        spaceDialogTarget = PhysicalFactorsSpaceDialogTarget(
+            title = "Dodaj prazan prostor",
+            index = null,
+            originalName = "",
+            draft = defaultPhysicalFactorsSpaceDraft(
+                id = "manual-space-$nextIndex-${System.currentTimeMillis()}",
+                name = "Prostor $nextIndex",
+            ),
+        )
+    }
+
+    fun saveSpaceDialog(target: PhysicalFactorsSpaceDialogTarget, draft: IsznrFcSpaceDraft) {
+        val normalizedDraft = draft.copy(id = draft.id.ifBlank { "manual-space-${System.currentTimeMillis()}" })
+        val nextSpaces = if (target.index == null) {
+            editableSpaces() + normalizedDraft
         } else {
-            value.spaces
+            value.spaces.mapIndexed { index, space -> if (index == target.index) normalizedDraft else space }
         }
-        val nextSpace = template.toSpaceDraft("manual-space-${template.id}-${existingSpaces.size + 1}-$timestamp")
-        onChange(value.copy(spaces = existingSpaces + nextSpace))
-        addMeasurementRowFromTemplate(template)
+        onChange(value.copy(spaces = nextSpaces))
+        addMeasurementRowFromSpace(normalizedDraft, target.originalName)
+        spaceDialogTarget = null
+    }
+
+    spaceDialogTarget?.let { target ->
+        PhysicalFactorsSpaceDialog(
+            target = target,
+            enabled = enabled,
+            onDismiss = { spaceDialogTarget = null },
+            onConfirm = ::saveSpaceDialog,
+        )
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -4702,7 +5049,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         physicalFactorsSpaceTemplates.forEach { template ->
                             AssistChip(
-                                onClick = { addSpaceFromTemplate(template) },
+                                onClick = { openTemplateDialog(template) },
                                 enabled = enabled,
                                 label = {
                                     Column {
@@ -4746,6 +5093,19 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                                 },
                             ) {
                                 Icon(Icons.Rounded.Delete, contentDescription = "Ukloni prostor", tint = Color(0xFFDC2626))
+                            }
+                            TextButton(
+                                enabled = enabled,
+                                onClick = {
+                                    spaceDialogTarget = PhysicalFactorsSpaceDialogTarget(
+                                        title = "Uredi prostor - ${space.name.ifBlank { "Prostor ${index + 1}" }}",
+                                        index = index,
+                                        originalName = space.name,
+                                        draft = space,
+                                    )
+                                },
+                            ) {
+                                Text("Vrijednosti")
                             }
                         }
                         WorkOrderTextField("Naziv prostora *", space.name, { next ->
@@ -4804,22 +5164,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                 }
             }
             OutlinedButton(
-                onClick = {
-                    val existingSpaces = if (value.spaces.size == 1 && value.spaces.first().isBlankPhysicalFactorsSpaceDraft()) {
-                        emptyList()
-                    } else {
-                        value.spaces
-                    }
-                    val nextIndex = existingSpaces.size + 1
-                    onChange(
-                        value.copy(
-                            spaces = existingSpaces + IsznrFcSpaceDraft(
-                                id = "manual-space-$nextIndex-${System.currentTimeMillis()}",
-                                name = "Prostor $nextIndex",
-                            ),
-                        ),
-                    )
-                },
+                onClick = { openBlankSpaceDialog() },
                 enabled = enabled,
                 shape = RoundedCornerShape(16.dp),
             ) {
@@ -5425,9 +5770,7 @@ private fun defaultManualPhysicalFactorsDraft(
         relativeAirHumidity = relativeHumidity,
         airFlowSpeed = airflowSpeed,
         spaces = listOf(
-            IsznrFcSpaceDraft(
-                id = spaceId,
-                name = defaultSpaceName,
+            defaultPhysicalFactorsSpaceDraft(spaceId, defaultSpaceName).copy(
                 description = workOrder.locationName,
                 workProcess = workOrder.description,
             ),
@@ -14863,53 +15206,111 @@ private fun physicalFactorsIfSpace(rowNumber: Int, expression: String): String =
 private fun physicalFactorsTextIfSpace(rowNumber: Int, text: String): String =
     "=IF(A$rowNumber=\"\",\"\",\"$text\")"
 
-private fun physicalFactorsMeasurementCells(
-    rowNumber: Int,
-    space: String,
-    illuminationAllowed: String,
-    noiseAllowed: String,
-): Map<String, String> =
-    mapOf(
-        "space" to space,
-        "measuring_place" to physicalFactorsIfSpace(rowNumber, "ROW()-1"),
-        "illumination_measured" to physicalFactorsIfSpace(rowNumber, "RANDBETWEEN(650,880)"),
-        "illumination_allowed" to physicalFactorsIfSpace(rowNumber, illuminationAllowed),
-        "noise_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(520,530))/10,\"\")",
-        "noise_allowed" to physicalFactorsIfSpace(rowNumber, noiseAllowed),
-        "temperature_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(220,224))/10,\"\")",
-        "temperature_allowed" to physicalFactorsTextIfSpace(rowNumber, "20-25"),
-        "airflow_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(12,33))/100,\"\")",
-        "airflow_allowed" to physicalFactorsIfSpace(rowNumber, "0.6"),
-        "humidity_measured" to "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(520,530))/10,\"\")",
-        "humidity_allowed" to physicalFactorsTextIfSpace(rowNumber, "40-60"),
-        "final_grade" to physicalFactorsTextIfSpace(rowNumber, "Da"),
-    )
+private fun physicalFactorsNumberOrBlank(value: String): Double? =
+    value.trim().replace(",", ".").toDoubleOrNull()
 
-private fun WorkOrderMeasurementSheet.hasPhysicalFactorsSpaceTemplateRow(template: PhysicalFactorsSpaceTemplate): Boolean {
-    val spaceColumn = physicalFactorsColumnById("space") ?: return false
-    val templateName = normalizePhysicalFactorsSheetLookup(template.name)
-    return rows.any { row ->
-        row.id !in headerRows &&
-            normalizePhysicalFactorsSheetLookup(row.cells[spaceColumn.id].orEmpty()) == templateName
+private fun physicalFactorsDecimalPlaces(value: String): Int {
+    val normalized = value.trim().replace(",", ".")
+    val decimals = normalized.substringAfter('.', "")
+        .takeWhile { it.isDigit() }
+        .trimEnd('0')
+        .length
+    return decimals.coerceIn(0, 3)
+}
+
+private fun physicalFactorsNumberText(value: Double): String {
+    val integer = value.toLong()
+    return if (value == integer.toDouble()) integer.toString() else value.toString()
+}
+
+private fun physicalFactorsRandomBetweenFormula(
+    rowNumber: Int,
+    minValue: String,
+    maxValue: String,
+    fallback: String,
+): String {
+    val minNumber = physicalFactorsNumberOrBlank(minValue)
+    val maxNumber = physicalFactorsNumberOrBlank(maxValue)
+    if (minNumber == null || maxNumber == null) return fallback
+    val decimals = maxOf(physicalFactorsDecimalPlaces(minValue), physicalFactorsDecimalPlaces(maxValue))
+    val scale = when (decimals) {
+        0 -> 1
+        1 -> 10
+        2 -> 100
+        else -> 1000
+    }
+    val first = Math.round(minOf(minNumber, maxNumber) * scale).toInt()
+    val last = Math.round(maxOf(minNumber, maxNumber) * scale).toInt()
+    val expression = if (scale == 1) {
+        "RANDBETWEEN($first,$last)"
+    } else {
+        "RANDBETWEEN($first,$last)/$scale"
+    }
+    return physicalFactorsIfSpace(rowNumber, expression)
+}
+
+private fun physicalFactorsAllowedFormula(rowNumber: Int, value: String, fallback: String): String {
+    val allowed = value.trim().ifBlank { fallback }
+    val number = physicalFactorsNumberOrBlank(allowed)
+    return if (number != null) {
+        physicalFactorsIfSpace(rowNumber, physicalFactorsNumberText(number))
+    } else {
+        physicalFactorsTextIfSpace(rowNumber, allowed)
     }
 }
 
-private fun WorkOrderMeasurementSheet.withPhysicalFactorsSpaceTemplateRow(
-    template: PhysicalFactorsSpaceTemplate,
-): WorkOrderMeasurementSheet {
-    if (!isBuiltInPhysicalFactorsSheet() || hasPhysicalFactorsSpaceTemplateRow(template)) return this
-    val rowNumber = rows.size + 1
-    val row = physicalFactorsMeasurementRow(
-        id = "fc-template-${template.id}-$rowNumber",
-        columns = columns,
-        cells = physicalFactorsMeasurementCells(
-            rowNumber = rowNumber,
-            space = template.name,
-            illuminationAllowed = template.illuminationAllowed,
-            noiseAllowed = template.noiseAllowed,
-        ),
+private fun physicalFactorsMeasurementCells(
+    rowNumber: Int,
+    space: IsznrFcSpaceDraft,
+): Map<String, String> =
+    mapOf(
+        "space" to space.name,
+        "measuring_place" to physicalFactorsIfSpace(rowNumber, "ROW()-1"),
+        "illumination_measured" to physicalFactorsRandomBetweenFormula(rowNumber, space.illuminationMin, space.illuminationMax, physicalFactorsIfSpace(rowNumber, "RANDBETWEEN(650,880)")),
+        "illumination_allowed" to physicalFactorsAllowedFormula(rowNumber, space.illuminationAllowed, "500"),
+        "noise_measured" to physicalFactorsRandomBetweenFormula(rowNumber, space.noiseMin, space.noiseMax, "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(520,530))/10,\"\")"),
+        "noise_allowed" to physicalFactorsAllowedFormula(rowNumber, space.noiseAllowed, "65"),
+        "temperature_measured" to physicalFactorsRandomBetweenFormula(rowNumber, space.temperatureMin, space.temperatureMax, "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(220,224))/10,\"\")"),
+        "temperature_allowed" to physicalFactorsAllowedFormula(rowNumber, space.temperatureAllowed, "20-25"),
+        "airflow_measured" to physicalFactorsRandomBetweenFormula(rowNumber, space.airflowMin, space.airflowMax, "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(12,33))/100,\"\")"),
+        "airflow_allowed" to physicalFactorsAllowedFormula(rowNumber, space.airflowAllowed, "0.6"),
+        "humidity_measured" to physicalFactorsRandomBetweenFormula(rowNumber, space.humidityMin, space.humidityMax, "=IFERROR(IF(A$rowNumber=\"\",\"\",RANDBETWEEN(520,530))/10,\"\")"),
+        "humidity_allowed" to physicalFactorsAllowedFormula(rowNumber, space.humidityAllowed, "40-60"),
+        "final_grade" to physicalFactorsTextIfSpace(rowNumber, "Da"),
     )
-    return copy(rows = rows + row)
+
+private fun WorkOrderMeasurementSheet.physicalFactorsSpaceRowIndex(
+    space: IsznrFcSpaceDraft,
+    originalName: String = "",
+): Int {
+    val spaceColumn = physicalFactorsColumnById("space") ?: return -1
+    val candidates = listOf(space.name, originalName)
+        .map(::normalizePhysicalFactorsSheetLookup)
+        .filter { it.isNotBlank() }
+        .toSet()
+    if (candidates.isEmpty()) return -1
+    return rows.indexOfFirst { row ->
+        row.id !in headerRows && normalizePhysicalFactorsSheetLookup(row.cells[spaceColumn.id].orEmpty()) in candidates
+    }
+}
+
+private fun WorkOrderMeasurementSheet.withPhysicalFactorsSpaceDraftRow(
+    space: IsznrFcSpaceDraft,
+    originalName: String = "",
+): WorkOrderMeasurementSheet {
+    if (!isBuiltInPhysicalFactorsSheet() || space.name.isBlank()) return this
+    val existingIndex = physicalFactorsSpaceRowIndex(space, originalName)
+    val rowNumber = if (existingIndex >= 0) existingIndex + 1 else rows.size + 1
+    val row = physicalFactorsMeasurementRow(
+        id = if (existingIndex >= 0) rows[existingIndex].id else "fc-space-${space.id.ifBlank { rowNumber.toString() }}",
+        columns = columns,
+        cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = space),
+    )
+    return if (existingIndex >= 0) {
+        copy(rows = rows.mapIndexed { index, item -> if (index == existingIndex) row else item })
+    } else {
+        copy(rows = rows + row)
+    }
 }
 
 private fun physicalFactorsMeasurementRow(
@@ -14942,26 +15343,16 @@ private fun defaultPhysicalFactorsMeasurementSheet(): WorkOrderMeasurementSheet 
         cells = columns.associate { it.id to it.label },
         header = true,
     )
-    val seedRows = listOf(
-        Triple("Prodajni prostor", "500", "65"),
-        Triple("Caffe bar", "300", "65"),
-        Triple("Ured", "500", "60"),
-        Triple("Spremište", "200", "65"),
-        Triple("Tehnička prostorija", "200", "65"),
-        Triple("Priprema hrane", "500", "65"),
-    )
+    val seedRows = physicalFactorsSpaceTemplates.mapIndexed { index, template ->
+        template.toSpaceDraft("default-fc-space-${index + 1}")
+    }
     val measurementRows = (0 until 24).map { index ->
         val rowNumber = index + 2
         val seed = seedRows.getOrNull(index)
         physicalFactorsMeasurementRow(
             id = "fc-row-${index + 1}",
             columns = columns,
-            cells = physicalFactorsMeasurementCells(
-                rowNumber = rowNumber,
-                space = seed?.first.orEmpty(),
-                illuminationAllowed = seed?.second ?: "500",
-                noiseAllowed = seed?.third ?: "65",
-            ),
+            cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = seed ?: IsznrFcSpaceDraft()),
         )
     }
     return WorkOrderMeasurementSheet(

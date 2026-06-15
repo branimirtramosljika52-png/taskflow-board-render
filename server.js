@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.123.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.124.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -3887,6 +3887,29 @@ function normalizeIsznrManualPhysicalFactors(source = {}) {
         workProcess: normalizeInputValue(space?.workProcess || space?.processDescription) || "Redovni radni proces.",
         workEquipment: normalizeInputValue(space?.workEquipment || space?.equipmentDescription) || "Radna oprema prema zatecenom stanju.",
         finalGrade: normalizeIsznrGradeValue(space?.finalGrade || space?.grade, 1),
+        temperatureAllowed: normalizeInputValue(space?.temperatureAllowed),
+        temperatureMin: normalizeInputValue(space?.temperatureMin),
+        temperatureMax: normalizeInputValue(space?.temperatureMax),
+        humidityAllowed: normalizeInputValue(space?.humidityAllowed),
+        humidityMin: normalizeInputValue(space?.humidityMin),
+        humidityMax: normalizeInputValue(space?.humidityMax),
+        airflowAllowed: normalizeInputValue(space?.airflowAllowed),
+        airflowMin: normalizeInputValue(space?.airflowMin),
+        airflowMax: normalizeInputValue(space?.airflowMax),
+        illuminationAllowed: normalizeInputValue(space?.illuminationAllowed),
+        illuminationMin: normalizeInputValue(space?.illuminationMin),
+        illuminationMax: normalizeInputValue(space?.illuminationMax),
+        noiseAllowed: normalizeInputValue(space?.noiseAllowed),
+        noiseMin: normalizeInputValue(space?.noiseMin),
+        noiseMax: normalizeInputValue(space?.noiseMax),
+        handArmVibrationLimit: normalizeInputValue(space?.handArmVibrationLimit),
+        handArmVibrationWarning: normalizeInputValue(space?.handArmVibrationWarning),
+        handArmVibrationMin: normalizeInputValue(space?.handArmVibrationMin),
+        handArmVibrationMax: normalizeInputValue(space?.handArmVibrationMax),
+        wholeBodyVibrationLimit: normalizeInputValue(space?.wholeBodyVibrationLimit),
+        wholeBodyVibrationWarning: normalizeInputValue(space?.wholeBodyVibrationWarning),
+        wholeBodyVibrationMin: normalizeInputValue(space?.wholeBodyVibrationMin),
+        wholeBodyVibrationMax: normalizeInputValue(space?.wholeBodyVibrationMax),
       };
     })
     .filter((space) => space.name);
@@ -3937,14 +3960,22 @@ function buildIsznrManualPhysicalMeasurementDraft(measurement = {}, space = {}) 
     grade: measurement.finalGrade,
   };
   if (resourcePath === "fc_micro_climatic_conditions") {
+    const noteLookup = normalizeIsznrWorkEnvironmentText(measurement.note || measurement.measuringPlace || "");
+    const micro = { ...base };
+    if (noteLookup.includes("struj") || noteLookup.includes("brzina") || noteLookup.includes("airflow")) {
+      micro.airFlowSpeed = measurement.measuredValue;
+      micro.allowedAirFlowSpeed = measurement.allowedValue || "-";
+    } else if (noteLookup.includes("vlaz") || noteLookup.includes("vlag") || noteLookup.includes("humidity")) {
+      micro.relativeAirHumidity = measurement.measuredValue;
+      micro.allowedRelativeAirHumidity = measurement.allowedValue || "-";
+    } else {
+      micro.airTemperature = measurement.measuredValue;
+      micro.allowedAirTemperature = measurement.allowedValue || "-";
+    }
     return {
       resourcePath,
       scope: "fcSpace",
-      payload: buildIsznrFcMicroPayload({
-        ...base,
-        airTemperature: measurement.measuredValue,
-        allowedAirTemperature: measurement.allowedValue || "-",
-      }),
+      payload: buildIsznrFcMicroPayload(micro),
     };
   }
   if (resourcePath === "fc_noises") {
