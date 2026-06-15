@@ -13174,17 +13174,30 @@ private fun buildDocumentationFlowTabs(
             isDocumentationPhysicalFactorsService(item) -> "FC"
             else -> item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
         }
+        val normalizedServiceLabel = serviceLabel.trim().uppercase(Locale.getDefault())
+        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "RO", "FC")) {
+            normalizedServiceLabel
+        } else {
+            "${serviceIndex + 1}. $serviceLabel"
+        }
         tabs += DocumentationFlowTab(
             key = item.serviceKey,
-            label = "${serviceIndex + 1}. $serviceLabel",
+            label = tabLabel,
             serviceItem = item,
         )
         additionalRecords.forEachIndexed { recordIndex, record ->
             if (record.serviceKey == item.serviceKey) {
                 val sequence = tabs.count { tab -> tab.serviceItem?.serviceKey == item.serviceKey } + 1
+                val recordLabel = record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }.trim()
+                val normalizedRecordLabel = recordLabel.uppercase(Locale.getDefault())
+                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "RO", "FC")) {
+                    "$normalizedRecordLabel $sequence"
+                } else {
+                    "$sequence. $recordLabel"
+                }
                 tabs += DocumentationFlowTab(
                     key = documentationAdditionalRecordFlowKey(record, recordIndex),
-                    label = "$sequence. ${record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }}",
+                    label = extraLabel,
                     serviceItem = item,
                     additionalRecordIndex = recordIndex,
                 )

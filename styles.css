@@ -5391,8 +5391,8 @@ body.is-profile-modal-open {
 
 .settings-work-equipment-ai-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
   margin-top: 12px;
 }
 
@@ -5435,26 +5435,36 @@ body.is-profile-modal-open {
 .settings-work-equipment-ai-profiles,
 .settings-work-equipment-ai-registers {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .settings-work-equipment-ai-field-card,
 .settings-work-equipment-ai-profile-card,
-.settings-work-equipment-ai-register-card {
+.settings-work-equipment-ai-register-card,
+.settings-work-equipment-ai-list-card {
   display: grid;
   gap: 10px;
   min-width: 0;
-  padding: 12px;
   border: 1px solid rgba(203, 213, 225, 0.88);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.88);
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(40, 55, 95, 0.04);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.settings-work-equipment-ai-field-card,
+.settings-work-equipment-ai-register-card {
+  padding: 12px;
 }
 
 .settings-work-equipment-ai-field-card.is-configured,
 .settings-work-equipment-ai-profile-card.is-configured,
-.settings-work-equipment-ai-register-card.is-configured {
+.settings-work-equipment-ai-register-card.is-configured,
+.settings-work-equipment-ai-list-card.is-configured {
   border-color: rgba(34, 197, 94, 0.52);
   background: linear-gradient(135deg, rgba(236, 253, 245, 0.96), rgba(255, 255, 255, 0.92));
+  box-shadow: 0 14px 30px rgba(21, 128, 61, 0.1);
 }
 
 .settings-work-equipment-ai-card-head {
@@ -5472,26 +5482,148 @@ body.is-profile-modal-open {
 }
 
 .settings-work-equipment-ai-card-head strong {
-  overflow: hidden;
   color: #111b36;
   font-size: 0.83rem;
   font-weight: 920;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.32;
+  white-space: normal;
 }
 
 .settings-work-equipment-ai-card-head small {
-  overflow: hidden;
   color: #64748b;
   font-size: 0.7rem;
   font-weight: 760;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.settings-work-equipment-ai-group {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(196, 208, 232, 0.76);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.settings-work-equipment-ai-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-work-equipment-ai-group-head strong {
+  min-width: 0;
+  color: #111b36;
+  font-size: 0.86rem;
+  font-weight: 950;
+  line-height: 1.3;
+}
+
+.settings-work-equipment-ai-group-head span,
+.settings-work-equipment-ai-card-open small {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.09);
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-weight: 850;
   white-space: nowrap;
+}
+
+.settings-work-equipment-ai-group-head span.has-progress,
+.settings-work-equipment-ai-list-card.is-configured .settings-work-equipment-ai-card-status,
+.settings-work-equipment-ai-profile-card.is-configured .settings-work-equipment-ai-card-status {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.settings-work-equipment-ai-group-head span.is-complete {
+  background: rgba(22, 163, 74, 0.16);
+  color: #166534;
+}
+
+.settings-work-equipment-ai-card-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.settings-work-equipment-ai-card-open {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-work-equipment-ai-card-open:hover,
+.settings-work-equipment-ai-card-open:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.settings-work-equipment-ai-card-open span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-work-equipment-ai-card-open strong {
+  color: #13213f;
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1.32;
+  white-space: normal;
+}
+
+.settings-work-equipment-ai-card-open em {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.settings-work-equipment-ai-profile-card {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+
+.settings-work-equipment-ai-profile-card .settings-work-equipment-ai-card-open {
+  min-height: 62px;
+}
+
+.settings-work-equipment-ai-profile-card > .icon-button {
+  align-self: center;
+  margin-right: 8px;
+}
+
+.settings-work-equipment-ai-profile-card > .icon-button.danger {
+  color: #dc2626;
+  background: rgba(254, 226, 226, 0.84);
+}
+
+.settings-work-equipment-ai-register-group .settings-work-equipment-ai-card-open {
+  min-height: 52px;
 }
 
 .settings-work-equipment-ai-card-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -5515,7 +5647,7 @@ body.is-profile-modal-open {
 }
 
 .settings-work-equipment-ai-registers {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .settings-work-equipment-ai-register-card textarea {
@@ -5531,6 +5663,126 @@ body.is-profile-modal-open {
   font-size: 0.78rem;
   font-weight: 760;
   text-align: center;
+}
+
+.settings-work-equipment-ai-modal-backdrop:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(15, 23, 42, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.settings-work-equipment-ai-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(980px, 100%);
+  max-height: min(88vh, 840px);
+  overflow: hidden;
+  border: 1px solid rgba(190, 204, 226, 0.92);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.09), transparent 28%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.97));
+  box-shadow: 0 32px 90px rgba(15, 23, 42, 0.26);
+}
+
+.settings-work-equipment-ai-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(191, 219, 254, 0.84);
+}
+
+.settings-work-equipment-ai-modal-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-work-equipment-ai-modal-head strong {
+  color: #0f172a;
+  font-size: 1.06rem;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.settings-work-equipment-ai-modal-head small {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 760;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.settings-work-equipment-ai-modal-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 18px;
+}
+
+.settings-work-equipment-ai-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid rgba(191, 219, 254, 0.84);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.settings-work-equipment-ai-profile-editor,
+.settings-work-equipment-ai-modal-section {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-work-equipment-ai-modal-section {
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.settings-work-equipment-ai-register-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-work-equipment-ai-register-choice-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.settings-work-equipment-ai-register-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(211, 220, 237, 0.9);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.settings-work-equipment-ai-register-choice span {
+  color: #1e293b;
+  font-size: 0.76rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+body.is-settings-work-equipment-ai-modal-open {
+  overflow: hidden;
 }
 
 .settings-job-ai-fields {
@@ -5636,7 +5888,7 @@ body.is-profile-modal-open {
 
 .settings-job-ai-card-open {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   width: 100%;
@@ -5659,21 +5911,24 @@ body.is-profile-modal-open {
   display: grid;
   gap: 2px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   color: #13213f;
   font-size: 0.82rem;
   font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.32;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .settings-job-ai-card-open span em {
-  overflow: hidden;
+  overflow: visible;
   color: #64748b;
   font-size: 0.68rem;
   font-style: normal;
   font-weight: 760;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .settings-job-ai-card.is-configured .settings-job-ai-card-status,
@@ -5859,23 +6114,29 @@ body.is-settings-job-ai-modal-open {
     grid-template-columns: 1fr;
   }
 
-  .settings-job-ai-modal-backdrop:not([hidden]) {
+  .settings-job-ai-modal-backdrop:not([hidden]),
+  .settings-work-equipment-ai-modal-backdrop:not([hidden]) {
     padding: 10px;
   }
 
-  .settings-job-ai-modal {
+  .settings-job-ai-modal,
+  .settings-work-equipment-ai-modal {
     max-height: 94vh;
     border-radius: 18px;
   }
 
   .settings-job-ai-modal-head,
   .settings-job-ai-modal-body,
-  .settings-job-ai-modal-actions {
+  .settings-job-ai-modal-actions,
+  .settings-work-equipment-ai-modal-head,
+  .settings-work-equipment-ai-modal-body,
+  .settings-work-equipment-ai-modal-actions {
     padding-left: 14px;
     padding-right: 14px;
   }
 
-  .settings-job-ai-modal-actions {
+  .settings-job-ai-modal-actions,
+  .settings-work-equipment-ai-modal-actions {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -81810,5 +82071,44 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   .client-portal-record-form-actions .primary-button,
   .client-portal-record-form-actions .ghost-button {
     width: 100%;
+  }
+}
+
+#work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-people-grid,
+#work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body,
+#work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+#work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-person-area {
+  min-width: 0;
+}
+
+#work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-card,
+#work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-block,
+#work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-person-block {
+  min-width: 0;
+}
+
+#work-order-document-wizard-sheet-fc-panel .work-order-document-randomize-field {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1180px) {
+  #work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-people-grid,
+  #work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body,
+  #work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  #work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-people-grid,
+  #work-order-document-wizard-sheet-ro-panel .work-order-document-wizard-common-ro-body,
+  #work-order-document-wizard-sheet-fc-panel .work-order-document-wizard-common-env-grid,
+  #work-order-document-wizard-sheet-spr-panel .work-order-document-wizard-common-person-area-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

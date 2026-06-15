@@ -3723,7 +3723,12 @@ let settingsJobAiActiveModalKey = "";
 let settingsJobAiModalElements = null;
 let settingsWorkEquipmentAiRegisterGroups = [];
 let settingsWorkEquipmentAiRegisterGroupsLoaded = false;
+let settingsWorkEquipmentAiFieldDrafts = {};
+let settingsWorkEquipmentAiRegisterDrafts = {};
+let settingsWorkEquipmentAiDraftInitialized = false;
 let settingsWorkEquipmentAiProfileDrafts = [];
+let settingsWorkEquipmentAiActiveModal = null;
+let settingsWorkEquipmentAiModalElements = null;
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
 const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
@@ -5265,8 +5270,14 @@ const workOrderDocumentWizardCommonEnvSection = document.querySelector("#work-or
 const workOrderDocumentWizardCommonEnvBody = document.querySelector("#work-order-document-wizard-common-env-body");
 const workOrderDocumentWizardCommonEnvToggleButton = document.querySelector("#work-order-document-wizard-common-env-toggle");
 const workOrderDocumentWizardSheetBasicButton = document.querySelector("#work-order-document-wizard-sheet-basic");
+const workOrderDocumentWizardSheetSprButton = document.querySelector("#work-order-document-wizard-sheet-spr");
+const workOrderDocumentWizardSheetRoButton = document.querySelector("#work-order-document-wizard-sheet-ro");
+const workOrderDocumentWizardSheetFcButton = document.querySelector("#work-order-document-wizard-sheet-fc");
 const workOrderDocumentWizardSheetValidityButton = document.querySelector("#work-order-document-wizard-sheet-validity");
 const workOrderDocumentWizardSheetBasicPanel = document.querySelector("#work-order-document-wizard-sheet-basic-panel");
+const workOrderDocumentWizardSheetSprPanel = document.querySelector("#work-order-document-wizard-sheet-spr-panel");
+const workOrderDocumentWizardSheetRoPanel = document.querySelector("#work-order-document-wizard-sheet-ro-panel");
+const workOrderDocumentWizardSheetFcPanel = document.querySelector("#work-order-document-wizard-sheet-fc-panel");
 const workOrderDocumentWizardSheetValidityPanel = document.querySelector("#work-order-document-wizard-sheet-validity-panel");
 const workOrderDocumentCommonStatusSlot = document.querySelector("#work-order-document-common-status-slot");
 const workOrderDocumentCommonExecutorsSlot = document.querySelector("#work-order-document-common-executors-slot");
@@ -9799,7 +9810,7 @@ function applySnapshot(payload, options = {}) {
   state.jobs = payload.jobs ?? [];
   state.jobAiSettings = normalizeJobAiSettings(payload.jobAiSettings ?? {});
   state.workEquipmentAiSettings = normalizeWorkEquipmentAiSettings(payload.workEquipmentAiSettings ?? {});
-  settingsWorkEquipmentAiProfileDrafts = [];
+  resetSettingsWorkEquipmentAiDrafts();
   state.riskPpeCatalog = normalizeRiskPpeCatalog(payload.riskPpeCatalog ?? []);
   state.riskAssessments = payload.riskAssessments ?? [];
   state.riskAssessmentReportTemplate = payload.riskAssessmentReportTemplate
@@ -116062,11 +116073,82 @@ function renderWorkOrderDocumentWizardCommonEnvSection() {
   });
 }
 
+function getWorkOrderDocumentWizardCommonSheetAvailability(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
+  const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
+  if (mode === "znr") {
+    return {
+      basic: false,
+      spr: false,
+      ro: false,
+      fc: false,
+      validity: false,
+    };
+  }
+
+  const hasSprLikeService = selectedWorkOrders.some((workOrder) => {
+    const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
+    if (serviceItems.length > 0) {
+      return serviceItems.some((service) => (
+        !isWorkOrderDocumentWorkEquipmentService(service)
+        && !isWorkOrderDocumentPhysicalFactorsService(service)
+        && !service?.isTraining
+      ));
+    }
+    const displayLabel = [workOrder?.serviceLine, workOrder?.displayService].filter(Boolean).join(" ");
+    return Boolean(
+      displayLabel
+      && !isWorkOrderDocumentWorkEquipmentText(displayLabel)
+      && !isWorkOrderDocumentPhysicalFactorsText(displayLabel),
+    );
+  });
+  const hasTemplates = getWorkOrderDocumentTemplateRecommendations(selectedWorkOrders).recommendations.length > 0;
+  const hasRo = getWorkOrderDocumentWizardWorkEquipmentCandidates(selectedWorkOrders).length > 0;
+  const hasFc = getWorkOrderDocumentWizardPhysicalFactorsCandidates(selectedWorkOrders).length > 0;
+
+  return {
+    basic: true,
+    spr: hasSprLikeService || hasTemplates,
+    ro: hasRo,
+    fc: hasFc,
+    validity: true,
+  };
+}
+
+function getWorkOrderDocumentWizardActiveCommonSheet(availability = {}) {
+  const requestedSheet = String(state.workOrderDocumentWizard.commonSheet || "basic").trim();
+  if (availability[requestedSheet]) {
+    return requestedSheet;
+  }
+  return ["basic", "spr", "ro", "fc", "validity"].find((sheet) => availability[sheet]) || "basic";
+}
+
+function syncWorkOrderDocumentWizardCommonSheetButton(button, sheetKey, activeSheet, availability, isTrainingMode) {
+  if (!button) {
+    return;
+  }
+  const isAvailable = Boolean(availability?.[sheetKey]);
+  button.hidden = isTrainingMode || !isAvailable;
+  const isActive = activeSheet === sheetKey && isAvailable;
+  button.classList.toggle("is-active", isActive);
+  button.setAttribute("aria-selected", String(isActive));
+}
+
+function syncWorkOrderDocumentWizardCommonSheetPanel(panel, sheetKey, activeSheet, availability, isCollapsed, isTrainingMode) {
+  if (!panel) {
+    return;
+  }
+  panel.hidden = isTrainingMode || isCollapsed || !availability?.[sheetKey] || activeSheet !== sheetKey;
+}
+
 function renderWorkOrderDocumentWizardCommonSection() {
   const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
   const isTrainingMode = mode === "znr";
   const isCollapsed = Boolean(state.workOrderDocumentWizard.commonCollapsed);
-  const activeSheet = state.workOrderDocumentWizard.commonSheet === "validity" ? "validity" : "basic";
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const sheetAvailability = getWorkOrderDocumentWizardCommonSheetAvailability(selectedWorkOrders);
+  const activeSheet = getWorkOrderDocumentWizardActiveCommonSheet(sheetAvailability);
+  state.workOrderDocumentWizard.commonSheet = activeSheet;
 
   if (workOrderDocumentWizardCommonSection) {
     workOrderDocumentWizardCommonSection.classList.toggle("is-collapsed", isCollapsed);
@@ -116077,49 +116159,50 @@ function renderWorkOrderDocumentWizardCommonSection() {
   if (workOrderDocumentWizardCommonZnrSection) {
     workOrderDocumentWizardCommonZnrSection.hidden = !isTrainingMode || isCollapsed;
   }
-  if (workOrderDocumentWizardSheetBasicButton) {
-    workOrderDocumentWizardSheetBasicButton.hidden = isTrainingMode;
-  }
-  if (workOrderDocumentWizardSheetValidityButton) {
-    workOrderDocumentWizardSheetValidityButton.hidden = isTrainingMode;
-  }
-  if (workOrderDocumentWizardSheetBasicPanel) {
-    workOrderDocumentWizardSheetBasicPanel.hidden = isTrainingMode || activeSheet !== "basic" || isCollapsed;
-  }
-  if (workOrderDocumentWizardSheetValidityPanel) {
-    workOrderDocumentWizardSheetValidityPanel.hidden = isTrainingMode || activeSheet !== "validity" || isCollapsed;
-  }
-  if (workOrderDocumentWizardCommonPeopleSection) {
-    workOrderDocumentWizardCommonPeopleSection.hidden = isTrainingMode;
-  }
-  if (workOrderDocumentWizardCommonEnvSection) {
-    workOrderDocumentWizardCommonEnvSection.hidden = isTrainingMode;
-  }
   syncWorkOrderDocumentWizardCommonSummaryText();
   setWorkOrderDocumentWizardCollapseButtonState(workOrderDocumentWizardCommonToggleButton, isCollapsed, {
     collapsedLabel: "Prikaži zajedničke podatke",
     expandedLabel: "Sakrij zajedničke podatke",
   });
   if (isTrainingMode) {
+    [
+      workOrderDocumentWizardSheetBasicButton,
+      workOrderDocumentWizardSheetSprButton,
+      workOrderDocumentWizardSheetRoButton,
+      workOrderDocumentWizardSheetFcButton,
+      workOrderDocumentWizardSheetValidityButton,
+    ].forEach((button) => {
+      if (button) {
+        button.hidden = true;
+      }
+    });
+    [
+      workOrderDocumentWizardSheetBasicPanel,
+      workOrderDocumentWizardSheetSprPanel,
+      workOrderDocumentWizardSheetRoPanel,
+      workOrderDocumentWizardSheetFcPanel,
+      workOrderDocumentWizardSheetValidityPanel,
+    ].forEach((panel) => {
+      if (panel) {
+        panel.hidden = true;
+      }
+    });
     return;
   }
-  if (workOrderDocumentWizardSheetBasicButton) {
-    const isActive = activeSheet === "basic";
-    workOrderDocumentWizardSheetBasicButton.classList.toggle("is-active", isActive);
-    workOrderDocumentWizardSheetBasicButton.setAttribute("aria-selected", String(isActive));
-  }
-  if (workOrderDocumentWizardSheetValidityButton) {
-    const isActive = activeSheet === "validity";
-    workOrderDocumentWizardSheetValidityButton.classList.toggle("is-active", isActive);
-    workOrderDocumentWizardSheetValidityButton.setAttribute("aria-selected", String(isActive));
-  }
-  if (workOrderDocumentWizardSheetBasicPanel) {
-    workOrderDocumentWizardSheetBasicPanel.hidden = activeSheet !== "basic" || isCollapsed;
-  }
-  if (workOrderDocumentWizardSheetValidityPanel) {
-    workOrderDocumentWizardSheetValidityPanel.hidden = activeSheet !== "validity" || isCollapsed;
-  }
+
+  [
+    ["basic", workOrderDocumentWizardSheetBasicButton, workOrderDocumentWizardSheetBasicPanel],
+    ["spr", workOrderDocumentWizardSheetSprButton, workOrderDocumentWizardSheetSprPanel],
+    ["ro", workOrderDocumentWizardSheetRoButton, workOrderDocumentWizardSheetRoPanel],
+    ["fc", workOrderDocumentWizardSheetFcButton, workOrderDocumentWizardSheetFcPanel],
+    ["validity", workOrderDocumentWizardSheetValidityButton, workOrderDocumentWizardSheetValidityPanel],
+  ].forEach(([sheetKey, button, panel]) => {
+    syncWorkOrderDocumentWizardCommonSheetButton(button, sheetKey, activeSheet, sheetAvailability, isTrainingMode);
+    syncWorkOrderDocumentWizardCommonSheetPanel(panel, sheetKey, activeSheet, sheetAvailability, isCollapsed, isTrainingMode);
+  });
+
   renderWorkOrderDocumentWizardCommonPeopleSection();
+  renderWorkOrderDocumentWizardCommonRoSection(selectedWorkOrders);
   renderWorkOrderDocumentWizardCommonEnvSection();
 }
 
@@ -125486,6 +125569,18 @@ workOrderDocumentWizardSheetBasicButton?.addEventListener("click", () => {
   state.workOrderDocumentWizard.commonSheet = "basic";
   renderWorkOrderDocumentWizardCommonSection();
 });
+workOrderDocumentWizardSheetSprButton?.addEventListener("click", () => {
+  state.workOrderDocumentWizard.commonSheet = "spr";
+  renderWorkOrderDocumentWizardCommonSection();
+});
+workOrderDocumentWizardSheetRoButton?.addEventListener("click", () => {
+  state.workOrderDocumentWizard.commonSheet = "ro";
+  renderWorkOrderDocumentWizardCommonSection();
+});
+workOrderDocumentWizardSheetFcButton?.addEventListener("click", () => {
+  state.workOrderDocumentWizard.commonSheet = "fc";
+  renderWorkOrderDocumentWizardCommonSection();
+});
 workOrderDocumentWizardSheetValidityButton?.addEventListener("click", () => {
   state.workOrderDocumentWizard.commonSheet = "validity";
   renderWorkOrderDocumentWizardCommonSection();
@@ -132633,6 +132728,7 @@ settingsJobAiFields?.addEventListener("click", (event) => {
 });
 
 settingsWorkEquipmentAiSaveButton?.addEventListener("click", () => {
+  syncSettingsWorkEquipmentAiActiveModalDraft();
   void saveSettingsWorkEquipmentAiSettings();
 });
 
@@ -132640,10 +132736,32 @@ settingsWorkEquipmentAiRefreshButton?.addEventListener("click", () => {
   void loadSettingsWorkEquipmentAiRegisters({ force: true });
 });
 
+settingsWorkEquipmentAiFields?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const button = target?.closest("[data-ro-ai-open-kind]");
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  event.preventDefault();
+  openSettingsWorkEquipmentAiInstructionModal(button.dataset.roAiOpenKind || "field", button.dataset.roAiOpenKey || "");
+});
+
+settingsWorkEquipmentAiRegisters?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const button = target?.closest("[data-ro-ai-open-kind]");
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  event.preventDefault();
+  openSettingsWorkEquipmentAiInstructionModal(button.dataset.roAiOpenKind || "register", button.dataset.roAiOpenKey || "");
+});
+
 settingsWorkEquipmentAiAddProfileButton?.addEventListener("click", () => {
   if (!getCanManageSettings()) {
     return;
   }
+  hydrateSettingsWorkEquipmentAiDrafts();
+  syncSettingsWorkEquipmentAiActiveModalDraft();
   settingsWorkEquipmentAiProfileDrafts = [
     ...collectSettingsWorkEquipmentAiProfiles(),
     normalizeWorkEquipmentAiProfile({
@@ -132654,22 +132772,34 @@ settingsWorkEquipmentAiAddProfileButton?.addEventListener("click", () => {
     }),
   ];
   renderSettingsWorkEquipmentAi(collectSettingsWorkEquipmentAiSettings());
+  openSettingsWorkEquipmentAiProfileModal(settingsWorkEquipmentAiProfileDrafts.length - 1);
 });
 
 settingsWorkEquipmentAiProfiles?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : event.target?.parentElement;
-  const button = target?.closest("[data-ro-ai-profile-remove]");
-  if (!(button instanceof HTMLElement) || !getCanManageSettings()) {
+  const removeButton = target?.closest("[data-ro-ai-profile-remove]");
+  if (removeButton instanceof HTMLElement) {
+    if (!getCanManageSettings()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const index = Number.parseInt(String(removeButton.dataset.roAiProfileRemove || ""), 10);
+    syncSettingsWorkEquipmentAiActiveModalDraft();
+    settingsWorkEquipmentAiProfileDrafts = collectSettingsWorkEquipmentAiProfiles()
+      .filter((_, itemIndex) => itemIndex !== index);
+    renderSettingsWorkEquipmentAi({
+      ...collectSettingsWorkEquipmentAiSettings(),
+      profiles: settingsWorkEquipmentAiProfileDrafts,
+    });
     return;
   }
   event.preventDefault();
-  const index = Number.parseInt(String(button.dataset.roAiProfileRemove || ""), 10);
-  settingsWorkEquipmentAiProfileDrafts = collectSettingsWorkEquipmentAiProfiles()
-    .filter((_, itemIndex) => itemIndex !== index);
-  renderSettingsWorkEquipmentAi({
-    ...collectSettingsWorkEquipmentAiSettings(),
-    profiles: settingsWorkEquipmentAiProfileDrafts,
-  });
+  const openButton = target?.closest("[data-ro-ai-profile-open]");
+  if (!(openButton instanceof HTMLElement)) {
+    return;
+  }
+  openSettingsWorkEquipmentAiProfileModal(openButton.dataset.roAiProfileOpen || "0");
 });
 
 settingsOrganizationLogoUploadButton?.addEventListener("click", () => {
@@ -140433,17 +140563,144 @@ function getWorkEquipmentAiSettings() {
   return normalizeWorkEquipmentAiSettings(state.workEquipmentAiSettings);
 }
 
+const WORK_EQUIPMENT_AI_PROFILE_FIELD_DEFAULT_KEYS = Object.freeze([
+  "technicalData",
+  "purposeDescription",
+  "workspacePosition",
+  "useAndMaintenance",
+  "methodsProceduresAndNorms",
+]);
+
+const WORK_EQUIPMENT_AI_PROFILE_REGISTER_BUCKETS = Object.freeze([
+  { key: "mechanical", label: "Strojarski dio", paths: ["ro_mechanical_engineering_registers"] },
+  { key: "electrical", label: "Elektro dio", paths: ["ro_electrical_registers"] },
+  { key: "hazards", label: "Opasnosti", paths: ["hazard_registers"] },
+  { key: "harmfulnesses", label: "Štetnosti", paths: ["harmfulness_registers"] },
+  { key: "strains", label: "Napori", paths: ["strain_registers"] },
+]);
+
+function hydrateSettingsWorkEquipmentAiDrafts(settings = getWorkEquipmentAiSettings(), { force = false } = {}) {
+  if (settingsWorkEquipmentAiDraftInitialized && !force) {
+    return;
+  }
+  const normalized = normalizeWorkEquipmentAiSettings(settings);
+  settingsWorkEquipmentAiFieldDrafts = normalizeWorkEquipmentAiInstructionMap(normalized.fieldInstructions);
+  settingsWorkEquipmentAiRegisterDrafts = normalizeWorkEquipmentAiInstructionMap(normalized.registryInstructions);
+  settingsWorkEquipmentAiProfileDrafts = (normalized.profiles.length ? normalized.profiles : createDefaultWorkEquipmentAiProfiles())
+    .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
+  settingsWorkEquipmentAiDraftInitialized = true;
+}
+
+function resetSettingsWorkEquipmentAiDrafts() {
+  settingsWorkEquipmentAiFieldDrafts = {};
+  settingsWorkEquipmentAiRegisterDrafts = {};
+  settingsWorkEquipmentAiProfileDrafts = [];
+  settingsWorkEquipmentAiActiveModal = null;
+  settingsWorkEquipmentAiDraftInitialized = false;
+}
+
 function getSettingsWorkEquipmentAiProfilesForRender(settings = getWorkEquipmentAiSettings()) {
-  const profiles = Array.isArray(settingsWorkEquipmentAiProfileDrafts) && settingsWorkEquipmentAiProfileDrafts.length > 0
-    ? settingsWorkEquipmentAiProfileDrafts
-    : settings.profiles;
-  return (profiles.length > 0 ? profiles : createDefaultWorkEquipmentAiProfiles())
+  hydrateSettingsWorkEquipmentAiDrafts(settings);
+  return (settingsWorkEquipmentAiProfileDrafts.length > 0 ? settingsWorkEquipmentAiProfileDrafts : createDefaultWorkEquipmentAiProfiles())
     .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
 }
 
+function getWorkEquipmentAiRegisterItemId(item = {}) {
+  return String(item.iri || item["@id"] || item.id || item.isznrId || item.value || item.code || "").trim();
+}
+
 function getWorkEquipmentAiRegisterKey(item = {}, group = {}) {
-  const itemId = String(item.iri || item["@id"] || item.id || "").trim();
+  const itemId = getWorkEquipmentAiRegisterItemId(item);
   return itemId ? `${group.path || group.label || "register"}:${itemId}` : "";
+}
+
+function getWorkEquipmentAiRegisterValue(item = {}, group = {}) {
+  const itemId = getWorkEquipmentAiRegisterItemId(item);
+  if (!itemId) {
+    return "";
+  }
+  const directIri = String(item.iri || item["@id"] || "").trim();
+  if (directIri) {
+    return directIri;
+  }
+  const path = String(group.path || item.path || "").trim();
+  return path ? `/${path}/${itemId}` : itemId;
+}
+
+function getWorkEquipmentAiRegisterItemLabel(item = {}, fallback = "IS ZNR stavka") {
+  const candidates = [
+    item.description,
+    item.name,
+    item.label,
+    item.title,
+    item.naziv,
+    item.displayName,
+    item.shortName,
+    item.content,
+    item.text,
+    item.requirement,
+    item.note,
+  ];
+  const explicit = candidates.map((value) => String(value || "").trim()).find(Boolean);
+  if (explicit) {
+    return explicit;
+  }
+  const objectValue = Object.entries(item)
+    .filter(([key]) => !["id", "isznrId", "@id", "iri", "path", "group", "activeFrom", "activeTo"].includes(key))
+    .map(([, value]) => String(value || "").trim())
+    .find((value) => value && !/^\/?api\//i.test(value) && !/^https?:\/\//i.test(value));
+  return objectValue || String(fallback || "IS ZNR stavka").trim();
+}
+
+function getWorkEquipmentAiRegisterGroupLabel(group = {}) {
+  return [group.group, group.label].map((value) => String(value || "").trim()).filter(Boolean).join(" · ")
+    || String(group.path || "IS ZNR šifrarnik").trim();
+}
+
+function getSettingsWorkEquipmentAiRegisterDefinition(key = "") {
+  const normalizedKey = String(key || "").trim();
+  for (const group of Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : []) {
+    for (const item of Array.isArray(group.items) ? group.items : []) {
+      if (getWorkEquipmentAiRegisterKey(item, group) === normalizedKey) {
+        return {
+          key: normalizedKey,
+          group,
+          item,
+          label: getWorkEquipmentAiRegisterItemLabel(item, group.label || "IS ZNR stavka"),
+          meta: [
+            getWorkEquipmentAiRegisterGroupLabel(group),
+            item.activeFrom ? `Aktivno od ${item.activeFrom}` : "",
+            item.activeTo ? `Neaktivno od ${item.activeTo}` : "",
+            item.id || item.isznrId ? `ID ${item.id || item.isznrId}` : "",
+          ].filter(Boolean).join(" · "),
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function getSettingsWorkEquipmentAiDraftConfig(kind = "field", key = "") {
+  const normalizedKey = String(key || "").trim();
+  return normalizeWorkEquipmentAiInstructionConfig(
+    kind === "register"
+      ? settingsWorkEquipmentAiRegisterDrafts[normalizedKey]
+      : settingsWorkEquipmentAiFieldDrafts[normalizedKey],
+  );
+}
+
+function setSettingsWorkEquipmentAiInstructionDraft(kind = "field", key = "", config = {}) {
+  const normalizedKey = String(key || "").trim();
+  if (!normalizedKey) {
+    return;
+  }
+  const normalizedConfig = normalizeWorkEquipmentAiInstructionConfig(config);
+  const draftMap = kind === "register" ? settingsWorkEquipmentAiRegisterDrafts : settingsWorkEquipmentAiFieldDrafts;
+  if (hasWorkEquipmentAiInstructionConfig(normalizedConfig)) {
+    draftMap[normalizedKey] = normalizedConfig;
+  } else {
+    delete draftMap[normalizedKey];
+  }
 }
 
 function renderWorkEquipmentAiInstructionMiniForm(config = {}, key = "", options = {}) {
@@ -140454,7 +140711,7 @@ function renderWorkEquipmentAiInstructionMiniForm(config = {}, key = "", options
     <div class="settings-work-equipment-ai-card-grid" data-ro-ai-instruction="${escapeHtml(key)}">
       <label class="field field-span-full">
         <span>${escapeHtml(label)}</span>
-        <textarea data-ro-ai-instruction-field="instruction" rows="3" placeholder="${escapeHtml(placeholder)}" ${disabled}>${escapeHtml(config.instruction)}</textarea>
+        <textarea data-ro-ai-instruction-field="instruction" rows="4" placeholder="${escapeHtml(placeholder)}" ${disabled}>${escapeHtml(config.instruction)}</textarea>
       </label>
       <label class="field">
         <span>Mora uključiti</span>
@@ -140481,8 +140738,16 @@ function renderWorkEquipmentAiInstructionMiniForm(config = {}, key = "", options
         </select>
       </label>
       <label class="field">
+        <span>Duljina teksta</span>
+        <input data-ro-ai-instruction-field="textLength" value="${escapeHtml(config.textLength)}" placeholder="npr. 1 rečenica, kratko, detaljno" ${disabled} />
+      </label>
+      <label class="field">
         <span>Default</span>
         <input data-ro-ai-instruction-field="defaultValue" value="${escapeHtml(config.defaultValue)}" placeholder="opcionalno" ${disabled} />
+      </label>
+      <label class="field">
+        <span>Fallback</span>
+        <input data-ro-ai-instruction-field="fallbackValue" value="${escapeHtml(config.fallbackValue)}" placeholder="ako AI nije siguran" ${disabled} />
       </label>
       <label class="field">
         <span>Primjeri</span>
@@ -140502,44 +140767,80 @@ function collectWorkEquipmentAiInstructionFromNode(node = null) {
     avoid: node.querySelector('[data-ro-ai-instruction-field="avoid"]')?.value || "",
     style: node.querySelector('[data-ro-ai-instruction-field="style"]')?.value || "professional",
     confidenceRequired: node.querySelector('[data-ro-ai-instruction-field="confidenceRequired"]')?.value || "medium",
+    textLength: node.querySelector('[data-ro-ai-instruction-field="textLength"]')?.value || "",
     defaultValue: node.querySelector('[data-ro-ai-instruction-field="defaultValue"]')?.value || "",
+    fallbackValue: node.querySelector('[data-ro-ai-instruction-field="fallbackValue"]')?.value || "",
     examples: node.querySelector('[data-ro-ai-instruction-field="examples"]')?.value || "",
   });
 }
 
-function renderSettingsWorkEquipmentAiFields(settings = getWorkEquipmentAiSettings()) {
+function renderSettingsWorkEquipmentAiCard({ kind = "field", key = "", label = "", meta = "", configured = false } = {}) {
+  return `
+    <article class="settings-work-equipment-ai-list-card ${configured ? "is-configured" : ""}" data-ro-ai-card-kind="${escapeHtml(kind)}" data-ro-ai-card-key="${escapeHtml(key)}">
+      <button type="button" class="settings-work-equipment-ai-card-open" data-ro-ai-open-kind="${escapeHtml(kind)}" data-ro-ai-open-key="${escapeHtml(key)}">
+        <span>
+          <strong>${escapeHtml(label || "NexAI polje")}</strong>
+          ${meta ? `<em>${escapeHtml(meta)}</em>` : ""}
+        </span>
+        <small class="settings-work-equipment-ai-card-status">${configured ? "Uređeno" : "Default"}</small>
+      </button>
+    </article>
+  `;
+}
+
+function renderSettingsWorkEquipmentAiFields() {
   if (!settingsWorkEquipmentAiFields) {
     return;
   }
-  const canManage = getCanManageSettings();
-  const cards = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS.map((field) => {
-    const config = normalizeWorkEquipmentAiInstructionConfig(settings.fieldInstructions[field.key] ?? {});
-    const configured = hasWorkEquipmentAiInstructionConfig(config);
-    const card = document.createElement("article");
-    card.className = `settings-work-equipment-ai-field-card${configured ? " is-configured" : ""}`;
-    card.dataset.roAiField = field.key;
-    card.innerHTML = `
-      <div class="settings-work-equipment-ai-card-head">
-        <div>
-          <strong>${escapeHtml(field.label)}</strong>
-          <small>${escapeHtml(field.group)} · ${escapeHtml(field.placeholder || "")}</small>
-        </div>
-        <span class="settings-work-equipment-ai-badge">${configured ? "uređeno" : "default"}</span>
+  hydrateSettingsWorkEquipmentAiDrafts();
+  const groups = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS.reduce((map, field) => {
+    if (!map.has(field.group)) {
+      map.set(field.group, []);
+    }
+    map.get(field.group).push(field);
+    return map;
+  }, new Map());
+
+  settingsWorkEquipmentAiFields.replaceChildren(...Array.from(groups.entries()).map(([group, fields]) => {
+    const section = document.createElement("article");
+    section.className = "settings-work-equipment-ai-group";
+    const cards = fields.map((field) => {
+      const config = normalizeWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiFieldDrafts[field.key] ?? {});
+      const configured = hasWorkEquipmentAiInstructionConfig(config);
+      return renderSettingsWorkEquipmentAiCard({
+        kind: "field",
+        key: field.key,
+        label: field.label,
+        meta: field.placeholder || "",
+        configured,
+      });
+    }).join("");
+    const configuredCount = fields.filter((field) => hasWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiFieldDrafts[field.key] ?? {})).length;
+    section.innerHTML = `
+      <div class="settings-work-equipment-ai-group-head" data-ro-ai-group-head>
+        <strong>${escapeHtml(group)}</strong>
+        <span data-ro-ai-group-count>${configuredCount}/${fields.length}</span>
       </div>
-      ${renderWorkEquipmentAiInstructionMiniForm(config, field.key, {
-        disabled: !canManage,
-        placeholder: field.placeholder || "Kako NexAI treba popuniti ovo polje.",
-      })}
+      <div class="settings-work-equipment-ai-card-list">${cards}</div>
     `;
-    return card;
-  });
-  settingsWorkEquipmentAiFields.replaceChildren(...cards);
+    return section;
+  }));
+}
+
+function getSettingsWorkEquipmentAiProfileSummary(profile = {}) {
+  const normalized = normalizeWorkEquipmentAiProfile(profile);
+  const registerCount = Object.values(normalized.registerDefaults).reduce((sum, list) => sum + list.length, 0);
+  return [
+    normalized.aliases.length ? normalized.aliases.slice(0, 5).join(", ") : "Bez aliasa",
+    registerCount ? `${registerCount} IS ZNR stavki` : "",
+  ].filter(Boolean).join(" · ");
 }
 
 function renderSettingsWorkEquipmentAiProfiles(settings = getWorkEquipmentAiSettings()) {
   if (!settingsWorkEquipmentAiProfiles) {
     return;
   }
+  hydrateSettingsWorkEquipmentAiDrafts(settings);
   const canManage = getCanManageSettings();
   const profiles = getSettingsWorkEquipmentAiProfilesForRender(settings);
   settingsWorkEquipmentAiProfileDrafts = profiles;
@@ -140553,51 +140854,27 @@ function renderSettingsWorkEquipmentAiProfiles(settings = getWorkEquipmentAiSett
   settingsWorkEquipmentAiProfiles.replaceChildren(...profiles.map((profile, index) => {
     const configured = hasWorkEquipmentAiProfile(profile);
     const card = document.createElement("article");
-    card.className = `settings-work-equipment-ai-profile-card${configured ? " is-configured" : ""}`;
+    card.className = `settings-work-equipment-ai-profile-card ${configured ? "is-configured" : ""}`;
     card.dataset.roAiProfileIndex = String(index);
     card.innerHTML = `
-      <div class="settings-work-equipment-ai-card-head">
-        <div>
+      <button type="button" class="settings-work-equipment-ai-card-open" data-ro-ai-profile-open="${index}">
+        <span>
           <strong>${escapeHtml(profile.name || `Profil ${index + 1}`)}</strong>
-          <small>${escapeHtml(profile.aliases.join(", ") || "Bez aliasa")}</small>
-        </div>
-        <button type="button" class="ghost-button" data-ro-ai-profile-remove="${index}" ${canManage ? "" : "disabled"}>Ukloni</button>
-      </div>
-      <div class="settings-work-equipment-ai-card-grid">
-        <label class="field">
-          <span>Naziv profila</span>
-          <input data-ro-ai-profile-field="name" value="${escapeHtml(profile.name)}" placeholder="npr. Viličar" ${canManage ? "" : "disabled"} />
-        </label>
-        <label class="field">
-          <span>Aliasi</span>
-          <input data-ro-ai-profile-field="aliases" value="${escapeHtml(profile.aliases.join(", "))}" placeholder="viličar, forklift, Linde..." ${canManage ? "" : "disabled"} />
-        </label>
-        <label class="field field-span-full">
-          <span>Opća uputa</span>
-          <textarea data-ro-ai-profile-field="generalInstruction" rows="3" placeholder="Kako prepoznati ovu vrstu opreme..." ${canManage ? "" : "disabled"}>${escapeHtml(profile.generalInstruction)}</textarea>
-        </label>
-        <label class="field field-span-full">
-          <span>Razrada</span>
-          <textarea data-ro-ai-profile-field="breakdownInstruction" rows="4" placeholder="Što se gleda kod strojarskog, elektro dijela, rizika i zaključka..." ${canManage ? "" : "disabled"}>${escapeHtml(profile.breakdownInstruction)}</textarea>
-        </label>
-        <label class="field">
-          <span>Koristi kada</span>
-          <textarea data-ro-ai-profile-field="appliesWhen" rows="2" placeholder="Uvjeti kada je profil primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(profile.appliesWhen)}</textarea>
-        </label>
-        <label class="field">
-          <span>Ne koristi kada</span>
-          <textarea data-ro-ai-profile-field="avoid" rows="2" placeholder="Situacije u kojima profil nije primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(profile.avoid)}</textarea>
-        </label>
-      </div>
+          <em>${escapeHtml(getSettingsWorkEquipmentAiProfileSummary(profile))}</em>
+        </span>
+        <small class="settings-work-equipment-ai-card-status">${configured ? "Profil" : "Default"}</small>
+      </button>
+      <button type="button" class="icon-button danger" data-ro-ai-profile-remove="${index}" ${canManage ? "" : "disabled"} aria-label="Ukloni profil">×</button>
     `;
     return card;
   }));
 }
 
-function renderSettingsWorkEquipmentAiRegisters(settings = getWorkEquipmentAiSettings()) {
+function renderSettingsWorkEquipmentAiRegisters() {
   if (!settingsWorkEquipmentAiRegisters) {
     return;
   }
+  hydrateSettingsWorkEquipmentAiDrafts();
   const groups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [];
   const loadedCount = groups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
   if (settingsWorkEquipmentAiRegisterSummary) {
@@ -140612,37 +140889,46 @@ function renderSettingsWorkEquipmentAiRegisters(settings = getWorkEquipmentAiSet
     settingsWorkEquipmentAiRegisters.replaceChildren(empty);
     return;
   }
-  const canManage = getCanManageSettings();
-  const cards = [];
-  groups.forEach((group) => {
-    (Array.isArray(group.items) ? group.items : []).slice(0, 80).forEach((item) => {
-      const key = getWorkEquipmentAiRegisterKey(item, group);
-      if (!key) {
-        return;
+
+  const sections = groups
+    .map((group) => {
+      const items = Array.isArray(group.items) ? group.items : [];
+      if (!items.length) {
+        return null;
       }
-      const config = normalizeWorkEquipmentAiInstructionConfig(settings.registryInstructions[key] ?? {});
-      const configured = hasWorkEquipmentAiInstructionConfig(config);
-      const card = document.createElement("article");
-      card.className = `settings-work-equipment-ai-register-card${configured ? " is-configured" : ""}`;
-      card.dataset.roAiRegister = key;
-      card.innerHTML = `
-        <div class="settings-work-equipment-ai-card-head">
-          <div>
-            <strong>${escapeHtml(item.label || item.name || item.title || item.id || "Šifrarnik")}</strong>
-            <small>${escapeHtml([group.group, group.label, item.code || item.id].filter(Boolean).join(" · "))}</small>
-          </div>
-          <span class="settings-work-equipment-ai-badge">${configured ? "uputa" : "default"}</span>
+      const section = document.createElement("article");
+      section.className = "settings-work-equipment-ai-group settings-work-equipment-ai-register-group";
+      const cards = items.map((item) => {
+        const key = getWorkEquipmentAiRegisterKey(item, group);
+        if (!key) {
+          return "";
+        }
+        const config = normalizeWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiRegisterDrafts[key] ?? {});
+        const configured = hasWorkEquipmentAiInstructionConfig(config);
+        return renderSettingsWorkEquipmentAiCard({
+          kind: "register",
+          key,
+          label: getWorkEquipmentAiRegisterItemLabel(item, group.label || "IS ZNR stavka"),
+          meta: [item.id || item.isznrId ? `ID ${item.id || item.isznrId}` : "", item.activeFrom ? `od ${item.activeFrom}` : "", item.activeTo ? `do ${item.activeTo}` : ""].filter(Boolean).join(" · "),
+          configured,
+        });
+      }).filter(Boolean).join("");
+      const configuredCount = items.filter((item) => {
+        const key = getWorkEquipmentAiRegisterKey(item, group);
+        return key && hasWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiRegisterDrafts[key] ?? {});
+      }).length;
+      section.innerHTML = `
+        <div class="settings-work-equipment-ai-group-head" data-ro-ai-group-head>
+          <strong>${escapeHtml(getWorkEquipmentAiRegisterGroupLabel(group))}</strong>
+          <span data-ro-ai-group-count>${configuredCount}/${items.length}</span>
         </div>
-        ${renderWorkEquipmentAiInstructionMiniForm(config, key, {
-          disabled: !canManage,
-          label: "Kada NexAI smije predložiti ovu stavku",
-          placeholder: "Opiši vidljive uvjete, opremu ili tekst zbog kojih se ovaj redak smije dodati.",
-        })}
+        <div class="settings-work-equipment-ai-card-list">${cards}</div>
       `;
-      cards.push(card);
-    });
-  });
-  settingsWorkEquipmentAiRegisters.replaceChildren(...(cards.length ? cards : [(() => {
+      return section;
+    })
+    .filter(Boolean);
+
+  settingsWorkEquipmentAiRegisters.replaceChildren(...(sections.length ? sections : [(() => {
     const empty = document.createElement("p");
     empty.className = "settings-work-equipment-ai-empty";
     empty.textContent = "IS ZNR je odgovorio, ali nema šifrarnika za prikaz.";
@@ -140650,42 +140936,53 @@ function renderSettingsWorkEquipmentAiRegisters(settings = getWorkEquipmentAiSet
   })()]));
 }
 
-function collectSettingsWorkEquipmentAiProfiles() {
-  if (!settingsWorkEquipmentAiProfiles) {
-    return getSettingsWorkEquipmentAiProfilesForRender();
+function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
+  if (!node) {
+    return normalizeWorkEquipmentAiProfile(settingsWorkEquipmentAiProfileDrafts[index] ?? {}, index);
   }
-  return Array.from(settingsWorkEquipmentAiProfiles.querySelectorAll("[data-ro-ai-profile-index]"))
-    .map((card, index) => normalizeWorkEquipmentAiProfile({
-      id: settingsWorkEquipmentAiProfileDrafts[index]?.id || "",
-      name: card.querySelector('[data-ro-ai-profile-field="name"]')?.value || "",
-      aliases: card.querySelector('[data-ro-ai-profile-field="aliases"]')?.value || "",
-      generalInstruction: card.querySelector('[data-ro-ai-profile-field="generalInstruction"]')?.value || "",
-      breakdownInstruction: card.querySelector('[data-ro-ai-profile-field="breakdownInstruction"]')?.value || "",
-      appliesWhen: card.querySelector('[data-ro-ai-profile-field="appliesWhen"]')?.value || "",
-      avoid: card.querySelector('[data-ro-ai-profile-field="avoid"]')?.value || "",
-    }, index))
+  const fieldDefaults = {};
+  node.querySelectorAll("[data-ro-ai-profile-field-default]").forEach((input) => {
+    const key = String(input.dataset.roAiProfileFieldDefault || "").trim();
+    if (key) {
+      fieldDefaults[key] = input.value || "";
+    }
+  });
+  const registerDefaults = {
+    mechanical: [],
+    electrical: [],
+    hazards: [],
+    harmfulnesses: [],
+    strains: [],
+  };
+  node.querySelectorAll("[data-ro-ai-profile-register-default]:checked").forEach((input) => {
+    const bucket = String(input.dataset.roAiProfileRegisterDefault || "").trim();
+    if (bucket && Array.isArray(registerDefaults[bucket])) {
+      registerDefaults[bucket].push(input.value || "");
+    }
+  });
+  return normalizeWorkEquipmentAiProfile({
+    id: settingsWorkEquipmentAiProfileDrafts[index]?.id || "",
+    name: node.querySelector('[data-ro-ai-profile-field="name"]')?.value || "",
+    aliases: node.querySelector('[data-ro-ai-profile-field="aliases"]')?.value || "",
+    generalInstruction: node.querySelector('[data-ro-ai-profile-field="generalInstruction"]')?.value || "",
+    breakdownInstruction: node.querySelector('[data-ro-ai-profile-field="breakdownInstruction"]')?.value || "",
+    appliesWhen: node.querySelector('[data-ro-ai-profile-field="appliesWhen"]')?.value || "",
+    avoid: node.querySelector('[data-ro-ai-profile-field="avoid"]')?.value || "",
+    fieldDefaults,
+    registerDefaults,
+  }, index);
+}
+
+function collectSettingsWorkEquipmentAiProfiles() {
+  syncSettingsWorkEquipmentAiActiveModalDraft();
+  return (Array.isArray(settingsWorkEquipmentAiProfileDrafts) ? settingsWorkEquipmentAiProfileDrafts : [])
+    .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index))
     .filter(hasWorkEquipmentAiProfile);
 }
 
 function collectSettingsWorkEquipmentAiSettings() {
-  const fieldInstructions = {};
-  settingsWorkEquipmentAiFields?.querySelectorAll("[data-ro-ai-field]").forEach((card) => {
-    const key = String(card.dataset.roAiField || "").trim();
-    const config = collectWorkEquipmentAiInstructionFromNode(card.querySelector("[data-ro-ai-instruction]"));
-    if (key && hasWorkEquipmentAiInstructionConfig(config)) {
-      fieldInstructions[key] = config;
-    }
-  });
-
-  const registryInstructions = {};
-  settingsWorkEquipmentAiRegisters?.querySelectorAll("[data-ro-ai-register]").forEach((card) => {
-    const key = String(card.dataset.roAiRegister || "").trim();
-    const config = collectWorkEquipmentAiInstructionFromNode(card.querySelector("[data-ro-ai-instruction]"));
-    if (key && hasWorkEquipmentAiInstructionConfig(config)) {
-      registryInstructions[key] = config;
-    }
-  });
-
+  hydrateSettingsWorkEquipmentAiDrafts();
+  syncSettingsWorkEquipmentAiActiveModalDraft();
   return normalizeWorkEquipmentAiSettings({
     organizationId: state.activeOrganizationId,
     generalInstruction: settingsWorkEquipmentAiGeneralInput?.value || "",
@@ -140693,14 +140990,337 @@ function collectSettingsWorkEquipmentAiSettings() {
     matchingInstruction: settingsWorkEquipmentAiMatchingInput?.value || "",
     reviewInstruction: settingsWorkEquipmentAiReviewInput?.value || "",
     autoFillMode: settingsWorkEquipmentAiModeInput?.value || "fill_empty",
-    fieldInstructions,
-    registryInstructions,
+    fieldInstructions: normalizeWorkEquipmentAiInstructionMap(settingsWorkEquipmentAiFieldDrafts),
+    registryInstructions: normalizeWorkEquipmentAiInstructionMap(settingsWorkEquipmentAiRegisterDrafts),
     profiles: collectSettingsWorkEquipmentAiProfiles(),
   });
 }
 
+function renderSettingsWorkEquipmentAiProfileRegisterPicker(profile = {}, canManage = false) {
+  const normalized = normalizeWorkEquipmentAiProfile(profile);
+  const groups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [];
+  const html = WORK_EQUIPMENT_AI_PROFILE_REGISTER_BUCKETS.map((bucket) => {
+    const items = groups
+      .filter((group) => bucket.paths.includes(String(group.path || "").trim()))
+      .flatMap((group) => (Array.isArray(group.items) ? group.items : []).map((item) => ({ group, item })));
+    if (!items.length) {
+      return "";
+    }
+    const selected = new Set(normalized.registerDefaults[bucket.key] || []);
+    return `
+      <section class="settings-work-equipment-ai-register-picker">
+        <div class="settings-work-equipment-ai-group-head">
+          <strong>${escapeHtml(bucket.label)}</strong>
+          <span>${selected.size}/${items.length}</span>
+        </div>
+        <div class="settings-work-equipment-ai-register-choice-list">
+          ${items.map(({ group, item }) => {
+            const value = getWorkEquipmentAiRegisterValue(item, group);
+            if (!value) {
+              return "";
+            }
+            return `
+              <label class="settings-work-equipment-ai-register-choice">
+                <input type="checkbox" data-ro-ai-profile-register-default="${escapeHtml(bucket.key)}" value="${escapeHtml(value)}"${selected.has(value) ? " checked" : ""} ${canManage ? "" : "disabled"} />
+                <span>${escapeHtml(getWorkEquipmentAiRegisterItemLabel(item, bucket.label))}</span>
+              </label>
+            `;
+          }).join("")}
+        </div>
+      </section>
+    `;
+  }).filter(Boolean).join("");
+  return html || `<p class="settings-work-equipment-ai-empty">Osvježi šifrarnike za odabir strojarskih, elektro i rizik stavki profila.</p>`;
+}
+
+function renderSettingsWorkEquipmentAiProfileModalBody(profile = {}, index = 0, canManage = false) {
+  const normalized = normalizeWorkEquipmentAiProfile(profile, index);
+  const fieldDefaults = WORK_EQUIPMENT_AI_PROFILE_FIELD_DEFAULT_KEYS.map((key) => {
+    const field = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS.find((definition) => definition.key === key);
+    return `
+      <label class="field field-span-full">
+        <span>${escapeHtml(field?.label || key)}</span>
+        <textarea data-ro-ai-profile-field-default="${escapeHtml(key)}" rows="2" placeholder="${escapeHtml(field?.placeholder || "Default tekst za profil")}" ${canManage ? "" : "disabled"}>${escapeHtml(normalized.fieldDefaults[key] || "")}</textarea>
+      </label>
+    `;
+  }).join("");
+
+  return `
+    <div class="settings-work-equipment-ai-profile-editor">
+      <section class="settings-work-equipment-ai-modal-section">
+        <div class="settings-work-equipment-ai-card-grid">
+          <label class="field">
+            <span>Naziv profila</span>
+            <input data-ro-ai-profile-field="name" value="${escapeHtml(normalized.name)}" placeholder="npr. Viličar" ${canManage ? "" : "disabled"} />
+          </label>
+          <label class="field">
+            <span>Aliasi</span>
+            <input data-ro-ai-profile-field="aliases" value="${escapeHtml(normalized.aliases.join(", "))}" placeholder="viličar, forklift, Linde..." ${canManage ? "" : "disabled"} />
+          </label>
+          <label class="field field-span-full">
+            <span>Opća uputa</span>
+            <textarea data-ro-ai-profile-field="generalInstruction" rows="3" placeholder="Kako prepoznati ovu vrstu opreme..." ${canManage ? "" : "disabled"}>${escapeHtml(normalized.generalInstruction)}</textarea>
+          </label>
+          <label class="field field-span-full">
+            <span>Razrada</span>
+            <textarea data-ro-ai-profile-field="breakdownInstruction" rows="4" placeholder="Što se gleda kod strojarskog, elektro dijela, rizika i zaključka..." ${canManage ? "" : "disabled"}>${escapeHtml(normalized.breakdownInstruction)}</textarea>
+          </label>
+          <label class="field">
+            <span>Koristi kada</span>
+            <textarea data-ro-ai-profile-field="appliesWhen" rows="2" placeholder="Uvjeti kada je profil primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(normalized.appliesWhen)}</textarea>
+          </label>
+          <label class="field">
+            <span>Ne koristi kada</span>
+            <textarea data-ro-ai-profile-field="avoid" rows="2" placeholder="Situacije u kojima profil nije primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(normalized.avoid)}</textarea>
+          </label>
+        </div>
+      </section>
+      <section class="settings-work-equipment-ai-modal-section">
+        <div class="settings-work-equipment-ai-group-head">
+          <strong>Default tekstovi profila</strong>
+          <span>opcionalno</span>
+        </div>
+        <div class="settings-work-equipment-ai-card-grid">${fieldDefaults}</div>
+      </section>
+      <section class="settings-work-equipment-ai-modal-section">
+        <div class="settings-work-equipment-ai-group-head">
+          <strong>Default IS ZNR stavke profila</strong>
+          <span>šifrarnici</span>
+        </div>
+        ${renderSettingsWorkEquipmentAiProfileRegisterPicker(normalized, canManage)}
+      </section>
+    </div>
+  `;
+}
+
+function syncSettingsWorkEquipmentAiActiveModalDraft() {
+  if (!settingsWorkEquipmentAiActiveModal || !settingsWorkEquipmentAiModalElements?.body) {
+    return;
+  }
+  const { type, kind, key, index } = settingsWorkEquipmentAiActiveModal;
+  if (type === "profile") {
+    const safeIndex = Number(index);
+    if (Number.isInteger(safeIndex) && safeIndex >= 0) {
+      settingsWorkEquipmentAiProfileDrafts[safeIndex] = collectSettingsWorkEquipmentAiProfileFromNode(settingsWorkEquipmentAiModalElements.body, safeIndex);
+    }
+    return;
+  }
+  setSettingsWorkEquipmentAiInstructionDraft(
+    kind || "field",
+    key || "",
+    collectWorkEquipmentAiInstructionFromNode(settingsWorkEquipmentAiModalElements.body.querySelector("[data-ro-ai-instruction]")),
+  );
+}
+
+function refreshSettingsWorkEquipmentAiCardStatuses() {
+  const updateCard = (card) => {
+    const kind = String(card.dataset.roAiCardKind || "").trim();
+    const key = String(card.dataset.roAiCardKey || "").trim();
+    if (!kind || !key) {
+      return;
+    }
+    const config = getSettingsWorkEquipmentAiDraftConfig(kind, key);
+    const configured = hasWorkEquipmentAiInstructionConfig(config);
+    card.classList.toggle("is-configured", configured);
+    const status = card.querySelector(".settings-work-equipment-ai-card-status");
+    if (status) {
+      status.textContent = configured ? "Uređeno" : "Default";
+    }
+  };
+  settingsWorkEquipmentAiFields?.querySelectorAll("[data-ro-ai-card-kind]").forEach(updateCard);
+  settingsWorkEquipmentAiRegisters?.querySelectorAll("[data-ro-ai-card-kind]").forEach(updateCard);
+  settingsWorkEquipmentAiProfiles?.querySelectorAll("[data-ro-ai-profile-index]").forEach((card) => {
+    const index = Number.parseInt(String(card.dataset.roAiProfileIndex || ""), 10);
+    const profile = normalizeWorkEquipmentAiProfile(settingsWorkEquipmentAiProfileDrafts[index] ?? {}, index);
+    const configured = hasWorkEquipmentAiProfile(profile);
+    card.classList.toggle("is-configured", configured);
+    const title = card.querySelector(".settings-work-equipment-ai-card-open strong");
+    const meta = card.querySelector(".settings-work-equipment-ai-card-open em");
+    const status = card.querySelector(".settings-work-equipment-ai-card-status");
+    if (title) title.textContent = profile.name || `Profil ${index + 1}`;
+    if (meta) meta.textContent = getSettingsWorkEquipmentAiProfileSummary(profile);
+    if (status) status.textContent = configured ? "Profil" : "Default";
+  });
+  [settingsWorkEquipmentAiFields, settingsWorkEquipmentAiRegisters].forEach((container) => {
+    container?.querySelectorAll(".settings-work-equipment-ai-group").forEach((group) => {
+      const cards = Array.from(group.querySelectorAll("[data-ro-ai-card-kind]"));
+      const configuredCount = cards.filter((card) => card.classList.contains("is-configured")).length;
+      const count = group.querySelector("[data-ro-ai-group-count]");
+      if (count) {
+        count.textContent = `${configuredCount}/${cards.length}`;
+        count.classList.toggle("has-progress", configuredCount > 0);
+        count.classList.toggle("is-complete", configuredCount === cards.length && cards.length > 0);
+      }
+    });
+  });
+}
+
+function ensureSettingsWorkEquipmentAiModal() {
+  if (settingsWorkEquipmentAiModalElements) {
+    return settingsWorkEquipmentAiModalElements;
+  }
+  const backdrop = document.createElement("div");
+  backdrop.className = "settings-work-equipment-ai-modal-backdrop";
+  backdrop.hidden = true;
+  backdrop.innerHTML = `
+    <section class="settings-work-equipment-ai-modal" role="dialog" aria-modal="true" aria-labelledby="settings-work-equipment-ai-modal-title">
+      <header class="settings-work-equipment-ai-modal-head">
+        <div>
+          <span class="section-kicker">RO · NexAI</span>
+          <strong id="settings-work-equipment-ai-modal-title">AI uputa</strong>
+          <small data-ro-ai-modal-meta></small>
+        </div>
+        <button type="button" class="icon-button" data-ro-ai-modal-close aria-label="Zatvori">×</button>
+      </header>
+      <div class="settings-work-equipment-ai-modal-body" data-ro-ai-modal-body></div>
+      <footer class="settings-work-equipment-ai-modal-actions">
+        <button type="button" class="ghost-button" data-ro-ai-modal-clear>Očisti</button>
+        <button type="button" class="primary-button" data-ro-ai-modal-apply>Gotovo</button>
+      </footer>
+    </section>
+  `;
+  document.body.appendChild(backdrop);
+  settingsWorkEquipmentAiModalElements = {
+    backdrop,
+    title: backdrop.querySelector("#settings-work-equipment-ai-modal-title"),
+    meta: backdrop.querySelector("[data-ro-ai-modal-meta]"),
+    body: backdrop.querySelector("[data-ro-ai-modal-body]"),
+    closeButton: backdrop.querySelector("[data-ro-ai-modal-close]"),
+    clearButton: backdrop.querySelector("[data-ro-ai-modal-clear]"),
+    applyButton: backdrop.querySelector("[data-ro-ai-modal-apply]"),
+  };
+  const closeModal = () => closeSettingsWorkEquipmentAiModal();
+  settingsWorkEquipmentAiModalElements.closeButton?.addEventListener("click", closeModal);
+  settingsWorkEquipmentAiModalElements.applyButton?.addEventListener("click", closeModal);
+  settingsWorkEquipmentAiModalElements.clearButton?.addEventListener("click", () => {
+    if (!settingsWorkEquipmentAiActiveModal || !settingsWorkEquipmentAiModalElements?.body) {
+      return;
+    }
+    settingsWorkEquipmentAiModalElements.body.querySelectorAll("input[type='text'], input:not([type]), textarea").forEach((input) => {
+      input.value = "";
+    });
+    settingsWorkEquipmentAiModalElements.body.querySelectorAll("input[type='checkbox']").forEach((input) => {
+      input.checked = false;
+    });
+    settingsWorkEquipmentAiModalElements.body.querySelectorAll("select").forEach((select) => {
+      select.value = select.querySelector("option")?.value || "";
+    });
+    syncSettingsWorkEquipmentAiActiveModalDraft();
+    refreshSettingsWorkEquipmentAiCardStatuses();
+  });
+  settingsWorkEquipmentAiModalElements.body?.addEventListener("input", () => {
+    syncSettingsWorkEquipmentAiActiveModalDraft();
+    refreshSettingsWorkEquipmentAiCardStatuses();
+  });
+  settingsWorkEquipmentAiModalElements.body?.addEventListener("change", () => {
+    syncSettingsWorkEquipmentAiActiveModalDraft();
+    refreshSettingsWorkEquipmentAiCardStatuses();
+  });
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closeSettingsWorkEquipmentAiModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !backdrop.hidden && settingsWorkEquipmentAiActiveModal) {
+      closeSettingsWorkEquipmentAiModal();
+    }
+  });
+  return settingsWorkEquipmentAiModalElements;
+}
+
+function openSettingsWorkEquipmentAiInstructionModal(kind = "field", key = "") {
+  const normalizedKind = kind === "register" ? "register" : "field";
+  const normalizedKey = String(key || "").trim();
+  const field = normalizedKind === "field"
+    ? WORK_EQUIPMENT_AI_FIELD_DEFINITIONS.find((definition) => definition.key === normalizedKey)
+    : null;
+  const register = normalizedKind === "register" ? getSettingsWorkEquipmentAiRegisterDefinition(normalizedKey) : null;
+  const definition = field || register;
+  if (!definition) {
+    return;
+  }
+  const modal = ensureSettingsWorkEquipmentAiModal();
+  const canManage = getCanManageSettings();
+  settingsWorkEquipmentAiActiveModal = { type: "instruction", kind: normalizedKind, key: normalizedKey };
+  const config = getSettingsWorkEquipmentAiDraftConfig(normalizedKind, normalizedKey);
+  if (modal.title) {
+    modal.title.textContent = definition.label || "AI uputa";
+  }
+  if (modal.meta) {
+    modal.meta.textContent = normalizedKind === "field"
+      ? [definition.group, definition.placeholder].filter(Boolean).join(" · ")
+      : (definition.meta || "");
+  }
+  if (modal.body) {
+    modal.body.innerHTML = renderWorkEquipmentAiInstructionMiniForm(config, normalizedKey, {
+      disabled: !canManage,
+      label: normalizedKind === "register" ? "Kada NexAI smije predložiti ovu IS ZNR stavku" : "Kako NexAI popunjava ovo polje",
+      placeholder: normalizedKind === "register"
+        ? "Opiši vidljive uvjete, opremu ili tekst zbog kojih se ovaj redak smije dodati."
+        : (definition.placeholder || "Kako NexAI treba popuniti ovo polje."),
+    });
+  }
+  if (modal.clearButton) {
+    modal.clearButton.hidden = !canManage;
+    modal.clearButton.textContent = "Očisti uputu";
+  }
+  if (modal.applyButton) {
+    modal.applyButton.textContent = canManage ? "Gotovo" : "Zatvori";
+  }
+  modal.backdrop.hidden = false;
+  document.body.classList.add("is-settings-work-equipment-ai-modal-open");
+  requestAnimationFrame(() => {
+    modal.body?.querySelector("textarea, input, select")?.focus({ preventScroll: true });
+  });
+}
+
+function openSettingsWorkEquipmentAiProfileModal(index = 0) {
+  const safeIndex = Number.parseInt(String(index), 10);
+  if (!Number.isInteger(safeIndex) || safeIndex < 0) {
+    return;
+  }
+  hydrateSettingsWorkEquipmentAiDrafts();
+  const profile = normalizeWorkEquipmentAiProfile(settingsWorkEquipmentAiProfileDrafts[safeIndex] ?? {}, safeIndex);
+  const modal = ensureSettingsWorkEquipmentAiModal();
+  const canManage = getCanManageSettings();
+  settingsWorkEquipmentAiActiveModal = { type: "profile", index: safeIndex };
+  if (modal.title) {
+    modal.title.textContent = profile.name || `Profil ${safeIndex + 1}`;
+  }
+  if (modal.meta) {
+    modal.meta.textContent = "Profil radne opreme · opće upute · default tekstovi · IS ZNR stavke";
+  }
+  if (modal.body) {
+    modal.body.innerHTML = renderSettingsWorkEquipmentAiProfileModalBody(profile, safeIndex, canManage);
+  }
+  if (modal.clearButton) {
+    modal.clearButton.hidden = !canManage;
+    modal.clearButton.textContent = "Očisti profil";
+  }
+  if (modal.applyButton) {
+    modal.applyButton.textContent = canManage ? "Gotovo" : "Zatvori";
+  }
+  modal.backdrop.hidden = false;
+  document.body.classList.add("is-settings-work-equipment-ai-modal-open");
+  requestAnimationFrame(() => {
+    modal.body?.querySelector("textarea, input, select")?.focus({ preventScroll: true });
+  });
+}
+
+function closeSettingsWorkEquipmentAiModal() {
+  syncSettingsWorkEquipmentAiActiveModalDraft();
+  refreshSettingsWorkEquipmentAiCardStatuses();
+  if (settingsWorkEquipmentAiModalElements?.backdrop) {
+    settingsWorkEquipmentAiModalElements.backdrop.hidden = true;
+  }
+  settingsWorkEquipmentAiActiveModal = null;
+  document.body.classList.remove("is-settings-work-equipment-ai-modal-open");
+}
+
 function renderSettingsWorkEquipmentAi(settings = getWorkEquipmentAiSettings()) {
   const normalized = normalizeWorkEquipmentAiSettings(settings);
+  hydrateSettingsWorkEquipmentAiDrafts(normalized);
   const canManage = getCanManageSettings();
   if (settingsWorkEquipmentAiGeneralInput && document.activeElement !== settingsWorkEquipmentAiGeneralInput) {
     settingsWorkEquipmentAiGeneralInput.value = normalized.generalInstruction;
@@ -140736,9 +141356,9 @@ function renderSettingsWorkEquipmentAi(settings = getWorkEquipmentAiSettings()) 
   if (settingsWorkEquipmentAiAddProfileButton) {
     settingsWorkEquipmentAiAddProfileButton.disabled = !canManage;
   }
-  renderSettingsWorkEquipmentAiFields(normalized);
+  renderSettingsWorkEquipmentAiFields();
   renderSettingsWorkEquipmentAiProfiles(normalized);
-  renderSettingsWorkEquipmentAiRegisters(normalized);
+  renderSettingsWorkEquipmentAiRegisters();
 }
 
 async function loadSettingsWorkEquipmentAiRegisters({ force = false } = {}) {
@@ -140795,7 +141415,10 @@ async function saveSettingsWorkEquipmentAiSettings(options = {}) {
       ...settings,
       organizationId: state.activeOrganizationId,
     });
+    settingsWorkEquipmentAiFieldDrafts = normalizeWorkEquipmentAiInstructionMap(state.workEquipmentAiSettings.fieldInstructions);
+    settingsWorkEquipmentAiRegisterDrafts = normalizeWorkEquipmentAiInstructionMap(state.workEquipmentAiSettings.registryInstructions);
     settingsWorkEquipmentAiProfileDrafts = state.workEquipmentAiSettings.profiles;
+    settingsWorkEquipmentAiDraftInitialized = true;
     renderSettingsWorkEquipmentAi(state.workEquipmentAiSettings);
     setInlineMessage(settingsWorkEquipmentAiFeedback, successMessage, "success");
   }
