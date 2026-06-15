@@ -139855,11 +139855,62 @@ function normalizeWorkEquipmentAiRegisterGroupsCache(value = []) {
     .filter((group) => (group.path || group.label || group.group) && group.items.length > 0);
 }
 
+function normalizeWorkEquipmentAiSentenceBank(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    positive: String(source.positive || source.ok || source.satisfactory || "").trim().slice(0, 4000),
+    negative: String(source.negative || source.notOk || source.unsatisfactory || "").trim().slice(0, 4000),
+    notApplicable: String(source.notApplicable || source.na || source.notRelevant || "").trim().slice(0, 3000),
+    recommendations: String(source.recommendations || source.measures || source.actions || "").trim().slice(0, 4000),
+    conclusion: String(source.conclusion || source.finalGrade || "").trim().slice(0, 3000),
+  };
+}
+
+function hasWorkEquipmentAiSentenceBank(value = {}) {
+  return Object.values(normalizeWorkEquipmentAiSentenceBank(value)).some(Boolean);
+}
+
+function normalizeWorkEquipmentAiQuickQuestion(question = {}, index = 0) {
+  const source = question && typeof question === "object" ? question : {};
+  const type = String(source.type || "").trim();
+  const normalizedType = ["text", "number", "yes_no", "condition", "select", "multi_select", "note"].includes(type)
+    ? type
+    : "text";
+  return {
+    id: String(source.id || "").trim() || createClientSideId(`ro-ai-question-${index + 1}`),
+    label: String(source.label || source.question || source.name || "").trim().slice(0, 220),
+    type: normalizedType,
+    unit: String(source.unit || "").trim().slice(0, 40),
+    options: normalizeAiConfigListLocal(source.options || source.choices || "", 20).slice(0, 20),
+    required: Boolean(source.required),
+    aiHint: String(source.aiHint || source.hint || source.description || "").trim().slice(0, 1200),
+  };
+}
+
+function hasWorkEquipmentAiQuickQuestion(question = {}) {
+  const normalized = normalizeWorkEquipmentAiQuickQuestion(question);
+  return Boolean(
+    normalized.label
+    || normalized.unit
+    || normalized.options.length
+    || normalized.aiHint
+    || normalized.required
+  );
+}
+
+function normalizeWorkEquipmentAiQuickQuestions(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, 80)
+    .map((question, index) => normalizeWorkEquipmentAiQuickQuestion(question, index))
+    .filter(hasWorkEquipmentAiQuickQuestion);
+}
+
 function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
   const source = profile && typeof profile === "object" ? profile : {};
   const id = String(source.id || "").trim() || createClientSideId(`ro-ai-profile-${index + 1}`);
   const fieldDefaults = source.fieldDefaults && typeof source.fieldDefaults === "object" ? source.fieldDefaults : {};
   const registerDefaults = source.registerDefaults && typeof source.registerDefaults === "object" ? source.registerDefaults : {};
+  const sentenceBank = normalizeWorkEquipmentAiSentenceBank(source.sentenceBank || source.commonSentences || source.sentences);
   return {
     id,
     name: String(source.name || source.label || "").trim().slice(0, 160),
@@ -139868,6 +139919,8 @@ function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
     breakdownInstruction: String(source.breakdownInstruction || source.breakdown || source.details || "").trim().slice(0, 6000),
     appliesWhen: String(source.appliesWhen || "").trim().slice(0, 2000),
     avoid: String(source.avoid || "").trim().slice(0, 2000),
+    sentenceBank,
+    quickQuestions: normalizeWorkEquipmentAiQuickQuestions(source.quickQuestions || source.questions || source.fieldQuestions),
     fieldDefaults: {
       technicalData: String(fieldDefaults.technicalData || source.technicalData || "").trim().slice(0, 2000),
       purposeDescription: String(fieldDefaults.purposeDescription || source.purposeDescription || "").trim().slice(0, 2000),
@@ -139894,6 +139947,8 @@ function hasWorkEquipmentAiProfile(profile = {}) {
     || normalized.breakdownInstruction
     || normalized.appliesWhen
     || normalized.avoid
+    || hasWorkEquipmentAiSentenceBank(normalized.sentenceBank)
+    || normalized.quickQuestions.length
     || Object.values(normalized.fieldDefaults).some(Boolean)
     || Object.values(normalized.registerDefaults).some((list) => list.length > 0)
   );
@@ -139909,6 +139964,20 @@ function createDefaultWorkEquipmentAiProfiles() {
       breakdownInstruction: "U razradi obrati pažnju na stabilnost, kočnice, upravljački sustav, zaštitu vozača, vilice, lanac, hidrauliku, signalizaciju i stanje baterije ili plinske instalacije ako je vidljiva.",
       appliesWhen: "Koristi ovaj profil kada slika ili dokument jasno prikazuje radnu opremu za podizanje/prijevoz tereta s vilicama.",
       avoid: "Ne koristi za ručne paletare bez pogona ako nije jasno da se radi o viličaru.",
+      sentenceBank: {
+        positive: "Viličar je pregledom i funkcionalnom probom zadovoljio zahtjeve sigurnog rada.",
+        negative: "Na viličaru su utvrđeni nedostaci koji mogu utjecati na siguran rad i potrebno ih je ukloniti prije uporabe.",
+        notApplicable: "Stavka nije primjenjiva na pregledani tip viličara.",
+        recommendations: "Nedostatke ukloniti prema uputama proizvođača i ponoviti provjeru prije redovne uporabe.",
+        conclusion: "Zaključak se temelji na vizualnom pregledu, funkcionalnoj probi i raspoloživoj dokumentaciji.",
+      },
+      quickQuestions: [
+        { label: "Koji teret je dignut pri probi?", type: "number", unit: "kg", aiHint: "Koristi za opis funkcionalne probe podizanja tereta." },
+        { label: "Je li upravljanje ispravno?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
+        { label: "Jesu li kočnice ispravne?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
+        { label: "Ima li curenja hidraulike?", type: "yes_no", aiHint: "Ako ima curenja, predloži nedostatak i mjeru." },
+        { label: "Je li signalizacija ispravna?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije provjereno"] },
+      ],
     },
     {
       id: createClientSideId("ro-ai-profile-compressor"),
@@ -139916,6 +139985,19 @@ function createDefaultWorkEquipmentAiProfiles() {
       aliases: ["kompresor", "compressor", "Atlas Copco", "KAESER"],
       generalInstruction: "Prepoznaj kompresor prema spremniku, agregatu, oznaci tlaka, proizvođaču i natpisnoj pločici.",
       breakdownInstruction: "Razradi sigurnosni ventil, tlačnu posudu, manometar, zaštite rotirajućih dijelova, električni priključak i tragove curenja ili oštećenja.",
+      sentenceBank: {
+        positive: "Kompresor je pregledom zadovoljio propisane sigurnosne uvjete rada.",
+        negative: "Na kompresoru su utvrđeni nedostaci koje je potrebno ukloniti prije daljnje uporabe.",
+        notApplicable: "Stavka nije primjenjiva na pregledani kompresor.",
+        recommendations: "Provjeriti sigurnosni ventil, manometar i zaštite prema uputama proizvođača.",
+        conclusion: "Ocjena se temelji na stanju opreme, dostupnoj dokumentaciji i funkcionalnoj provjeri.",
+      },
+      quickQuestions: [
+        { label: "Radni tlak", type: "number", unit: "bar" },
+        { label: "Je li sigurnosni ventil prisutan i ispravan?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije provjereno"], required: true },
+        { label: "Je li manometar čitljiv?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"] },
+        { label: "Ima li tragova curenja zraka ili ulja?", type: "yes_no" },
+      ],
     },
     {
       id: createClientSideId("ro-ai-profile-machine"),
@@ -139923,6 +140005,19 @@ function createDefaultWorkEquipmentAiProfiles() {
       aliases: ["stroj", "tokarilica", "glodalica", "brusilica", "preša", "alatni stroj"],
       generalInstruction: "Ako nije moguće precizno odrediti vrstu, zadrži naziv s pločice i označi da korisnik provjeri klasifikaciju.",
       breakdownInstruction: "Razradi zaštite pokretnih dijelova, upravljačke elemente, stop tipkalo, električnu sigurnost, radni prostor, stabilnost i pristup.",
+      sentenceBank: {
+        positive: "Radna oprema je pregledom zadovoljila zahtjeve sigurnog rada.",
+        negative: "Utvrđeni su nedostaci koji zahtijevaju uklanjanje prije uporabe radne opreme.",
+        notApplicable: "Stavka nije primjenjiva na pregledanu radnu opremu.",
+        recommendations: "Nedostatke ukloniti i dokumentirati provedenu provjeru prije ponovne uporabe.",
+        conclusion: "Zaključna ocjena temelji se na pregledu vidljivog stanja, funkcionalnoj provjeri i dostupnim podacima.",
+      },
+      quickQuestions: [
+        { label: "Je li stop tipka ispravna?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
+        { label: "Jesu li zaštite pokretnih dijelova postavljene?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Nije primjenjivo"], required: true },
+        { label: "Je li radni prostor oko stroja slobodan?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava"] },
+        { label: "Napomena ispitivača", type: "note" },
+      ],
     },
   ].map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
 }
@@ -140741,6 +140836,24 @@ const WORK_EQUIPMENT_AI_PROFILE_REGISTER_BUCKETS = Object.freeze([
   { key: "strains", label: "Napori", paths: ["strain_registers"] },
 ]);
 
+const WORK_EQUIPMENT_AI_PROFILE_SENTENCE_FIELDS = Object.freeze([
+  { key: "positive", label: "Kad zadovoljava", placeholder: "Najčešće rečenice za pozitivan nalaz." },
+  { key: "negative", label: "Kad ne zadovoljava", placeholder: "Najčešće rečenice za negativan nalaz ili nedostatke." },
+  { key: "notApplicable", label: "Nije primjenjivo", placeholder: "Kako se piše kada stavka ne vrijedi za taj tip opreme." },
+  { key: "recommendations", label: "Mjere / preporuke", placeholder: "Tipične mjere za uklanjanje nedostataka." },
+  { key: "conclusion", label: "Zaključak", placeholder: "Tipična zaključna formulacija za ovaj profil." },
+]);
+
+const WORK_EQUIPMENT_AI_QUICK_QUESTION_TYPES = Object.freeze([
+  { value: "text", label: "Tekst" },
+  { value: "number", label: "Broj" },
+  { value: "yes_no", label: "Da / Ne" },
+  { value: "condition", label: "Zadovoljava / Ne" },
+  { value: "select", label: "Jedan izbor" },
+  { value: "multi_select", label: "Više izbora" },
+  { value: "note", label: "Napomena" },
+]);
+
 function hydrateSettingsWorkEquipmentAiDrafts(settings = getWorkEquipmentAiSettings(), { force = false } = {}) {
   if (settingsWorkEquipmentAiDraftInitialized && !force) {
     return;
@@ -141013,8 +141126,11 @@ function renderSettingsWorkEquipmentAiFields() {
 function getSettingsWorkEquipmentAiProfileSummary(profile = {}) {
   const normalized = normalizeWorkEquipmentAiProfile(profile);
   const registerCount = Object.values(normalized.registerDefaults).reduce((sum, list) => sum + list.length, 0);
+  const sentenceCount = Object.values(normalized.sentenceBank).filter(Boolean).length;
   return [
     normalized.aliases.length ? normalized.aliases.slice(0, 5).join(", ") : "Bez aliasa",
+    sentenceCount ? `${sentenceCount} rečenica` : "",
+    normalized.quickQuestions.length ? `${normalized.quickQuestions.length} pitanja` : "",
     registerCount ? `${registerCount} IS ZNR stavki` : "",
   ].filter(Boolean).join(" · ");
 }
@@ -141119,6 +141235,72 @@ function renderSettingsWorkEquipmentAiRegisters() {
   })()]));
 }
 
+function renderSettingsWorkEquipmentAiProfileSentenceBank(profile = {}, canManage = false) {
+  const normalized = normalizeWorkEquipmentAiProfile(profile);
+  return WORK_EQUIPMENT_AI_PROFILE_SENTENCE_FIELDS.map((field) => `
+    <label class="field field-span-full">
+      <span>${escapeHtml(field.label)}</span>
+      <textarea data-ro-ai-profile-sentence="${escapeHtml(field.key)}" rows="2" placeholder="${escapeHtml(field.placeholder)}" ${canManage ? "" : "disabled"}>${escapeHtml(normalized.sentenceBank[field.key] || "")}</textarea>
+    </label>
+  `).join("");
+}
+
+function renderSettingsWorkEquipmentAiProfileQuickQuestion(question = {}, index = 0, canManage = false) {
+  const normalized = normalizeWorkEquipmentAiQuickQuestion(question, index);
+  const typeOptions = WORK_EQUIPMENT_AI_QUICK_QUESTION_TYPES.map((type) => `
+    <option value="${escapeHtml(type.value)}"${normalized.type === type.value ? " selected" : ""}>${escapeHtml(type.label)}</option>
+  `).join("");
+  return `
+    <article class="settings-work-equipment-ai-question-card" data-ro-ai-profile-question="${index}">
+      <div class="settings-work-equipment-ai-question-head">
+        <strong>Pitanje ${index + 1}</strong>
+        <button type="button" class="icon-button danger" data-ro-ai-profile-question-remove="${index}" ${canManage ? "" : "disabled"} aria-label="Ukloni pitanje">×</button>
+      </div>
+      <div class="settings-work-equipment-ai-card-grid">
+        <label class="field field-span-full">
+          <span>Pitanje za popup</span>
+          <input data-ro-ai-profile-question-field="label" value="${escapeHtml(normalized.label)}" placeholder="npr. Koji teret je dignut pri probi?" ${canManage ? "" : "disabled"} />
+        </label>
+        <label class="field">
+          <span>Tip odgovora</span>
+          <select data-ro-ai-profile-question-field="type" ${canManage ? "" : "disabled"}>${typeOptions}</select>
+        </label>
+        <label class="field">
+          <span>Jedinica</span>
+          <input data-ro-ai-profile-question-field="unit" value="${escapeHtml(normalized.unit)}" placeholder="kg, bar, V..." ${canManage ? "" : "disabled"} />
+        </label>
+        <label class="field">
+          <span>Ponuđeni odgovori</span>
+          <input data-ro-ai-profile-question-field="options" value="${escapeHtml(normalized.options.join(", "))}" placeholder="Zadovoljava, Ne zadovoljava..." ${canManage ? "" : "disabled"} />
+        </label>
+        <label class="field settings-work-equipment-ai-checkbox-field">
+          <span>Obavezno</span>
+          <label class="settings-work-equipment-ai-inline-check">
+            <input type="checkbox" data-ro-ai-profile-question-field="required" ${normalized.required ? "checked" : ""} ${canManage ? "" : "disabled"} />
+            <span>Traži prije NexAI prijedloga</span>
+          </label>
+        </label>
+        <label class="field field-span-full">
+          <span>AI hint</span>
+          <textarea data-ro-ai-profile-question-field="aiHint" rows="2" placeholder="Kako odgovor koristiti u tekstu zapisnika ili ocjeni." ${canManage ? "" : "disabled"}>${escapeHtml(normalized.aiHint)}</textarea>
+        </label>
+      </div>
+    </article>
+  `;
+}
+
+function renderSettingsWorkEquipmentAiProfileQuickQuestions(profile = {}, canManage = false) {
+  const normalized = normalizeWorkEquipmentAiProfile(profile);
+  const questions = normalized.quickQuestions.length ? normalized.quickQuestions : [];
+  const questionCards = questions.map((question, index) => renderSettingsWorkEquipmentAiProfileQuickQuestion(question, index, canManage)).join("");
+  return `
+    <div class="settings-work-equipment-ai-question-list">
+      ${questionCards || `<p class="settings-work-equipment-ai-empty">Dodaj pitanja koja će se prikazati nakon uploada slika/PDF-a za ovaj tip opreme.</p>`}
+    </div>
+    <button type="button" class="ghost-button settings-work-equipment-ai-add-question" data-ro-ai-profile-question-add ${canManage ? "" : "disabled"}>+ Pitanje</button>
+  `;
+}
+
 function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
   if (!node) {
     return normalizeWorkEquipmentAiProfile(settingsWorkEquipmentAiProfileDrafts[index] ?? {}, index);
@@ -141143,6 +141325,25 @@ function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
       registerDefaults[bucket].push(input.value || "");
     }
   });
+  const sentenceBank = {};
+  node.querySelectorAll("[data-ro-ai-profile-sentence]").forEach((input) => {
+    const key = String(input.dataset.roAiProfileSentence || "").trim();
+    if (key) {
+      sentenceBank[key] = input.value || "";
+    }
+  });
+  const quickQuestions = Array.from(node.querySelectorAll("[data-ro-ai-profile-question]")).map((card, questionIndex) => {
+    const getField = (field) => card.querySelector(`[data-ro-ai-profile-question-field="${field}"]`);
+    return normalizeWorkEquipmentAiQuickQuestion({
+      id: settingsWorkEquipmentAiProfileDrafts[index]?.quickQuestions?.[questionIndex]?.id || "",
+      label: getField("label")?.value || "",
+      type: getField("type")?.value || "text",
+      unit: getField("unit")?.value || "",
+      options: getField("options")?.value || "",
+      required: Boolean(getField("required")?.checked),
+      aiHint: getField("aiHint")?.value || "",
+    }, questionIndex);
+  });
   return normalizeWorkEquipmentAiProfile({
     id: settingsWorkEquipmentAiProfileDrafts[index]?.id || "",
     name: node.querySelector('[data-ro-ai-profile-field="name"]')?.value || "",
@@ -141151,6 +141352,8 @@ function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
     breakdownInstruction: node.querySelector('[data-ro-ai-profile-field="breakdownInstruction"]')?.value || "",
     appliesWhen: node.querySelector('[data-ro-ai-profile-field="appliesWhen"]')?.value || "",
     avoid: node.querySelector('[data-ro-ai-profile-field="avoid"]')?.value || "",
+    sentenceBank,
+    quickQuestions,
     fieldDefaults,
     registerDefaults,
   }, index);
@@ -141232,6 +141435,10 @@ function renderSettingsWorkEquipmentAiProfileModalBody(profile = {}, index = 0, 
   return `
     <div class="settings-work-equipment-ai-profile-editor">
       <section class="settings-work-equipment-ai-modal-section">
+        <div class="settings-work-equipment-ai-group-head">
+          <strong>Profil i prepoznavanje</strong>
+          <span>tip opreme</span>
+        </div>
         <div class="settings-work-equipment-ai-card-grid">
           <label class="field">
             <span>Naziv profila</span>
@@ -141258,6 +141465,22 @@ function renderSettingsWorkEquipmentAiProfileModalBody(profile = {}, index = 0, 
             <textarea data-ro-ai-profile-field="avoid" rows="2" placeholder="Situacije u kojima profil nije primjenjiv" ${canManage ? "" : "disabled"}>${escapeHtml(normalized.avoid)}</textarea>
           </label>
         </div>
+      </section>
+      <section class="settings-work-equipment-ai-modal-section">
+        <div class="settings-work-equipment-ai-group-head">
+          <strong>Najčešće rečenice</strong>
+          <span>profil</span>
+        </div>
+        <p class="settings-work-equipment-ai-section-copy">Ove formulacije NexAI koristi kao stil i sadržaj kada popunjava nalaz, mjere i zaključak za ovaj tip opreme.</p>
+        <div class="settings-work-equipment-ai-card-grid">${renderSettingsWorkEquipmentAiProfileSentenceBank(normalized, canManage)}</div>
+      </section>
+      <section class="settings-work-equipment-ai-modal-section">
+        <div class="settings-work-equipment-ai-group-head">
+          <strong>Brza pitanja nakon uploada</strong>
+          <span>${normalized.quickQuestions.length} pitanja</span>
+        </div>
+        <p class="settings-work-equipment-ai-section-copy">Ova pitanja služe kao mali popup nakon slika/PDF-a, npr. teret pri probi, upravljanje, osigurač ili posebna napomena ispitivača.</p>
+        ${renderSettingsWorkEquipmentAiProfileQuickQuestions(normalized, canManage)}
       </section>
       <section class="settings-work-equipment-ai-modal-section">
         <div class="settings-work-equipment-ai-group-head">
@@ -141339,6 +141562,22 @@ function refreshSettingsWorkEquipmentAiCardStatuses() {
   });
 }
 
+function rerenderSettingsWorkEquipmentAiActiveProfileModal() {
+  if (!settingsWorkEquipmentAiActiveModal || settingsWorkEquipmentAiActiveModal.type !== "profile" || !settingsWorkEquipmentAiModalElements?.body) {
+    return;
+  }
+  const safeIndex = Number(settingsWorkEquipmentAiActiveModal.index);
+  if (!Number.isInteger(safeIndex) || safeIndex < 0) {
+    return;
+  }
+  const profile = normalizeWorkEquipmentAiProfile(settingsWorkEquipmentAiProfileDrafts[safeIndex] ?? {}, safeIndex);
+  const canManage = getCanManageSettings();
+  settingsWorkEquipmentAiModalElements.body.innerHTML = renderSettingsWorkEquipmentAiProfileModalBody(profile, safeIndex, canManage);
+  if (settingsWorkEquipmentAiModalElements.title) {
+    settingsWorkEquipmentAiModalElements.title.textContent = profile.name || `Profil ${safeIndex + 1}`;
+  }
+}
+
 function ensureSettingsWorkEquipmentAiModal() {
   if (settingsWorkEquipmentAiModalElements) {
     return settingsWorkEquipmentAiModalElements;
@@ -141398,6 +141637,42 @@ function ensureSettingsWorkEquipmentAiModal() {
   });
   settingsWorkEquipmentAiModalElements.body?.addEventListener("change", () => {
     syncSettingsWorkEquipmentAiActiveModalDraft();
+    refreshSettingsWorkEquipmentAiCardStatuses();
+  });
+  settingsWorkEquipmentAiModalElements.body?.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!target || !settingsWorkEquipmentAiActiveModal || settingsWorkEquipmentAiActiveModal.type !== "profile" || !getCanManageSettings()) {
+      return;
+    }
+    const addButton = target.closest("[data-ro-ai-profile-question-add]");
+    const removeButton = target.closest("[data-ro-ai-profile-question-remove]");
+    if (!(addButton instanceof HTMLElement) && !(removeButton instanceof HTMLElement)) {
+      return;
+    }
+    event.preventDefault();
+    const safeIndex = Number(settingsWorkEquipmentAiActiveModal.index);
+    if (!Number.isInteger(safeIndex) || safeIndex < 0) {
+      return;
+    }
+    syncSettingsWorkEquipmentAiActiveModalDraft();
+    const current = normalizeWorkEquipmentAiProfile(settingsWorkEquipmentAiProfileDrafts[safeIndex] ?? {}, safeIndex);
+    if (addButton instanceof HTMLElement) {
+      current.quickQuestions = [
+        ...current.quickQuestions,
+        normalizeWorkEquipmentAiQuickQuestion({
+          label: "Novo pitanje",
+          type: "text",
+          options: "",
+          aiHint: "",
+        }, current.quickQuestions.length),
+      ];
+    }
+    if (removeButton instanceof HTMLElement) {
+      const questionIndex = Number.parseInt(String(removeButton.dataset.roAiProfileQuestionRemove || ""), 10);
+      current.quickQuestions = current.quickQuestions.filter((_, itemIndex) => itemIndex !== questionIndex);
+    }
+    settingsWorkEquipmentAiProfileDrafts[safeIndex] = normalizeWorkEquipmentAiProfile(current, safeIndex);
+    rerenderSettingsWorkEquipmentAiActiveProfileModal();
     refreshSettingsWorkEquipmentAiCardStatuses();
   });
   backdrop.addEventListener("click", (event) => {
