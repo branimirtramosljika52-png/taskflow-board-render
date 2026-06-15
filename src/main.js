@@ -3717,6 +3717,11 @@ const settingsJobAiFeedback = document.querySelector("#settings-job-ai-feedback"
 const settingsWorkEquipmentAiSaveButton = document.querySelector("#settings-work-equipment-ai-save");
 const settingsWorkEquipmentAiRefreshButton = document.querySelector("#settings-work-equipment-ai-refresh");
 const settingsWorkEquipmentAiFeedback = document.querySelector("#settings-work-equipment-ai-feedback");
+const settingsWorkEquipmentAiPanel = document.querySelector(".settings-work-equipment-ai-panel");
+const settingsWorkEquipmentAiSummaryProfiles = document.querySelector("#settings-work-equipment-ai-summary-profiles");
+const settingsWorkEquipmentAiSummaryFields = document.querySelector("#settings-work-equipment-ai-summary-fields");
+const settingsWorkEquipmentAiSummaryRegisters = document.querySelector("#settings-work-equipment-ai-summary-registers");
+const settingsWorkEquipmentAiSummaryMode = document.querySelector("#settings-work-equipment-ai-summary-mode");
 const settingsWorkEquipmentAiGeneralInput = document.querySelector("#settings-work-equipment-ai-general");
 const settingsWorkEquipmentAiExtractionInput = document.querySelector("#settings-work-equipment-ai-extraction");
 const settingsWorkEquipmentAiMatchingInput = document.querySelector("#settings-work-equipment-ai-matching");
@@ -132987,6 +132992,22 @@ settingsWorkEquipmentAiRefreshButton?.addEventListener("click", () => {
   void loadSettingsWorkEquipmentAiRegisters({ force: true });
 });
 
+settingsWorkEquipmentAiPanel?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const toggle = target?.closest("[data-settings-work-equipment-ai-toggle]");
+  if (!(toggle instanceof HTMLElement)) {
+    return;
+  }
+  event.preventDefault();
+  const block = toggle.closest("[data-settings-work-equipment-ai-section]");
+  const key = String(block?.dataset.settingsWorkEquipmentAiSection || "").trim();
+  if (!key) {
+    return;
+  }
+  const isExpanded = toggle.getAttribute("aria-expanded") !== "false";
+  applySettingsWorkEquipmentAiSectionCollapsed(key, isExpanded);
+});
+
 settingsWorkEquipmentAiFields?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : event.target?.parentElement;
   const button = target?.closest("[data-ro-ai-open-kind]");
@@ -140978,6 +140999,71 @@ const WORK_EQUIPMENT_AI_QUICK_QUESTION_TYPES = Object.freeze([
   { value: "note", label: "Napomena" },
 ]);
 
+const SETTINGS_WORK_EQUIPMENT_AI_COLLAPSED_STORAGE_KEY = "safeNexus.settings.workEquipmentAi.collapsedSections";
+
+function getSettingsWorkEquipmentAiCollapsedSections() {
+  try {
+    const raw = window.localStorage?.getItem(SETTINGS_WORK_EQUIPMENT_AI_COLLAPSED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map((item) => String(item || "").trim()).filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistSettingsWorkEquipmentAiCollapsedSections(collapsedSections = new Set()) {
+  try {
+    window.localStorage?.setItem(
+      SETTINGS_WORK_EQUIPMENT_AI_COLLAPSED_STORAGE_KEY,
+      JSON.stringify(Array.from(collapsedSections).filter(Boolean)),
+    );
+  } catch {
+    // Local storage is optional; collapsing still works for the current page.
+  }
+}
+
+function applySettingsWorkEquipmentAiSectionCollapsed(sectionKey = "", collapsed = false, { persist = true } = {}) {
+  const key = String(sectionKey || "").trim();
+  if (!key) {
+    return;
+  }
+  const block = Array.from(settingsWorkEquipmentAiPanel?.querySelectorAll("[data-settings-work-equipment-ai-section]") || [])
+    .find((item) => String(item.dataset.settingsWorkEquipmentAiSection || "").trim() === key);
+  if (!block) {
+    return;
+  }
+  const body = block.querySelector("[data-settings-work-equipment-ai-body]");
+  const toggle = block.querySelector("[data-settings-work-equipment-ai-toggle]");
+  const indicator = toggle?.querySelector("b");
+  block.classList.toggle("is-collapsed", collapsed);
+  if (body instanceof HTMLElement) {
+    body.hidden = collapsed;
+  }
+  if (toggle instanceof HTMLElement) {
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+  if (indicator) {
+    indicator.textContent = collapsed ? "+" : "−";
+  }
+  if (persist) {
+    const collapsedSections = getSettingsWorkEquipmentAiCollapsedSections();
+    if (collapsed) {
+      collapsedSections.add(key);
+    } else {
+      collapsedSections.delete(key);
+    }
+    persistSettingsWorkEquipmentAiCollapsedSections(collapsedSections);
+  }
+}
+
+function hydrateSettingsWorkEquipmentAiCollapsedSections() {
+  const collapsedSections = getSettingsWorkEquipmentAiCollapsedSections();
+  settingsWorkEquipmentAiPanel?.querySelectorAll("[data-settings-work-equipment-ai-section]").forEach((block) => {
+    const key = String(block.dataset.settingsWorkEquipmentAiSection || "").trim();
+    applySettingsWorkEquipmentAiSectionCollapsed(key, collapsedSections.has(key), { persist: false });
+  });
+}
+
 function hydrateSettingsWorkEquipmentAiDrafts(settings = getWorkEquipmentAiSettings(), { force = false } = {}) {
   if (settingsWorkEquipmentAiDraftInitialized && !force) {
     return;
@@ -141258,6 +141344,36 @@ function getSettingsWorkEquipmentAiProfileSummary(profile = {}) {
     normalized.quickQuestions.length ? `${normalized.quickQuestions.length} pitanja` : "",
     registerCount ? `${registerCount} IS ZNR stavki` : "",
   ].filter(Boolean).join(" · ");
+}
+
+function renderSettingsWorkEquipmentAiOverview(settings = getWorkEquipmentAiSettings()) {
+  const normalized = normalizeWorkEquipmentAiSettings(settings);
+  const profiles = getSettingsWorkEquipmentAiProfilesForRender(normalized);
+  const profileCount = profiles.length;
+  const variantCount = profiles.reduce((sum, profile) => sum + normalizeWorkEquipmentAiProfile(profile).variants.length, 0);
+  const configuredFields = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS
+    .filter((field) => hasWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiFieldDrafts[field.key] ?? {})).length;
+  const totalFields = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS.length;
+  const registerCount = (Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [])
+    .reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
+  const modeLabels = {
+    suggest: "Prijedlog",
+    fill_empty: "Prazna",
+    fill_all: "Sve",
+  };
+
+  if (settingsWorkEquipmentAiSummaryProfiles) {
+    settingsWorkEquipmentAiSummaryProfiles.textContent = variantCount ? `${profileCount} / ${variantCount}` : String(profileCount);
+  }
+  if (settingsWorkEquipmentAiSummaryFields) {
+    settingsWorkEquipmentAiSummaryFields.textContent = `${configuredFields}/${totalFields}`;
+  }
+  if (settingsWorkEquipmentAiSummaryRegisters) {
+    settingsWorkEquipmentAiSummaryRegisters.textContent = String(registerCount);
+  }
+  if (settingsWorkEquipmentAiSummaryMode) {
+    settingsWorkEquipmentAiSummaryMode.textContent = modeLabels[normalized.autoFillMode] || "Prazna";
+  }
 }
 
 function renderSettingsWorkEquipmentAiProfiles(settings = getWorkEquipmentAiSettings()) {
@@ -142022,6 +142138,8 @@ function renderSettingsWorkEquipmentAi(settings = getWorkEquipmentAiSettings()) 
   renderSettingsWorkEquipmentAiFields();
   renderSettingsWorkEquipmentAiProfiles(normalized);
   renderSettingsWorkEquipmentAiRegisters();
+  renderSettingsWorkEquipmentAiOverview(normalized);
+  hydrateSettingsWorkEquipmentAiCollapsedSections();
 }
 
 async function loadSettingsWorkEquipmentAiRegisters({ force = false } = {}) {

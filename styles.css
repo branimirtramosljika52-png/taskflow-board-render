@@ -5389,6 +5389,48 @@ body.is-profile-modal-open {
   white-space: nowrap;
 }
 
+.settings-work-equipment-ai-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-work-equipment-ai-overview article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.82);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 36%),
+    rgba(255, 255, 255, 0.84);
+  box-shadow: 0 12px 28px rgba(40, 55, 95, 0.05);
+}
+
+.settings-work-equipment-ai-overview span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 880;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-work-equipment-ai-overview strong {
+  color: #10203d;
+  font-size: 1.18rem;
+  font-weight: 980;
+  line-height: 1.1;
+}
+
+.settings-work-equipment-ai-overview small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .settings-work-equipment-ai-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -5398,13 +5440,24 @@ body.is-profile-modal-open {
 
 .settings-work-equipment-ai-block {
   display: grid;
-  gap: 10px;
+  gap: 0;
   min-width: 0;
-  padding: 14px;
+  padding: 0;
   border: 1px solid rgba(190, 204, 226, 0.82);
-  border-radius: 18px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.78);
+  overflow: hidden;
   box-shadow: 0 12px 28px rgba(40, 55, 95, 0.055);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.settings-work-equipment-ai-block:hover {
+  border-color: rgba(96, 165, 250, 0.68);
+  box-shadow: 0 16px 34px rgba(40, 55, 95, 0.075);
+}
+
+.settings-work-equipment-ai-block.is-collapsed {
+  box-shadow: 0 8px 18px rgba(40, 55, 95, 0.035);
 }
 
 .settings-work-equipment-ai-block.settings-work-equipment-ai-profiles-block {
@@ -5421,19 +5474,89 @@ body.is-profile-modal-open {
 
 .settings-work-equipment-ai-block-head {
   display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.92), rgba(239, 246, 255, 0.66));
+}
+
+.settings-work-equipment-ai-block-toggle {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 50px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-work-equipment-ai-block-toggle:hover,
+.settings-work-equipment-ai-block-toggle:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.settings-work-equipment-ai-block-toggle > span {
+  display: grid;
+  gap: 3px;
   min-width: 0;
 }
 
-.settings-work-equipment-ai-block-head strong {
+.settings-work-equipment-ai-block-toggle strong {
   color: #10203d;
-  font-size: 0.88rem;
-  font-weight: 950;
+  font-size: 0.92rem;
+  font-weight: 960;
+  line-height: 1.25;
 }
 
-.settings-work-equipment-ai-block-head span,
+.settings-work-equipment-ai-block-toggle small {
+  color: #64748b;
+  font-size: 0.73rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.settings-work-equipment-ai-block-toggle em {
+  flex: 0 0 auto;
+  max-width: min(38vw, 240px);
+  overflow: hidden;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.09);
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-work-equipment-ai-block-toggle b {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #1d4ed8;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.settings-work-equipment-ai-block-head > span,
 .settings-work-equipment-ai-badge {
   padding: 4px 8px;
   border-radius: 999px;
@@ -5441,6 +5564,25 @@ body.is-profile-modal-open {
   color: #1d4ed8;
   font-size: 0.68rem;
   font-weight: 850;
+}
+
+.settings-work-equipment-ai-head-action {
+  align-self: center;
+  flex: 0 0 auto;
+  height: 36px;
+  margin-right: 4px;
+}
+
+.settings-work-equipment-ai-block-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.settings-work-equipment-ai-block-body[hidden] {
+  display: none;
 }
 
 .settings-work-equipment-ai-fields,
@@ -6188,6 +6330,10 @@ body.is-settings-job-ai-modal-open {
     grid-template-columns: 1fr;
   }
 
+  .settings-work-equipment-ai-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .settings-work-equipment-ai-layout,
   .settings-work-equipment-ai-card-grid,
   .settings-work-equipment-ai-registers,
@@ -6241,6 +6387,30 @@ body.is-settings-job-ai-modal-open {
 
   .settings-brand-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .settings-work-equipment-ai-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-work-equipment-ai-block-head {
+    flex-wrap: wrap;
+  }
+
+  .settings-work-equipment-ai-block-toggle {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .settings-work-equipment-ai-block-toggle em {
+    max-width: 100%;
+  }
+
+  .settings-work-equipment-ai-head-action {
+    width: 100%;
+    margin-right: 0;
   }
 }
 
