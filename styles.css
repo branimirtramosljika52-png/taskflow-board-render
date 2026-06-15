@@ -22364,6 +22364,128 @@ body.is-document-template-editor-open .chat-dock {
   gap: 10px;
 }
 
+.work-order-document-wizard-common-ro-block {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(16, 185, 129, 0.24);
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.96), rgba(255, 255, 255, 0.98));
+  box-shadow: inset 4px 0 0 rgba(16, 185, 129, 0.36), 0 12px 26px rgba(15, 118, 110, 0.08);
+}
+
+.work-order-document-wizard-common-ro-body {
+  display: grid;
+  gap: 10px;
+}
+
+.work-order-document-wizard-common-ro-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(187, 247, 208, 0.86);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.work-order-document-wizard-common-ro-card-head,
+.work-order-document-wizard-common-ro-person {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.work-order-document-wizard-common-ro-card-head > div,
+.work-order-document-wizard-common-ro-person > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.work-order-document-wizard-common-ro-card-head strong,
+.work-order-document-wizard-common-ro-person strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-wizard-common-ro-card-head span,
+.work-order-document-wizard-common-ro-person small {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-wizard-common-ro-info-grid,
+.work-order-document-wizard-common-ro-people {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.work-order-document-wizard-common-ro-info-grid > div,
+.work-order-document-wizard-common-ro-person {
+  padding: 9px 10px;
+  border: 1px solid rgba(203, 213, 225, 0.74);
+  border-radius: 13px;
+  background: rgba(248, 250, 252, 0.86);
+}
+
+.work-order-document-wizard-common-ro-info-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.work-order-document-wizard-common-ro-info-grid strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-wizard-common-ro-person > span {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.work-order-document-wizard-common-ro-person.is-ok > span {
+  background: #16a34a;
+}
+
+.work-order-document-wizard-common-ro-person em {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
+  color: #475569;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
 .work-order-document-wizard-common-layout {
   display: grid;
   gap: 14px;

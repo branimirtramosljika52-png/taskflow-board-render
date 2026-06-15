@@ -5237,6 +5237,9 @@ const workOrderDocumentWizardCommonPeopleSection = document.querySelector("#work
 const workOrderDocumentWizardCommonPeopleBody = document.querySelector("#work-order-document-wizard-common-people-body");
 const workOrderDocumentWizardCommonPeopleSummary = document.querySelector("#work-order-document-wizard-common-people-summary");
 const workOrderDocumentWizardCommonPeopleToggleButton = document.querySelector("#work-order-document-wizard-common-people-toggle");
+const workOrderDocumentWizardCommonRoSection = document.querySelector("#work-order-document-wizard-common-ro");
+const workOrderDocumentWizardCommonRoBody = document.querySelector("#work-order-document-wizard-common-ro-body");
+const workOrderDocumentWizardCommonRoSummary = document.querySelector("#work-order-document-wizard-common-ro-summary");
 const workOrderDocumentWizardCommonEnvSection = document.querySelector("#work-order-document-wizard-common-env");
 const workOrderDocumentWizardCommonEnvBody = document.querySelector("#work-order-document-wizard-common-env-body");
 const workOrderDocumentWizardCommonEnvToggleButton = document.querySelector("#work-order-document-wizard-common-env-toggle");
@@ -113975,7 +113978,7 @@ function getWorkOrderDocumentWorkEquipmentFilterCounts(items = [], today = getWo
   }, {});
 }
 
-function appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, postDraft = null) {
+function appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, postDraft = null, { includePreview = true } = {}) {
   if (!postDraft || typeof postDraft !== "object") {
     return;
   }
@@ -114023,7 +114026,7 @@ function appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, postDraft = null
     panel.append(list);
   }
 
-  const payload = postDraft.payload && typeof postDraft.payload === "object" ? postDraft.payload : null;
+  const payload = includePreview && postDraft.payload && typeof postDraft.payload === "object" ? postDraft.payload : null;
   if (payload) {
     const details = document.createElement("details");
     details.className = "work-order-document-isznr-post-draft-preview";
@@ -114036,6 +114039,143 @@ function appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, postDraft = null
   }
 
   bodyNode.append(panel);
+}
+
+function getWorkOrderDocumentIsznrPostPeopleGroup(postDraft = null, key = "experts") {
+  const group = postDraft?.people?.[key] && typeof postDraft.people[key] === "object"
+    ? postDraft.people[key]
+    : {};
+  const labels = Array.isArray(group.labels)
+    ? group.labels.map((label) => String(label || "").trim()).filter(Boolean)
+    : String(group.labels || "").split(",").map((label) => label.trim()).filter(Boolean);
+  return {
+    count: Number(group.count ?? labels.length) || 0,
+    labels,
+  };
+}
+
+function createWorkOrderDocumentRoCommonPersonRow(label = "", people = {}, requiredText = "") {
+  const row = document.createElement("div");
+  row.className = `work-order-document-wizard-common-ro-person${people.count > 0 ? " is-ok" : " is-missing"}`;
+
+  const mark = document.createElement("span");
+  mark.textContent = people.count > 0 ? "✓" : "!";
+
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = `${label} · ${people.count || 0}`;
+  const detail = document.createElement("small");
+  detail.textContent = people.labels.length > 0
+    ? people.labels.join(", ")
+    : "Nije pronađeno u People modulu.";
+  copy.append(title, detail);
+
+  const required = document.createElement("em");
+  required.textContent = requiredText;
+
+  row.append(mark, copy, required);
+  return row;
+}
+
+function createWorkOrderDocumentRoCommonCard(workOrder = {}, stateEntry = {}) {
+  const card = document.createElement("article");
+  card.className = "work-order-document-wizard-common-ro-card";
+
+  const head = document.createElement("div");
+  head.className = "work-order-document-wizard-common-ro-card-head";
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = workOrder?.workOrderNumber
+    ? `RN ${workOrder.workOrderNumber}`
+    : "Radna oprema";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = [
+    workOrder?.companyName || "",
+    workOrder?.locationName || "",
+    stateEntry.loaded ? `${Array.isArray(stateEntry.items) ? stateEntry.items.length : 0} IS ZNR stavki` : "IS ZNR dohvat u pripremi",
+  ].filter(Boolean).join(" · ");
+  copy.append(title, subtitle);
+  head.append(copy);
+  head.append(createBadge(stateEntry.postDraft?.ready ? "POST spreman" : "Provjeri POST", "document-template-meta-badge"));
+  card.append(head);
+
+  const infoGrid = document.createElement("div");
+  infoGrid.className = "work-order-document-wizard-common-ro-info-grid";
+  [
+    ["Poslodavac", workOrder?.companyName || "Nije upisano"],
+    ["Lokacija RN-a", workOrder?.locationName || "Nije upisana"],
+    ["OIB", workOrder?.companyOib || stateEntry.companyOib || "-"],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    const itemLabel = document.createElement("span");
+    itemLabel.textContent = label;
+    const itemValue = document.createElement("strong");
+    itemValue.textContent = value;
+    item.append(itemLabel, itemValue);
+    infoGrid.append(item);
+  });
+  card.append(infoGrid);
+
+  const people = document.createElement("div");
+  people.className = "work-order-document-wizard-common-ro-people";
+  people.append(
+    createWorkOrderDocumentRoCommonPersonRow(
+      "Ispitivači / stručnjaci ZNR",
+      getWorkOrderDocumentIsznrPostPeopleGroup(stateEntry.postDraft, "experts"),
+      "min. 1",
+    ),
+    createWorkOrderDocumentRoCommonPersonRow(
+      "Nositelji / potpisnici",
+      getWorkOrderDocumentIsznrPostPeopleGroup(stateEntry.postDraft, "signedBy"),
+      "min. 2",
+    ),
+  );
+  card.append(people);
+
+  if (stateEntry.message) {
+    const message = document.createElement("p");
+    message.className = "helper-copy module-copy";
+    message.textContent = stateEntry.message;
+    card.append(message);
+  }
+  if (stateEntry.error) {
+    const error = document.createElement("p");
+    error.className = "form-error";
+    error.textContent = stateEntry.error;
+    card.append(error);
+  }
+
+  appendWorkOrderDocumentIsznrPostDraftSummary(card, stateEntry.postDraft, { includePreview: false });
+  return card;
+}
+
+function renderWorkOrderDocumentWizardCommonRoSection(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
+  const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
+  const candidates = mode === "znr" ? [] : getWorkOrderDocumentWizardWorkEquipmentCandidates(selectedWorkOrders);
+
+  if (workOrderDocumentWizardCommonRoSection) {
+    workOrderDocumentWizardCommonRoSection.hidden = candidates.length === 0;
+  }
+  if (workOrderDocumentWizardCommonRoSummary) {
+    workOrderDocumentWizardCommonRoSummary.textContent = candidates.length > 0
+      ? `${candidates.length} RN s radnom opremom. Odabir opreme ostaje u RO kartici.`
+      : "";
+  }
+  if (!workOrderDocumentWizardCommonRoBody) {
+    return;
+  }
+
+  workOrderDocumentWizardCommonRoBody.replaceChildren();
+  if (candidates.length === 0) {
+    return;
+  }
+
+  candidates.forEach((workOrder) => {
+    queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder);
+    const stateEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
+    workOrderDocumentWizardCommonRoBody.append(createWorkOrderDocumentRoCommonCard(workOrder, stateEntry));
+  });
 }
 
 function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {}, stateEntry = {}) {
@@ -114062,31 +114202,10 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
 
   toolbar.append(summary, refreshButton);
   bodyNode.append(toolbar);
-  appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, stateEntry.postDraft);
-
-  if (stateEntry.postResult?.message) {
-    const result = document.createElement("p");
-    result.className = "helper-copy module-copy work-order-document-work-equipment-message is-success";
-    const resultText = [
-      stateEntry.postResult.message,
-      stateEntry.postResult.recordNumber ? `Broj: ${stateEntry.postResult.recordNumber}` : "",
-      stateEntry.postResult.isznrId ? `ID: ${stateEntry.postResult.isznrId}` : "",
-    ].filter(Boolean).join(" · ");
-    result.textContent = resultText;
-    const pdfActionUrl = getIsznrRoPdfActionUrl(stateEntry.postResult);
-    if (pdfActionUrl) {
-      const openPdfLink = document.createElement("a");
-      openPdfLink.className = "ghost-button";
-      openPdfLink.href = pdfActionUrl;
-      openPdfLink.target = "_blank";
-      openPdfLink.rel = "noopener";
-      openPdfLink.textContent = "Otvori / preuzmi IS ZNR FC zapisnik";
-      openPdfLink.style.marginLeft = "10px";
-      result.append(document.createTextNode(" "), openPdfLink);
-    }
-    bodyNode.append(result);
-  }
-  appendWorkOrderDocumentIsznrPostDraftSummary(bodyNode, stateEntry.postDraft);
+  const basicsHint = document.createElement("p");
+  basicsHint.className = "helper-copy module-copy work-order-document-work-equipment-message";
+  basicsHint.textContent = "Osnovni RO podaci i IS ZNR POST priprema nalaze se u tabu Osnovno.";
+  bodyNode.append(basicsHint);
 
   if (stateEntry.postResult?.message) {
     const result = document.createElement("p");
@@ -115034,6 +115153,7 @@ function syncWorkOrderDocumentWizardCommonInputs() {
       workOrderDocumentWizardCommonPeopleBody.append(areaNode);
     });
   }
+  renderWorkOrderDocumentWizardCommonRoSection(selectedWorkOrders);
 
   if (workOrderDocumentCommonStatusSlot) {
     const sharedStatus = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.status || "Otvoreni RN");

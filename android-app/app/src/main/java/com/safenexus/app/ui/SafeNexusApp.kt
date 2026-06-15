@@ -5285,9 +5285,6 @@ private fun DocumentationWorkEquipmentOptionList(
     }
     val overdueCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Overdue, today) }
     val upcomingCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Upcoming, today) }
-    val postDraftReady = postDraftStatus["postDraftReady"].equals("true", ignoreCase = true)
-    val postDraftReadyCount = postDraftStatus["postDraftReadyCount"].orEmpty()
-    val postDraftMissingCount = postDraftStatus["postDraftMissingCount"].orEmpty()
     val postDraftMissingLabels = postDraftStatus["postDraftMissingLabels"].orEmpty()
         .split(",")
         .map { it.trim() }
@@ -5298,10 +5295,6 @@ private fun DocumentationWorkEquipmentOptionList(
         .filter { it.isNotBlank() && it != "equipments" }
     val readyManualEquipments = manualEquipments.filter { it.isReadyForIsznrPost() }
     val selectedTotal = selectedItemIds.size + readyManualEquipments.size
-    val expertLabels = postDraftStatus["postDraftExpertLabels"].orEmpty()
-    val signedByLabels = postDraftStatus["postDraftSignedByLabels"].orEmpty()
-    val expertCount = postDraftStatus["postDraftExpertCount"].orEmpty().ifBlank { "0" }
-    val signedByCount = postDraftStatus["postDraftSignedByCount"].orEmpty().ifBlank { "0" }
     if (showManualEquipmentDialog) {
         ManualWorkEquipmentDialog(
             title = manualEquipmentDialogTitle,
@@ -5348,89 +5341,6 @@ private fun DocumentationWorkEquipmentOptionList(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
-        }
-        if (postDraftReadyCount.isNotBlank() || postDraftMissingCount.isNotBlank()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = if (postDraftReady) Color(0xFFECFDF5) else Color(0xFFFFF7ED),
-                tonalElevation = 0.dp,
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            if (postDraftReady) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
-                            contentDescription = null,
-                            tint = if (postDraftReady) Color(0xFF059669) else Color(0xFFB45309),
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                if (postDraftReady) "IS ZNR POST priprema spremna" else "IS ZNR POST priprema",
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                "Slanje se provjerava i pokreće u Sažetku.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                            )
-                        }
-                        AssistChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    if (postDraftReady) {
-                                        "$postDraftReadyCount spremno"
-                                    } else {
-                                        "Fali $postDraftMissingCount"
-                                    },
-                                )
-                            },
-                        )
-                    }
-                    if (postDraftMissingLabels.isNotEmpty()) {
-                        Text(
-                            "Fali: ${postDraftMissingLabels.take(4).joinToString(", ")}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                        )
-                    }
-                }
-            }
-        }
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("Osnovni podaci RO", fontWeight = FontWeight.Bold)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DocumentationWorkEquipmentInfoPill("Poslodavac", companyName.ifBlank { "Nije upisano" })
-                    DocumentationWorkEquipmentInfoPill("Lokacija RN-a", locationName.ifBlank { "Nije upisana" })
-                }
-                DocumentationWorkEquipmentPeopleRow(
-                    label = "Ispitivači / stručnjaci ZNR",
-                    count = expertCount,
-                    names = expertLabels,
-                    required = "min. 1",
-                )
-                DocumentationWorkEquipmentPeopleRow(
-                    label = "Nositelji / potpisnici",
-                    count = signedByCount,
-                    names = signedByLabels,
-                    required = "min. 2",
-                )
-            }
         }
         if (options.isEmpty()) {
             Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
@@ -5815,6 +5725,132 @@ private fun IsznrManualWorkEquipment.subtitle(): String =
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .joinToString(" · ")
+
+@Composable
+private fun DocumentationWorkEquipmentBasicsCard(
+    companyName: String,
+    locationName: String,
+    statusMessage: String,
+    postDraftStatus: Map<String, String>,
+) {
+    val postDraftReady = postDraftStatus["postDraftReady"].equals("true", ignoreCase = true)
+    val postDraftReadyCount = postDraftStatus["postDraftReadyCount"].orEmpty()
+    val postDraftMissingCount = postDraftStatus["postDraftMissingCount"].orEmpty()
+    val postDraftMissingLabels = postDraftStatus["postDraftMissingLabels"].orEmpty()
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    val expertLabels = postDraftStatus["postDraftExpertLabels"].orEmpty()
+    val signedByLabels = postDraftStatus["postDraftSignedByLabels"].orEmpty()
+    val expertCount = postDraftStatus["postDraftExpertCount"].orEmpty().ifBlank { "0" }
+    val signedByCount = postDraftStatus["postDraftSignedByCount"].orEmpty().ifBlank { "0" }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("RO - osnovno", fontWeight = FontWeight.Black)
+                    Text(
+                        "Ovi podaci se koriste za zapisnik radne opreme i IS ZNR slanje.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                if (postDraftReadyCount.isNotBlank() || postDraftMissingCount.isNotBlank()) {
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                if (postDraftReady) {
+                                    "$postDraftReadyCount spremno"
+                                } else {
+                                    "Fali $postDraftMissingCount"
+                                },
+                            )
+                        },
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DocumentationWorkEquipmentInfoPill("Poslodavac", companyName.ifBlank { "Nije upisano" })
+                DocumentationWorkEquipmentInfoPill("Lokacija RN-a", locationName.ifBlank { "Nije upisana" })
+            }
+            if (statusMessage.isNotBlank()) {
+                Text(
+                    statusMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = if (postDraftReady) Color(0xFFECFDF5) else Color(0xFFFFF7ED),
+                tonalElevation = 0.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (postDraftReady) Icons.Rounded.CheckCircle else Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = if (postDraftReady) Color(0xFF059669) else Color(0xFFB45309),
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (postDraftReady) "IS ZNR POST priprema spremna" else "IS ZNR POST priprema",
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "Slanje se pokreće u Sažetku.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            )
+                        }
+                    }
+                    if (postDraftMissingLabels.isNotEmpty()) {
+                        Text(
+                            "Fali: ${postDraftMissingLabels.take(4).joinToString(", ")}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                    }
+                }
+            }
+            DocumentationWorkEquipmentPeopleRow(
+                label = "Ispitivači / stručnjaci ZNR",
+                count = expertCount,
+                names = expertLabels,
+                required = "min. 1",
+            )
+            DocumentationWorkEquipmentPeopleRow(
+                label = "Nositelji / potpisnici",
+                count = signedByCount,
+                names = signedByLabels,
+                required = "min. 2",
+            )
+        }
+    }
+}
 
 @Composable
 private fun DocumentationWorkEquipmentInfoPill(
@@ -14554,6 +14590,14 @@ private fun WorkOrderDocumentationWizardDialog(
                         onTipkaloAuthorizationHolderUserIdChange = { tipkaloAuthorizationHolderUserId = it },
                         enabled = !formLoading,
                     )
+                    if (showWorkEquipmentFromIsznr) {
+                        DocumentationWorkEquipmentBasicsCard(
+                            companyName = workOrder.companyName,
+                            locationName = workOrder.locationName,
+                            statusMessage = workEquipmentStatusMessage,
+                            postDraftStatus = context.workEquipmentStatus,
+                        )
+                    }
                 }
                 }
 
