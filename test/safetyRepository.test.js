@@ -603,6 +603,19 @@ test("in-memory safety repository stores work equipment NexAI settings per organ
           confidenceRequired: "high",
         },
       },
+      registers: [
+        {
+          path: "ro_mechanical_engineering_registers",
+          label: "Strojarski dio",
+          items: [
+            {
+              id: "1",
+              iri: "/api/v3/ro_mechanical_engineering_registers/1",
+              description: "Smještaj i osiguranje slobodnog prostora",
+            },
+          ],
+        },
+      ],
       profiles: [
         {
           name: "Forklift",
@@ -623,11 +636,13 @@ test("in-memory safety repository stores work equipment NexAI settings per organ
   assert.equal(saved.generalInstruction, "Read plates and technical documentation first.");
   assert.equal(saved.fieldInstructions.serialNumber.mustInclude, "plate source");
   assert.equal(saved.registryInstructions["mechanical:/api/v3/ro_mechanical/1"].confidenceRequired, "high");
+  assert.equal(saved.registers[0].items[0].iri, "/api/v3/ro_mechanical_engineering_registers/1");
   assert.equal(saved.profiles[0].aliases.length, 2);
   assert.equal(saved.profiles[0].registerDefaults.mechanical[0], "/api/v3/ro_mechanical/1");
 
   const snapshot = await repository.getSnapshot();
   assert.equal(snapshot.workEquipmentAiSettings.length, 1);
+  assert.equal(snapshot.workEquipmentAiSettings[0].registers[0].items[0].description, "Smještaj i osiguranje slobodnog prostora");
   assert.equal(snapshot.workEquipmentAiSettings[0].profiles[0].fieldDefaults.purposeDescription, "Transport and lifting of loads.");
   assert.equal(snapshot.workEquipmentAiSettings[0].profiles[0].breakdownInstruction, "Check mast, forks, brakes and steering.");
 });

@@ -6401,6 +6401,53 @@ function normalizeWorkEquipmentAiInstructionMap(value = {}) {
   );
 }
 
+function normalizeWorkEquipmentAiRegisterItemCache(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const normalized = {
+    id: normalizeText(source.id),
+    isznrId: normalizeText(source.isznrId || source.isznr_id),
+    iri: normalizeText(source.iri),
+    "@id": normalizeText(source["@id"]),
+    value: normalizeText(source.value),
+    code: normalizeText(source.code || source.shortCode),
+    name: normalizeText(source.name),
+    label: normalizeText(source.label),
+    title: normalizeText(source.title),
+    naziv: normalizeText(source.naziv),
+    description: normalizeText(source.description || source.opis),
+    note: normalizeText(source.note || source.napomena),
+    activeFrom: normalizeText(source.activeFrom || source.active_from),
+    activeTo: normalizeText(source.activeTo || source.active_to),
+  };
+  return Object.fromEntries(Object.entries(normalized).filter(([, itemValue]) => itemValue));
+}
+
+function getWorkEquipmentAiRegisterItemCacheId(value = {}) {
+  return normalizeText(value.iri || value["@id"] || value.id || value.isznrId || value.value || value.code);
+}
+
+function normalizeWorkEquipmentAiRegisterGroupsCache(value = []) {
+  const groups = Array.isArray(value) ? value : [];
+  return groups
+    .slice(0, 30)
+    .map((group) => {
+      const source = group && typeof group === "object" ? group : {};
+      const items = (Array.isArray(source.items) ? source.items : [])
+        .slice(0, 1500)
+        .map((item) => normalizeWorkEquipmentAiRegisterItemCache(item))
+        .filter((item) => getWorkEquipmentAiRegisterItemCacheId(item));
+      return {
+        path: normalizeText(source.path),
+        label: normalizeText(source.label),
+        group: normalizeText(source.group),
+        count: Number(source.count ?? items.length) || items.length,
+        fetchedAt: normalizeText(source.fetchedAt),
+        items,
+      };
+    })
+    .filter((group) => (group.path || group.label || group.group) && group.items.length > 0);
+}
+
 function normalizeWorkEquipmentAiProfile(value = {}, index = 0) {
   const source = value && typeof value === "object" ? value : {};
   const id = normalizeText(source.id) || `ro-ai-profile-${index + 1}`;
@@ -6465,6 +6512,7 @@ export function normalizeWorkEquipmentAiSettings(value = {}) {
       : "fill_empty",
     fieldInstructions: normalizeWorkEquipmentAiInstructionMap(source.fieldInstructions),
     registryInstructions: normalizeWorkEquipmentAiInstructionMap(source.registryInstructions),
+    registers: normalizeWorkEquipmentAiRegisterGroupsCache(source.registers || source.registryGroups || source.registerGroups),
     profiles: (Array.isArray(source.profiles) ? source.profiles : [])
       .slice(0, 60)
       .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index))

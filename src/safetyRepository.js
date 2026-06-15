@@ -5328,6 +5328,10 @@ export class InMemorySafetyRepository {
         registryInstructions: Object.fromEntries(
           Object.entries(item.registryInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
         ),
+        registers: (item.registers ?? []).map((group) => ({
+          ...group,
+          items: (group.items ?? []).map((registerItem) => ({ ...registerItem })),
+        })),
         profiles: (item.profiles ?? []).map((profile) => ({
           ...profile,
           aliases: [...(profile.aliases ?? [])],

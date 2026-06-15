@@ -2008,6 +2008,7 @@ const state = {
   workEquipmentAiSettings: {
     fieldInstructions: {},
     registryInstructions: {},
+    registers: [],
     profiles: [],
   },
   riskPpeCatalog: [],
@@ -3723,6 +3724,8 @@ let settingsJobAiActiveModalKey = "";
 let settingsJobAiModalElements = null;
 let settingsWorkEquipmentAiRegisterGroups = [];
 let settingsWorkEquipmentAiRegisterGroupsLoaded = false;
+let settingsWorkEquipmentAiRegisterGroupsFromCache = false;
+let settingsWorkEquipmentAiRegisterOrganizationId = "";
 let settingsWorkEquipmentAiFieldDrafts = {};
 let settingsWorkEquipmentAiRegisterDrafts = {};
 let settingsWorkEquipmentAiDraftInitialized = false;
@@ -139694,6 +139697,49 @@ function normalizeWorkEquipmentAiInstructionMap(value = {}) {
   );
 }
 
+function normalizeWorkEquipmentAiRegisterItemCache(item = {}) {
+  const source = item && typeof item === "object" ? item : {};
+  const normalized = {
+    id: String(source.id || "").trim(),
+    isznrId: String(source.isznrId || source.isznr_id || "").trim(),
+    iri: String(source.iri || "").trim(),
+    "@id": String(source["@id"] || "").trim(),
+    value: String(source.value || "").trim(),
+    code: String(source.code || source.shortCode || "").trim(),
+    name: String(source.name || "").trim(),
+    label: String(source.label || "").trim(),
+    title: String(source.title || "").trim(),
+    naziv: String(source.naziv || "").trim(),
+    description: String(source.description || source.opis || "").trim(),
+    note: String(source.note || source.napomena || "").trim(),
+    activeFrom: String(source.activeFrom || source.active_from || "").trim(),
+    activeTo: String(source.activeTo || source.active_to || "").trim(),
+  };
+  return Object.fromEntries(Object.entries(normalized).filter(([, value]) => value));
+}
+
+function normalizeWorkEquipmentAiRegisterGroupsCache(value = []) {
+  const groups = Array.isArray(value) ? value : [];
+  return groups
+    .slice(0, 30)
+    .map((group) => {
+      const source = group && typeof group === "object" ? group : {};
+      const items = (Array.isArray(source.items) ? source.items : [])
+        .slice(0, 1500)
+        .map((item) => normalizeWorkEquipmentAiRegisterItemCache(item))
+        .filter((item) => getWorkEquipmentAiRegisterItemId(item));
+      return {
+        path: String(source.path || "").trim(),
+        label: String(source.label || "").trim(),
+        group: String(source.group || "").trim(),
+        count: Number(source.count ?? items.length) || items.length,
+        fetchedAt: String(source.fetchedAt || "").trim(),
+        items,
+      };
+    })
+    .filter((group) => (group.path || group.label || group.group) && group.items.length > 0);
+}
+
 function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
   const source = profile && typeof profile === "object" ? profile : {};
   const id = String(source.id || "").trim() || createClientSideId(`ro-ai-profile-${index + 1}`);
@@ -139780,6 +139826,7 @@ function normalizeWorkEquipmentAiSettings(value = {}) {
     autoFillMode: ["suggest", "fill_empty", "fill_all"].includes(autoFillMode) ? autoFillMode : "fill_empty",
     fieldInstructions: normalizeWorkEquipmentAiInstructionMap(source.fieldInstructions),
     registryInstructions: normalizeWorkEquipmentAiInstructionMap(source.registryInstructions),
+    registers: normalizeWorkEquipmentAiRegisterGroupsCache(source.registers || source.registryGroups || source.registerGroups),
     profiles: (Array.isArray(source.profiles) ? source.profiles : [])
       .slice(0, 60)
       .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index))
@@ -140599,6 +140646,27 @@ function resetSettingsWorkEquipmentAiDrafts() {
   settingsWorkEquipmentAiDraftInitialized = false;
 }
 
+function syncSettingsWorkEquipmentAiRegistersFromSettings(settings = getWorkEquipmentAiSettings()) {
+  const normalized = normalizeWorkEquipmentAiSettings(settings);
+  const organizationId = String(normalized.organizationId || state.activeOrganizationId || "").trim();
+  const cachedGroups = normalizeWorkEquipmentAiRegisterGroupsCache(normalized.registers);
+  const organizationChanged = organizationId && organizationId !== settingsWorkEquipmentAiRegisterOrganizationId;
+
+  if (organizationChanged) {
+    settingsWorkEquipmentAiRegisterGroups = [];
+    settingsWorkEquipmentAiRegisterGroupsLoaded = false;
+    settingsWorkEquipmentAiRegisterGroupsFromCache = false;
+    settingsWorkEquipmentAiRegisterOrganizationId = organizationId;
+  }
+
+  if (cachedGroups.length > 0 && (!settingsWorkEquipmentAiRegisterGroupsLoaded || settingsWorkEquipmentAiRegisterGroupsFromCache || organizationChanged)) {
+    settingsWorkEquipmentAiRegisterGroups = cachedGroups;
+    settingsWorkEquipmentAiRegisterGroupsLoaded = true;
+    settingsWorkEquipmentAiRegisterGroupsFromCache = true;
+    settingsWorkEquipmentAiRegisterOrganizationId = organizationId;
+  }
+}
+
 function getSettingsWorkEquipmentAiProfilesForRender(settings = getWorkEquipmentAiSettings()) {
   hydrateSettingsWorkEquipmentAiDrafts(settings);
   return (settingsWorkEquipmentAiProfileDrafts.length > 0 ? settingsWorkEquipmentAiProfileDrafts : createDefaultWorkEquipmentAiProfiles())
@@ -140879,7 +140947,7 @@ function renderSettingsWorkEquipmentAiRegisters() {
   const loadedCount = groups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
   if (settingsWorkEquipmentAiRegisterSummary) {
     settingsWorkEquipmentAiRegisterSummary.textContent = settingsWorkEquipmentAiRegisterGroupsLoaded
-      ? `${loadedCount} stavki`
+      ? `${loadedCount} stavki${settingsWorkEquipmentAiRegisterGroupsFromCache ? " · spremljeno" : ""}`
       : "Nije učitano";
   }
   if (!groups.length) {
@@ -140992,6 +141060,7 @@ function collectSettingsWorkEquipmentAiSettings() {
     autoFillMode: settingsWorkEquipmentAiModeInput?.value || "fill_empty",
     fieldInstructions: normalizeWorkEquipmentAiInstructionMap(settingsWorkEquipmentAiFieldDrafts),
     registryInstructions: normalizeWorkEquipmentAiInstructionMap(settingsWorkEquipmentAiRegisterDrafts),
+    registers: normalizeWorkEquipmentAiRegisterGroupsCache(settingsWorkEquipmentAiRegisterGroups),
     profiles: collectSettingsWorkEquipmentAiProfiles(),
   });
 }
@@ -141320,6 +141389,7 @@ function closeSettingsWorkEquipmentAiModal() {
 
 function renderSettingsWorkEquipmentAi(settings = getWorkEquipmentAiSettings()) {
   const normalized = normalizeWorkEquipmentAiSettings(settings);
+  syncSettingsWorkEquipmentAiRegistersFromSettings(normalized);
   hydrateSettingsWorkEquipmentAiDrafts(normalized);
   const canManage = getCanManageSettings();
   if (settingsWorkEquipmentAiGeneralInput && document.activeElement !== settingsWorkEquipmentAiGeneralInput) {
@@ -141371,15 +141441,61 @@ async function loadSettingsWorkEquipmentAiRegisters({ force = false } = {}) {
   setInlineMessage(settingsWorkEquipmentAiFeedback, "Dohvaćam IS ZNR šifrarnike za radnu opremu...", "success");
   try {
     const payload = await apiRequest("/isznr/work-equipment?includeRegisters=true&maxRecords=1");
-    settingsWorkEquipmentAiRegisterGroups = Array.isArray(payload?.registers) ? payload.registers : [];
-    settingsWorkEquipmentAiRegisterGroupsLoaded = true;
-    renderSettingsWorkEquipmentAi(collectSettingsWorkEquipmentAiSettings());
+    const nextGroups = normalizeWorkEquipmentAiRegisterGroupsCache(payload?.registers);
+    let persistedCache = false;
+    let persistCacheError = "";
+    if (nextGroups.length > 0) {
+      settingsWorkEquipmentAiRegisterGroups = nextGroups;
+      settingsWorkEquipmentAiRegisterGroupsFromCache = false;
+      settingsWorkEquipmentAiRegisterOrganizationId = String(state.activeOrganizationId || "").trim();
+    }
+    settingsWorkEquipmentAiRegisterGroupsLoaded = settingsWorkEquipmentAiRegisterGroups.length > 0;
+    const nextSettings = collectSettingsWorkEquipmentAiSettings();
+    if (nextGroups.length > 0 && getCanManageSettings() && state.activeOrganizationId) {
+      try {
+        await apiRequest("/work-equipment/ai-settings", {
+          method: "POST",
+          body: { settings: nextSettings },
+        });
+        state.workEquipmentAiSettings = normalizeWorkEquipmentAiSettings({
+          ...nextSettings,
+          organizationId: state.activeOrganizationId,
+        });
+        persistedCache = true;
+      } catch (persistError) {
+        persistCacheError = persistError?.message || "spremanje nije uspjelo";
+      }
+    }
+    renderSettingsWorkEquipmentAi(nextSettings);
     const count = settingsWorkEquipmentAiRegisterGroups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
-    setInlineMessage(settingsWorkEquipmentAiFeedback, `IS ZNR šifrarnici su učitani (${count} stavki).`, "success");
+    if (nextGroups.length > 0) {
+      setInlineMessage(
+        settingsWorkEquipmentAiFeedback,
+        persistCacheError
+          ? `IS ZNR šifrarnici su učitani (${count} stavki), ali cache nije spremljen: ${persistCacheError}.`
+          : `IS ZNR šifrarnici su učitani (${count} stavki)${persistedCache ? " i spremljeni za iduće otvaranje" : ""}.`,
+        persistCacheError ? "" : "success",
+      );
+    } else {
+      setInlineMessage(
+        settingsWorkEquipmentAiFeedback,
+        count > 0
+          ? `IS ZNR nije vratio nove šifrarnike. Zadržavam zadnji poznati popis (${count} stavki).`
+          : "IS ZNR nije vratio šifrarnike za prikaz.",
+        count > 0 ? "success" : "",
+      );
+    }
     return settingsWorkEquipmentAiRegisterGroups;
   } catch (error) {
-    setInlineMessage(settingsWorkEquipmentAiFeedback, error?.message || "IS ZNR šifrarnici nisu dohvaćeni.");
-    return [];
+    const count = settingsWorkEquipmentAiRegisterGroups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
+    setInlineMessage(
+      settingsWorkEquipmentAiFeedback,
+      count > 0
+        ? `${error?.message || "IS ZNR šifrarnici nisu dohvaćeni."} Zadržavam zadnji poznati popis (${count} stavki).`
+        : (error?.message || "IS ZNR šifrarnici nisu dohvaćeni."),
+      count > 0 ? "success" : "",
+    );
+    return settingsWorkEquipmentAiRegisterGroups;
   } finally {
     if (settingsWorkEquipmentAiRefreshButton) {
       settingsWorkEquipmentAiRefreshButton.disabled = !getCanManageSettings();
