@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.131.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.132.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -3875,8 +3875,27 @@ function inferIsznrPhysicalTypesFromManualMeasurements(measurements = []) {
   return Array.from(new Set(types));
 }
 
+function parseFirstPhysicalFactorNumber(value = "") {
+  const match = String(value || "").match(/-?\d+(?:[,.]\d+)?/);
+  if (!match) return null;
+  const number = Number(match[0].replace(",", "."));
+  return Number.isFinite(number) ? number : null;
+}
+
+function allowedAirFlowSpeedForAirTemperature(temperature = "") {
+  const value = parseFirstPhysicalFactorNumber(temperature);
+  if (value === null) return "";
+  if (value < 10) return "0,5";
+  if (value > 27) return "0,8";
+  return "0,6";
+}
+
 function normalizeIsznrManualPhysicalFactors(source = {}) {
   const manual = source && typeof source === "object" ? source : {};
+  const manualAirTemperature = normalizeInputValue(manual.airTemperature || manual.outsideTemperature);
+  const manualRelativeAirHumidity = normalizeInputValue(manual.relativeAirHumidity || manual.relativeHumidity);
+  const manualAirFlowSpeed = normalizeInputValue(manual.airFlowSpeed || manual.airflowSpeed);
+  const allowedAirFlowSpeed = allowedAirFlowSpeedForAirTemperature(manualAirTemperature);
   const spaces = (Array.isArray(manual.spaces) ? manual.spaces : [])
     .map((space, index) => {
       const name = normalizeInputValue(space?.name || space?.label || space?.title);
@@ -3888,14 +3907,14 @@ function normalizeIsznrManualPhysicalFactors(source = {}) {
         workEquipment: normalizeInputValue(space?.workEquipment || space?.equipmentDescription) || "Radna oprema prema zatecenom stanju.",
         finalGrade: normalizeIsznrGradeValue(space?.finalGrade || space?.grade, 1),
         temperatureAllowed: normalizeInputValue(space?.temperatureAllowed),
-        temperatureMin: normalizeInputValue(space?.temperatureMin),
-        temperatureMax: normalizeInputValue(space?.temperatureMax),
+        temperatureMin: normalizeInputValue(space?.temperatureMin) || manualAirTemperature,
+        temperatureMax: normalizeInputValue(space?.temperatureMax) || manualAirTemperature,
         humidityAllowed: normalizeInputValue(space?.humidityAllowed),
-        humidityMin: normalizeInputValue(space?.humidityMin),
-        humidityMax: normalizeInputValue(space?.humidityMax),
-        airflowAllowed: normalizeInputValue(space?.airflowAllowed),
-        airflowMin: normalizeInputValue(space?.airflowMin),
-        airflowMax: normalizeInputValue(space?.airflowMax),
+        humidityMin: normalizeInputValue(space?.humidityMin) || manualRelativeAirHumidity,
+        humidityMax: normalizeInputValue(space?.humidityMax) || manualRelativeAirHumidity,
+        airflowAllowed: normalizeInputValue(space?.airflowAllowed) || allowedAirFlowSpeed,
+        airflowMin: normalizeInputValue(space?.airflowMin) || manualAirFlowSpeed,
+        airflowMax: normalizeInputValue(space?.airflowMax) || manualAirFlowSpeed,
         illuminationAllowed: normalizeInputValue(space?.illuminationAllowed),
         illuminationMin: normalizeInputValue(space?.illuminationMin),
         illuminationMax: normalizeInputValue(space?.illuminationMax),
@@ -3936,9 +3955,9 @@ function normalizeIsznrManualPhysicalFactors(source = {}) {
     technicalDocumentation: normalizeInputValue(manual.technicalDocumentation),
     methodsProceduresAndNorms: normalizeInputValue(manual.methodsProceduresAndNorms),
     workProcessConditions: normalizeInputValue(manual.workProcessConditions),
-    airTemperature: normalizeInputValue(manual.airTemperature || manual.outsideTemperature),
-    relativeAirHumidity: normalizeInputValue(manual.relativeAirHumidity || manual.relativeHumidity),
-    airFlowSpeed: normalizeInputValue(manual.airFlowSpeed || manual.airflowSpeed),
+    airTemperature: manualAirTemperature,
+    relativeAirHumidity: manualRelativeAirHumidity,
+    airFlowSpeed: manualAirFlowSpeed,
     typesOfExamination,
     spaces,
     measurements,

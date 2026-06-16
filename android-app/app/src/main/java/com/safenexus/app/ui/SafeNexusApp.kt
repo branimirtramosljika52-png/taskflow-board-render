@@ -4601,6 +4601,12 @@ private data class PhysicalFactorsSpaceTemplate(
     val wholeBodyVibrationMax: String = "",
 )
 
+private data class PhysicalFactorsSpaceAiSuggestion(
+    val description: String,
+    val workProcess: String,
+    val workEquipment: String,
+)
+
 private data class PhysicalFactorsSpaceDialogTarget(
     val title: String,
     val index: Int?,
@@ -4716,6 +4722,56 @@ private val physicalFactorsSpaceTemplates = listOf(
         noiseAllowed = "65",
     ),
 )
+
+private fun physicalFactorsSpaceTemplateScore(template: PhysicalFactorsSpaceTemplate, lookup: String): Int {
+    if (lookup.isBlank()) return 0
+    val nameLookup = normalizePhysicalFactorsSheetLookup(template.name)
+    var score = if (lookup.contains(nameLookup) || nameLookup.contains(lookup)) 120 else 0
+    val aliases = when (template.id) {
+        "sales" -> listOf("prodaj", "trgov", "maloprod", "shop", "blagajn")
+        "office" -> listOf("ured", "administr", "office", "racunov")
+        "storage" -> listOf("sprem", "sklad", "magacin", "odlag")
+        "technical" -> listOf("tehn", "strojarn", "vent", "klim", "kompres", "elektro")
+        "caffe" -> listOf("caffe", "kafe", "cafe", "bar", "napit")
+        "food-prep" -> listOf("hrana", "kuhinj", "priprem", "sendvic", "namir")
+        else -> emptyList()
+    }
+    aliases.forEach { alias ->
+        if (lookup.contains(alias)) score += 24
+    }
+    return score
+}
+
+private fun suggestPhysicalFactorsSpaceDescription(spaceName: String): PhysicalFactorsSpaceAiSuggestion {
+    val cleanName = spaceName.trim().ifBlank { "Prostor" }
+    val lookup = normalizePhysicalFactorsSheetLookup(cleanName)
+    val template = physicalFactorsSpaceTemplates
+        .map { it to physicalFactorsSpaceTemplateScore(it, lookup) }
+        .filter { (_, score) -> score > 0 }
+        .maxByOrNull { (_, score) -> score }
+        ?.first
+    if (template != null) {
+        return PhysicalFactorsSpaceAiSuggestion(
+            description = template.description,
+            workProcess = template.workProcess,
+            workEquipment = template.workEquipment,
+        )
+    }
+    return PhysicalFactorsSpaceAiSuggestion(
+        description = "$cleanName je radni prostor namijenjen obavljanju redovitih poslova prema zatečenoj namjeni prostora. Prostor je uređen tako da omogućava sigurno kretanje radnika i odvijanje uobičajenog procesa rada.",
+        workProcess = "U prostoru se obavljaju redovni poslovi vezani uz osnovnu djelatnost poslodavca, korištenje pripadajuće radne opreme, komunikaciju i održavanje urednosti prostora.",
+        workEquipment = "Radna oprema, uređaji, instalacije i prateća oprema zatečena u prostoru.",
+    )
+}
+
+private fun IsznrFcSpaceDraft.withAiPhysicalFactorsSpaceDescription(): IsznrFcSpaceDraft {
+    val suggestion = suggestPhysicalFactorsSpaceDescription(name)
+    return copy(
+        description = suggestion.description,
+        workProcess = suggestion.workProcess,
+        workEquipment = suggestion.workEquipment,
+    )
+}
 
 private fun IsznrFcSpaceDraft.isBlankPhysicalFactorsSpaceDraft(): Boolean =
     name.isBlank() &&
@@ -4855,6 +4911,16 @@ private fun PhysicalFactorsSpaceDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 WorkOrderTextField("Naziv prostora *", draft.name, { draft = draft.copy(name = it) }, enabled)
+                OutlinedButton(
+                    onClick = { draft = draft.withAiPhysicalFactorsSpaceDescription() },
+                    enabled = enabled && draft.name.trim().isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("NexAI popuni opis prostora", fontWeight = FontWeight.Black)
+                }
                 WorkOrderTextField("Opis prostora", draft.description, { draft = draft.copy(description = it) }, enabled)
                 WorkOrderTextField("Proces rada", draft.workProcess, { draft = draft.copy(workProcess = it) }, enabled)
                 WorkOrderTextField("Radna oprema u prostoru", draft.workEquipment, { draft = draft.copy(workEquipment = it) }, enabled)
@@ -5015,7 +5081,9 @@ private fun DocumentationManualPhysicalFactorsBlocks(
 
     fun openTemplateDialog(template: PhysicalFactorsSpaceTemplate) {
         val timestamp = System.currentTimeMillis()
-        val nextSpace = template.toSpaceDraft("manual-space-${template.id}-${editableSpaces().size + 1}-$timestamp")
+        val nextSpace = template
+            .toSpaceDraft("manual-space-${template.id}-${editableSpaces().size + 1}-$timestamp")
+            .withPhysicalFactorsCommonConditions(value.airTemperature, value.relativeAirHumidity, value.airFlowSpeed)
         spaceDialogTarget = PhysicalFactorsSpaceDialogTarget(
             title = "Dodaj prostor - ${template.name}",
             index = null,
@@ -5033,7 +5101,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             draft = defaultPhysicalFactorsSpaceDraft(
                 id = "manual-space-$nextIndex-${System.currentTimeMillis()}",
                 name = "Prostor $nextIndex",
-            ),
+            ).withPhysicalFactorsCommonConditions(value.airTemperature, value.relativeAirHumidity, value.airFlowSpeed),
         )
     }
 
@@ -5105,9 +5173,24 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             WorkOrderTextField("Tehnička dokumentacija", value.technicalDocumentation, { onChange(value.copy(technicalDocumentation = it)) }, enabled)
             WorkOrderTextField("Metode, postupci i norme", value.methodsProceduresAndNorms, { onChange(value.copy(methodsProceduresAndNorms = it)) }, enabled)
             WorkOrderTextField("Uvjeti procesa rada", value.workProcessConditions, { onChange(value.copy(workProcessConditions = it)) }, enabled)
-            WorkOrderTextField("Temperatura zraka", value.airTemperature, { onChange(value.copy(airTemperature = it)) }, enabled)
-            WorkOrderTextField("Relativna vlaga", value.relativeAirHumidity, { onChange(value.copy(relativeAirHumidity = it)) }, enabled)
-            WorkOrderTextField("Brzina strujanja zraka", value.airFlowSpeed, { onChange(value.copy(airFlowSpeed = it)) }, enabled)
+            WorkOrderTextField(
+                "Temperatura zraka",
+                value.airTemperature,
+                { onChange(value.withPhysicalFactorsCommonConditions(airTemperature = it)) },
+                enabled,
+            )
+            WorkOrderTextField(
+                "Relativna vlaga",
+                value.relativeAirHumidity,
+                { onChange(value.withPhysicalFactorsCommonConditions(relativeHumidity = it)) },
+                enabled,
+            )
+            WorkOrderTextField(
+                "Brzina strujanja zraka",
+                value.airFlowSpeed,
+                { onChange(value.withPhysicalFactorsCommonConditions(airFlowSpeed = it)) },
+                enabled,
+            )
         }
         ManualPhysicalFactorsBlock(title = "2. Prostori") {
             Surface(
@@ -5203,6 +5286,19 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                         WorkOrderTextField("Naziv prostora *", space.name, { next ->
                             onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(name = next) else item }))
                         }, enabled)
+                        OutlinedButton(
+                            onClick = {
+                                onChange(value.copy(spaces = value.spaces.mapIndexed { i, item ->
+                                    if (i == index) item.withAiPhysicalFactorsSpaceDescription() else item
+                                }))
+                            },
+                            enabled = enabled && space.name.trim().isNotBlank(),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("NexAI opis")
+                        }
                         WorkOrderTextField("Opis prostora", space.description, { next ->
                             onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(description = next) else item }))
                         }, enabled)
@@ -5821,7 +5917,7 @@ private fun defaultManualPhysicalFactorsDraft(
             defaultPhysicalFactorsSpaceDraft(spaceId, defaultSpaceName).copy(
                 description = workOrder.locationName,
                 workProcess = workOrder.description,
-            ),
+            ).withPhysicalFactorsCommonConditions(outsideTemperature, relativeHumidity, airflowSpeed),
         ),
         measurements = listOf(
             IsznrFcMeasurementDraft(
@@ -14152,6 +14248,18 @@ private fun WorkOrderDocumentationWizardDialog(
             ),
         )
     }
+    LaunchedEffect(inspectionDate, issuedDate, testingLocation, outsideTemperature, relativeHumidity, airflowSpeed) {
+        val nextPhysicalFactors = manualPhysicalFactors
+            .withPhysicalFactorsCommonConditions(outsideTemperature, relativeHumidity, airflowSpeed)
+            .copy(
+                location = testingLocation,
+                startDate = inspectionDate,
+                endDate = issuedDate.ifBlank { inspectionDate },
+            )
+        if (nextPhysicalFactors != manualPhysicalFactors) {
+            manualPhysicalFactors = nextPhysicalFactors
+        }
+    }
     var weather by remember(workOrder.id, selectedObjectId, defaults.weather) { mutableStateOf(defaults.weather) }
     var groundCondition by remember(workOrder.id, selectedObjectId, defaults.groundCondition) { mutableStateOf(defaults.groundCondition) }
     var groundResistance by remember(workOrder.id, selectedObjectId, defaults.groundResistance) { mutableStateOf(defaults.groundResistance) }
@@ -15627,11 +15735,17 @@ private fun physicalFactorsIfSpace(rowNumber: Int, expression: String): String =
 private fun physicalFactorsTextIfSpace(rowNumber: Int, text: String): String =
     "=IF(A$rowNumber=\"\",\"\",\"$text\")"
 
+private val physicalFactorsNumberRegex = Regex("-?\\d+(?:[,.]\\d+)?")
+
 private fun physicalFactorsNumberOrBlank(value: String): Double? =
-    value.trim().replace(",", ".").toDoubleOrNull()
+    physicalFactorsNumberRegex
+        .find(value.trim())
+        ?.value
+        ?.replace(",", ".")
+        ?.toDoubleOrNull()
 
 private fun physicalFactorsDecimalPlaces(value: String): Int {
-    val normalized = value.trim().replace(",", ".")
+    val normalized = physicalFactorsNumberRegex.find(value.trim())?.value?.replace(",", ".").orEmpty()
     val decimals = normalized.substringAfter('.', "")
         .takeWhile { it.isDigit() }
         .trimEnd('0')
@@ -15643,6 +15757,62 @@ private fun physicalFactorsNumberText(value: Double): String {
     val integer = value.toLong()
     return if (value == integer.toDouble()) integer.toString() else value.toString()
 }
+
+private fun physicalFactorsInputNumberText(value: Double): String {
+    val text = String.format(Locale.US, "%.3f", value)
+        .trimEnd('0')
+        .trimEnd('.')
+    return text.replace(".", ",")
+}
+
+private fun physicalFactorsAllowedAirflowForTemperature(temperature: String): String {
+    val airTemperature = physicalFactorsNumberOrBlank(temperature) ?: return "0,6"
+    return when {
+        airTemperature < 10.0 -> "0,5"
+        airTemperature > 27.0 -> "0,8"
+        else -> "0,6"
+    }
+}
+
+private fun IsznrFcSpaceDraft.withPhysicalFactorsCommonConditions(
+    airTemperature: String = "",
+    relativeHumidity: String = "",
+    airFlowSpeed: String = "",
+): IsznrFcSpaceDraft {
+    val parsedTemperature = physicalFactorsNumberOrBlank(airTemperature)
+    val parsedHumidity = physicalFactorsNumberOrBlank(relativeHumidity)
+    val parsedAirFlow = physicalFactorsNumberOrBlank(airFlowSpeed)
+    val nextTemperature = parsedTemperature?.let(::physicalFactorsInputNumberText)
+    val nextHumidity = parsedHumidity?.let(::physicalFactorsInputNumberText)
+    val nextAirFlow = parsedAirFlow?.let(::physicalFactorsInputNumberText)
+    return copy(
+        temperatureMin = nextTemperature ?: temperatureMin,
+        temperatureMax = nextTemperature ?: temperatureMax,
+        humidityMin = nextHumidity ?: humidityMin,
+        humidityMax = nextHumidity ?: humidityMax,
+        airflowAllowed = if (parsedTemperature != null) physicalFactorsAllowedAirflowForTemperature(airTemperature) else airflowAllowed.ifBlank { "0,6" },
+        airflowMin = nextAirFlow ?: airflowMin,
+        airflowMax = nextAirFlow ?: airflowMax,
+    )
+}
+
+private fun IsznrManualPhysicalFactors.withPhysicalFactorsCommonConditions(
+    airTemperature: String = this.airTemperature,
+    relativeHumidity: String = this.relativeAirHumidity,
+    airFlowSpeed: String = this.airFlowSpeed,
+): IsznrManualPhysicalFactors =
+    copy(
+        airTemperature = airTemperature,
+        relativeAirHumidity = relativeHumidity,
+        airFlowSpeed = airFlowSpeed,
+        spaces = spaces.map { space ->
+            space.withPhysicalFactorsCommonConditions(
+                airTemperature = airTemperature,
+                relativeHumidity = relativeHumidity,
+                airFlowSpeed = airFlowSpeed,
+            )
+        },
+    )
 
 private fun physicalFactorsRandomBetweenFormula(
     rowNumber: Int,
