@@ -4272,8 +4272,15 @@ private fun DocumentationMultiSelectField(
     selectedIds: Set<String>,
     enabled: Boolean,
     emptyText: String,
+    singleSelection: Boolean = false,
+    maxVisibleItems: Int = 96,
     onChange: (Set<String>) -> Unit,
 ) {
+    val visibleOptions = if (maxVisibleItems > 0) {
+        options.take(maxVisibleItems)
+    } else {
+        options
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -4295,7 +4302,7 @@ private fun DocumentationMultiSelectField(
             return
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.take(96).forEach { option ->
+            visibleOptions.forEach { option ->
                 val selected = option.id in selectedIds
                 FilterChip(
                     selected = selected,
@@ -4303,6 +4310,8 @@ private fun DocumentationMultiSelectField(
                         onChange(
                             if (selected) {
                                 selectedIds - option.id
+                            } else if (singleSelection) {
+                                setOf(option.id)
                             } else {
                                 selectedIds + option.id
                             },
@@ -4342,9 +4351,9 @@ private fun DocumentationMultiSelectField(
                 )
             }
         }
-        if (options.size > 96) {
+        if (maxVisibleItems > 0 && options.size > maxVisibleItems) {
             Text(
-                "Prikazano prvih 96 stavki. Za kraći prikaz koristi grupu opreme ili pretraživanje u webu.",
+                "Prikazano prvih $maxVisibleItems stavki. Za kraći prikaz koristi grupu opreme ili pretraživanje u webu.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
             )
@@ -15194,14 +15203,6 @@ private fun WorkOrderDocumentationWizardDialog(
                         onWorkEnvironmentAuthorizationHolderUserIdChange = { workEnvironmentAuthorizationHolderUserId = it },
                         enabled = !formLoading,
                     )
-                    if (showWorkEquipmentFromIsznr) {
-                        DocumentationWorkEquipmentBasicsCard(
-                            companyName = workOrder.companyName,
-                            locationName = workOrder.locationName,
-                            statusMessage = workEquipmentStatusMessage,
-                            postDraftStatus = context.workEquipmentStatus,
-                        )
-                    }
                 }
                 }
 
@@ -19773,22 +19774,21 @@ private fun DocumentationServicePeopleSection(
                                 }
                             }
                             "authorize" -> {
-                                val authorizationOptions = listOf(
-                                    WorkOrderDocumentationOption("", "Odaberi odgovornu osobu"),
-                                ) + options.authorizationOptions
-                                val authorizationLabel = authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
+                                val authorizationLabel = options.authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
                                 DocumentationPersonRoleCard(
                                     label = if (rule.required) "${rule.label} *" else rule.label,
                                     selectedSummary = authorizationLabel.ifBlank { "Nije odabrano" },
                                     icon = Icons.Rounded.Person,
                                 ) {
-                                    WorkOrderSelectField(
-                                        label = "Odabir osobe",
-                                        value = authorizationSelection,
-                                        valueLabel = authorizationLabel.ifBlank { "Odaberi odgovornu osobu" },
-                                        options = authorizationOptions.map { it.id to it.label },
+                                    DocumentationMultiSelectField(
+                                        label = "Odabir osoba",
+                                        options = options.authorizationOptions,
+                                        selectedIds = authorizationSelection.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty(),
                                         enabled = enabled,
-                                        onSelect = onAuthorizationChange,
+                                        emptyText = "Nema aktivnih odgovornih osoba s ovlaštenjem za ovu uslugu.",
+                                        singleSelection = true,
+                                        maxVisibleItems = options.authorizationOptions.size,
+                                        onChange = { selected -> onAuthorizationChange(selected.firstOrNull().orEmpty()) },
                                     )
                                 }
                             }
@@ -19808,27 +19808,27 @@ private fun DocumentationServicePeopleSection(
                                             selectedIds = inspectorSelection,
                                             enabled = enabled,
                                             emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                                            maxVisibleItems = options.inspectorOptions.size,
                                             onChange = onInspectorChange,
                                         )
                                     }
                                 } else {
-                                    val inspectorOptions = listOf(
-                                        WorkOrderDocumentationOption("", "Odaberi ispitivača"),
-                                    ) + options.inspectorOptions
                                     val selectedInspectorId = inspectorSelection.firstOrNull().orEmpty()
-                                    val inspectorLabel = inspectorOptions.firstOrNull { it.id == selectedInspectorId }?.label.orEmpty()
+                                    val inspectorLabel = options.inspectorOptions.firstOrNull { it.id == selectedInspectorId }?.label.orEmpty()
                                     DocumentationPersonRoleCard(
                                         label = if (rule.required) "${rule.label} *" else rule.label,
                                         selectedSummary = inspectorLabel.ifBlank { "Nije odabrano" },
                                         icon = Icons.Rounded.CheckCircle,
                                     ) {
-                                        WorkOrderSelectField(
-                                            label = "Odabir osobe",
-                                            value = selectedInspectorId,
-                                            valueLabel = inspectorLabel.ifBlank { "Odaberi ispitivača" },
-                                            options = inspectorOptions.map { it.id to it.label },
+                                        DocumentationMultiSelectField(
+                                            label = "Odabir osoba",
+                                            options = options.inspectorOptions,
+                                            selectedIds = selectedInspectorId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty(),
                                             enabled = enabled,
-                                            onSelect = { next -> onInspectorChange(if (next.isBlank()) emptySet() else setOf(next)) },
+                                            emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                                            singleSelection = true,
+                                            maxVisibleItems = options.inspectorOptions.size,
+                                            onChange = onInspectorChange,
                                         )
                                     }
                                 }
