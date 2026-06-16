@@ -3415,13 +3415,18 @@ private fun WorkOrderTextField(
     value: String,
     onChange: (String) -> Unit,
     enabled: Boolean,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else 5,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         modifier = Modifier.fillMaxWidth(),
         label = { Text(label) },
-        singleLine = true,
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
         enabled = enabled,
         shape = RoundedCornerShape(16.dp),
     )
@@ -4679,6 +4684,19 @@ private val physicalFactorsSpaceTemplates = listOf(
         noiseMax = "47,3",
     ),
     PhysicalFactorsSpaceTemplate(
+        id = "pharmacy-lab",
+        name = "Laboratorij u ljekarni",
+        description = "Laboratorij u ljekarni je zatvoreni radni prostor namijenjen izradi, pripravi, kontroli i privremenoj pohrani farmaceutskih pripravaka, pomoćnih tvari i dokumentacije vezane uz rad ljekarne. Prostor je organiziran tako da omogućava odvojeno i uredno obavljanje radnih postupaka, održavanje higijenskih uvjeta, sigurno kretanje radnika te dostupnost potrebne radne opreme i pribora.",
+        workProcess = "U prostoru se obavljaju poslovi pripreme i izrade magistralnih i galenskih pripravaka, vaganja i odmjeravanja sastojaka, miješanja, označavanja, kontrole i evidentiranja izrađenih pripravaka. Radnici tijekom rada koriste propisane postupke rada, održavaju čistoću radnih površina i vode pripadajuću evidenciju.",
+        workEquipment = "Laboratorijski stolovi i radne površine, vaga, ormari za pohranu, hladnjak prema potrebi, posude i pribor za pripravu, miješalice, zaštitna oprema, sredstva za čišćenje i ostala laboratorijska oprema zatečena u prostoru.",
+        illuminationAllowed = "500",
+        illuminationMin = "620",
+        illuminationMax = "820",
+        noiseAllowed = "60",
+        noiseMin = "45",
+        noiseMax = "52",
+    ),
+    PhysicalFactorsSpaceTemplate(
         id = "technical",
         name = "Tehnička prostorija",
         description = "Tehnički prostor je zatvoreni i neprodajni prostor namijenjen smještaju tehničkih sustava i uređaja koji osiguravaju radne uvjete u objektu, poput sustava grijanja, hlađenja, ventilacije, elektroinstalacija i ostalih tehničkih instalacija.",
@@ -4731,6 +4749,7 @@ private fun physicalFactorsSpaceTemplateScore(template: PhysicalFactorsSpaceTemp
         "sales" -> listOf("prodaj", "trgov", "maloprod", "shop", "blagajn")
         "office" -> listOf("ured", "administr", "office", "racunov")
         "storage" -> listOf("sprem", "sklad", "magacin", "odlag")
+        "pharmacy-lab" -> listOf("laborator", "ljekarn", "farmac", "priprav", "galensk", "magistral")
         "technical" -> listOf("tehn", "strojarn", "vent", "klim", "kompres", "elektro")
         "caffe" -> listOf("caffe", "kafe", "cafe", "bar", "napit")
         "food-prep" -> listOf("hrana", "kuhinj", "priprem", "sendvic", "namir")
@@ -4921,9 +4940,33 @@ private fun PhysicalFactorsSpaceDialog(
                     Spacer(Modifier.width(8.dp))
                     Text("NexAI popuni opis prostora", fontWeight = FontWeight.Black)
                 }
-                WorkOrderTextField("Opis prostora", draft.description, { draft = draft.copy(description = it) }, enabled)
-                WorkOrderTextField("Proces rada", draft.workProcess, { draft = draft.copy(workProcess = it) }, enabled)
-                WorkOrderTextField("Radna oprema u prostoru", draft.workEquipment, { draft = draft.copy(workEquipment = it) }, enabled)
+                WorkOrderTextField(
+                    "Opis prostora",
+                    draft.description,
+                    { draft = draft.copy(description = it) },
+                    enabled,
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 7,
+                )
+                WorkOrderTextField(
+                    "Proces rada",
+                    draft.workProcess,
+                    { draft = draft.copy(workProcess = it) },
+                    enabled,
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 7,
+                )
+                WorkOrderTextField(
+                    "Radna oprema u prostoru",
+                    draft.workEquipment,
+                    { draft = draft.copy(workEquipment = it) },
+                    enabled,
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 7,
+                )
                 PhysicalFactorsLimitFields(
                     title = "Temperatura zraka [°C]",
                     allowedLabel = "Dopušteno",
@@ -5069,7 +5112,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
         val (documentationTemplate, table) = measurementTable
         val stateKey = measurementSheetStateKey(documentationTemplate, table)
         val currentSheet = measurementSheets[stateKey] ?: table.sheet
-        val nextSheet = currentSheet.withPhysicalFactorsSpaceDraftRow(space, originalName)
+        val nextSheet = currentSheet.withPhysicalFactorsSpaceDraftRows(space, originalName)
         if (nextSheet != currentSheet) {
             onMeasurementSheetChange(stateKey, nextSheet)
         }
@@ -5299,15 +5342,33 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                             Spacer(Modifier.width(8.dp))
                             Text("NexAI opis")
                         }
-                        WorkOrderTextField("Opis prostora", space.description, { next ->
-                            onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(description = next) else item }))
-                        }, enabled)
-                        WorkOrderTextField("Proces rada", space.workProcess, { next ->
-                            onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(workProcess = next) else item }))
-                        }, enabled)
-                        WorkOrderTextField("Radna oprema u prostoru", space.workEquipment, { next ->
-                            onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(workEquipment = next) else item }))
-                        }, enabled)
+                        WorkOrderTextField(
+                            "Opis prostora",
+                            space.description,
+                            { next -> onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(description = next) else item })) },
+                            enabled,
+                            singleLine = false,
+                            minLines = 3,
+                            maxLines = 7,
+                        )
+                        WorkOrderTextField(
+                            "Proces rada",
+                            space.workProcess,
+                            { next -> onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(workProcess = next) else item })) },
+                            enabled,
+                            singleLine = false,
+                            minLines = 3,
+                            maxLines = 7,
+                        )
+                        WorkOrderTextField(
+                            "Radna oprema u prostoru",
+                            space.workEquipment,
+                            { next -> onChange(value.copy(spaces = value.spaces.mapIndexed { i, item -> if (i == index) item.copy(workEquipment = next) else item })) },
+                            enabled,
+                            singleLine = false,
+                            minLines = 3,
+                            maxLines = 7,
+                        )
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
@@ -15682,6 +15743,8 @@ private fun defaultMeasurementSheetValues(
 private const val PHYSICAL_FACTORS_BUILT_IN_TEMPLATE_ID = "mobile-ro-f"
 private const val PHYSICAL_FACTORS_BUILT_IN_TABLE_ID = "mobile-ro-f-3"
 private const val PHYSICAL_FACTORS_BUILT_IN_TABLE_KEY = "RO-F.3"
+private const val PHYSICAL_FACTORS_DEFAULT_MEASUREMENT_ROWS = 80
+private const val PHYSICAL_FACTORS_MIN_ROWS_PER_SPACE = 3
 
 private fun physicalFactorsMeasurementFormat(
     fillColor: String = "",
@@ -15870,45 +15933,60 @@ private fun physicalFactorsMeasurementCells(
         "final_grade" to physicalFactorsTextIfSpace(rowNumber, "Da"),
     )
 
-private fun WorkOrderMeasurementSheet.physicalFactorsSpaceRowIndex(
+private fun WorkOrderMeasurementSheet.physicalFactorsSpaceRowIndexes(
     space: IsznrFcSpaceDraft,
     originalName: String = "",
-): Int {
-    val spaceColumn = physicalFactorsColumnById("space") ?: return -1
+): List<Int> {
+    val spaceColumn = physicalFactorsColumnById("space") ?: return emptyList()
     val candidates = listOf(space.name, originalName)
         .map(::normalizePhysicalFactorsSheetLookup)
         .filter { it.isNotBlank() }
         .toSet()
-    if (candidates.isEmpty()) return -1
-    return rows.indexOfFirst { row ->
-        row.id !in headerRows && normalizePhysicalFactorsSheetLookup(row.cells[spaceColumn.id].orEmpty()) in candidates
+    if (candidates.isEmpty()) return emptyList()
+    return rows.mapIndexedNotNull { index, row ->
+        val currentSpace = normalizePhysicalFactorsSheetLookup(row.cells[spaceColumn.id].orEmpty())
+        index.takeIf { row.id !in headerRows && currentSpace in candidates }
     }
 }
 
-private fun WorkOrderMeasurementSheet.withPhysicalFactorsSpaceDraftRow(
+private fun WorkOrderMeasurementSheet.withPhysicalFactorsSpaceDraftRows(
     space: IsznrFcSpaceDraft,
     originalName: String = "",
+    rowCount: Int = PHYSICAL_FACTORS_MIN_ROWS_PER_SPACE,
 ): WorkOrderMeasurementSheet {
     if (!isBuiltInPhysicalFactorsSheet() || space.name.isBlank()) return this
     val spaceColumn = physicalFactorsColumnById("space") ?: return this
-    val existingIndex = physicalFactorsSpaceRowIndex(space, originalName)
-    val firstBlankIndex = if (existingIndex >= 0) {
-        -1
-    } else {
-        rows.indexOfFirst { row -> row.id !in headerRows && row.cells[spaceColumn.id].orEmpty().trim().isBlank() }
+    val existingIndexes = physicalFactorsSpaceRowIndexes(space, originalName)
+    val neededRows = maxOf(rowCount, existingIndexes.size)
+    val blankIndexes = rows.mapIndexedNotNull { index, row ->
+        index.takeIf {
+            row.id !in headerRows &&
+                row.cells[spaceColumn.id].orEmpty().trim().isBlank() &&
+                index !in existingIndexes
+        }
     }
-    val targetIndex = if (existingIndex >= 0) existingIndex else firstBlankIndex
-    val rowNumber = if (targetIndex >= 0) targetIndex + 1 else rows.size + 1
-    val row = physicalFactorsMeasurementRow(
-        id = if (targetIndex >= 0) rows[targetIndex].id else "fc-space-${space.id.ifBlank { rowNumber.toString() }}",
-        columns = columns,
-        cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = space),
-    )
-    return if (targetIndex >= 0) {
-        copy(rows = rows.mapIndexed { index, item -> if (index == targetIndex) row else item })
-    } else {
-        copy(rows = rows + row)
+    val updateIndexes = (existingIndexes + blankIndexes.take((neededRows - existingIndexes.size).coerceAtLeast(0)))
+        .distinct()
+    val nextRows = rows.toMutableList()
+    updateIndexes.forEach { rowIndex ->
+        val rowNumber = rowIndex + 1
+        nextRows[rowIndex] = physicalFactorsMeasurementRow(
+            id = rows[rowIndex].id,
+            columns = columns,
+            cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = space),
+        )
     }
+    var appendedCount = updateIndexes.size
+    while (appendedCount < neededRows) {
+        val rowNumber = nextRows.size + 1
+        nextRows += physicalFactorsMeasurementRow(
+            id = "fc-space-${space.id.ifBlank { rowNumber.toString() }}-${appendedCount + 1}",
+            columns = columns,
+            cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = space),
+        )
+        appendedCount += 1
+    }
+    return copy(rows = nextRows)
 }
 
 private fun WorkOrderMeasurementSheet.withPhysicalFactorsSyncedSpaces(
@@ -15932,7 +16010,7 @@ private fun WorkOrderMeasurementSheet.withPhysicalFactorsSyncedSpaces(
     val compacted = if (rowsWithoutRemovedSpaces.size == rows.size) this else copy(rows = rowsWithoutRemovedSpaces)
     return spaces
         .filter { it.name.trim().isNotBlank() }
-        .fold(compacted) { sheet, space -> sheet.withPhysicalFactorsSpaceDraftRow(space) }
+        .fold(compacted) { sheet, space -> sheet.withPhysicalFactorsSpaceDraftRows(space) }
 }
 
 private fun physicalFactorsMeasurementRow(
@@ -15965,7 +16043,7 @@ private fun defaultPhysicalFactorsMeasurementSheet(): WorkOrderMeasurementSheet 
         cells = columns.associate { it.id to it.label },
         header = true,
     )
-    val measurementRows = (0 until 24).map { index ->
+    val measurementRows = (0 until PHYSICAL_FACTORS_DEFAULT_MEASUREMENT_ROWS).map { index ->
         val rowNumber = index + 2
         physicalFactorsMeasurementRow(
             id = "fc-row-${index + 1}",
