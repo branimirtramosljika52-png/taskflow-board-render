@@ -113824,13 +113824,8 @@ function isWorkOrderDocumentPhysicalFactorsService(service = {}) {
 }
 
 function shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder = {}, serviceItems = []) {
-  const stateEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
   return Boolean(
-    stateEntry.loaded
-    || stateEntry.loading
-    || stateEntry.error
-    || stateEntry.message
-    || isWorkOrderDocumentWorkEquipmentText(workOrder?.serviceLine)
+    isWorkOrderDocumentWorkEquipmentText(workOrder?.serviceLine)
     || isWorkOrderDocumentWorkEquipmentText(workOrder?.displayService)
     || (Array.isArray(serviceItems) && serviceItems.some((service) => isWorkOrderDocumentWorkEquipmentService(service)))
   );
@@ -115393,12 +115388,12 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   selectionBar.className = "work-order-document-work-equipment-selection";
   const selectionCopy = document.createElement("span");
   selectionCopy.textContent = selectedIds.size > 0 || manualEquipments.length > 0
-    ? `${selectedIds.size} postojeće · ${manualEquipments.length} nove opreme za IS ZNR POST`
-    : "Odaberi opremu koju šalješ u IS ZNR.";
+    ? `${selectedIds.size} postojećih stupaca · ${manualEquipments.length} novih stupaca za RO zapisnik`
+    : "Odaberi postojeću opremu ili dodaj novi stupac radne opreme.";
   const selectVisibleButton = document.createElement("button");
   selectVisibleButton.type = "button";
   selectVisibleButton.className = "ghost-button";
-  selectVisibleButton.textContent = "Odaberi prikazane";
+  selectVisibleButton.textContent = "Dodaj prikazane stupce";
   selectVisibleButton.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = new Set(selectedIds);
@@ -115431,6 +115426,15 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   });
   selectionBar.append(selectionCopy, selectVisibleButton, clearSelectionButton, submitButton);
   bodyNode.append(selectionBar);
+
+  const columnHead = document.createElement("div");
+  columnHead.className = "work-order-document-work-equipment-column-head";
+  const columnTitle = document.createElement("strong");
+  columnTitle.textContent = "Kolone radne opreme";
+  const columnHint = document.createElement("span");
+  columnHint.textContent = "Svaka kartica je jedan stupac koji ulazi u RO zapisnik.";
+  columnHead.append(columnTitle, columnHint);
+  bodyNode.append(columnHead);
 
   const list = document.createElement("div");
   list.className = "work-order-document-work-equipment-list";
@@ -115506,13 +115510,9 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
 
 function getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders = []) {
   const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
-  const allowSmallAutoCheck = selectedWorkOrders.length > 0 && selectedWorkOrders.length <= 3;
   return selectedWorkOrders.filter((workOrder) => {
     const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
-    if (shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder, serviceItems)) {
-      return true;
-    }
-    return Boolean(allowSmallAutoCheck && String(workOrder?.companyOib || "").trim());
+    return shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder, serviceItems);
   });
 }
 
@@ -115568,13 +115568,8 @@ function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
 }
 
 function shouldShowWorkOrderDocumentPhysicalFactorsSection(workOrder = {}, serviceItems = []) {
-  const stateEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrder?.id);
   return Boolean(
-    stateEntry.loaded
-    || stateEntry.loading
-    || stateEntry.error
-    || stateEntry.message
-    || isWorkOrderDocumentPhysicalFactorsText(workOrder?.serviceLine)
+    isWorkOrderDocumentPhysicalFactorsText(workOrder?.serviceLine)
     || isWorkOrderDocumentPhysicalFactorsText(workOrder?.displayService)
     || (Array.isArray(serviceItems) && serviceItems.some((service) => isWorkOrderDocumentPhysicalFactorsService(service)))
   );
@@ -115978,13 +115973,9 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
 
 function getWorkOrderDocumentWizardPhysicalFactorsCandidates(workOrders = []) {
   const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
-  const allowSmallAutoCheck = selectedWorkOrders.length > 0 && selectedWorkOrders.length <= 3;
   return selectedWorkOrders.filter((workOrder) => {
     const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
-    if (shouldShowWorkOrderDocumentPhysicalFactorsSection(workOrder, serviceItems)) {
-      return true;
-    }
-    return Boolean(allowSmallAutoCheck && String(workOrder?.companyOib || "").trim());
+    return shouldShowWorkOrderDocumentPhysicalFactorsSection(workOrder, serviceItems);
   });
 }
 

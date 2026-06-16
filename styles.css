@@ -23160,6 +23160,24 @@ body.is-document-template-editor-open .chat-dock {
   font-weight: 850;
 }
 
+.work-order-document-work-equipment-column-head {
+  display: grid;
+  gap: 3px;
+  padding: 2px 2px 0;
+}
+
+.work-order-document-work-equipment-column-head strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.work-order-document-work-equipment-column-head span {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 760;
+}
+
 .work-order-document-work-equipment-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
