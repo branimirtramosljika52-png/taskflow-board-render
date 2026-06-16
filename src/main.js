@@ -114270,7 +114270,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
     uploadMode: aiBatchMode,
     uploadedFiles: aiFiles,
     uploadGroupingInstruction: aiBatchMode === "batch"
-      ? "Ovo je WEB batch upload za radnu opremu. Ako slike/PDF prikazuju više strojeva, obavezno vrati više workEquipments. Slike su kronološke: uzastopne slike istog stroja drži u istoj grupi, a nova slika cijelog stroja ili nova natpisna pločica najčešće označava početak nove opreme. Za svaku opremu vrati imageIndexes ili sourceFileNames kako bi aplikacija povezala slike uz pravi stroj. Android upload nije batch i tamo se obrađuje jedna oprema po unosu."
+      ? "Ovo je WEB batch upload za radnu opremu. Ako slike/PDF prikazuju više strojeva, obavezno vrati više workEquipments. Slike su kronološke. Korisnik standardno za svaku opremu prvo slika radnu opremu izdaleka/cijeli stroj, zatim natpisnu pločicu, pa detalje i nedostatke. Kada se taj obrazac ponovi s novom slikom cijelog stroja i novom pločicom, to je početak sljedeće radne opreme. Uzastopne slike istog stroja drži u istoj grupi. Za svaku opremu vrati imageIndexes ili sourceFileNames kako bi aplikacija povezala slike uz pravi stroj. Android upload nije batch i tamo se obrađuje jedna oprema po unosu."
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
@@ -115100,7 +115100,7 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
   if (batchMode === "batch") {
     const batchHint = document.createElement("p");
     batchHint.className = "helper-copy module-copy work-order-document-ro-ai-batch-hint";
-    batchHint.textContent = "Za više opreme na webu ubaci slike redom: stroj, pločica, detalji; zatim sljedeći stroj, pločica, detalji. NexAI će vratiti zasebne RO stavke.";
+    batchHint.textContent = "Za više opreme na webu ubaci slike kronološki: cijeli stroj izdaleka, pločica, detalji; zatim sljedeći cijeli stroj, pločica, detalji. NexAI će vratiti zasebne RO stavke.";
     panel.append(batchHint);
   }
 
