@@ -553,13 +553,25 @@ public final class NativeMessagingMain {
                             documentResult.put("fieldCount", 0);
                             String keyword = resolveFallbackKeyword(config, item, signerOib);
                             documentResult.put("fallbackKeywordUsed", !keyword.isBlank());
-                            signedPdf = signingService.signPdfByKeywordFallback(
-                                    pdf,
-                                    keyword,
-                                    credential,
-                                    text(item, "fileName", "zapisnik.pdf"),
-                                    appearanceMetadata
-                            );
+                            if (!keyword.isBlank()) {
+                                signedPdf = signingService.signPdfByKeywordFallback(
+                                        pdf,
+                                        keyword,
+                                        credential,
+                                        text(item, "fileName", "zapisnik.pdf"),
+                                        appearanceMetadata
+                                );
+                            } else {
+                                signedPdf = signingService.signPdfBySyntheticField(
+                                        pdf,
+                                        text(item, "preferredField", ""),
+                                        text(item, "signatureFieldRole", "ZNR"),
+                                        text(item, "signatureFieldOib", ""),
+                                        credential,
+                                        appearanceMetadata
+                                );
+                                documentResult.put("syntheticFieldGenerated", true);
+                            }
                         }
 
                         documentResult.set("appearanceUsed", appliedAppearanceDebugNode(config, signedPdf));
@@ -656,6 +668,7 @@ public final class NativeMessagingMain {
             SignatureBridgeClient client = new SignatureBridgeClient(config);
             JsonNode job = client.getJob(apiBaseUrl, text(request, "token", ""));
             PdfSignatureFieldService fieldService = new PdfSignatureFieldService();
+            SigningService signingService = new SigningService(config, new TokenService(), fieldService);
 
             for (JsonNode item : job.path("items")) {
                 ObjectNode documentResult = documentBase(item);
@@ -667,14 +680,47 @@ public final class NativeMessagingMain {
                     List<PdfSignatureFieldService.SignatureFieldInfo> itemFields = fieldService.listSignatureFields(pdf);
                     documentResult.put("fieldCount", itemFields.size());
                     if (itemFields.isEmpty()) {
-                        ObjectNode error = errorItem(
-                                text(item, "documentId", ""),
-                                "NO_SIGNATURE_FIELDS",
-                                "PDF nema AcroForm signature fieldove."
-                        );
-                        errors.add(error);
-                        documentResult.put("status", "error");
-                        documentResult.set("error", error.deepCopy());
+                        String keyword = resolveFallbackKeyword(config, item, text(item, "signatureFieldOib", ""));
+                        String preferredField = text(item, "preferredField", "");
+                        SigningService.Placement placement = null;
+                        if (!keyword.isBlank()) {
+                            documentResult.put("fallbackKeywordUsed", true);
+                            wouldSign += 1;
+                            documentResult.put("status", "would_sign");
+                            documentResult.put("message", "Dry-run: ovaj dokument bi bio potpisan po keywordu " + keyword + ".");
+                            documentResult.put("fieldName", preferredField.isBlank() ? signingService.syntheticFieldName(preferredField, text(item, "signatureFieldRole", "ZNR"), text(item, "signatureFieldOib", "")) : preferredField);
+                            documentResult.put("signedField", text(item, "preferredField", ""));
+                        } else {
+                            placement = signingService.resolveSyntheticPlacement(
+                                    pdf,
+                                    preferredField,
+                                    text(item, "signatureFieldRole", "ZNR"),
+                                    text(item, "signatureFieldOib", "")
+                            );
+                            if (placement == null) {
+                                ObjectNode error = errorItem(
+                                        text(item, "documentId", ""),
+                                        "NO_SIGNATURE_FIELDS",
+                                        "PDF nema AcroForm signature fieldove i nije moguće odrediti fallback lokaciju."
+                                );
+                                errors.add(error);
+                                documentResult.put("status", "error");
+                                documentResult.set("error", error.deepCopy());
+                                documents.add(documentResult);
+                                continue;
+                            }
+                            wouldSign += 1;
+                            documentResult.put("status", "would_sign");
+                            documentResult.put("message", "Dry-run: ovaj dokument bi bio potpisan na automatski generirano mjesto.");
+                            documentResult.put("fieldName", placement.fieldName());
+                            documentResult.put("syntheticFieldGenerated", true);
+                            documentResult.put("syntheticFieldPage", placement.page());
+                            documentResult.put("syntheticFieldX", placement.rectangle().getX());
+                            documentResult.put("syntheticFieldY", placement.rectangle().getY());
+                            documentResult.put("syntheticFieldWidth", placement.rectangle().getWidth());
+                            documentResult.put("syntheticFieldHeight", placement.rectangle().getHeight());
+                        }
+                        documentResult.put("fieldCount", 0);
                         documents.add(documentResult);
                         continue;
                     }

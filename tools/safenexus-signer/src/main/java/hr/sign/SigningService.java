@@ -159,6 +159,45 @@ public final class SigningService {
         }
     }
 
+    public SignedPdf signPdfBySyntheticField(
+            byte[] pdfBytes,
+            String preferredField,
+            String role,
+            String oib,
+            TokenService.Credential credential,
+            SignatureAppearanceMetadata metadata
+    ) throws SignatureBridgeException {
+        try {
+            Placement placement = resolveSyntheticPlacement(
+                    pdfBytes,
+                    preferredField,
+                    role,
+                    oib
+            );
+            if (placement == null) {
+                throw new SignatureBridgeException("NO_SIGNATURE_FIELDS", "Nije moguće odrediti poziciju za autogenerirani signature field.");
+            }
+            return signOnce(
+                    pdfBytes,
+                    placement.fieldName(),
+                    placement.rectangle(),
+                    placement.page(),
+                    credential,
+                    "synthetic-field",
+                    metadata
+            );
+        } catch (SignatureBridgeException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new SignatureBridgeException(
+                    "SIGN_FAILED",
+                    "Nije uspjelo kreirati signature field za potpis.",
+                    "",
+                    error.getClass().getName() + ": " + safeMessage(error)
+            );
+        }
+    }
+
     private SignedPdf signOnce(
             byte[] pdfBytes,
             String fieldName,
@@ -228,6 +267,120 @@ public final class SigningService {
                     appearanceResult.logoByteSize(),
                     appearanceResult.errorMessage()
             );
+        }
+    }
+
+    public String syntheticFieldName(String preferredField, String role, String oib) {
+        String normalizedPreferred = sanitizeFieldName(preferredField);
+        if (!normalizedPreferred.isBlank()) {
+            return normalizedPreferred;
+        }
+        String built = fieldService.buildStandardFieldName(
+                firstNonBlank(role, "ZNR"),
+                oib
+        );
+        return built.isBlank() ? "SIGN_FIELD" : built;
+    }
+
+    public Placement resolveSyntheticPlacement(byte[] pdfBytes, String preferredField, String role, String oib) {
+        try (PdfDocument document = new PdfDocument(new PdfReader(new ByteArrayInputStream(pdfBytes), new ReaderProperties()))) {
+            int pageCount = document.getNumberOfPages();
+            if (pageCount <= 0) {
+                return null;
+            }
+            String normalizedOib = String.valueOf(oib == null ? "" : oib).trim();
+            if (!normalizedOib.isBlank()) {
+                Placement oibPlacement = resolveSyntheticPlacementNearKeyword(
+                        pdfBytes,
+                        document,
+                        normalizedOib,
+                        preferredField,
+                        role,
+                        oib
+                );
+                if (oibPlacement != null) {
+                    return oibPlacement;
+                }
+            }
+
+            int page = pageCount;
+            float pageWidth = Math.max(1f, document.getPage(page).getPageSizeWithRotation().getWidth());
+            float pageHeight = Math.max(1f, document.getPage(page).getPageSizeWithRotation().getHeight());
+
+            float width = Math.max(60f, Math.min(config.rectWidthPt(), pageWidth - 24f));
+            float height = Math.max(24f, Math.min(config.rectHeightPt(), pageHeight - 24f));
+            String fieldName = syntheticFieldName(preferredField, role, oib);
+
+            float x = pageWidth - width - 18f;
+            if (x < 18f) {
+                x = 18f;
+            }
+            if (x > pageWidth - width - 1f) {
+                x = Math.max(18f, pageWidth - width - 1f);
+            }
+
+            float y = 24f;
+            if (y + height > pageHeight - 6f) {
+                y = Math.max(6f, pageHeight - height - 6f);
+            }
+            return new Placement(
+                    fieldName,
+                    page,
+                    new Rectangle(x, y, width, height)
+            );
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Placement resolveSyntheticPlacementNearKeyword(
+            byte[] pdfBytes,
+            PdfDocument document,
+            String keyword,
+            String preferredField,
+            String role,
+            String oib
+    ) {
+        try {
+            List<Match> matches = findAllKeywordMatches(
+                    pdfBytes,
+                    keyword,
+                    true
+            );
+            if (matches.isEmpty()) {
+                return null;
+            }
+            Match match = matches.get(matches.size() - 1);
+            Rectangle signatureRect = plannedRectForMatch(match);
+            if (signatureRect == null) {
+                return null;
+            }
+
+            int page = Math.max(1, Math.min(document.getNumberOfPages(), match.page()));
+            if (page <= 0) {
+                return null;
+            }
+            float pageWidth = Math.max(1f, document.getPage(page).getPageSizeWithRotation().getWidth());
+            float pageHeight = Math.max(1f, document.getPage(page).getPageSizeWithRotation().getHeight());
+            float width = Math.max(60f, Math.min(config.rectWidthPt(), pageWidth - 24f));
+            float height = Math.max(24f, Math.min(config.rectHeightPt(), pageHeight - 24f));
+            String fieldName = syntheticFieldName(preferredField, role, oib);
+
+            float x = Math.max(18f, Math.min(match.x(), pageWidth - width - 18f));
+            float y = Math.max(6f, match.y() - height - config.offsetDownPt());
+            if (y > pageHeight - height - 6f) {
+                y = pageHeight - height - 6f;
+            }
+            if (y < 6f) {
+                y = 6f;
+            }
+            return new Placement(
+                    fieldName,
+                    page,
+                    new Rectangle(x, y, width, height)
+            );
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
@@ -856,6 +1009,13 @@ public final class SigningService {
             String appearanceMode,
             int logoByteSize,
             String errorMessage
+    ) {
+    }
+
+    public record Placement(
+            String fieldName,
+            int page,
+            Rectangle rectangle
     ) {
     }
 }

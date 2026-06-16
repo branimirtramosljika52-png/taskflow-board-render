@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.133.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.134.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -1048,6 +1048,10 @@ const ISZNR_RO_ATTACHMENT_MAX_FILES = Math.max(
   1,
   Number(process.env.ISZNR_RO_ATTACHMENT_MAX_FILES || 12) || 12,
 );
+const ISZNR_RECORD_PDF_IMPORT_TIMEOUT_MS = Math.max(
+  3000,
+  Number(process.env.ISZNR_RECORD_PDF_IMPORT_TIMEOUT_MS || 15000) || 15000,
+);
 const ISZNR_WORK_EQUIPMENT_MAX_PAGES = Math.max(
   1,
   Number(process.env.ISZNR_WORK_EQUIPMENT_MAX_PAGES || 25) || 25,
@@ -1891,6 +1895,56 @@ function requestTextWithHttpsIpv4(requestUrl, {
   });
 }
 
+function requestBufferWithHttpsIpv4(requestUrl, {
+  method = "GET",
+  headers = {},
+  body = null,
+  timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
+} = {}) {
+  return new Promise((resolveRequest, rejectRequest) => {
+    const bodyBuffer = Buffer.isBuffer(body)
+      ? body
+      : (body === null || body === undefined ? null : Buffer.from(String(body), "utf8"));
+    const requestOptions = {
+      method: String(method || "GET").toUpperCase(),
+      headers: bodyBuffer
+        ? {
+          ...headers,
+          "content-length": bodyBuffer.length,
+        }
+        : headers,
+      timeout: timeoutMs,
+      lookup(hostname, options, callback) {
+        dnsLookup(hostname, { ...options, family: 4 }, callback);
+      },
+    };
+    const clientRequest = httpsRequest(requestUrl, requestOptions, (clientResponse) => {
+      const chunks = [];
+      clientResponse.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      clientResponse.on("end", () => {
+        const status = Number(clientResponse.statusCode || 0);
+        resolveRequest({
+          ok: status >= 200 && status < 300,
+          status,
+          headers: clientResponse.headers || {},
+          buffer: Buffer.concat(chunks),
+          transport: "https-ipv4",
+        });
+      });
+    });
+    clientRequest.on("timeout", () => {
+      const timeoutError = new Error("ISZNR HTTPS IPv4 binary request timed out.");
+      timeoutError.code = "ETIMEDOUT";
+      clientRequest.destroy(timeoutError);
+    });
+    clientRequest.on("error", rejectRequest);
+    if (bodyBuffer) {
+      clientRequest.write(bodyBuffer);
+    }
+    clientRequest.end();
+  });
+}
+
 async function requestIsznrText(requestUrl, {
   method = "GET",
   headers = {},
@@ -1924,6 +1978,51 @@ async function requestIsznrText(requestUrl, {
       return await requestTextWithHttpsIpv4(requestUrl, { method, headers, body, timeoutMs });
     } catch (fallbackError) {
       console.warn("[isznr] request failed", {
+        path: requestUrl.pathname,
+        search: requestUrl.search,
+        fetchError: summarizeNetworkError(fetchError),
+        fallbackError: summarizeNetworkError(fallbackError),
+      });
+      throw isNetworkTimeoutError(fetchError) ? fetchError : fallbackError;
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestIsznrBuffer(requestUrl, {
+  method = "GET",
+  headers = {},
+  body = null,
+  timeoutMs = ISZNR_INSTRUMENT_FETCH_TIMEOUT_MS,
+  preferIpv4 = false,
+} = {}) {
+  if (preferIpv4 && requestUrl?.protocol === "https:") {
+    return requestBufferWithHttpsIpv4(requestUrl, { method, headers, body, timeoutMs });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const result = await fetch(requestUrl, {
+      method: String(method || "GET").toUpperCase(),
+      headers,
+      body: body === null || body === undefined ? undefined : body,
+      signal: controller.signal,
+    });
+    const buffer = Buffer.from(await result.arrayBuffer().catch(() => new ArrayBuffer(0)));
+    return {
+      ok: result.ok,
+      status: result.status,
+      headers: result.headers,
+      buffer,
+      transport: "fetch",
+    };
+  } catch (fetchError) {
+    try {
+      return await requestBufferWithHttpsIpv4(requestUrl, { method, headers, body, timeoutMs });
+    } catch (fallbackError) {
+      console.warn("[isznr] binary request failed", {
         path: requestUrl.pathname,
         search: requestUrl.search,
         fetchError: summarizeNetworkError(fetchError),
@@ -4626,6 +4725,18 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
   const pdfUrl = buildIsznrFcRecordPdfUrl(isznrBaseUrl, submitResult.isznrId);
   const pdfBridgeUrl = buildIsznrRecordPdfBridgeUrl("fc", isznrBaseUrl, submitResult.isznrId);
   const pdfLoginUrl = pdfUrl ? buildIsznrLoginUrlFromPdfUrl(pdfUrl) : "";
+  const importedPdf = await tryImportIsznrRecordPdfForWorkOrder({
+    user,
+    workOrder,
+    scopedSnapshot,
+    baseUrl: isznrBaseUrl,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    recordKind: "fc",
+    recordId: submitResult.isznrId,
+    recordNumber: submitResult.recordNumber,
+    postDraft: draft,
+  });
 
   await domainRepository.addWorkOrderActivityComment(
     workOrder.id,
@@ -4639,6 +4750,9 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
         followUpResult.failed ? `Upozorenja: ${followUpResult.failed}.` : "",
         pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
         pdfBridgeUrl ? `Safe Nexus preuzimanje: ${pdfBridgeUrl}.` : "",
+        importedPdf.ok
+          ? `Safe Nexus dokument: spremljen za potpis (${importedPdf.signatureFieldCount || 0} signature fieldova).`
+          : `Safe Nexus dokument nije automatski uvezen: ${importedPdf.message}.`,
         submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
       ].filter(Boolean).join(" "),
     },
@@ -4658,6 +4772,9 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
     isznrPdfBridgeUrl: pdfBridgeUrl,
     pdfLoginUrl,
     isznrLoginUrl: pdfLoginUrl,
+    importedPdf,
+    importedDocument: importedPdf.document || null,
+    signatureFieldCount: importedPdf.signatureFieldCount || 0,
     followUp: followUpResult,
     message: [
       submitResult.message,
@@ -4666,6 +4783,9 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
         : followUpResult.submitted
           ? `FC elementi: ${followUpResult.submitted} poslano.`
           : "",
+      importedPdf.ok
+        ? `PDF je spremljen u Dokumente i pripremljen za potpis (${importedPdf.signatureFieldCount || 0} polja).`
+        : `PDF nije automatski spremljen: ${importedPdf.message}`,
       pdfUrl ? `PDF zapisnik: ${pdfUrl}` : "",
     ].filter(Boolean).join(" "),
     postDraft: {
@@ -4676,6 +4796,7 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
       submittedRecordNumber: submitResult.recordNumber,
       submittedPdfUrl: pdfUrl,
       submittedPdfBridgeUrl: pdfBridgeUrl,
+      importedPdf,
     },
   };
 }
@@ -4877,6 +4998,18 @@ async function submitIsznrWorkEquipmentForWorkOrder({
   const pdfUrl = buildIsznrRoRecordPdfUrl(isznrBaseUrl, submitResult.isznrId);
   const pdfBridgeUrl = buildIsznrRoRecordPdfBridgeUrl(isznrBaseUrl, submitResult.isznrId);
   const pdfLoginUrl = pdfUrl ? buildIsznrLoginUrlFromRoPdfUrl(pdfUrl) : "";
+  const importedPdf = await tryImportIsznrRecordPdfForWorkOrder({
+    user,
+    workOrder,
+    scopedSnapshot,
+    baseUrl: isznrBaseUrl,
+    username: storedSettings?.username || "",
+    password: storedSettings?.passwordSecret || "",
+    recordKind: "ro",
+    recordId: submitResult.isznrId,
+    recordNumber: submitResult.recordNumber,
+    postDraft: draft,
+  });
 
   await domainRepository.addWorkOrderActivityComment(
     workOrder.id,
@@ -4892,6 +5025,9 @@ async function submitIsznrWorkEquipmentForWorkOrder({
         attachmentResult.failed ? `Privici upozorenja: ${attachmentResult.failed}.` : "",
         pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
         pdfBridgeUrl ? `Safe Nexus preuzimanje: ${pdfBridgeUrl}.` : "",
+        importedPdf.ok
+          ? `Safe Nexus dokument: spremljen za potpis (${importedPdf.signatureFieldCount || 0} signature fieldova).`
+          : `Safe Nexus dokument nije automatski uvezen: ${importedPdf.message}.`,
         submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
       ].filter(Boolean).join(" "),
     },
@@ -4911,6 +5047,9 @@ async function submitIsznrWorkEquipmentForWorkOrder({
     isznrPdfBridgeUrl: pdfBridgeUrl,
     pdfLoginUrl,
     isznrLoginUrl: pdfLoginUrl,
+    importedPdf,
+    importedDocument: importedPdf.document || null,
+    signatureFieldCount: importedPdf.signatureFieldCount || 0,
     followUp: followUpResult,
     attachments: attachmentResult,
     legacyMessage: followUpResult.failed
@@ -4930,6 +5069,9 @@ async function submitIsznrWorkEquipmentForWorkOrder({
         : attachmentResult.submitted
           ? `Privici: ${attachmentResult.submitted} poslano.`
           : "",
+      importedPdf.ok
+        ? `PDF je spremljen u Dokumente i pripremljen za potpis (${importedPdf.signatureFieldCount || 0} polja).`
+        : `PDF nije automatski spremljen: ${importedPdf.message}`,
       pdfUrl ? `PDF zapisnik: ${pdfUrl}` : "",
     ].filter(Boolean).join(" "),
     postDraft: {
@@ -4940,6 +5082,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
       submittedRecordNumber: submitResult.recordNumber,
       submittedPdfUrl: pdfUrl,
       submittedPdfBridgeUrl: pdfBridgeUrl,
+      importedPdf,
     },
   };
 }
@@ -4989,6 +5132,347 @@ function buildIsznrRecordPdfBridgeUrl(recordKind = "ro", baseUrl = "", recordId 
 
 function buildIsznrRoRecordPdfBridgeUrl(baseUrl = "", recordId = "") {
   return buildIsznrRecordPdfBridgeUrl("ro", baseUrl, recordId);
+}
+
+function isPdfBinaryBuffer(buffer = Buffer.alloc(0)) {
+  const safeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? []);
+  if (safeBuffer.length < 5) {
+    return false;
+  }
+  return safeBuffer.indexOf(Buffer.from("%PDF-", "ascii"), 0, "ascii") >= 0
+    && safeBuffer.indexOf(Buffer.from("%PDF-", "ascii"), 0, "ascii") < 1024;
+}
+
+function getIsznrRecordKindLabel(recordKind = "ro") {
+  return normalizeInputValue(recordKind).toLowerCase() === "fc" ? "FC" : "RO";
+}
+
+async function fetchIsznrRecordPdfBuffer({
+  baseUrl = "",
+  username = "",
+  password = "",
+  recordKind = "ro",
+  recordId = "",
+} = {}) {
+  const normalizedKind = getIsznrRecordKindLabel(recordKind).toLowerCase();
+  const normalizedId = normalizeInputValue(recordId);
+  if (!normalizedId) {
+    throw createRequestError(400, "Nedostaje IS ZNR ID zapisnika za PDF.");
+  }
+  const pdfUrl = normalizedKind === "fc"
+    ? buildIsznrFcRecordPdfUrl(baseUrl, normalizedId)
+    : buildIsznrRoRecordPdfUrl(baseUrl, normalizedId);
+  const requestUrl = new URL(pdfUrl);
+  let result;
+  try {
+    result = await requestIsznrBuffer(requestUrl, {
+      method: "GET",
+      headers: {
+        accept: "application/pdf, application/octet-stream, */*",
+        authorization: createIsznrBasicAuthHeader(username, password),
+        "user-agent": "SafeNexus/1.0",
+      },
+      preferIpv4: true,
+      timeoutMs: ISZNR_RECORD_PDF_IMPORT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    if (isNetworkTimeoutError(error)) {
+      throw createRequestError(504, "IS ZNR PDF se nije preuzeo na vrijeme.");
+    }
+    throw createRequestError(502, "IS ZNR PDF nije dostupan s poslužitelja.");
+  }
+
+  const contentType = getResponseHeaderValue(result.headers, "content-type");
+  if (!result.ok) {
+    if (result.status === 401 || result.status === 403) {
+      throw createRequestError(400, "IS ZNR PDF traži prijavu. Provjeri OIB i lozinku u Settings.");
+    }
+    throw createRequestError(result.status || 502, `IS ZNR PDF nije preuzet (status ${result.status || "nepoznat"}).`);
+  }
+
+  if (!isPdfBinaryBuffer(result.buffer)) {
+    const preview = result.buffer.toString("utf8", 0, Math.min(result.buffer.length, 240)).replace(/\s+/g, " ").trim();
+    const looksLikeLogin = /<html|login|prijav/i.test(preview);
+    throw createRequestError(
+      looksLikeLogin ? 409 : 502,
+      looksLikeLogin
+        ? "IS ZNR nije vratio PDF nego stranicu za prijavu. Otvori bridge link i prijavi se u IS ZNR."
+        : `IS ZNR nije vratio PDF${contentType ? ` (${contentType})` : ""}.`,
+    );
+  }
+
+  return {
+    ok: true,
+    pdfUrl,
+    buffer: result.buffer,
+    contentType,
+    status: result.status,
+  };
+}
+
+function buildIsznrPersonSignatureItems(people = {}, recordKind = "ro", scopedSnapshot = {}) {
+  const kindLabel = getIsznrRecordKindLabel(recordKind);
+  const sourceItems = Array.isArray(people?.items) ? people.items : [];
+  const seen = new Set();
+  return sourceItems
+    .map((item) => {
+      const user = item?.user && typeof item.user === "object" ? item.user : {};
+      const oib = normalizeSignatureFieldOib(
+        item?.oib
+        || getMobileUserDocumentOib(user, kindLabel === "FC" ? "radni_okolis" : "radna_oprema", scopedSnapshot)
+        || getIsznrUserCandidateOib(user),
+      );
+      const name = normalizeInputValue(item?.label || getMobileUserDocumentName(user));
+      if (!oib || seen.has(oib)) {
+        return null;
+      }
+      seen.add(oib);
+      return {
+        name: name || "Potpisnik",
+        signerUserId: normalizeInputValue(item?.userId || user?.id),
+        signerEmail: normalizeInputValue(item?.email || user?.email),
+        signerOib: oib,
+        signerTitle: normalizeInputValue(item?.title || getMobileUserDocumentTitle(user)),
+        signerOrganization: normalizeInputValue(scopedSnapshot.currentOrganization?.name || scopedSnapshot.organization?.name || ""),
+      };
+    })
+    .filter(Boolean);
+}
+
+async function buildImportedIsznrPdfSignatureFieldSpecs(pdfBuffer = Buffer.alloc(0), {
+  people = {},
+  recordKind = "ro",
+  scopedSnapshot = {},
+} = {}) {
+  const signers = buildIsznrPersonSignatureItems(people, recordKind, scopedSnapshot);
+  if (signers.length === 0) {
+    return [];
+  }
+
+  let pageWidth = 595;
+  let pageHeight = 842;
+  let pageNumber = 1;
+  try {
+    const pdfDoc = await PDFDocument.load(Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []), {
+      ignoreEncryption: true,
+    });
+    const pages = pdfDoc.getPages();
+    if (pages.length > 0) {
+      const lastPage = pages[pages.length - 1];
+      pageWidth = lastPage.getWidth();
+      pageHeight = lastPage.getHeight();
+      pageNumber = pages.length;
+    }
+  } catch {
+    // Keep A4 fallback coordinates. addPdfSignatureFieldsToBuffer will validate again.
+  }
+
+  const fieldWidth = Math.min(190, Math.max(142, (pageWidth - 128 - 28) / 2));
+  const fieldHeight = 34;
+  const sideMargin = Math.max(42, Math.min(72, pageWidth * 0.095));
+  const columnGap = 28;
+  const columnCount = signers.length > 1 ? 2 : 1;
+  const singleX = Math.max(sideMargin, pageWidth - sideMargin - fieldWidth);
+  const leftX = sideMargin;
+  const rightX = Math.max(sideMargin, pageWidth - sideMargin - fieldWidth);
+  const baseY = Math.max(76, Math.min(150, pageHeight * 0.15));
+  const rowGap = fieldHeight + 28;
+  const roleBase = `ISZNR_${getIsznrRecordKindLabel(recordKind)}`;
+
+  return signers.map((signer, index) => {
+    const rowIndex = columnCount === 1 ? index : Math.floor(index / 2);
+    const columnIndex = columnCount === 1 ? 0 : index % 2;
+    const role = signers.length === 1 ? roleBase : `${roleBase}_${index + 1}`;
+    return {
+      fieldName: buildSignatureFieldName(role, signer.signerOib),
+      signatureFieldRole: role,
+      signatureFieldOib: signer.signerOib,
+      signatureFieldStandard: "SIGN_{ROLE}_{OIB}",
+      label: signer.name,
+      name: signer.name,
+      roleLabel: "Potpisnik zaključne ocjene",
+      signerTitle: signer.signerTitle,
+      signerOrganization: signer.signerOrganization,
+      signerUserId: signer.signerUserId,
+      signerEmail: signer.signerEmail,
+      signerOib: signer.signerOib,
+      anchorText: signer.name,
+      page: pageNumber,
+      x: columnCount === 1 ? singleX : (columnIndex === 0 ? leftX : rightX),
+      y: baseY + (rowIndex * rowGap),
+      width: fieldWidth,
+      height: fieldHeight,
+      drawPlaceholder: false,
+      signatureMode: "digital",
+    };
+  });
+}
+
+function buildImportedIsznrPdfSignatureMetadata(signatureFields = []) {
+  const fields = (Array.isArray(signatureFields) ? signatureFields : []).filter((field) => field?.fieldName);
+  const primaryField = fields[0] || null;
+  return {
+    signatureFieldRole: primaryField?.signatureFieldRole || "",
+    signatureFieldOib: primaryField?.signatureFieldOib || "",
+    preferredField: primaryField?.fieldName || "",
+    signerOib: primaryField?.signatureFieldOib || "",
+    signatureFieldsJson: fields.length > 0 ? JSON.stringify(fields.map((field) => ({
+      fieldName: field.fieldName,
+      label: field.label || field.name || "",
+      name: field.name || field.label || "",
+      roleLabel: field.roleLabel || field.role || "",
+      signerTitle: field.signerTitle || "",
+      signerOrganization: field.signerOrganization || "",
+      signerUserId: field.signerUserId || "",
+      signerEmail: field.signerEmail || "",
+      page: field.page || "",
+      x: Number.isFinite(Number(field.x)) ? Number(field.x) : null,
+      y: Number.isFinite(Number(field.y)) ? Number(field.y) : null,
+      width: Number.isFinite(Number(field.width)) ? Number(field.width) : null,
+      height: Number.isFinite(Number(field.height)) ? Number(field.height) : null,
+      anchorText: field.anchorText || "",
+      role: field.signatureFieldRole || "ZNR",
+      oib: field.signatureFieldOib || "",
+      status: "available",
+      standard: field.signatureFieldStandard || "SIGN_{ROLE}_{OIB}",
+    }))) : "",
+  };
+}
+
+function buildImportedIsznrRecordPdfDocumentPayload({
+  workOrder = {},
+  recordKind = "ro",
+  recordId = "",
+  recordNumber = "",
+  pdfBuffer = Buffer.alloc(0),
+  signatureFields = [],
+} = {}) {
+  const kindLabel = getIsznrRecordKindLabel(recordKind);
+  const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number || workOrder.id || "RN");
+  const recordLabel = normalizeInputValue(recordNumber || recordId || "zapisnik");
+  const safeFileName = sanitizeGeneratedDocumentFileName(
+    `IS-ZNR-${kindLabel}-${recordLabel}-${workOrderNumber}`,
+    { fallback: `IS-ZNR-${kindLabel}`, extension: "pdf" },
+  );
+  const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
+  const signatureMetadata = buildImportedIsznrPdfSignatureMetadata(signatureFields);
+  const signerLabels = (Array.isArray(signatureFields) ? signatureFields : [])
+    .map((field) => {
+      const identity = field.signatureFieldOib ? `OIB ${field.signatureFieldOib}` : "";
+      return [field.name || field.label || "Potpisnik", identity ? `(${identity})` : ""].filter(Boolean).join(" ");
+    })
+    .filter(Boolean);
+  const signerSuffix = signerLabels.length ? ` Potpisnici: ${signerLabels.join(", ")}.` : "";
+  return {
+    fileName: safeFileName,
+    fileType: "application/pdf",
+    fileSize: safeBuffer.length,
+    documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+    description: `IS ZNR ${kindLabel} zapisnik ${recordLabel} za RN ${workOrderNumber}. PDF je preuzet iz IS ZNR-a i pripremljen za digitalni potpis.${signerSuffix}`,
+    sourceType: "pdf",
+    ...signatureMetadata,
+    dataUrl: `data:application/pdf;base64,${safeBuffer.toString("base64")}`,
+  };
+}
+
+async function importIsznrRecordPdfForWorkOrder({
+  user = null,
+  workOrder = {},
+  scopedSnapshot = {},
+  baseUrl = "",
+  username = "",
+  password = "",
+  recordKind = "ro",
+  recordId = "",
+  recordNumber = "",
+  postDraft = {},
+} = {}) {
+  const normalizedId = normalizeInputValue(recordId);
+  if (!workOrder?.id || !normalizedId) {
+    return {
+      ok: false,
+      skipped: true,
+      message: "Nedostaje RN ili IS ZNR ID zapisnika za uvoz PDF-a.",
+    };
+  }
+
+  const pdfResult = await fetchIsznrRecordPdfBuffer({
+    baseUrl,
+    username,
+    password,
+    recordKind,
+    recordId: normalizedId,
+  });
+  const signatureFields = await buildImportedIsznrPdfSignatureFieldSpecs(pdfResult.buffer, {
+    people: postDraft?.people?.signedBy || {},
+    recordKind,
+    scopedSnapshot,
+  });
+  const pdfWithFields = signatureFields.length > 0
+    ? await addPdfSignatureFieldsToBuffer(pdfResult.buffer, signatureFields, {
+      appearance: {
+        showQualifiedLabel: false,
+        showName: false,
+        showTitle: false,
+        showRole: false,
+        showOib: false,
+        border: false,
+        transparentBackground: true,
+      },
+    })
+    : pdfResult.buffer;
+  const filePayload = buildImportedIsznrRecordPdfDocumentPayload({
+    workOrder,
+    recordKind,
+    recordId: normalizedId,
+    recordNumber,
+    pdfBuffer: pdfWithFields,
+    signatureFields,
+  });
+  const saved = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
+    ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrder.id, filePayload, user)
+    : (await domainRepository.addWorkOrderDocuments(workOrder.id, [filePayload], user, { sourceType: "pdf" }))[0] ?? null;
+
+  return {
+    ok: true,
+    pdfUrl: pdfResult.pdfUrl,
+    document: stripStoredDocumentPayloadForResponse(saved),
+    signatureFieldCount: signatureFields.length,
+    signatureFields: signatureFields.map((field) => ({
+      fieldName: field.fieldName,
+      signerOib: field.signatureFieldOib,
+      name: field.name || field.label || "",
+      role: field.signatureFieldRole,
+    })),
+    message: signatureFields.length > 0
+      ? `IS ZNR ${getIsznrRecordKindLabel(recordKind)} PDF je spremljen i ima ${signatureFields.length} signature fieldova.`
+      : `IS ZNR ${getIsznrRecordKindLabel(recordKind)} PDF je spremljen, ali nema potpisnika s OIB-om za signature field.`,
+  };
+}
+
+async function tryImportIsznrRecordPdfForWorkOrder(options = {}) {
+  try {
+    return await importIsznrRecordPdfForWorkOrder(options);
+  } catch (error) {
+    const recordKind = options?.recordKind || "ro";
+    const recordId = normalizeInputValue(options?.recordId);
+    const baseUrl = options?.baseUrl || "";
+    const pdfUrl = recordId
+      ? (getIsznrRecordKindLabel(recordKind) === "FC"
+        ? buildIsznrFcRecordPdfUrl(baseUrl, recordId)
+        : buildIsznrRoRecordPdfUrl(baseUrl, recordId))
+      : "";
+    const pdfBridgeUrl = recordId
+      ? buildIsznrRecordPdfBridgeUrl(recordKind, baseUrl, recordId)
+      : "";
+    return {
+      ok: false,
+      statusCode: error?.statusCode || 500,
+      pdfUrl,
+      pdfBridgeUrl,
+      message: error?.message || "IS ZNR PDF nije automatski uvezen.",
+    };
+  }
 }
 
 function buildIsznrApiIriList(resourcePath = "", items = []) {
@@ -5105,6 +5589,7 @@ function getIsznrPeopleForWorkOrder(scopedSnapshot = {}, workOrder = {}, role = 
   const fallback = users.filter((user) => !preferred.includes(user));
   const records = [...preferred, ...fallback]
     .map((user) => ({
+      user,
       label: normalizeInputValue(
         getMobileUserDocumentName(user)
         || user.fullName
@@ -5113,6 +5598,11 @@ function getIsznrPeopleForWorkOrder(scopedSnapshot = {}, workOrder = {}, role = 
         || user.email,
       ),
       ids: getIsznrPersonRoleIdsFromUser(user, role),
+      oib: getMobileUserDocumentOib(user, role === "holder" ? "radna_oprema" : "radni_okolis", scopedSnapshot)
+        || getIsznrUserCandidateOib(user),
+      title: getMobileUserDocumentTitle(user),
+      email: normalizeInputValue(user?.email),
+      userId: normalizeInputValue(user?.id),
     }))
     .filter((entry) => entry.ids.length > 0);
   const iris = buildIsznrApiIriList(resourcePath, records.flatMap((entry) => entry.ids));
@@ -5120,6 +5610,16 @@ function getIsznrPeopleForWorkOrder(scopedSnapshot = {}, workOrder = {}, role = 
     iris,
     labels: Array.from(new Set(records.map((entry) => entry.label).filter(Boolean))),
     count: iris.length,
+    items: records.map((entry) => ({
+      label: entry.label,
+      ids: entry.ids,
+      iris: buildIsznrApiIriList(resourcePath, entry.ids),
+      oib: entry.oib,
+      title: entry.title,
+      email: entry.email,
+      userId: entry.userId,
+      user: entry.user,
+    })),
   };
 }
 

@@ -380,6 +380,13 @@ private data class PendingDocumentSelection(
     val mode: WorkOrderDocumentInputMode,
 )
 
+private data class WorkOrderDocumentPreviewState(
+    val document: WorkOrderDocument,
+    val fileName: String,
+    val fileType: String,
+    val uri: Uri,
+)
+
 private val biometricAuthenticators =
     BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -1426,6 +1433,40 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         downloadWorkOrderDocument(context, document, openAfterDownload = true)
     }
 
+    fun previewWorkOrderDocument(
+        context: Context,
+        document: WorkOrderDocument,
+        onReady: (uri: Uri, fileType: String) -> Unit,
+    ) {
+        val workOrderId = state.selectedWorkOrder?.id ?: document.workOrderId
+        if (workOrderId.isBlank() || document.id.isBlank()) {
+            state = state.copy(error = "Dokument nije moguće preuzeti za pregled.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadWorkOrderDocument(workOrderId, document)
+                .onSuccess { downloaded ->
+                    val uri = runCatching { cacheDownloadedDocumentFileUri(context, downloaded) }.getOrElse { error ->
+                        state = state.copy(
+                            isLoading = false,
+                            error = error.message ?: "Ne mogu spremiti dokument za pregled.",
+                        )
+                        return@onSuccess
+                    }
+                    state = state.copy(isLoading = false, notice = "")
+                    onReady(uri, downloaded.fileType.ifBlank { document.fileType })
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti dokument za pregled.",
+                    )
+                }
+        }
+    }
+
     fun downloadWorkOrderDocument(context: Context, document: WorkOrderDocument, openAfterDownload: Boolean = false) {
         val workOrderId = state.selectedWorkOrder?.id ?: document.workOrderId
         if (workOrderId.isBlank() || document.id.isBlank()) {
@@ -1737,6 +1778,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     var serviceManagementTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
+    var workOrderDocumentPreview by remember { mutableStateOf<WorkOrderDocumentPreviewState?>(null) }
     val confirmDocumentSelection: (WorkOrderDocumentCategory) -> Unit = { category ->
         val selection = pendingSelection
         pendingSelection = null
@@ -1818,6 +1860,19 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     }
     val openDocumentationActions: (WorkOrder) -> Unit = { workOrder ->
         documentationActionTarget = workOrder
+    }
+    val openDocumentPreview: (WorkOrderDocument) -> Unit = { document ->
+        viewModel.previewWorkOrderDocument(
+            context = context.applicationContext,
+            document = document,
+        ) { uri, fileType ->
+            workOrderDocumentPreview = WorkOrderDocumentPreviewState(
+                document = document,
+                fileName = document.displayName,
+                fileType = fileType.ifBlank { document.fileType },
+                uri = uri,
+            )
+        }
     }
     val openMobileRecord: (MobileRecord) -> Unit = { record ->
         val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
@@ -1921,7 +1976,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onAddDocumentation = openDocumentationActions,
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
                     onSignWorkOrder = { workOrder -> signatureActionTarget = workOrder },
-                    onOpenDocument = { document -> viewModel.openWorkOrderDocument(context.applicationContext, document) },
+                    onOpenDocument = openDocumentPreview,
                     onDownloadDocument = { document -> viewModel.downloadWorkOrderDocument(context.applicationContext, document) },
                     onDeleteDocument = viewModel::deleteWorkOrderDocument,
                     onRefreshDocuments = viewModel::refreshWorkOrderDocuments,
@@ -2046,6 +2101,15 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             isLoading = state.isLoading,
             onDismiss = { pendingSelection = null },
             onConfirm = confirmDocumentSelection,
+        )
+    }
+    workOrderDocumentPreview?.let { preview ->
+        WorkOrderDocumentPreviewDialog(
+            documentName = preview.fileName,
+            fileType = preview.fileType,
+            uri = preview.uri,
+            onOpenExternal = { viewModel.openWorkOrderDocument(context.applicationContext, preview.document) },
+            onDismiss = { workOrderDocumentPreview = null },
         )
     }
 }
@@ -13213,6 +13277,100 @@ private fun WorkOrderDocumentCard(
     }
 }
 
+private fun canPreviewDocumentInApp(fileType: String, fileName: String): Boolean {
+    val resolvedType = fileType.lowercase(Locale.getDefault()).trim()
+    return resolvedType.startsWith("image/")
+        || resolvedType == "application/pdf"
+        || fileName.lowercase(Locale.getDefault()).endsWith(".pdf")
+}
+
+@Composable
+private fun WorkOrderDocumentPreviewDialog(
+    documentName: String,
+    fileType: String,
+    uri: Uri,
+    onOpenExternal: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val canPreview = canPreviewDocumentInApp(fileType, documentName)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        title = {
+            Text("Pregled dokumenta", fontWeight = FontWeight.Black)
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = documentName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (canPreview) {
+                    val previewUri = uri.toString()
+                    AndroidView(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 260.dp, max = 520.dp),
+                        factory = { context ->
+                            WebView(context).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.allowFileAccess = true
+                                settings.allowContentAccess = true
+                                settings.builtInZoomControls = true
+                                settings.displayZoomControls = false
+                                setBackgroundColor(AndroidColor.WHITE)
+                            }
+                        },
+                        update = { webView ->
+                            if (webView.tag != previewUri) {
+                                webView.tag = previewUri
+                                webView.loadUrl(previewUri)
+                            }
+                        },
+                    )
+                } else {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text("Ova vrsta datoteke ne prikazuje se u aplikaciji.")
+                            Text(
+                                "Za ovaj dokument možeš koristiti opciju \"preuzmi\" pa otvoriti aplikacijom na uređaju.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(onClick = onOpenExternal) {
+                    Text("Otvori vanjskom aplikacijom")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Zatvori")
+                }
+            }
+        },
+    )
+}
+
 @Composable
 private fun WorkOrderDocumentationActionDialog(
     workOrder: WorkOrder,
@@ -20808,7 +20966,7 @@ private fun buildWorkOrderDocumentDescription(mode: WorkOrderDocumentInputMode):
     WorkOrderDocumentInputMode.File -> "Datoteka dodana iz SafeNexus Android aplikacije."
 }
 
-private fun cacheDownloadedDocument(context: Context, document: DownloadedDocument): Uri {
+private fun cacheDownloadedDocumentFile(context: Context, document: DownloadedDocument): File {
     val directory = File(context.cacheDir, "work-order-documents").apply { mkdirs() }
     val safeName = document.fileName
         .replace(Regex("""[\\/:*?"<>|]+"""), "-")
@@ -20816,8 +20974,16 @@ private fun cacheDownloadedDocument(context: Context, document: DownloadedDocume
         .ifBlank { "dokument" }
     val file = File(directory, safeName)
     file.writeBytes(document.bytes)
+    return file
+}
+
+private fun cacheDownloadedDocument(context: Context, document: DownloadedDocument): Uri {
+    val file = cacheDownloadedDocumentFile(context, document)
     return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 }
+
+private fun cacheDownloadedDocumentFileUri(context: Context, document: DownloadedDocument): Uri =
+    Uri.fromFile(cacheDownloadedDocumentFile(context, document))
 
 private fun saveDownloadedDocument(context: Context, document: DownloadedDocument): Uri {
     val safeName = document.fileName
