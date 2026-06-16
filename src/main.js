@@ -5866,6 +5866,17 @@ const companyContractOpenTemplateButton = document.querySelector("#company-contr
 const companyEmployeeSizeInput = document.querySelector("#company-employee-size");
 const companyManagerPickerSlot = document.querySelector("#company-manager-picker");
 const companyManagerUserIdsInput = document.querySelector("#company-manager-user-ids");
+const companyIsznrTrainingSourceInput = document.querySelector("#company-isznr-training-source");
+const companyIsznrTrainingJsonInput = document.querySelector("#company-isznr-training-json");
+const companyIsznrTrainingRefreshButton = document.querySelector("#company-isznr-training-refresh");
+const companyInternalTrainingPanel = document.querySelector("#company-internal-training-panel");
+const companyInternalTrainingTemplateMeta = document.querySelector("#company-internal-training-template-meta");
+const companyInternalTrainingPlaceholders = document.querySelector("#company-internal-training-placeholders");
+const companyIsznrTrainingPanel = document.querySelector("#company-isznr-training-panel");
+const companyIsznrTrainingStatus = document.querySelector("#company-isznr-training-status");
+const companyIsznrTrainingSummary = document.querySelector("#company-isznr-training-summary");
+const companyIsznrTrainingRegisters = document.querySelector("#company-isznr-training-registers");
+const companyIsznrTrainingCandidates = document.querySelector("#company-isznr-training-candidates");
 const companyPeriodInput = document.querySelector("#company-period");
 const companyIsActiveInput = document.querySelector("#company-is-active");
 const companyRepresentativeInput = document.querySelector("#company-representative");
@@ -5881,6 +5892,66 @@ const companyLinkedLocationsEmpty = document.querySelector("#company-linked-loca
 const companyLinkedLocationsCount = document.querySelector("#company-linked-locations-count");
 const companyAddLocationButton = document.querySelector("#company-add-location");
 const companyClientPortalCard = document.querySelector("#company-client-portal-card");
+
+const COMPANY_INTERNAL_TRAINING_PLACEHOLDER_GROUPS = [
+  {
+    label: "Osoba i poslodavac",
+    tokens: [
+      "INTERNAL_ID",
+      "POSLODAVAC_NAZIV",
+      "POSLODAVAC_OIB",
+      "OVLASTENA_OSOBA_NAZIV",
+      "OSOBA_IME",
+      "OSOBA_PREZIME",
+      "OSOBA_OIB",
+      "RADNO_MJESTO",
+      "POSLOVI",
+    ],
+  },
+  {
+    label: "ZOS",
+    tokens: [
+      "MJESTO_TEORIJA",
+      "DATUM_TEORIJA_OD",
+      "DATUM_TEORIJA_DO",
+      "NACIN_TEORIJA",
+      "MJESTO_PRAKSA",
+      "DATUM_PRAKSA_OD",
+      "DATUM_PRAKSA_DO",
+      "NEPOSREDNI_OVLASTENIK_OIB",
+      "NEPOSREDNI_OVLASTENIK_IME",
+      "NEPOSREDNI_OVLASTENIK_PREZIME",
+      "STRUCNJAK_ZNR",
+      "ZOS_EVIDENCIJA",
+    ],
+  },
+  {
+    label: "ZOOP",
+    tokens: [
+      "ZOOP_RECORD",
+      "ZOOP_TYPE",
+      "ZOOP_MJESTO",
+      "ZOOP_DATUM_OD",
+      "ZOOP_DATUM_DO",
+      "ZOOP_STRUCNJAK",
+      "DRUGA_OSOBA_OIB",
+      "DRUGA_OSOBA_IME",
+      "DRUGA_OSOBA_PREZIME",
+    ],
+  },
+  {
+    label: "Procjena rizika",
+    tokens: [
+      "PROCJENA_RIZIKA_BROJ",
+      "PROCJENA_RIZIKA_DATUM",
+      "PROCJENA_RIZIKA_RADNO_MJESTO",
+      "PROCJENA_RIZIKA_POSLOVI",
+      "PROCJENA_RIZIKA_OPASNOSTI",
+      "PROCJENA_RIZIKA_MJERE",
+      "PROCJENA_RIZIKA_STATUS",
+    ],
+  },
+];
 const companyClientUsersCount = document.querySelector("#company-client-users-count");
 const companyClientFirstNameInput = document.querySelector("#company-client-first-name");
 const companyClientLastNameInput = document.querySelector("#company-client-last-name");
@@ -91628,6 +91699,32 @@ function getCompanyTemplateAssignmentTemplateOptions() {
   }).filter((option) => option.value);
 }
 
+function getCompanyInternalTrainingTemplateOptions() {
+  return sortDocumentTemplates(state.documentTemplates ?? []).filter((template) => {
+    const document = template.referenceDocument ?? {};
+    return isDocumentTemplateWordReferenceDocument(document);
+  }).map((template) => {
+    const documentName = template.referenceDocument?.fileName || "";
+    return {
+      value: String(template.id || ""),
+      label: [
+        template.title || template.documentType || "Interni template",
+        documentName ? `(${documentName})` : "",
+      ].filter(Boolean).join(" "),
+      template,
+    };
+  }).filter((option) => option.value);
+}
+
+function findCompanyInternalTrainingTemplate(templateId = "") {
+  const normalizedTemplateId = String(templateId || "").trim();
+  if (!normalizedTemplateId) {
+    return null;
+  }
+  return getCompanyInternalTrainingTemplateOptions()
+    .find((option) => String(option.value) === normalizedTemplateId)?.template ?? null;
+}
+
 function findCompanyTemplateAssignment(assignments = [], serviceRow = {}) {
   const normalized = Array.isArray(assignments) ? assignments : [];
   if (serviceRow.kind === "is_znr") {
@@ -91721,6 +91818,352 @@ function collectCompanyTemplateAssignments() {
     .filter(Boolean);
 }
 
+function parseCompanyIsznrTrainingDraft() {
+  const raw = companyIsznrTrainingJsonInput?.value || "";
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeCompanyIsznrTrainingDraft(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const sourceMode = String(source.source || companyIsznrTrainingSourceInput?.value || "internal").trim();
+  const selectedRegisters = Array.isArray(source.zosRegisterIris) ? source.zosRegisterIris : [];
+  const selectedLabels = Array.isArray(source.zosRegisterLabels) ? source.zosRegisterLabels : [];
+  return {
+    source: sourceMode === "isznr" ? "isznr" : "internal",
+    companyIri: String(source.companyIri || "").trim(),
+    companyId: String(source.companyId || "").trim(),
+    companyName: String(source.companyName || "").trim(),
+    companyOib: String(source.companyOib || "").trim(),
+    authorizedCompanyIri: String(source.authorizedCompanyIri || "").trim(),
+    authorizedCompanyId: String(source.authorizedCompanyId || "").trim(),
+    authorizedCompanyName: String(source.authorizedCompanyName || "").trim(),
+    authorizedCompanyOib: String(source.authorizedCompanyOib || "").trim(),
+    zosRegisterIris: Array.from(new Set(selectedRegisters.map((entry) => String(entry || "").trim()).filter(Boolean))),
+    zosRegisterLabels: selectedLabels.map((entry) => String(entry || "").trim()).filter(Boolean),
+    syncedAt: String(source.syncedAt || source.checkedAt || "").trim(),
+    note: String(source.note || "").trim(),
+  };
+}
+
+function renderCompanyInternalTrainingPlaceholders() {
+  if (!companyInternalTrainingPlaceholders) {
+    return;
+  }
+  companyInternalTrainingPlaceholders.replaceChildren(...COMPANY_INTERNAL_TRAINING_PLACEHOLDER_GROUPS.map((group) => {
+    const groupNode = document.createElement("div");
+    groupNode.className = "company-internal-training-placeholder-group";
+    const title = document.createElement("strong");
+    title.textContent = group.label;
+    const tokenGrid = document.createElement("div");
+    tokenGrid.className = "company-internal-training-token-grid";
+    (group.tokens ?? []).forEach((token) => {
+      const placeholder = `{{${token}}}`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "company-internal-training-token";
+      button.textContent = placeholder;
+      button.title = "Kopiraj placeholder";
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard?.writeText?.(placeholder);
+          button.textContent = "Kopirano";
+          window.setTimeout(() => {
+            button.textContent = placeholder;
+          }, 1200);
+        } catch {
+          button.textContent = placeholder;
+        }
+      });
+      tokenGrid.append(button);
+    });
+    groupNode.append(title, tokenGrid);
+    return groupNode;
+  }));
+}
+
+function renderCompanyInternalTrainingTemplatePanel(draft = getCompanyIsznrTrainingPayload()) {
+  const isInternal = draft.source !== "isznr";
+  if (companyInternalTrainingPanel) {
+    companyInternalTrainingPanel.hidden = !isInternal;
+  }
+
+  if (companyInternalTrainingTemplateMeta) {
+    companyInternalTrainingTemplateMeta.textContent = isInternal
+      ? "Kopiraj tokene u interni Word ili PDF predložak. Vrijednosti se pune iz evidencije osposobljavanja i procjene rizika."
+      : "Za IS ZNR način interni placeholderi se ne koriste.";
+  }
+  if (isInternal) {
+    renderCompanyInternalTrainingPlaceholders();
+  }
+}
+
+function writeCompanyIsznrTrainingDraft(value = {}) {
+  const draft = normalizeCompanyIsznrTrainingDraft(value);
+  if (companyIsznrTrainingJsonInput) {
+    companyIsznrTrainingJsonInput.value = JSON.stringify(draft);
+  }
+  if (companyIsznrTrainingSourceInput) {
+    companyIsznrTrainingSourceInput.value = draft.source;
+  }
+  renderCompanyInternalTrainingTemplatePanel(draft);
+  renderCompanyIsznrTrainingPanel();
+  return draft;
+}
+
+function getCompanyIsznrTrainingPayload() {
+  const draft = parseCompanyIsznrTrainingDraft();
+  return normalizeCompanyIsznrTrainingDraft({
+    ...draft,
+    source: companyIsznrTrainingSourceInput?.value || draft.source || "internal",
+  });
+}
+
+function renderCompanyIsznrTrainingPanel(overview = null) {
+  const draft = getCompanyIsznrTrainingPayload();
+  const isIsznr = draft.source === "isznr";
+  if (companyIsznrTrainingPanel) {
+    companyIsznrTrainingPanel.hidden = !isIsznr;
+  }
+  if (companyIsznrTrainingRefreshButton) {
+    companyIsznrTrainingRefreshButton.hidden = !isIsznr;
+    companyIsznrTrainingRefreshButton.disabled = !isIsznr || !companyIdInput?.value;
+  }
+  if (!isIsznr) {
+    if (companyIsznrTrainingStatus) {
+      companyIsznrTrainingStatus.textContent = "Interni način vođenja je odabran. IS ZNR povezivanje za ovu tvrtku nije aktivno.";
+    }
+    companyIsznrTrainingSummary?.replaceChildren();
+    companyIsznrTrainingRegisters?.replaceChildren();
+    companyIsznrTrainingCandidates?.replaceChildren();
+    return;
+  }
+
+  if (companyIsznrTrainingStatus) {
+    companyIsznrTrainingStatus.textContent = overview
+      ? `IS ZNR pregled dohvaćen ${formatCompactDateTime(overview.fetchedAt || new Date().toISOString())}. ${overview.writeEnabled ? "Testno slanje je omogućeno." : "Produkcijski URL: slanje je zaključano."}`
+      : (draft.syncedAt ? `Zadnji dohvat: ${formatCompactDateTime(draft.syncedAt)}.` : "Dohvati IS ZNR podatke za poslodavca, ZOS evidencije i kandidate iz Osposobljavanja.");
+  }
+
+  renderCompanyIsznrTrainingSummary(overview, draft);
+  renderCompanyIsznrTrainingRegisters(overview?.zosRegisters || [], draft);
+  renderCompanyIsznrTrainingCandidates(overview);
+}
+
+function renderCompanyIsznrTrainingSummary(overview = null, draft = getCompanyIsznrTrainingPayload()) {
+  if (!companyIsznrTrainingSummary) {
+    return;
+  }
+  companyIsznrTrainingSummary.hidden = false;
+  companyIsznrTrainingSummary.replaceChildren();
+  const references = overview?.references || {};
+  const companyRef = references.company || {};
+  const authorizedRef = references.authorizedCompany || {};
+  const rows = [
+    {
+      label: "Poslodavac u IS ZNR-u",
+      value: companyRef.iri || draft.companyIri,
+      detail: companyRef.name || draft.companyName || companyNameInput?.value || "",
+      ok: Boolean(companyRef.iri || draft.companyIri),
+    },
+    {
+      label: "Ovlaštena osoba",
+      value: authorizedRef.iri || draft.authorizedCompanyIri,
+      detail: authorizedRef.name || draft.authorizedCompanyName || "",
+      ok: Boolean(authorizedRef.iri || draft.authorizedCompanyIri),
+    },
+    {
+      label: "Stručnjaci ZNR u People",
+      value: String(overview?.expertPeople?.count ?? 0),
+      detail: (overview?.expertPeople?.labels || []).slice(0, 3).join(", "),
+      ok: Number(overview?.expertPeople?.count || 0) > 0,
+    },
+  ];
+  rows.forEach((row) => {
+    const line = document.createElement("div");
+    line.className = `settings-isznr-api-probe-line ${row.ok ? "is-ok" : "is-warning"}`;
+    const left = document.createElement("div");
+    left.className = "settings-isznr-api-probe-left";
+    const check = document.createElement("span");
+    check.className = "settings-isznr-api-check";
+    check.textContent = row.ok ? "✓" : "!";
+    left.append(check, createListLine(row.label, "list-primary"), createListLine(row.detail || row.value || "Nije pronađeno", "list-secondary"));
+    const value = createListLine(row.value || "", "list-tertiary");
+    line.append(left, value);
+    companyIsznrTrainingSummary.append(line);
+  });
+  (overview?.errors || []).forEach((message) => {
+    const line = createListLine(message, "form-error");
+    companyIsznrTrainingSummary.append(line);
+  });
+}
+
+function renderCompanyIsznrTrainingRegisters(registers = [], draft = getCompanyIsznrTrainingPayload()) {
+  if (!companyIsznrTrainingRegisters) {
+    return;
+  }
+  companyIsznrTrainingRegisters.replaceChildren();
+  const title = document.createElement("div");
+  title.className = "company-related-contracts-head";
+  title.append(createListLine("ZOS evidencije", "list-primary"), createBadge(`${registers.length || draft.zosRegisterIris.length}`, "soft-pill"));
+  companyIsznrTrainingRegisters.append(title);
+  if (!registers.length) {
+    const empty = createListLine("Nema dohvaćenih ZOS evidencija. Odabir će ostati spremljen ako je ranije postavljen.", "list-secondary");
+    companyIsznrTrainingRegisters.append(empty);
+    return;
+  }
+  const selected = new Set(draft.zosRegisterIris);
+  registers.forEach((register) => {
+    const row = document.createElement("label");
+    row.className = "risk-assessment-checkbox-line";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selected.has(register.iri);
+    checkbox.addEventListener("change", () => {
+      const current = getCompanyIsznrTrainingPayload();
+      const nextSet = new Set(current.zosRegisterIris);
+      const labelSet = new Map((current.zosRegisterIris || []).map((iri, index) => [iri, current.zosRegisterLabels?.[index] || iri]));
+      if (checkbox.checked) {
+        nextSet.add(register.iri);
+        labelSet.set(register.iri, register.label || register.iri);
+      } else {
+        nextSet.delete(register.iri);
+        labelSet.delete(register.iri);
+      }
+      const nextIris = [...nextSet];
+      writeCompanyIsznrTrainingDraft({
+        ...current,
+        zosRegisterIris: nextIris,
+        zosRegisterLabels: nextIris.map((iri) => labelSet.get(iri) || iri),
+      });
+      renderCompanyIsznrTrainingRegisters(registers, getCompanyIsznrTrainingPayload());
+    });
+    const text = document.createElement("span");
+    const strong = document.createElement("strong");
+    strong.textContent = register.label || register.iri;
+    const small = document.createElement("small");
+    small.textContent = [register.iri, register.activeFrom ? `od ${formatCompactDate(register.activeFrom)}` : "", register.activeTo ? `do ${formatCompactDate(register.activeTo)}` : ""].filter(Boolean).join(" · ");
+    text.append(strong, small);
+    row.append(checkbox, text);
+    companyIsznrTrainingRegisters.append(row);
+  });
+}
+
+function renderCompanyIsznrTrainingCandidates(overview = null) {
+  if (!companyIsznrTrainingCandidates) {
+    return;
+  }
+  companyIsznrTrainingCandidates.replaceChildren();
+  const candidates = Array.isArray(overview?.localCandidates) ? overview.localCandidates : [];
+  const head = document.createElement("div");
+  head.className = "company-related-contracts-head";
+  head.append(createListLine("Kandidati iz Osposobljavanja", "list-primary"), createBadge(`${candidates.length}`, "soft-pill"));
+  companyIsznrTrainingCandidates.append(head);
+  if (!overview) {
+    companyIsznrTrainingCandidates.append(createListLine("Dohvati IS ZNR podatke za prikaz lokalnih kandidata.", "list-secondary"));
+    return;
+  }
+  if (!candidates.length) {
+    companyIsznrTrainingCandidates.append(createListLine("Nema lokalnih ZOS/ZOOP stavki za ovu tvrtku.", "list-secondary"));
+    return;
+  }
+  candidates.forEach((candidate) => {
+    const row = document.createElement("article");
+    row.className = "company-linked-record-item";
+    const copy = document.createElement("div");
+    copy.className = "company-linked-record-copy";
+    copy.append(
+      createListLine(`${candidate.fullName || "Osoba"} · ${candidate.kind.toUpperCase()}`, "list-primary"),
+      createListLine([candidate.label, candidate.serviceCode, candidate.oib ? `OIB ${candidate.oib}` : "Bez OIB-a"].filter(Boolean).join(" · "), "list-secondary"),
+      createListLine(candidate.isznr?.recordId ? `IS ZNR poslano: ${candidate.isznr.recordId}` : "Nije poslano u IS ZNR", "list-tertiary"),
+    );
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "ghost-button company-linked-record-actions";
+    action.textContent = candidate.kind === "zoop" ? "Pošalji ZOOP" : "Pošalji ZOS";
+    action.disabled = !overview.writeEnabled || Boolean(candidate.isznr?.recordId);
+    action.addEventListener("click", () => {
+      void submitCompanyIsznrTrainingCandidate(candidate);
+    });
+    row.append(copy, action);
+    companyIsznrTrainingCandidates.append(row);
+  });
+}
+
+async function loadCompanyIsznrTrainingOverview() {
+  const companyId = companyIdInput?.value || "";
+  if (!companyId) {
+    setInlineMessage(companyError, "Prvo spremi ili odaberi tvrtku.", "error");
+    return null;
+  }
+  if (companyIsznrTrainingRefreshButton) {
+    companyIsznrTrainingRefreshButton.disabled = true;
+    companyIsznrTrainingRefreshButton.textContent = "Dohvaćam...";
+  }
+  setInlineMessage(companyError, "");
+  try {
+    const params = new URLSearchParams({ companyId });
+    const overview = await apiRequestWithTransientRetry(`/isznr/company-training?${params.toString()}`);
+    const references = overview?.references || {};
+    const nextDraft = writeCompanyIsznrTrainingDraft({
+      ...getCompanyIsznrTrainingPayload(),
+      source: "isznr",
+      companyIri: references.company?.iri || "",
+      companyId: references.company?.id || "",
+      companyName: references.company?.name || "",
+      companyOib: references.company?.oib || companyOibInput?.value || "",
+      authorizedCompanyIri: references.authorizedCompany?.iri || "",
+      authorizedCompanyId: references.authorizedCompany?.id || "",
+      authorizedCompanyName: references.authorizedCompany?.name || "",
+      authorizedCompanyOib: references.authorizedCompany?.oib || "",
+      syncedAt: overview?.fetchedAt || new Date().toISOString(),
+    });
+    renderCompanyIsznrTrainingPanel({ ...overview, selectedZosRegisterIris: nextDraft.zosRegisterIris });
+    return overview;
+  } catch (error) {
+    setInlineMessage(companyError, error?.message || "IS ZNR pregled tvrtke nije dohvaćen.", "error");
+    renderCompanyIsznrTrainingPanel();
+    return null;
+  } finally {
+    if (companyIsznrTrainingRefreshButton) {
+      companyIsznrTrainingRefreshButton.disabled = false;
+      companyIsznrTrainingRefreshButton.textContent = "Dohvati IS ZNR";
+    }
+  }
+}
+
+async function submitCompanyIsznrTrainingCandidate(candidate = {}) {
+  const companyId = companyIdInput?.value || "";
+  if (!companyId || !candidate.recordId) {
+    setInlineMessage(companyError, "Nedostaje tvrtka ili osoba za slanje.", "error");
+    return;
+  }
+  const endpoint = candidate.kind === "zoop" ? "/isznr/company-training/zoop" : "/isznr/company-training/zos";
+  const success = await runMutation(() => apiRequest(endpoint, {
+    method: "POST",
+    body: {
+      companyId,
+      trainingRecordId: candidate.recordId,
+      itemKey: candidate.itemKey,
+      zosRegisterIris: getCompanyIsznrTrainingPayload().zosRegisterIris,
+    },
+  }), companyError, {
+    onSuccessPayload: () => {
+      setInlineMessage(companyError, `${candidate.kind.toUpperCase()} zapis je poslan u IS ZNR test.`, "success");
+    },
+  });
+  if (success) {
+    void loadCompanyIsznrTrainingOverview();
+  }
+}
+
 function buildCompanyPayload() {
   const managerUserIds = getCompanyManagerSelectedUserIds(companyManagerUserIdsInput);
   return {
@@ -91743,6 +92186,7 @@ function buildCompanyPayload() {
     managerUserIds,
     managerUserLabels: getCompanyManagerSelectedUserLabels(managerUserIds),
     templateAssignments: collectCompanyTemplateAssignments(),
+    isznrTraining: getCompanyIsznrTrainingPayload(),
     period: companyPeriodInput.value,
     isActive: companyIsActiveInput.value,
     representative: companyRepresentativeInput.value,
@@ -93249,6 +93693,7 @@ function resetCompanyForm() {
   syncCompanyEmployeeSizeInput("");
   rebuildCompanyManagerUserOptions([]);
   renderCompanyTemplateAssignments([]);
+  writeCompanyIsznrTrainingDraft({ source: "internal" });
   setCompanyContractPriceListDraft([]);
   if (companyContractValidForeverInput) {
     companyContractValidForeverInput.checked = false;
@@ -93508,6 +93953,7 @@ function hydrateCompanyForm(company) {
   }
   rebuildCompanyManagerUserOptions(Array.isArray(company.managerUserIds) ? company.managerUserIds : []);
   renderCompanyTemplateAssignments(company.templateAssignments ?? []);
+  writeCompanyIsznrTrainingDraft(company.isznrTraining ?? { source: "internal" });
   companyPeriodInput.value = company.period;
   companyIsActiveInput.value = String(company.isActive);
   companyRepresentativeInput.value = company.representative;
@@ -132725,6 +133171,17 @@ companyEditorCloseButton?.addEventListener("click", () => {
 
 companyEditorBackdrop?.addEventListener("click", () => {
   dismissCompanyEditor();
+});
+
+companyIsznrTrainingSourceInput?.addEventListener("change", () => {
+  writeCompanyIsznrTrainingDraft({
+    ...getCompanyIsznrTrainingPayload(),
+    source: companyIsznrTrainingSourceInput.value,
+  });
+});
+
+companyIsznrTrainingRefreshButton?.addEventListener("click", () => {
+  void loadCompanyIsznrTrainingOverview();
 });
 
 companyForm.addEventListener("submit", (event) => {

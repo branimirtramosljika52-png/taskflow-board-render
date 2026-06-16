@@ -3494,6 +3494,7 @@ async function fetchSnapshotFromConnection(connection) {
            ugovor_vrijedi_od, ugovor_vrijedi_do, ugovor_vrijedi_trajno, mjesecna_cijena, cjenik_json, periodika,
            aktivno, predstavnik_korisnika, odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih,
            kontakt_broj, kontakt_email, voditelji_korisnik_ids_json, voditelji_oznaka_json, template_assignments_json, napomena,
+           isznr_training_json,
            logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
            datum_izmjene, izmjenu_unio
     FROM firme
@@ -3533,6 +3534,7 @@ async function fetchSnapshotFromConnection(connection) {
       managerUserIds: parseJsonArray(row.voditelji_korisnik_ids_json).map((value) => dbString(value)).filter(Boolean),
       managerUserLabels: parseJsonArray(row.voditelji_oznaka_json).map((value) => dbString(value)).filter(Boolean),
       templateAssignments: parseJsonArray(row.template_assignments_json),
+      isznrTraining: parseJsonObject(row.isznr_training_json),
       period: row.periodika ?? "",
       isActive: normalizeActiveValue(row.aktivno),
       representative: row.predstavnik_korisnika ?? "",
@@ -8980,6 +8982,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "firme", "voditelji_korisnik_ids_json", "LONGTEXT NULL AFTER kontakt_email");
     await ensureColumnExists(this.pool, "firme", "voditelji_oznaka_json", "LONGTEXT NULL AFTER voditelji_korisnik_ids_json");
     await ensureColumnExists(this.pool, "firme", "template_assignments_json", "LONGTEXT NULL AFTER voditelji_oznaka_json");
+    await ensureColumnExists(this.pool, "firme", "isznr_training_json", "LONGTEXT NULL AFTER template_assignments_json");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_provider", "VARCHAR(32) NULL AFTER reference_document_data_url");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_bucket", "VARCHAR(128) NULL AFTER reference_document_storage_provider");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_key", "VARCHAR(512) NULL AFTER reference_document_storage_bucket");
@@ -9262,10 +9265,10 @@ export class MySqlSafetyRepository {
              odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih, broj_ugovora,
              ugovor_vrijedi_od, ugovor_vrijedi_do, ugovor_vrijedi_trajno, mjesecna_cijena, cjenik_json,
              napomena, aktivno, kontakt_broj, kontakt_email,
-             voditelji_korisnik_ids_json, voditelji_oznaka_json, template_assignments_json,
+             voditelji_korisnik_ids_json, voditelji_oznaka_json, template_assignments_json, isznr_training_json,
              logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
              datum_izmjene, izmjenu_unio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         `,
         [
           company.name,
@@ -9293,6 +9296,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(company.managerUserIds ?? []),
           JSON.stringify(company.managerUserLabels ?? []),
           JSON.stringify(company.templateAssignments ?? []),
+          JSON.stringify(company.isznrTraining ?? {}),
           preparedLogo.storedLogo.dataUrl || null,
           preparedLogo.storedLogo.storageProvider || null,
           preparedLogo.storedLogo.storageBucket || null,
@@ -9346,7 +9350,7 @@ export class MySqlSafetyRepository {
               ugovor_vrijedi_od = ?, ugovor_vrijedi_do = ?, ugovor_vrijedi_trajno = ?, mjesecna_cijena = ?, cjenik_json = ?,
               napomena = ?, aktivno = ?, kontakt_broj = ?,
               kontakt_email = ?, voditelji_korisnik_ids_json = ?, voditelji_oznaka_json = ?, template_assignments_json = ?,
-              logo_data_url = ?, logo_storage_provider = ?, logo_storage_bucket = ?,
+              isznr_training_json = ?, logo_data_url = ?, logo_storage_provider = ?, logo_storage_bucket = ?,
               logo_storage_key = ?, logo_storage_url = ?, datum_izmjene = NOW(), izmjenu_unio = ?
           WHERE id = ?
         `,
@@ -9376,6 +9380,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(next.managerUserIds ?? []),
           JSON.stringify(next.managerUserLabels ?? []),
           JSON.stringify(next.templateAssignments ?? []),
+          JSON.stringify(next.isznrTraining ?? {}),
           preparedLogo.storedLogo.dataUrl || null,
           preparedLogo.storedLogo.storageProvider || null,
           preparedLogo.storedLogo.storageBucket || null,

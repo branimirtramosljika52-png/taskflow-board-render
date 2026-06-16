@@ -4467,6 +4467,40 @@ function selectLocationContact(location, preferredSlot) {
   return contacts.find((contact) => contact.slot === parsedPreferredSlot) ?? contacts[0];
 }
 
+function normalizeCompanyIriList(values = []) {
+  const source = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(
+    source
+      .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+      .map((entry) => normalizeText(entry).slice(0, 180))
+      .filter(Boolean),
+  )).slice(0, 80);
+}
+
+function normalizeCompanyIsznrTraining(input = {}) {
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const sourceMode = normalizeText(source.source ?? source.mode ?? source.trainingSource).toLowerCase();
+  const isznrSource = ["isznr", "is_znr", "is znr"].includes(sourceMode);
+  return {
+    source: isznrSource ? "isznr" : "internal",
+    internalTemplateId: normalizeText(source.internalTemplateId ?? source.templateId ?? source.trainingTemplateId).slice(0, 80),
+    internalTemplateTitle: normalizeText(source.internalTemplateTitle ?? source.templateTitle ?? source.trainingTemplateTitle).slice(0, 180),
+    internalTemplateDocumentName: normalizeText(source.internalTemplateDocumentName ?? source.templateDocumentName).slice(0, 180),
+    companyIri: normalizeText(source.companyIri ?? source.companyIRI ?? source.company).slice(0, 180),
+    companyId: normalizeText(source.companyId ?? source.isznrCompanyId).slice(0, 80),
+    companyName: normalizeText(source.companyName ?? source.isznrCompanyName).slice(0, 180),
+    companyOib: normalizeText(source.companyOib ?? source.isznrCompanyOib).replace(/\s+/g, "").slice(0, 11),
+    authorizedCompanyIri: normalizeText(source.authorizedCompanyIri ?? source.authorizedCompanyIRI ?? source.authorizedCompany).slice(0, 180),
+    authorizedCompanyId: normalizeText(source.authorizedCompanyId ?? source.isznrAuthorizedCompanyId).slice(0, 80),
+    authorizedCompanyName: normalizeText(source.authorizedCompanyName ?? source.isznrAuthorizedCompanyName).slice(0, 180),
+    authorizedCompanyOib: normalizeText(source.authorizedCompanyOib ?? source.isznrAuthorizedCompanyOib).replace(/\s+/g, "").slice(0, 11),
+    zosRegisterIris: normalizeCompanyIriList(source.zosRegisterIris ?? source.zosRegisters ?? source.zosRegister),
+    zosRegisterLabels: normalizeCompanyIriList(source.zosRegisterLabels ?? source.zosRegisterNames),
+    syncedAt: normalizeOptionalDateTime(source.syncedAt ?? source.checkedAt),
+    note: normalizeText(source.note).slice(0, 1000),
+  };
+}
+
 export function createCompany(input, existingCompanies = [], createId = () => crypto.randomUUID(), now = isoNow) {
   const timestamp = now();
   const contractValidForever = normalizeBoolean(input.contractValidForever, false);
@@ -4491,6 +4525,7 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
     managerUserIds: normalizeIdList(input.managerUserIds).slice(0, 24),
     managerUserLabels: normalizeCompanyManagerLabels(input.managerUserLabels),
     templateAssignments: normalizeCompanyTemplateAssignments(input.templateAssignments ?? input.serviceTemplateAssignments),
+    isznrTraining: normalizeCompanyIsznrTraining(input.isznrTraining ?? input.isznrTrainingSettings),
     period: normalizeText(input.period),
     isActive: normalizeBoolean(input.isActive, true),
     representative: normalizeText(input.representative),
@@ -4557,6 +4592,9 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
     templateAssignments: hasOwn(patch, "templateAssignments")
       ? normalizeCompanyTemplateAssignments(patch.templateAssignments)
       : normalizeCompanyTemplateAssignments(current.templateAssignments),
+    isznrTraining: hasOwn(patch, "isznrTraining") || hasOwn(patch, "isznrTrainingSettings")
+      ? normalizeCompanyIsznrTraining(patch.isznrTraining ?? patch.isznrTrainingSettings)
+      : normalizeCompanyIsznrTraining(current.isznrTraining),
     period: hasOwn(patch, "period") ? normalizeText(patch.period) : current.period,
     isActive: hasOwn(patch, "isActive") ? normalizeBoolean(patch.isActive, current.isActive) : current.isActive,
     representative: hasOwn(patch, "representative") ? normalizeText(patch.representative) : current.representative,
@@ -8115,6 +8153,20 @@ function normalizePersonTrainingActivityStatus(value, fallback = "DA") {
   return isActive ? "DA" : "NE";
 }
 
+function normalizePersonTrainingIsznrMeta(input = {}) {
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  return {
+    source: normalizeText(source.source || "company").slice(0, 40),
+    recordKind: normalizeText(source.recordKind ?? source.kind ?? source.type).slice(0, 40),
+    recordId: normalizeText(source.recordId ?? source.isznrId ?? source.id).slice(0, 80),
+    recordIri: normalizeText(source.recordIri ?? source.iri ?? source["@id"]).slice(0, 180),
+    recordNumber: normalizeText(source.recordNumber ?? source.number).slice(0, 120),
+    submittedAt: normalizeOptionalDateTime(source.submittedAt ?? source.syncedAt),
+    status: normalizeText(source.status).slice(0, 80),
+    message: normalizeText(source.message).slice(0, 1000),
+  };
+}
+
 function normalizePersonTrainingItemDetails(input = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   return {
@@ -8240,6 +8292,7 @@ function normalizePersonTrainingItem(input = {}, typeOption = PERSON_TRAINING_TY
     learningTestTitle: normalizeText(source.learningTestTitle).slice(0, 180),
     certificateStatus: normalizeText(source.certificateStatus).slice(0, 40),
     certificateDocumentId: normalizeText(source.certificateDocumentId).slice(0, 120),
+    isznr: normalizePersonTrainingIsznrMeta(source.isznr ?? source.isznrMeta),
     details: normalizePersonTrainingItemDetails(source.details ?? source.safeWorkDetails ?? source.trainingDetails),
     isActive: hasOwn(source, "isActive") ? normalizeBoolean(source.isActive, true) : true,
     activeFrom: normalizeOptionalDate(source.activeFrom ?? issuedOn ?? passedOn),

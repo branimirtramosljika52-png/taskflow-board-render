@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.136.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.137.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -5993,6 +5993,479 @@ async function resolveIsznrWorkEquipmentReferenceIris({
   return {
     companyIri,
     authorizedCompanyIri,
+  };
+}
+
+function isIsznrTestApiBaseUrl(baseUrl = "") {
+  try {
+    return new URL(normalizeIsznrApiBaseUrl(baseUrl)).hostname.toLowerCase() === "isznrtest.gov.hr";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeIsznrTrainingReferenceRecord(item = {}, resourcePath = "") {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const id = extractIsznrId(item);
+  const name = normalizeInputValue(pickIsznrValue(item, ["name", "title", "naziv", "companyName", "displayName"]));
+  const oib = normalizeIsznrOib(pickIsznrValue(item, ["oib", "OIB", "companyOib"]));
+  return {
+    id,
+    iri: id ? buildIsznrApiIri(resourcePath, id) : normalizeInputValue(item["@id"] || item.iri),
+    name,
+    oib,
+  };
+}
+
+async function findIsznrTrainingReference({
+  baseUrl = "",
+  username = "",
+  password = "",
+  resourcePath = "",
+  oib = "",
+  fallbackFirst = false,
+} = {}) {
+  const normalizedOib = normalizeIsznrOib(oib);
+  const result = await fetchIsznrPagedCollection({
+    baseUrl,
+    username,
+    password,
+    resourcePath,
+    searchParams: normalizedOib ? { oib: normalizedOib } : {},
+    maxPages: 2,
+    maxRecords: 60,
+    timeoutMs: ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+  });
+  const items = Array.isArray(result.items) ? result.items : [];
+  const matched = items.find((item) => !normalizedOib || normalizeIsznrOib(pickIsznrValue(item, ["oib", "OIB", "companyOib"])) === normalizedOib)
+    || (fallbackFirst ? items[0] : null);
+  return normalizeIsznrTrainingReferenceRecord(matched, resourcePath);
+}
+
+async function resolveIsznrCompanyTrainingReferences({
+  baseUrl = "",
+  username = "",
+  password = "",
+  company = {},
+  organization = {},
+} = {}) {
+  const config = company?.isznrTraining && typeof company.isznrTraining === "object" ? company.isznrTraining : {};
+  const companyOib = normalizeIsznrOib(company?.oib || config.companyOib);
+  const organizationOib = normalizeIsznrOib(organization?.oib || organization?.OIB || config.authorizedCompanyOib || username);
+  const [companyRef, authorizedCompanyRef] = await Promise.all([
+    config.companyIri
+      ? Promise.resolve({
+        id: normalizeInputValue(config.companyId || config.companyIri.match(/\/([^/]+)$/)?.[1]),
+        iri: normalizeInputValue(config.companyIri),
+        name: normalizeInputValue(config.companyName || company?.name),
+        oib: companyOib,
+      })
+      : findIsznrTrainingReference({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "companies",
+        oib: companyOib,
+      }).catch(() => null),
+    config.authorizedCompanyIri
+      ? Promise.resolve({
+        id: normalizeInputValue(config.authorizedCompanyId || config.authorizedCompanyIri.match(/\/([^/]+)$/)?.[1]),
+        iri: normalizeInputValue(config.authorizedCompanyIri),
+        name: normalizeInputValue(config.authorizedCompanyName || organization?.name),
+        oib: organizationOib,
+      })
+      : findIsznrTrainingReference({
+        baseUrl,
+        username,
+        password,
+        resourcePath: "authorized_companies",
+        oib: organizationOib,
+        fallbackFirst: true,
+      }).catch(() => null),
+  ]);
+
+  return {
+    company: companyRef,
+    authorizedCompany: authorizedCompanyRef,
+  };
+}
+
+function normalizeIsznrTrainingRegisterRecord(item = {}) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const id = extractIsznrId(item);
+  const description = normalizeInputValue(pickIsznrValue(item, ["description", "name", "title", "naziv"]));
+  return {
+    id,
+    iri: id ? buildIsznrApiIri("zos_registers", id) : normalizeInputValue(item["@id"] || item.iri),
+    label: description || (id ? `ZOS evidencija ${id}` : "ZOS evidencija"),
+    activeFrom: normalizeInputValue(pickIsznrValue(item, ["activeFrom", "validFrom", "from"])).slice(0, 10),
+    activeTo: normalizeInputValue(pickIsznrValue(item, ["activeTo", "validTo", "to"])).slice(0, 10),
+  };
+}
+
+function normalizeIsznrTrainingRecord(item = {}, recordKind = "zos") {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const id = extractIsznrId(item);
+  const firstName = normalizeInputValue(pickIsznrValue(item, ["firstName", "givenName", "ime"]));
+  const lastName = normalizeInputValue(pickIsznrValue(item, ["lastName", "familyName", "prezime"]));
+  return {
+    id,
+    iri: id ? buildIsznrApiIri(recordKind === "zoop" ? "zoop_records" : "zos_records", id) : normalizeInputValue(item["@id"] || item.iri),
+    recordKind,
+    internalId: normalizeInputValue(pickIsznrValue(item, ["internalId", "recordNumber", "number"])),
+    firstName,
+    lastName,
+    fullName: [firstName, lastName].filter(Boolean).join(" "),
+    oib: normalizeIsznrOib(pickIsznrValue(item, ["oib", "OIB", "personOib"])),
+    startDate: normalizeInputValue(pickIsznrValue(item, ["startDate", "startDateTheory"])).slice(0, 10),
+    endDate: normalizeInputValue(pickIsznrValue(item, ["endDate", "endDateTheory"])).slice(0, 10),
+    place: normalizeInputValue(pickIsznrValue(item, ["place", "placeTheory", "placeOfWork", "location"])),
+    rawType: pickIsznrValue(item, ["type", "record"]),
+  };
+}
+
+function getPeopleTrainingItemSearchText(record = {}, item = {}) {
+  return normalizeLookupKey([
+    item?.type,
+    item?.label,
+    item?.shortLabel,
+    item?.serviceName,
+    item?.serviceCode,
+    record?.jobTitle,
+  ].filter(Boolean).join(" "));
+}
+
+function isZosTrainingItem(record = {}, item = {}) {
+  const text = getPeopleTrainingItemSearchText(record, item);
+  return item?.type === "safe_work"
+    || text.includes("safe_work")
+    || text.includes("rad na siguran nacin")
+    || text.includes("zos")
+    || text.includes("znr");
+}
+
+function isZoopTrainingItem(record = {}, item = {}) {
+  const text = getPeopleTrainingItemSearchText(record, item);
+  return text.includes("zoop")
+    || text.includes("ovlastenik")
+    || text.includes("povjerenik")
+    || text.includes("poslodavac")
+    || text.includes("ovl_001")
+    || text.includes("ovl-001");
+}
+
+function getCompanyTrainingCandidates(scopedSnapshot = {}, company = {}) {
+  const companyId = normalizeInputValue(company?.id);
+  return (Array.isArray(scopedSnapshot.peopleTrainingRecords) ? scopedSnapshot.peopleTrainingRecords : [])
+    .filter((record) => normalizeInputValue(record?.companyId) === companyId)
+    .flatMap((record) => (Array.isArray(record.trainingItems) ? record.trainingItems : [])
+      .map((item, itemIndex) => {
+        const kind = isZoopTrainingItem(record, item) ? "zoop" : (isZosTrainingItem(record, item) ? "zos" : "");
+        if (!kind) {
+          return null;
+        }
+        return {
+          id: `${record.id}:${item.type || item.serviceId || itemIndex}`,
+          kind,
+          recordId: normalizeInputValue(record.id),
+          itemKey: normalizeInputValue(item.type || item.serviceId || item.serviceCode || itemIndex),
+          fullName: normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ")),
+          firstName: normalizeInputValue(record.firstName),
+          lastName: normalizeInputValue(record.lastName),
+          oib: normalizeIsznrOib(record.oib),
+          label: normalizeInputValue(item.label || item.serviceName || item.shortLabel),
+          serviceCode: normalizeInputValue(item.serviceCode || item.shortLabel),
+          issuedOn: normalizeDateOnlyValue(item.issuedOn || item.passedOn),
+          validUntil: normalizeDateOnlyValue(item.validUntil),
+          recordNumber: normalizeInputValue(item.recordNumber || item.certificateNumber),
+          isznr: item.isznr && typeof item.isznr === "object" ? item.isznr : {},
+          ready: Boolean(record.firstName && record.lastName && (record.oib || kind === "zoop")),
+        };
+      })
+      .filter(Boolean));
+}
+
+function splitTrainingPersonName(record = {}) {
+  const firstName = normalizeInputValue(record.firstName);
+  const lastName = normalizeInputValue(record.lastName);
+  if (firstName && lastName) {
+    return { firstName, lastName };
+  }
+  const parts = normalizeInputValue(record.fullName).split(/\s+/).filter(Boolean);
+  return {
+    firstName: firstName || parts.slice(0, -1).join(" ") || parts[0] || "",
+    lastName: lastName || parts.slice(-1).join(" ") || "",
+  };
+}
+
+function splitRepresentativeName(value = "") {
+  const parts = normalizeInputValue(value).split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts.slice(0, -1).join(" ") || parts[0] || "",
+    lastName: parts.slice(-1).join(" ") || "",
+  };
+}
+
+function getIsznrPeopleByRole(scopedSnapshot = {}, role = "expert") {
+  const resourcePath = role === "holder" ? "holder_of_authorizations" : "experts";
+  const users = Array.isArray(scopedSnapshot.users) ? scopedSnapshot.users : [];
+  const records = users
+    .map((user) => ({
+      user,
+      label: normalizeInputValue(getMobileUserDocumentName(user) || user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email),
+      ids: getIsznrPersonRoleIdsFromUser(user, role),
+      oib: getIsznrUserCandidateOib(user),
+      title: getMobileUserDocumentTitle(user),
+      email: normalizeInputValue(user?.email),
+      userId: normalizeInputValue(user?.id),
+    }))
+    .filter((entry) => entry.ids.length > 0);
+  return {
+    iris: buildIsznrApiIriList(resourcePath, records.flatMap((entry) => entry.ids)),
+    labels: Array.from(new Set(records.map((entry) => entry.label).filter(Boolean))),
+    count: records.length,
+    items: records.map((entry) => ({
+      ...entry,
+      iris: buildIsznrApiIriList(resourcePath, entry.ids),
+    })),
+  };
+}
+
+function getTrainingRecordAndItem(scopedSnapshot = {}, trainingRecordId = "", itemKey = "", expectedKind = "") {
+  const record = assertInScope(scopedSnapshot.peopleTrainingRecords ?? [], trainingRecordId, "Evidencija osposobljavanja nije pronađena.");
+  const items = Array.isArray(record.trainingItems) ? record.trainingItems : [];
+  const item = items.find((entry, index) => (
+    normalizeInputValue(entry.type || entry.serviceId || entry.serviceCode || index) === normalizeInputValue(itemKey)
+  )) || items.find((entry) => expectedKind === "zoop" ? isZoopTrainingItem(record, entry) : isZosTrainingItem(record, entry));
+  if (!item) {
+    throw createRequestError(404, "Stavka osposobljavanja nije pronađena.");
+  }
+  return { record, item, items };
+}
+
+function buildZosPayloadFromTraining({ record = {}, item = {}, company = {}, references = {}, expertIri = "", zosRegisterIris = [] } = {}) {
+  const details = item.details && typeof item.details === "object" ? item.details : {};
+  const person = splitTrainingPersonName(record);
+  const representative = splitRepresentativeName(details.employerRepresentativeName || company.representative);
+  const theoryDate = normalizeDateOnlyValue(details.theoryDate || item.passedOn || item.issuedOn) || new Date().toISOString().slice(0, 10);
+  const practicalStart = normalizeDateOnlyValue(details.safeWorkPeriodFrom || item.passedOn || item.issuedOn) || theoryDate;
+  const practicalEnd = normalizeDateOnlyValue(details.safeWorkPeriodTo || item.passedOn || item.issuedOn) || practicalStart;
+  return compactIsznrPayload({
+    internalId: normalizeInputValue(item.recordNumber || item.certificateNumber || `${record.id}-${item.type || item.serviceCode}`),
+    authorizedCompany: references.authorizedCompany?.iri,
+    company: references.company?.iri,
+    oib: normalizeIsznrOib(record.oib),
+    firstName: person.firstName,
+    lastName: person.lastName,
+    placeOfWork: normalizeInputValue(record.workPlace || record.jobTitle || details.jobTitle || "Radno mjesto kod poslodavca"),
+    listOfJobs: normalizeInputValue(details.jobDescription || record.jobTitle || details.jobTitle || record.workPlace || "Poslovi radnog mjesta prema evidenciji poslodavca"),
+    placeTheory: normalizeInputValue(details.theoryPlace || record.locationName || company.headquarters || "Kod poslodavca"),
+    startDateTheory: theoryDate,
+    endDateTheory: theoryDate,
+    methodOfImplementationTheory: normalizeInputValue(details.theoryMethod || "Usmeno predavanje i provjera znanja"),
+    place: normalizeInputValue(details.practicalPlace || record.locationName || record.workPlace || company.headquarters || "Kod poslodavca"),
+    startDate: practicalStart,
+    endDate: practicalEnd,
+    immediateAuthorizedRepresentativeIdentifier: normalizeInputValue(details.employerRepresentativeOib || company.representativeOib),
+    immediateAuthorizedRepresentativeFirstName: representative.firstName,
+    immediateAuthorizedRepresentativeLastName: representative.lastName,
+    expert: expertIri,
+    otherPersonIdentifier: normalizeInputValue(details.additionalPersonOib),
+    otherPersonFirstName: splitRepresentativeName(details.additionalPersonName).firstName,
+    otherPersonLastName: splitRepresentativeName(details.additionalPersonName).lastName,
+    zosRegister: zosRegisterIris,
+  });
+}
+
+function buildZoopPayloadFromTraining({ record = {}, item = {}, company = {}, references = {}, expertIri = "", body = {} } = {}) {
+  const details = item.details && typeof item.details === "object" ? item.details : {};
+  const person = splitTrainingPersonName(record);
+  const issuedDate = normalizeDateOnlyValue(item.passedOn || item.issuedOn || details.theoryDate) || new Date().toISOString().slice(0, 10);
+  const typeText = getPeopleTrainingItemSearchText(record, item);
+  const defaultType = typeText.includes("povjerenik") ? 3 : (typeText.includes("poslodavac") ? 1 : 2);
+  return compactIsznrPayload({
+    internalId: normalizeInputValue(item.recordNumber || item.certificateNumber || `${record.id}-${item.type || item.serviceCode}`),
+    authorizedCompany: references.authorizedCompany?.iri,
+    company: references.company?.iri,
+    record: Number(body.record) === 2 ? 2 : 1,
+    type: [1, 2, 3].includes(Number(body.type)) ? Number(body.type) : defaultType,
+    oib: normalizeIsznrOib(record.oib),
+    firstName: person.firstName,
+    lastName: person.lastName,
+    place: normalizeInputValue(details.theoryPlace || record.locationName || company.headquarters || "Kod poslodavca"),
+    startDate: issuedDate,
+    endDate: issuedDate,
+    expert: expertIri,
+    otherPersonIdentifier: normalizeInputValue(details.additionalPersonOib),
+    otherPersonFirstName: splitRepresentativeName(details.additionalPersonName).firstName,
+    otherPersonLastName: splitRepresentativeName(details.additionalPersonName).lastName,
+  });
+}
+
+function buildIsznrTrainingChecklist(payload = {}, kind = "zos") {
+  const checklist = [];
+  addIsznrDraftChecklistItem(checklist, "authorizedCompany", "Ovlaštena osoba", payload.authorizedCompany, "IS ZNR IRI ovlaštene osobe.", payload.authorizedCompany);
+  addIsznrDraftChecklistItem(checklist, "company", "Poslodavac", payload.company, "IS ZNR IRI poslodavca.", payload.company);
+  addIsznrDraftChecklistItem(checklist, "person", "Osoba", payload.firstName && payload.lastName, "Ime i prezime osobe.", [payload.firstName, payload.lastName].filter(Boolean).join(" "));
+  addIsznrDraftChecklistItem(checklist, "expert", "Stručnjak ZNR", payload.expert, "Osoba iz People modula s IS ZNR expert oznakom.", payload.expert);
+  if (kind === "zos") {
+    addIsznrDraftChecklistItem(checklist, "zosRegister", "ZOS evidencija", Array.isArray(payload.zosRegister) && payload.zosRegister.length > 0, "Odaberi barem jednu ZOS evidenciju.", String(payload.zosRegister?.length || 0));
+    addIsznrDraftChecklistItem(checklist, "work", "Radno mjesto i poslovi", payload.placeOfWork && payload.listOfJobs, "Potrebni su radno mjesto i poslovi.", payload.placeOfWork);
+    addIsznrDraftChecklistItem(checklist, "representative", "Neposredni ovlaštenik", payload.immediateAuthorizedRepresentativeIdentifier && payload.immediateAuthorizedRepresentativeFirstName && payload.immediateAuthorizedRepresentativeLastName, "OIB, ime i prezime neposrednog ovlaštenika.", payload.immediateAuthorizedRepresentativeIdentifier);
+    addIsznrDraftChecklistItem(checklist, "dates", "Datumi teorije i prakse", payload.startDateTheory && payload.endDateTheory && payload.startDate && payload.endDate, "Datumi su obavezni.", `${payload.startDateTheory} / ${payload.startDate}`);
+  } else {
+    addIsznrDraftChecklistItem(checklist, "type", "Vrsta ZOOP zapisa", payload.record && payload.type, "Record i type su obavezni.", `${payload.record}/${payload.type}`);
+    addIsznrDraftChecklistItem(checklist, "dates", "Datumi", payload.startDate && payload.endDate, "Datumi su obavezni.", `${payload.startDate} - ${payload.endDate}`);
+  }
+  return checklist;
+}
+
+async function fetchIsznrCompanyTrainingOverview({
+  scopedSnapshot = {},
+  company = {},
+  storedSettings = {},
+  organization = {},
+} = {}) {
+  const baseUrl = storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL;
+  const username = storedSettings?.username || "";
+  const password = storedSettings?.passwordSecret || "";
+  const [references, registersResult, zosResult, zoopResult] = await Promise.all([
+    resolveIsznrCompanyTrainingReferences({ baseUrl, username, password, company, organization }),
+    fetchIsznrPagedCollection({
+      baseUrl,
+      username,
+      password,
+      resourcePath: "zos_registers",
+      maxPages: 4,
+      maxRecords: 200,
+      timeoutMs: ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+    }).catch((error) => ({ ok: false, items: [], error: error?.message || "ZOS evidencije nisu dohvaćene." })),
+    fetchIsznrPagedCollection({
+      baseUrl,
+      username,
+      password,
+      resourcePath: "zos_records",
+      searchParams: company?.oib ? { "company.oib": company.oib } : {},
+      maxPages: 3,
+      maxRecords: 80,
+      timeoutMs: ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+    }).catch((error) => ({ ok: false, items: [], error: error?.message || "ZOS zapisi nisu dohvaćeni." })),
+    fetchIsznrPagedCollection({
+      baseUrl,
+      username,
+      password,
+      resourcePath: "zoop_records",
+      searchParams: company?.oib ? { "company.oib": company.oib } : {},
+      maxPages: 3,
+      maxRecords: 80,
+      timeoutMs: ISZNR_WORK_EQUIPMENT_FETCH_TIMEOUT_MS,
+    }).catch((error) => ({ ok: false, items: [], error: error?.message || "ZOOP zapisi nisu dohvaćeni." })),
+  ]);
+  const expertPeople = getIsznrPeopleByRole(scopedSnapshot, "expert");
+  const config = company?.isznrTraining && typeof company.isznrTraining === "object" ? company.isznrTraining : {};
+  const registers = (Array.isArray(registersResult.items) ? registersResult.items : [])
+    .map(normalizeIsznrTrainingRegisterRecord)
+    .filter(Boolean);
+  const selectedRegisterIris = Array.isArray(config.zosRegisterIris) ? config.zosRegisterIris : [];
+  const candidates = getCompanyTrainingCandidates(scopedSnapshot, company);
+
+  return {
+    ok: true,
+    mode: "company-training",
+    environment: isIsznrTestApiBaseUrl(baseUrl) ? "test" : "production",
+    writeEnabled: isIsznrTestApiBaseUrl(baseUrl),
+    companyId: normalizeInputValue(company.id),
+    companyOib: normalizeIsznrOib(company.oib),
+    references,
+    expertPeople,
+    zosRegisters: registers,
+    selectedZosRegisterIris: selectedRegisterIris,
+    zosRecords: (Array.isArray(zosResult.items) ? zosResult.items : []).map((item) => normalizeIsznrTrainingRecord(item, "zos")).filter(Boolean),
+    zoopRecords: (Array.isArray(zoopResult.items) ? zoopResult.items : []).map((item) => normalizeIsznrTrainingRecord(item, "zoop")).filter(Boolean),
+    localCandidates: candidates,
+    errors: [registersResult.error, zosResult.error, zoopResult.error].filter(Boolean),
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+async function submitIsznrCompanyTrainingRecord({
+  scopedSnapshot = {},
+  company = {},
+  storedSettings = {},
+  organization = {},
+  body = {},
+  kind = "zos",
+} = {}) {
+  const baseUrl = storedSettings?.baseUrl || ISZNR_DEFAULT_API_BASE_URL;
+  if (!isIsznrTestApiBaseUrl(baseUrl)) {
+    throw createRequestError(400, "Slanje ZOS/ZOOP je omogućeno samo na IS ZNR testnom URL-u.");
+  }
+  const username = storedSettings?.username || "";
+  const password = storedSettings?.passwordSecret || "";
+  const { record, item, items } = getTrainingRecordAndItem(scopedSnapshot, body.trainingRecordId || body.recordId, body.itemKey || body.trainingItemKey, kind);
+  const references = await resolveIsznrCompanyTrainingReferences({ baseUrl, username, password, company, organization });
+  const expertPeople = getIsznrPeopleByRole(scopedSnapshot, "expert");
+  const expertIri = normalizeInputValue(body.expertIri) || expertPeople.iris[0] || "";
+  const config = company?.isznrTraining && typeof company.isznrTraining === "object" ? company.isznrTraining : {};
+  const zosRegisterIris = Array.from(new Set([
+    ...(Array.isArray(body.zosRegisterIris) ? body.zosRegisterIris : []),
+    ...(Array.isArray(config.zosRegisterIris) ? config.zosRegisterIris : []),
+  ].map((entry) => normalizeInputValue(entry)).filter(Boolean)));
+  const payload = kind === "zoop"
+    ? buildZoopPayloadFromTraining({ record, item, company, references, expertIri, body })
+    : buildZosPayloadFromTraining({ record, item, company, references, expertIri, zosRegisterIris });
+  const checklist = buildIsznrTrainingChecklist(payload, kind);
+  const missing = checklist.filter((entry) => !entry.ready);
+  if (missing.length > 0) {
+    throw createRequestError(400, `Nedostaju podaci za ${kind.toUpperCase()}: ${missing.map((entry) => entry.label).join(", ")}.`);
+  }
+  const resourcePath = kind === "zoop" ? "zoop_records" : "zos_records";
+  const result = await mutateIsznrJsonResource({
+    baseUrl,
+    username,
+    password,
+    resourcePath,
+    method: "POST",
+    payload,
+  });
+  const submittedId = extractIsznrId(result.payload || {});
+  const submittedIri = submittedId ? buildIsznrApiIri(resourcePath, submittedId) : normalizeInputValue(result.payload?.["@id"] || result.payload?.iri);
+  const nextItems = items.map((entry) => entry === item
+    ? {
+      ...entry,
+      isznr: {
+        source: "company",
+        recordKind: kind,
+        recordId: submittedId,
+        recordIri: submittedIri,
+        recordNumber: normalizeInputValue(payload.internalId),
+        submittedAt: result.submittedAt,
+        status: "submitted",
+        message: "Poslano u IS ZNR test.",
+      },
+    }
+    : entry);
+  const updatedRecord = await domainRepository.updatePersonTrainingRecord(record.id, {
+    trainingItems: nextItems,
+    skipCertificateGeneration: true,
+  });
+  return {
+    ok: true,
+    kind,
+    status: result.status,
+    path: result.path,
+    payload,
+    checklist,
+    submittedRecordId: submittedId,
+    submittedRecordIri: submittedIri,
+    submittedAt: result.submittedAt,
+    updatedRecord,
   };
 }
 
@@ -21888,32 +22361,138 @@ function getMobilePeopleTrainingDocumentForItem(record = {}, item = {}, scopedSn
   }) || null;
 }
 
+function formatMobileDateLabel(value = "") {
+  const normalized = normalizeDateOnlyValue(value);
+  if (!normalized) {
+    return "";
+  }
+  const [year, month, day] = normalized.split("-");
+  return `${day}.${month}.${year}.`;
+}
+
+function getMobilePeopleTrainingDeadlineLabel(item = {}) {
+  if (isMobileTrainingBooleanTrue(item.validForever)) {
+    return "Vrijedi trajno";
+  }
+  const validUntil = normalizeDateOnlyValue(item.validUntil || item.certificateValidUntil);
+  if (validUntil) {
+    return `Rok ${formatMobileDateLabel(validUntil)}`;
+  }
+  const passedOn = normalizeDateOnlyValue(item.passedOn || item.issuedOn || item.date || item.trainingDate);
+  return passedOn ? `Datum ${formatMobileDateLabel(passedOn)}` : "";
+}
+
+function getMobilePeopleTrainingExamModeLabel(record = {}, item = {}, service = {}) {
+  const details = item.details && typeof item.details === "object" ? item.details : {};
+  const raw = normalizeLookupKey(
+    details.examMode
+      || details.trainingMode
+      || item.examMode
+      || item.trainingMode
+      || item.learningMode
+      || item.provider
+      || service.trainingMode
+      || service.examMode,
+  );
+  if (!raw) {
+    return "";
+  }
+  if (raw.includes("online") || raw.includes("remote") || raw.includes("elearning") || raw.includes("eucenje")) {
+    return "Online";
+  }
+  if (raw.includes("uzivo") || raw.includes("teren") || raw.includes("live") || raw.includes("predav")) {
+    return "Uživo";
+  }
+  return normalizeInputValue(details.examMode || details.trainingMode || item.examMode || item.trainingMode || item.provider);
+}
+
+function getMobilePeopleTrainingDisplayLabel(item = {}, serviceName = "", serviceCode = "", index = 0) {
+  const rawLabel = normalizeInputValue(item.label);
+  const shortLabel = normalizeInputValue(item.shortLabel);
+  const labelKey = normalizeLookupKey(rawLabel);
+  const shortKey = normalizeLookupKey(shortLabel || serviceCode);
+  const serviceCodeKey = normalizeLookupKey(serviceCode);
+  if (rawLabel && labelKey && labelKey !== shortKey && labelKey !== serviceCodeKey && rawLabel.length > 3) {
+    return rawLabel;
+  }
+  return serviceName || rawLabel || shortLabel || serviceCode || normalizeInputValue(item.type) || `Osposobljavanje ${index + 1}`;
+}
+
+function getMobileRiskAssessmentLocations(assessment = {}) {
+  return Array.from(new Set([
+    assessment.locationId,
+    ...(Array.isArray(assessment.selectedLocationIds) ? assessment.selectedLocationIds : []),
+    ...(Array.isArray(assessment.employerData?.selectedLocationIds) ? assessment.employerData.selectedLocationIds : []),
+  ].map((value) => normalizeInputValue(value)).filter(Boolean)));
+}
+
+function findMobilePeopleTrainingRiskAssessment(record = {}, scopedSnapshot = {}) {
+  const companyId = normalizeInputValue(record.companyId);
+  if (!companyId) {
+    return null;
+  }
+  const locationId = normalizeInputValue(record.locationId);
+  const workKey = normalizeLookupKey(record.jobTitle || record.workPlace);
+  const candidates = (Array.isArray(scopedSnapshot.riskAssessments) ? scopedSnapshot.riskAssessments : [])
+    .filter((assessment) => normalizeInputValue(assessment?.companyId) === companyId)
+    .map((assessment) => {
+      const locationIds = getMobileRiskAssessmentLocations(assessment);
+      const locationScore = !locationId
+        ? 1
+        : (locationIds.includes(locationId) ? 4 : (locationIds.length === 0 ? 2 : 0));
+      const jobs = Array.isArray(assessment?.jobs) ? assessment.jobs : [];
+      const jobScore = workKey && jobs.some((job) => normalizeLookupKey([
+        job?.title,
+        job?.jobTitle,
+        job?.name,
+        job?.description,
+      ].filter(Boolean).join(" ")).includes(workKey)) ? 3 : 0;
+      const statusKey = normalizeLookupKey(assessment?.status);
+      const statusScore = statusKey.includes("odob") || statusKey.includes("aktiv") || statusKey.includes("gotov") ? 2 : 0;
+      const dateScore = Date.parse(assessment?.assessmentDate || assessment?.updatedAt || assessment?.createdAt || "") || 0;
+      return {
+        assessment,
+        score: locationScore + jobScore + statusScore,
+        dateScore,
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => (right.score - left.score) || (right.dateScore - left.dateScore));
+  return candidates[0]?.assessment ?? null;
+}
+
 function buildMobilePeopleTrainingItem(record = {}, item = {}, index = 0, scopedSnapshot = {}) {
   if (!item || typeof item !== "object") {
     item = {};
   }
+  const service = findPeopleTrainingServiceForItem(item, scopedSnapshot) ?? {};
   const document = getMobilePeopleTrainingDocumentForItem(record, item, scopedSnapshot);
-  const validUntil = normalizeInputValue(item.validUntil || item.certificateValidUntil).slice(0, 10);
-  const passedOn = normalizeInputValue(item.passedOn || item.issuedOn || item.date || item.trainingDate).slice(0, 10);
+  const validUntil = normalizeDateOnlyValue(item.validUntil || item.certificateValidUntil);
+  const passedOn = normalizeDateOnlyValue(item.passedOn || item.issuedOn || item.date || item.trainingDate);
   const status = getMobilePeopleTrainingItemStatus(item);
-  const label = normalizeInputValue(item.label || item.serviceName || item.shortLabel || item.type) || `Osposobljavanje ${index + 1}`;
+  const serviceName = normalizeInputValue(item.serviceName || service.name);
+  const serviceCode = normalizeInputValue(item.serviceCode || service.serviceCode || item.code || item.shortLabel);
+  const label = getMobilePeopleTrainingDisplayLabel(item, serviceName, serviceCode, index);
   return {
     id: normalizeInputValue(item.id || item.type || item.serviceId || `training-${index + 1}`),
     type: normalizeInputValue(item.type || item.trainingType),
     label,
-    shortLabel: normalizeInputValue(item.shortLabel || item.serviceCode),
+    shortLabel: normalizeInputValue(item.shortLabel || serviceCode),
     serviceId: normalizeInputValue(item.serviceId || item.serviceCatalogId),
-    serviceName: normalizeInputValue(item.serviceName),
-    serviceCode: normalizeInputValue(item.serviceCode || item.code || item.shortLabel),
+    serviceName,
+    serviceCode,
     status,
     passedOn,
     validUntil,
     validForever: isMobileTrainingBooleanTrue(item.validForever),
+    deadlineLabel: getMobilePeopleTrainingDeadlineLabel(item),
+    examModeLabel: getMobilePeopleTrainingExamModeLabel(record, item, service),
     certificateNumber: normalizeInputValue(item.certificateNumber || item.recordNumber),
     provider: normalizeInputValue(item.provider || item.examMode || item.learningTestTitle),
     workOrderNumber: normalizeInputValue(item.workOrderNumber),
     documentId: getPeopleTrainingAttachmentDocumentId(document),
     documentName: document ? getPeopleTrainingAttachmentDocumentName(document) : "",
+    documentFileType: normalizeInputValue(document?.fileType || document?.mimeType) || "application/octet-stream",
     documentCategory: normalizeInputValue(document?.documentCategory || document?.category),
   };
 }
@@ -21950,6 +22529,11 @@ function buildMobilePeopleTrainingRecord(record = {}, scopedSnapshot = {}) {
     .map((item) => item.validUntil || item.passedOn)
     .filter(Boolean)
     .sort()[0] || normalizeInputValue(record.arrivalDate || record.updatedAt || record.createdAt);
+  const nextDeadline = trainingItems
+    .map((item) => item.validUntil)
+    .filter(Boolean)
+    .sort()[0] || "";
+  const riskAssessment = findMobilePeopleTrainingRiskAssessment(record, scopedSnapshot);
   const title = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ")) || "Osoba";
   const subtitle = [
     normalizeInputValue(record.companyName),
@@ -21974,6 +22558,15 @@ function buildMobilePeopleTrainingRecord(record = {}, scopedSnapshot = {}) {
       oib: normalizeInputValue(record.oib),
       email: normalizeInputValue(record.email),
       phone: normalizeInputValue(record.phone),
+      nextDeadline,
+      nextDeadlineLabel: nextDeadline ? `Rok ${formatMobileDateLabel(nextDeadline)}` : "",
+      riskAssessmentRequired: "true",
+      riskAssessmentAvailable: riskAssessment ? "true" : "false",
+      riskAssessmentId: normalizeInputValue(riskAssessment?.id),
+      riskAssessmentNumber: normalizeInputValue(riskAssessment?.assessmentNumber),
+      riskAssessmentTitle: normalizeInputValue(riskAssessment?.title),
+      riskAssessmentDate: normalizeDateOnlyValue(riskAssessment?.assessmentDate),
+      riskAssessmentStatus: normalizeInputValue(riskAssessment?.status),
       validCount: String(validCount),
       expiringCount: String(expiringCount),
       expiredCount: String(expiredCount),
@@ -26167,6 +26760,60 @@ async function handleApiRequest(request, response, url) {
         authorizedCompanyId: body?.authorizedCompanyId || ISZNR_AUTHORIZED_COMPANY_PROBE_ID,
       });
       sendJson(response, 200, result);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/isznr/company-training") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canEditCompanies(user, scopedSnapshot.companyRolePermissions)) {
+        sendError(response, 403, "Nemate pravo upravljati ISZNR postavkama tvrtke.");
+        return true;
+      }
+      const company = assertInScope(
+        scopedSnapshot.companies ?? [],
+        url.searchParams.get("companyId") || "",
+        "Tvrtka nije dostupna za odabranu organizaciju.",
+      );
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const result = await fetchIsznrCompanyTrainingOverview({
+        scopedSnapshot,
+        company,
+        storedSettings,
+        organization: scopedSnapshot.currentOrganization || scopedSnapshot.organization || {},
+      });
+      sendJson(response, 200, result);
+      return true;
+    }
+
+    if (request.method === "POST" && (url.pathname === "/api/isznr/company-training/zos" || url.pathname === "/api/isznr/company-training/zoop")) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canEditCompanies(user, scopedSnapshot.companyRolePermissions)) {
+        sendError(response, 403, "Nemate pravo slati osposobljavanja u IS ZNR.");
+        return true;
+      }
+      const body = await readJsonBody(request);
+      const company = assertInScope(
+        scopedSnapshot.companies ?? [],
+        body?.companyId || "",
+        "Tvrtka nije dostupna za odabranu organizaciju.",
+      );
+      const storedSettings = await domainRepository.getIsznrApiSettings(scopedSnapshot.activeOrganizationId);
+      const result = await submitIsznrCompanyTrainingRecord({
+        scopedSnapshot,
+        company,
+        storedSettings,
+        organization: scopedSnapshot.currentOrganization || scopedSnapshot.organization || {},
+        body,
+        kind: url.pathname.endsWith("/zoop") ? "zoop" : "zos",
+      });
+      invalidateSnapshotCaches();
+      const { scopedSnapshot: nextScopedSnapshot } = await getScopedState(user, request);
+      sendJson(response, 200, {
+        storage: domainRepository.kind,
+        user,
+        ...nextScopedSnapshot,
+        result,
+      });
       return true;
     }
 

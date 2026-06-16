@@ -44,6 +44,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9990,14 +9991,20 @@ private data class MobileTrainingItem(
     val id: String,
     val label: String,
     val shortLabel: String,
+    val serviceCode: String,
     val status: String,
     val passedOn: String,
     val validUntil: String,
     val validForever: Boolean,
+    val deadlineLabel: String,
+    val examModeLabel: String,
     val certificateNumber: String,
     val provider: String,
+    val workOrderNumber: String,
     val documentId: String,
     val documentName: String,
+    val documentFileType: String,
+    val documentCategory: String,
 )
 
 private fun parseTrainingItems(record: MobileRecord): List<MobileTrainingItem> {
@@ -10013,14 +10020,20 @@ private fun parseTrainingItems(record: MobileRecord): List<MobileTrainingItem> {
                         id = item.optString("id").trim(),
                         label = item.optString("label").trim().ifBlank { "Osposobljavanje" },
                         shortLabel = item.optString("shortLabel").trim(),
+                        serviceCode = item.optString("serviceCode").trim(),
                         status = item.optString("status").trim().ifBlank { "Evidencija" },
                         passedOn = item.optString("passedOn").trim(),
                         validUntil = item.optString("validUntil").trim(),
                         validForever = item.optBoolean("validForever", false) || item.optString("validForever").equals("true", ignoreCase = true),
+                        deadlineLabel = item.optString("deadlineLabel").trim(),
+                        examModeLabel = item.optString("examModeLabel").trim(),
                         certificateNumber = item.optString("certificateNumber").trim(),
                         provider = item.optString("provider").trim(),
+                        workOrderNumber = item.optString("workOrderNumber").trim(),
                         documentId = item.optString("documentId").trim(),
                         documentName = item.optString("documentName").trim(),
+                        documentFileType = item.optString("documentFileType").trim().ifBlank { "application/octet-stream" },
+                        documentCategory = item.optString("documentCategory").trim(),
                     ),
                 )
             }
@@ -10063,6 +10076,26 @@ private fun trainingStatusColor(status: String): Color {
         normalized.contains("trajno") || normalized.contains("vrijed") || normalized.contains("aktiv") || normalized.contains("znr") -> Color(0xFF059669)
         else -> Color(0xFF2563EB)
     }
+}
+
+private fun trainingItemDeadlineText(item: MobileTrainingItem): String = when {
+    item.deadlineLabel.isNotBlank() -> item.deadlineLabel
+    item.validForever -> "Vrijedi trajno"
+    item.validUntil.isNotBlank() -> "Rok ${formatDateLabel(item.validUntil).ifBlank { item.validUntil }}"
+    item.passedOn.isNotBlank() -> "Datum ${formatDateLabel(item.passedOn).ifBlank { item.passedOn }}"
+    else -> ""
+}
+
+private fun trainingItemDocument(item: MobileTrainingItem): MobileTrainingDocument? {
+    if (item.documentId.isBlank()) return null
+    return MobileTrainingDocument(
+        id = item.documentId,
+        fileName = item.documentName.ifBlank { "${item.label.ifBlank { "Osposobljavanje" }}.pdf" },
+        fileType = item.documentFileType.ifBlank { "application/octet-stream" },
+        category = item.documentCategory,
+        createdAt = item.passedOn,
+        isCertificate = true,
+    )
 }
 
 private fun normalizePeopleOib(value: String): String = value.filter { it.isDigit() }.take(11)
@@ -10359,30 +10392,55 @@ private fun TrainingRecordLine(
                 record.meta["oib"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("OIB $it", Color(0xFF64748B)) }
                 record.meta["trainingCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it ospos.", Color(0xFF2563EB)) }
                 record.meta["documentCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it dok.", Color(0xFF7C3AED)) }
+                record.meta["nextDeadlineLabel"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFFB45309)) }
                 record.meta["expiredCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it isteklo", Color(0xFFDC2626)) }
                 record.meta["expiringCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it uskoro", Color(0xFFB45309)) }
+                val hasRiskAssessment = record.meta["riskAssessmentAvailable"].equals("true", ignoreCase = true)
+                if (hasRiskAssessment) {
+                    val riskLabel = record.meta["riskAssessmentNumber"]?.takeIf { it.isNotBlank() } ?: "Procjena rizika"
+                    TrainingMiniChip(riskLabel, Color(0xFF059669))
+                } else if (record.meta["riskAssessmentRequired"].equals("true", ignoreCase = true)) {
+                    TrainingMiniChip("Bez procjene rizika", Color(0xFFDC2626))
+                }
             }
 
             items.take(4).forEach { item ->
                 val itemColor = trainingStatusColor(item.status)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TrainingMiniChip(item.shortLabel.ifBlank { item.status }, itemColor)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(item.label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        val dateText = when {
-                            item.validForever -> "Vrijedi trajno"
-                            item.validUntil.isNotBlank() -> "Vrijedi do ${formatDateLabel(item.validUntil).ifBlank { item.validUntil }}"
-                            item.passedOn.isNotBlank() -> "Datum ${formatDateLabel(item.passedOn).ifBlank { item.passedOn }}"
-                            else -> item.provider
+                val document = trainingItemDocument(item)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+                    border = BorderStroke(1.dp, itemColor.copy(alpha = 0.12f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        TrainingMiniChip(item.status.ifBlank { "Evidencija" }, itemColor)
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(item.label, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            val details = listOf(
+                                trainingItemDeadlineText(item),
+                                item.examModeLabel,
+                                item.shortLabel.ifBlank { item.serviceCode },
+                                item.certificateNumber.takeIf { it.isNotBlank() }?.let { "Br. $it" }.orEmpty(),
+                            ).filter { it.isNotBlank() }.distinct().joinToString(" · ")
+                            if (details.isNotBlank()) {
+                                Text(
+                                    details,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                        if (dateText.isNotBlank()) {
-                            Text(
-                                dateText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                        if (document != null) {
+                            IconButton(onClick = { onDownloadDocument(document) }) {
+                                Icon(Icons.Rounded.Download, contentDescription = "Preuzmi PDF")
+                            }
                         }
                     }
                 }

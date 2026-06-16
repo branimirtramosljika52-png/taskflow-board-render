@@ -3632,6 +3632,39 @@
                           <p class="inline-help">Možeš odabrati više osoba.</p>
                         </label>
                       </div>
+
+                      <section class="masterdata-group-card company-isznr-training-card" aria-label="IS ZNR osposobljavanja">
+                        <div class="masterdata-group-head">
+                          <div>
+                            <p class="section-kicker">Osposobljavanja</p>
+                            <h4 class="subsection-title">Način vođenja za ovu tvrtku</h4>
+                          </div>
+                          <button id="company-isznr-training-refresh" type="button" class="ghost-button">Dohvati IS ZNR</button>
+                        </div>
+                        <div class="form-grid masterdata-company-grid">
+                          <label class="field">
+                            <span>Izvor osposobljavanja</span>
+                            <select id="company-isznr-training-source">
+                              <option value="internal">Interno</option>
+                              <option value="isznr">Preko IS ZNR-a</option>
+                            </select>
+                          </label>
+                          <input id="company-isznr-training-json" type="hidden" />
+                        </div>
+                        <div id="company-internal-training-panel" class="company-internal-training-panel">
+                          <div class="company-internal-training-copy">
+                            <strong>Interni placeholderi osposobljavanja</strong>
+                            <span id="company-internal-training-template-meta">Iste stavke koje se koriste za IS ZNR mogu se kopirati u Word predložak.</span>
+                          </div>
+                          <div id="company-internal-training-placeholders" class="company-internal-training-placeholders"></div>
+                        </div>
+                        <div id="company-isznr-training-panel" class="company-isznr-training-panel" hidden>
+                          <p id="company-isznr-training-status" class="helper-copy module-copy"></p>
+                          <div id="company-isznr-training-summary" class="settings-isznr-api-resource-status"></div>
+                          <div id="company-isznr-training-registers" class="company-linked-records-list"></div>
+                          <div id="company-isznr-training-candidates" class="company-linked-records-list"></div>
+                        </div>
+                      </section>
                     </section>
 
                     <section id="company-client-portal-card" class="masterdata-group-card company-client-portal-card company-client-portal-card-top" data-company-tab-panel="portal" hidden>
