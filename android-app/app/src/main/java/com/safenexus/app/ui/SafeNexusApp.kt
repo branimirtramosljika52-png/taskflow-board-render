@@ -4981,6 +4981,20 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             value.spaces
         }
 
+    fun syncMeasurementSheetsWithSpaces(spaces: List<IsznrFcSpaceDraft>) {
+        measurementTemplates
+            .flatMap { documentationTemplate -> documentationTemplate.measurementTables.map { table -> documentationTemplate to table } }
+            .filter { (_, table) -> table.id == PHYSICAL_FACTORS_BUILT_IN_TABLE_ID || table.sheet.isBuiltInPhysicalFactorsSheet() }
+            .forEach { (documentationTemplate, table) ->
+                val stateKey = measurementSheetStateKey(documentationTemplate, table)
+                val currentSheet = measurementSheets[stateKey] ?: table.sheet
+                val nextSheet = currentSheet.withPhysicalFactorsSyncedSpaces(spaces)
+                if (nextSheet != currentSheet) {
+                    onMeasurementSheetChange(stateKey, nextSheet)
+                }
+            }
+    }
+
     fun addMeasurementRowFromSpace(space: IsznrFcSpaceDraft, originalName: String = "") {
         val measurementTable = measurementTemplates
             .flatMap { documentationTemplate -> documentationTemplate.measurementTables.map { table -> documentationTemplate to table } }
@@ -4993,6 +5007,10 @@ private fun DocumentationManualPhysicalFactorsBlocks(
         if (nextSheet != currentSheet) {
             onMeasurementSheetChange(stateKey, nextSheet)
         }
+    }
+
+    LaunchedEffect(value.spaces, measurementTemplates) {
+        syncMeasurementSheetsWithSpaces(editableSpaces())
     }
 
     fun openTemplateDialog(template: PhysicalFactorsSpaceTemplate) {
@@ -5102,13 +5120,22 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Rounded.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Predlošci prostora iz CISTA.xlsm", fontWeight = FontWeight.Black)
+                            Text("Predlošci prostora", fontWeight = FontWeight.Black)
                             Text(
                                 "Ubaci gotov naziv, opis namjene, proces rada, opremu i mjerne vrijednosti.",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                             )
                         }
+                    }
+                    OutlinedButton(
+                        onClick = { openBlankSpaceDialog() },
+                        enabled = enabled,
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Novi prostor")
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         physicalFactorsSpaceTemplates.forEach { template ->
@@ -5154,6 +5181,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                                         measurement.spaceId.isBlank() || validSpaceIds.contains(measurement.spaceId)
                                     }
                                     onChange(value.copy(spaces = nextSpaces, measurements = nextMeasurements))
+                                    syncMeasurementSheetsWithSpaces(nextSpaces)
                                 },
                             ) {
                                 Icon(Icons.Rounded.Delete, contentDescription = "Ukloni prostor", tint = Color(0xFFDC2626))
@@ -5234,10 +5262,15 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             ) {
                 Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Dodaj prazan prostor")
+                Text("Novi prostor bez predloška")
             }
         }
         ManualPhysicalFactorsBlock(title = "3. Mjerenja") {
+            Text(
+                "Prva kolona koristi samo prostore dodane u bloku Prostori. Kod novog zapisnika po starim papirima dodani prostori se automatski ponavljaju u mjernoj tablici.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+            )
             if (measurementTemplates.isEmpty()) {
                 Text(
                     "FC mjerna tablica nije dostupna.",
@@ -5253,6 +5286,12 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                             table = table,
                             sheet = measurementSheets[stateKey] ?: table.sheet,
                             enabled = enabled,
+                            spaceOptions = editableSpaces()
+                                .map { space -> space.name.trim() }
+                                .filter { it.isNotBlank() }
+                                .distinctBy { it.lowercase(Locale.getDefault()) }
+                                .map { name -> name to name },
+                            requireSpaceSelection = true,
                             onSheetChange = { nextSheet -> onMeasurementSheetChange(stateKey, nextSheet) },
                         )
                     }
@@ -15681,18 +15720,49 @@ private fun WorkOrderMeasurementSheet.withPhysicalFactorsSpaceDraftRow(
     originalName: String = "",
 ): WorkOrderMeasurementSheet {
     if (!isBuiltInPhysicalFactorsSheet() || space.name.isBlank()) return this
+    val spaceColumn = physicalFactorsColumnById("space") ?: return this
     val existingIndex = physicalFactorsSpaceRowIndex(space, originalName)
-    val rowNumber = if (existingIndex >= 0) existingIndex + 1 else rows.size + 1
+    val firstBlankIndex = if (existingIndex >= 0) {
+        -1
+    } else {
+        rows.indexOfFirst { row -> row.id !in headerRows && row.cells[spaceColumn.id].orEmpty().trim().isBlank() }
+    }
+    val targetIndex = if (existingIndex >= 0) existingIndex else firstBlankIndex
+    val rowNumber = if (targetIndex >= 0) targetIndex + 1 else rows.size + 1
     val row = physicalFactorsMeasurementRow(
-        id = if (existingIndex >= 0) rows[existingIndex].id else "fc-space-${space.id.ifBlank { rowNumber.toString() }}",
+        id = if (targetIndex >= 0) rows[targetIndex].id else "fc-space-${space.id.ifBlank { rowNumber.toString() }}",
         columns = columns,
         cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = space),
     )
-    return if (existingIndex >= 0) {
-        copy(rows = rows.mapIndexed { index, item -> if (index == existingIndex) row else item })
+    return if (targetIndex >= 0) {
+        copy(rows = rows.mapIndexed { index, item -> if (index == targetIndex) row else item })
     } else {
         copy(rows = rows + row)
     }
+}
+
+private fun WorkOrderMeasurementSheet.withPhysicalFactorsSyncedSpaces(
+    spaces: List<IsznrFcSpaceDraft>,
+): WorkOrderMeasurementSheet {
+    if (!isBuiltInPhysicalFactorsSheet()) return this
+    val spaceColumn = physicalFactorsColumnById("space") ?: return this
+    val validSpaceNames = spaces
+        .map { it.name }
+        .map(::normalizePhysicalFactorsSheetLookup)
+        .filter { it.isNotBlank() }
+        .toSet()
+    val rowsWithoutRemovedSpaces = rows.filter { row ->
+        if (row.id in headerRows) {
+            true
+        } else {
+            val currentSpace = normalizePhysicalFactorsSheetLookup(row.cells[spaceColumn.id].orEmpty())
+            currentSpace.isBlank() || currentSpace in validSpaceNames
+        }
+    }
+    val compacted = if (rowsWithoutRemovedSpaces.size == rows.size) this else copy(rows = rowsWithoutRemovedSpaces)
+    return spaces
+        .filter { it.name.trim().isNotBlank() }
+        .fold(compacted) { sheet, space -> sheet.withPhysicalFactorsSpaceDraftRow(space) }
 }
 
 private fun physicalFactorsMeasurementRow(
@@ -15725,16 +15795,12 @@ private fun defaultPhysicalFactorsMeasurementSheet(): WorkOrderMeasurementSheet 
         cells = columns.associate { it.id to it.label },
         header = true,
     )
-    val seedRows = physicalFactorsSpaceTemplates.mapIndexed { index, template ->
-        template.toSpaceDraft("default-fc-space-${index + 1}")
-    }
     val measurementRows = (0 until 24).map { index ->
         val rowNumber = index + 2
-        val seed = seedRows.getOrNull(index)
         physicalFactorsMeasurementRow(
             id = "fc-row-${index + 1}",
             columns = columns,
-            cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = seed ?: IsznrFcSpaceDraft()),
+            cells = physicalFactorsMeasurementCells(rowNumber = rowNumber, space = IsznrFcSpaceDraft()),
         )
     }
     return WorkOrderMeasurementSheet(
@@ -15752,7 +15818,7 @@ private fun defaultPhysicalFactorsMeasurementTemplate(): WorkOrderDocumentationT
         serviceName = "Radni okoliš - fizikalni čimbenici",
         serviceCode = "FC",
         dataSourceType = "mobile_builtin_excel",
-        dataSourceTitle = "CISTA.xlsm - RO-F.3",
+        dataSourceTitle = "Predlošci prostora i RO-F.3 mjerenja",
         fields = emptyList(),
         measurementTables = listOf(
             WorkOrderMeasurementTable(
@@ -15789,6 +15855,14 @@ private fun normalizePhysicalFactorsSheetLookup(value: String): String =
 
 private fun WorkOrderMeasurementColumn.physicalFactorsLookup(): String =
     normalizePhysicalFactorsSheetLookup("${id} ${label} ${placeholder}")
+
+private fun WorkOrderMeasurementColumn.isPhysicalFactorsSpaceSelectorColumn(): Boolean {
+    val lookup = physicalFactorsLookup()
+    return id.equals("space", ignoreCase = true) ||
+        lookup.contains("prostor") ||
+        lookup.contains("prostorija") ||
+        lookup == "room"
+}
 
 private fun physicalFactorsColumnMatching(
     sheet: WorkOrderMeasurementSheet,
@@ -17912,6 +17986,8 @@ private fun MeasurementTableEditor(
     table: WorkOrderMeasurementTable,
     sheet: WorkOrderMeasurementSheet,
     enabled: Boolean,
+    spaceOptions: List<Pair<String, String>> = emptyList(),
+    requireSpaceSelection: Boolean = false,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
     val columnWindowSize = 8
@@ -17963,11 +18039,16 @@ private fun MeasurementTableEditor(
     val selectedColumn = sheet.columns.getOrNull(selectedCell.columnIndex)
     val selectedRaw = selectedRow?.cells?.get(selectedColumn?.id.orEmpty()).orEmpty()
     val selectedEditable = selectedColumn?.isEditableMeasurementColumn() == true
+    val selectedRequiresSpaceSelection = requireSpaceSelection && selectedColumn?.isPhysicalFactorsSpaceSelectorColumn() == true
     val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
     if (quickFillOpen) {
         MeasurementQuickFillDialog(
-            columns = visibleColumns,
+            columns = if (requireSpaceSelection) {
+                visibleColumns.filterNot { it.isPhysicalFactorsSpaceSelectorColumn() }
+            } else {
+                visibleColumns
+            },
             enabled = enabled,
             onDismiss = { quickFillOpen = false },
             onApply = { draft ->
@@ -18038,21 +18119,42 @@ private fun MeasurementTableEditor(
                             Text("fx", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    OutlinedTextField(
-                        value = selectedRaw,
-                        onValueChange = { value ->
-                            val row = selectedRow
-                            val column = selectedColumn
-                            if (row != null && column != null && selectedEditable) {
-                                onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text(if (selectedDisplay.isNotBlank()) selectedDisplay else "Vrijednost ili formula") },
-                        singleLine = true,
-                        enabled = enabled && selectedEditable,
-                        shape = RoundedCornerShape(6.dp),
-                    )
+                    if (selectedRequiresSpaceSelection) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            WorkOrderSelectField(
+                                label = selectedColumn?.label?.ifBlank { "Prostor" } ?: "Prostor",
+                                value = selectedRaw,
+                                valueLabel = selectedRaw.ifBlank {
+                                    if (spaceOptions.isEmpty()) "Prvo dodaj prostor" else "Odaberi prostor"
+                                },
+                                options = spaceOptions,
+                                enabled = enabled && selectedEditable && spaceOptions.isNotEmpty(),
+                                onSelect = { value ->
+                                    val row = selectedRow
+                                    val column = selectedColumn
+                                    if (row != null && column != null) {
+                                        onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = selectedRaw,
+                            onValueChange = { value ->
+                                val row = selectedRow
+                                val column = selectedColumn
+                                if (row != null && column != null && selectedEditable) {
+                                    onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text(if (selectedDisplay.isNotBlank()) selectedDisplay else "Vrijednost ili formula") },
+                            singleLine = true,
+                            enabled = enabled && selectedEditable,
+                            shape = RoundedCornerShape(6.dp),
+                        )
+                    }
                 }
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -18205,8 +18307,11 @@ private fun MeasurementTableEditor(
                                         selectedCell = MeasurementCellSelection(rowIndex, absoluteColumnIndex)
                                     },
                                     onChange = { value ->
-                                        onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                        if (!(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn())) {
+                                            onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                        }
                                     },
+                                    directEditable = !(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn()),
                                 )
                             }
                         }
@@ -18450,6 +18555,7 @@ private fun MeasurementGridCell(
     enabled: Boolean,
     onClick: () -> Unit,
     onChange: (String) -> Unit,
+    directEditable: Boolean = true,
 ) {
     val editable = column.isEditableMeasurementColumn()
     val isFormula = rawValue.trim().startsWith("=")
@@ -18465,7 +18571,7 @@ private fun MeasurementGridCell(
     val textColor = measurementFormatTextColor(cellFormat)
     val textAlign = measurementFormatTextAlign(cellFormat)
     val bold = headerRow || measurementFormatBold(cellFormat, value)
-    if (selected && editable) {
+    if (selected && editable && directEditable) {
         OutlinedTextField(
             value = rawValue,
             onValueChange = onChange,
