@@ -17710,6 +17710,10 @@ function normalizeLooseName(value = "") {
     .trim();
 }
 
+function normalizeSearchText(value = "") {
+  return normalizeLooseName(value);
+}
+
 function findUserForExecutor(executorName = "") {
   const normalized = normalizeLooseName(executorName);
 
