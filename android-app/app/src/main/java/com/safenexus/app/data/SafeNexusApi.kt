@@ -761,6 +761,41 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun downloadMobileDocument(record: MobileRecord): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val downloadPath = record.meta["downloadPath"].orEmpty().trim()
+            val storageUrl = record.meta["storageUrl"].orEmpty().trim()
+            val pathOrUrl = downloadPath.ifBlank { storageUrl }
+            if (pathOrUrl.isBlank()) {
+                throw IllegalStateException("Dokument nema dostupnu datoteku za preuzimanje.")
+            }
+
+            val connection = openBinaryDownloadConnection(pathOrUrl)
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti dokument (${connection.responseCode})."
+                })
+            }
+
+            val fallbackFileName = record.meta["fileName"].orEmpty()
+                .ifBlank { record.title.ifBlank { "dokument" } }
+            val fallbackFileType = record.meta["fileType"].orEmpty()
+                .ifBlank { guessDocumentMimeType(fallbackFileName) }
+
+            DownloadedDocument(
+                fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
+                    .ifBlank { fallbackFileName },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { fallbackFileType }
+                    ?: fallbackFileType.ifBlank { "application/octet-stream" },
+                bytes = bytes,
+            )
+        }
+    }
+
     suspend fun downloadWorkOrderPdf(workOrderId: String, fallbackFileName: String): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
         runCatching {
             val path = "/api/work-orders/${workOrderId.pathSegment()}/export-pdf"
@@ -926,6 +961,27 @@ class SafeNexusApi(
                 outputStream.use { stream ->
                     stream.write(body.toByteArray(Charsets.UTF_8))
                 }
+            }
+        }
+    }
+
+    private fun openBinaryDownloadConnection(pathOrUrl: String): HttpURLConnection {
+        val target = if (pathOrUrl.startsWith("http://", ignoreCase = true) || pathOrUrl.startsWith("https://", ignoreCase = true)) {
+            pathOrUrl
+        } else {
+            "$baseUrl${if (pathOrUrl.startsWith("/")) pathOrUrl else "/$pathOrUrl"}"
+        }
+        return (URL(target).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = DEFAULT_CONNECT_TIMEOUT_MS
+            readTimeout = PDF_ACTION_READ_TIMEOUT_MS
+            setRequestProperty("Accept", "*/*")
+            setRequestProperty("X-SafeNexus-Client", "android")
+            if (accessToken.isNotBlank()) {
+                setRequestProperty("Authorization", "Bearer $accessToken")
+            }
+            if (authCookieHeader.isNotBlank()) {
+                setRequestProperty("Cookie", authCookieHeader)
             }
         }
     }
@@ -1151,6 +1207,23 @@ private fun parseContentDispositionFileName(value: String?): String {
     }
     val plainMatch = Regex("""filename="?([^";]+)"?""", RegexOption.IGNORE_CASE).find(value)
     return plainMatch?.groupValues?.getOrNull(1)?.trim().orEmpty()
+}
+
+private fun guessDocumentMimeType(fileName: String): String {
+    val extension = fileName.substringAfterLast('.', "").lowercase()
+    return when (extension) {
+        "pdf" -> "application/pdf"
+        "doc" -> "application/msword"
+        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "xls" -> "application/vnd.ms-excel"
+        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "png" -> "image/png"
+        "jpg", "jpeg" -> "image/jpeg"
+        "webp" -> "image/webp"
+        "txt" -> "text/plain"
+        "html", "htm" -> "text/html"
+        else -> "application/octet-stream"
+    }
 }
 
 private fun JSONObject.firstClean(vararg keys: String): String {

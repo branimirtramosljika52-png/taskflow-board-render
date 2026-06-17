@@ -1560,6 +1560,45 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun downloadMobileDocument(context: Context, record: MobileRecord) {
+        if (!mobileDocumentCanDownload(record)) {
+            state = state.copy(error = "Ovaj dokument nema dostupnu datoteku za preuzimanje.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadMobileDocument(record)
+                .onSuccess { downloaded ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
+                            state = state.copy(
+                                isLoading = false,
+                                notice = if (opened) {
+                                    "Dokument je spremljen u Preuzimanja / SafeNexus i otvoren."
+                                } else {
+                                    "Dokument je spremljen u Preuzimanja / SafeNexus."
+                                },
+                                error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje ove vrste dokumenta.",
+                            )
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti dokument.",
+                            )
+                        }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti dokument.",
+                    )
+                }
+        }
+    }
+
     fun downloadWorkOrderPdf(context: Context, workOrder: WorkOrder) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "Radni nalog nema ispravan ID za PDF.")
@@ -1937,6 +1976,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onConvertFieldInquiry = viewModel::convertFieldInquiryToWorkOrder,
                         onLoadIsznrMeasurementEquipment = viewModel::loadIsznrMeasurementEquipment,
                         onLoadIsznrPeople = viewModel::loadIsznrPeople,
+                        onDownloadDocument = { record ->
+                            viewModel.downloadMobileDocument(context.applicationContext, record)
+                        },
                         onDownloadTrainingDocument = { record, document ->
                             viewModel.downloadPeopleTrainingDocument(context.applicationContext, record, document)
                         },
@@ -1953,6 +1995,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onRecordVehicleUsage = viewModel::recordVehicleUsage,
                         onDownloadVehicleEvidencePdf = { vehicle -> viewModel.downloadVehicleEvidencePdf(context.applicationContext, vehicle) },
                         onDownloadOfferPdf = { offer -> viewModel.downloadOfferPdf(context.applicationContext, offer) },
+                        onDownloadDocument = { record -> viewModel.downloadMobileDocument(context.applicationContext, record) },
                         onDownloadTrainingDocument = { record, document ->
                             viewModel.downloadPeopleTrainingDocument(context.applicationContext, record, document)
                         },
@@ -6917,6 +6960,7 @@ private fun WorkOrdersScreen(
     onConvertFieldInquiry: (MobileRecord) -> Unit,
     onLoadIsznrMeasurementEquipment: (Boolean) -> Unit,
     onLoadIsznrPeople: (Boolean) -> Unit,
+    onDownloadDocument: (MobileRecord) -> Unit,
     onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
@@ -7214,6 +7258,7 @@ private fun WorkOrdersScreen(
                             DocumentRegisterPreview(
                                 records = filteredDocuments,
                                 onOpenRecord = onOpenRecord,
+                                onDownloadDocument = onDownloadDocument,
                             )
                         }
                         item {
@@ -7322,6 +7367,7 @@ private fun WorkOrdersScreen(
                         DocumentRegisterPreview(
                             records = filteredDocuments,
                             onOpenRecord = onOpenRecord,
+                            onDownloadDocument = onDownloadDocument,
                         )
                     }
                     MoreSectionFocus.Services -> item {
@@ -9862,14 +9908,276 @@ private fun PeriodicLine(entry: PeriodicEntry, today: LocalDate) {
 private fun DocumentRegisterPreview(
     records: List<MobileRecord>,
     onOpenRecord: (MobileRecord) -> Unit,
+    onDownloadDocument: (MobileRecord) -> Unit,
 ) {
-    RecordsContent(
-        title = "Dokumenti i zapisnici",
-        records = records,
-        emptyText = "Nema dokumenata za prikaz.",
-        icon = Icons.Rounded.Description,
-        onOpenRecord = onOpenRecord,
-    )
+    var selectedGroup by remember(records) { mutableStateOf("all") }
+    val groups = remember(records) {
+        records
+            .groupBy { record -> mobileDocumentGroupKey(record) }
+            .map { (key, items) -> key to mobileDocumentGroupLabel(key, items.firstOrNull()) }
+            .sortedBy { (_, label) -> label }
+    }
+    val visibleRecords = remember(records, selectedGroup) {
+        if (selectedGroup == "all") records else records.filter { record -> mobileDocumentGroupKey(record) == selectedGroup }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SectionHeader(
+                title = "Dokumenti",
+                subtitle = "${records.size} zapisa iz RN-a, osposobljavanja, procjena i modula",
+                icon = Icons.Rounded.Description,
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DocumentFilterChip(
+                    label = "Sve (${records.size})",
+                    selected = selectedGroup == "all",
+                    onClick = { selectedGroup = "all" },
+                )
+                groups.forEach { (key, label) ->
+                    val count = records.count { record -> mobileDocumentGroupKey(record) == key }
+                    DocumentFilterChip(
+                        label = "$label ($count)",
+                        selected = selectedGroup == key,
+                        onClick = { selectedGroup = key },
+                    )
+                }
+            }
+
+            if (visibleRecords.isEmpty()) {
+                Text(
+                    "Nema dokumenata za ovaj filter.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                visibleRecords.take(120).forEach { record ->
+                    MobileDocumentLine(
+                        record = record,
+                        onOpenRecord = onOpenRecord,
+                        onDownloadDocument = onDownloadDocument,
+                    )
+                }
+                if (visibleRecords.size > 120) {
+                    Text(
+                        "Prikazano je prvih 120 dokumenata. Koristi pretragu za uži popis.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.42f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)),
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun MobileDocumentLine(
+    record: MobileRecord,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onDownloadDocument: (MobileRecord) -> Unit,
+) {
+    val canDownload = mobileDocumentCanDownload(record)
+    val fileType = record.meta["fileType"].orEmpty()
+    val sourceLabel = mobileDocumentSourceLabel(record)
+    val category = record.meta["documentCategory"].orEmpty().ifBlank { record.status }
+    val contextText = listOf(
+        record.meta["companyName"].orEmpty(),
+        record.meta["workOrderNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "RN $it" }.orEmpty(),
+        record.meta["locationName"].orEmpty(),
+    ).filter { it.isNotBlank() }.joinToString(" - ")
+    val detailsText = listOf(
+        sourceLabel,
+        category,
+        formatDateLabel(record.date).ifBlank { record.date.take(10) },
+    ).filter { it.isNotBlank() }.joinToString(" - ")
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenRecord(record) },
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = mobileDocumentAccentColor(record).copy(alpha = 0.12f),
+            ) {
+                Icon(
+                    mobileDocumentIcon(record),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .padding(11.dp),
+                    tint = mobileDocumentAccentColor(record),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    record.title.ifBlank { record.meta["fileName"].orEmpty().ifBlank { "Dokument" } },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (contextText.isNotBlank()) {
+                    Text(
+                        contextText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    detailsText.ifBlank { record.subtitle.ifBlank { recordKindLabel(record.kind) } },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (fileType.isNotBlank()) {
+                    Text(
+                        mobileDocumentFileTypeLabel(fileType),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                        maxLines = 1,
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { onDownloadDocument(record) },
+                enabled = canDownload,
+            ) {
+                Icon(
+                    Icons.Rounded.Download,
+                    contentDescription = "Preuzmi dokument",
+                    tint = if (canDownload) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                )
+            }
+        }
+    }
+}
+
+private fun mobileDocumentCanDownload(record: MobileRecord): Boolean =
+    record.meta["downloadPath"].orEmpty().isNotBlank() ||
+        record.meta["storageUrl"].orEmpty().startsWith("http", ignoreCase = true)
+
+private fun mobileDocumentSourceLabel(record: MobileRecord): String =
+    record.meta["sourceLabel"].orEmpty().ifBlank { record.status.ifBlank { "Dokument" } }
+
+private fun mobileDocumentGroupKey(record: MobileRecord): String {
+    val sourceType = record.meta["sourceType"].orEmpty().lowercase(Locale.getDefault())
+    return when {
+        sourceType.contains("work_order") -> "work_orders"
+        sourceType.contains("people_training") -> "training"
+        sourceType.contains("risk_assessment") -> "risk"
+        sourceType.contains("rulebook") || sourceType.contains("legal_framework") -> "rules"
+        sourceType.contains("public_procurement") -> "public_procurement"
+        sourceType.contains("drawing") -> "drawings"
+        sourceType.contains("offer") || sourceType.contains("purchase") || sourceType.contains("contract") -> "commercial"
+        sourceType.contains("template") || sourceType.contains("service_catalog") || sourceType.contains("learning") -> "templates"
+        sourceType.contains("measurement") -> "measurement"
+        sourceType.contains("vehicle") -> "vehicles"
+        else -> sourceType.ifBlank { "documents" }
+    }
+}
+
+private fun mobileDocumentGroupLabel(key: String, record: MobileRecord?): String = when (key) {
+    "work_orders" -> "RN dokumenti"
+    "training" -> "Osposobljavanja"
+    "risk" -> "Procjene rizika"
+    "rules" -> "Propisi i pravilnici"
+    "public_procurement" -> "Javna nabava"
+    "drawings" -> "Nacrti"
+    "commercial" -> "Ponude i ugovori"
+    "templates" -> "Predlošci"
+    "measurement" -> "Mjerna oprema"
+    "vehicles" -> "Vozila"
+    "documents" -> "Dokumenti"
+    else -> record?.let { mobileDocumentSourceLabel(it) }.orEmpty().ifBlank { "Ostalo" }
+}
+
+private fun mobileDocumentAccentColor(record: MobileRecord): Color = when (mobileDocumentGroupKey(record)) {
+    "work_orders" -> Color(0xFF2563EB)
+    "training" -> Color(0xFF7C3AED)
+    "risk" -> Color(0xFF059669)
+    "rules" -> Color(0xFFB45309)
+    "public_procurement" -> Color(0xFFDC2626)
+    "drawings" -> Color(0xFF0891B2)
+    "commercial" -> Color(0xFF0F766E)
+    "templates" -> Color(0xFF4F46E5)
+    else -> Color(0xFF475569)
+}
+
+private fun mobileDocumentIcon(record: MobileRecord): ImageVector {
+    val text = listOf(record.title, record.meta["fileName"].orEmpty(), record.meta["fileType"].orEmpty())
+        .joinToString(" ")
+        .lowercase(Locale.getDefault())
+    return when {
+        text.contains("pdf") -> Icons.Rounded.PictureAsPdf
+        text.contains("image") || text.contains(".jpg") || text.contains(".jpeg") || text.contains(".png") || text.contains(".webp") -> Icons.Rounded.Image
+        text.contains("xls") || text.contains("sheet") -> Icons.Rounded.InsertDriveFile
+        else -> Icons.Rounded.Description
+    }
+}
+
+private fun mobileDocumentFileTypeLabel(fileType: String): String {
+    val normalized = fileType.substringBefore(";").trim().lowercase(Locale.getDefault())
+    return when {
+        normalized == "application/pdf" -> "PDF"
+        normalized.contains("word") || normalized.contains("document") -> "Word dokument"
+        normalized.contains("excel") || normalized.contains("spreadsheet") -> "Excel tablica"
+        normalized.startsWith("image/") -> "Slika"
+        normalized.isBlank() -> ""
+        else -> normalized
+    }
 }
 
 @Composable
@@ -11178,7 +11486,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
     "offer" -> Icons.Rounded.Description
     "todo_task" -> Icons.Rounded.ListAlt
     "vehicle", "vehicle_reservation" -> Icons.Rounded.Business
-    "document" -> Icons.Rounded.Mail
+    "document" -> Icons.Rounded.Description
     "training" -> Icons.Rounded.Fingerprint
     "company" -> Icons.Rounded.Business
     "location" -> Icons.Rounded.LocationOn
@@ -12064,6 +12372,7 @@ private fun MobileRecordDetailScreen(
     onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
+    onDownloadDocument: (MobileRecord) -> Unit,
     onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -12236,6 +12545,20 @@ private fun MobileRecordDetailScreen(
                                 Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Preuzmi PDF", fontWeight = FontWeight.Black)
+                            }
+                        }
+                    }
+                    if (record.kind == "document") {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { onDownloadDocument(record) },
+                                enabled = !isLoading && mobileDocumentCanDownload(record),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Preuzmi", fontWeight = FontWeight.Black)
                             }
                         }
                     }
