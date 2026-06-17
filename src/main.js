@@ -698,6 +698,55 @@ const DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS = Object.freeze([
     iconName: "dates",
     toneClass: "is-absence",
   }),
+  Object.freeze({
+    id: "public-procurements",
+    label: "Javna nabava",
+    description: "Dokumentacija natječaja, rokovi i prilozi javne nabave.",
+    iconName: "billing",
+    toneClass: "is-public-procurements",
+  }),
+  Object.freeze({
+    id: "risk-assessments",
+    label: "Procjene rizika",
+    description: "Procjene, ovlaštenja i prilozi temeljne dokumentacije.",
+    iconName: "status",
+    toneClass: "is-risk-assessments",
+  }),
+  Object.freeze({
+    id: "rulebooks",
+    label: "Pravilnici",
+    description: "Pravilnici, programi i povezani dokumenti.",
+    iconName: "notes",
+    toneClass: "is-rulebooks",
+  }),
+  Object.freeze({
+    id: "drawings",
+    label: "Nacrti",
+    description: "Evakuacijski nacrti, CAD reference i prateće datoteke.",
+    iconName: "map",
+    toneClass: "is-drawings",
+  }),
+  Object.freeze({
+    id: "document-templates",
+    label: "Template Development",
+    description: "Word, HTML i PDF predlošci zapisnika.",
+    iconName: "document",
+    toneClass: "is-document-templates",
+  }),
+  Object.freeze({
+    id: "learning-tests",
+    label: "Ispiti i edukacije",
+    description: "Materijali, pitanja i dokumenti testova.",
+    iconName: "team",
+    toneClass: "is-learning-tests",
+  }),
+  Object.freeze({
+    id: "service-catalog",
+    label: "List of Services",
+    description: "Predlošci uvjerenja i dokumenti povezani s uslugama.",
+    iconName: "todo",
+    toneClass: "is-service-catalog",
+  }),
 ]);
 const DOCUMENT_LIBRARY_FILE_KIND_LABELS = Object.freeze({
   all: "Sve",
@@ -32522,6 +32571,263 @@ function buildDocumentsLibraryFolders() {
         ].filter(Boolean),
       }),
     }),
+    ...buildDocumentLibraryAttachmentFolders(sortPublicProcurements(state.publicProcurements ?? []), {
+      categoryId: "public-procurements",
+      getFolderLabel: (item) => item?.title || item?.referenceNumber || "Javna nabava",
+      getFolderSubtitle: (item) => [
+        item?.companyName || "",
+        item?.referenceNumber || "",
+        item?.deadline ? `Rok ${formatCompactDate(item.deadline)}` : "",
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        getPublicProcurementStatusLabel(item?.status || "open"),
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.referenceNumber || "",
+        item?.companyName || "",
+        item?.note || "",
+        item?.documentationUrl || "",
+      ],
+      getDocuments: (item) => item?.documents ?? [],
+      getSourceTarget: (item) => ({ kind: "public-procurement", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || item?.note || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || item?.deadline || "",
+        metaParts: [
+          getPublicProcurementStatusLabel(item?.status || "open"),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+      buildExtraEntries: (item, sourceTarget) => {
+        const documentationUrl = String(item?.documentationUrl || "").trim();
+        return documentationUrl ? [createDocumentLibraryEntry({
+          id: `public-procurements:url:${String(item?.id || documentationUrl)}`,
+          label: "Dokumentacija javne nabave",
+          description: item?.note || "Vanjska poveznica dokumentacije.",
+          fileName: documentationUrl,
+          href: documentationUrl,
+          fileKind: "other",
+          previewType: "href",
+          canDownload: false,
+          updatedAt: item?.updatedAt || item?.createdAt || item?.deadline || "",
+          metaParts: [
+            getPublicProcurementStatusLabel(item?.status || "open"),
+            item?.deadline ? `Rok ${formatCompactDate(item.deadline)}` : "",
+          ].filter(Boolean),
+          sourceTarget,
+          searchTerms: [item?.title || "", item?.referenceNumber || "", documentationUrl],
+        })] : [];
+      },
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortRiskAssessments(state.riskAssessments ?? []), {
+      categoryId: "risk-assessments",
+      getFolderLabel: (item) => item?.title || item?.assessmentNumber || "Procjena rizika",
+      getFolderSubtitle: (item) => [
+        getCompany(item?.companyId || "")?.name || item?.employerData?.fullName || "",
+        item?.assessmentNumber || "",
+        getOptionLabel(RISK_ASSESSMENT_STATUS_OPTIONS, item?.status || "draft") || "",
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        item?.assessmentDate ? formatCompactDate(item.assessmentDate) : "",
+        item?.completionDate ? `Završeno ${formatCompactDate(item.completionDate)}` : "",
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.assessmentNumber || "",
+        item?.employerData?.fullName || "",
+        item?.employerData?.oib || "",
+        item?.clientNote || "",
+      ],
+      getDocuments: (item) => [
+        item?.employerData?.znrAuthorizationDocument,
+        item?.reportTemplate?.referenceDocument,
+      ].filter(Boolean),
+      getSourceTarget: (item) => ({ kind: "risk-assessment", record: item }),
+      mapDocument: (document, item) => ({
+        label: document?.fileName || document?.name || "Procjena rizika - prilog",
+        description: document === item?.employerData?.znrAuthorizationDocument
+          ? "Ovlaštenje izrađivača procjene."
+          : "Predložak ili prilog procjene rizika.",
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || item?.assessmentDate || "",
+        metaParts: [
+          getOptionLabel(RISK_ASSESSMENT_STATUS_OPTIONS, item?.status || "draft") || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortRulebooks(state.rulebooks ?? []), {
+      categoryId: "rulebooks",
+      getFolderLabel: (item) => item?.title || getRulebookTypeLabel(item?.rulebookType || "custom") || "Pravilnik",
+      getFolderSubtitle: (item) => [
+        getRulebookTypeLabel(item?.rulebookType || "custom"),
+        item?.owner || "",
+        item?.effectiveFrom ? `Od ${formatCompactDate(item.effectiveFrom)}` : "",
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        getRulebookStatusLabel(item?.status || "draft"),
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.owner || "",
+        item?.scope || "",
+        item?.summary || "",
+      ],
+      getDocuments: (item) => item?.documents ?? [],
+      getSourceTarget: (item) => ({ kind: "rulebook", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || item?.summary || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || item?.effectiveFrom || "",
+        metaParts: [
+          getRulebookTypeLabel(item?.rulebookType || "custom"),
+          getRulebookStatusLabel(item?.status || "draft"),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortDrawingProjects(state.drawings ?? []), {
+      categoryId: "drawings",
+      getFolderLabel: (item) => item?.title || "Nacrt",
+      getFolderSubtitle: (item) => [
+        getOptionLabel(DRAWING_PROJECT_TYPE_OPTIONS, item?.drawingType || "custom") || "",
+        getCompany(item?.companyId || "")?.name || "",
+        item?.scaleLabel || "",
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        getOptionLabel(DRAWING_PROJECT_STATUS_OPTIONS, item?.status || "draft") || "",
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.note || "",
+        item?.createdByLabel || "",
+      ],
+      getDocuments: (item) => item?.referenceDocuments ?? [],
+      getSourceTarget: (item) => ({ kind: "drawing", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || item?.note || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getOptionLabel(DRAWING_PROJECT_TYPE_OPTIONS, item?.drawingType || "custom") || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortDocumentTemplates(state.documentTemplates ?? []), {
+      categoryId: "document-templates",
+      getFolderLabel: (item) => item?.title || item?.referenceDocument?.fileName || "Template",
+      getFolderSubtitle: (item) => [
+        item?.documentType || "",
+        item?.serviceCode || "",
+        getDocumentTemplateReferenceLabel(item?.referenceDocument),
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        getOptionLabel(DOCUMENT_TEMPLATE_STATUS_OPTIONS, item?.status || "draft") || "",
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.documentType || "",
+        item?.serviceCode || "",
+        item?.outputFileName || "",
+      ],
+      getDocuments: (item) => item?.referenceDocument ? [item.referenceDocument] : [],
+      getSourceTarget: (item) => ({ kind: "document-template", record: item }),
+      mapDocument: (document, item) => ({
+        label: item?.title || document?.fileName || "Template",
+        description: getDocumentTemplateReferenceLabel(document),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          item?.documentType || "",
+          item?.serviceCode || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortContractTemplates(state.contractTemplates ?? []), {
+      categoryId: "contracts",
+      getFolderLabel: (item) => item?.title || item?.referenceDocument?.fileName || "Predložak ugovora",
+      getFolderSubtitle: (item) => [
+        "Predložak ugovora",
+        item?.contractType || "",
+      ].filter(Boolean).join(" · "),
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.contractType || "",
+        item?.note || "",
+      ],
+      getDocuments: (item) => item?.referenceDocument ? [item.referenceDocument] : [],
+      getSourceTarget: (item) => ({ kind: "contract-template", record: item }),
+      mapDocument: (document, item) => ({
+        label: item?.title || document?.fileName || "Predložak ugovora",
+        description: "Word predložak ugovora.",
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          item?.contractType || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortLearningTests(state.learningTests ?? []), {
+      categoryId: "learning-tests",
+      getFolderLabel: (item) => item?.title || "Ispit i edukacija",
+      getFolderSubtitle: (item) => [
+        getLearningTestStatusLabel(item?.status || "draft"),
+        `${Array.isArray(item?.questionItems) ? item.questionItems.length : 0} pitanja`,
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        `${Array.isArray(item?.handbookDocuments) ? item.handbookDocuments.length : 0} materijala`,
+      ],
+      getFolderSearchTerms: (item) => [
+        item?.title || "",
+        item?.description || "",
+        ...(Array.isArray(item?.questionItems) ? item.questionItems.flatMap((question) => [
+          question?.code || "",
+          question?.question || "",
+          question?.imageDocument?.fileName || "",
+        ]) : []),
+      ],
+      getDocuments: (item) => [
+        ...(Array.isArray(item?.handbookDocuments) ? item.handbookDocuments : []),
+        ...(Array.isArray(item?.questionItems)
+          ? item.questionItems.map((question) => question?.imageDocument).filter(Boolean)
+          : []),
+      ],
+      getSourceTarget: (item) => ({ kind: "learning-test", record: item }),
+      mapDocument: (document, item) => ({
+        description: String(document?.description || item?.description || "").trim(),
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          getLearningTestStatusLabel(item?.status || "draft"),
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
+    ...buildDocumentLibraryAttachmentFolders(sortServiceCatalogItems(state.serviceCatalog ?? []), {
+      categoryId: "service-catalog",
+      getFolderLabel: (item) => item?.name || item?.serviceCode || "Usluga",
+      getFolderSubtitle: (item) => [
+        item?.serviceCode || "",
+        getServiceCatalogTypeLabel(item?.serviceType || (item?.isTraining ? "znr" : "inspection")),
+      ].filter(Boolean).join(" · "),
+      getFolderMetaParts: (item) => [
+        getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, item?.status || "active") || "",
+      ].filter(Boolean),
+      getFolderSearchTerms: (item) => [
+        item?.name || "",
+        item?.serviceCode || "",
+        item?.note || "",
+      ],
+      getDocuments: (item) => item?.trainingCertificateTemplate ? [item.trainingCertificateTemplate] : [],
+      getSourceTarget: (item) => ({ kind: "service-catalog", record: item }),
+      mapDocument: (document, item) => ({
+        label: document?.fileName || `${item?.name || item?.serviceCode || "Usluga"} - predložak`,
+        description: "Predložak uvjerenja ili dokument povezan s uslugom.",
+        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
+        metaParts: [
+          item?.serviceCode || "",
+          formatFileSize(document?.fileSize || 0),
+        ].filter(Boolean),
+      }),
+    }),
   ];
 
   return folders
@@ -32834,6 +33140,57 @@ function openDocumentsLibrarySource(target = null) {
       }
       break;
     }
+    case "public-procurement":
+      activateSidebarItem("public-procurement", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydratePublicProcurementForm(target.record);
+          openPublicProcurementEditor();
+        });
+      }
+      break;
+    case "risk-assessment":
+      activateSidebarItem("risk-assessment", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateRiskAssessmentForm(target.record);
+        });
+      }
+      break;
+    case "rulebook":
+      activateSidebarItem("rulebooks", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateRulebookForm(target.record);
+        });
+      }
+      break;
+    case "drawing":
+      activateSidebarItem("drawing-studio", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          state.activeDrawingId = String(target.record.id || "");
+          loadDrawingDraft(target.record);
+          renderDrawingStudioModule();
+        });
+      }
+      break;
+    case "learning-test":
+      activateSidebarItem("tests", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateLearningTestForm(target.record);
+        });
+      }
+      break;
+    case "service-catalog":
+      activateSidebarItem("list-of-services", options);
+      if (target.record) {
+        window.requestAnimationFrame(() => {
+          hydrateServiceCatalogForm(target.record);
+        });
+      }
+      break;
     case "work-order":
       activateSidebarItem("rn", options);
       if (target.record) {

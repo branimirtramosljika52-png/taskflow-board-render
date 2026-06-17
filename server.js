@@ -23342,8 +23342,85 @@ function buildMobileModuleDocumentRecords(scopedSnapshot = {}) {
   addDocuments("rulebooks", "rulebook", "Pravilnik", (item) => normalizeInputValue(item.title || "Pravilnik"), (item) => item.rulebookType);
   addDocuments("absenceEntries", "absence", "Odsutnost", (item) => normalizeInputValue(item.typeLabel || item.userLabel || "Odsutnost"), (item) => item.statusLabel);
 
+  (Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : []).forEach((owner, index) => {
+    const record = buildMobileAttachmentDocumentRecord({
+      sourceType: "document_template",
+      sourceLabel: "Template Development",
+      owner,
+      ownerTitle: normalizeInputValue(owner.title || owner.documentType || "Template"),
+      ownerSubtitle: compactMobileDocumentText([owner.documentType, owner.serviceCode]),
+      document: owner?.referenceDocument,
+      index,
+      relatedId: owner?.id,
+    });
+    if (record) {
+      records.push(record);
+    }
+  });
+
+  (Array.isArray(scopedSnapshot.contractTemplates) ? scopedSnapshot.contractTemplates : []).forEach((owner, index) => {
+    const record = buildMobileAttachmentDocumentRecord({
+      sourceType: "contract_template",
+      sourceLabel: "Predlozak ugovora",
+      owner,
+      ownerTitle: normalizeInputValue(owner.title || "Predlozak ugovora"),
+      ownerSubtitle: normalizeInputValue(owner.contractType),
+      document: owner?.referenceDocument,
+      index,
+      relatedId: owner?.id,
+    });
+    if (record) {
+      records.push(record);
+    }
+  });
+
+  (Array.isArray(scopedSnapshot.serviceCatalog) ? scopedSnapshot.serviceCatalog : []).forEach((owner, index) => {
+    const record = buildMobileAttachmentDocumentRecord({
+      sourceType: "service_catalog",
+      sourceLabel: "List of services",
+      owner,
+      ownerTitle: normalizeInputValue(owner.name || owner.serviceCode || "Usluga"),
+      ownerSubtitle: normalizeInputValue(owner.serviceCode),
+      document: owner?.trainingCertificateTemplate,
+      index,
+      relatedId: owner?.id,
+    });
+    if (record) {
+      records.push(record);
+    }
+  });
+
+  (Array.isArray(scopedSnapshot.learningTests) ? scopedSnapshot.learningTests : []).forEach((owner) => {
+    const documents = [
+      ...(Array.isArray(owner?.handbookDocuments) ? owner.handbookDocuments : []),
+      ...(Array.isArray(owner?.questionItems)
+        ? owner.questionItems.map((question) => question?.imageDocument).filter(Boolean)
+        : []),
+    ];
+    documents.forEach((document, index) => {
+      const record = buildMobileAttachmentDocumentRecord({
+        sourceType: "learning_test",
+        sourceLabel: "Ispiti i edukacije",
+        owner,
+        ownerTitle: normalizeInputValue(owner.title || "Ispit i edukacija"),
+        ownerSubtitle: normalizeInputValue(owner.status),
+        document,
+        index,
+        relatedId: owner?.id,
+      });
+      if (record) {
+        records.push(record);
+      }
+    });
+  });
+
   (Array.isArray(scopedSnapshot.riskAssessments) ? scopedSnapshot.riskAssessments : []).forEach((owner) => {
-    (Array.isArray(owner?.attachments) ? owner.attachments : []).forEach((document, index) => {
+    const documents = [
+      ...(Array.isArray(owner?.attachments) ? owner.attachments : []),
+      owner?.employerData?.znrAuthorizationDocument,
+      owner?.reportTemplate?.referenceDocument,
+    ].filter(Boolean);
+    documents.forEach((document, index) => {
       const record = buildMobileAttachmentDocumentRecord({
         sourceType: "risk_assessment",
         sourceLabel: "Procjena rizika",
