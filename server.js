@@ -4751,7 +4751,7 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
         pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
         pdfBridgeUrl ? `Safe Nexus preuzimanje: ${pdfBridgeUrl}.` : "",
         importedPdf.ok
-          ? `Safe Nexus dokument: spremljen za potpis (${importedPdf.signatureFieldCount || 0} signature fieldova).`
+          ? "Safe Nexus dokument: IS ZNR PDF spremljen u Dokumente."
           : `Safe Nexus dokument nije automatski uvezen: ${importedPdf.message}.`,
         submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
       ].filter(Boolean).join(" "),
@@ -4784,7 +4784,7 @@ async function submitIsznrPhysicalFactorsForWorkOrder({
           ? `FC elementi: ${followUpResult.submitted} poslano.`
           : "",
       importedPdf.ok
-        ? `PDF je spremljen u Dokumente i pripremljen za potpis (${importedPdf.signatureFieldCount || 0} polja).`
+        ? "PDF je direktno preuzet iz IS ZNR-a i spremljen u Dokumente."
         : `PDF nije automatski spremljen: ${importedPdf.message}`,
       pdfUrl ? `PDF zapisnik: ${pdfUrl}` : "",
     ].filter(Boolean).join(" "),
@@ -5026,7 +5026,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
         pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
         pdfBridgeUrl ? `Safe Nexus preuzimanje: ${pdfBridgeUrl}.` : "",
         importedPdf.ok
-          ? `Safe Nexus dokument: spremljen za potpis (${importedPdf.signatureFieldCount || 0} signature fieldova).`
+          ? "Safe Nexus dokument: IS ZNR PDF spremljen u Dokumente."
           : `Safe Nexus dokument nije automatski uvezen: ${importedPdf.message}.`,
         submitResult.path ? `Endpoint: ${submitResult.path}.` : "",
       ].filter(Boolean).join(" "),
@@ -5070,7 +5070,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
           ? `Privici: ${attachmentResult.submitted} poslano.`
           : "",
       importedPdf.ok
-        ? `PDF je spremljen u Dokumente i pripremljen za potpis (${importedPdf.signatureFieldCount || 0} polja).`
+        ? "PDF je direktno preuzet iz IS ZNR-a i spremljen u Dokumente."
         : `PDF nije automatski spremljen: ${importedPdf.message}`,
       pdfUrl ? `PDF zapisnik: ${pdfUrl}` : "",
     ].filter(Boolean).join(" "),
@@ -5363,12 +5363,15 @@ function buildImportedIsznrRecordPdfDocumentPayload({
     })
     .filter(Boolean);
   const signerSuffix = signerLabels.length ? ` Potpisnici: ${signerLabels.join(", ")}.` : "";
+  const hasSignatureFields = signerLabels.length > 0;
   return {
     fileName: safeFileName,
     fileType: "application/pdf",
     fileSize: safeBuffer.length,
     documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
-    description: `IS ZNR ${kindLabel} zapisnik ${recordLabel} za RN ${workOrderNumber}. PDF je preuzet iz IS ZNR-a i pripremljen za digitalni potpis.${signerSuffix}`,
+    description: hasSignatureFields
+      ? `IS ZNR ${kindLabel} zapisnik ${recordLabel} za RN ${workOrderNumber}. PDF je preuzet iz IS ZNR-a i pripremljen za digitalni potpis.${signerSuffix}`
+      : `IS ZNR ${kindLabel} zapisnik ${recordLabel} za RN ${workOrderNumber}. PDF je direktno preuzet iz IS ZNR-a.`,
     sourceType: "pdf",
     ...signatureMetadata,
     dataUrl: `data:application/pdf;base64,${safeBuffer.toString("base64")}`,
@@ -5386,6 +5389,7 @@ async function importIsznrRecordPdfForWorkOrder({
   recordId = "",
   recordNumber = "",
   postDraft = {},
+  includeSignatureFields = false,
 } = {}) {
   const normalizedId = normalizeInputValue(recordId);
   if (!workOrder?.id || !normalizedId) {
@@ -5403,12 +5407,14 @@ async function importIsznrRecordPdfForWorkOrder({
     recordKind,
     recordId: normalizedId,
   });
-  const signatureFields = await buildImportedIsznrPdfSignatureFieldSpecs(pdfResult.buffer, {
-    people: postDraft?.people?.signedBy || {},
-    recordKind,
-    scopedSnapshot,
-  });
-  const pdfWithFields = signatureFields.length > 0
+  const signatureFields = includeSignatureFields
+    ? await buildImportedIsznrPdfSignatureFieldSpecs(pdfResult.buffer, {
+      people: postDraft?.people?.signedBy || {},
+      recordKind,
+      scopedSnapshot,
+    })
+    : [];
+  const pdfWithFields = includeSignatureFields && signatureFields.length > 0
     ? await addPdfSignatureFieldsToBuffer(pdfResult.buffer, signatureFields, {
       appearance: {
         showQualifiedLabel: false,
@@ -5444,9 +5450,9 @@ async function importIsznrRecordPdfForWorkOrder({
       name: field.name || field.label || "",
       role: field.signatureFieldRole,
     })),
-    message: signatureFields.length > 0
+    message: includeSignatureFields && signatureFields.length > 0
       ? `IS ZNR ${getIsznrRecordKindLabel(recordKind)} PDF je spremljen i ima ${signatureFields.length} signature fieldova.`
-      : `IS ZNR ${getIsznrRecordKindLabel(recordKind)} PDF je spremljen, ali nema potpisnika s OIB-om za signature field.`,
+      : `IS ZNR ${getIsznrRecordKindLabel(recordKind)} PDF je direktno spremljen u Dokumente.`,
   };
 }
 
