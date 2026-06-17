@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.140.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.141.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -22287,6 +22287,72 @@ function getMobilePeopleTrainingItemStatus(item = {}) {
   return normalizeInputValue(item.passedOn || item.issuedOn) ? "Vrijedi" : "Nedostaje";
 }
 
+function isMobilePeopleTrainingDoneStatus(status = "") {
+  const statusKey = normalizeLookupKey(status);
+  if (!statusKey) {
+    return false;
+  }
+  if (
+    statusKey.includes("missing")
+    || statusKey.includes("nedost")
+    || statusKey.includes("pending")
+    || statusKey.includes("plan")
+    || statusKey.includes("required")
+    || statusKey.includes("potreb")
+    || statusKey.includes("ceka")
+    || statusKey.includes("nije")
+    || statusKey.includes("invalid")
+    || statusKey.includes("nevrijed")
+  ) {
+    return false;
+  }
+  return (
+    statusKey.includes("valid")
+    || statusKey.includes("vrijed")
+    || statusKey.includes("expired")
+    || statusKey.includes("istek")
+    || statusKey.includes("expiring")
+    || statusKey.includes("uskoro")
+    || statusKey.includes("permanent")
+    || statusKey.includes("trajno")
+    || statusKey.includes("completed")
+    || statusKey.includes("done")
+    || statusKey.includes("poloz")
+    || statusKey.includes("proved")
+    || statusKey.includes("zavrs")
+  );
+}
+
+function hasMobilePeopleTrainingEvidence(item = {}) {
+  if (!item || typeof item !== "object") {
+    return false;
+  }
+  const statusKey = normalizeLookupKey(item.status);
+  if (
+    statusKey.includes("missing")
+    || statusKey.includes("nedost")
+    || statusKey.includes("pending")
+    || statusKey.includes("plan")
+    || statusKey.includes("required")
+    || statusKey.includes("potreb")
+    || statusKey.includes("ceka")
+    || statusKey.includes("nije")
+    || statusKey.includes("invalid")
+    || statusKey.includes("nevrijed")
+  ) {
+    return false;
+  }
+  return Boolean(
+    item.passedOn
+    || item.validUntil
+    || item.validForever
+    || item.certificateNumber
+    || item.documentId
+    || item.documentName
+    || isMobilePeopleTrainingDoneStatus(item.status),
+  );
+}
+
 function getPeopleTrainingAttachmentDocumentId(document = {}) {
   if (!document || typeof document !== "object") {
     return "";
@@ -22521,7 +22587,8 @@ function buildMobilePeopleTrainingRecord(record = {}, scopedSnapshot = {}) {
     record = {};
   }
   const trainingItems = (Array.isArray(record.trainingItems) ? record.trainingItems : [])
-    .map((item, index) => buildMobilePeopleTrainingItem(record, item, index, scopedSnapshot));
+    .map((item, index) => buildMobilePeopleTrainingItem(record, item, index, scopedSnapshot))
+    .filter(hasMobilePeopleTrainingEvidence);
   const documents = (Array.isArray(record.attachments) ? record.attachments : [])
     .filter((document) => document && typeof document === "object")
     .map(buildMobilePeopleTrainingDocument)
@@ -22539,7 +22606,6 @@ function buildMobilePeopleTrainingRecord(record = {}, scopedSnapshot = {}) {
     .map((item) => item.validUntil)
     .filter(Boolean)
     .sort()[0] || "";
-  const riskAssessment = findMobilePeopleTrainingRiskAssessment(record, scopedSnapshot);
   const title = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ")) || "Osoba";
   const subtitle = [
     normalizeInputValue(record.companyName),
@@ -22566,13 +22632,6 @@ function buildMobilePeopleTrainingRecord(record = {}, scopedSnapshot = {}) {
       phone: normalizeInputValue(record.phone),
       nextDeadline,
       nextDeadlineLabel: nextDeadline ? `Rok ${formatMobileDateLabel(nextDeadline)}` : "",
-      riskAssessmentRequired: "true",
-      riskAssessmentAvailable: riskAssessment ? "true" : "false",
-      riskAssessmentId: normalizeInputValue(riskAssessment?.id),
-      riskAssessmentNumber: normalizeInputValue(riskAssessment?.assessmentNumber),
-      riskAssessmentTitle: normalizeInputValue(riskAssessment?.title),
-      riskAssessmentDate: normalizeDateOnlyValue(riskAssessment?.assessmentDate),
-      riskAssessmentStatus: normalizeInputValue(riskAssessment?.status),
       validCount: String(validCount),
       expiringCount: String(expiringCount),
       expiredCount: String(expiredCount),
@@ -23688,7 +23747,9 @@ async function writeMobileBootstrap(response, user, request) {
   })));
 
   const peopleTrainingRecords = limitMobileRecords(
-    (scopedSnapshot.peopleTrainingRecords ?? []).map((item) => buildMobilePeopleTrainingRecord(item, scopedSnapshot)),
+    (scopedSnapshot.peopleTrainingRecords ?? [])
+      .map((item) => buildMobilePeopleTrainingRecord(item, scopedSnapshot))
+      .filter((record) => Number(record.meta?.trainingCount || 0) > 0),
   );
 
   const clientPortalRecords = limitMobileRecords((scopedSnapshot.clientPortalRecords ?? []).map((item) => buildMobileRecordItem(item, {
