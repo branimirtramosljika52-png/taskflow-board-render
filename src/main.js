@@ -7063,6 +7063,26 @@ const RISK_ASSESSMENT_RICH_HIGHLIGHT_SWATCHES = Object.freeze([
   { label: "Plavo", value: "#bfdbfe" },
   { label: "Zeleno", value: "#bbf7d0" },
 ]);
+const RISK_ASSESSMENT_RICH_TEXT_COMMANDS = Object.freeze([
+  { command: "bold", label: "B", title: "Podebljano", className: "is-bold" },
+  { command: "italic", label: "I", title: "Kurziv", className: "is-italic" },
+  { command: "underline", label: "U", title: "Podcrtano", className: "is-underline" },
+  { command: "strikeThrough", label: "S", title: "Precrtano", className: "is-strike" },
+  { command: "superscript", label: "x²", title: "Eksponent" },
+  { command: "subscript", label: "x₂", title: "Indeks" },
+]);
+const RISK_ASSESSMENT_RICH_LIST_COMMANDS = Object.freeze([
+  { command: "insertUnorderedList", label: "•", title: "Bullet lista" },
+  { command: "insertOrderedList", label: "1.", title: "Numerirana lista" },
+  { command: "outdent", label: "‹", title: "Smanji uvlaku" },
+  { command: "indent", label: "›", title: "Povećaj uvlaku" },
+]);
+const RISK_ASSESSMENT_RICH_ALIGN_COMMANDS = Object.freeze([
+  { command: "justifyLeft", label: "L", title: "Poravnaj lijevo" },
+  { command: "justifyCenter", label: "C", title: "Centriraj" },
+  { command: "justifyRight", label: "D", title: "Poravnaj desno" },
+  { command: "justifyFull", label: "J", title: "Obostrano poravnanje" },
+]);
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-basic-text-templates-v1";
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
   znrAuthorizedDescription: {
@@ -136374,35 +136394,86 @@ function renderRiskAssessmentRichColorEnhancements(command = "foreColor", swatch
   `).join("");
 }
 
-function getRiskAssessmentRichToolbarEnhancementHtml() {
+function renderRiskAssessmentRichCommandButton({
+  command = "",
+  label = "",
+  title = "",
+  value = "",
+  className = "",
+} = {}) {
+  const valueAttribute = value ? ` data-risk-rich-value="${escapeHtml(value)}"` : "";
+  const classAttribute = className ? ` class="${escapeHtml(className)}"` : "";
   return `
-    <div class="risk-assessment-rich-toolbar-group is-style">
-      ${RISK_ASSESSMENT_RICH_TOOLBAR_SELECTS.map(renderRiskAssessmentRichSelectEnhancement).join("")}
+    <button
+      type="button"
+      data-risk-rich-command="${escapeHtml(command)}"
+      ${valueAttribute}
+      ${classAttribute}
+      title="${escapeHtml(title || label || command)}"
+      aria-label="${escapeHtml(title || label || command)}"
+    >${escapeHtml(label || command)}</button>
+  `;
+}
+
+function renderRiskAssessmentRichToolbarGroup(label = "", className = "", content = "") {
+  return `
+    <div class="risk-assessment-rich-toolbar-group ${escapeHtml(className)}" aria-label="${escapeHtml(label)}">
+      <span class="risk-assessment-rich-toolbar-group-label">${escapeHtml(label)}</span>
+      ${content}
     </div>
-    <div class="risk-assessment-rich-toolbar-group is-history" aria-label="Povijest uređivanja">
-      <button type="button" data-risk-rich-command="undo" title="Poništi" aria-label="Poništi">↶</button>
-      <button type="button" data-risk-rich-command="redo" title="Vrati" aria-label="Vrati">↷</button>
-    </div>
-    <div class="risk-assessment-rich-toolbar-group is-align" aria-label="Poravnanje">
-      <button type="button" data-risk-rich-command="justifyLeft" title="Lijevo" aria-label="Lijevo">L</button>
-      <button type="button" data-risk-rich-command="justifyCenter" title="Sredina" aria-label="Sredina">C</button>
-      <button type="button" data-risk-rich-command="justifyRight" title="Desno" aria-label="Desno">R</button>
-      <button type="button" data-risk-rich-command="justifyFull" title="Obostrano" aria-label="Obostrano">J</button>
-      <button type="button" data-risk-rich-command="outdent" title="Smanji uvlaku" aria-label="Smanji uvlaku">‹</button>
-      <button type="button" data-risk-rich-command="indent" title="Povećaj uvlaku" aria-label="Povećaj uvlaku">›</button>
-    </div>
-    <div class="risk-assessment-rich-toolbar-group is-color" aria-label="Boje">
+  `;
+}
+
+function renderRiskAssessmentRichPresetButtons(key = "", presets = []) {
+  return (presets ?? [])
+    .map((preset) => `
+      <button
+        type="button"
+        data-risk-rich-preset="${escapeHtml(preset.fieldKey || key)}"
+        data-risk-rich-preset-key="${escapeHtml(preset.presetKey || "")}"
+        title="${escapeHtml(preset.label || "Predefinirani tekst")}"
+        aria-label="${escapeHtml(preset.label || "Predefinirani tekst")}"
+      >${escapeHtml(preset.label || "Predefinirani tekst")}</button>
+    `)
+    .join("");
+}
+
+function getRiskAssessmentRichToolbarEnhancementHtml({
+  key = "",
+  presets = [],
+  templateLabel = "Predložak",
+  fileAccept = "image/*",
+} = {}) {
+  const safeKey = escapeHtml(key);
+  return `
+    ${renderRiskAssessmentRichToolbarGroup("Stil", "is-style", RISK_ASSESSMENT_RICH_TOOLBAR_SELECTS.map(renderRiskAssessmentRichSelectEnhancement).join(""))}
+    ${renderRiskAssessmentRichToolbarGroup("Tekst", "is-text", `
+      ${RISK_ASSESSMENT_RICH_TEXT_COMMANDS.map(renderRiskAssessmentRichCommandButton).join("")}
+      <button type="button" data-risk-rich-clear title="Očisti formatiranje" aria-label="Očisti formatiranje">Tx</button>
+    `)}
+    ${renderRiskAssessmentRichToolbarGroup("Liste", "is-list", RISK_ASSESSMENT_RICH_LIST_COMMANDS.map(renderRiskAssessmentRichCommandButton).join(""))}
+    ${renderRiskAssessmentRichToolbarGroup("Poravnanje", "is-align", RISK_ASSESSMENT_RICH_ALIGN_COMMANDS.map(renderRiskAssessmentRichCommandButton).join(""))}
+    ${renderRiskAssessmentRichToolbarGroup("Boje", "is-color", `
       ${renderRiskAssessmentRichColorEnhancements("foreColor", RISK_ASSESSMENT_RICH_COLOR_SWATCHES, "Boja teksta")}
       <span class="risk-assessment-rich-toolbar-separator" aria-hidden="true"></span>
       ${renderRiskAssessmentRichColorEnhancements("hiliteColor", RISK_ASSESSMENT_RICH_HIGHLIGHT_SWATCHES, "Marker")}
-    </div>
-    <div class="risk-assessment-rich-toolbar-group is-insert" aria-label="Umetanje">
+    `)}
+    ${renderRiskAssessmentRichToolbarGroup("Umetanje", "is-insert", `
       <button type="button" data-risk-rich-link title="Poveznica" aria-label="Poveznica">Link</button>
       <button type="button" data-risk-rich-insert-table title="Tablica" aria-label="Tablica">Tablica</button>
       <button type="button" data-risk-rich-command="insertHorizontalRule" title="Vodoravna crta" aria-label="Vodoravna crta">Linija</button>
-      <button type="button" data-risk-rich-clear title="Očisti format" aria-label="Očisti format">Clear</button>
+      <button type="button" data-risk-rich-image="file" title="Umetni sliku" aria-label="Umetni sliku">Slika</button>
+      <button type="button" data-risk-rich-image="url" title="Umetni sliku s URL-a" aria-label="Umetni sliku s URL-a">URL</button>
+    `)}
+    ${renderRiskAssessmentRichToolbarGroup("Predlošci", "is-template", `
+      ${renderRiskAssessmentRichPresetButtons(key, presets)}
+      <select data-risk-rich-template-select="${safeKey}" aria-label="${escapeHtml(templateLabel || "Predložak")}"></select>
+      <button type="button" data-risk-rich-template-save="${safeKey}" title="Spremi kao predložak" aria-label="Spremi kao predložak">Spremi</button>
+    `)}
+    ${renderRiskAssessmentRichToolbarGroup("Prikaz", "is-view", `
       <button type="button" data-risk-rich-toggle-focus title="Fokus prikaz" aria-label="Fokus prikaz">Fokus</button>
-    </div>
+    `)}
+    <input type="file" accept="${escapeHtml(fileAccept || "image/*")}" data-risk-rich-file="${safeKey}" hidden />
   `;
 }
 
@@ -136411,12 +136482,26 @@ function enhanceRiskAssessmentRichToolbars() {
     if (!(toolbar instanceof HTMLElement) || toolbar.dataset.riskRichEnhanced === "true") {
       return;
     }
+    const key = toolbar.dataset.riskRichToolbar || "";
+    const templateLabel = toolbar.querySelector("[data-risk-rich-template-select]")?.getAttribute("aria-label") || "Predložak";
+    const fileAccept = toolbar.querySelector("[data-risk-rich-file]")?.getAttribute("accept") || "image/*";
+    const presets = Array.from(toolbar.querySelectorAll("[data-risk-rich-preset]")).map((button) => ({
+      fieldKey: button.dataset.riskRichPreset || key,
+      presetKey: button.dataset.riskRichPresetKey || "",
+      label: button.textContent?.trim() || "Predefinirani tekst",
+    })).filter((preset) => preset.presetKey);
     toolbar.dataset.riskRichEnhanced = "true";
-    toolbar.insertAdjacentHTML("afterbegin", getRiskAssessmentRichToolbarEnhancementHtml());
+    toolbar.innerHTML = getRiskAssessmentRichToolbarEnhancementHtml({
+      key,
+      presets,
+      templateLabel,
+      fileAccept,
+    });
     const editorShell = toolbar.closest(".risk-assessment-rich-editor");
     const surface = editorShell?.querySelector?.("[data-risk-rich-editor]");
     if (editorShell instanceof HTMLElement && surface instanceof HTMLElement) {
       editorShell.classList.add("is-word-enhanced");
+      surface.setAttribute("data-placeholder", "Upisi tekst, zalijepi iz Worda, dodaj listu ili umetni tablicu...");
     }
   });
 }

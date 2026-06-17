@@ -68356,6 +68356,164 @@ button.risk-assessment-armor-tree-row:focus-visible,
   }
 }
 
+/* 20260617-risk-rich-word-editor-v2 */
+.risk-assessment-rich-editor.is-word-enhanced {
+  width: min(100%, 1220px);
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar {
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-color: rgba(191, 219, 254, 0.86);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.09);
+}
+
+.risk-assessment-rich-toolbar-group {
+  align-items: stretch;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid rgba(219, 234, 254, 0.92);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.risk-assessment-rich-toolbar-group + .risk-assessment-rich-toolbar-group {
+  padding-left: 5px;
+  border-left: 1px solid rgba(219, 234, 254, 0.92);
+}
+
+.risk-assessment-rich-toolbar-group-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar button,
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar select {
+  min-height: 34px;
+  border-radius: 10px;
+  font-size: 0.76rem;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar button {
+  min-width: 34px;
+  padding: 7px 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.96));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar button:hover,
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar button:focus-visible {
+  border-color: rgba(37, 99, 235, 0.56);
+  background: rgba(239, 246, 255, 0.98);
+  outline: none;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar .is-bold {
+  font-weight: 950;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar .is-italic {
+  font-style: italic;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar .is-underline {
+  text-decoration: underline;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-toolbar .is-strike {
+  text-decoration: line-through;
+}
+
+.risk-assessment-rich-toolbar-group.is-template {
+  flex: 1 1 320px;
+  justify-content: flex-end;
+}
+
+.risk-assessment-rich-toolbar-group.is-template [data-risk-rich-template-select] {
+  min-width: 220px;
+}
+
+.risk-assessment-rich-toolbar-group.is-style select {
+  min-width: 118px;
+}
+
+.risk-assessment-rich-toolbar-group.is-color {
+  align-items: center;
+}
+
+.risk-assessment-rich-editor.is-word-enhanced .risk-assessment-rich-surface {
+  min-height: 430px;
+  padding: 32px 38px;
+  border-color: rgba(203, 213, 225, 0.92);
+  border-radius: 18px;
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(135deg, rgba(191, 219, 254, 0.62), rgba(216, 180, 254, 0.46)) border-box;
+  box-shadow:
+    0 16px 36px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.risk-assessment-rich-surface:empty::before {
+  content: attr(data-placeholder);
+}
+
+.risk-assessment-rich-surface table {
+  width: 100%;
+  margin: 16px 0;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.risk-assessment-rich-surface th,
+.risk-assessment-rich-surface td {
+  min-width: 64px;
+  padding: 9px 11px;
+  border: 1px solid rgba(100, 116, 139, 0.72);
+}
+
+.risk-assessment-rich-surface th {
+  background: rgba(226, 232, 240, 0.95);
+}
+
+.risk-assessment-rich-surface ul,
+.risk-assessment-rich-surface ol {
+  display: grid;
+  gap: 4px;
+  padding-left: 28px;
+}
+
+.risk-assessment-rich-surface li {
+  padding-left: 2px;
+}
+
+#risk-assessment-block-intro .risk-assessment-rich-field {
+  justify-self: center;
+  width: min(100%, 1040px);
+}
+
+#risk-assessment-block-intro .risk-assessment-rich-editor.is-word-enhanced {
+  width: 100%;
+}
+
+#risk-assessment-block-intro .risk-assessment-rich-surface {
+  min-height: min(70vh, 780px);
+  padding: 46px 54px;
+}
+
 /* 20260617-risk-assessment-premium-workspace */
 .risk-assessment-editor-panel:not(.is-overview-active) #risk-assessment-export-docx,
 .risk-assessment-editor-panel:not(.is-overview-active) #risk-assessment-export-pdf,
