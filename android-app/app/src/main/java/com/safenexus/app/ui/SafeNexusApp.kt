@@ -1952,6 +1952,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onRecordVehicleUsage = viewModel::recordVehicleUsage,
                         onDownloadVehicleEvidencePdf = { vehicle -> viewModel.downloadVehicleEvidencePdf(context.applicationContext, vehicle) },
                         onDownloadOfferPdf = { offer -> viewModel.downloadOfferPdf(context.applicationContext, offer) },
+                        onDownloadTrainingDocument = { record, document ->
+                            viewModel.downloadPeopleTrainingDocument(context.applicationContext, record, document)
+                        },
                     )
                 }
             } else {
@@ -11127,6 +11130,33 @@ private val offerDetailMetaKeys = setOf(
     "currency",
 )
 
+private val trainingDetailMetaKeys = setOf(
+    "trainingItemsJson",
+    "documentsJson",
+    "trainingCount",
+    "documentCount",
+    "validCount",
+    "expiredCount",
+    "expiringCount",
+    "missingCount",
+    "nextDeadline",
+    "nextDeadlineLabel",
+    "riskAssessmentRequired",
+    "riskAssessmentAvailable",
+    "riskAssessmentId",
+    "riskAssessmentNumber",
+    "riskAssessmentTitle",
+    "riskAssessmentDate",
+    "riskAssessmentStatus",
+    "companyName",
+    "locationName",
+    "jobTitle",
+    "workPlace",
+    "oib",
+    "email",
+    "phone",
+)
+
 private fun formatRecordMetaLabel(key: String): String {
     val normalized = key
         .replace(Regex("([a-z])([A-Z])"), "\$1 \$2")
@@ -11950,6 +11980,7 @@ private fun MobileRecordDetailScreen(
     onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
+    onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
     BackHandler(onBack = onBack)
     var reservationDialogOpen by remember(record.id) { mutableStateOf(false) }
@@ -12205,6 +12236,13 @@ private fun MobileRecordDetailScreen(
                 }
             }
 
+            if (record.kind == "training") {
+                TrainingRecordDetailSection(
+                    record = record,
+                    onDownloadDocument = { document -> onDownloadTrainingDocument(record, document) },
+                )
+            }
+
             DetailSection("Osnovno") {
                 DetailRow(recordIcon(record), "Vrsta", recordKindLabel(record.kind))
                 DetailRow(Icons.Rounded.CheckCircle, "Status", record.status.ifBlank { "Nije upisano" })
@@ -12219,6 +12257,8 @@ private fun MobileRecordDetailScreen(
 
             val visibleMeta = if (record.kind == "offer") {
                 record.meta.filterKeys { key -> key !in offerDetailMetaKeys }
+            } else if (record.kind == "training") {
+                record.meta.filterKeys { key -> key !in trainingDetailMetaKeys }
             } else {
                 record.meta
             }
@@ -12233,6 +12273,127 @@ private fun MobileRecordDetailScreen(
                                 entry.value.ifBlank { "Nije upisano" },
                             )
                         }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrainingRecordDetailSection(
+    record: MobileRecord,
+    onDownloadDocument: (MobileTrainingDocument) -> Unit,
+) {
+    val items = remember(record.meta["trainingItemsJson"]) { parseTrainingItems(record) }
+    val documents = remember(record.meta["documentsJson"]) { parseTrainingDocuments(record) }
+    val hasRiskAssessment = record.meta["riskAssessmentAvailable"].equals("true", ignoreCase = true)
+
+    DetailSection("Procjena rizika") {
+        if (hasRiskAssessment) {
+            DetailRow(
+                Icons.Rounded.CheckCircle,
+                "Status",
+                listOf(
+                    record.meta["riskAssessmentNumber"].orEmpty().ifBlank { "Procjena rizika" },
+                    record.meta["riskAssessmentStatus"].orEmpty(),
+                    record.meta["riskAssessmentDate"].orEmpty().takeIf { it.isNotBlank() }?.let { date -> formatDateLabel(date).ifBlank { date } }.orEmpty(),
+                ).filter { it.isNotBlank() }.joinToString(" · "),
+            )
+            record.meta["riskAssessmentTitle"].orEmpty().takeIf { it.isNotBlank() }?.let { title ->
+                DetailRow(Icons.Rounded.Description, "Naziv", title)
+            }
+        } else {
+            DetailRow(Icons.Rounded.ErrorOutline, "Procjena rizika", "Nije pronađena za ovu osobu/tvrtku.")
+        }
+    }
+
+    DetailSection("Osposobljavanja") {
+        if (items.isEmpty()) {
+            DetailRow(Icons.Rounded.Fingerprint, "Stavke", "Nema upisanih osposobljavanja.")
+        } else {
+            items.forEach { item ->
+                val accent = trainingStatusColor(item.status)
+                val document = trainingItemDocument(item)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = accent.copy(alpha = 0.07f),
+                    border = BorderStroke(1.dp, accent.copy(alpha = 0.14f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            TrainingMiniChip(item.status.ifBlank { "Evidencija" }, accent)
+                            Text(
+                                item.label,
+                                modifier = Modifier.weight(1f),
+                                fontWeight = FontWeight.Black,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        val details = listOf(
+                            trainingItemDeadlineText(item),
+                            item.examModeLabel,
+                            item.shortLabel.ifBlank { item.serviceCode },
+                            item.certificateNumber.takeIf { it.isNotBlank() }?.let { "Br. $it" }.orEmpty(),
+                            item.workOrderNumber.takeIf { it.isNotBlank() }?.let { "RN $it" }.orEmpty(),
+                        ).filter { it.isNotBlank() }.distinct()
+                        if (details.isNotEmpty()) {
+                            Text(
+                                details.joinToString(" · "),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        if (document != null) {
+                            OutlinedButton(
+                                onClick = { onDownloadDocument(document) },
+                                enabled = document.id.isNotBlank(),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(document.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (documents.isNotEmpty()) {
+        DetailSection("Dokumenti") {
+            documents.forEach { document ->
+                OutlinedButton(
+                    onClick = { onDownloadDocument(document) },
+                    enabled = document.id.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(document.fileName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            listOf(document.category, document.createdAt.takeIf { it.isNotBlank() }?.let { createdAt -> formatDateLabel(createdAt).ifBlank { createdAt } }.orEmpty())
+                                .filter { it.isNotBlank() }
+                                .joinToString(" · ")
+                                .ifBlank { "Dokument osposobljavanja" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
