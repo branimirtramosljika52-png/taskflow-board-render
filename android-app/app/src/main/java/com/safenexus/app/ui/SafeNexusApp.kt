@@ -10082,11 +10082,17 @@ private fun trainingStatusColor(status: String): Color {
     }
 }
 
-private fun trainingItemDeadlineText(item: MobileTrainingItem): String = when {
-    item.deadlineLabel.isNotBlank() -> item.deadlineLabel
-    item.validForever -> "Vrijedi trajno"
-    item.validUntil.isNotBlank() -> "Rok ${formatDateLabel(item.validUntil).ifBlank { item.validUntil }}"
-    item.passedOn.isNotBlank() -> "Datum ${formatDateLabel(item.passedOn).ifBlank { item.passedOn }}"
+private fun compactTrainingDate(value: String, keepTrailingDot: Boolean = true): String {
+    val formatted = formatDateLabel(value).ifBlank { value.take(10) }
+    return if (keepTrailingDot) formatted else formatted.removeSuffix(".")
+}
+
+private fun trainingItemPeriodText(item: MobileTrainingItem): String = when {
+    item.validForever -> "trajno"
+    item.passedOn.isNotBlank() && item.validUntil.isNotBlank() ->
+        "${compactTrainingDate(item.passedOn, keepTrailingDot = false)}-${compactTrainingDate(item.validUntil)}"
+    item.validUntil.isNotBlank() -> compactTrainingDate(item.validUntil)
+    item.passedOn.isNotBlank() -> compactTrainingDate(item.passedOn)
     else -> ""
 }
 
@@ -10109,15 +10115,6 @@ private fun trainingCompanyLabel(record: MobileRecord): String =
 
 private fun trainingPersonOibLabel(record: MobileRecord): String =
     normalizePeopleOib(record.meta["oib"].orEmpty()).ifBlank { record.meta["oib"].orEmpty().trim() }
-
-private fun trainingRecordNextDeadlineLabel(record: MobileRecord, items: List<MobileTrainingItem>): String =
-    record.meta["nextDeadlineLabel"].orEmpty().ifBlank {
-        items.mapNotNull { item ->
-            item.validUntil.takeIf { it.isNotBlank() }?.let { rawDate ->
-                "Rok ${formatDateLabel(rawDate).ifBlank { rawDate }}"
-            }
-        }.firstOrNull().orEmpty()
-    }
 
 private fun normalizePeopleOib(value: String): String = value.filter { it.isDigit() }.take(11)
 
@@ -10453,10 +10450,6 @@ private fun TrainingRecordLine(
     val statusColor = trainingStatusColor(record.status)
     val companyName = trainingCompanyLabel(record)
     val oib = trainingPersonOibLabel(record)
-    val nextDeadline = trainingRecordNextDeadlineLabel(record, items)
-    val latestTrainingDate = remember(items) {
-        items.map { it.passedOn }.filter { it.isNotBlank() }.maxOrNull().orEmpty()
-    }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -10501,8 +10494,6 @@ private fun TrainingRecordLine(
                 oib.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("OIB $it", Color(0xFF64748B)) }
                 record.meta["trainingCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it ospos.", Color(0xFF2563EB)) }
                 record.meta["documentCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it dok.", Color(0xFF7C3AED)) }
-                latestTrainingDate.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("Ispit ${formatDateLabel(it).ifBlank { it }}", Color(0xFF059669)) }
-                nextDeadline.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFFB45309)) }
                 record.meta["expiredCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it isteklo", Color(0xFFDC2626)) }
                 record.meta["expiringCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it uskoro", Color(0xFFB45309)) }
             }
@@ -10510,6 +10501,8 @@ private fun TrainingRecordLine(
             items.take(4).forEach { item ->
                 val itemColor = trainingStatusColor(item.status)
                 val document = trainingItemDocument(item)
+                val hasDocument = document?.id?.isNotBlank() == true
+                val periodText = trainingItemPeriodText(item)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
@@ -10521,30 +10514,27 @@ private fun TrainingRecordLine(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(9.dp),
                     ) {
-                        TrainingMiniChip(item.status.ifBlank { "Evidencija" }, itemColor)
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(item.label, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            val details = listOf(
-                                item.passedOn.takeIf { it.isNotBlank() }?.let { "Ispit ${formatDateLabel(it).ifBlank { it }}" }.orEmpty(),
-                                trainingItemDeadlineText(item),
-                                item.examModeLabel,
-                                item.shortLabel.ifBlank { item.serviceCode }.takeIf { it.isNotBlank() && it.length <= 16 }.orEmpty(),
-                                item.certificateNumber.takeIf { it.isNotBlank() }?.let { "Br. $it" }.orEmpty(),
-                            ).filter { it.isNotBlank() }.distinct().joinToString(" · ")
-                            if (details.isNotBlank()) {
+                            if (periodText.isNotBlank()) {
                                 Text(
-                                    details,
+                                    periodText,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                    maxLines = 2,
+                                    maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
-                        if (document != null) {
-                            IconButton(onClick = { onDownloadDocument(document) }) {
-                                Icon(Icons.Rounded.Download, contentDescription = "Preuzmi PDF")
-                            }
+                        IconButton(
+                            onClick = { document?.let(onDownloadDocument) },
+                            enabled = hasDocument,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Download,
+                                contentDescription = if (hasDocument) "Preuzmi PDF" else "Nema PDF-a",
+                                tint = if (hasDocument) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                            )
                         }
                     }
                 }
@@ -12417,54 +12407,48 @@ private fun TrainingRecordDetailSection(
             items.forEach { item ->
                 val accent = trainingStatusColor(item.status)
                 val document = trainingItemDocument(item)
+                val hasDocument = document?.id?.isNotBlank() == true
+                val periodText = trainingItemPeriodText(item)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     color = accent.copy(alpha = 0.07f),
                     border = BorderStroke(1.dp, accent.copy(alpha = 0.14f)),
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            TrainingMiniChip(item.status.ifBlank { "Evidencija" }, accent)
                             Text(
                                 item.label,
-                                modifier = Modifier.weight(1f),
                                 fontWeight = FontWeight.Black,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                        }
-                        val details = listOf(
-                            trainingItemDeadlineText(item),
-                            item.examModeLabel,
-                            item.shortLabel.ifBlank { item.serviceCode },
-                            item.certificateNumber.takeIf { it.isNotBlank() }?.let { "Br. $it" }.orEmpty(),
-                            item.workOrderNumber.takeIf { it.isNotBlank() }?.let { "RN $it" }.orEmpty(),
-                        ).filter { it.isNotBlank() }.distinct()
-                        if (details.isNotEmpty()) {
-                            Text(
-                                details.joinToString(" · "),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        if (document != null) {
-                            OutlinedButton(
-                                onClick = { onDownloadDocument(document) },
-                                enabled = document.id.isNotBlank(),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            ) {
-                                Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(document.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (periodText.isNotBlank()) {
+                                Text(
+                                    periodText,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
+                        }
+                        IconButton(
+                            onClick = { document?.let(onDownloadDocument) },
+                            enabled = hasDocument,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Download,
+                                contentDescription = if (hasDocument) "Preuzmi PDF" else "Nema PDF-a",
+                                tint = if (hasDocument) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                            )
                         }
                     }
                 }
