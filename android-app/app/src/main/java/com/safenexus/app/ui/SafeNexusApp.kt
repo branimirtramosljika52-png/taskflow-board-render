@@ -83,6 +83,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -10101,6 +10102,23 @@ private fun trainingItemDocument(item: MobileTrainingItem): MobileTrainingDocume
     )
 }
 
+private fun trainingCompanyLabel(record: MobileRecord): String =
+    record.meta["companyName"].orEmpty().ifBlank {
+        record.subtitle.split(" - ", " · ").firstOrNull().orEmpty().trim()
+    }.ifBlank { "Bez tvrtke" }
+
+private fun trainingPersonOibLabel(record: MobileRecord): String =
+    normalizePeopleOib(record.meta["oib"].orEmpty()).ifBlank { record.meta["oib"].orEmpty().trim() }
+
+private fun trainingRecordNextDeadlineLabel(record: MobileRecord, items: List<MobileTrainingItem>): String =
+    record.meta["nextDeadlineLabel"].orEmpty().ifBlank {
+        items.mapNotNull { item ->
+            item.validUntil.takeIf { it.isNotBlank() }?.let { rawDate ->
+                "Rok ${formatDateLabel(rawDate).ifBlank { rawDate }}"
+            }
+        }.firstOrNull().orEmpty()
+    }
+
 private fun normalizePeopleOib(value: String): String = value.filter { it.isDigit() }.take(11)
 
 private fun parsePeopleIsznrTags(value: String): List<String> {
@@ -10301,7 +10319,32 @@ private fun TrainingContent(
     onOpenRecord: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
-    val visibleRecords = remember(records, displayLimit) { records.take(displayLimit.coerceAtLeast(1)) }
+    var selectedCompany by remember(records) { mutableStateOf("") }
+    var companyMenuOpen by remember { mutableStateOf(false) }
+    val companyOptions = remember(records) {
+        records
+            .map(::trainingCompanyLabel)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedBy { it.lowercase(Locale.getDefault()) }
+    }
+    val companyFilteredRecords = remember(records, selectedCompany) {
+        if (selectedCompany.isBlank()) {
+            records
+        } else {
+            records.filter { record -> trainingCompanyLabel(record).equals(selectedCompany, ignoreCase = true) }
+        }
+    }
+    val visibleRecords = remember(companyFilteredRecords, displayLimit) { companyFilteredRecords.take(displayLimit.coerceAtLeast(1)) }
+    val validTotal = remember(companyFilteredRecords) {
+        companyFilteredRecords.sumOf { record -> record.meta["validCount"].orEmpty().toIntOrNull() ?: 0 }
+    }
+    val expiringTotal = remember(companyFilteredRecords) {
+        companyFilteredRecords.sumOf { record -> record.meta["expiringCount"].orEmpty().toIntOrNull() ?: 0 }
+    }
+    val expiredTotal = remember(companyFilteredRecords) {
+        companyFilteredRecords.sumOf { record -> record.meta["expiredCount"].orEmpty().toIntOrNull() ?: 0 }
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -10316,13 +10359,67 @@ private fun TrainingContent(
         ) {
             SectionHeader(
                 title = "Osposobljavanja",
-                subtitle = "$totalCount dosjea",
+                subtitle = "${companyFilteredRecords.size} osoba · $totalCount ukupno",
                 icon = Icons.Rounded.Fingerprint,
             )
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TrainingMiniChip("$validTotal vrijedi", Color(0xFF059669))
+                if (expiringTotal > 0) TrainingMiniChip("$expiringTotal uskoro", Color(0xFFB45309))
+                if (expiredTotal > 0) TrainingMiniChip("$expiredTotal isteklo", Color(0xFFDC2626))
+            }
+
+            Box {
+                OutlinedButton(
+                    onClick = { companyMenuOpen = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                ) {
+                    Icon(Icons.Rounded.Business, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                        Text("Filter po firmi", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            selectedCompany.ifBlank { "Sve firme" },
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                DropdownMenu(
+                    expanded = companyMenuOpen,
+                    onDismissRequest = { companyMenuOpen = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Sve firme (${records.size})") },
+                        onClick = {
+                            selectedCompany = ""
+                            companyMenuOpen = false
+                        },
+                    )
+                    companyOptions.forEach { company ->
+                        val count = records.count { record -> trainingCompanyLabel(record).equals(company, ignoreCase = true) }
+                        DropdownMenuItem(
+                            text = { Text("$company ($count)", maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            onClick = {
+                                selectedCompany = company
+                                companyMenuOpen = false
+                            },
+                        )
+                    }
+                }
+            }
 
             if (records.isEmpty()) {
                 Text(
                     "Nema osposobljavanja za prikaz.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else if (companyFilteredRecords.isEmpty()) {
+                Text(
+                    "Nema osposobljavanja za odabranu firmu.",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                 )
             } else {
@@ -10333,9 +10430,9 @@ private fun TrainingContent(
                         onDownloadDocument = { document -> onDownloadDocument(record, document) },
                     )
                 }
-                if (records.size > visibleRecords.size) {
+                if (companyFilteredRecords.size > visibleRecords.size) {
                     Text(
-                        "Prikazano je prvih ${visibleRecords.size}. Koristi pretragu za suzavanje popisa.",
+                        "Prikazano je prvih ${visibleRecords.size}. Koristi pretragu ili filter firme za sužavanje popisa.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -10354,6 +10451,12 @@ private fun TrainingRecordLine(
     val items = remember(record.meta["trainingItemsJson"]) { parseTrainingItems(record) }
     val documents = remember(record.meta["documentsJson"]) { parseTrainingDocuments(record) }
     val statusColor = trainingStatusColor(record.status)
+    val companyName = trainingCompanyLabel(record)
+    val oib = trainingPersonOibLabel(record)
+    val nextDeadline = trainingRecordNextDeadlineLabel(record, items)
+    val latestTrainingDate = remember(items) {
+        items.map { it.passedOn }.filter { it.isNotBlank() }.maxOrNull().orEmpty()
+    }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -10377,25 +10480,29 @@ private fun TrainingRecordLine(
                     )
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(record.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (record.subtitle.isNotBlank()) {
-                        Text(
-                            record.subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    Text(record.title.ifBlank { "Osoba" }, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(
+                            oib.takeIf { it.isNotBlank() }?.let { "OIB $it" }.orEmpty(),
+                            companyName,
+                            record.meta["jobTitle"].orEmpty().ifBlank { record.meta["workPlace"].orEmpty() },
+                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 TrainingMiniChip(record.status.ifBlank { "Evidencija" }, statusColor)
             }
 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                record.meta["oib"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("OIB $it", Color(0xFF64748B)) }
+                TrainingMiniChip(companyName, Color(0xFF2563EB))
+                oib.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("OIB $it", Color(0xFF64748B)) }
                 record.meta["trainingCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it ospos.", Color(0xFF2563EB)) }
                 record.meta["documentCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it dok.", Color(0xFF7C3AED)) }
-                record.meta["nextDeadlineLabel"]?.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFFB45309)) }
+                latestTrainingDate.takeIf { it.isNotBlank() }?.let { TrainingMiniChip("Ispit ${formatDateLabel(it).ifBlank { it }}", Color(0xFF059669)) }
+                nextDeadline.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFFB45309)) }
                 record.meta["expiredCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it isteklo", Color(0xFFDC2626)) }
                 record.meta["expiringCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it uskoro", Color(0xFFB45309)) }
                 val hasRiskAssessment = record.meta["riskAssessmentAvailable"].equals("true", ignoreCase = true)
@@ -10425,9 +10532,10 @@ private fun TrainingRecordLine(
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(item.label, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             val details = listOf(
+                                item.passedOn.takeIf { it.isNotBlank() }?.let { "Ispit ${formatDateLabel(it).ifBlank { it }}" }.orEmpty(),
                                 trainingItemDeadlineText(item),
                                 item.examModeLabel,
-                                item.shortLabel.ifBlank { item.serviceCode },
+                                item.shortLabel.ifBlank { item.serviceCode }.takeIf { it.isNotBlank() && it.length <= 16 }.orEmpty(),
                                 item.certificateNumber.takeIf { it.isNotBlank() }?.let { "Br. $it" }.orEmpty(),
                             ).filter { it.isNotBlank() }.distinct().joinToString(" · ")
                             if (details.isNotBlank()) {
@@ -12237,44 +12345,73 @@ private fun MobileRecordDetailScreen(
             }
 
             if (record.kind == "training") {
+                TrainingPersonDetailSection(record)
                 TrainingRecordDetailSection(
                     record = record,
                     onDownloadDocument = { document -> onDownloadTrainingDocument(record, document) },
                 )
             }
 
-            DetailSection("Osnovno") {
-                DetailRow(recordIcon(record), "Vrsta", recordKindLabel(record.kind))
-                DetailRow(Icons.Rounded.CheckCircle, "Status", record.status.ifBlank { "Nije upisano" })
-                DetailRow(Icons.Rounded.CalendarMonth, "Datum", formatDateLabel(record.date).ifBlank { record.date.ifBlank { "Nije upisano" } })
-                if (record.relatedId.isNotBlank()) {
-                    DetailRow(Icons.Rounded.Work, "Povezani zapis", record.relatedId)
+            if (record.kind != "training") {
+                DetailSection("Osnovno") {
+                    DetailRow(recordIcon(record), "Vrsta", recordKindLabel(record.kind))
+                    DetailRow(Icons.Rounded.CheckCircle, "Status", record.status.ifBlank { "Nije upisano" })
+                    DetailRow(Icons.Rounded.CalendarMonth, "Datum", formatDateLabel(record.date).ifBlank { record.date.ifBlank { "Nije upisano" } })
+                    if (record.relatedId.isNotBlank()) {
+                        DetailRow(Icons.Rounded.Work, "Povezani zapis", record.relatedId)
+                    }
+                    if (record.coordinates.isNotBlank()) {
+                        DetailRow(Icons.Rounded.Map, "Koordinate", record.coordinates)
+                    }
                 }
-                if (record.coordinates.isNotBlank()) {
-                    DetailRow(Icons.Rounded.Map, "Koordinate", record.coordinates)
-                }
-            }
 
-            val visibleMeta = if (record.kind == "offer") {
-                record.meta.filterKeys { key -> key !in offerDetailMetaKeys }
-            } else if (record.kind == "training") {
-                record.meta.filterKeys { key -> key !in trainingDetailMetaKeys }
-            } else {
-                record.meta
-            }
-            if (visibleMeta.isNotEmpty()) {
-                DetailSection("Podaci") {
-                    visibleMeta.entries
-                        .sortedBy { entry -> entry.key }
-                        .forEach { entry ->
-                            DetailRow(
-                                Icons.Rounded.Business,
-                                formatRecordMetaLabel(entry.key),
-                                entry.value.ifBlank { "Nije upisano" },
-                            )
-                        }
+                val visibleMeta = if (record.kind == "offer") {
+                    record.meta.filterKeys { key -> key !in offerDetailMetaKeys }
+                } else {
+                    record.meta
+                }
+                if (visibleMeta.isNotEmpty()) {
+                    DetailSection("Podaci") {
+                        visibleMeta.entries
+                            .sortedBy { entry -> entry.key }
+                            .forEach { entry ->
+                                DetailRow(
+                                    Icons.Rounded.Business,
+                                    formatRecordMetaLabel(entry.key),
+                                    entry.value.ifBlank { "Nije upisano" },
+                                )
+                            }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TrainingPersonDetailSection(record: MobileRecord) {
+    val oib = trainingPersonOibLabel(record)
+    val companyName = trainingCompanyLabel(record)
+    DetailSection("Osoba") {
+        DetailRow(Icons.Rounded.Person, "Ime i prezime", record.title.ifBlank { "Nije upisano" })
+        DetailRow(Icons.Rounded.Business, "Tvrtka", companyName.ifBlank { "Nije upisano" })
+        if (oib.isNotBlank()) {
+            DetailRow(Icons.Rounded.Badge, "OIB", oib)
+        }
+        record.meta["locationName"].orEmpty().takeIf { it.isNotBlank() }?.let { location ->
+            DetailRow(Icons.Rounded.LocationOn, "Lokacija", location)
+        }
+        record.meta["jobTitle"].orEmpty().takeIf { it.isNotBlank() }?.let { job ->
+            DetailRow(Icons.Rounded.Work, "Radno mjesto", job)
+        }
+        record.meta["workPlace"].orEmpty().takeIf { it.isNotBlank() && it != record.meta["jobTitle"].orEmpty() }?.let { workplace ->
+            DetailRow(Icons.Rounded.Work, "Poslovi", workplace)
+        }
+        record.meta["email"].orEmpty().takeIf { it.isNotBlank() }?.let { email ->
+            DetailRow(Icons.Rounded.Mail, "Email", email)
+        }
+        record.meta["phone"].orEmpty().takeIf { it.isNotBlank() }?.let { phone ->
+            DetailRow(Icons.Rounded.Call, "Telefon", phone)
         }
     }
 }
