@@ -22124,6 +22124,7 @@ async function writeMobileWorkOrders(response, user, request) {
 }
 
 const MOBILE_BOOTSTRAP_RECORD_LIMIT = 350;
+const MOBILE_BOOTSTRAP_DOCUMENT_LIMIT = 5000;
 
 function firstMobileRecordValue(item = {}, keys = []) {
   for (const key of keys) {
@@ -23151,6 +23152,341 @@ function buildMobileOfferRecord(item = {}) {
   };
 }
 
+function getMobileDocumentId(document = {}, index = 0) {
+  return normalizeInputValue(
+    document.id
+    || document.documentId
+    || document.sourceDocumentId
+    || document.storageKey
+    || document.fileName
+    || document.name
+    || index,
+  );
+}
+
+function getMobileDocumentFileName(document = {}, fallback = "Dokument") {
+  return normalizeInputValue(
+    document.fileName
+    || document.documentName
+    || document.name
+    || document.title
+    || document.storageKey,
+  ) || fallback;
+}
+
+function hasMobileDocumentFile(document = {}) {
+  if (!document || typeof document !== "object") {
+    return false;
+  }
+  const fileName = getMobileDocumentFileName(document, "");
+  return Boolean(
+    fileName
+    && (
+      normalizeInputValue(document.dataUrl)
+      || normalizeInputValue(document.storageUrl)
+      || normalizeInputValue(document.storageKey)
+      || normalizeInputValue(document.downloadPath)
+      || normalizeInputValue(document.url)
+    ),
+  );
+}
+
+function getMobileDocumentDate(document = {}, owner = {}) {
+  return firstMobileRecordValue(document, ["createdAt", "updatedAt", "issuedOn", "validUntil", "date", "uploadedAt"])
+    || firstMobileRecordValue(owner, ["updatedAt", "createdAt", "offerDate", "purchaseOrderDate", "deadline", "validUntil", "reviewDate", "assessmentDate"]);
+}
+
+function compactMobileDocumentText(parts = []) {
+  const seen = new Set();
+  return parts
+    .map((part) => normalizeInputValue(part))
+    .filter(Boolean)
+    .filter((part) => {
+      const key = normalizeLookupKey(part);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .join(" - ");
+}
+
+function buildMobileAttachmentDocumentRecord({
+  sourceType = "attachment",
+  sourceLabel = "Dokument",
+  owner = {},
+  ownerTitle = "",
+  ownerSubtitle = "",
+  document = {},
+  index = 0,
+  relatedId = "",
+  downloadPath = "",
+} = {}) {
+  if (!hasMobileDocumentFile(document)) {
+    return null;
+  }
+
+  const ownerId = normalizeInputValue(owner.id || owner.workOrderId || relatedId || sourceType);
+  const documentId = getMobileDocumentId(document, index);
+  const fileName = getMobileDocumentFileName(document);
+  const documentCategory = normalizeInputValue(document.documentCategory || document.category);
+  const fileType = normalizeInputValue(document.fileType || document.mimeType);
+  const companyName = normalizeInputValue(owner.companyName);
+  const locationName = normalizeInputValue(owner.locationName || (Array.isArray(owner.selectedLocationNames) ? owner.selectedLocationNames.join(", ") : ""));
+  const workOrderId = normalizeInputValue(document.workOrderId || owner.workOrderId || owner.id);
+  const workOrderNumber = normalizeInputValue(owner.workOrderNumber || owner.number || owner.displayNumber);
+  const storageUrl = normalizeInputValue(document.storageUrl || document.url);
+  const storageKey = normalizeInputValue(document.storageKey);
+  const normalizedDownloadPath = normalizeInputValue(downloadPath || document.downloadPath);
+
+  const meta = {
+    sourceType,
+    sourceLabel,
+    sourceRecordId: ownerId,
+    sourceTitle: normalizeInputValue(ownerTitle),
+    documentId,
+    fileName,
+    fileType,
+    fileSize: normalizeInputValue(document.fileSize || document.size),
+    documentCategory,
+    companyName,
+    locationName,
+    workOrderId,
+    workOrderNumber,
+    storageProvider: normalizeInputValue(document.storageProvider),
+    storageBucket: normalizeInputValue(document.storageBucket),
+    storageKey,
+    storageUrl,
+    downloadPath: normalizedDownloadPath,
+  };
+
+  Object.keys(meta).forEach((key) => {
+    if (!meta[key]) {
+      delete meta[key];
+    }
+  });
+
+  return {
+    id: `document:${sourceType}:${ownerId || "record"}:${documentId || index}`,
+    title: fileName,
+    subtitle: compactMobileDocumentText([
+      sourceLabel,
+      ownerTitle,
+      ownerSubtitle,
+      companyName,
+      locationName,
+      workOrderNumber ? `RN ${workOrderNumber}` : "",
+    ]),
+    status: documentCategory || sourceLabel,
+    kind: "document",
+    date: getMobileDocumentDate(document, owner),
+    relatedId: normalizeInputValue(relatedId || workOrderId || ownerId),
+    coordinates: normalizeInputValue(owner.coordinates),
+    meta,
+  };
+}
+
+function buildMobileDocumentRecordFromRegistry(item = {}) {
+  const base = buildMobileRecordItem(item, {
+    kind: "document",
+    titleKeys: ["title", "documentTitle", "templateTitle", "recordNumber"],
+    subtitleKeys: ["companyName", "locationName", "objectName", "note"],
+    statusKeys: ["status"],
+    dateKeys: ["expirationDate", "validUntil", "inspectionDate", "issuedDate", "updatedAt", "createdAt"],
+    metaKeys: ["companyName", "locationName", "objectName", "expirationDate", "inspectionDate"],
+    fallbackTitle: "Dokument",
+  });
+
+  return {
+    ...base,
+    id: `document:registry:${base.id || normalizeLookupKey(base.title)}`,
+    meta: {
+      ...base.meta,
+      sourceType: "document_record",
+      sourceLabel: "Dokumenti",
+      sourceRecordId: normalizeInputValue(base.id),
+    },
+  };
+}
+
+function buildMobileModuleDocumentRecords(scopedSnapshot = {}) {
+  const records = [];
+  const addDocuments = (collectionKey, sourceType, sourceLabel, ownerTitleFn, ownerSubtitleFn = () => "") => {
+    (Array.isArray(scopedSnapshot[collectionKey]) ? scopedSnapshot[collectionKey] : []).forEach((owner) => {
+      (Array.isArray(owner?.documents) ? owner.documents : []).forEach((document, index) => {
+        const record = buildMobileAttachmentDocumentRecord({
+          sourceType,
+          sourceLabel,
+          owner,
+          ownerTitle: ownerTitleFn(owner),
+          ownerSubtitle: ownerSubtitleFn(owner),
+          document,
+          index,
+          relatedId: owner?.id,
+        });
+        if (record) {
+          records.push(record);
+        }
+      });
+    });
+  };
+
+  addDocuments("offers", "offer", "Ponuda", (item) => normalizeInputValue(item.offerNumber || item.title || "Ponuda"), (item) => item.serviceLine);
+  addDocuments("purchaseOrders", "purchase_order", "Narudzbenica", (item) => normalizeInputValue(item.purchaseOrderNumber || item.title || "Narudzbenica"), (item) => item.serviceLine);
+  addDocuments("publicProcurements", "public_procurement", "Javna nabava", (item) => normalizeInputValue(item.referenceNumber || item.title || "Javna nabava"), (item) => item.status);
+  addDocuments("vehicles", "vehicle", "Vozilo", (item) => normalizeInputValue(item.plateNumber || item.name || "Vozilo"), (item) => [item.make, item.model].filter(Boolean).join(" "));
+  addDocuments("measurementEquipment", "measurement_equipment", "Mjerna oprema", (item) => normalizeInputValue(item.name || item.inventoryNumber || "Mjerna oprema"), (item) => compactMobileDocumentText([item.manufacturer, item.deviceType, item.serialNumber]));
+  addDocuments("safetyAuthorizations", "safety_authorization", "Safety authorization", (item) => normalizeInputValue(item.title || "Safety authorization"), (item) => item.scope);
+  addDocuments("legalFrameworks", "legal_framework", "Zakonska regulativa", (item) => normalizeInputValue(item.title || "Zakonska regulativa"), (item) => item.referenceCode);
+  addDocuments("rulebooks", "rulebook", "Pravilnik", (item) => normalizeInputValue(item.title || "Pravilnik"), (item) => item.rulebookType);
+  addDocuments("absenceEntries", "absence", "Odsutnost", (item) => normalizeInputValue(item.typeLabel || item.userLabel || "Odsutnost"), (item) => item.statusLabel);
+
+  (Array.isArray(scopedSnapshot.riskAssessments) ? scopedSnapshot.riskAssessments : []).forEach((owner) => {
+    (Array.isArray(owner?.attachments) ? owner.attachments : []).forEach((document, index) => {
+      const record = buildMobileAttachmentDocumentRecord({
+        sourceType: "risk_assessment",
+        sourceLabel: "Procjena rizika",
+        owner,
+        ownerTitle: normalizeInputValue(owner.assessmentNumber || owner.title || "Procjena rizika"),
+        ownerSubtitle: normalizeInputValue(owner.assessmentType),
+        document,
+        index,
+        relatedId: owner?.id,
+      });
+      if (record) {
+        records.push(record);
+      }
+    });
+  });
+
+  (Array.isArray(scopedSnapshot.drawings) ? scopedSnapshot.drawings : []).forEach((owner) => {
+    (Array.isArray(owner?.referenceDocuments) ? owner.referenceDocuments : []).forEach((document, index) => {
+      const documentId = getMobileDocumentId(document, index);
+      const record = buildMobileAttachmentDocumentRecord({
+        sourceType: "drawing",
+        sourceLabel: "Nacrt / karta",
+        owner,
+        ownerTitle: normalizeInputValue(owner.title || "Nacrt"),
+        ownerSubtitle: normalizeInputValue(owner.drawingType),
+        document: {
+          ...document,
+          downloadPath: `/api/drawings/${encodeURIComponent(normalizeInputValue(owner.id))}/references/${encodeURIComponent(documentId)}/content`,
+        },
+        index,
+        relatedId: owner?.id,
+      });
+      if (record) {
+        records.push(record);
+      }
+    });
+  });
+
+  (Array.isArray(scopedSnapshot.contracts) ? scopedSnapshot.contracts : []).forEach((owner) => {
+    (Array.isArray(owner?.annexes) ? owner.annexes : []).forEach((document, index) => {
+      const record = buildMobileAttachmentDocumentRecord({
+        sourceType: "contract_annex",
+        sourceLabel: "Ugovor",
+        owner,
+        ownerTitle: normalizeInputValue(owner.contractNumber || owner.title || "Ugovor"),
+        ownerSubtitle: normalizeInputValue(owner.subject),
+        document,
+        index,
+        relatedId: owner?.id,
+      });
+      if (record) {
+        records.push(record);
+      }
+    });
+  });
+
+  (Array.isArray(scopedSnapshot.peopleTrainingRecords) ? scopedSnapshot.peopleTrainingRecords : []).forEach((owner) => {
+    const attachments = Array.isArray(owner?.attachments) ? owner.attachments : [];
+    attachments.forEach((document, index) => {
+      const documentId = getPeopleTrainingAttachmentDocumentId(document);
+      const record = buildMobileAttachmentDocumentRecord({
+        sourceType: "people_training",
+        sourceLabel: "Osposobljavanje",
+        owner,
+        ownerTitle: normalizeInputValue(owner.fullName || "Osposobljavanje"),
+        ownerSubtitle: compactMobileDocumentText([owner.companyName, owner.jobTitle || owner.workPlace]),
+        document: {
+          ...document,
+          downloadPath: documentId
+            ? `/api/people-training-records/${encodeURIComponent(normalizeInputValue(owner.id))}/documents/${encodeURIComponent(documentId)}/download`
+            : "",
+        },
+        index,
+        relatedId: owner?.id,
+      });
+      if (record) {
+        records.push(record);
+      }
+    });
+  });
+
+  return records;
+}
+
+async function buildMobileWorkOrderDocumentRecords(scopedSnapshot = {}) {
+  const workOrders = Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [];
+  const workOrderIds = workOrders.map((workOrder) => normalizeInputValue(workOrder?.id)).filter(Boolean);
+  if (workOrderIds.length === 0) {
+    return [];
+  }
+  const workOrderById = new Map(workOrders.map((workOrder) => [normalizeInputValue(workOrder?.id), workOrder]));
+  const documents = typeof domainRepository.listWorkOrderDocuments === "function"
+    ? await domainRepository.listWorkOrderDocuments(workOrderIds, { limit: 10000, includeDataUrl: false })
+    : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId, { includeDataUrl: false })))).flat();
+
+  return (Array.isArray(documents) ? documents : [])
+    .map((document, index) => {
+      const workOrderId = normalizeInputValue(document?.workOrderId);
+      const owner = workOrderById.get(workOrderId) || {};
+      return buildMobileAttachmentDocumentRecord({
+        sourceType: "work_order_document",
+        sourceLabel: "RN dokument",
+        owner: {
+          ...owner,
+          id: workOrderId,
+          workOrderId,
+          workOrderNumber: normalizeInputValue(owner?.displayNumber || owner?.workOrderNumber || owner?.number),
+        },
+        ownerTitle: normalizeInputValue(owner?.displayNumber || owner?.workOrderNumber || owner?.number || (workOrderId ? `RN ${workOrderId}` : "Radni nalog")),
+        ownerSubtitle: compactMobileDocumentText([owner?.companyName, owner?.locationName, owner?.serviceLine]),
+        document: {
+          ...document,
+          downloadPath: `/api/work-orders/${encodeURIComponent(workOrderId)}/documents/${encodeURIComponent(normalizeInputValue(document?.id))}/download`,
+        },
+        index,
+        relatedId: workOrderId,
+      });
+    })
+    .filter(Boolean);
+}
+
+async function buildMobileDocumentRecords(scopedSnapshot = {}) {
+  const registryRecords = (Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [])
+    .map(buildMobileDocumentRecordFromRegistry);
+  const moduleRecords = buildMobileModuleDocumentRecords(scopedSnapshot);
+  const workOrderRecords = await buildMobileWorkOrderDocumentRecords(scopedSnapshot);
+  const allRecords = [...workOrderRecords, ...moduleRecords, ...registryRecords];
+  const seen = new Set();
+
+  return allRecords
+    .filter((record) => record && (record.id || record.title))
+    .filter((record) => {
+      const key = normalizeInputValue(record.id) || `${record.kind}:${record.title}:${record.subtitle}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")))
+    .slice(0, MOBILE_BOOTSTRAP_DOCUMENT_LIMIT);
+}
+
 function resolveVehicleUsageMode(value = "") {
   const normalized = normalizeInputValue(value).toLowerCase();
   if (["return", "checkin", "check_in", "vracanje", "povrat"].includes(normalized)) {
@@ -23586,7 +23922,7 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
     .slice(0, MOBILE_BOOTSTRAP_RECORD_LIMIT);
 }
 
-function buildMobileDashboard(scopedSnapshot = {}, workOrders = []) {
+function buildMobileDashboard(scopedSnapshot = {}, workOrders = [], documentRecords = null) {
   const today = new Date().toISOString().slice(0, 10);
   const closedWorkOrders = workOrders.filter((item) => isMobileClosedWorkOrderStatus(item.status)).length;
   const overdueWorkOrders = workOrders.filter((item) => (
@@ -23604,7 +23940,7 @@ function buildMobileDashboard(scopedSnapshot = {}, workOrders = []) {
     reservationsTotal: (scopedSnapshot.vehicles ?? []).reduce((total, vehicle) => (
       total + (Array.isArray(vehicle.reservations) ? vehicle.reservations.length : 0)
     ), 0),
-    documentsTotal: (scopedSnapshot.documentRecords ?? []).length,
+    documentsTotal: Array.isArray(documentRecords) ? documentRecords.length : (scopedSnapshot.documentRecords ?? []).length,
     trainingsTotal: (scopedSnapshot.peopleTrainingRecords ?? []).length,
     clientPortalTotal: (scopedSnapshot.clientPortalRecords ?? []).length,
     rulebooksTotal: (scopedSnapshot.rulebooks ?? []).length,
@@ -23734,16 +24070,7 @@ async function writeMobileBootstrap(response, user, request) {
   const fieldInquiries = limitMobileRecords((scopedSnapshot.fieldInquiries ?? []).map(buildMobileFieldInquiryRecord));
   const todoTasks = limitMobileRecords((scopedSnapshot.todoTasks ?? []).map(buildMobileTodoTaskRecord));
   const offers = limitMobileRecords((scopedSnapshot.offers ?? []).map(buildMobileOfferRecord));
-
-  const documentRecords = limitMobileRecords((scopedSnapshot.documentRecords ?? []).map((item) => buildMobileRecordItem(item, {
-    kind: "document",
-    titleKeys: ["title", "documentTitle", "templateTitle", "recordNumber"],
-    subtitleKeys: ["companyName", "locationName", "objectName", "note"],
-    statusKeys: ["status"],
-    dateKeys: ["expirationDate", "validUntil", "inspectionDate", "issuedDate", "updatedAt", "createdAt"],
-    metaKeys: ["companyName", "locationName", "objectName", "expirationDate", "inspectionDate"],
-    fallbackTitle: "Dokument",
-  })));
+  const documentRecords = await buildMobileDocumentRecords(scopedSnapshot);
 
   const peopleTrainingRecords = limitMobileRecords(
     (scopedSnapshot.peopleTrainingRecords ?? [])
@@ -23794,7 +24121,7 @@ async function writeMobileBootstrap(response, user, request) {
       workOrderServices: buildMobileWorkOrderServiceOptions(scopedSnapshot.serviceCatalog),
       fieldInquiryStatuses: FIELD_INQUIRY_STATUS_OPTIONS,
     },
-    dashboard: buildMobileDashboard(scopedSnapshot, workOrders),
+    dashboard: buildMobileDashboard(scopedSnapshot, workOrders, documentRecords),
     workOrders,
     fieldInquiries,
     todoTasks,
