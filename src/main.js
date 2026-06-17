@@ -31369,6 +31369,7 @@ function createDocumentLibraryEntry(input = {}) {
     previewType,
     signed: Boolean(input.signed),
     sourceTarget: input.sourceTarget ?? null,
+    companyPath: input.companyPath && typeof input.companyPath === "object" ? input.companyPath : null,
     metaParts,
     canPreview: Boolean(href || exportPath || (workOrderId && documentId) || input.sourceTarget),
     canDownload: input.canDownload === false ? false : Boolean(href || exportPath || (workOrderId && documentId)),
@@ -32144,6 +32145,13 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
       fileKind: resolveDocumentLibraryAttachmentFileKind(document),
       updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || item?.assessmentDate || item?.effectiveFrom || "",
       previewType: "href",
+      companyPath: {
+        type: "foundation",
+        sectionKey: "foundation",
+        sectionLabel: "Temeljna dokumentacija",
+        typeLabel,
+        fileLabel: fileName,
+      },
       metaParts: [
         "Temeljna dokumentacija",
         typeLabel,
@@ -32164,6 +32172,12 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
     const companyId = context.linkedWorkOrder?.companyId || record?.companyId || "";
     const company = context.company || companyById.get(String(companyId || "")) || null;
     const locationLabel = createCompactLocationLabel(context.location?.name || context.linkedWorkOrder?.locationName || record?.locationName || "");
+    const locationKey = normalizeDocumentsExplorerKey(context.location?.id || context.linkedWorkOrder?.locationId || record?.locationId || locationLabel)
+      || "bez-lokacije";
+    const workOrderLabel = context.workOrderNumber ? `RN ${context.workOrderNumber}` : "Bez RN";
+    const workOrderKey = normalizeDocumentsExplorerKey(context.linkedWorkOrder?.id || record?.workOrderId || context.workOrderNumber || record?.id)
+      || normalizeDocumentsExplorerKey(workOrderLabel)
+      || "bez-rn";
     const recordEntry = createDocumentRecordLibraryEntryFromContext(record, context, "company-record");
     addCompanyEntry({
       company,
@@ -32187,6 +32201,14 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
         context.workOrderNumber ? `RN ${context.workOrderNumber}` : "",
         ...recordEntry.metaParts,
       ].filter(Boolean),
+      companyPath: {
+        type: "work-order",
+        locationKey,
+        locationLabel: locationLabel || "Bez lokacije",
+        workOrderKey,
+        workOrderLabel,
+        fileLabel: recordEntry.label,
+      },
       searchBlob: normalizeLooseName([
         recordEntry.searchBlob,
         locationLabel,
@@ -32203,6 +32225,12 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
       const companyId = workOrder.companyId || documentItem.companyId || "";
       const company = context.company || companyById.get(String(companyId || "")) || null;
       const locationLabel = createCompactLocationLabel(context.location?.name || workOrder.locationName || documentItem.locationName || "");
+      const locationKey = normalizeDocumentsExplorerKey(context.location?.id || workOrder.locationId || documentItem.locationId || locationLabel)
+        || "bez-lokacije";
+      const workOrderLabel = context.workOrderNumber ? `RN ${context.workOrderNumber}` : "Bez RN";
+      const workOrderKey = normalizeDocumentsExplorerKey(workOrder.id || documentItem.workOrderId || context.workOrderNumber || documentItem.id)
+        || normalizeDocumentsExplorerKey(workOrderLabel)
+        || "bez-rn";
       const baseEntry = createSavedWorkOrderDocumentLibraryEntry(documentItem, context, "company-work-order-document");
       addCompanyEntry({
         company,
@@ -32227,6 +32255,14 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
           context.workOrderNumber ? `RN ${context.workOrderNumber}` : "",
           ...baseEntry.metaParts,
         ].filter(Boolean),
+        companyPath: {
+          type: "work-order",
+          locationKey,
+          locationLabel: locationLabel || "Bez lokacije",
+          workOrderKey,
+          workOrderLabel,
+          fileLabel: baseEntry.label,
+        },
         searchBlob: normalizeLooseName([
           baseEntry.searchBlob,
           locationLabel,
@@ -33429,6 +33465,255 @@ function renderDocumentsLibraryCategories(model = buildDocumentsLibraryViewModel
   documentsCategoryList.replaceChildren(...cards);
 }
 
+function createDocumentsLibraryFileRow(entry = {}, { nested = false, label = "" } = {}) {
+  const row = document.createElement("article");
+  row.className = ["documents-file-row", nested ? "is-nested" : ""].filter(Boolean).join(" ");
+
+  const fileCopy = document.createElement("div");
+  fileCopy.className = "documents-file-copy";
+
+  const fileTitleRow = document.createElement("div");
+  fileTitleRow.className = "documents-file-title-row";
+  fileTitleRow.append(createDocumentLibraryFileIcon(entry.fileKind));
+  const fileTitle = document.createElement("strong");
+  fileTitle.className = "documents-file-title";
+  fileTitle.textContent = label || entry.companyPath?.fileLabel || entry.label;
+  fileTitleRow.append(fileTitle);
+  if (entry.signed) {
+    const signedBadge = document.createElement("span");
+    signedBadge.className = "documents-file-signed-badge";
+    signedBadge.title = "Dokument je potpisan";
+    signedBadge.setAttribute("aria-label", "Potpisano");
+    signedBadge.innerHTML = getWorkOrderIconMarkup("signature");
+    fileTitleRow.append(signedBadge);
+  }
+  fileCopy.append(fileTitleRow);
+
+  if (entry.description) {
+    const description = document.createElement("span");
+    description.className = "documents-file-description";
+    description.textContent = entry.description;
+    fileCopy.append(description);
+  }
+
+  if (entry.metaParts.length > 0) {
+    const fileMeta = document.createElement("span");
+    fileMeta.className = "documents-file-meta";
+    fileMeta.textContent = entry.metaParts.join(" · ");
+    fileCopy.append(fileMeta);
+  }
+
+  const fileKind = document.createElement("span");
+  fileKind.className = "documents-file-kind";
+  fileKind.textContent = entry.fileKindLabel;
+
+  const fileDate = document.createElement("span");
+  fileDate.className = "documents-file-date";
+  fileDate.textContent = entry.updatedLabel || "";
+
+  const fileActions = document.createElement("div");
+  fileActions.className = "documents-file-actions";
+
+  if (entry.canPreview) {
+    fileActions.append(createIconActionButton(
+      entry.previewType === "source" ? "Otvori" : "Pregled",
+      "preview",
+      "",
+      () => {
+        void runMutation(() => previewDocumentsLibraryEntry(entry), null);
+      },
+    ));
+  }
+
+  if (entry.canDownload) {
+    fileActions.append(createIconActionButton("Preuzmi", "download", "", () => {
+      void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
+    }));
+  }
+
+  if (entry.sourceTarget) {
+    fileActions.append(createIconActionButton("Izvor", "edit", "", () => {
+      openDocumentsLibrarySource(entry.sourceTarget);
+    }));
+  }
+
+  row.append(fileCopy, fileKind, fileDate, fileActions);
+  return row;
+}
+
+function getDocumentsLibraryHierarchyId(folderId = "", ...parts) {
+  return [
+    String(folderId || "").trim(),
+    ...parts.map((part) => normalizeDocumentsExplorerKey(part) || "x"),
+  ].filter(Boolean).join("::");
+}
+
+function createDocumentsLibraryHierarchyRow({
+  id = "",
+  title = "",
+  subtitle = "",
+  count = 0,
+  level = 0,
+  iconName = "folder",
+  expanded = false,
+} = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = [
+    "documents-hierarchy-row",
+    `is-level-${Math.max(0, Math.min(Number(level) || 0, 3))}`,
+  ].join(" ");
+  button.setAttribute("aria-expanded", expanded ? "true" : "false");
+  button.addEventListener("click", () => {
+    toggleDocumentsLibraryFolder(id);
+  });
+
+  const main = document.createElement("span");
+  main.className = "documents-hierarchy-main";
+
+  const marker = document.createElement("span");
+  marker.className = "documents-folder-toggle-mark";
+  marker.textContent = expanded ? "▾" : "▸";
+
+  const copy = document.createElement("span");
+  copy.className = "documents-hierarchy-copy";
+  const strong = document.createElement("strong");
+  strong.textContent = title || "Folder";
+  copy.append(strong);
+  if (subtitle) {
+    const small = document.createElement("span");
+    small.textContent = subtitle;
+    copy.append(small);
+  }
+
+  main.append(marker, createDocumentsExplorerIcon(iconName), copy);
+
+  const badge = document.createElement("span");
+  badge.className = "documents-hierarchy-count";
+  badge.textContent = `${Number(count) || 0}`;
+
+  button.append(main, badge);
+  return button;
+}
+
+function renderDocumentsCompanyFolderBody(folder = {}, expandedFolderIds = new Set()) {
+  const nodes = [];
+  const visibleDocuments = Array.isArray(folder.visibleDocuments) ? folder.visibleDocuments : [];
+  const foundationDocuments = visibleDocuments.filter((entry) => entry.companyPath?.type === "foundation");
+  const workOrderDocuments = visibleDocuments.filter((entry) => entry.companyPath?.type === "work-order");
+  const otherDocuments = visibleDocuments.filter((entry) => !entry.companyPath?.type);
+
+  const foundationId = getDocumentsLibraryHierarchyId(folder.id, "foundation");
+  const foundationExpanded = expandedFolderIds.has(foundationId);
+  nodes.push(createDocumentsLibraryHierarchyRow({
+    id: foundationId,
+    title: "Temeljna dokumentacija",
+    subtitle: "Procjene rizika, pravilnici, ovlaštenja i trajni dokumenti tvrtke",
+    count: foundationDocuments.length,
+    level: 0,
+    iconName: "document",
+    expanded: foundationExpanded,
+  }));
+  if (foundationExpanded) {
+    if (foundationDocuments.length > 0) {
+      foundationDocuments.forEach((entry) => {
+        nodes.push(createDocumentsLibraryFileRow(entry, { nested: true }));
+      });
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "documents-hierarchy-empty";
+      empty.textContent = "Nema temeljnih dokumenata za ovu tvrtku.";
+      nodes.push(empty);
+    }
+  }
+
+  const locations = new Map();
+  workOrderDocuments.forEach((entry) => {
+    const path = entry.companyPath || {};
+    const locationKey = String(path.locationKey || "bez-lokacije").trim();
+    if (!locations.has(locationKey)) {
+      locations.set(locationKey, {
+        key: locationKey,
+        label: path.locationLabel || "Bez lokacije",
+        workOrders: new Map(),
+      });
+    }
+    const location = locations.get(locationKey);
+    const workOrderKey = String(path.workOrderKey || "bez-rn").trim();
+    if (!location.workOrders.has(workOrderKey)) {
+      location.workOrders.set(workOrderKey, {
+        key: workOrderKey,
+        label: path.workOrderLabel || "Bez RN",
+        documents: [],
+      });
+    }
+    location.workOrders.get(workOrderKey).documents.push(entry);
+  });
+
+  [...locations.values()]
+    .sort((left, right) => left.label.localeCompare(right.label, "hr", { sensitivity: "base", numeric: true }))
+    .forEach((location) => {
+      const locationDocumentsCount = [...location.workOrders.values()].reduce((sum, item) => sum + item.documents.length, 0);
+      const locationId = getDocumentsLibraryHierarchyId(folder.id, "location", location.key);
+      const locationExpanded = expandedFolderIds.has(locationId);
+      nodes.push(createDocumentsLibraryHierarchyRow({
+        id: locationId,
+        title: location.label,
+        subtitle: `${location.workOrders.size} RN · ${locationDocumentsCount} dokumenata`,
+        count: locationDocumentsCount,
+        level: 0,
+        iconName: "location",
+        expanded: locationExpanded,
+      }));
+
+      if (!locationExpanded) {
+        return;
+      }
+
+      [...location.workOrders.values()]
+        .sort((left, right) => right.label.localeCompare(left.label, "hr", { sensitivity: "base", numeric: true }))
+        .forEach((workOrder) => {
+          const workOrderId = getDocumentsLibraryHierarchyId(folder.id, "work-order", location.key, workOrder.key);
+          const workOrderExpanded = expandedFolderIds.has(workOrderId);
+          nodes.push(createDocumentsLibraryHierarchyRow({
+            id: workOrderId,
+            title: workOrder.label,
+            subtitle: "Uploadi, skenirani RN, slike, projekti i zapisnici",
+            count: workOrder.documents.length,
+            level: 1,
+            iconName: "number",
+            expanded: workOrderExpanded,
+          }));
+          if (workOrderExpanded) {
+            workOrder.documents.forEach((entry) => {
+              nodes.push(createDocumentsLibraryFileRow(entry, { nested: true }));
+            });
+          }
+        });
+    });
+
+  if (otherDocuments.length > 0) {
+    const otherId = getDocumentsLibraryHierarchyId(folder.id, "other");
+    const otherExpanded = expandedFolderIds.has(otherId);
+    nodes.push(createDocumentsLibraryHierarchyRow({
+      id: otherId,
+      title: "Ostali dokumenti",
+      subtitle: "Dokumenti bez jasne veze na lokaciju ili RN",
+      count: otherDocuments.length,
+      level: 0,
+      iconName: "folder",
+      expanded: otherExpanded,
+    }));
+    if (otherExpanded) {
+      otherDocuments.forEach((entry) => {
+        nodes.push(createDocumentsLibraryFileRow(entry, { nested: true }));
+      });
+    }
+  }
+
+  return nodes;
+}
+
 function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel()) {
   if (!documentsFolderList) {
     return;
@@ -33499,81 +33784,11 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
     const body = document.createElement("div");
     body.className = "documents-folder-body";
     body.hidden = !expandedFolderIds.has(folder.id);
-    body.replaceChildren(...folder.visibleDocuments.map((entry) => {
-      const row = document.createElement("article");
-      row.className = "documents-file-row";
-
-      const fileCopy = document.createElement("div");
-      fileCopy.className = "documents-file-copy";
-
-      const fileTitleRow = document.createElement("div");
-      fileTitleRow.className = "documents-file-title-row";
-      fileTitleRow.append(createDocumentLibraryFileIcon(entry.fileKind));
-      const fileTitle = document.createElement("strong");
-      fileTitle.className = "documents-file-title";
-      fileTitle.textContent = entry.label;
-      fileTitleRow.append(fileTitle);
-      if (entry.signed) {
-        const signedBadge = document.createElement("span");
-        signedBadge.className = "documents-file-signed-badge";
-        signedBadge.title = "Dokument je potpisan";
-        signedBadge.setAttribute("aria-label", "Potpisano");
-        signedBadge.innerHTML = getWorkOrderIconMarkup("signature");
-        fileTitleRow.append(signedBadge);
-      }
-      fileCopy.append(fileTitleRow);
-
-      if (entry.description) {
-        const description = document.createElement("span");
-        description.className = "documents-file-description";
-        description.textContent = entry.description;
-        fileCopy.append(description);
-      }
-
-      if (entry.metaParts.length > 0) {
-        const fileMeta = document.createElement("span");
-        fileMeta.className = "documents-file-meta";
-        fileMeta.textContent = entry.metaParts.join(" · ");
-        fileCopy.append(fileMeta);
-      }
-
-      const fileKind = document.createElement("span");
-      fileKind.className = "documents-file-kind";
-      fileKind.textContent = entry.fileKindLabel;
-
-      const fileDate = document.createElement("span");
-      fileDate.className = "documents-file-date";
-      fileDate.textContent = entry.updatedLabel || "";
-
-      const fileActions = document.createElement("div");
-      fileActions.className = "documents-file-actions";
-
-      if (entry.canPreview) {
-        fileActions.append(createIconActionButton(
-          entry.previewType === "source" ? "Otvori" : "Pregled",
-          "preview",
-          "",
-          () => {
-            void runMutation(() => previewDocumentsLibraryEntry(entry), null);
-          },
-        ));
-      }
-
-      if (entry.canDownload) {
-        fileActions.append(createIconActionButton("Preuzmi", "download", "", () => {
-          void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
-        }));
-      }
-
-      if (entry.sourceTarget) {
-        fileActions.append(createIconActionButton("Izvor", "edit", "", () => {
-          openDocumentsLibrarySource(entry.sourceTarget);
-        }));
-      }
-
-      row.append(fileCopy, fileKind, fileDate, fileActions);
-      return row;
-    }));
+    body.replaceChildren(...(
+      folder.categoryId === "companies"
+        ? renderDocumentsCompanyFolderBody(folder, expandedFolderIds)
+        : folder.visibleDocuments.map((entry) => createDocumentsLibraryFileRow(entry))
+    ));
 
     card.append(head, body);
     return card;
