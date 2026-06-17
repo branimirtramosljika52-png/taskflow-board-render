@@ -273,7 +273,7 @@ enum class AppSection(val label: String) {
     More("Evidencije"),
 }
 
-private enum class MoreSectionFocus(val title: String) {
+enum class MoreSectionFocus(val title: String) {
     Overview("Evidencije"),
     Todo("ToDo"),
     FieldInquiries("Plan terena"),
@@ -301,6 +301,11 @@ private data class MainMenuShortcut(
     val section: AppSection,
     val icon: ImageVector,
     val moreFocus: MoreSectionFocus? = null,
+)
+
+private data class AppNavigationDestination(
+    val section: AppSection,
+    val moreFocus: MoreSectionFocus = MoreSectionFocus.Overview,
 )
 
 enum class WorkOrderDocumentInputMode(
@@ -417,6 +422,8 @@ data class AppState(
     val selectedRecord: MobileRecord? = null,
     val isCreatingWorkOrder: Boolean = false,
     val section: AppSection = AppSection.Operations,
+    val moreFocus: MoreSectionFocus = MoreSectionFocus.Overview,
+    val navigationDepth: Int = 0,
     val query: String = "",
     val filter: WorkOrderFilter = WorkOrderFilter.All,
     val viewMode: WorkOrderViewMode = WorkOrderViewMode.List,
@@ -443,10 +450,19 @@ data class AppState(
     val pendingExternalUrl: String = "",
 )
 
+private fun AppState.hasAndroidBackTarget(): Boolean =
+    isCreatingWorkOrder ||
+        selectedWorkOrder != null ||
+        selectedRecord != null ||
+        navigationDepth > 0 ||
+        section != AppSection.Operations ||
+        (section == AppSection.More && moreFocus != MoreSectionFocus.Overview)
+
 class SafeNexusViewModel(application: Application) : AndroidViewModel(application) {
     private val api = SafeNexusApi()
     private val authStore = SafeNexusAuthStore(application)
     private val workOrderMutationVersions = mutableMapOf<String, Int>()
+    private val navigationBackStack = mutableListOf<AppNavigationDestination>()
     private var shouldRememberSession = false
 
     var state by mutableStateOf(AppState())
@@ -612,6 +628,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         api.clearSession()
         authStore.clear()
         shouldRememberSession = false
+        navigationBackStack.clear()
         state = AppState()
     }
 
@@ -627,8 +644,75 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         state = state.copy(viewMode = value)
     }
 
-    fun updateSection(value: AppSection) {
-        state = state.copy(section = value, selectedRecord = null, isCreatingWorkOrder = false)
+    private fun normalizedDestination(section: AppSection, focus: MoreSectionFocus? = null): AppNavigationDestination =
+        AppNavigationDestination(
+            section = section,
+            moreFocus = if (section == AppSection.More) focus ?: MoreSectionFocus.Overview else MoreSectionFocus.Overview,
+        )
+
+    private fun currentDestination(): AppNavigationDestination =
+        normalizedDestination(state.section, state.moreFocus)
+
+    fun updateSection(value: AppSection, focus: MoreSectionFocus? = null) {
+        val next = normalizedDestination(value, focus)
+        val current = currentDestination()
+        if (next != current) {
+            if (navigationBackStack.lastOrNull() != current) {
+                navigationBackStack.add(current)
+            }
+        }
+        state = state.copy(
+            section = next.section,
+            moreFocus = next.moreFocus,
+            navigationDepth = navigationBackStack.size,
+            selectedRecord = null,
+            isCreatingWorkOrder = false,
+        )
+    }
+
+    fun navigateBack(): Boolean {
+        if (state.isCreatingWorkOrder) {
+            state = state.copy(isCreatingWorkOrder = false, error = "", notice = "")
+            return true
+        }
+        if (state.selectedWorkOrder != null) {
+            state = state.copy(
+                selectedWorkOrder = null,
+                workOrderDocumentsWorkOrderId = "",
+                workOrderDocuments = emptyList(),
+                workOrderDocumentsLoading = false,
+                error = "",
+                notice = "",
+            )
+            return true
+        }
+        if (state.selectedRecord != null) {
+            state = state.copy(selectedRecord = null, error = "", notice = "")
+            return true
+        }
+        if (navigationBackStack.isNotEmpty()) {
+            val previous = navigationBackStack.removeAt(navigationBackStack.lastIndex)
+            state = state.copy(
+                section = previous.section,
+                moreFocus = previous.moreFocus,
+                navigationDepth = navigationBackStack.size,
+                selectedWorkOrder = null,
+                selectedRecord = null,
+                isCreatingWorkOrder = false,
+                error = "",
+                notice = "",
+            )
+            return true
+        }
+        if (state.section == AppSection.More && state.moreFocus != MoreSectionFocus.Overview) {
+            state = state.copy(moreFocus = MoreSectionFocus.Overview, error = "", notice = "")
+            return true
+        }
+        if (state.section != AppSection.Operations) {
+            state = state.copy(section = AppSection.Operations, moreFocus = MoreSectionFocus.Overview, error = "", notice = "")
+            return true
+        }
+        return false
     }
 
     fun selectWorkOrder(value: WorkOrder?) {
@@ -1820,6 +1904,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
     var workOrderDocumentPreview by remember { mutableStateOf<WorkOrderDocumentPreviewState?>(null) }
+    BackHandler(enabled = state.user != null && state.hasAndroidBackTarget()) {
+        viewModel.navigateBack()
+    }
     val confirmDocumentSelection: (WorkOrderDocumentCategory) -> Unit = { category ->
         val selection = pendingSelection
         pendingSelection = null
@@ -1950,7 +2037,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     data = state.data,
                     isLoading = state.isLoading,
                     error = state.error,
-                    onBack = viewModel::closeWorkOrderCreate,
+                    onBack = { viewModel.navigateBack() },
                     onSave = viewModel::createWorkOrder,
                     onCreateLocation = viewModel::createWorkOrderLocation,
                 )
@@ -1964,7 +2051,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onQueryChange = viewModel::updateQuery,
                         onFilterChange = viewModel::updateFilter,
                         onViewModeChange = viewModel::updateViewMode,
-                        onSectionChange = viewModel::updateSection,
+                        onSectionChange = { section, focus -> viewModel.updateSection(section, focus) },
                         onRefresh = viewModel::refresh,
                         onLogout = viewModel::logout,
                         onOpenWorkOrder = viewModel::selectWorkOrder,
@@ -1990,7 +2077,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         workOrders = state.data.workOrders,
                         currentUserLabel = state.user?.displayName.orEmpty(),
                         isLoading = state.isLoading,
-                        onBack = { viewModel.selectRecord(null) },
+                        onBack = { viewModel.navigateBack() },
                         onReserveVehicle = viewModel::createVehicleReservation,
                         onRecordVehicleUsage = viewModel::recordVehicleUsage,
                         onDownloadVehicleEvidencePdf = { vehicle -> viewModel.downloadVehicleEvidencePdf(context.applicationContext, vehicle) },
@@ -2012,7 +2099,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     documents = state.workOrderDocuments,
                     documentsLoading = state.workOrderDocumentsLoading,
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
-                    onBack = { viewModel.selectWorkOrder(null) },
+                    onBack = { viewModel.navigateBack() },
                     onStatusChange = viewModel::updateWorkOrderStatus,
                     onExecutorsChange = viewModel::updateWorkOrderExecutors,
                     onManageServices = { workOrder -> serviceManagementTarget = workOrder },
@@ -6948,7 +7035,7 @@ private fun WorkOrdersScreen(
     onQueryChange: (String) -> Unit,
     onFilterChange: (WorkOrderFilter) -> Unit,
     onViewModeChange: (WorkOrderViewMode) -> Unit,
-    onSectionChange: (AppSection) -> Unit,
+    onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onOpenWorkOrder: (WorkOrder) -> Unit,
@@ -7028,14 +7115,13 @@ private fun WorkOrdersScreen(
     }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
     var mainMenuExpanded by remember { mutableStateOf(false) }
-    var moreFocus by remember { mutableStateOf(MoreSectionFocus.Overview) }
+    val moreFocus = state.moreFocus
     var fieldInquiryDialogRecord by remember { mutableStateOf<MobileRecord?>(null) }
     var fieldInquiryDialogOpen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val openMenuShortcut: (AppSection, MoreSectionFocus?) -> Unit = { section, focus ->
         mainMenuExpanded = false
-        moreFocus = if (section == AppSection.More) focus ?: MoreSectionFocus.Overview else MoreSectionFocus.Overview
-        onSectionChange(section)
+        onSectionChange(section, focus)
     }
 
     LaunchedEffect(state.section, moreFocus) {
@@ -7113,8 +7199,7 @@ private fun WorkOrdersScreen(
             MainBottomBar(
                 selected = state.section,
                 onSectionChange = { section ->
-                    moreFocus = if (section == AppSection.More) MoreSectionFocus.Overview else MoreSectionFocus.Overview
-                    onSectionChange(section)
+                    onSectionChange(section, if (section == AppSection.More) MoreSectionFocus.Overview else null)
                 },
             )
         },
@@ -9940,6 +10025,18 @@ private fun DocumentRegisterPreview(
     val selectedLocation = selectedCompany?.locations?.firstOrNull { it.key == selectedLocationKey }
     val selectedWorkOrder = selectedLocation?.workOrders?.firstOrNull { it.key == selectedWorkOrderKey }
 
+    val goBackInDocuments = {
+        when {
+            selectedWorkOrderKey.isNotBlank() -> selectedWorkOrderKey = ""
+            selectedLocationKey.isNotBlank() -> selectedLocationKey = ""
+            showFoundation -> showFoundation = false
+            selectedCompanyKey.isNotBlank() -> selectedCompanyKey = ""
+        }
+    }
+    BackHandler(enabled = selectedCompanyKey.isNotBlank()) {
+        goBackInDocuments()
+    }
+
     LaunchedEffect(companies, selectedCompanyKey, selectedLocationKey, selectedWorkOrderKey, showFoundation) {
         if (selectedCompanyKey.isNotBlank() && selectedCompany == null) {
             selectedCompanyKey = ""
@@ -9978,7 +10075,7 @@ private fun DocumentRegisterPreview(
                     DocumentRegisterBreadcrumb(
                         title = selectedWorkOrder.label,
                         subtitle = selectedLocation?.label.orEmpty(),
-                        onBack = { selectedWorkOrderKey = "" },
+                        onBack = goBackInDocuments,
                     )
                     selectedWorkOrder.records.forEach { record ->
                         MobileDocumentLine(
@@ -9992,7 +10089,7 @@ private fun DocumentRegisterPreview(
                     DocumentRegisterBreadcrumb(
                         title = selectedLocation.label,
                         subtitle = selectedCompany?.label.orEmpty(),
-                        onBack = { selectedLocationKey = "" },
+                        onBack = goBackInDocuments,
                     )
                     selectedLocation.workOrders.forEach { workOrder ->
                         DocumentFolderRow(
@@ -10008,7 +10105,7 @@ private fun DocumentRegisterPreview(
                     DocumentRegisterBreadcrumb(
                         title = "Temeljna dokumentacija",
                         subtitle = selectedCompany.label,
-                        onBack = { showFoundation = false },
+                        onBack = goBackInDocuments,
                     )
                     selectedCompany.foundationRecords.forEach { record ->
                         MobileDocumentLine(
@@ -10022,7 +10119,7 @@ private fun DocumentRegisterPreview(
                     DocumentRegisterBreadcrumb(
                         title = selectedCompany.label,
                         subtitle = "${selectedCompany.locations.size} lokacija - ${selectedCompany.records.size} dokumenata",
-                        onBack = { selectedCompanyKey = "" },
+                        onBack = goBackInDocuments,
                     )
                     DocumentFolderRow(
                         icon = Icons.Rounded.Description,
