@@ -2383,7 +2383,7 @@ const state = {
     query: "",
     scope: "all",
     fileKind: "all",
-    category: "all",
+    category: "companies",
     loading: false,
     loaded: false,
     error: "",
@@ -31582,7 +31582,7 @@ function getWorkOrderDocumentLibraryContext(documentItem = {}, documentIndex = 0
 
 function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {}, idPrefix = "saved-work-order-document") {
   const fileName = getDocumentLibraryAttachmentFileName(documentItem)
-    || `${slugifyValue(context.workOrderNumber || "zapisnik") || "zapisnik"}.pdf`;
+    || `${slugifyValue(context.workOrderNumber || "dokument") || "dokument"}.pdf`;
   const categoryLabel = String(documentItem?.documentCategory || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY).trim()
     || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY;
   const description = String(documentItem?.description || `${categoryLabel} za RN ${context.workOrderNumber || ""}`).trim();
@@ -31590,15 +31590,16 @@ function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {
   const hasSignature = hasGeneratedDocumentAnySignature(documentWithDescription);
   const isFullySigned = isGeneratedDocumentSigned(documentWithDescription);
   const signatureSummary = buildGeneratedDocumentSignatureSummary(documentItem);
+  const fileKind = resolveDocumentLibraryAttachmentFileKind(documentItem);
 
   return createDocumentLibraryEntry({
     id: `${idPrefix}:${String(documentItem?.workOrderId || "")}:${String(documentItem?.id || "")}`,
     label: fileName,
     description,
     fileName,
-    fileType: documentItem?.fileType || "application/pdf",
+    fileType: documentItem?.fileType || documentItem?.mimeType || (fileKind === "pdf" ? "application/pdf" : ""),
     fileSize: documentItem?.fileSize || 0,
-    fileKind: "pdf",
+    fileKind,
     updatedAt: documentItem?.updatedAt || documentItem?.createdAt || "",
     previewType: "work-order-document",
     workOrderId: documentItem?.workOrderId || "",
@@ -32069,149 +32070,240 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
     .localeCompare(String(right?.name || ""), "hr", { sensitivity: "base", numeric: true }));
   const companyById = new Map(sortedCompanies.map((company) => [String(company?.id || ""), company]));
 
-  (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
-    const context = getDocumentRecordLibraryContext(record, recordIndex);
-    const company = context.company || companyById.get(String(context.linkedWorkOrder?.companyId || record?.companyId || "")) || null;
-    const folder = getCompanyDocumentFolder(folders, {
-      company,
-      companyId: context.linkedWorkOrder?.companyId || record?.companyId || "",
-      companyName: context.linkedWorkOrder?.companyName || "",
-      folderKey: "records",
-      folderLabel: "Zapisnici i RN",
-      subtitle: "Tvrtke · Radni nalozi i zapisnici",
-      metaParts: ["Radni nalozi", "Zapisnici"],
-      searchTerms: [context.workOrderNumber || "", context.serviceLabel || ""],
-    });
-    folder.documents.push(createDocumentRecordLibraryEntryFromContext(record, context, `company-record:${folder.id}`));
-  });
-
-  getDocumentsExplorerWorkOrderDocuments({ documentCategory: SIGNATURE_PDF_DOCUMENT_CATEGORIES })
-    .forEach((documentItem, documentIndex) => {
-      const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
-      const company = context.company || companyById.get(String(context.linkedWorkOrder?.companyId || "")) || null;
-      const folder = getCompanyDocumentFolder(folders, {
-        company,
-        companyId: context.linkedWorkOrder?.companyId || "",
-        companyName: context.linkedWorkOrder?.companyName || "",
-        folderKey: "records",
-        folderLabel: "Zapisnici i RN",
-        subtitle: "Tvrtke · Radni nalozi i zapisnici",
-        metaParts: ["Radni nalozi", "Zapisnici"],
-        searchTerms: [context.workOrderNumber || "", context.serviceLabel || ""],
+  const ensureCompanyFolder = ({
+    company = null,
+    companyId = "",
+    companyName = "",
+    searchTerms = [],
+  } = {}) => {
+    const resolvedCompanyId = String(company?.id || companyId || "").trim();
+    const resolvedCompanyName = String(company?.name || companyName || "Bez tvrtke").trim() || "Bez tvrtke";
+    const key = `companies:${resolvedCompanyId || slugifyValue(resolvedCompanyName) || "bez-tvrtke"}:overview`;
+    if (!folders.has(key)) {
+      folders.set(key, {
+        id: key,
+        categoryId: "companies",
+        label: resolvedCompanyName,
+        subtitle: "Temeljna dokumentacija, lokacije i RN dokumenti",
+        metaParts: [resolvedCompanyName],
+        searchTerms: [
+          resolvedCompanyName,
+          company?.oib || "",
+          company?.headquarters || "",
+          ...searchTerms,
+        ],
+        sourceTarget: company ? { kind: "company", record: company } : null,
+        documents: [],
       });
-      folder.documents.push(
-        createSavedWorkOrderDocumentLibraryEntry(documentItem, context, `company-record-pdf:${folder.id}`),
-      );
-    });
+    }
+    return folders.get(key);
+  };
 
-  sortOffers(state.offers ?? []).forEach((item, itemIndex) => {
-    const company = companyById.get(String(item?.companyId || "")) || null;
-    const folder = getCompanyDocumentFolder(folders, {
-      company,
-      companyId: item?.companyId || "",
-      companyName: item?.companyName || "",
-      folderKey: "offers",
-      folderLabel: "Ponude",
-      subtitle: "Tvrtke · Ponude",
-      metaParts: ["Ponude"],
-      searchTerms: [item?.offerNumber || "", item?.title || "", item?.serviceLine || ""],
-    });
-    folder.documents.push(...buildDocumentLibraryEntriesForItem(item, itemIndex, {
-      categoryId: "companies",
-      getDocuments: (entry) => entry?.documents ?? [],
-      getSourceTarget: (entry) => ({ kind: "offer", record: entry }),
-      mapDocument: (document, entry) => ({
-        description: String(document?.description || "").trim(),
-        updatedAt: document?.updatedAt || entry?.updatedAt || entry?.createdAt || "",
-        metaParts: [
-          getOptionLabel(OFFER_STATUS_OPTIONS, entry?.status || "draft") || "",
-          getCommercialDocumentDirectionLabel(entry?.offerDirection || "outgoing"),
-          formatFileSize(document?.fileSize || 0),
-        ].filter(Boolean),
-      }),
-      buildExtraEntries: (entry, sourceTarget) => entry?.id ? [createDocumentLibraryGeneratedPdfEntry({
-        id: `companies:offers:pdf:${entry.id}`,
-        label: `${entry.offerNumber || entry.title || "Ponuda"} PDF`,
-        description: "Generirani PDF ponude.",
-        exportPath: `/offers/${encodeURIComponent(String(entry.id))}/export-pdf`,
-        fileName: `${slugifyValue(entry.offerNumber || entry.title || "ponuda") || "ponuda"}.pdf`,
-        updatedAt: entry?.updatedAt || entry?.createdAt || "",
-        sourceTarget,
-        searchTerms: [entry?.companyName || "", entry?.title || ""],
-      })] : [],
-    }));
-  });
-
-  sortPurchaseOrders(state.purchaseOrders ?? []).forEach((item, itemIndex) => {
-    const company = companyById.get(String(item?.companyId || "")) || null;
-    const folder = getCompanyDocumentFolder(folders, {
-      company,
-      companyId: item?.companyId || "",
-      companyName: item?.companyName || "",
-      folderKey: "purchase-orders",
-      folderLabel: "Narudžbenice",
-      subtitle: "Tvrtke · Narudžbenice",
-      metaParts: ["Narudžbenice", getCommercialDocumentDirectionLabel(item?.orderDirection || "incoming")],
-      searchTerms: [item?.purchaseOrderNumber || "", item?.externalDocumentNumber || "", item?.title || "", item?.serviceLine || ""],
-    });
-    folder.documents.push(...buildDocumentLibraryEntriesForItem(item, itemIndex, {
-      categoryId: "companies",
-      getDocuments: (entry) => entry?.documents ?? [],
-      getSourceTarget: (entry) => ({ kind: "purchase-order", record: entry }),
-      mapDocument: (document, entry) => ({
-        description: String(document?.description || "").trim(),
-        updatedAt: document?.updatedAt || entry?.updatedAt || entry?.createdAt || "",
-        metaParts: [
-          getOptionLabel(PURCHASE_ORDER_STATUS_OPTIONS, entry?.status || "draft") || "",
-          getCommercialDocumentDirectionLabel(entry?.orderDirection || "incoming"),
-          formatFileSize(document?.fileSize || 0),
-        ].filter(Boolean),
-      }),
-      buildExtraEntries: (entry, sourceTarget) => entry?.id ? [createDocumentLibraryGeneratedPdfEntry({
-        id: `companies:purchase-orders:pdf:${entry.id}`,
-        label: `${entry.purchaseOrderNumber || entry.title || "Narudžbenica"} PDF`,
-        description: "Generirani PDF narudžbenice.",
-        exportPath: `/purchase-orders/${encodeURIComponent(String(entry.id))}/export-pdf`,
-        fileName: `${slugifyValue(entry.purchaseOrderNumber || entry.title || "narudzbenica") || "narudzbenica"}.pdf`,
-        updatedAt: entry?.updatedAt || entry?.createdAt || "",
-        sourceTarget,
-        searchTerms: [entry?.companyName || "", entry?.title || ""],
-      })] : [],
-    }));
-  });
-
-  sortContracts(state.contracts ?? []).forEach((item) => {
-    if (!item?.id) {
+  const addCompanyEntry = (companyInfo = {}, entry = null) => {
+    if (!entry) {
       return;
     }
-    const company = companyById.get(String(item?.companyId || "")) || null;
-    const sourceTarget = { kind: "contract", record: item };
-    const folder = getCompanyDocumentFolder(folders, {
+    const company = companyInfo.company
+      || companyById.get(String(companyInfo.companyId || ""))
+      || null;
+    const folder = ensureCompanyFolder({
       company,
-      companyId: item?.companyId || "",
-      companyName: item?.companyName || "",
-      folderKey: "contracts",
-      folderLabel: "Ugovori",
-      subtitle: "Tvrtke · Ugovori",
-      metaParts: ["Ugovori", getContractStatusLabel(item?.status || "draft")],
-      searchTerms: [item?.contractNumber || "", item?.title || "", item?.templateTitle || ""],
+      companyId: companyInfo.companyId,
+      companyName: companyInfo.companyName,
+      searchTerms: companyInfo.searchTerms,
     });
-    folder.documents.push(
-      createDocumentLibraryGeneratedPdfEntry({
-        id: `companies:contracts:pdf:${item.id}`,
-        label: `${item?.contractNumber || item?.title || "Ugovor"} PDF`,
-        description: "Generirani PDF ugovora.",
-        exportPath: `/contracts/${encodeURIComponent(String(item.id))}/export-pdf`,
-        fileName: `${slugifyValue(item?.contractNumber || item?.title || "ugovor") || "ugovor"}.pdf`,
-        updatedAt: item?.updatedAt || item?.createdAt || "",
-        sourceTarget,
-        searchTerms: [item?.companyName || "", item?.templateTitle || ""],
-      }),
-    );
+    folder.documents.push(entry);
+  };
+
+  const createFoundationEntry = ({
+    company = null,
+    companyId = "",
+    companyName = "",
+    sourceTarget = null,
+    document = {},
+    item = {},
+    label = "Temeljni dokument",
+    typeLabel = "Temeljna dokumentacija",
+    idPrefix = "foundation",
+    index = 0,
+  } = {}) => {
+    const fileName = getDocumentLibraryAttachmentFileName(document);
+    const href = getDocumentLibraryAttachmentHref(document);
+    if (!fileName || !href) {
+      return null;
+    }
+    const itemTitle = String(item?.title || item?.assessmentNumber || item?.referenceCode || item?.rulebookType || label).trim();
+    return createDocumentLibraryEntry({
+      id: `companies:${idPrefix}:${String(item?.id || index)}:${String(document?.id || index)}:${fileName}`,
+      label: `Temeljna dokumentacija / ${typeLabel} / ${fileName}`,
+      description: itemTitle,
+      fileName,
+      fileType: document?.fileType || document?.mimeType || "",
+      fileSize: document?.fileSize || 0,
+      href,
+      fileKind: resolveDocumentLibraryAttachmentFileKind(document),
+      updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || item?.assessmentDate || item?.effectiveFrom || "",
+      previewType: "href",
+      metaParts: [
+        "Temeljna dokumentacija",
+        typeLabel,
+        formatFileSize(document?.fileSize || 0),
+      ].filter(Boolean),
+      sourceTarget,
+      searchTerms: [
+        company?.name || companyName || "",
+        itemTitle,
+        typeLabel,
+        item?.status || "",
+      ],
+    });
+  };
+
+  (Array.isArray(records) ? records : []).forEach((record, recordIndex) => {
+    const context = getDocumentRecordLibraryContext(record, recordIndex);
+    const companyId = context.linkedWorkOrder?.companyId || record?.companyId || "";
+    const company = context.company || companyById.get(String(companyId || "")) || null;
+    const locationLabel = createCompactLocationLabel(context.location?.name || context.linkedWorkOrder?.locationName || record?.locationName || "");
+    const recordEntry = createDocumentRecordLibraryEntryFromContext(record, context, "company-record");
+    addCompanyEntry({
+      company,
+      companyId,
+      companyName: context.linkedWorkOrder?.companyName || record?.companyName || "",
+      searchTerms: [context.workOrderNumber || "", context.serviceLabel || ""],
+    }, {
+      ...recordEntry,
+      label: [
+        locationLabel || "Bez lokacije",
+        context.workOrderNumber ? `RN ${context.workOrderNumber}` : "Bez RN",
+        recordEntry.label,
+      ].filter(Boolean).join(" / "),
+      description: [
+        context.serviceLabel || "",
+        recordEntry.description || "",
+      ].filter(Boolean).join(" · "),
+      metaParts: [
+        "Zapisnik",
+        locationLabel || "",
+        context.workOrderNumber ? `RN ${context.workOrderNumber}` : "",
+        ...recordEntry.metaParts,
+      ].filter(Boolean),
+      searchBlob: normalizeLooseName([
+        recordEntry.searchBlob,
+        locationLabel,
+        context.workOrderNumber,
+        context.serviceLabel,
+      ].join(" ")),
+    });
+  });
+
+  getDocumentsExplorerWorkOrderDocuments()
+    .forEach((documentItem, documentIndex) => {
+      const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
+      const workOrder = context.linkedWorkOrder || {};
+      const companyId = workOrder.companyId || documentItem.companyId || "";
+      const company = context.company || companyById.get(String(companyId || "")) || null;
+      const locationLabel = createCompactLocationLabel(context.location?.name || workOrder.locationName || documentItem.locationName || "");
+      const baseEntry = createSavedWorkOrderDocumentLibraryEntry(documentItem, context, "company-work-order-document");
+      addCompanyEntry({
+        company,
+        companyId,
+        companyName: workOrder.companyName || documentItem.companyName || "",
+        searchTerms: [context.workOrderNumber || "", context.serviceLabel || ""],
+      }, {
+        ...baseEntry,
+        label: [
+          locationLabel || "Bez lokacije",
+          context.workOrderNumber ? `RN ${context.workOrderNumber}` : "Bez RN",
+          baseEntry.label,
+        ].filter(Boolean).join(" / "),
+        description: [
+          documentItem?.documentCategory || "",
+          context.serviceLabel || "",
+          baseEntry.description || "",
+        ].filter(Boolean).join(" · "),
+        metaParts: [
+          "RN dokument",
+          locationLabel || "",
+          context.workOrderNumber ? `RN ${context.workOrderNumber}` : "",
+          ...baseEntry.metaParts,
+        ].filter(Boolean),
+        searchBlob: normalizeLooseName([
+          baseEntry.searchBlob,
+          locationLabel,
+          context.workOrderNumber,
+          context.serviceLabel,
+          documentItem?.documentCategory || "",
+        ].join(" ")),
+      });
+    });
+
+  sortRiskAssessments(state.riskAssessments ?? []).forEach((item, itemIndex) => {
+    const companyId = String(item?.companyId || "").trim();
+    const company = companyById.get(companyId) || null;
+    const documents = [
+      ...(Array.isArray(item?.attachments) ? item.attachments : []),
+      item?.employerData?.znrAuthorizationDocument,
+      item?.reportTemplate?.referenceDocument,
+    ].filter(Boolean);
+    documents.forEach((document, documentIndex) => {
+      addCompanyEntry({ company, companyId, companyName: item?.employerData?.fullName || "" }, createFoundationEntry({
+        company,
+        companyId,
+        companyName: item?.employerData?.fullName || "",
+        sourceTarget: { kind: "risk-assessment", record: item },
+        document,
+        item,
+        typeLabel: "Procjena rizika",
+        idPrefix: "risk-assessment",
+        index: `${itemIndex}-${documentIndex}`,
+      }));
+    });
+  });
+
+  sortRulebooks(state.rulebooks ?? []).forEach((item, itemIndex) => {
+    const companyId = String(item?.companyId || "").trim();
+    const company = companyById.get(companyId) || null;
+    (Array.isArray(item?.documents) ? item.documents : []).forEach((document, documentIndex) => {
+      addCompanyEntry({ company, companyId, companyName: item?.owner || "" }, createFoundationEntry({
+        company,
+        companyId,
+        companyName: item?.owner || "",
+        sourceTarget: { kind: "rulebook", record: item },
+        document,
+        item,
+        typeLabel: "Pravilnik",
+        idPrefix: "rulebook",
+        index: `${itemIndex}-${documentIndex}`,
+      }));
+    });
+  });
+
+  sortSafetyAuthorizations(state.safetyAuthorizations ?? []).forEach((item, itemIndex) => {
+    const companyId = String(item?.companyId || "").trim();
+    const company = companyById.get(companyId) || null;
+    (Array.isArray(item?.documents) ? item.documents : []).forEach((document, documentIndex) => {
+      addCompanyEntry({ company, companyId, companyName: item?.companyName || "" }, createFoundationEntry({
+        company,
+        companyId,
+        companyName: item?.companyName || "",
+        sourceTarget: { kind: "safety-authorization", record: item },
+        document,
+        item,
+        typeLabel: "Ovlaštenje",
+        idPrefix: "safety-authorization",
+        index: `${itemIndex}-${documentIndex}`,
+      }));
+    });
   });
 
   return [...folders.values()]
-    .map((folder) => finalizeDocumentLibraryFolder(folder))
+    .map((folder) => finalizeDocumentLibraryFolder({
+      ...folder,
+      metaParts: [
+        `${folder.documents.filter((entry) => String(entry?.label || "").startsWith("Temeljna dokumentacija")).length} temeljnih`,
+        `${folder.documents.filter((entry) => String(entry?.label || "").includes(" / RN ")).length} RN dok.`,
+      ],
+    }))
     .filter(Boolean);
 }
 
@@ -35233,7 +35325,7 @@ async function loadDocumentsExplorerRecords({ force = false, renderSignatures = 
   try {
     const [recordsResponse, workOrderDocumentsResponse] = await Promise.all([
       apiRequest(`/document-records?limit=${DOCUMENTS_EXPLORER_MAX_RECORDS}`),
-      apiRequest("/work-order-documents?sourceType=pdf&limit=5000"),
+      apiRequest("/work-order-documents?limit=5000"),
     ]);
     state.documentsExplorer.records = Array.isArray(recordsResponse?.items) ? recordsResponse.items : [];
     state.documentsExplorer.workOrderDocuments = Array.isArray(workOrderDocumentsResponse?.items)

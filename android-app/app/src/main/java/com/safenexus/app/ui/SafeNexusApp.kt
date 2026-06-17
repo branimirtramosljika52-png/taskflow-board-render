@@ -9904,21 +9904,56 @@ private fun PeriodicLine(entry: PeriodicEntry, today: LocalDate) {
     }
 }
 
+private data class MobileDocumentCompanyFolder(
+    val key: String,
+    val label: String,
+    val records: List<MobileRecord>,
+    val foundationRecords: List<MobileRecord>,
+    val locations: List<MobileDocumentLocationFolder>,
+)
+
+private data class MobileDocumentLocationFolder(
+    val key: String,
+    val label: String,
+    val records: List<MobileRecord>,
+    val workOrders: List<MobileDocumentWorkOrderFolder>,
+)
+
+private data class MobileDocumentWorkOrderFolder(
+    val key: String,
+    val label: String,
+    val records: List<MobileRecord>,
+)
+
 @Composable
 private fun DocumentRegisterPreview(
     records: List<MobileRecord>,
     onOpenRecord: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
 ) {
-    var selectedGroup by remember(records) { mutableStateOf("all") }
-    val groups = remember(records) {
-        records
-            .groupBy { record -> mobileDocumentGroupKey(record) }
-            .map { (key, items) -> key to mobileDocumentGroupLabel(key, items.firstOrNull()) }
-            .sortedBy { (_, label) -> label }
-    }
-    val visibleRecords = remember(records, selectedGroup) {
-        if (selectedGroup == "all") records else records.filter { record -> mobileDocumentGroupKey(record) == selectedGroup }
+    var selectedCompanyKey by remember(records) { mutableStateOf("") }
+    var selectedLocationKey by remember(records) { mutableStateOf("") }
+    var selectedWorkOrderKey by remember(records) { mutableStateOf("") }
+    var showFoundation by remember(records) { mutableStateOf(false) }
+    val companies = remember(records) { buildMobileDocumentCompanyFolders(records) }
+    val selectedCompany = companies.firstOrNull { it.key == selectedCompanyKey }
+    val selectedLocation = selectedCompany?.locations?.firstOrNull { it.key == selectedLocationKey }
+    val selectedWorkOrder = selectedLocation?.workOrders?.firstOrNull { it.key == selectedWorkOrderKey }
+
+    LaunchedEffect(companies, selectedCompanyKey, selectedLocationKey, selectedWorkOrderKey, showFoundation) {
+        if (selectedCompanyKey.isNotBlank() && selectedCompany == null) {
+            selectedCompanyKey = ""
+            selectedLocationKey = ""
+            selectedWorkOrderKey = ""
+            showFoundation = false
+        } else if (selectedLocationKey.isNotBlank() && selectedLocation == null) {
+            selectedLocationKey = ""
+            selectedWorkOrderKey = ""
+        } else if (selectedWorkOrderKey.isNotBlank() && selectedWorkOrder == null) {
+            selectedWorkOrderKey = ""
+        } else if (showFoundation && selectedCompany?.foundationRecords.isNullOrEmpty()) {
+            showFoundation = false
+        }
     }
 
     Surface(
@@ -9934,51 +9969,203 @@ private fun DocumentRegisterPreview(
         ) {
             SectionHeader(
                 title = "Dokumenti",
-                subtitle = "${records.size} zapisa iz RN-a, osposobljavanja, procjena i modula",
-                icon = Icons.Rounded.Description,
+                subtitle = "${records.size} dokumenata po tvrtki, lokaciji i RN-u",
+                icon = Icons.Rounded.Folder,
             )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DocumentFilterChip(
-                    label = "Sve (${records.size})",
-                    selected = selectedGroup == "all",
-                    onClick = { selectedGroup = "all" },
-                )
-                groups.forEach { (key, label) ->
-                    val count = records.count { record -> mobileDocumentGroupKey(record) == key }
-                    DocumentFilterChip(
-                        label = "$label ($count)",
-                        selected = selectedGroup == key,
-                        onClick = { selectedGroup = key },
+            when {
+                selectedWorkOrder != null -> {
+                    DocumentRegisterBreadcrumb(
+                        title = selectedWorkOrder.label,
+                        subtitle = selectedLocation?.label.orEmpty(),
+                        onBack = { selectedWorkOrderKey = "" },
                     )
+                    selectedWorkOrder.records.forEach { record ->
+                        MobileDocumentLine(
+                            record = record,
+                            onOpenRecord = onOpenRecord,
+                            onDownloadDocument = onDownloadDocument,
+                        )
+                    }
+                }
+                selectedLocation != null -> {
+                    DocumentRegisterBreadcrumb(
+                        title = selectedLocation.label,
+                        subtitle = selectedCompany?.label.orEmpty(),
+                        onBack = { selectedLocationKey = "" },
+                    )
+                    selectedLocation.workOrders.forEach { workOrder ->
+                        DocumentFolderRow(
+                            icon = Icons.Rounded.Work,
+                            title = workOrder.label,
+                            subtitle = "${workOrder.records.size} dokumenata",
+                            count = workOrder.records.size,
+                            onClick = { selectedWorkOrderKey = workOrder.key },
+                        )
+                    }
+                }
+                selectedCompany != null && showFoundation -> {
+                    DocumentRegisterBreadcrumb(
+                        title = "Temeljna dokumentacija",
+                        subtitle = selectedCompany.label,
+                        onBack = { showFoundation = false },
+                    )
+                    selectedCompany.foundationRecords.forEach { record ->
+                        MobileDocumentLine(
+                            record = record,
+                            onOpenRecord = onOpenRecord,
+                            onDownloadDocument = onDownloadDocument,
+                        )
+                    }
+                }
+                selectedCompany != null -> {
+                    DocumentRegisterBreadcrumb(
+                        title = selectedCompany.label,
+                        subtitle = "${selectedCompany.locations.size} lokacija - ${selectedCompany.records.size} dokumenata",
+                        onBack = { selectedCompanyKey = "" },
+                    )
+                    DocumentFolderRow(
+                        icon = Icons.Rounded.Description,
+                        title = "Temeljna dokumentacija",
+                        subtitle = "Procjene rizika, pravilnici i ostali dokumenti tvrtke",
+                        count = selectedCompany.foundationRecords.size,
+                        enabled = selectedCompany.foundationRecords.isNotEmpty(),
+                        onClick = { showFoundation = true },
+                    )
+                    selectedCompany.locations.forEach { location ->
+                        val rnCount = location.workOrders.size
+                        DocumentFolderRow(
+                            icon = Icons.Rounded.LocationOn,
+                            title = location.label,
+                            subtitle = "$rnCount RN - ${location.records.size} dokumenata",
+                            count = location.records.size,
+                            onClick = { selectedLocationKey = location.key },
+                        )
+                    }
+                    if (selectedCompany.locations.isEmpty() && selectedCompany.foundationRecords.isEmpty()) {
+                        Text(
+                            "Nema lokacija ni temeljne dokumentacije za ovu tvrtku.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        )
+                    }
+                }
+                else -> {
+                    if (companies.isEmpty()) {
+                        Text(
+                            "Nema dokumenata za prikaz.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        )
+                    } else {
+                        companies.forEach { company ->
+                            val rnCount = company.locations.sumOf { it.workOrders.size }
+                            DocumentFolderRow(
+                                icon = Icons.Rounded.Business,
+                                title = company.label,
+                                subtitle = "${company.foundationRecords.size} temeljnih - ${company.locations.size} lokacija - $rnCount RN",
+                                count = company.records.size,
+                                onClick = { selectedCompanyKey = company.key },
+                            )
+                        }
+                    }
                 }
             }
+        }
+    }
+}
 
-            if (visibleRecords.isEmpty()) {
+@Composable
+private fun DocumentRegisterBreadcrumb(
+    title: String,
+    subtitle: String,
+    onBack: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.Rounded.ArrowBack, contentDescription = "Natrag")
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            if (subtitle.isNotBlank()) {
                 Text(
-                    "Nema dokumenata za ovaj filter.",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            } else {
-                visibleRecords.take(120).forEach { record ->
-                    MobileDocumentLine(
-                        record = record,
-                        onOpenRecord = onOpenRecord,
-                        onDownloadDocument = onDownloadDocument,
-                    )
-                }
-                if (visibleRecords.size > 120) {
-                    Text(
-                        "Prikazano je prvih 120 dokumenata. Koristi pretragu za uži popis.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentFolderRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    count: Int,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val alpha = if (enabled) 1f else 0.48f
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.44f else 0.26f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(15.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f * alpha),
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .padding(10.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f * alpha),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f * alpha),
+            ) {
+                Text(
+                    count.toString(),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                )
             }
         }
     }
@@ -10111,6 +10298,89 @@ private fun mobileDocumentCanDownload(record: MobileRecord): Boolean =
 
 private fun mobileDocumentSourceLabel(record: MobileRecord): String =
     record.meta["sourceLabel"].orEmpty().ifBlank { record.status.ifBlank { "Dokument" } }
+
+private fun normalizeMobileDocumentFolderKey(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace(Regex("[^a-z0-9]+"), "-")
+        .trim('-')
+
+private fun mobileDocumentCompanyLabel(record: MobileRecord): String =
+    record.meta["companyName"].orEmpty()
+        .ifBlank { record.subtitle.substringBefore(" - ").trim() }
+        .ifBlank { "Bez tvrtke" }
+
+private fun mobileDocumentCompanyKey(record: MobileRecord): String =
+    record.meta["companyId"].orEmpty()
+        .ifBlank { normalizeMobileDocumentFolderKey(mobileDocumentCompanyLabel(record)) }
+        .ifBlank { "bez-tvrtke" }
+
+private fun mobileDocumentIsWorkOrderRecord(record: MobileRecord): Boolean {
+    val sourceType = record.meta["sourceType"].orEmpty().lowercase(Locale.getDefault())
+    return sourceType.contains("work_order") ||
+        record.meta["workOrderNumber"].orEmpty().isNotBlank()
+}
+
+private fun mobileDocumentLocationLabel(record: MobileRecord): String =
+    record.meta["locationName"].orEmpty().ifBlank { "Bez lokacije" }
+
+private fun mobileDocumentLocationKey(record: MobileRecord): String =
+    listOf(
+        mobileDocumentCompanyKey(record),
+        record.meta["locationId"].orEmpty()
+            .ifBlank { normalizeMobileDocumentFolderKey(mobileDocumentLocationLabel(record)) }
+            .ifBlank { "bez-lokacije" },
+    ).joinToString(":")
+
+private fun mobileDocumentWorkOrderLabel(record: MobileRecord): String {
+    val number = record.meta["workOrderNumber"].orEmpty()
+    return if (number.isNotBlank()) "RN $number" else "Bez RN"
+}
+
+private fun mobileDocumentWorkOrderKey(record: MobileRecord): String =
+    listOf(
+        mobileDocumentLocationKey(record),
+        record.meta["workOrderId"].orEmpty()
+            .ifBlank { normalizeMobileDocumentFolderKey(record.meta["workOrderNumber"].orEmpty()) }
+            .ifBlank { "bez-rn" },
+    ).joinToString(":")
+
+private fun buildMobileDocumentCompanyFolders(records: List<MobileRecord>): List<MobileDocumentCompanyFolder> =
+    records
+        .groupBy { record -> mobileDocumentCompanyKey(record) }
+        .map { (companyKey, companyRecords) ->
+            val workOrderRecords = companyRecords.filter(::mobileDocumentIsWorkOrderRecord)
+            val locations = workOrderRecords
+                .groupBy { record -> mobileDocumentLocationKey(record) }
+                .map { (locationKey, locationRecords) ->
+                    val workOrders = locationRecords
+                        .groupBy { record -> mobileDocumentWorkOrderKey(record) }
+                        .map { (workOrderKey, workOrderRecordsForKey) ->
+                            MobileDocumentWorkOrderFolder(
+                                key = workOrderKey,
+                                label = workOrderRecordsForKey.firstOrNull()?.let(::mobileDocumentWorkOrderLabel).orEmpty().ifBlank { "Bez RN" },
+                                records = workOrderRecordsForKey.sortedByDescending { it.date },
+                            )
+                        }
+                        .sortedWith(compareBy<MobileDocumentWorkOrderFolder> { it.label == "Bez RN" }.thenByDescending { it.label })
+                    MobileDocumentLocationFolder(
+                        key = locationKey,
+                        label = locationRecords.firstOrNull()?.let(::mobileDocumentLocationLabel).orEmpty().ifBlank { "Bez lokacije" },
+                        records = locationRecords.sortedByDescending { it.date },
+                        workOrders = workOrders,
+                    )
+                }
+                .sortedWith(compareBy<MobileDocumentLocationFolder> { it.label == "Bez lokacije" }.thenBy { it.label.lowercase(Locale.getDefault()) })
+
+            MobileDocumentCompanyFolder(
+                key = companyKey,
+                label = companyRecords.firstOrNull()?.let(::mobileDocumentCompanyLabel).orEmpty().ifBlank { "Bez tvrtke" },
+                records = companyRecords.sortedByDescending { it.date },
+                foundationRecords = companyRecords.filterNot(::mobileDocumentIsWorkOrderRecord).sortedByDescending { it.date },
+                locations = locations,
+            )
+        }
+        .sortedWith(compareBy<MobileDocumentCompanyFolder> { it.label == "Bez tvrtke" }.thenBy { it.label.lowercase(Locale.getDefault()) })
 
 private fun mobileDocumentGroupKey(record: MobileRecord): String {
     val sourceType = record.meta["sourceType"].orEmpty().lowercase(Locale.getDefault())
