@@ -10505,13 +10505,6 @@ private fun TrainingRecordLine(
                 nextDeadline.takeIf { it.isNotBlank() }?.let { TrainingMiniChip(it, Color(0xFFB45309)) }
                 record.meta["expiredCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it isteklo", Color(0xFFDC2626)) }
                 record.meta["expiringCount"]?.takeIf { it != "0" }?.let { TrainingMiniChip("$it uskoro", Color(0xFFB45309)) }
-                val hasRiskAssessment = record.meta["riskAssessmentAvailable"].equals("true", ignoreCase = true)
-                if (hasRiskAssessment) {
-                    val riskLabel = record.meta["riskAssessmentNumber"]?.takeIf { it.isNotBlank() } ?: "Procjena rizika"
-                    TrainingMiniChip(riskLabel, Color(0xFF059669))
-                } else if (record.meta["riskAssessmentRequired"].equals("true", ignoreCase = true)) {
-                    TrainingMiniChip("Bez procjene rizika", Color(0xFFDC2626))
-                }
             }
 
             items.take(4).forEach { item ->
@@ -12423,26 +12416,6 @@ private fun TrainingRecordDetailSection(
 ) {
     val items = remember(record.meta["trainingItemsJson"]) { parseTrainingItems(record) }
     val documents = remember(record.meta["documentsJson"]) { parseTrainingDocuments(record) }
-    val hasRiskAssessment = record.meta["riskAssessmentAvailable"].equals("true", ignoreCase = true)
-
-    DetailSection("Procjena rizika") {
-        if (hasRiskAssessment) {
-            DetailRow(
-                Icons.Rounded.CheckCircle,
-                "Status",
-                listOf(
-                    record.meta["riskAssessmentNumber"].orEmpty().ifBlank { "Procjena rizika" },
-                    record.meta["riskAssessmentStatus"].orEmpty(),
-                    record.meta["riskAssessmentDate"].orEmpty().takeIf { it.isNotBlank() }?.let { date -> formatDateLabel(date).ifBlank { date } }.orEmpty(),
-                ).filter { it.isNotBlank() }.joinToString(" · "),
-            )
-            record.meta["riskAssessmentTitle"].orEmpty().takeIf { it.isNotBlank() }?.let { title ->
-                DetailRow(Icons.Rounded.Description, "Naziv", title)
-            }
-        } else {
-            DetailRow(Icons.Rounded.ErrorOutline, "Procjena rizika", "Nije pronađena za ovu osobu/tvrtku.")
-        }
-    }
 
     DetailSection("Osposobljavanja") {
         if (items.isEmpty()) {
