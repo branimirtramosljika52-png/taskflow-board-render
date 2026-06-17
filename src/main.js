@@ -6904,6 +6904,7 @@ const RISK_ASSESSMENT_FIELD_PLACEHOLDERS = Object.freeze([
   { token: "{{BROJ_ZAPISNIKA}}", label: "Broj zapisnika (RN + šifra usluge)" },
   { token: "{{DATUM_POCETKA_PROCJENE}}", label: "Datum početka rada na procjeni" },
   { token: "{{DATUM_ZAVRSETKA_PROCJENE}}", label: "Datum završetka rada na procjeni" },
+  { token: "{{RISK_ZNR_AUTHORIZATION_DOCUMENT}}", label: "Naziv priloga ovlaštenja izrađivača" },
   { token: "{{RISK_BASIC_DATA}}", label: "Velika tablica osnovnih podataka" },
 ]);
 
@@ -135257,17 +135258,20 @@ function renderRiskAssessmentAuthorizationDocument() {
   syncRiskAssessmentSafetyAuthorizationDocument();
   const source = getRiskAssessmentSafetyAuthorizationSource();
   const document = normalizeRiskAssessmentAuthorizationDocument(riskAssessmentZnrAuthorizationDocumentDraft);
+  const canManage = getCanManageRiskAssessments();
   riskAssessmentZnrAuthorizationDocumentDraft = document;
   if (riskAssessmentZnrAuthorizationFileMeta) {
     riskAssessmentZnrAuthorizationFileMeta.textContent = document?.fileName
-      ? `${document.fileName}${document.fileSize ? ` · ${formatFileSize(document.fileSize)}` : ""}${source?.authorization?.title ? ` · Safety Authorization: ${source.authorization.title}` : ""}`
-      : "Nema PDF-a u Safety Authorization za ovlaštenje za poslove zaštite na radu.";
+      ? `${document.fileName}${document.fileSize ? ` · ${formatFileSize(document.fileSize)}` : ""}${source?.authorization?.title ? ` · Registar ovlaštenja: ${source.authorization.title}` : ""}`
+      : "Nema dodanog priloga ovlaštenja.";
   }
   if (riskAssessmentZnrAuthorizationUploadButton) {
-    riskAssessmentZnrAuthorizationUploadButton.hidden = true;
+    riskAssessmentZnrAuthorizationUploadButton.hidden = !canManage;
+    riskAssessmentZnrAuthorizationUploadButton.disabled = !canManage;
   }
   if (riskAssessmentZnrAuthorizationRemoveButton) {
-    riskAssessmentZnrAuthorizationRemoveButton.hidden = true;
+    riskAssessmentZnrAuthorizationRemoveButton.hidden = !canManage || !riskAssessmentZnrAuthorizationDocumentDraft;
+    riskAssessmentZnrAuthorizationRemoveButton.disabled = !canManage || !riskAssessmentZnrAuthorizationDocumentDraft;
   }
 }
 
@@ -136151,10 +136155,28 @@ function setRiskAssessmentDockActive(blockKey = "basic") {
   });
 }
 
+function syncRiskAssessmentEditorActionVisibility() {
+  const isOverview = riskAssessmentActiveBlock === "overview";
+  [
+    riskAssessmentExportDocxButton,
+    riskAssessmentExportPdfButton,
+    riskAssessmentSendSignatureButton,
+  ].forEach((button) => {
+    if (button) {
+      button.hidden = !isOverview;
+    }
+  });
+  if (riskAssessmentResetButton) {
+    riskAssessmentResetButton.hidden = true;
+  }
+  riskAssessmentEditorPanel?.classList.toggle("is-overview-active", isOverview);
+}
+
 function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false } = {}) {
   const blocks = getRiskAssessmentEditorBlocks();
   if (!blocks.length) {
     setRiskAssessmentDockActive("basic");
+    syncRiskAssessmentEditorActionVisibility();
     return;
   }
   const knownKeys = new Set(blocks.map((block) => block.dataset.riskAssessmentBlock).filter(Boolean));
@@ -136181,6 +136203,7 @@ function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false 
       riskAssessmentEditorBody.scrollTop = 0;
     });
   }
+  syncRiskAssessmentEditorActionVisibility();
   scheduleRiskAssessmentJobAnalysisShellModeUpdate();
 }
 
@@ -145150,11 +145173,14 @@ function createRiskAssessmentAuthorizationExportBox(employer = {}) {
   if (!employer.hasZnrAuthorization) {
     return null;
   }
+  const authorizationDocument = normalizeRiskAssessmentAuthorizationDocument(employer.znrAuthorizationDocument);
   const details = employer.znrAuthorizationCompanyDetails
     || employer.znrExperts
     || "Ovlaštenje izrađivača procjene rizika je dodano u prilogu procjene.";
   return createRiskAssessmentBasicDataBox("Ovlaštenje izrađivača procjene rizika:", [
-    "Prilog: ovlaštenje za obavljanje poslova zaštite na radu.",
+    authorizationDocument?.fileName
+      ? `Prilog: ${authorizationDocument.fileName}.`
+      : "Prilog: ovlaštenje za obavljanje poslova zaštite na radu.",
     details,
   ], { splitItems: false });
 }
@@ -146577,6 +146603,7 @@ function buildRiskAssessmentExportPlaceholders() {
     RISK_EMPLOYEE_COUNT: employer.employeeCount || "",
     RISK_ZNR_AUTHORIZATION: employer.hasZnrAuthorization ? "Da" : "Ne",
     RISK_ZNR_AUTHORIZATION_COMPANY_DETAILS: employer.znrAuthorizationCompanyDetails || "",
+    RISK_ZNR_AUTHORIZATION_DOCUMENT: normalizeRiskAssessmentAuthorizationDocument(employer.znrAuthorizationDocument)?.fileName || "",
     RISK_LOCATION: locationName,
     RISK_WORK_ORDER: riskAssessmentWorkOrderInput?.selectedOptions?.[0]?.textContent?.trim() || "",
     RISK_STATUS: riskAssessmentStatusInput?.selectedOptions?.[0]?.textContent?.trim() || "",
@@ -153022,7 +153049,7 @@ function syncRiskAssessmentEditorAccess() {
     riskAssessmentSaveButton.textContent = riskAssessmentServerAutosaveBusy ? "Spremam..." : "Spremi";
   }
   if (riskAssessmentResetButton) {
-    riskAssessmentResetButton.hidden = !canManage;
+    riskAssessmentResetButton.hidden = true;
   }
   if (riskAssessmentAddMeasureButton) {
     riskAssessmentAddMeasureButton.hidden = !canManage;
@@ -153050,10 +153077,12 @@ function syncRiskAssessmentEditorAccess() {
     riskAssessmentAddCompanyCollaboratorButton.hidden = !canManage;
   }
   if (riskAssessmentZnrAuthorizationUploadButton) {
-    riskAssessmentZnrAuthorizationUploadButton.hidden = true;
+    riskAssessmentZnrAuthorizationUploadButton.hidden = !canManage;
+    riskAssessmentZnrAuthorizationUploadButton.disabled = !canManage;
   }
   if (riskAssessmentZnrAuthorizationRemoveButton) {
-    riskAssessmentZnrAuthorizationRemoveButton.hidden = true;
+    riskAssessmentZnrAuthorizationRemoveButton.hidden = !canManage || !riskAssessmentZnrAuthorizationDocumentDraft;
+    riskAssessmentZnrAuthorizationRemoveButton.disabled = !canManage || !riskAssessmentZnrAuthorizationDocumentDraft;
   }
   if (riskAssessmentAddWorkplaceJobButton) {
     riskAssessmentAddWorkplaceJobButton.hidden = !canManage;
@@ -153124,6 +153153,7 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentEditorPanel) {
     riskAssessmentEditorPanel.classList.toggle("is-client-note-mode", !canManage && canComment);
   }
+  syncRiskAssessmentEditorActionVisibility();
   syncRiskAssessmentDocumentExportControls();
 }
 

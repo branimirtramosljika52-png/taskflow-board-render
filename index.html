@@ -5241,6 +5241,17 @@
                             <input id="risk-assessment-znr-authorization" type="checkbox" />
                             <span>Dodaj ovlaštenje izrađivača procjene</span>
                           </label>
+                          <div class="risk-assessment-authorization-document">
+                            <input id="risk-assessment-znr-authorization-file" type="file" accept=".pdf,.doc,.docx,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
+                            <div>
+                              <strong>Prilog ovlaštenja</strong>
+                              <span id="risk-assessment-znr-authorization-file-meta">Nema dodanog priloga.</span>
+                            </div>
+                            <div class="risk-assessment-file-control">
+                              <button id="risk-assessment-znr-authorization-upload" type="button" class="ghost-button">Dodaj prilog</button>
+                              <button id="risk-assessment-znr-authorization-remove" type="button" class="ghost-button card-danger">Makni</button>
+                            </div>
+                          </div>
                           <label class="field field-span-full risk-assessment-authorization-company-field">
                             <span>Podaci ovlaštene firme</span>
                             <textarea id="risk-assessment-znr-authorization-company-details" rows="3" data-risk-autogrow placeholder="npr. ADRIA GRUPA d.o.o., OIB: 06637660960, sjedište: Heinzelova 53a, 10000 Zagreb"></textarea>
