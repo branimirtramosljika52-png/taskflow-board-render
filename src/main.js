@@ -6796,6 +6796,7 @@ const riskAssessmentJobCatalogAiImportButton = document.querySelector("#risk-ass
 const riskAssessmentJobCatalogAiFeedback = document.querySelector("#risk-assessment-job-catalog-ai-feedback");
 const riskAssessmentOpenNewJobButton = document.querySelector("#risk-assessment-open-new-job");
 const riskAssessmentImportJobsButton = document.querySelector("#risk-assessment-import-jobs");
+const riskAssessmentManualScopePanel = document.querySelector("#risk-assessment-manual-scope");
 const riskAssessmentManualHandlingList = document.querySelector("#risk-assessment-manual-handling");
 const riskAssessmentAddManualHandlingButton = document.querySelector("#risk-assessment-add-manual-handling");
 const riskAssessmentChemicalsList = document.querySelector("#risk-assessment-chemicals");
@@ -6865,6 +6866,7 @@ let riskAssessmentMeasureDrafts = [];
 let riskAssessmentOrganizationUnitDrafts = [];
 let riskAssessmentJobDrafts = [];
 let riskAssessmentRiskTemplateDrafts = [];
+let riskAssessmentManualHandlingScopeDraft = { unitIds: [], jobIds: [] };
 let riskAssessmentManualHandlingDrafts = [];
 let riskAssessmentChemicalDrafts = [];
 let riskAssessmentBiologicalRiskDrafts = [];
@@ -6939,7 +6941,7 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
   { key: "chemicals", token: "{{RISK_CHEMICALS}}", label: "Kemijske štetnosti", defaultTitle: "Kemijske štetnosti i sigurnosno-tehnički listovi" },
   { key: "biological", token: "{{RISK_BIOLOGICAL}}", label: "Biološke štetnosti", defaultTitle: "Biološke štetnosti" },
   { key: "ppe", token: "{{RISK_PPE}}", label: "Osobna zaštitna oprema", defaultTitle: "Osobna zaštitna oprema" },
-  { key: "manual_handling", token: "{{RISK_MANUAL_HANDLING}}", label: "Ručno prenošenje tereta", defaultTitle: "Ručno prenošenje tereta" },
+  { key: "manual_handling", token: "{{RISK_MANUAL_HANDLING}}", label: "IOR obrasci", defaultTitle: "Izračun opterećenosti radnika pri ručnom rukovanju teretom" },
   { key: "overview", token: "{{RISK_OVERVIEW}}", label: "Sažetak procjene", defaultTitle: "Sažetak procjene" },
   { key: "signatures", token: "{{RISK_SIGNATURES}}", label: "Izrada, suradnici i potpisi", defaultTitle: "Izrada procjene i potpisi" },
 ]);
@@ -6986,7 +6988,7 @@ const RISK_ASSESSMENT_TEMPLATE_BLOCKS = Object.freeze([
   { block: "jobs", label: "Analiza radnih mjesta", sectionKeys: ["jobs", "ppe"], tokenLabel: "{{RISK_JOBS}} + {{RISK_PPE}}" },
   { block: "chemicals", label: "Kemijske štetnosti", sectionKeys: ["chemicals"], tokenLabel: "{{RISK_CHEMICALS}}" },
   { block: "biological", label: "Biološke štetnosti", sectionKeys: ["biological"], tokenLabel: "{{RISK_BIOLOGICAL}}" },
-  { block: "manual-handling", label: "Ručno prenošenje tereta", sectionKeys: ["manual_handling"], tokenLabel: "{{RISK_MANUAL_HANDLING}}" },
+  { block: "manual-handling", label: "IOR obrasci", sectionKeys: ["manual_handling"], tokenLabel: "{{RISK_MANUAL_HANDLING}}" },
   { block: "overview", label: "Pregled", sectionKeys: ["overview", "signatures"], tokenLabel: "{{RISK_OVERVIEW}} + {{RISK_SIGNATURES}}" },
 ]);
 const RISK_ASSESSMENT_TEMPLATE_BLOCK_BY_KEY = new Map(
@@ -131323,6 +131325,8 @@ riskAssessmentAddManualHandlingButton?.addEventListener("click", () => {
   scheduleRiskAssessmentDraftAutosave();
 });
 
+riskAssessmentManualScopePanel?.addEventListener("click", handleRiskAssessmentManualScopeClick);
+
 riskAssessmentAddChemicalButton?.addEventListener("click", () => {
   riskAssessmentChemicalDrafts.push(createRiskAssessmentChemicalDraft({ source: "Ručno" }));
   renderRiskAssessmentChemicals();
@@ -138277,6 +138281,7 @@ function resetRiskAssessmentForm() {
   riskAssessmentOpenOrganizationUnitIds = new Set();
   riskAssessmentJobCatalogAiSuggestions = [];
   riskAssessmentRiskTemplateDrafts = [];
+  riskAssessmentManualHandlingScopeDraft = { unitIds: [], jobIds: [] };
   riskAssessmentManualHandlingDrafts = [];
   riskAssessmentChemicalDrafts = [];
   riskAssessmentBiologicalRiskDrafts = [];
@@ -138340,6 +138345,7 @@ function resetRiskAssessmentForm() {
   renderRiskAssessmentMeasures();
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
+  renderRiskAssessmentManualScope();
   renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
   renderRiskAssessmentBiologicalRisks();
@@ -138401,6 +138407,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   }));
   riskAssessmentChemicalDrafts = (item.chemicals ?? []).map((entry) => createRiskAssessmentChemicalDraft(entry));
   riskAssessmentBiologicalRiskDrafts = (item.biologicalRisks ?? []).map((entry) => createRiskAssessmentBiologicalRiskDraft(entry));
+  riskAssessmentManualHandlingScopeDraft = createRiskAssessmentManualScopeDraft(item.manualHandlingScope);
   riskAssessmentManualHandlingDrafts = (item.manualHandling ?? item.manualHandlingItems ?? []).map((entry) => createRiskAssessmentManualHandlingDraft(entry));
   riskAssessmentChemicalSearchResultsDraft = [];
   riskAssessmentLastStlImportSummary = null;
@@ -138434,6 +138441,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   renderRiskAssessmentMeasures();
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
+  renderRiskAssessmentManualScope();
   renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
   renderRiskAssessmentBiologicalRisks();
@@ -146920,70 +146928,166 @@ function buildRiskAssessmentStructureExportBlocks() {
   if (!riskAssessmentOrganizationUnitDrafts.length) {
     return [createRiskAssessmentExportParagraph("Organizacijske jedinice nisu dodane.")];
   }
-  const columns = [
-    { id: "unit", label: "Organizacijska jedinica", width: 190 },
-    { id: "parent", label: "Nadređena jedinica", width: 150 },
-    { id: "type", label: "Tip", width: 120 },
-    { id: "workers", label: "Broj radnika", width: 80 },
-    { id: "responsible", label: "Odgovorna osoba", width: 140 },
-    { id: "jobs", label: "Povezana radna mjesta", width: 230 },
+  const hierarchyEntries = buildRiskAssessmentOrganizationHierarchyEntries();
+  const totalUnits = riskAssessmentOrganizationUnitDrafts.length;
+  const workplaceCount = riskAssessmentOrganizationUnitDrafts
+    .filter((unit) => normalizeRiskAssessmentUnitType(unit.type) === "workplace")
+    .length;
+  const linkedJobCount = hierarchyEntries.reduce((sum, entry) => sum + entry.linkedJobs.length, 0);
+  const summaryColumns = [
+    { id: "label", label: "Pregled", width: 230 },
+    { id: "value", label: "Ukupno", width: 90 },
+    { id: "note", label: "Napomena", width: 470 },
   ];
-  const unitById = new Map(riskAssessmentOrganizationUnitDrafts.map((unit) => [String(unit.id), unit]));
+  const summaryRows = [
+    createRiskAssessmentExportRow("summary-head", summaryColumns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    createRiskAssessmentExportRow("summary-units", [
+      createRiskAssessmentExportCell("Organizacijske stavke", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(String(totalUnits), { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("Hijerarhija je prikazana po razinama i rednim oznakama.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("summary-workplaces", [
+      createRiskAssessmentExportCell("Radna mjesta", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(String(workplaceCount), { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("Radna mjesta su završne stavke strukture i povezuju se s analizom poslova.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("summary-jobs", [
+      createRiskAssessmentExportCell("Povezane analize poslova", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(String(linkedJobCount), { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("Povezanost pokazuje gdje se pojedini posao nalazi u organizaciji.", { fontSize: 8 }),
+    ]),
+  ];
+  const columns = [
+    { id: "level", label: "Razina", width: 70 },
+    { id: "unit", label: "Hijerarhija / organizacijska stavka", width: 270 },
+    { id: "type", label: "Tip", width: 105 },
+    { id: "workers", label: "Radnici", width: 80 },
+    { id: "responsible", label: "Odgovorna osoba", width: 130 },
+    { id: "jobs", label: "Povezana radna mjesta", width: 210 },
+  ];
   const rows = [
     createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
-    ...riskAssessmentOrganizationUnitDrafts.map((unit, index) => {
-      const linkedJobs = riskAssessmentJobDrafts
-        .filter((job) => String(job.organizationUnitId || "") === String(unit.id || ""))
-        .map((job) => job.jobTitle)
-        .filter(Boolean);
+    ...hierarchyEntries.map((entry, index) => {
+      const unit = entry.unit;
+      const type = normalizeRiskAssessmentUnitType(unit.type);
+      const isWorkplace = type === "workplace";
+      const fillColor = entry.depth === 0
+        ? "#EFF6FF"
+        : isWorkplace
+          ? "#ECFDF5"
+          : "#F5F3FF";
+      const unitName = unit.name || (isWorkplace ? "Radno mjesto" : "Organizacijska jedinica");
+      const path = entry.path || unitName;
+      const hierarchyText = [
+        `${entry.numbering} ${unitName}`,
+        entry.parentPath ? `Nadređeno: ${entry.parentPath}` : "Glavna razina",
+        path !== unitName ? `Putanja: ${path}` : "",
+        unit.shortDescription || unit.description || "",
+      ].filter(Boolean);
       return createRiskAssessmentExportRow(`unit-${index + 1}`, [
-        createRiskAssessmentExportCell(unit.name || "Organizacijska jedinica", { fontSize: 8, bold: true }),
-        createRiskAssessmentExportCell(unitById.get(String(unit.parentId || ""))?.name || "", { fontSize: 8 }),
-        createRiskAssessmentExportCell(getRiskAssessmentUnitTypeLabel(unit.type), { fontSize: 8 }),
+        createRiskAssessmentExportCell(`L${entry.depth + 1}`, { fontSize: 8, align: "center", bold: true, fillColor }),
+        createRiskAssessmentExportCell(hierarchyText, { fontSize: 8, bold: true, fillColor }),
+        createRiskAssessmentExportCell(getRiskAssessmentUnitTypeLabel(unit.type), { fontSize: 8, fillColor }),
         createRiskAssessmentExportCell(formatRiskAssessmentWorkerCount(unit), { fontSize: 8, align: "center" }),
         createRiskAssessmentExportCell(unit.responsiblePerson, { fontSize: 8 }),
-        createRiskAssessmentExportCell(linkedJobs, { fontSize: 8 }),
+        createRiskAssessmentExportCell(entry.linkedJobs.length ? entry.linkedJobs.map((job) => job.jobTitle || "Radno mjesto") : "-", { fontSize: 8 }),
       ]);
     }),
   ];
-  return [createRiskAssessmentExportTable(columns, rows)];
+  return [
+    createRiskAssessmentExportTable(summaryColumns, summaryRows),
+    createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true }),
+  ];
 }
 
-function buildRiskAssessmentManualResultScaleTable() {
+function buildRiskAssessmentManualResultScaleTable(method = "load") {
+  const isRepetitive = method === "repetitive";
   const columns = [
     { id: "level", label: "Razina rizika", width: 80 },
     { id: "score", label: "Ukupno opterećenje", width: 130 },
     { id: "description", label: "Obrazloženje utvrđenih vrijednosti", width: 520 },
   ];
+  const values = isRepetitive
+    ? [
+      ["1", "manje od 20", "Niska razina rizika: ne postoji rizik od preopterećenja radnika i oštećenja zdravlja."],
+      ["2", "20 do 44", "Povećana razina rizika: postoji mogućnost od preopterećenja manje otpornih radnika."],
+      ["3", "45 do 65", "Visoka razina rizika: postoji opasnost od preopterećenja svih radnika uz vjerojatan nastanak ozljeda i bolesti sustava za kretanje."],
+      ["4", "više od 65", "Vrlo visoka razina rizika: nužno je preoblikovanje mjesta rada uz opremu i promjenu metode ili organizacije rada."],
+    ]
+    : [
+      ["1", "< 10", "Nisko opterećenje: ne postoji rizik od fizičkog preopterećenja."],
+      ["2", "10 do < 25", "Povećano opterećenje: prekomjerno opterećenje je moguće kod manje otpornih radnika; preporučuje se preoblikovanje rada."],
+      ["3", "25 do < 50", "Veliko opterećenje: prekomjerno opterećenje je moguće kod svih radnika; preporučuje se preoblikovanje radnog mjesta."],
+      ["4", "> 50", "Vrlo veliko opterećenje: velika mogućnost nastanka prekomjernog opterećenja; nužno je preoblikovanje mjesta rada."],
+    ];
   const rows = [
     createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
-    createRiskAssessmentExportRow("level-1", [
-      createRiskAssessmentExportCell("1", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("< 10", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("Nisko opterećenje: ne postoji rizik od fizičkog preopterećenja.", { fontSize: 8 }),
-    ]),
-    createRiskAssessmentExportRow("level-2", [
-      createRiskAssessmentExportCell("2", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("10 do < 25", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("Povećano opterećenje: prekomjerno opterećenje je moguće kod manje otpornih radnika; preporučuje se preoblikovanje rada.", { fontSize: 8 }),
-    ]),
-    createRiskAssessmentExportRow("level-3", [
-      createRiskAssessmentExportCell("3", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("25 do < 50", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("Veliko opterećenje: prekomjerno opterećenje je moguće kod svih radnika; preporučuje se preoblikovanje radnog mjesta.", { fontSize: 8 }),
-    ]),
-    createRiskAssessmentExportRow("level-4", [
-      createRiskAssessmentExportCell("4", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("> 50", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell("Vrlo veliko opterećenje: velika mogućnost nastanka prekomjernog opterećenja; nužno je preoblikovanje mjesta rada.", { fontSize: 8 }),
-    ]),
+    ...values.map((row, index) => createRiskAssessmentExportRow(`level-${index + 1}`, [
+      createRiskAssessmentExportCell(row[0], { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(row[1], { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(row[2], { fontSize: 8 }),
+    ])),
   ];
   return createRiskAssessmentExportTable(columns, rows);
 }
 
+function buildRiskAssessmentManualScopeExportBlocks() {
+  const summary = getRiskAssessmentManualScopeSummary();
+  const columns = [
+    { id: "type", label: "Opseg", width: 170 },
+    { id: "value", label: "Odabir", width: 560 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    createRiskAssessmentExportRow("units", [
+      createRiskAssessmentExportCell("Organizacijske jedinice", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(summary.unitNames.length ? summary.unitNames.join("\n") : "-", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("jobs", [
+      createRiskAssessmentExportCell("Radna mjesta", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(summary.jobNames.length ? summary.jobNames.join("\n") : `${summary.count} radnih mjesta uključeno kroz organizaciju`, { fontSize: 8 }),
+    ]),
+  ];
+  return [
+    createRiskAssessmentExportHeading("Opseg primjene IOR obrazaca", 3),
+    createRiskAssessmentExportParagraph("Na početku se određuje na koja se radna mjesta ili organizacijske jedinice odnosi izračun opterećenja. Pojedini izračuni ispod koriste taj opseg, a ne opis posla kao izvor vezivanja."),
+    createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true }),
+  ];
+}
+
+function buildRiskAssessmentManualVisualFlowTable(entry = {}, index = 0) {
+  const calculation = calculateRiskAssessmentManualHandling(entry);
+  const method = getRiskAssessmentManualMethodOption(entry.methodType);
+  const columns = [
+    { id: "scope", label: "1. Opseg", width: 180 },
+    { id: "values", label: "2. Vrijednosti", width: 220 },
+    { id: "formula", label: "3. Izračun", width: 180 },
+    { id: "result", label: "4. Ocjena", width: 180 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8, fillColor: "#DBEAFE" })), true),
+    createRiskAssessmentExportRow(`manual-flow-${index}`, [
+      createRiskAssessmentExportCell(getRiskAssessmentManualScopeSummary().text, { fontSize: 8, card: { fillColor: "#EFF6FF", borderColor: "#93C5FD", textColor: "#1E3A8A" } }),
+      createRiskAssessmentExportCell([
+        method.label,
+        calculation.operationLabel,
+        calculation.workerGenderLabel,
+        getRiskAssessmentManualWorkloadSummary(calculation),
+      ].filter(Boolean).join("\n"), { fontSize: 8, card: { fillColor: "#F0FDFA", borderColor: "#99F6E4", textColor: "#134E4A" } }),
+      createRiskAssessmentExportCell([
+        calculation.formulaText || method.formula,
+        calculation.formulaValueText || "",
+        getRiskAssessmentManualFactorSummary(calculation),
+      ].filter(Boolean).join("\n"), { fontSize: 8, bold: true, card: { fillColor: "#FFF7ED", borderColor: "#FDBA74", textColor: "#7C2D12" } }),
+      createRiskAssessmentExportCell(`${calculation.level}\n${calculation.score} bodova`, { fontSize: 8, bold: true, card: { fillColor: "#F0FDF4", borderColor: "#86EFAC", textColor: "#14532D" } }),
+    ]),
+  ];
+  return createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true });
+}
+
 function buildRiskAssessmentManualScoreTable(entry = {}) {
   const calculation = calculateRiskAssessmentManualHandling(entry);
-  const job = riskAssessmentJobDrafts.find((item) => String(item.id) === String(entry.jobId));
+  const method = normalizeRiskAssessmentManualMethod(entry.methodType);
   const columns = [
     { id: "factor", label: "Element procjene", width: 220 },
     { id: "value", label: "Unos / odabir", width: 260 },
@@ -146994,7 +147098,7 @@ function buildRiskAssessmentManualScoreTable(entry = {}) {
     createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
     createRiskAssessmentExportRow("activity", [
       createRiskAssessmentExportCell("Aktivnost", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
-      createRiskAssessmentExportCell([entry.activity || "Aktivnost", job?.jobTitle].filter(Boolean).join("\n"), { fontSize: 8 }),
+      createRiskAssessmentExportCell([entry.activity || "Aktivnost", calculation.methodLabel].filter(Boolean).join("\n"), { fontSize: 8 }),
       createRiskAssessmentExportCell("", { fontSize: 8, align: "center" }),
       createRiskAssessmentExportCell(entry.note, { fontSize: 8 }),
     ]),
@@ -147010,26 +147114,39 @@ function buildRiskAssessmentManualScoreTable(entry = {}) {
       createRiskAssessmentExportCell("T1 se utvrđuje prema broju ponavljanja, trajanju držanja ili udaljenosti prenošenja.", { fontSize: 8 }),
     ]),
     createRiskAssessmentExportRow("t2", [
-      createRiskAssessmentExportCell("T2 - efektivna težina tereta", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
-      createRiskAssessmentExportCell([calculation.workerGenderLabel, calculation.mass ? `${calculation.mass} kg` : ""].filter(Boolean).join("\n"), { fontSize: 8 }),
+      createRiskAssessmentExportCell(method === "repetitive" ? "T2 - broj ponavljanja" : "T2 - teret / masa", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell([
+        method === "repetitive" ? `${calculation.repetitionsPerShift || 0} pokreta/smjenu` : "",
+        method === "push_pull" ? calculation.transportLabel : "",
+        calculation.workerGenderLabel,
+        calculation.mass ? `${calculation.mass} kg` : "",
+      ].filter(Boolean).join("\n"), { fontSize: 8 }),
       createRiskAssessmentExportCell(String(calculation.t2Points || 0), { fontSize: 8, align: "center", bold: true }),
-      createRiskAssessmentExportCell("Bodovi ovise o spolu radnika i masi tereta.", { fontSize: 8 }),
+      createRiskAssessmentExportCell(method === "repetitive" ? "Bodovi ovise o broju ponavljajućih pokreta tijekom smjene." : "Bodovi ovise o spolu, masi tereta i načinu rukovanja.", { fontSize: 8 }),
     ]),
     createRiskAssessmentExportRow("t3", [
-      createRiskAssessmentExportCell("T3 - položaj tijela", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
-      createRiskAssessmentExportCell(calculation.postureLabel, { fontSize: 8 }),
+      createRiskAssessmentExportCell(method === "repetitive" ? "T3 - potrebna snaga" : (method === "push_pull" ? "T3 - preciznost i brzina" : "T3 - položaj tijela"), { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(method === "repetitive" ? calculation.forceLabel : (calculation.precisionLabel || calculation.postureLabel), { fontSize: 8 }),
       createRiskAssessmentExportCell(String(calculation.t3Points || 0), { fontSize: 8, align: "center", bold: true }),
-      createRiskAssessmentExportCell("Uzima se najnepovoljniji tipični položaj tijela tijekom rada.", { fontSize: 8 }),
+      createRiskAssessmentExportCell(method === "push_pull" ? "Procjenjuje se preciznost pozicioniranja i brzina kretanja." : "Uzima se tipično opterećenje tijekom rada.", { fontSize: 8 }),
     ]),
     createRiskAssessmentExportRow("t4", [
-      createRiskAssessmentExportCell("T4 - radni uvjeti", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
-      createRiskAssessmentExportCell(calculation.workConditionLabel, { fontSize: 8 }),
+      createRiskAssessmentExportCell(method === "repetitive" ? "T4 - položaj tijela po dijelovima" : (method === "push_pull" ? "T4 - položaj tijela" : "T4 - radni uvjeti"), { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(method === "repetitive" ? (calculation.bodyPartLabels || []).join("\n") : (method === "push_pull" ? calculation.postureLabel : calculation.workConditionLabel), { fontSize: 8 }),
       createRiskAssessmentExportCell(String(calculation.t4Points || 0), { fontSize: 8, align: "center", bold: true }),
-      createRiskAssessmentExportCell("Ocjenjuju se uvjeti koji prevladavaju u vrijeme ocjenjivanja.", { fontSize: 8 }),
+      createRiskAssessmentExportCell(method === "repetitive" ? "Zbroj bodova po dijelovima tijela." : "Ocjenjuju se uvjeti koji prevladavaju u vrijeme ocjenjivanja.", { fontSize: 8 }),
     ]),
+    ...(method === "push_pull" ? [
+      createRiskAssessmentExportRow("t5", [
+        createRiskAssessmentExportCell("T5 - radni uvjeti", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+        createRiskAssessmentExportCell(calculation.workConditionLabel, { fontSize: 8 }),
+        createRiskAssessmentExportCell(String(calculation.t5Points || 0), { fontSize: 8, align: "center", bold: true }),
+        createRiskAssessmentExportCell("Za povlačenje i guranje dodatno se boduju površine, kosine, prepreke i pokretljivost kotača/valjaka.", { fontSize: 8 }),
+      ]),
+    ] : []),
     createRiskAssessmentExportRow("result", [
       createRiskAssessmentExportCell("Rezultat", { fontSize: 8, bold: true, fillColor: "#E5E7EB" }),
-      createRiskAssessmentExportCell(`T1 x (T2 + T3 + T4) = ${calculation.t1Points} x (${calculation.t2Points} + ${calculation.t3Points} + ${calculation.t4Points})`, { fontSize: 8, bold: true }),
+      createRiskAssessmentExportCell(`${calculation.formulaText}\n${calculation.formulaValueText}`, { fontSize: 8, bold: true }),
       createRiskAssessmentExportCell(String(calculation.score || 0), { fontSize: 8, align: "center", bold: true }),
       createRiskAssessmentExportCell(`${calculation.level}\n${entry.existingMeasures || calculation.recommendation}`, { fontSize: 8, bold: true }),
     ]),
@@ -147038,6 +147155,23 @@ function buildRiskAssessmentManualScoreTable(entry = {}) {
 }
 
 function buildRiskAssessmentManualMethodTables() {
+  const flowColumns = [
+    { id: "method", label: "IOR metoda", width: 220 },
+    { id: "formula", label: "Formula", width: 180 },
+    { id: "use", label: "Kada se koristi", width: 360 },
+  ];
+  const flowRows = [
+    createRiskAssessmentExportRow("head", flowColumns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...RISK_ASSESSMENT_MANUAL_METHOD_OPTIONS.map((method) => createRiskAssessmentExportRow(`method-${method.value}`, [
+      createRiskAssessmentExportCell(method.label, { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(method.formula, { fontSize: 8, align: "center", bold: true }),
+      createRiskAssessmentExportCell(method.value === "load"
+        ? "Ručno podizanje, držanje, premještanje ili prenošenje tereta."
+        : method.value === "push_pull"
+          ? "Povlačenje, guranje, valjanje ili premještanje tereta pomoću transportnih sredstava."
+          : "Zadaci s velikim brojem ponavljajućih pokreta i opterećenjem dijelova tijela.", { fontSize: 8 }),
+    ])),
+  ];
   const t2Columns = [
     { id: "male", label: "Efektivna težina tereta za muškarce", width: 210 },
     { id: "malePoints", label: "Vrijednost u bodovima (T2)", width: 120 },
@@ -147081,21 +147215,96 @@ function buildRiskAssessmentManualMethodTables() {
 
   return [
     createRiskAssessmentExportHeading("Metoda bodovanja", 4),
+    createRiskAssessmentExportTable(flowColumns, flowRows),
+    createRiskAssessmentExportHeading("Podizanje, držanje i prenošenje", 5),
     createRiskAssessmentExportTable(t2Columns, t2Rows),
     createRiskAssessmentExportTable(t3Columns, t3Rows),
     createRiskAssessmentExportTable(t4Columns, t4Rows),
     createRiskAssessmentManualResultScaleTable(),
+    createRiskAssessmentExportHeading("Povlačenje i guranje", 5),
+    createRiskAssessmentExportTable(
+      [
+        { id: "factor", label: "Element", width: 220 },
+        { id: "value", label: "Vrijednosti", width: 410 },
+        { id: "points", label: "Bodovi", width: 90 },
+      ],
+      [
+        createRiskAssessmentExportRow("head", ["Element", "Vrijednosti", "Bodovi"].map((cell) => createRiskAssessmentExportHeaderCell(cell, { fontSize: 8 })), true),
+        createRiskAssessmentExportRow("pp-t1", [
+          createRiskAssessmentExportCell("T1 - vrijeme / udaljenost", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell("Kratke udaljenosti: broj ponavljanja. Duže udaljenosti: ukupna udaljenost tijekom dana.", { fontSize: 8 }),
+          createRiskAssessmentExportCell("1-10", { fontSize: 8, align: "center" }),
+        ]),
+        createRiskAssessmentExportRow("pp-t2", [
+          createRiskAssessmentExportCell("T2 - masa i transport", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell("Bodovi ovise o masi i vrsti pomagala: spremnici, kolica, ručni viličar, manipulator ili klizanje.", { fontSize: 8 }),
+          createRiskAssessmentExportCell("0,5-8", { fontSize: 8, align: "center" }),
+        ]),
+        createRiskAssessmentExportRow("pp-t3", [
+          createRiskAssessmentExportCell("T3 - preciznost i brzina", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell(RISK_ASSESSMENT_MANUAL_PUSH_PULL_PRECISION_OPTIONS.map((option) => `${option.label}: ${option.points}`).join("\n"), { fontSize: 8 }),
+          createRiskAssessmentExportCell("1-4", { fontSize: 8, align: "center" }),
+        ]),
+        createRiskAssessmentExportRow("pp-t4", [
+          createRiskAssessmentExportCell("T4 - položaj tijela", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell(RISK_ASSESSMENT_MANUAL_PUSH_PULL_POSTURE_OPTIONS.map((option) => `${option.label}: ${option.points}`).join("\n"), { fontSize: 8 }),
+          createRiskAssessmentExportCell("1-8", { fontSize: 8, align: "center" }),
+        ]),
+        createRiskAssessmentExportRow("pp-t5", [
+          createRiskAssessmentExportCell("T5 - radni uvjeti", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell(RISK_ASSESSMENT_MANUAL_PUSH_PULL_WORK_CONDITION_OPTIONS.map((option) => `${option.label}: ${option.points}`).join("\n"), { fontSize: 8 }),
+          createRiskAssessmentExportCell("0-8", { fontSize: 8, align: "center" }),
+        ]),
+      ],
+    ),
+    createRiskAssessmentManualResultScaleTable("push_pull"),
+    createRiskAssessmentExportHeading("Ponavljajući zadaci", 5),
+    createRiskAssessmentExportTable(
+      [
+        { id: "factor", label: "Element", width: 220 },
+        { id: "value", label: "Vrijednosti", width: 410 },
+        { id: "points", label: "Bodovi", width: 90 },
+      ],
+      [
+        createRiskAssessmentExportRow("head", ["Element", "Vrijednosti", "Bodovi"].map((cell) => createRiskAssessmentExportHeaderCell(cell, { fontSize: 8 })), true),
+        createRiskAssessmentExportRow("rep-t1", [
+          createRiskAssessmentExportCell("T1 - trajanje", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell("do 60 min: 1; 61-120 min: 2; 121-240 min: 4; 241 min i više: 5", { fontSize: 8 }),
+          createRiskAssessmentExportCell("1-5", { fontSize: 8, align: "center" }),
+        ]),
+        createRiskAssessmentExportRow("rep-t2", [
+          createRiskAssessmentExportCell("T2 - broj ponavljanja", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell("do 1000: 1; 1001-4800: 2; 4801-10000: 3; 10001-12000: 4; više od 12000: 5", { fontSize: 8 }),
+          createRiskAssessmentExportCell("1-5", { fontSize: 8, align: "center" }),
+        ]),
+        createRiskAssessmentExportRow("rep-t3", [
+          createRiskAssessmentExportCell("T3 - snaga", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell(RISK_ASSESSMENT_MANUAL_REPETITIVE_FORCE_OPTIONS.map((option) => `${option.label}: ${option.points}`).join("\n"), { fontSize: 8 }),
+          createRiskAssessmentExportCell("1-5", { fontSize: 8, align: "center" }),
+        ]),
+        createRiskAssessmentExportRow("rep-t4", [
+          createRiskAssessmentExportCell("T4 - položaj tijela", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+          createRiskAssessmentExportCell("Glava/vrat, leđa, rame, lakat, ručni zglob i prsti boduju se zasebno pa se zbrajaju u T4.", { fontSize: 8 }),
+          createRiskAssessmentExportCell("zbroj", { fontSize: 8, align: "center" }),
+        ]),
+      ],
+    ),
+    createRiskAssessmentManualResultScaleTable("repetitive"),
   ];
 }
 
 function buildRiskAssessmentManualHandlingExportBlocks() {
   if (!riskAssessmentManualHandlingDrafts.length) {
-    return [createRiskAssessmentExportParagraph("Izračuni ručnog prenošenja tereta nisu dodani.")];
+    return [
+      ...buildRiskAssessmentManualScopeExportBlocks(),
+      createRiskAssessmentExportParagraph("IOR izračuni nisu dodani."),
+    ];
   }
-  const blocks = [];
+  const blocks = [...buildRiskAssessmentManualScopeExportBlocks()];
   riskAssessmentManualHandlingDrafts.forEach((entry, index) => {
     blocks.push(
-      createRiskAssessmentExportHeading(`Procjena ručnog prenošenja tereta ${index + 1}: ${entry.activity || "Aktivnost"}`, 3),
+      createRiskAssessmentExportHeading(`IOR obrazac ${index + 1}: ${getRiskAssessmentManualEntryTitle(entry, "Aktivnost")}`, 3),
+      buildRiskAssessmentManualVisualFlowTable(entry, index),
       buildRiskAssessmentManualScoreTable(entry),
     );
   });
@@ -147119,7 +147328,7 @@ function buildRiskAssessmentOverviewExportBlocks() {
     ["Rizici", String(summary.totalRisks || 0), ""],
     ["Kemijske štetnosti", String(summary.totalChemicals || 0), ""],
     ["OZO stavke", String(summary.totalPpe || 0), ""],
-    ["Ručno prenošenje tereta", String(summary.totalManualHandling || 0), summary.highManualHandling ? `${summary.highManualHandling} visokih izračuna` : ""],
+    ["IOR obrasci", String(summary.totalManualHandling || 0), summary.highManualHandling ? `${summary.highManualHandling} visokih izračuna` : ""],
     ["Lokacije", String(summary.workplaceCount || 0), ""],
   ].map((entry, index) => (Array.isArray(entry)
     ? createRiskAssessmentExportRow(`summary-${index}`, [
@@ -148006,27 +148215,34 @@ function renderRiskAssessmentTemplatePpeContent() {
 }
 
 function renderRiskAssessmentTemplateManualHandlingContent() {
+  const scope = getRiskAssessmentManualScopeSummary();
   if (!riskAssessmentManualHandlingDrafts.length) {
-    return `<p class="is-muted">Izračuni ručnog prenošenja tereta nisu dodani.</p>`;
+    return `
+      <div class="risk-assessment-template-manual-scope">
+        <strong>Opseg IOR-a</strong>
+        <span>${escapeHtml(scope.text)}</span>
+      </div>
+      <p class="is-muted">IOR izračuni nisu dodani.</p>
+    `;
   }
   return `
+    <div class="risk-assessment-template-manual-scope">
+      <strong>Opseg IOR-a</strong>
+      <span>${escapeHtml(scope.text).replace(/\n/g, "<br>")}</span>
+    </div>
     <div class="risk-assessment-template-table">
-      <div class="is-head"><span>Aktivnost</span><span>Opterećenje</span><span>Razina</span><span>Mjere</span></div>
+      <div class="is-head"><span>IOR obrazac</span><span>Vrijednosti</span><span>Izračun</span><span>Mjere</span></div>
       ${riskAssessmentManualHandlingDrafts.map((entry) => {
         const calculation = calculateRiskAssessmentManualHandling(entry);
-        const job = riskAssessmentJobDrafts.find((item) => String(item.id) === String(entry.jobId));
         return `
           <div>
-            <span>${escapeHtml([entry.activity || "Aktivnost", job?.jobTitle].filter(Boolean).join(" · "))}</span>
+            <span>${escapeHtml([getRiskAssessmentManualEntryTitle(entry, "Aktivnost"), calculation.methodLabel].filter(Boolean).join(" · "))}</span>
             <span>${escapeHtml([
               calculation.operationLabel,
               calculation.workerGenderLabel,
-              entry.loadWeightKg ? `${entry.loadWeightKg} kg` : "",
-              entry.transfersPerHour ? `${entry.transfersPerHour}/h` : "",
-              calculation.totalRepetitions ? `${calculation.totalRepetitions} ponavljanja` : "",
-              calculation.totalDistanceMeters ? `${calculation.totalDistanceMeters} m` : "",
+              getRiskAssessmentManualWorkloadSummary(calculation),
             ].filter(Boolean).join(" · ") || "-")}</span>
-            <span>${escapeHtml(`${calculation.level} (${calculation.score}) · T1 ${calculation.t1Points}, T2 ${calculation.t2Points}, T3 ${calculation.t3Points}, T4 ${calculation.t4Points}`)}</span>
+            <span>${escapeHtml(`${calculation.level} (${calculation.score}) · ${getRiskAssessmentManualFactorSummary(calculation)}`)}</span>
             <span>${escapeHtml(entry.existingMeasures || calculation.recommendation)}</span>
           </div>
         `;
@@ -149297,6 +149513,55 @@ function getRiskAssessmentUnitPath(unit = {}) {
     guard += 1;
   }
   return path.join(" / ");
+}
+
+function buildRiskAssessmentOrganizationHierarchyEntries() {
+  const childrenByParent = getRiskAssessmentUnitChildrenMap();
+  const linkedJobsByUnit = new Map();
+  riskAssessmentJobDrafts.forEach((job) => {
+    const unitId = String(job.organizationUnitId || "");
+    if (!unitId) {
+      return;
+    }
+    const jobs = linkedJobsByUnit.get(unitId) || [];
+    jobs.push(job);
+    linkedJobsByUnit.set(unitId, jobs);
+  });
+
+  const entries = [];
+  const visited = new Set();
+  const appendUnit = (unit = {}, depth = 0, numbering = "1", ancestry = []) => {
+    const unitId = String(unit.id || "");
+    if (!unitId || visited.has(unitId)) {
+      return;
+    }
+    visited.add(unitId);
+    const unitName = unit.name || getRiskAssessmentUnitTypeLabel(unit.type);
+    const nextAncestry = [...ancestry, unitName].filter(Boolean);
+    entries.push({
+      unit,
+      depth,
+      numbering,
+      parentPath: ancestry.join(" / "),
+      path: nextAncestry.join(" / "),
+      linkedJobs: linkedJobsByUnit.get(unitId) || [],
+      children: childrenByParent.get(unitId) || [],
+    });
+    (childrenByParent.get(unitId) || []).forEach((child, childIndex) => {
+      appendUnit(child, depth + 1, `${numbering}.${childIndex + 1}`, nextAncestry);
+    });
+  };
+
+  const roots = (childrenByParent.get("") || []).length
+    ? (childrenByParent.get("") || [])
+    : riskAssessmentOrganizationUnitDrafts;
+  roots.forEach((unit, index) => appendUnit(unit, 0, String(index + 1), []));
+  riskAssessmentOrganizationUnitDrafts.forEach((unit) => {
+    if (!visited.has(String(unit.id || ""))) {
+      appendUnit(unit, 0, String(entries.length + 1), []);
+    }
+  });
+  return entries;
 }
 
 function getRiskAssessmentUnitDepth(unit = {}) {
@@ -150752,6 +151017,12 @@ function renderRiskAssessmentOrganizationUnits() {
       ? path.split(/\s*\/\s*/).map((entry) => entry.trim()).filter(Boolean)
       : [displayName];
     const parentPath = pathSegments.slice(0, -1).join(" / ");
+    const hierarchyLabel = `L${depth + 1}`;
+    const hierarchyMeta = [
+      parentPath || (depth === 0 ? "Glavna razina" : "Bez nadređene stavke"),
+      children.length ? `${children.length} podstavki` : "",
+      linkedJobs.length ? `${linkedJobs.length} povezanih poslova` : "",
+    ].filter(Boolean).join(" · ");
     const isEditorOpen = riskAssessmentOpenOrganizationUnitIds.has(String(unit.id || ""));
     row.className = `risk-assessment-org-card is-${type} is-depth-${Math.min(depth, 6)}`;
     row.classList.toggle("is-required-complete", hasCompleteJob);
@@ -150763,9 +151034,10 @@ function renderRiskAssessmentOrganizationUnits() {
       <div class="risk-assessment-org-card-head">
         <span class="risk-assessment-org-node-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon(type === "workplace" ? "briefcase" : "building")}</span>
         <div class="risk-assessment-org-mainline">
+          <span class="risk-assessment-org-level">${escapeHtml(hierarchyLabel)}</span>
           <span class="risk-assessment-org-type-badge">${escapeHtml(typeLabel)}</span>
           <strong>${escapeHtml(displayName)}</strong>
-          <small>${escapeHtml(parentPath || (depth === 0 ? "Glavna razina" : "Bez nadređene stavke"))}</small>
+          <small>${escapeHtml(hierarchyMeta)}</small>
         </div>
         <div class="risk-assessment-org-summary">
           ${unit.responsiblePerson ? `<span title="Odgovorna osoba">${renderRiskAssessmentRiskIcon("shield")} ${escapeHtml(unit.responsiblePerson)}</span>` : ""}
@@ -153949,8 +154221,14 @@ function renderRiskAssessmentMeasures() {
   }));
 }
 
+const RISK_ASSESSMENT_MANUAL_METHOD_OPTIONS = Object.freeze([
+  { value: "load", label: "Podizanje, držanje i prenošenje", shortLabel: "Podizanje / nošenje", formula: "(T2 + T3 + T4) × T1" },
+  { value: "push_pull", label: "Povlačenje i guranje", shortLabel: "Povlačenje / guranje", formula: "(T2 + T3 + T4 + T5) × T1" },
+  { value: "repetitive", label: "Ponavljajući zadaci", shortLabel: "Ponavljajući zadaci", formula: "(T2 + T3 + T4) × T1" },
+]);
+
 const RISK_ASSESSMENT_MANUAL_OPERATION_OPTIONS = Object.freeze([
-  { value: "lift", label: "Podizanje / odlaganje" },
+  { value: "lift", label: "Podizanje / premještanje" },
   { value: "hold", label: "Držanje tereta" },
   { value: "carry", label: "Prenošenje tereta" },
 ]);
@@ -153973,6 +154251,62 @@ const RISK_ASSESSMENT_MANUAL_WORK_CONDITION_OPTIONS = Object.freeze([
   { value: "difficult", label: "Vrlo ograničen prostor, nestabilan teret ili izrazito nepovoljni uvjeti", points: 2 },
 ]);
 
+const RISK_ASSESSMENT_MANUAL_PUSH_PULL_MODE_OPTIONS = Object.freeze([
+  { value: "short", label: "Kratke udaljenosti / česta stajanja" },
+  { value: "long", label: "Duža udaljenost" },
+]);
+
+const RISK_ASSESSMENT_MANUAL_PUSH_PULL_TRANSPORT_OPTIONS = Object.freeze([
+  { value: "industrial", label: "Industrijski spremnik / pomoćno sredstvo" },
+  { value: "rolling", label: "Bez pomagala, teret se kotrlja" },
+  { value: "hand_cart", label: "Ručna kolica" },
+  { value: "steerable", label: "Spremnik / platforma / kolica s upravljivim kotačima" },
+  { value: "fixed", label: "Ručni viličar / kolica s vučom ili fiksnim kotačima" },
+  { value: "manipulator", label: "Manipulator teretom / balansno uže" },
+  { value: "pull_slide", label: "Povlačenje / klizanje bez kotača" },
+]);
+
+const RISK_ASSESSMENT_MANUAL_PUSH_PULL_PRECISION_OPTIONS = Object.freeze([
+  { value: "low_slow", label: "Niska preciznost, sporo kretanje", points: 1 },
+  { value: "low_fast", label: "Niska preciznost, brzo kretanje", points: 2 },
+  { value: "high_slow", label: "Visoka preciznost, sporo kretanje", points: 2 },
+  { value: "high_fast", label: "Visoka preciznost, brzo kretanje", points: 4 },
+]);
+
+const RISK_ASSESSMENT_MANUAL_PUSH_PULL_POSTURE_OPTIONS = Object.freeze([
+  { value: "upright", label: "Gornji dio tijela uspravan, bez zakretanja", points: 1 },
+  { value: "slight", label: "Lagano nagnuto ili zakrenuto tijelo", points: 2 },
+  { value: "low", label: "Nisko nagnuto tijelo, čučanje, klečanje ili saginjanje", points: 4 },
+  { value: "twist", label: "Istovremeno naginjanje i zakretanje", points: 8 },
+]);
+
+const RISK_ASSESSMENT_MANUAL_PUSH_PULL_WORK_CONDITION_OPTIONS = Object.freeze([
+  { value: "good", label: "Dobri uvjeti: čvrsti/suhi podovi, bez prepreka, kotači se lako pokreću", points: 0 },
+  { value: "limited", label: "Otežani uvjeti: prljavi podovi, manje neravnine, male kosine ili prepreke", points: 2 },
+  { value: "difficult", label: "Teški uvjeti: rupe, zaprljan put, kosina 2 do 5 stupnjeva ili teško pokretanje", points: 4 },
+  { value: "complex", label: "Komplicirani uvjeti: stepeništa, kosine preko 5 stupnjeva ili kombinacija nepovoljnih uvjeta", points: 8 },
+]);
+
+const RISK_ASSESSMENT_MANUAL_REPETITIVE_FORCE_OPTIONS = Object.freeze([
+  { value: "small", label: "Mala snaga", points: 1 },
+  { value: "moderate", label: "Umjerena snaga", points: 2 },
+  { value: "considerable", label: "Prilično velika snaga", points: 3 },
+  { value: "large", label: "Velika snaga", points: 4 },
+  { value: "very_large", label: "Jako velika snaga", points: 5 },
+]);
+
+const RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS = Object.freeze([
+  { value: "none", label: "Nije prisutno", points: 0 },
+  { value: "half", label: "Do 50% radnog vremena", points: 0.5 },
+  { value: "more", label: "Više od 50% radnog vremena", points: 1 },
+]);
+
+const RISK_ASSESSMENT_MANUAL_BODY_PART_STRONG_OPTIONS = Object.freeze([
+  { value: "none", label: "Nije prisutno", points: 0 },
+  { value: "half", label: "Do 50% radnog vremena", points: 1 },
+  { value: "more", label: "Više od 50% radnog vremena", points: 2 },
+]);
+
 function parseRiskAssessmentManualNumber(value = "") {
   const normalized = String(value ?? "").replace(",", ".").replace(/[^0-9.-]/g, "");
   const number = Number(normalized);
@@ -153983,25 +154317,91 @@ function getRiskAssessmentManualOption(options = [], value = "") {
   return options.find((option) => option.value === value) ?? options[0];
 }
 
-function getRiskAssessmentManualRiskTone(score = 0) {
-  if (score > 50) {
-    return { level: "Vrlo visok rizik", tone: "critical", recommendation: "Potrebno je neposredno preprojektiranje rada, mehanička pomagala ili uklanjanje ručnog rukovanja prije redovnog rada." };
+function normalizeRiskAssessmentManualMethod(value = "") {
+  const normalized = String(value || "").trim();
+  return RISK_ASSESSMENT_MANUAL_METHOD_OPTIONS.some((option) => option.value === normalized) ? normalized : "load";
+}
+
+function getRiskAssessmentManualMethodOption(value = "") {
+  return getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_METHOD_OPTIONS, normalizeRiskAssessmentManualMethod(value));
+}
+
+function normalizeRiskAssessmentManualStringArray(value = []) {
+  return (Array.isArray(value) ? value : String(value || "").split(","))
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean)
+    .filter((entry, index, list) => list.indexOf(entry) === index);
+}
+
+function createRiskAssessmentManualScopeDraft(initial = {}) {
+  return {
+    unitIds: normalizeRiskAssessmentManualStringArray(initial?.unitIds ?? initial?.organizationUnitIds ?? initial?.units),
+    jobIds: normalizeRiskAssessmentManualStringArray(initial?.jobIds ?? initial?.workplaceJobIds ?? initial?.jobs),
+  };
+}
+
+function sanitizeRiskAssessmentManualScopeDraft(scope = {}) {
+  const draft = createRiskAssessmentManualScopeDraft(scope);
+  const validUnitIds = new Set(riskAssessmentOrganizationUnitDrafts.map((unit) => String(unit.id || "").trim()).filter(Boolean));
+  const validJobIds = new Set(riskAssessmentJobDrafts.map((job) => String(job.id || "").trim()).filter(Boolean));
+  return {
+    unitIds: draft.unitIds.filter((id) => !validUnitIds.size || validUnitIds.has(String(id))),
+    jobIds: draft.jobIds.filter((id) => !validJobIds.size || validJobIds.has(String(id))),
+  };
+}
+
+function getRiskAssessmentManualScopeResolvedJobIds(scope = riskAssessmentManualHandlingScopeDraft) {
+  const draft = createRiskAssessmentManualScopeDraft(scope);
+  const selected = new Set(draft.jobIds.map(String));
+  const selectedUnits = new Set(draft.unitIds.map(String));
+  if (selectedUnits.size) {
+    riskAssessmentJobDrafts.forEach((job) => {
+      if (selectedUnits.has(String(job.organizationUnitId || ""))) {
+        selected.add(String(job.id || ""));
+      }
+    });
   }
-  if (score >= 25) {
-    return { level: "Visok rizik", tone: "danger", recommendation: "Smanjiti masu, učestalost, trajanje ili udaljenost te uvesti tehnička pomagala, timski rad i nadzor." };
+  return Array.from(selected).filter(Boolean);
+}
+
+function getRiskAssessmentManualScopeSummary(scope = riskAssessmentManualHandlingScopeDraft) {
+  const draft = createRiskAssessmentManualScopeDraft(scope);
+  const unitNames = draft.unitIds
+    .map((id) => riskAssessmentOrganizationUnitDrafts.find((unit) => String(unit.id || "") === String(id))?.name)
+    .filter(Boolean);
+  const jobNames = draft.jobIds
+    .map((id) => riskAssessmentJobDrafts.find((job) => String(job.id || "") === String(id))?.jobTitle)
+    .filter(Boolean);
+  const resolvedJobIds = getRiskAssessmentManualScopeResolvedJobIds(draft);
+  return {
+    unitNames,
+    jobNames,
+    resolvedJobIds,
+    count: resolvedJobIds.length,
+    text: [
+      unitNames.length ? `Organizacijske jedinice: ${unitNames.join(", ")}` : "",
+      jobNames.length ? `Radna mjesta: ${jobNames.join(", ")}` : "",
+    ].filter(Boolean).join("\n") || "Opseg IOR-a nije odabran. Odaberi radna mjesta ili organizacijske jedinice na početku bloka.",
+  };
+}
+
+function getRiskAssessmentManualRiskTone(score = 0, method = "load") {
+  if (method === "repetitive") {
+    if (score > 65) return { level: "Vrlo visok rizik", tone: "critical", recommendation: "Nužno je preoblikovanje mjesta rada, uvođenje opreme i promjena metode ili organizacije rada." };
+    if (score >= 45) return { level: "Visok rizik", tone: "danger", recommendation: "Postoji opasnost od preopterećenja svih radnika; preporučuje se preoblikovanje mjesta rada." };
+    if (score >= 20) return { level: "Povećan rizik", tone: "warning", recommendation: "Moguće je preopterećenje manje otpornih radnika; potrebno je smanjiti trajanje, broj ponavljanja ili snagu." };
+    return { level: "Nizak rizik", tone: "success", recommendation: "Niska razina rizika uz redovno praćenje opterećenja i organizaciju rada." };
   }
-  if (score >= 10) {
-    return { level: "Povećan rizik", tone: "warning", recommendation: "Optimizirati organizaciju rada, put nošenja, visinu zahvata, odmore i osposobljavanje radnika." };
-  }
+  if (score > 50) return { level: "Vrlo visok rizik", tone: "critical", recommendation: "Potrebno je neposredno preprojektiranje rada, mehanička pomagala ili uklanjanje ručnog rukovanja prije redovnog rada." };
+  if (score >= 25) return { level: "Visok rizik", tone: "danger", recommendation: "Smanjiti masu, učestalost, trajanje ili udaljenost te uvesti tehnička pomagala, timski rad i nadzor." };
+  if (score >= 10) return { level: "Povećan rizik", tone: "warning", recommendation: "Optimizirati organizaciju rada, put nošenja, visinu zahvata, odmore i osposobljavanje radnika." };
   return { level: "Nizak rizik", tone: "success", recommendation: "Rizik je prihvatljiv uz osposobljavanje, uredan prostor i praćenje promjena uvjeta." };
 }
 
 function getRiskAssessmentManualT1Points(entry = {}, totals = {}) {
   const operation = String(entry.operationType || "lift");
   const hasInput = totals.mass || totals.transfersPerHour || totals.durationMinutes || totals.carryingDistanceMeters;
-  if (!hasInput) {
-    return 0;
-  }
+  if (!hasInput) return 0;
   if (operation === "hold") {
     const minutes = totals.durationMinutes;
     if (minutes < 5) return 1;
@@ -154030,9 +154430,7 @@ function getRiskAssessmentManualT1Points(entry = {}, totals = {}) {
 }
 
 function getRiskAssessmentManualT2Points(mass = 0, gender = "male") {
-  if (!mass) {
-    return 0;
-  }
+  if (!mass) return 0;
   if (gender === "female") {
     if (mass < 5) return 1;
     if (mass < 10) return 2;
@@ -154047,7 +154445,67 @@ function getRiskAssessmentManualT2Points(mass = 0, gender = "male") {
   return 25;
 }
 
-function calculateRiskAssessmentManualHandling(entry = {}) {
+function getRiskAssessmentManualPushPullT1Points(entry = {}, totals = {}) {
+  const mode = String(entry.pushPullMode || "short");
+  const hasInput = totals.repetitions || totals.totalDistanceMeters || totals.durationMinutes || totals.distancePerTransferMeters;
+  if (!hasInput) return 0;
+  if (mode === "long") {
+    const distance = totals.totalDistanceMeters;
+    if (distance < 300) return 1;
+    if (distance < 1000) return 2;
+    if (distance < 4000) return 4;
+    if (distance < 8000) return 6;
+    if (distance < 16000) return 8;
+    return 10;
+  }
+  const repetitions = totals.repetitions;
+  if (repetitions < 10) return 1;
+  if (repetitions < 40) return 2;
+  if (repetitions < 200) return 4;
+  if (repetitions < 500) return 6;
+  if (repetitions < 1000) return 8;
+  return 10;
+}
+
+function getRiskAssessmentManualPushPullT2Points(mass = 0, transportType = "industrial") {
+  if (!mass) return 0;
+  if (transportType === "pull_slide") {
+    if (mass < 10) return 1;
+    if (mass < 25) return 2;
+    if (mass < 50) return 4;
+    return 8;
+  }
+  if (mass < 50) return 0.5;
+  if (mass < 100) return 1;
+  if (mass < 200) return ["industrial", "steerable", "manipulator"].includes(transportType) ? 1.5 : 2;
+  if (mass < 300) {
+    if (["industrial", "steerable"].includes(transportType)) return 2;
+    if (transportType === "hand_cart") return 3;
+    return 4;
+  }
+  if (mass < 400) return ["industrial", "hand_cart"].includes(transportType) ? 3 : 4;
+  if (mass < 600) return transportType === "hand_cart" ? 4 : 5;
+  return 5;
+}
+
+function getRiskAssessmentManualRepetitiveT1Points(minutes = 0) {
+  if (!minutes) return 0;
+  if (minutes <= 60) return 1;
+  if (minutes <= 120) return 2;
+  if (minutes <= 240) return 4;
+  return 5;
+}
+
+function getRiskAssessmentManualRepetitiveT2Points(repetitions = 0) {
+  if (!repetitions) return 0;
+  if (repetitions <= 1000) return 1;
+  if (repetitions <= 4800) return 2;
+  if (repetitions <= 10000) return 3;
+  if (repetitions <= 12000) return 4;
+  return 5;
+}
+
+function calculateRiskAssessmentManualLoad(entry = {}) {
   const mass = parseRiskAssessmentManualNumber(entry.loadWeightKg);
   const transfersPerHour = parseRiskAssessmentManualNumber(entry.transfersPerHour);
   const durationMinutes = parseRiskAssessmentManualNumber(entry.durationMinutes);
@@ -154060,19 +154518,16 @@ function calculateRiskAssessmentManualHandling(entry = {}) {
   const operation = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_OPERATION_OPTIONS, entry.operationType || "lift");
   const dailyLoadKg = Math.round(mass * totalRepetitions);
   const tonnage = dailyLoadKg / 1000;
-  const t1Points = getRiskAssessmentManualT1Points(entry, {
-    mass,
-    transfersPerHour,
-    durationMinutes,
-    carryingDistanceMeters,
-    totalRepetitions,
-    totalDistanceMeters,
-  });
+  const t1Points = getRiskAssessmentManualT1Points(entry, { mass, transfersPerHour, durationMinutes, carryingDistanceMeters, totalRepetitions, totalDistanceMeters });
   const t2Points = getRiskAssessmentManualT2Points(mass, gender.value);
   const t3Points = posture.points;
   const t4Points = conditions.points;
   const score = t1Points ? t1Points * (t2Points + t3Points + t4Points) : 0;
   return {
+    methodType: "load",
+    methodLabel: getRiskAssessmentManualMethodOption("load").label,
+    formulaText: "(T2 + T3 + T4) × T1",
+    formulaValueText: `${t1Points} × (${t2Points} + ${t3Points} + ${t4Points})`,
     mass,
     transfersPerHour,
     durationMinutes,
@@ -154090,30 +154545,153 @@ function calculateRiskAssessmentManualHandling(entry = {}) {
     workerGenderLabel: gender.label,
     postureLabel: posture.label,
     workConditionLabel: conditions.label,
-    ...getRiskAssessmentManualRiskTone(score),
+    factorLabels: [`T1 ${t1Points}`, `T2 ${t2Points}`, `T3 ${t3Points}`, `T4 ${t4Points}`],
+    workloadText: [dailyLoadKg ? `${dailyLoadKg} kg/dan` : "", totalDistanceMeters ? `${totalDistanceMeters} m/dan` : ""].filter(Boolean).join(" / "),
+    ...getRiskAssessmentManualRiskTone(score, "load"),
   };
+}
+
+function calculateRiskAssessmentManualPushPull(entry = {}) {
+  const mass = parseRiskAssessmentManualNumber(entry.loadWeightKg);
+  const transfersPerHour = parseRiskAssessmentManualNumber(entry.transfersPerHour);
+  const durationMinutes = parseRiskAssessmentManualNumber(entry.durationMinutes);
+  const distancePerTransferMeters = parseRiskAssessmentManualNumber(entry.carryingDistanceMeters);
+  const repetitions = Math.round(transfersPerHour * (durationMinutes / 60));
+  const totalDistanceMeters = Math.round(distancePerTransferMeters * repetitions);
+  const mode = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_PUSH_PULL_MODE_OPTIONS, entry.pushPullMode || "short");
+  const transport = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_PUSH_PULL_TRANSPORT_OPTIONS, entry.pushPullTransport || "industrial");
+  const precision = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_PUSH_PULL_PRECISION_OPTIONS, entry.pushPullPrecisionSpeed || "low_slow");
+  const posture = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_PUSH_PULL_POSTURE_OPTIONS, entry.pushPullPosture || entry.posture || "upright");
+  const conditions = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_PUSH_PULL_WORK_CONDITION_OPTIONS, entry.pushPullWorkConditions || "good");
+  const gender = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_WORKER_GENDER_OPTIONS, entry.workerGender || "male");
+  const t1Points = getRiskAssessmentManualPushPullT1Points(entry, { repetitions, totalDistanceMeters, durationMinutes, distancePerTransferMeters });
+  const t2Points = getRiskAssessmentManualPushPullT2Points(mass, transport.value);
+  const t3Points = precision.points;
+  const t4Points = posture.points;
+  const t5Points = conditions.points;
+  const baseScore = t1Points ? t1Points * (t2Points + t3Points + t4Points + t5Points) : 0;
+  const multiplier = gender.value === "female" ? 1.3 : 1;
+  const score = Number((baseScore * multiplier).toFixed(1));
+  return {
+    methodType: "push_pull",
+    methodLabel: getRiskAssessmentManualMethodOption("push_pull").label,
+    formulaText: "(T2 + T3 + T4 + T5) × T1",
+    formulaValueText: `${t1Points} × (${t2Points} + ${t3Points} + ${t4Points} + ${t5Points})${multiplier > 1 ? " × 1,3" : ""}`,
+    mass,
+    transfersPerHour,
+    durationMinutes,
+    carryingDistanceMeters: distancePerTransferMeters,
+    totalRepetitions: repetitions,
+    totalDistanceMeters,
+    score,
+    baseScore,
+    multiplier,
+    t1Points,
+    t2Points,
+    t3Points,
+    t4Points,
+    t5Points,
+    operationLabel: mode.label,
+    workerGenderLabel: gender.label,
+    transportLabel: transport.label,
+    precisionLabel: precision.label,
+    postureLabel: posture.label,
+    workConditionLabel: conditions.label,
+    factorLabels: [`T1 ${t1Points}`, `T2 ${t2Points}`, `T3 ${t3Points}`, `T4 ${t4Points}`, `T5 ${t5Points}`],
+    workloadText: [repetitions ? `${repetitions} ponavljanja` : "", totalDistanceMeters ? `${totalDistanceMeters} m/dan` : "", mass ? `${mass} kg` : ""].filter(Boolean).join(" / "),
+    ...getRiskAssessmentManualRiskTone(score, "push_pull"),
+  };
+}
+
+function calculateRiskAssessmentManualRepetitive(entry = {}) {
+  const durationMinutes = parseRiskAssessmentManualNumber(entry.durationMinutes);
+  const repetitions = parseRiskAssessmentManualNumber(entry.repetitionsPerShift);
+  const force = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_REPETITIVE_FORCE_OPTIONS, entry.forceLevel || "small");
+  const headNeck = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyHeadNeck || "none");
+  const back = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyBack || "none");
+  const shoulder = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_BODY_PART_STRONG_OPTIONS, entry.bodyShoulder || "none");
+  const elbow = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_BODY_PART_STRONG_OPTIONS, entry.bodyElbow || "none");
+  const wrist = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyWrist || "none");
+  const fingers = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyFingers || "none");
+  const t1Points = getRiskAssessmentManualRepetitiveT1Points(durationMinutes);
+  const t2Points = getRiskAssessmentManualRepetitiveT2Points(repetitions);
+  const t3Points = force.points;
+  const t4Points = Number((headNeck.points + back.points + shoulder.points + elbow.points + wrist.points + fingers.points).toFixed(1));
+  const score = t1Points ? Number(((t2Points + t3Points + t4Points) * t1Points).toFixed(1)) : 0;
+  return {
+    methodType: "repetitive",
+    methodLabel: getRiskAssessmentManualMethodOption("repetitive").label,
+    formulaText: "(T2 + T3 + T4) × T1",
+    formulaValueText: `${t1Points} × (${t2Points} + ${t3Points} + ${t4Points})`,
+    durationMinutes,
+    repetitionsPerShift: repetitions,
+    forceLabel: force.label,
+    score,
+    t1Points,
+    t2Points,
+    t3Points,
+    t4Points,
+    bodyPartLabels: [
+      `Glava/vrat: ${headNeck.label}`,
+      `Leđa: ${back.label}`,
+      `Rame: ${shoulder.label}`,
+      `Lakat: ${elbow.label}`,
+      `Ručni zglob: ${wrist.label}`,
+      `Prsti: ${fingers.label}`,
+    ],
+    operationLabel: "Ponavljajući pokreti",
+    workerGenderLabel: "",
+    postureLabel: "Zbroj položaja tijela po dijelovima",
+    workConditionLabel: force.label,
+    factorLabels: [`T1 ${t1Points}`, `T2 ${t2Points}`, `T3 ${t3Points}`, `T4 ${t4Points}`],
+    workloadText: [durationMinutes ? `${durationMinutes} min` : "", repetitions ? `${repetitions} pokreta/smjenu` : ""].filter(Boolean).join(" / "),
+    ...getRiskAssessmentManualRiskTone(score, "repetitive"),
+  };
+}
+
+function calculateRiskAssessmentManualHandling(entry = {}) {
+  const method = normalizeRiskAssessmentManualMethod(entry.methodType || entry.calculationType || entry.method);
+  if (method === "push_pull") return calculateRiskAssessmentManualPushPull(entry);
+  if (method === "repetitive") return calculateRiskAssessmentManualRepetitive(entry);
+  return calculateRiskAssessmentManualLoad(entry);
+}
+
+function getRiskAssessmentManualFactorSummary(calculation = {}) {
+  return (Array.isArray(calculation.factorLabels) ? calculation.factorLabels : []).filter(Boolean).join(" · ") || "T vrijednosti nisu izračunate";
+}
+
+function getRiskAssessmentManualWorkloadSummary(calculation = {}) {
+  return calculation.workloadText || "Nije izračunato";
+}
+
+function getRiskAssessmentManualEntryTitle(entry = {}, fallback = "IOR izračun") {
+  const method = getRiskAssessmentManualMethodOption(entry.methodType || entry.calculationType || entry.method);
+  return String(entry.activity || "").trim() || method.shortLabel || fallback;
+}
+
+function normalizeRiskAssessmentManualBodyValue(value = "", options = RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS) {
+  const normalized = String(value || "");
+  return options.some((option) => option.value === normalized) ? normalized : "none";
+}
+
+function normalizeRiskAssessmentManualSelectValue(value = "", options = []) {
+  const normalized = String(value || "");
+  return options.some((option) => option.value === normalized) ? normalized : (options[0]?.value || "");
 }
 
 function normalizeRiskAssessmentManualPostureValue(value = "") {
   const normalized = String(value || "");
-  if (normalized === "bent" || normalized === "twist") {
-    return "slight";
-  }
-  if (normalized === "overhead") {
-    return "unfavorable";
-  }
-  if (normalized === "neutral") {
-    return "upright";
-  }
-  return RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS.some((option) => option.value === normalized)
-    ? normalized
-    : "upright";
+  if (normalized === "bent" || normalized === "twist") return "slight";
+  if (normalized === "overhead") return "unfavorable";
+  if (normalized === "neutral") return "upright";
+  return RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS.some((option) => option.value === normalized) ? normalized : "upright";
 }
 
 function createRiskAssessmentManualHandlingDraft(initial = {}) {
   return {
     id: String(initial.id || crypto.randomUUID()),
     activity: String(initial.activity || initial.title || ""),
+    methodType: normalizeRiskAssessmentManualMethod(initial.methodType || initial.calculationType || initial.method),
     jobId: String(initial.jobId || ""),
     operationType: String(initial.operationType || "lift"),
     workerGender: String(initial.workerGender || "male"),
@@ -154126,6 +154704,19 @@ function createRiskAssessmentManualHandlingDraft(initial = {}) {
     posture: normalizeRiskAssessmentManualPostureValue(initial.posture),
     workConditions: String(initial.workConditions || "good"),
     gripQuality: String(initial.gripQuality || "good"),
+    pushPullMode: normalizeRiskAssessmentManualSelectValue(initial.pushPullMode, RISK_ASSESSMENT_MANUAL_PUSH_PULL_MODE_OPTIONS),
+    pushPullTransport: normalizeRiskAssessmentManualSelectValue(initial.pushPullTransport, RISK_ASSESSMENT_MANUAL_PUSH_PULL_TRANSPORT_OPTIONS),
+    pushPullPrecisionSpeed: normalizeRiskAssessmentManualSelectValue(initial.pushPullPrecisionSpeed, RISK_ASSESSMENT_MANUAL_PUSH_PULL_PRECISION_OPTIONS),
+    pushPullPosture: normalizeRiskAssessmentManualSelectValue(initial.pushPullPosture || initial.posture, RISK_ASSESSMENT_MANUAL_PUSH_PULL_POSTURE_OPTIONS),
+    pushPullWorkConditions: normalizeRiskAssessmentManualSelectValue(initial.pushPullWorkConditions, RISK_ASSESSMENT_MANUAL_PUSH_PULL_WORK_CONDITION_OPTIONS),
+    repetitionsPerShift: String(initial.repetitionsPerShift ?? initial.repetitions ?? ""),
+    forceLevel: normalizeRiskAssessmentManualSelectValue(initial.forceLevel, RISK_ASSESSMENT_MANUAL_REPETITIVE_FORCE_OPTIONS),
+    bodyHeadNeck: normalizeRiskAssessmentManualBodyValue(initial.bodyHeadNeck),
+    bodyBack: normalizeRiskAssessmentManualBodyValue(initial.bodyBack),
+    bodyShoulder: normalizeRiskAssessmentManualBodyValue(initial.bodyShoulder, RISK_ASSESSMENT_MANUAL_BODY_PART_STRONG_OPTIONS),
+    bodyElbow: normalizeRiskAssessmentManualBodyValue(initial.bodyElbow, RISK_ASSESSMENT_MANUAL_BODY_PART_STRONG_OPTIONS),
+    bodyWrist: normalizeRiskAssessmentManualBodyValue(initial.bodyWrist),
+    bodyFingers: normalizeRiskAssessmentManualBodyValue(initial.bodyFingers),
     existingMeasures: String(initial.existingMeasures || initial.measures || ""),
     note: String(initial.note || ""),
   };
@@ -154136,6 +154727,7 @@ function sanitizeRiskAssessmentManualHandlingDraft(entry = {}) {
   return {
     id: draft.id,
     activity: draft.activity.trim(),
+    methodType: draft.methodType,
     jobId: draft.jobId,
     operationType: draft.operationType,
     workerGender: draft.workerGender,
@@ -154148,6 +154740,19 @@ function sanitizeRiskAssessmentManualHandlingDraft(entry = {}) {
     posture: draft.posture,
     workConditions: draft.workConditions,
     gripQuality: draft.gripQuality,
+    pushPullMode: draft.pushPullMode,
+    pushPullTransport: draft.pushPullTransport,
+    pushPullPrecisionSpeed: draft.pushPullPrecisionSpeed,
+    pushPullPosture: draft.pushPullPosture,
+    pushPullWorkConditions: draft.pushPullWorkConditions,
+    repetitionsPerShift: draft.repetitionsPerShift.trim(),
+    forceLevel: draft.forceLevel,
+    bodyHeadNeck: draft.bodyHeadNeck,
+    bodyBack: draft.bodyBack,
+    bodyShoulder: draft.bodyShoulder,
+    bodyElbow: draft.bodyElbow,
+    bodyWrist: draft.bodyWrist,
+    bodyFingers: draft.bodyFingers,
     existingMeasures: draft.existingMeasures.trim(),
     note: draft.note.trim(),
   };
@@ -154157,6 +154762,118 @@ function renderRiskAssessmentManualOptionList(options = [], value = "") {
   return options.map((option) => `
     <option value="${escapeHtml(option.value)}" ${option.value === value ? "selected" : ""}>${escapeHtml(option.label)}</option>
   `).join("");
+}
+
+function renderRiskAssessmentManualScope() {
+  if (!riskAssessmentManualScopePanel) {
+    return;
+  }
+  const scope = createRiskAssessmentManualScopeDraft(riskAssessmentManualHandlingScopeDraft);
+  const selectedUnits = new Set(scope.unitIds.map(String));
+  const selectedJobs = new Set(scope.jobIds.map(String));
+  const summary = getRiskAssessmentManualScopeSummary(scope);
+  const unitButtons = riskAssessmentOrganizationUnitDrafts.length
+    ? riskAssessmentOrganizationUnitDrafts.map((unit, index) => {
+      const id = String(unit.id || `unit-${index}`);
+      const jobsInUnit = riskAssessmentJobDrafts.filter((job) => String(job.organizationUnitId || "") === id).length;
+      return `
+        <button type="button" class="risk-assessment-manual-scope-chip ${selectedUnits.has(id) ? "is-selected" : ""}" data-risk-manual-scope-type="unit" data-risk-manual-scope-id="${escapeHtml(id)}">
+          <strong>${escapeHtml(unit.name || `Organizacija ${index + 1}`)}</strong>
+          <span>${escapeHtml(jobsInUnit ? `${jobsInUnit} radnih mjesta` : "Bez radnih mjesta")}</span>
+        </button>
+      `;
+    }).join("")
+    : `<p class="inline-help">Organizacijske jedinice nisu dodane. Možeš odabrati pojedina radna mjesta.</p>`;
+  const jobButtons = riskAssessmentJobDrafts.length
+    ? riskAssessmentJobDrafts.map((job, index) => {
+      const id = String(job.id || `job-${index}`);
+      const unit = riskAssessmentOrganizationUnitDrafts.find((entry) => String(entry.id || "") === String(job.organizationUnitId || ""));
+      const isInherited = unit && selectedUnits.has(String(unit.id || ""));
+      return `
+        <button type="button" class="risk-assessment-manual-scope-chip is-job ${selectedJobs.has(id) || isInherited ? "is-selected" : ""} ${isInherited ? "is-inherited" : ""}" data-risk-manual-scope-type="job" data-risk-manual-scope-id="${escapeHtml(id)}">
+          <strong>${escapeHtml(job.jobTitle || `Radno mjesto ${index + 1}`)}</strong>
+          <span>${escapeHtml(isInherited ? `Uključeno kroz ${unit.name}` : (unit?.name || "Bez organizacije"))}</span>
+        </button>
+      `;
+    }).join("")
+    : `<p class="inline-help">Dodaj radna mjesta u procjeni pa ih ovdje označi za IOR.</p>`;
+
+  riskAssessmentManualScopePanel.innerHTML = `
+    <section class="risk-assessment-manual-scope-hero">
+      <div>
+        <span class="section-kicker">Opseg IOR-a</span>
+        <strong>Koja radna mjesta imaju ručno rukovanje teretom?</strong>
+        <p>Odaberi organizacijsku jedinicu ili pojedina radna mjesta. Izračuni ispod vrijede za ovaj odabrani opseg, ne za opis posla.</p>
+      </div>
+      <div class="risk-assessment-manual-scope-count">
+        <strong>${escapeHtml(String(summary.count))}</strong>
+        <span>radnih mjesta</span>
+      </div>
+    </section>
+    <div class="risk-assessment-manual-scope-summary">${escapeHtml(summary.text).replace(/\n/g, "<br>")}</div>
+    <div class="risk-assessment-manual-scope-group">
+      <div class="risk-assessment-manual-scope-title">
+        <strong>Organizacija</strong>
+        <span>Klikom odabireš sve poslove unutar jedinice.</span>
+      </div>
+      <div class="risk-assessment-manual-scope-chips">${unitButtons}</div>
+    </div>
+    <div class="risk-assessment-manual-scope-group">
+      <div class="risk-assessment-manual-scope-title">
+        <strong>Radna mjesta</strong>
+        <span>Pojedinačni odabir kada ne želiš uzeti cijelu organizaciju.</span>
+      </div>
+      <div class="risk-assessment-manual-scope-chips">${jobButtons}</div>
+    </div>
+    <div class="risk-assessment-manual-scope-actions">
+      <button type="button" class="ghost-button" data-risk-manual-scope-action="select-all-jobs">Sva radna mjesta</button>
+      <button type="button" class="ghost-button" data-risk-manual-scope-action="clear">Očisti opseg</button>
+    </div>
+  `;
+}
+
+function handleRiskAssessmentManualScopeClick(event) {
+  const actionButton = event.target?.closest?.("[data-risk-manual-scope-action]");
+  if (actionButton) {
+    const action = actionButton.dataset.riskManualScopeAction;
+    if (action === "clear") {
+      riskAssessmentManualHandlingScopeDraft = { unitIds: [], jobIds: [] };
+    } else if (action === "select-all-jobs") {
+      riskAssessmentManualHandlingScopeDraft = {
+        unitIds: [],
+        jobIds: riskAssessmentJobDrafts.map((job) => String(job.id || "")).filter(Boolean),
+      };
+    }
+    renderRiskAssessmentManualScope();
+    renderRiskAssessmentOverview();
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+
+  const chip = event.target?.closest?.("[data-risk-manual-scope-type][data-risk-manual-scope-id]");
+  if (!chip) {
+    return;
+  }
+  const type = String(chip.dataset.riskManualScopeType || "");
+  const id = String(chip.dataset.riskManualScopeId || "");
+  if (!id) {
+    return;
+  }
+  const scope = createRiskAssessmentManualScopeDraft(riskAssessmentManualHandlingScopeDraft);
+  const key = type === "unit" ? "unitIds" : "jobIds";
+  const current = new Set(scope[key].map(String));
+  if (current.has(id)) {
+    current.delete(id);
+  } else {
+    current.add(id);
+  }
+  riskAssessmentManualHandlingScopeDraft = {
+    ...scope,
+    [key]: Array.from(current),
+  };
+  renderRiskAssessmentManualScope();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
 }
 
 function renderRiskAssessmentManualJobOptions(selectedValue = "") {
@@ -154187,24 +154904,17 @@ function refreshRiskAssessmentManualHandlingCard(card = null, index = -1) {
   if (score) {
     score.textContent = String(calculation.score);
   }
-  const t1 = card.querySelector("[data-risk-manual-t1]");
-  if (t1) {
-    t1.textContent = `T1 ${calculation.t1Points}`;
+  const method = card.querySelector("[data-risk-manual-method-label]");
+  if (method) {
+    method.textContent = calculation.methodLabel;
   }
-  const t2 = card.querySelector("[data-risk-manual-t2]");
-  if (t2) {
-    t2.textContent = `T2 ${calculation.t2Points}`;
-  }
-  const t34 = card.querySelector("[data-risk-manual-t34]");
-  if (t34) {
-    t34.textContent = `T3 ${calculation.t3Points} · T4 ${calculation.t4Points}`;
+  const factors = card.querySelector("[data-risk-manual-factors]");
+  if (factors) {
+    factors.textContent = getRiskAssessmentManualFactorSummary(calculation);
   }
   const workload = card.querySelector("[data-risk-manual-workload]");
   if (workload) {
-    workload.textContent = [
-      calculation.dailyLoadKg ? `${calculation.dailyLoadKg} kg` : "",
-      calculation.totalDistanceMeters ? `${calculation.totalDistanceMeters} m` : "",
-    ].filter(Boolean).join(" / ") || "Nije izračunato";
+    workload.textContent = getRiskAssessmentManualWorkloadSummary(calculation);
   }
   const recommendation = card.querySelector("[data-risk-manual-recommendation]");
   if (recommendation) {
@@ -154226,6 +154936,57 @@ function updateRiskAssessmentManualHandlingField(index, field = "", value = "", 
   scheduleRiskAssessmentDraftAutosave();
 }
 
+function renderRiskAssessmentManualLoadFields(entry = {}) {
+  return `
+    <label><span>Vrsta radnje</span><select data-risk-manual-field="operationType">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_OPERATION_OPTIONS, entry.operationType)}</select></label>
+    <label><span>Masa tereta (kg)</span><input data-risk-manual-field="loadWeightKg" inputmode="decimal" value="${escapeHtml(entry.loadWeightKg)}" /></label>
+    <label><span>Ponavljanja / sat</span><input data-risk-manual-field="transfersPerHour" inputmode="decimal" value="${escapeHtml(entry.transfersPerHour)}" /></label>
+    <label><span>Trajanje (min)</span><input data-risk-manual-field="durationMinutes" inputmode="decimal" value="${escapeHtml(entry.durationMinutes)}" /></label>
+    <label><span>Udaljenost po prijenosu (m)</span><input data-risk-manual-field="carryingDistanceMeters" inputmode="decimal" value="${escapeHtml(entry.carryingDistanceMeters)}" /></label>
+    <label><span>Položaj tijela</span><select data-risk-manual-field="posture">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS, entry.posture)}</select></label>
+    <label><span>Uvjeti rada</span><select data-risk-manual-field="workConditions">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_WORK_CONDITION_OPTIONS, entry.workConditions)}</select></label>
+  `;
+}
+
+function renderRiskAssessmentManualPushPullFields(entry = {}) {
+  return `
+    <label><span>Način rada</span><select data-risk-manual-field="pushPullMode">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_PUSH_PULL_MODE_OPTIONS, entry.pushPullMode)}</select></label>
+    <label><span>Masa tereta (kg)</span><input data-risk-manual-field="loadWeightKg" inputmode="decimal" value="${escapeHtml(entry.loadWeightKg)}" /></label>
+    <label><span>Pomagalo / transport</span><select data-risk-manual-field="pushPullTransport">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_PUSH_PULL_TRANSPORT_OPTIONS, entry.pushPullTransport)}</select></label>
+    <label><span>Preciznost i brzina</span><select data-risk-manual-field="pushPullPrecisionSpeed">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_PUSH_PULL_PRECISION_OPTIONS, entry.pushPullPrecisionSpeed)}</select></label>
+    <label><span>Ponavljanja / sat</span><input data-risk-manual-field="transfersPerHour" inputmode="decimal" value="${escapeHtml(entry.transfersPerHour)}" /></label>
+    <label><span>Trajanje (min)</span><input data-risk-manual-field="durationMinutes" inputmode="decimal" value="${escapeHtml(entry.durationMinutes)}" /></label>
+    <label><span>Udaljenost po radnji (m)</span><input data-risk-manual-field="carryingDistanceMeters" inputmode="decimal" value="${escapeHtml(entry.carryingDistanceMeters)}" /></label>
+    <label><span>Položaj tijela</span><select data-risk-manual-field="pushPullPosture">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_PUSH_PULL_POSTURE_OPTIONS, entry.pushPullPosture)}</select></label>
+    <label><span>Radni uvjeti</span><select data-risk-manual-field="pushPullWorkConditions">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_PUSH_PULL_WORK_CONDITION_OPTIONS, entry.pushPullWorkConditions)}</select></label>
+  `;
+}
+
+function renderRiskAssessmentManualRepetitiveFields(entry = {}) {
+  return `
+    <label><span>Trajanje zadatka (min)</span><input data-risk-manual-field="durationMinutes" inputmode="decimal" value="${escapeHtml(entry.durationMinutes)}" /></label>
+    <label><span>Broj pokreta / smjenu</span><input data-risk-manual-field="repetitionsPerShift" inputmode="decimal" value="${escapeHtml(entry.repetitionsPerShift)}" /></label>
+    <label><span>Potrebna snaga</span><select data-risk-manual-field="forceLevel">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_REPETITIVE_FORCE_OPTIONS, entry.forceLevel)}</select></label>
+    <label><span>Glava i vrat</span><select data-risk-manual-field="bodyHeadNeck">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyHeadNeck)}</select></label>
+    <label><span>Leđa</span><select data-risk-manual-field="bodyBack">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyBack)}</select></label>
+    <label><span>Rame</span><select data-risk-manual-field="bodyShoulder">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_BODY_PART_STRONG_OPTIONS, entry.bodyShoulder)}</select></label>
+    <label><span>Lakat</span><select data-risk-manual-field="bodyElbow">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_BODY_PART_STRONG_OPTIONS, entry.bodyElbow)}</select></label>
+    <label><span>Ručni zglob</span><select data-risk-manual-field="bodyWrist">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyWrist)}</select></label>
+    <label><span>Prsti</span><select data-risk-manual-field="bodyFingers">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_BODY_PART_OPTIONS, entry.bodyFingers)}</select></label>
+  `;
+}
+
+function renderRiskAssessmentManualMethodFields(entry = {}) {
+  const method = normalizeRiskAssessmentManualMethod(entry.methodType);
+  if (method === "push_pull") {
+    return renderRiskAssessmentManualPushPullFields(entry);
+  }
+  if (method === "repetitive") {
+    return renderRiskAssessmentManualRepetitiveFields(entry);
+  }
+  return renderRiskAssessmentManualLoadFields(entry);
+}
+
 function renderRiskAssessmentManualHandling() {
   if (!riskAssessmentManualHandlingList) {
     return;
@@ -154233,13 +154994,14 @@ function renderRiskAssessmentManualHandling() {
   if (!riskAssessmentManualHandlingDrafts.length) {
     const empty = document.createElement("p");
     empty.className = "inline-help";
-    empty.textContent = "Dodaj aktivnost za izračun ručnog prenošenja tereta.";
+    empty.textContent = "Dodaj IOR izračun za odabrani opseg radnih mjesta.";
     riskAssessmentManualHandlingList.replaceChildren(empty);
     return;
   }
 
   riskAssessmentManualHandlingList.replaceChildren(...riskAssessmentManualHandlingDrafts.map((entry, index) => {
     const calculation = calculateRiskAssessmentManualHandling(entry);
+    const method = getRiskAssessmentManualMethodOption(entry.methodType);
     const row = document.createElement("article");
     row.className = "risk-assessment-manual-card";
     row.dataset.riskManualIndex = String(index);
@@ -154247,33 +155009,30 @@ function renderRiskAssessmentManualHandling() {
     row.innerHTML = `
       <div class="risk-assessment-manual-head">
         <div>
-          <span class="section-kicker">Izračun ${index + 1}</span>
-          <strong>${escapeHtml(entry.activity || "Aktivnost ručnog prenošenja")}</strong>
+          <span class="section-kicker">IOR ${index + 1} · <span data-risk-manual-method-label>${escapeHtml(calculation.methodLabel)}</span></span>
+          <strong>${escapeHtml(getRiskAssessmentManualEntryTitle(entry, `IOR ${index + 1}`))}</strong>
           <small data-risk-manual-recommendation>${escapeHtml(calculation.recommendation)}</small>
         </div>
         <div class="risk-assessment-manual-metrics">
           <span data-risk-manual-result class="risk-assessment-manual-result is-${escapeHtml(calculation.tone)}">${escapeHtml(calculation.level)}</span>
           <span><b data-risk-manual-score>${escapeHtml(String(calculation.score))}</b> bodova</span>
-          <span data-risk-manual-t1>${escapeHtml(`T1 ${calculation.t1Points}`)}</span>
-          <span data-risk-manual-t2>${escapeHtml(`T2 ${calculation.t2Points}`)}</span>
-          <span data-risk-manual-t34>${escapeHtml(`T3 ${calculation.t3Points} · T4 ${calculation.t4Points}`)}</span>
-          <span data-risk-manual-workload>${escapeHtml([
-            calculation.dailyLoadKg ? `${calculation.dailyLoadKg} kg` : "",
-            calculation.totalDistanceMeters ? `${calculation.totalDistanceMeters} m` : "",
-          ].filter(Boolean).join(" / ") || "Nije izračunato")}</span>
+          <span>${escapeHtml(method.formula)}</span>
+          <span data-risk-manual-factors>${escapeHtml(getRiskAssessmentManualFactorSummary(calculation))}</span>
+          <span data-risk-manual-workload>${escapeHtml(getRiskAssessmentManualWorkloadSummary(calculation))}</span>
         </div>
+      </div>
+      <div class="risk-assessment-manual-flow" aria-hidden="true">
+        <span>Opseg</span><strong>${escapeHtml(getRiskAssessmentManualScopeSummary().count ? `${getRiskAssessmentManualScopeSummary().count} radnih mjesta` : "nije odabran")}</strong>
+        <span>Vrijednosti</span><strong>${escapeHtml(getRiskAssessmentManualWorkloadSummary(calculation))}</strong>
+        <span>Izračun</span><strong>${escapeHtml(calculation.formulaValueText || method.formula)}</strong>
+        <span>Ocjena</span><strong>${escapeHtml(`${calculation.score} bodova`)}</strong>
       </div>
       <div class="risk-assessment-manual-grid">
         <label><span>Aktivnost</span><input data-risk-manual-field="activity" value="${escapeHtml(entry.activity)}" placeholder="npr. Premještanje boca / kutija" /></label>
-        <label><span>Povezani posao</span><select data-risk-manual-field="jobId">${renderRiskAssessmentManualJobOptions(entry.jobId)}</select></label>
-        <label><span>Vrsta radnje</span><select data-risk-manual-field="operationType">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_OPERATION_OPTIONS, entry.operationType)}</select></label>
+        <label><span>Tip IOR-a</span><select data-risk-manual-field="methodType">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_METHOD_OPTIONS, entry.methodType)}</select></label>
         <label><span>Radnik</span><select data-risk-manual-field="workerGender">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_WORKER_GENDER_OPTIONS, entry.workerGender)}</select></label>
-        <label><span>Masa tereta (kg)</span><input data-risk-manual-field="loadWeightKg" inputmode="decimal" value="${escapeHtml(entry.loadWeightKg)}" /></label>
-        <label><span>Prenošenja / sat</span><input data-risk-manual-field="transfersPerHour" inputmode="decimal" value="${escapeHtml(entry.transfersPerHour)}" /></label>
-        <label><span>Trajanje (min)</span><input data-risk-manual-field="durationMinutes" inputmode="decimal" value="${escapeHtml(entry.durationMinutes)}" /></label>
-        <label><span>Udaljenost nošenja (m)</span><input data-risk-manual-field="carryingDistanceMeters" inputmode="decimal" value="${escapeHtml(entry.carryingDistanceMeters)}" /></label>
-        <label><span>Položaj tijela</span><select data-risk-manual-field="posture">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS, entry.posture)}</select></label>
-        <label><span>Uvjeti rada</span><select data-risk-manual-field="workConditions">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_WORK_CONDITION_OPTIONS, entry.workConditions)}</select></label>
+        <label><span>Primjena</span><input value="${escapeHtml(getRiskAssessmentManualScopeSummary().count ? `${getRiskAssessmentManualScopeSummary().count} radnih mjesta u opsegu` : "Opseg odaberi gore")}" readonly /></label>
+        ${renderRiskAssessmentManualMethodFields(entry)}
         <label class="field-span-full"><span>Postojeće / potrebne mjere</span><textarea data-risk-manual-field="existingMeasures" rows="2">${escapeHtml(entry.existingMeasures)}</textarea></label>
         <label class="field-span-full"><span>Napomena</span><textarea data-risk-manual-field="note" rows="2">${escapeHtml(entry.note)}</textarea></label>
       </div>
@@ -154384,8 +155143,8 @@ function renderRiskAssessmentOverview() {
       <span><strong>${escapeHtml(String(summary.jobs))}</strong> poslova</span>
       <span><strong>${escapeHtml(String(summary.readyJobs))}</strong> spremno</span>
       <span><strong>${escapeHtml(String(summary.totalRisks))}</strong> rizika</span>
-      <span><strong>${escapeHtml(String(summary.totalManualHandling))}</strong> teret</span>
-      <span><strong>${escapeHtml(String(summary.highManualHandling))}</strong> visoki teret</span>
+      <span><strong>${escapeHtml(String(summary.totalManualHandling))}</strong> IOR</span>
+      <span><strong>${escapeHtml(String(summary.highManualHandling))}</strong> visokih IOR</span>
       <span><strong>${escapeHtml(String(summary.totalChemicals))}</strong> kemikalija</span>
       <span><strong>${escapeHtml(String(summary.appendixData.equipmentItems.length))}</strong> oprema</span>
       <span><strong>${escapeHtml(String(summary.appendixData.inspectionItems.length))}</strong> ispitivanja</span>
@@ -154439,6 +155198,9 @@ function handleRiskAssessmentManualHandlingInput(event) {
   const card = target.closest("[data-risk-manual-index]");
   const index = getRiskAssessmentManualIndexFromElement(target);
   updateRiskAssessmentManualHandlingField(index, field, target.value, card);
+  if (field === "methodType") {
+    renderRiskAssessmentManualHandling();
+  }
 }
 
 function handleRiskAssessmentManualHandlingClick(event) {
@@ -156753,6 +157515,7 @@ function renderRiskAssessmentJobs(options = {}) {
     if (refreshTree) {
       renderRiskAssessmentJobTree();
     }
+    renderRiskAssessmentManualScope();
     updateRiskAssessmentJobAnalysisShellMode();
     if (refreshOverview) {
       renderRiskAssessmentOverview();
@@ -156830,6 +157593,7 @@ function renderRiskAssessmentJobs(options = {}) {
     renderRiskAssessmentJobTree();
   }
   if (refreshLinkedSheets) {
+    renderRiskAssessmentManualScope();
     renderRiskAssessmentManualHandling();
     renderRiskAssessmentChemicals();
     renderRiskAssessmentBiologicalRisks();
@@ -156906,6 +157670,7 @@ function buildRiskAssessmentPayload() {
         riskRows: sortRiskAssessmentRiskRowsByPrilogOrder(job.riskRows ?? []),
       })),
     riskTemplates: riskAssessmentRiskTemplateDrafts,
+    manualHandlingScope: sanitizeRiskAssessmentManualScopeDraft(riskAssessmentManualHandlingScopeDraft),
     manualHandling: riskAssessmentManualHandlingDrafts.map((entry) => sanitizeRiskAssessmentManualHandlingDraft(entry)),
     chemicals: riskAssessmentChemicalDrafts.map((chemical) => sanitizeRiskAssessmentTransientChemical(chemical)),
     biologicalRisks: riskAssessmentBiologicalRiskDrafts.map((entry) => sanitizeRiskAssessmentTransientBiologicalRisk(entry)),
@@ -156935,7 +157700,7 @@ function renderRiskAssessmentCard(item = {}) {
     <div class="risk-assessment-card-meta">
       <span class="soft-pill">${unitsCount} jedinica</span>
       <span class="soft-pill">${jobsCount} poslova</span>
-      <span class="soft-pill">${manualCount} teret</span>
+      <span class="soft-pill">${manualCount} IOR</span>
       <span class="soft-pill">${chemicalCount} kemikalija</span>
       <span class="soft-pill">${ppeCount} OZO</span>
       <span class="soft-pill">${measuresOpen} mjera</span>
