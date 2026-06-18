@@ -169,6 +169,84 @@ data class RiskAssessmentJobDraft(
     val jobTitle: String,
     val description: String,
     val tasks: String,
+    val workerCount: String = "",
+    val workplace: String = "",
+    val workSchedule: String = "",
+    val workOrganization: String = "",
+    val workEnvironment: String = "",
+    val workEquipment: String = "",
+    val toolsAndMachines: String = "",
+    val workSubstances: String = "",
+    val trainings: String = "",
+    val medicalExams: String = "",
+    val ppeText: String = "",
+    val note: String = "",
+    val riskRows: List<RiskAssessmentRiskRowDraft> = emptyList(),
+    val ppeItems: List<RiskAssessmentPpeDraft> = emptyList(),
+)
+
+data class RiskAssessmentOrganizationUnitDraft(
+    val name: String,
+    val type: String,
+    val responsiblePerson: String,
+    val workerCount: String,
+    val description: String,
+)
+
+data class RiskAssessmentRiskRowDraft(
+    val hazard: String,
+    val source: String,
+    val possibleConsequences: String,
+    val riskLevel: String,
+    val existingMeasures: String,
+    val additionalMeasures: String,
+    val measures: String,
+)
+
+data class RiskAssessmentPpeDraft(
+    val name: String,
+    val category: String,
+    val norm: String,
+    val description: String,
+)
+
+data class RiskAssessmentMeasureDraft(
+    val measure: String,
+    val deadline: String,
+    val responsiblePerson: String,
+    val controlMethod: String,
+    val status: String,
+)
+
+data class RiskAssessmentChemicalDraft(
+    val name: String,
+    val casNumber: String,
+    val classification: String,
+    val hazardStatements: String,
+    val ppe: String,
+    val storage: String,
+    val note: String,
+)
+
+data class RiskAssessmentBiologicalDraft(
+    val agentName: String,
+    val category: String,
+    val group: String,
+    val source: String,
+    val possibleConsequences: String,
+    val existingMeasures: String,
+    val note: String,
+)
+
+data class RiskAssessmentManualHandlingDraft(
+    val activity: String,
+    val jobTitle: String,
+    val loadWeightKg: String,
+    val transfersPerHour: String,
+    val carryingDistanceMeters: String,
+    val posture: String,
+    val workConditions: String,
+    val note: String,
 )
 
 data class RiskAssessmentCreateDraft(
@@ -182,11 +260,40 @@ data class RiskAssessmentCreateDraft(
     val status: String,
     val assessmentDate: String,
     val revisionDate: String,
+    val completionDate: String = "",
+    val assessmentNumber: String = "",
+    val teamLead: String = "",
+    val collaborators: String = "",
+    val employerFullName: String = "",
+    val employerAddress: String = "",
+    val employerMbs: String = "",
+    val employerOib: String = "",
+    val employerNkdActivity: String = "",
+    val employerEmployeeCount: String = "",
+    val employerHeadquarters: String = "",
+    val employerDetachedLocations: String = "",
+    val znrServiceMode: String = "",
+    val znrExperts: String = "",
+    val znrRepresentatives: String = "",
+    val znrCommitteeParticipation: String = "",
     val intro: String,
     val workProcessDescription: String,
     val generalData: String,
+    val computerWorkplaces: String = "",
+    val basicRules: String = "",
+    val specialRules: String = "",
+    val omissionsBasic: String = "",
+    val omissionsSpecial: String = "",
     val conclusion: String,
+    val biologicalHazards: String = "",
+    val clientNote: String = "",
+    val clientJobInputEnabled: Boolean = false,
+    val organizationUnits: List<RiskAssessmentOrganizationUnitDraft> = emptyList(),
     val jobs: List<RiskAssessmentJobDraft>,
+    val measures: List<RiskAssessmentMeasureDraft> = emptyList(),
+    val chemicals: List<RiskAssessmentChemicalDraft> = emptyList(),
+    val biologicalRisks: List<RiskAssessmentBiologicalDraft> = emptyList(),
+    val manualHandling: List<RiskAssessmentManualHandlingDraft> = emptyList(),
 )
 
 data class WorkOrderDocumentationDraft(

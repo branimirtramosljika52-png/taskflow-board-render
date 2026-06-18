@@ -196,8 +196,15 @@ import com.safenexus.app.data.IsznrRoAssessmentItem
 import com.safenexus.app.data.IsznrWorkEquipmentSubmitResult
 import com.safenexus.app.data.JobCreateDraft
 import com.safenexus.app.data.MobileRecord
+import com.safenexus.app.data.RiskAssessmentBiologicalDraft
+import com.safenexus.app.data.RiskAssessmentChemicalDraft
 import com.safenexus.app.data.RiskAssessmentCreateDraft
 import com.safenexus.app.data.RiskAssessmentJobDraft
+import com.safenexus.app.data.RiskAssessmentManualHandlingDraft
+import com.safenexus.app.data.RiskAssessmentMeasureDraft
+import com.safenexus.app.data.RiskAssessmentOrganizationUnitDraft
+import com.safenexus.app.data.RiskAssessmentPpeDraft
+import com.safenexus.app.data.RiskAssessmentRiskRowDraft
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
@@ -4619,6 +4626,137 @@ private fun JobEditorDialog(
 }
 
 @Composable
+private fun RiskAssessmentSectionTabs(
+    sections: List<Pair<String, String>>,
+    selected: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        sections.forEach { section ->
+            FilterChip(
+                selected = selected == section.first,
+                onClick = { onSelect(section.first) },
+                enabled = enabled,
+                label = { Text(section.second, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RiskMobileSection(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 1.dp,
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun RiskCompactTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    minLines: Int = 1,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled,
+        label = { Text(label) },
+        singleLine = minLines <= 1,
+        minLines = minLines,
+        maxLines = if (minLines <= 1) 1 else minLines + 3,
+        shape = RoundedCornerShape(16.dp),
+    )
+}
+
+@Composable
+private fun RiskListLine(
+    title: String,
+    subtitle: String,
+    onRemove: () -> Unit,
+    enabled: Boolean,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title.ifBlank { "Bez naziva" }, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            IconButton(onClick = onRemove, enabled = enabled) {
+                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni")
+            }
+        }
+    }
+}
+
+@Composable
+private fun RiskSummaryLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+        Text(value.ifBlank { "-" }, fontWeight = FontWeight.Black, textAlign = TextAlign.End)
+    }
+}
+
+@Composable
 private fun RiskAssessmentEditorDialog(
     data: BootstrapData,
     currentUserLabel: String,
@@ -4628,18 +4766,95 @@ private fun RiskAssessmentEditorDialog(
     onNewJob: () -> Unit,
 ) {
     val today = remember { LocalDate.now().toString() }
+    val sections = listOf(
+        "basic" to "Osnovno",
+        "texts" to "Tekst",
+        "structure" to "Mjesta",
+        "jobs" to "Jobs",
+        "risks" to "Rizici",
+        "measures" to "Mjere",
+        "chemicals" to "Kemija",
+        "biology" to "Biologija",
+        "manual" to "Teret",
+        "summary" to "Pregled",
+    )
     var title by remember { mutableStateOf("") }
     var companyId by remember { mutableStateOf("") }
     var locationId by remember { mutableStateOf("") }
     var workOrderId by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("draft") }
+    var activeSection by remember { mutableStateOf("basic") }
+    var assessmentNumber by remember { mutableStateOf("") }
     var assessmentDate by remember { mutableStateOf(today) }
+    var completionDate by remember { mutableStateOf(today) }
     var revisionDate by remember { mutableStateOf("") }
+    var teamLead by remember { mutableStateOf(currentUserLabel) }
+    var collaborators by remember { mutableStateOf("") }
+    var employerMbs by remember { mutableStateOf("") }
+    var employerNkdActivity by remember { mutableStateOf("") }
+    var employerEmployeeCount by remember { mutableStateOf("") }
+    var employerDetachedLocations by remember { mutableStateOf("") }
+    var znrServiceMode by remember { mutableStateOf("") }
+    var znrExperts by remember { mutableStateOf("") }
+    var znrRepresentatives by remember { mutableStateOf("") }
+    var znrCommitteeParticipation by remember { mutableStateOf("") }
     var intro by remember { mutableStateOf("") }
     var workProcess by remember { mutableStateOf("") }
     var generalData by remember { mutableStateOf("") }
+    var computerWorkplaces by remember { mutableStateOf("") }
+    var basicRules by remember { mutableStateOf("") }
+    var specialRules by remember { mutableStateOf("") }
+    var omissionsBasic by remember { mutableStateOf("") }
+    var omissionsSpecial by remember { mutableStateOf("") }
     var conclusion by remember { mutableStateOf("") }
-    var selectedJobIds by remember { mutableStateOf(emptyList<String>()) }
+    var biologicalHazards by remember { mutableStateOf("") }
+    var clientNote by remember { mutableStateOf("") }
+    var activeJobIndex by remember { mutableStateOf(0) }
+    val organizationUnits = remember { mutableStateListOf<RiskAssessmentOrganizationUnitDraft>() }
+    val selectedJobDrafts = remember { mutableStateListOf<RiskAssessmentJobDraft>() }
+    val measures = remember { mutableStateListOf<RiskAssessmentMeasureDraft>() }
+    val chemicals = remember { mutableStateListOf<RiskAssessmentChemicalDraft>() }
+    val biologicalRisks = remember { mutableStateListOf<RiskAssessmentBiologicalDraft>() }
+    val manualHandling = remember { mutableStateListOf<RiskAssessmentManualHandlingDraft>() }
+    var unitName by remember { mutableStateOf("") }
+    var unitType by remember { mutableStateOf("workplace") }
+    var unitResponsible by remember { mutableStateOf("") }
+    var unitWorkerCount by remember { mutableStateOf("") }
+    var unitDescription by remember { mutableStateOf("") }
+    var riskHazard by remember { mutableStateOf("") }
+    var riskSource by remember { mutableStateOf("") }
+    var riskConsequences by remember { mutableStateOf("") }
+    var riskLevel by remember { mutableStateOf("Srednji") }
+    var riskExistingMeasures by remember { mutableStateOf("") }
+    var riskAdditionalMeasures by remember { mutableStateOf("") }
+    var ppeName by remember { mutableStateOf("") }
+    var ppeCategory by remember { mutableStateOf("") }
+    var ppeNorm by remember { mutableStateOf("") }
+    var ppeDescription by remember { mutableStateOf("") }
+    var measureText by remember { mutableStateOf("") }
+    var measureDeadline by remember { mutableStateOf("") }
+    var measureResponsible by remember { mutableStateOf("") }
+    var measureControl by remember { mutableStateOf("") }
+    var chemicalName by remember { mutableStateOf("") }
+    var chemicalCas by remember { mutableStateOf("") }
+    var chemicalClassification by remember { mutableStateOf("") }
+    var chemicalHazards by remember { mutableStateOf("") }
+    var chemicalPpe by remember { mutableStateOf("") }
+    var chemicalStorage by remember { mutableStateOf("") }
+    var biologicalName by remember { mutableStateOf("") }
+    var biologicalCategory by remember { mutableStateOf("") }
+    var biologicalGroup by remember { mutableStateOf("") }
+    var biologicalSource by remember { mutableStateOf("") }
+    var biologicalConsequences by remember { mutableStateOf("") }
+    var biologicalMeasures by remember { mutableStateOf("") }
+    var manualActivity by remember { mutableStateOf("") }
+    var manualJobTitle by remember { mutableStateOf("") }
+    var manualWeight by remember { mutableStateOf("") }
+    var manualFrequency by remember { mutableStateOf("") }
+    var manualDistance by remember { mutableStateOf("") }
+    var manualPosture by remember { mutableStateOf("upright") }
+    var manualConditions by remember { mutableStateOf("good") }
+    var manualNote by remember { mutableStateOf("") }
 
     val companyOptions = remember(data.workOrderCompanies) {
         data.workOrderCompanies.map { company ->
@@ -4685,6 +4900,36 @@ private fun RiskAssessmentEditorDialog(
             job.id to job.title.ifBlank { "Job" }
         }
     }
+    val selectedCompanyAddress = selectedCompany?.headquarters.orEmpty()
+    val selectedCompanyOib = selectedCompany?.oib.orEmpty()
+    val selectedJobIds = selectedJobDrafts.map { it.sourceJobId }.filter { it.isNotBlank() }
+    val activeJob = selectedJobDrafts.getOrNull(activeJobIndex.coerceIn(0, (selectedJobDrafts.size - 1).coerceAtLeast(0)))
+
+    fun jobDraftFromRecord(record: MobileRecord): RiskAssessmentJobDraft {
+        val description = record.meta["description"].orEmpty().ifBlank { record.subtitle }
+        return RiskAssessmentJobDraft(
+            sourceJobId = record.id,
+            jobTitle = record.title.ifBlank { "Job" },
+            description = description,
+            tasks = description,
+            workEnvironment = record.meta["environmentCount"].orEmpty(),
+            workEquipment = "",
+            note = record.status,
+        )
+    }
+
+    fun updateJob(index: Int, next: RiskAssessmentJobDraft) {
+        if (index in selectedJobDrafts.indices) {
+            selectedJobDrafts[index] = next
+        }
+    }
+
+    LaunchedEffect(selectedCompany?.id) {
+        if (selectedCompany != null) {
+            if (title.isBlank()) title = "Procjena rizika - ${selectedCompany.name}"
+            if (employerDetachedLocations.isBlank()) employerDetachedLocations = selectedCompany.headquarters
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -4693,7 +4938,7 @@ private fun RiskAssessmentEditorDialog(
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Mobilna procjena rizika", fontWeight = FontWeight.Black)
-                Text("Osnovno, Jobs i tekstovi uz mikrofon.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                Text("Isti blokovi kao web, složeni za mobitel.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
             }
         },
         text = {
@@ -4704,74 +4949,141 @@ private fun RiskAssessmentEditorDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                WorkOrderSearchSelectField(
-                    label = "Tvrtka",
-                    value = companyId,
-                    valueLabel = selectedCompany?.name ?: "Odaberi tvrtku",
-                    options = companyOptions,
-                    enabled = !isLoading,
-                    onSelect = {
-                        companyId = it
-                        locationId = ""
-                        workOrderId = ""
-                        data.workOrderCompanies.firstOrNull { company -> company.id == it }?.let { company ->
-                            if (title.isBlank()) title = "Procjena rizika - ${company.name}"
-                        }
-                    },
-                    icon = Icons.Rounded.Business,
-                )
-                WorkOrderSearchSelectField(
-                    label = "Lokacija",
-                    value = locationId,
-                    valueLabel = selectedLocation?.name ?: "Sve lokacije / odaberi",
-                    options = locationOptions,
-                    enabled = !isLoading,
-                    onSelect = { locationId = it },
-                    icon = Icons.Rounded.LocationOn,
-                )
-                WorkOrderSearchSelectField(
-                    label = "Povezani RN",
-                    value = workOrderId,
-                    valueLabel = selectedWorkOrder?.displayNumber ?: "Bez RN-a",
-                    options = workOrderOptions,
-                    enabled = !isLoading,
-                    onSelect = { selected ->
-                        workOrderId = selected
-                        data.workOrders.firstOrNull { it.id == selected }?.let { workOrder ->
-                            companyId = workOrder.companyId
-                            locationId = workOrder.locationId
-                            if (title.isBlank()) title = "Procjena rizika - ${workOrder.companyName}"
-                        }
-                    },
-                    icon = Icons.Rounded.Work,
-                )
-                WorkOrderSelectField(
-                    label = "Status",
-                    value = status,
-                    valueLabel = if (status == "completed") "Završeno" else "Skica",
-                    options = listOf("draft" to "Skica", "completed" to "Završeno"),
-                    enabled = !isLoading,
-                    onSelect = { status = it },
-                )
-                WorkOrderDatePickerField("Datum procjene", assessmentDate, { assessmentDate = it }, !isLoading)
-                WorkOrderDatePickerField("Rok / revizija", revisionDate, { revisionDate = it }, !isLoading)
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Naziv procjene") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                )
+                RiskAssessmentSectionTabs(sections, activeSection, !isLoading) { activeSection = it }
 
-                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                when (activeSection) {
+                    "basic" -> RiskMobileSection("Osnovno", "Tvrtka, RN, tim, poslodavac i ZNR organizacija.", Icons.Rounded.Business) {
+                        WorkOrderSearchSelectField(
+                            label = "Tvrtka",
+                            value = companyId,
+                            valueLabel = selectedCompany?.name ?: "Odaberi tvrtku",
+                            options = companyOptions,
+                            enabled = !isLoading,
+                            onSelect = {
+                                companyId = it
+                                locationId = ""
+                                workOrderId = ""
+                                data.workOrderCompanies.firstOrNull { company -> company.id == it }?.let { company ->
+                                    if (title.isBlank()) title = "Procjena rizika - ${company.name}"
+                                }
+                            },
+                            icon = Icons.Rounded.Business,
+                        )
+                        WorkOrderSearchSelectField(
+                            label = "Lokacija",
+                            value = locationId,
+                            valueLabel = selectedLocation?.name ?: "Sve lokacije / odaberi",
+                            options = locationOptions,
+                            enabled = !isLoading,
+                            onSelect = { locationId = it },
+                            icon = Icons.Rounded.LocationOn,
+                        )
+                        WorkOrderSearchSelectField(
+                            label = "Povezani RN",
+                            value = workOrderId,
+                            valueLabel = selectedWorkOrder?.displayNumber ?: "Bez RN-a",
+                            options = workOrderOptions,
+                            enabled = !isLoading,
+                            onSelect = { selected ->
+                                workOrderId = selected
+                                data.workOrders.firstOrNull { it.id == selected }?.let { workOrder ->
+                                    companyId = workOrder.companyId
+                                    locationId = workOrder.locationId
+                                    if (title.isBlank()) title = "Procjena rizika - ${workOrder.companyName}"
+                                }
+                            },
+                            icon = Icons.Rounded.Work,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            WorkOrderSelectField(
+                                label = "Status",
+                                value = status,
+                                valueLabel = if (status == "completed") "Završeno" else "Skica",
+                                options = listOf("draft" to "Skica", "completed" to "Završeno"),
+                                enabled = !isLoading,
+                                onSelect = { status = it },
+                                modifier = Modifier.weight(1f),
+                            )
+                            RiskCompactTextField(assessmentNumber, { assessmentNumber = it }, "Broj", !isLoading, Modifier.weight(1f))
+                        }
+                        RiskCompactTextField(title, { title = it }, "Naziv procjene", !isLoading)
+                        WorkOrderDatePickerField("Datum procjene", assessmentDate, { assessmentDate = it }, !isLoading)
+                        WorkOrderDatePickerField("Datum završetka", completionDate, { completionDate = it }, !isLoading)
+                        WorkOrderDatePickerField("Rok / revizija", revisionDate, { revisionDate = it }, !isLoading)
+                        RiskCompactTextField(teamLead, { teamLead = it }, "Voditelj izrade", !isLoading)
+                        RiskCompactTextField(collaborators, { collaborators = it }, "Članovi / suradnici", !isLoading, minLines = 2)
+                        RiskCompactTextField(selectedCompany?.name.orEmpty(), {}, "Poslodavac", false)
+                        RiskCompactTextField(selectedCompanyOib, {}, "OIB", false)
+                        RiskCompactTextField(selectedCompanyAddress, {}, "Adresa / sjedište", false, minLines = 2)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RiskCompactTextField(employerMbs, { employerMbs = it }, "MBS", !isLoading, Modifier.weight(1f))
+                            RiskCompactTextField(employerEmployeeCount, { employerEmployeeCount = it }, "Broj radnika", !isLoading, Modifier.weight(1f))
+                        }
+                        VoiceTextField(employerNkdActivity, { employerNkdActivity = it }, "NKD / djelatnost", "Diktiraj djelatnost poslodavca.", !isLoading, minLines = 2)
+                        VoiceTextField(employerDetachedLocations, { employerDetachedLocations = it }, "Izdvojene lokacije", "Navedi pogone, lokacije i prostore.", !isLoading, minLines = 2)
+                        VoiceTextField(znrServiceMode, { znrServiceMode = it }, "Način obavljanja ZNR", "Interno, ovlaštena osoba ili kombinacija.", !isLoading, minLines = 2)
+                        VoiceTextField(znrExperts, { znrExperts = it }, "Stručnjaci zaštite na radu", "Upiši ili diktiraj stručnjake.", !isLoading, minLines = 2)
+                        VoiceTextField(znrRepresentatives, { znrRepresentatives = it }, "Povjerenici / predstavnici", "Upiši povjerenike i predstavnike radnika.", !isLoading, minLines = 2)
+                        VoiceTextField(znrCommitteeParticipation, { znrCommitteeParticipation = it }, "Odbor ZNR", "Opiši način sudjelovanja odbora.", !isLoading, minLines = 2)
+                    }
+
+                    "texts" -> RiskMobileSection("Uvod i tekstovi", "Word/A4 logika weba, ali uz mikrofon.", Icons.Rounded.Description) {
+                        VoiceTextField(intro, { intro = it }, "Uvod", "Diktiraj uvodni tekst procjene.", !isLoading, minLines = 4)
+                        VoiceTextField(workProcess, { workProcess = it }, "Opis procesa rada", "Diktiraj stvarni proces rada i organizaciju.", !isLoading, minLines = 4)
+                        VoiceTextField(generalData, { generalData = it }, "Opći podaci", "Dodatni podaci koji idu u osnovni dio.", !isLoading, minLines = 3)
+                        VoiceTextField(computerWorkplaces, { computerWorkplaces = it }, "Rad s računalom", "Radna mjesta s računalom, trajanje i uvjeti.", !isLoading, minLines = 3)
+                        VoiceTextField(basicRules, { basicRules = it }, "Osnovna pravila ZNR", "Prostor, instalacije, komunikacije, uvjeti rada.", !isLoading, minLines = 3)
+                        VoiceTextField(specialRules, { specialRules = it }, "Posebna pravila ZNR", "Osposobljavanja, pregledi, OZO, upute.", !isLoading, minLines = 3)
+                        VoiceTextField(omissionsBasic, { omissionsBasic = it }, "Propusti - osnovna pravila", "Ako nema propusta, ostavi prazno.", !isLoading, minLines = 2)
+                        VoiceTextField(omissionsSpecial, { omissionsSpecial = it }, "Propusti - posebna pravila", "Ako nema propusta, ostavi prazno.", !isLoading, minLines = 2)
+                        VoiceTextField(conclusion, { conclusion = it }, "Zaključak", "Kratki zaključak ili napomena.", !isLoading, minLines = 3)
+                        VoiceTextField(clientNote, { clientNote = it }, "Interna napomena", "Ne mora ići u dokument.", !isLoading, minLines = 2)
+                    }
+
+                    "structure" -> RiskMobileSection("Organizacija i mjesta", "Hijerarhija, radna mjesta i broj radnika.", Icons.Rounded.Badge) {
+                        WorkOrderSelectField(
+                            label = "Tip",
+                            value = unitType,
+                            valueLabel = if (unitType == "workplace") "Radno mjesto" else "Organizacijska jedinica",
+                            options = listOf("workplace" to "Radno mjesto", "unit" to "Organizacijska jedinica"),
+                            enabled = !isLoading,
+                            onSelect = { unitType = it },
+                        )
+                        RiskCompactTextField(unitName, { unitName = it }, "Naziv", !isLoading)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RiskCompactTextField(unitResponsible, { unitResponsible = it }, "Odgovorna osoba", !isLoading, Modifier.weight(1f))
+                            RiskCompactTextField(unitWorkerCount, { unitWorkerCount = it }, "Radnika", !isLoading, Modifier.weight(1f))
+                        }
+                        VoiceTextField(unitDescription, { unitDescription = it }, "Opis", "Opiši jedinicu ili radno mjesto.", !isLoading, minLines = 2)
+                        Button(
+                            onClick = {
+                                organizationUnits.add(RiskAssessmentOrganizationUnitDraft(unitName, unitType, unitResponsible, unitWorkerCount, unitDescription))
+                                unitName = ""; unitResponsible = ""; unitWorkerCount = ""; unitDescription = ""
+                            },
+                            enabled = !isLoading && unitName.trim().isNotBlank(),
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Dodaj mjesto")
+                        }
+                        organizationUnits.forEachIndexed { index, unit ->
+                            RiskListLine(
+                                title = unit.name,
+                                subtitle = listOf(if (unit.type == "workplace") "Radno mjesto" else "Jedinica", unit.workerCount.takeIf { it.isNotBlank() }?.let { "$it radnika" }).filterNotNull().joinToString(" · "),
+                                onRemove = { organizationUnits.removeAt(index) },
+                                enabled = !isLoading,
+                            )
+                        }
+                    }
+
+                    "jobs" -> RiskMobileSection("Jobs", "Odaberi iz kataloga pa doradi detalje za procjenu.", Icons.Rounded.Work) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Jobs / radna mjesta", modifier = Modifier.weight(1f), fontWeight = FontWeight.Black)
-                            OutlinedButton(onClick = onNewJob, shape = RoundedCornerShape(14.dp)) {
+                            Text("Katalog", modifier = Modifier.weight(1f), fontWeight = FontWeight.Black)
+                            OutlinedButton(onClick = onNewJob, enabled = !isLoading, shape = RoundedCornerShape(14.dp)) {
                                 Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Novi")
+                                Text("Novi Job")
                             }
                         }
                         WorkOrderMultiSelectChips(
@@ -4780,27 +5092,272 @@ private fun RiskAssessmentEditorDialog(
                             enabled = !isLoading,
                             emptyText = "Jobs katalog je prazan. Dodaj novi Job.",
                         ) { jobId ->
-                            selectedJobIds = selectedJobIds.toggleValue(jobId)
+                            val existingIndex = selectedJobDrafts.indexOfFirst { it.sourceJobId == jobId }
+                            if (existingIndex >= 0) {
+                                selectedJobDrafts.removeAt(existingIndex)
+                                activeJobIndex = activeJobIndex.coerceAtMost((selectedJobDrafts.size - 1).coerceAtLeast(0))
+                            } else {
+                                data.jobs.firstOrNull { it.id == jobId }?.let { record ->
+                                    selectedJobDrafts.add(jobDraftFromRecord(record))
+                                    activeJobIndex = selectedJobDrafts.lastIndex
+                                }
+                            }
+                        }
+                        if (selectedJobDrafts.isEmpty()) {
+                            Text("Odaberi barem jedan Job da se mogu unositi rizici i OZO.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                        } else {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                selectedJobDrafts.forEachIndexed { index, job ->
+                                    FilterChip(
+                                        selected = index == activeJobIndex,
+                                        onClick = { activeJobIndex = index },
+                                        label = { Text(job.jobTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    )
+                                }
+                            }
+                            activeJob?.let { job ->
+                                val index = activeJobIndex.coerceIn(selectedJobDrafts.indices)
+                                RiskCompactTextField(job.jobTitle, { updateJob(index, job.copy(jobTitle = it)) }, "Naziv radnog mjesta", !isLoading)
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    RiskCompactTextField(job.workerCount, { updateJob(index, job.copy(workerCount = it)) }, "Radnika", !isLoading, Modifier.weight(1f))
+                                    RiskCompactTextField(job.workSchedule, { updateJob(index, job.copy(workSchedule = it)) }, "Radno vrijeme", !isLoading, Modifier.weight(1f))
+                                }
+                                VoiceTextField(job.description, { updateJob(index, job.copy(description = it)) }, "Opis posla", "Opis radnog mjesta.", !isLoading, minLines = 3)
+                                VoiceTextField(job.tasks, { updateJob(index, job.copy(tasks = it)) }, "Poslovi i zadaci", "Diktiraj poslove koje radnik obavlja.", !isLoading, minLines = 3)
+                                VoiceTextField(job.workOrganization, { updateJob(index, job.copy(workOrganization = it)) }, "Organizacija rada", "Smjene, terenski rad, rad samostalno ili u timu.", !isLoading, minLines = 2)
+                                VoiceTextField(job.workEnvironment, { updateJob(index, job.copy(workEnvironment = it)) }, "Radni okoliš", "Prostori, mikroklima, buka, osvjetljenje i drugi uvjeti.", !isLoading, minLines = 2)
+                                VoiceTextField(job.workEquipment, { updateJob(index, job.copy(workEquipment = it)) }, "Radna oprema", "Strojevi, uređaji, alati i instalacije.", !isLoading, minLines = 2)
+                                VoiceTextField(job.workSubstances, { updateJob(index, job.copy(workSubstances = it)) }, "Tvari", "Kemikalije, biološki agensi i ostale tvari.", !isLoading, minLines = 2)
+                                VoiceTextField(job.trainings, { updateJob(index, job.copy(trainings = it)) }, "Osposobljavanja", "Koja osposobljavanja se traže.", !isLoading, minLines = 2)
+                                VoiceTextField(job.medicalExams, { updateJob(index, job.copy(medicalExams = it)) }, "Liječnički pregledi", "Posebni uvjeti rada i pregledi.", !isLoading, minLines = 2)
+                                VoiceTextField(job.ppeText, { updateJob(index, job.copy(ppeText = it)) }, "OZO tekst", "Opiši osobnu zaštitnu opremu.", !isLoading, minLines = 2)
+                            }
                         }
                     }
+
+                    "risks" -> RiskMobileSection("Rizici i OZO", "Mobilni unos rizika za aktivni Job.", Icons.Rounded.ErrorOutline) {
+                        if (activeJob == null) {
+                            Text("Prvo odaberi Job u kartici Jobs.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                        } else {
+                            val index = activeJobIndex.coerceIn(selectedJobDrafts.indices)
+                            Text(activeJob.jobTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                            RiskCompactTextField(riskHazard, { riskHazard = it }, "Opasnost / štetnost", !isLoading)
+                            RiskCompactTextField(riskSource, { riskSource = it }, "Izvor", !isLoading)
+                            VoiceTextField(riskConsequences, { riskConsequences = it }, "Moguće posljedice", "Što se može dogoditi.", !isLoading, minLines = 2)
+                            WorkOrderSelectField(
+                                label = "Razina rizika",
+                                value = riskLevel,
+                                valueLabel = riskLevel,
+                                options = listOf("Nizak" to "Nizak", "Srednji" to "Srednji", "Visok" to "Visok"),
+                                enabled = !isLoading,
+                                onSelect = { riskLevel = it },
+                            )
+                            VoiceTextField(riskExistingMeasures, { riskExistingMeasures = it }, "Postojeće mjere", "Mjere koje već postoje.", !isLoading, minLines = 2)
+                            VoiceTextField(riskAdditionalMeasures, { riskAdditionalMeasures = it }, "Dodatne mjere", "Što treba dodatno napraviti.", !isLoading, minLines = 2)
+                            Button(
+                                onClick = {
+                                    val nextRows = activeJob.riskRows + RiskAssessmentRiskRowDraft(riskHazard, riskSource, riskConsequences, riskLevel, riskExistingMeasures, riskAdditionalMeasures, riskAdditionalMeasures)
+                                    updateJob(index, activeJob.copy(riskRows = nextRows))
+                                    riskHazard = ""; riskSource = ""; riskConsequences = ""; riskExistingMeasures = ""; riskAdditionalMeasures = ""
+                                },
+                                enabled = !isLoading && riskHazard.trim().isNotBlank(),
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Dodaj rizik")
+                            }
+                            activeJob.riskRows.forEachIndexed { riskIndex, risk ->
+                                RiskListLine(
+                                    title = risk.hazard,
+                                    subtitle = listOf(risk.source, risk.riskLevel).filter { it.isNotBlank() }.joinToString(" · "),
+                                    enabled = !isLoading,
+                                    onRemove = {
+                                        updateJob(index, activeJob.copy(riskRows = activeJob.riskRows.filterIndexed { rowIndex, _ -> rowIndex != riskIndex }))
+                                    },
+                                )
+                            }
+                            Text("Osobna zaštitna oprema", fontWeight = FontWeight.Black)
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                RiskCompactTextField(ppeName, { ppeName = it }, "OZO", !isLoading, Modifier.weight(1f))
+                                RiskCompactTextField(ppeCategory, { ppeCategory = it }, "Kategorija", !isLoading, Modifier.weight(1f))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                RiskCompactTextField(ppeNorm, { ppeNorm = it }, "Norma", !isLoading, Modifier.weight(1f))
+                                RiskCompactTextField(ppeDescription, { ppeDescription = it }, "Opis", !isLoading, Modifier.weight(1f))
+                            }
+                            Button(
+                                onClick = {
+                                    val nextPpe = activeJob.ppeItems + RiskAssessmentPpeDraft(ppeName, ppeCategory, ppeNorm, ppeDescription)
+                                    updateJob(index, activeJob.copy(ppeItems = nextPpe))
+                                    ppeName = ""; ppeCategory = ""; ppeNorm = ""; ppeDescription = ""
+                                },
+                                enabled = !isLoading && ppeName.trim().isNotBlank(),
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Dodaj OZO")
+                            }
+                            activeJob.ppeItems.forEachIndexed { ppeIndex, ppe ->
+                                RiskListLine(
+                                    title = ppe.name,
+                                    subtitle = listOf(ppe.category, ppe.norm).filter { it.isNotBlank() }.joinToString(" · "),
+                                    enabled = !isLoading,
+                                    onRemove = {
+                                        updateJob(index, activeJob.copy(ppeItems = activeJob.ppeItems.filterIndexed { rowIndex, _ -> rowIndex != ppeIndex }))
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    "measures" -> RiskMobileSection("Plan mjera", "Mjere, rokovi, odgovorni i kontrola.", Icons.Rounded.CheckCircle) {
+                        VoiceTextField(measureText, { measureText = it }, "Mjera", "Što treba napraviti.", !isLoading, minLines = 2)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RiskCompactTextField(measureDeadline, { measureDeadline = it }, "Rok", !isLoading, Modifier.weight(1f))
+                            RiskCompactTextField(measureResponsible, { measureResponsible = it }, "Odgovoran", !isLoading, Modifier.weight(1f))
+                        }
+                        RiskCompactTextField(measureControl, { measureControl = it }, "Način kontrole", !isLoading)
+                        Button(
+                            onClick = {
+                                measures.add(RiskAssessmentMeasureDraft(measureText, measureDeadline, measureResponsible, measureControl, "open"))
+                                measureText = ""; measureDeadline = ""; measureResponsible = ""; measureControl = ""
+                            },
+                            enabled = !isLoading && measureText.trim().isNotBlank(),
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Dodaj mjeru")
+                        }
+                        measures.forEachIndexed { index, measure ->
+                            RiskListLine(measure.measure, listOf(measure.deadline, measure.responsiblePerson).filter { it.isNotBlank() }.joinToString(" · "), { measures.removeAt(index) }, !isLoading)
+                        }
+                    }
+
+                    "chemicals" -> RiskMobileSection("Kemijske štetnosti", "Ručni unos kemikalija kao u web procjeni.", Icons.Rounded.Info) {
+                        RiskCompactTextField(chemicalName, { chemicalName = it }, "Naziv tvari", !isLoading)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RiskCompactTextField(chemicalCas, { chemicalCas = it }, "CAS", !isLoading, Modifier.weight(1f))
+                            RiskCompactTextField(chemicalClassification, { chemicalClassification = it }, "Klasifikacija", !isLoading, Modifier.weight(1f))
+                        }
+                        VoiceTextField(chemicalHazards, { chemicalHazards = it }, "H oznake / opasnosti", "Jedna po retku ili odvojeno zarezom.", !isLoading, minLines = 2)
+                        VoiceTextField(chemicalPpe, { chemicalPpe = it }, "OZO i mjere", "Zaštita, ventilacija, rukovanje.", !isLoading, minLines = 2)
+                        VoiceTextField(chemicalStorage, { chemicalStorage = it }, "Skladištenje", "Kako se skladišti.", !isLoading, minLines = 2)
+                        Button(
+                            onClick = {
+                                chemicals.add(RiskAssessmentChemicalDraft(chemicalName, chemicalCas, chemicalClassification, chemicalHazards, chemicalPpe, chemicalStorage, ""))
+                                chemicalName = ""; chemicalCas = ""; chemicalClassification = ""; chemicalHazards = ""; chemicalPpe = ""; chemicalStorage = ""
+                            },
+                            enabled = !isLoading && chemicalName.trim().isNotBlank(),
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Dodaj kemikaliju")
+                        }
+                        chemicals.forEachIndexed { index, chemical ->
+                            RiskListLine(chemical.name, listOf(chemical.casNumber, chemical.classification).filter { it.isNotBlank() }.joinToString(" · "), { chemicals.removeAt(index) }, !isLoading)
+                        }
+                    }
+
+                    "biology" -> RiskMobileSection("Biološke štetnosti", "Tekstualni blok i pojedinačni agensi.", Icons.Rounded.Fingerprint) {
+                        VoiceTextField(biologicalHazards, { biologicalHazards = it }, "Opći tekst bioloških štetnosti", "Ako nije primjenjivo, ostavi prazno.", !isLoading, minLines = 3)
+                        RiskCompactTextField(biologicalName, { biologicalName = it }, "Agens / opasnost", !isLoading)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RiskCompactTextField(biologicalCategory, { biologicalCategory = it }, "Kategorija", !isLoading, Modifier.weight(1f))
+                            RiskCompactTextField(biologicalGroup, { biologicalGroup = it }, "Skupina", !isLoading, Modifier.weight(1f))
+                        }
+                        VoiceTextField(biologicalSource, { biologicalSource = it }, "Izvor izloženosti", "Gdje i kako nastaje izloženost.", !isLoading, minLines = 2)
+                        VoiceTextField(biologicalConsequences, { biologicalConsequences = it }, "Posljedice", "Moguće posljedice.", !isLoading, minLines = 2)
+                        VoiceTextField(biologicalMeasures, { biologicalMeasures = it }, "Postojeće mjere", "Mjere zaštite.", !isLoading, minLines = 2)
+                        Button(
+                            onClick = {
+                                biologicalRisks.add(RiskAssessmentBiologicalDraft(biologicalName, biologicalCategory, biologicalGroup, biologicalSource, biologicalConsequences, biologicalMeasures, ""))
+                                biologicalName = ""; biologicalCategory = ""; biologicalGroup = ""; biologicalSource = ""; biologicalConsequences = ""; biologicalMeasures = ""
+                            },
+                            enabled = !isLoading && biologicalName.trim().isNotBlank(),
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Dodaj agens")
+                        }
+                        biologicalRisks.forEachIndexed { index, biological ->
+                            RiskListLine(biological.agentName, listOf(biological.category, biological.group).filter { it.isNotBlank() }.joinToString(" · "), { biologicalRisks.removeAt(index) }, !isLoading)
+                        }
+                    }
+
+                    "manual" -> RiskMobileSection("Ručno prenošenje tereta", "Vrijednosti za IOR / teret kao u web modulu.", Icons.Rounded.ListAlt) {
+                        RiskCompactTextField(manualActivity, { manualActivity = it }, "Aktivnost", !isLoading)
+                        RiskCompactTextField(manualJobTitle, { manualJobTitle = it }, "Radno mjesto", !isLoading)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RiskCompactTextField(manualWeight, { manualWeight = it }, "kg", !isLoading, Modifier.weight(1f))
+                            RiskCompactTextField(manualFrequency, { manualFrequency = it }, "ponavljanja/h", !isLoading, Modifier.weight(1f))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RiskCompactTextField(manualDistance, { manualDistance = it }, "udaljenost m", !isLoading, Modifier.weight(1f))
+                            WorkOrderSelectField(
+                                label = "Položaj",
+                                value = manualPosture,
+                                valueLabel = when (manualPosture) { "slight" -> "Blago nepovoljno"; "unfavorable" -> "Nepovoljno"; else -> "Uspravno" },
+                                options = listOf("upright" to "Uspravno", "slight" to "Blago nepovoljno", "unfavorable" to "Nepovoljno"),
+                                enabled = !isLoading,
+                                onSelect = { manualPosture = it },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        WorkOrderSelectField(
+                            label = "Uvjeti rada",
+                            value = manualConditions,
+                            valueLabel = if (manualConditions == "poor") "Loši" else "Dobri",
+                            options = listOf("good" to "Dobri", "poor" to "Loši"),
+                            enabled = !isLoading,
+                            onSelect = { manualConditions = it },
+                        )
+                        VoiceTextField(manualNote, { manualNote = it }, "Napomena", "Dodatne okolnosti, mjere ili opis.", !isLoading, minLines = 2)
+                        Button(
+                            onClick = {
+                                manualHandling.add(RiskAssessmentManualHandlingDraft(manualActivity, manualJobTitle, manualWeight, manualFrequency, manualDistance, manualPosture, manualConditions, manualNote))
+                                manualActivity = ""; manualJobTitle = ""; manualWeight = ""; manualFrequency = ""; manualDistance = ""; manualNote = ""
+                            },
+                            enabled = !isLoading && manualActivity.trim().isNotBlank(),
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Dodaj teret")
+                        }
+                        manualHandling.forEachIndexed { index, item ->
+                            RiskListLine(item.activity, listOf(item.jobTitle, item.loadWeightKg.takeIf { it.isNotBlank() }?.let { "$it kg" }).filterNotNull().joinToString(" · "), { manualHandling.removeAt(index) }, !isLoading)
+                        }
+                    }
+
+                    else -> RiskMobileSection("Pregled prije spremanja", "Sažetak blokova koji idu u web procjenu.", Icons.Rounded.CheckCircle) {
+                        RiskSummaryLine("Tvrtka", selectedCompany?.name ?: "Nije odabrano")
+                        RiskSummaryLine("Lokacija", selectedLocation?.name ?: "Sve lokacije / nije odabrano")
+                        RiskSummaryLine("RN", selectedWorkOrder?.displayNumber ?: "Bez RN-a")
+                        RiskSummaryLine("Mjesta / organizacija", organizationUnits.size.toString())
+                        RiskSummaryLine("Jobs", selectedJobDrafts.size.toString())
+                        RiskSummaryLine("Rizici", selectedJobDrafts.sumOf { it.riskRows.size }.toString())
+                        RiskSummaryLine("OZO", selectedJobDrafts.sumOf { it.ppeItems.size }.toString())
+                        RiskSummaryLine("Mjere", measures.size.toString())
+                        RiskSummaryLine("Kemikalije", chemicals.size.toString())
+                        RiskSummaryLine("Biološke štetnosti", biologicalRisks.size.toString())
+                        RiskSummaryLine("Teret", manualHandling.size.toString())
+                        Text(
+                            "Izvoz Word/PDF, potpisi i napredni template dio ostaju u webu, ali svi ovi podaci se spremaju u isti zapis i web ih dalje vidi.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
                 }
-
-                VoiceTextField(intro, { intro = it }, "Uvod", "Diktiraj uvodni tekst procjene.", !isLoading, minLines = 3)
-                VoiceTextField(workProcess, { workProcess = it }, "Opis procesa rada", "Diktiraj stvarni proces rada i organizaciju.", !isLoading, minLines = 3)
-                VoiceTextField(generalData, { generalData = it }, "Opći podaci", "Dodatni podaci koji idu u osnovni dio.", !isLoading, minLines = 3)
-                VoiceTextField(conclusion, { conclusion = it }, "Zaključak", "Kratki zaključak ili napomena.", !isLoading, minLines = 3)
-
-                Text(
-                    "Po defaultu kao izrađivač ide trenutni korisnik: ${currentUserLabel.ifBlank { "trenutni korisnik" }}. Detaljni tim i potpisi se mogu doraditi u webu.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val selectedJobs = selectedJobIds.mapNotNull { id -> data.jobs.firstOrNull { it.id == id } }
                     onSave(
                         RiskAssessmentCreateDraft(
                             companyId = companyId,
@@ -4811,24 +5368,46 @@ private fun RiskAssessmentEditorDialog(
                             workOrderNumber = selectedWorkOrder?.displayNumber.orEmpty(),
                             title = title.ifBlank { "Procjena rizika - ${selectedCompany?.name.orEmpty()}" },
                             status = status,
+                            assessmentNumber = assessmentNumber,
                             assessmentDate = assessmentDate,
+                            completionDate = completionDate,
                             revisionDate = revisionDate,
+                            teamLead = teamLead,
+                            collaborators = collaborators,
+                            employerFullName = selectedCompany?.name.orEmpty(),
+                            employerAddress = selectedCompanyAddress,
+                            employerMbs = employerMbs,
+                            employerOib = selectedCompanyOib,
+                            employerNkdActivity = employerNkdActivity,
+                            employerEmployeeCount = employerEmployeeCount,
+                            employerHeadquarters = selectedCompanyAddress,
+                            employerDetachedLocations = employerDetachedLocations,
+                            znrServiceMode = znrServiceMode,
+                            znrExperts = znrExperts,
+                            znrRepresentatives = znrRepresentatives,
+                            znrCommitteeParticipation = znrCommitteeParticipation,
                             intro = intro,
                             workProcessDescription = workProcess,
                             generalData = generalData,
+                            computerWorkplaces = computerWorkplaces,
+                            basicRules = basicRules,
+                            specialRules = specialRules,
+                            omissionsBasic = omissionsBasic,
+                            omissionsSpecial = omissionsSpecial,
                             conclusion = conclusion,
-                            jobs = selectedJobs.map { job ->
-                                RiskAssessmentJobDraft(
-                                    sourceJobId = job.id,
-                                    jobTitle = job.title,
-                                    description = job.meta["description"].orEmpty().ifBlank { job.subtitle },
-                                    tasks = job.meta["description"].orEmpty().ifBlank { job.subtitle },
-                                )
-                            },
+                            biologicalHazards = biologicalHazards,
+                            clientNote = clientNote,
+                            clientJobInputEnabled = true,
+                            organizationUnits = organizationUnits.toList(),
+                            jobs = selectedJobDrafts.toList(),
+                            measures = measures.toList(),
+                            chemicals = chemicals.toList(),
+                            biologicalRisks = biologicalRisks.toList(),
+                            manualHandling = manualHandling.toList(),
                         ),
                     )
                 },
-                enabled = !isLoading && companyId.isNotBlank() && selectedJobIds.isNotEmpty(),
+                enabled = !isLoading && companyId.isNotBlank() && selectedJobDrafts.isNotEmpty(),
             ) {
                 Text("Spremi procjenu")
             }

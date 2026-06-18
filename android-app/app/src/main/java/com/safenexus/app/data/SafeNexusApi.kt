@@ -1399,9 +1399,44 @@ private fun JobCreateDraft.toJsonPayload(): String =
         .put("ppeItems", JSONArray())
         .toString()
 
+private fun riskTextListJson(value: String): JSONArray {
+    val items = value
+        .split("\n", ";", ",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    return JSONArray(items)
+}
+
 private fun RiskAssessmentCreateDraft.toJsonPayload(): String {
     val jobArray = JSONArray()
     jobs.forEachIndexed { index, job ->
+        val riskRows = JSONArray()
+        job.riskRows.forEach { risk ->
+            riskRows.put(
+                JSONObject()
+                    .put("hazard", risk.hazard.trim())
+                    .put("source", risk.source.trim())
+                    .put("possibleConsequences", risk.possibleConsequences.trim())
+                    .put("riskLevel", risk.riskLevel.trim())
+                    .put("existingMeasures", risk.existingMeasures.trim())
+                    .put("additionalMeasures", risk.additionalMeasures.trim())
+                    .put("measures", risk.measures.trim()),
+            )
+        }
+
+        val ppeItems = JSONArray()
+        job.ppeItems.forEach { ppe ->
+            ppeItems.put(
+                JSONObject()
+                    .put("name", ppe.name.trim())
+                    .put("category", ppe.category.trim())
+                    .put("norm", ppe.norm.trim())
+                    .put("description", ppe.description.trim())
+                    .put("required", true)
+                    .put("mandatory", true),
+            )
+        }
+
         jobArray.put(
             JSONObject()
                 .put("id", "mobile-job-${System.currentTimeMillis()}-$index")
@@ -1411,14 +1446,116 @@ private fun RiskAssessmentCreateDraft.toJsonPayload(): String {
                 .put("shortDescription", job.description.trim().take(220))
                 .put("description", job.description.trim())
                 .put("tasks", job.tasks.trim())
-                .put("riskRows", JSONArray())
-                .put("ppeItems", JSONArray()),
+                .put("workerCount", job.workerCount.trim())
+                .put("workplace", job.workplace.trim())
+                .put("workSchedule", job.workSchedule.trim())
+                .put("workOrganization", job.workOrganization.trim())
+                .put("workEnvironment", job.workEnvironment.trim())
+                .put("workEquipment", job.workEquipment.trim())
+                .put("toolsAndMachines", job.toolsAndMachines.trim())
+                .put("workSubstances", job.workSubstances.trim())
+                .put("trainings", job.trainings.trim())
+                .put("medicalExams", job.medicalExams.trim())
+                .put("ppeText", job.ppeText.trim())
+                .put("note", job.note.trim())
+                .put("riskRows", riskRows)
+                .put("ppeItems", ppeItems),
+        )
+    }
+
+    val organizationUnitArray = JSONArray()
+    organizationUnits.forEachIndexed { index, unit ->
+        organizationUnitArray.put(
+            JSONObject()
+                .put("type", unit.type.ifBlank { "workplace" })
+                .put("order", index + 1)
+                .put("name", unit.name.trim())
+                .put("responsiblePerson", unit.responsiblePerson.trim())
+                .put("workerCount", unit.workerCount.trim())
+                .put("description", unit.description.trim()),
+        )
+    }
+
+    val measureArray = JSONArray()
+    measures.forEachIndexed { index, measure ->
+        measureArray.put(
+            JSONObject()
+                .put("order", index + 1)
+                .put("measure", measure.measure.trim())
+                .put("deadline", measure.deadline.trim())
+                .put("responsiblePerson", measure.responsiblePerson.trim())
+                .put("controlMethod", measure.controlMethod.trim())
+                .put("status", measure.status.ifBlank { "open" }),
+        )
+    }
+
+    val manualHandlingArray = JSONArray()
+    manualHandling.forEachIndexed { index, item ->
+        manualHandlingArray.put(
+            JSONObject()
+                .put("order", index + 1)
+                .put("activity", item.activity.trim())
+                .put("jobId", "")
+                .put("jobTitle", item.jobTitle.trim())
+                .put("loadWeightKg", item.loadWeightKg.trim())
+                .put("transfersPerHour", item.transfersPerHour.trim())
+                .put("carryingDistanceMeters", item.carryingDistanceMeters.trim())
+                .put("posture", item.posture.ifBlank { "upright" })
+                .put("workConditions", item.workConditions.ifBlank { "good" })
+                .put("note", item.note.trim()),
+        )
+    }
+
+    val chemicalArray = JSONArray()
+    chemicals.forEachIndexed { index, chemical ->
+        chemicalArray.put(
+            JSONObject()
+                .put("order", index + 1)
+                .put("name", chemical.name.trim())
+                .put("casNumber", chemical.casNumber.trim())
+                .put("classification", chemical.classification.trim())
+                .put("hazardStatements", riskTextListJson(chemical.hazardStatements))
+                .put("ppe", chemical.ppe.trim())
+                .put("storage", chemical.storage.trim())
+                .put("note", chemical.note.trim()),
+        )
+    }
+
+    val biologicalArray = JSONArray()
+    biologicalRisks.forEachIndexed { index, biological ->
+        biologicalArray.put(
+            JSONObject()
+                .put("order", index + 1)
+                .put("agentName", biological.agentName.trim())
+                .put("category", biological.category.trim())
+                .put("group", biological.group.trim())
+                .put("source", biological.source.trim())
+                .put("possibleConsequences", biological.possibleConsequences.trim())
+                .put("existingMeasures", biological.existingMeasures.trim())
+                .put("note", biological.note.trim()),
         )
     }
 
     val titleValue = title.trim().ifBlank {
         listOf(companyName, "Procjena rizika").filter { it.isNotBlank() }.joinToString(" - ")
     }
+    val employerData = JSONObject()
+        .put("fullName", employerFullName.trim().ifBlank { companyName })
+        .put("address", employerAddress.trim())
+        .put("mbs", employerMbs.trim())
+        .put("oib", employerOib.trim())
+        .put("nkdActivity", employerNkdActivity.trim())
+        .put("employeeCount", employerEmployeeCount.trim())
+        .put("headquarters", employerHeadquarters.trim())
+        .put("detachedLocations", employerDetachedLocations.trim())
+        .put("locationScope", if (locationId.isBlank()) "all" else "selected")
+        .put("selectedLocationIds", JSONArray(listOf(locationId).filter { it.isNotBlank() }))
+        .put("znrServiceMode", znrServiceMode.trim())
+        .put("znrExperts", znrExperts.trim())
+        .put("znrRepresentatives", znrRepresentatives.trim())
+        .put("znrCommitteeParticipation", znrCommitteeParticipation.trim())
+        .put("assessmentMembers", collaborators.trim())
+
     return JSONObject()
         .put("companyId", companyId)
         .put("companyName", companyName)
@@ -1428,20 +1565,32 @@ private fun RiskAssessmentCreateDraft.toJsonPayload(): String {
         .put("workOrderNumber", workOrderNumber)
         .put("status", status.ifBlank { "draft" })
         .put("title", titleValue)
-        .put("assessmentNumber", "")
+        .put("assessmentNumber", assessmentNumber)
         .put("assessmentType", "Procjena rizika")
         .put("assessmentDate", assessmentDate)
         .put("revisionDate", revisionDate)
-        .put("completionDate", assessmentDate)
+        .put("completionDate", completionDate.ifBlank { assessmentDate })
+        .put("teamLead", teamLead.trim())
+        .put("collaborators", collaborators.trim())
+        .put("employerData", employerData)
         .put("intro", intro.trim())
         .put("workProcessDescription", workProcessDescription.trim())
         .put("generalData", generalData.trim())
+        .put("computerWorkplaces", computerWorkplaces.trim())
+        .put("basicRules", basicRules.trim())
+        .put("specialRules", specialRules.trim())
+        .put("omissionsBasic", omissionsBasic.trim())
+        .put("omissionsSpecial", omissionsSpecial.trim())
         .put("conclusion", conclusion.trim())
+        .put("biologicalHazards", biologicalHazards.trim())
+        .put("clientNote", clientNote.trim())
+        .put("clientJobInputEnabled", clientJobInputEnabled)
         .put("jobs", jobArray)
-        .put("organizationUnits", JSONArray())
-        .put("measures", JSONArray())
-        .put("chemicals", JSONArray())
-        .put("biologicalRisks", JSONArray())
+        .put("organizationUnits", organizationUnitArray)
+        .put("measures", measureArray)
+        .put("manualHandling", manualHandlingArray)
+        .put("chemicals", chemicalArray)
+        .put("biologicalRisks", biologicalArray)
         .toString()
 }
 
