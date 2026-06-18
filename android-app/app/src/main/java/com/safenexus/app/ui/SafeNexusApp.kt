@@ -12607,14 +12607,8 @@ private fun WorkOrderCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
-                        "Broj RN",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF64748B),
-                        maxLines = 1,
-                    )
-                    Text(
                         workOrder.displayNumber,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         color = Color(0xFF0F172A),
                         fontWeight = FontWeight.Black,
                         maxLines = 1,
@@ -13718,32 +13712,38 @@ private fun WorkOrderDetailScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        WorkOrderStatusMenu(
-                            currentStatus = workOrder.status,
-                            statusOptions = statusOptions,
-                            enabled = !isLoading,
-                            onStatusSelected = { status -> onStatusChange(workOrder, status) },
-                        )
-                        OutlinedButton(
-                            onClick = { onManageServices(workOrder) },
-                            enabled = !isLoading,
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Usluge")
+                            WorkOrderStatusMenu(
+                                currentStatus = workOrder.status,
+                                statusOptions = statusOptions,
+                                enabled = !isLoading,
+                                onStatusSelected = { status -> onStatusChange(workOrder, status) },
+                                modifier = Modifier.weight(1f),
+                            )
+                            OutlinedButton(
+                                onClick = { onManageServices(workOrder) },
+                                enabled = !isLoading,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                            ) {
+                                Icon(Icons.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Usluge")
+                            }
                         }
                         OutlinedButton(
                             onClick = { onGenerateDocumentation(workOrder) },
                             enabled = !isLoading,
+                            modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
                         ) {
@@ -13751,29 +13751,38 @@ private fun WorkOrderDetailScreen(
                             Spacer(Modifier.width(6.dp))
                             Text("Izradi dokumentaciju")
                         }
-                        OutlinedButton(
-                            onClick = { onAddDocumentation(workOrder) },
-                            enabled = !isLoading,
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Dokumentacija")
-                        }
-                        OutlinedButton(
-                            onClick = { onDownloadPdf(workOrder) },
-                            enabled = !isLoading,
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
-                        ) {
-                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Preuzmi PDF RN")
+                            OutlinedButton(
+                                onClick = { onAddDocumentation(workOrder) },
+                                enabled = !isLoading,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                            ) {
+                                Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Dokumentacija", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            OutlinedButton(
+                                onClick = { onDownloadPdf(workOrder) },
+                                enabled = !isLoading,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                            ) {
+                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("PDF RN")
+                            }
                         }
                         Button(
                             onClick = { onSignWorkOrder(workOrder) },
                             enabled = !isLoading,
+                            modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
                         ) {
@@ -21662,12 +21671,14 @@ private fun WorkOrderStatusMenu(
     statusOptions: List<String>,
     enabled: Boolean,
     onStatusSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
+    Box(modifier = modifier) {
         OutlinedButton(
             onClick = { expanded = true },
             enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
         ) {
             Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
