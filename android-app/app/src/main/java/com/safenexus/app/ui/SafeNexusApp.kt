@@ -558,10 +558,17 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 .onFailure { error ->
                     val message = error.message ?: "Ne mogu učitati mobilne podatke."
                     if (message.contains("(401)")) {
+                        val remembered = authStore.load()?.user ?: state.rememberedUser
                         api.clearSession()
-                        authStore.clear()
-                        shouldRememberSession = false
-                        state = AppState(error = "Sesija je istekla. Prijavi se ponovno.")
+                        shouldRememberSession = remembered != null
+                        state = AppState(
+                            rememberedUser = remembered,
+                            error = if (remembered != null) {
+                                "Sesija treba novu potvrdu. Otključaj otiskom prsta."
+                            } else {
+                                "Sesija je istekla. Prijavi se ponovno."
+                            },
+                        )
                     } else {
                         state = state.copy(isLoading = false, error = message)
                     }
@@ -2832,8 +2839,8 @@ private fun LoginScreen(
         )
     }
 
-    LaunchedEffect(rememberedUser?.email) {
-        if (rememberedUser != null && !isLoading) {
+    LaunchedEffect(rememberedUser?.email, displayedError) {
+        if (rememberedUser != null && !isLoading && displayedError.isBlank()) {
             requestSavedLogin()
         }
     }

@@ -63,11 +63,7 @@ class SafeNexusApi(
             val response = request("/api/auth/login", method = "POST", body = payload)
             val json = JSONObject(response)
             accessToken = json.optString("mobileAccessToken", "").trim()
-            val user = json.optJSONObject("user") ?: JSONObject()
-            SafeNexusUser(
-                displayName = user.firstClean("fullName", "displayName", "username", "email").ifBlank { "SafeNexus" },
-                email = user.firstClean("email", "username"),
-            )
+            json.optJSONObject("user").toSafeNexusUser()
         }
     }
 
@@ -986,16 +982,53 @@ class SafeNexusApi(
         }
     }
 
-    private fun request(path: String, method: String = "GET", body: String? = null, readTimeoutMs: Int = DEFAULT_READ_TIMEOUT_MS): String {
+    private fun request(
+        path: String,
+        method: String = "GET",
+        body: String? = null,
+        readTimeoutMs: Int = DEFAULT_READ_TIMEOUT_MS,
+        allowAuthRefresh: Boolean = true,
+    ): String {
         val connection = openConnection(path, method, body, readTimeoutMs = readTimeoutMs)
         val responseText = readResponse(connection)
         rememberAuthCookies(connection)
+        if (connection.responseCode == HttpURLConnection.HTTP_UNAUTHORIZED &&
+            allowAuthRefresh &&
+            !path.startsWith("/api/auth/login") &&
+            !path.startsWith("/api/auth/refresh") &&
+            refreshSessionInternal() != null
+        ) {
+            return request(path, method, body, readTimeoutMs, allowAuthRefresh = false)
+        }
         if (connection.responseCode !in 200..299) {
             throw IllegalStateException(extractErrorMessage(responseText).ifBlank {
                 "SafeNexus API trenutno nije dostupan (${connection.responseCode})."
             })
         }
         return responseText
+    }
+
+    private fun refreshSessionInternal(): SafeNexusUser? {
+        if (accessToken.isBlank() && authCookieHeader.isBlank()) return null
+
+        return runCatching {
+            val connection = openConnection(
+                "/api/auth/refresh",
+                method = "POST",
+                body = "{}",
+                readTimeoutMs = DEFAULT_READ_TIMEOUT_MS,
+            )
+            val responseText = readResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) return null
+
+            val json = JSONObject(responseText)
+            val refreshedMobileToken = json.optString("mobileAccessToken", "").trim()
+            if (refreshedMobileToken.isNotBlank()) {
+                accessToken = refreshedMobileToken
+            }
+            json.optJSONObject("user").toSafeNexusUser()
+        }.getOrNull()
     }
 
     private fun rememberAuthCookies(connection: HttpURLConnection) {
@@ -1064,6 +1097,14 @@ class SafeNexusApi(
         val json = JSONObject(responseText)
         json.firstClean("message", "error")
     }.getOrDefault("")
+}
+
+private fun JSONObject?.toSafeNexusUser(): SafeNexusUser {
+    val user = this ?: JSONObject()
+    return SafeNexusUser(
+        displayName = user.firstClean("fullName", "displayName", "username", "email").ifBlank { "SafeNexus" },
+        email = user.firstClean("email", "username"),
+    )
 }
 
 private fun String.pathSegment(): String =
