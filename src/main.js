@@ -4921,6 +4921,9 @@ const learningTestIdInput = document.querySelector("#learning-test-id");
 const learningTestTitleInput = document.querySelector("#learning-test-title");
 const learningTestStatusInput = document.querySelector("#learning-test-status");
 const learningTestDescriptionInput = document.querySelector("#learning-test-description");
+const learningTestIntendedForInput = document.querySelector("#learning-test-intended-for");
+const learningTestRecommendationRulesInput = document.querySelector("#learning-test-recommendation-rules");
+const learningTestMatchKeywordsInput = document.querySelector("#learning-test-match-keywords");
 const learningTestAddMaterialButton = document.querySelector("#learning-test-add-material");
 const learningTestMaterialList = document.querySelector("#learning-test-material-list");
 const learningTestStepGroupButton = document.querySelector("#learning-test-step-group");
@@ -15033,6 +15036,81 @@ function getPeopleTrainingLinkedLearningTests(typeOption = {}) {
     .filter((test) => linkedIds.has(String(test.id || "")));
 }
 
+function getLearningTestMatchTerms(test = {}) {
+  const explicitTerms = String(test.matchKeywords || "")
+    .split(/[\n,;|]+/)
+    .map((entry) => normalizeLooseName(entry))
+    .filter((entry) => entry.length >= 3);
+  const descriptiveTerms = [
+    test.title,
+    test.intendedFor,
+    test.recommendationRules,
+  ]
+    .join(" ")
+    .split(/\s+/)
+    .map((entry) => normalizeLooseName(entry))
+    .filter((entry) => entry.length >= 5);
+  return Array.from(new Set([...explicitTerms, ...descriptiveTerms])).slice(0, 80);
+}
+
+function buildPeopleTrainingRecordRecommendationText(record = {}) {
+  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
+  return normalizeLooseName([
+    record.jobTitle,
+    record.workPlace,
+    record.note,
+    record.companyName,
+    record.locationName,
+    ...trainingItems.flatMap((item) => [
+      item.label,
+      item.shortLabel,
+      item.serviceName,
+      item.serviceCode,
+      item.details?.jobDescription,
+      item.details?.jobTitle,
+    ]),
+  ].filter(Boolean).join(" "));
+}
+
+function scoreLearningTestForPeopleTrainingRecord(test = {}, record = {}) {
+  if (String(test.status || "") !== "active") {
+    return 0;
+  }
+  const haystack = buildPeopleTrainingRecordRecommendationText(record);
+  if (!haystack) {
+    return 0;
+  }
+  const terms = getLearningTestMatchTerms(test);
+  if (!terms.length) {
+    return 0;
+  }
+  return terms.reduce((score, term) => {
+    if (!term) {
+      return score;
+    }
+    if (haystack === term) {
+      return score + 6;
+    }
+    if (haystack.includes(term)) {
+      return score + (term.includes(" ") ? 4 : 2);
+    }
+    return score;
+  }, 0);
+}
+
+function getRecommendedLearningTestsForPeopleTrainingRecord(record = {}) {
+  return sortLearningTests(state.learningTests ?? [])
+    .map((test) => ({ test, score: scoreLearningTestForPeopleTrainingRecord(test, record) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || String(left.test.title || "").localeCompare(String(right.test.title || ""), "hr"))
+    .map((entry) => entry.test);
+}
+
+function isPeopleTrainingServiceRecommendedForRecord(typeOption = {}, record = {}) {
+  const linkedTests = getPeopleTrainingLinkedLearningTests(typeOption);
+  return linkedTests.some((test) => scoreLearningTestForPeopleTrainingRecord(test, record) > 0);
+}
+
 function buildPeopleTrainingBulkPreviewRows(records = [], typeOption = {}) {
   const tests = getPeopleTrainingLinkedLearningTests(typeOption);
   const groups = groupPeopleTrainingRecordsForWorkOrders(records);
@@ -15147,7 +15225,10 @@ function applyPeopleTrainingBulkSelectionPreset(records = [], serviceOptions = [
     const items = normalizePeopleTrainingItemsForUi(record.trainingItems);
     serviceOptions.forEach((typeOption) => {
       const item = items.find((entry) => entry.type === typeOption.value) ?? {};
-      if (doesPeopleTrainingItemMatchBulkPreset(item, preset)) {
+      const matchesPreset = preset.mode === "recommended"
+        ? isPeopleTrainingServiceRecommendedForRecord(typeOption, record)
+        : doesPeopleTrainingItemMatchBulkPreset(item, preset);
+      if (matchesPreset) {
         selected.add(String(typeOption.value));
       }
     });
@@ -15265,12 +15346,14 @@ function createPeopleTrainingBulkServiceCell(record = {}, typeOption = {}, selec
   const items = normalizePeopleTrainingItemsForUi(record.trainingItems);
   const item = items.find((entry) => entry.type === typeOption.value) ?? {};
   const selected = getPeopleTrainingBulkSelectionSet(selectionMap, record).has(String(typeOption.value));
+  const isRecommended = isPeopleTrainingServiceRecommendedForRecord(typeOption, record);
   const label = document.createElement("label");
-  label.className = `people-training-bulk-service-cell ${getPeopleTrainingStatusClass(item.status)}${selected ? " is-selected" : ""}`;
+  label.className = `people-training-bulk-service-cell ${getPeopleTrainingStatusClass(item.status)}${selected ? " is-selected" : ""}${isRecommended ? " is-recommended" : ""}`;
   label.title = [
     typeOption.label || typeOption.serviceName || "Usluga",
     getPeopleTrainingStatusLabel(item.status),
     item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+    isRecommended ? "Predloženo prema opisu radnog mjesta" : "",
   ].filter(Boolean).join(" · ");
 
   const input = document.createElement("input");
@@ -15295,7 +15378,9 @@ function createPeopleTrainingBulkServiceCell(record = {}, typeOption = {}, selec
   const status = document.createElement("span");
   status.textContent = item.validUntil
     ? formatCompactDate(item.validUntil)
-    : getPeopleTrainingStatusLabel(item.status);
+    : isRecommended
+      ? "predloženo"
+      : getPeopleTrainingStatusLabel(item.status);
   label.append(input, code, status);
   return label;
 }
@@ -15528,6 +15613,7 @@ function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
   addQuickButton("Istječe 30d", { mode: "expiring", days: 30 });
   addQuickButton("Istječe 60d", { mode: "expiring", days: 60 });
   addQuickButton("Istječe 90d", { mode: "expiring", days: 90 });
+  addQuickButton("Predloži iz opisa", { mode: "recommended" });
   addQuickButton("Sve", { mode: "all" });
   addQuickButton("Očisti", { mode: "clear" });
 
@@ -81208,6 +81294,9 @@ function buildLearningTestPayload() {
     title: learningTestTitleInput?.value || "",
     status: learningTestStatusInput?.value || "draft",
     description: learningTestDescriptionInput?.value || "",
+    intendedFor: learningTestIntendedForInput?.value || "",
+    recommendationRules: learningTestRecommendationRulesInput?.value || "",
+    matchKeywords: learningTestMatchKeywordsInput?.value || "",
     handbookDocuments: learningTestMaterialDrafts.map((item) => createModuleAttachmentDraft(item)),
     videoItems: [],
     questionItems: serializeLearningQuestionGroupDrafts(),
@@ -81357,6 +81446,15 @@ function resetLearningTestForm() {
   if (learningTestStatusInput) {
     learningTestStatusInput.value = "draft";
   }
+  if (learningTestIntendedForInput) {
+    learningTestIntendedForInput.value = "";
+  }
+  if (learningTestRecommendationRulesInput) {
+    learningTestRecommendationRulesInput.value = "";
+  }
+  if (learningTestMatchKeywordsInput) {
+    learningTestMatchKeywordsInput.value = "";
+  }
   if (learningTestError) {
     learningTestError.textContent = "";
   }
@@ -81387,6 +81485,15 @@ function hydrateLearningTestForm(item) {
   }
   if (learningTestDescriptionInput) {
     learningTestDescriptionInput.value = item.description || "";
+  }
+  if (learningTestIntendedForInput) {
+    learningTestIntendedForInput.value = item.intendedFor || "";
+  }
+  if (learningTestRecommendationRulesInput) {
+    learningTestRecommendationRulesInput.value = item.recommendationRules || "";
+  }
+  if (learningTestMatchKeywordsInput) {
+    learningTestMatchKeywordsInput.value = item.matchKeywords || "";
   }
   if (learningTestError) {
     learningTestError.textContent = "";
@@ -81742,8 +81849,17 @@ function renderLearningTestsModule() {
     const title = document.createElement("h4");
     title.textContent = item.title || "Bez naziva";
     const description = document.createElement("p");
-    description.textContent = item.description || "Bez dodatnog opisa.";
+    description.textContent = item.description || item.intendedFor || "Bez dodatnog opisa.";
     titleBlock.append(title, description);
+    if (item.intendedFor || item.matchKeywords) {
+      const meta = document.createElement("p");
+      meta.className = "learning-test-list-meta";
+      meta.textContent = [
+        item.intendedFor ? `Namjena: ${item.intendedFor}` : "",
+        item.matchKeywords ? `Ključne riječi: ${item.matchKeywords}` : "",
+      ].filter(Boolean).join(" · ");
+      titleBlock.append(meta);
+    }
 
     const status = document.createElement("div");
     status.className = "learning-test-list-status";

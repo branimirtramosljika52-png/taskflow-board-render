@@ -4426,6 +4426,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [learningTestRows] = await connection.query(`
     SELECT id, organization_id, title, status, description,
+           intended_for_text, recommendation_rules_text, match_keywords_text,
            handbook_documents_json, video_items_json, question_items_json,
            assignment_items_json, attempt_items_json, created_at, updated_at
     FROM web_learning_tests
@@ -4446,6 +4447,9 @@ async function fetchSnapshotFromConnection(connection) {
     title: dbString(row.title),
     status: dbString(row.status) || "draft",
     description: dbString(row.description),
+    intendedFor: dbString(row.intended_for_text),
+    recommendationRules: dbString(row.recommendation_rules_text),
+    matchKeywords: dbString(row.match_keywords_text),
     handbookDocuments: parseJsonArray(row.handbook_documents_json).map((document) => mapStoredAttachmentDocument(document)),
     videoItems: parseJsonArray(row.video_items_json),
     questionItems: parseJsonArray(row.question_items_json).map((question) => ({
@@ -8765,6 +8769,9 @@ export class MySqlSafetyRepository {
         title VARCHAR(180) NOT NULL,
         status VARCHAR(16) NOT NULL DEFAULT 'draft',
         description TEXT NULL,
+        intended_for_text TEXT NULL,
+        recommendation_rules_text TEXT NULL,
+        match_keywords_text TEXT NULL,
         handbook_documents_json LONGTEXT NULL,
         video_items_json LONGTEXT NULL,
         question_items_json LONGTEXT NULL,
@@ -8776,6 +8783,9 @@ export class MySqlSafetyRepository {
         INDEX idx_web_learning_tests_updated (organization_id, updated_at)
       )
     `);
+    await ensureColumnExists(this.pool, "web_learning_tests", "intended_for_text", "TEXT NULL AFTER description");
+    await ensureColumnExists(this.pool, "web_learning_tests", "recommendation_rules_text", "TEXT NULL AFTER intended_for_text");
+    await ensureColumnExists(this.pool, "web_learning_tests", "match_keywords_text", "TEXT NULL AFTER recommendation_rules_text");
     await ensureColumnExists(this.pool, "web_vehicles", "vin_number", "VARCHAR(64) NOT NULL DEFAULT '' AFTER plate_number");
     await ensureColumnExists(this.pool, "web_vehicles", "documents_json", "LONGTEXT NULL AFTER reservations_json");
     await ensureColumnExists(this.pool, "web_vehicles", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
@@ -14806,15 +14816,19 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_learning_tests
-            (organization_id, title, status, description, handbook_documents_json, video_items_json,
+            (organization_id, title, status, description, intended_for_text, recommendation_rules_text,
+             match_keywords_text, handbook_documents_json, video_items_json,
              question_items_json, assignment_items_json, attempt_items_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(storedTest.organizationId),
           storedTest.title,
           storedTest.status,
           storedTest.description,
+          storedTest.intendedFor,
+          storedTest.recommendationRules,
+          storedTest.matchKeywords,
           JSON.stringify(storedTest.handbookDocuments ?? []),
           JSON.stringify(storedTest.videoItems ?? []),
           JSON.stringify(storedTest.questionItems ?? []),
@@ -14862,6 +14876,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_learning_tests
           SET organization_id = ?, title = ?, status = ?, description = ?,
+              intended_for_text = ?, recommendation_rules_text = ?, match_keywords_text = ?,
               handbook_documents_json = ?, video_items_json = ?, question_items_json = ?,
               assignment_items_json = ?, attempt_items_json = ?
           WHERE id = ?
@@ -14871,6 +14886,9 @@ export class MySqlSafetyRepository {
           storedTest.title,
           storedTest.status,
           storedTest.description,
+          storedTest.intendedFor,
+          storedTest.recommendationRules,
+          storedTest.matchKeywords,
           JSON.stringify(storedTest.handbookDocuments ?? []),
           JSON.stringify(storedTest.videoItems ?? []),
           JSON.stringify(storedTest.questionItems ?? []),

@@ -1734,6 +1734,17 @@ function normalizeLearningTestStatus(value) {
     : "draft";
 }
 
+function normalizeLearningTestMatchKeywords(value) {
+  return Array.from(new Set(
+    String(value ?? "")
+      .split(/[\n,;|]+/)
+      .map((entry) => normalizeText(entry).slice(0, 80))
+      .filter(Boolean),
+  ))
+    .slice(0, 40)
+    .join(", ");
+}
+
 function normalizeLearningQuestionType(value) {
   const normalized = normalizeText(value).toLowerCase();
   return ["single_choice", "multiple_choice", "ordered_text"].includes(normalized)
@@ -7777,6 +7788,9 @@ export function createLearningTest(
     title: requireText(input.title, "Naziv testa"),
     status: normalizeLearningTestStatus(input.status),
     description: normalizeText(input.description),
+    intendedFor: normalizeText(input.intendedFor ?? input.intended_for),
+    recommendationRules: normalizeText(input.recommendationRules ?? input.recommendation_rules),
+    matchKeywords: normalizeLearningTestMatchKeywords(input.matchKeywords ?? input.match_keywords),
     handbookDocuments: normalizeAttachmentDocuments(input.handbookDocuments),
     videoItems: normalizeLearningVideoItems(input.videoItems),
     questionItems: normalizeLearningQuestionItems(input.questionItems),
@@ -7796,6 +7810,9 @@ export function updateLearningTest(current, patch, state, now = isoNow) {
     title: hasOwn(patch, "title") ? requireText(patch.title, "Naziv testa") : current.title,
     status: hasOwn(patch, "status") ? normalizeLearningTestStatus(patch.status) : current.status,
     description: hasOwn(patch, "description") ? normalizeText(patch.description) : current.description,
+    intendedFor: hasOwn(patch, "intendedFor") ? normalizeText(patch.intendedFor) : normalizeText(current.intendedFor),
+    recommendationRules: hasOwn(patch, "recommendationRules") ? normalizeText(patch.recommendationRules) : normalizeText(current.recommendationRules),
+    matchKeywords: hasOwn(patch, "matchKeywords") ? normalizeLearningTestMatchKeywords(patch.matchKeywords) : normalizeLearningTestMatchKeywords(current.matchKeywords),
     handbookDocuments: hasOwn(patch, "handbookDocuments")
       ? normalizeAttachmentDocuments(patch.handbookDocuments)
       : normalizeAttachmentDocuments(current.handbookDocuments),
@@ -7827,6 +7844,9 @@ export function filterLearningTests(items, { query = "", status = "all" } = {}) 
     const haystack = [
       item.title,
       item.description,
+      item.intendedFor,
+      item.recommendationRules,
+      item.matchKeywords,
       ...(item.videoItems ?? []).flatMap((video) => [video.title, video.url]),
       ...(item.questionItems ?? []).flatMap((question) => [
         question.groupLabel,
