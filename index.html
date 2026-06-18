@@ -5583,10 +5583,6 @@
                         </div>
                       </label>
                       <label class="field">
-                        <span>Procjena rizika od kemijskih štetnosti</span>
-                        <textarea id="risk-assessment-appendix-chemical-risk" rows="4" data-risk-autogrow placeholder="Sažetak procjene kemijskih štetnosti i povezanih STL podataka."></textarea>
-                      </label>
-                      <label class="field">
                         <span>Sudjelovanje radnika</span>
                         <textarea id="risk-assessment-appendix-worker-participation" rows="4" data-risk-autogrow placeholder="Način uključivanja radnika, povjerenika i predstavnika u izradu procjene."></textarea>
                       </label>
@@ -5725,42 +5721,71 @@
                       </div>
                       <p>STL upload i uređiva tablica kemijskih štetnosti za procjenu rizika.</p>
                     </div>
-                    <div class="risk-assessment-chemical-workspace">
-                      <section class="risk-assessment-chemical-panel is-import">
-                        <div class="risk-assessment-stl-assistant-head">
-                          <div>
-                            <span class="section-kicker">STL upload</span>
-                            <strong>Učitaj sigurnosno-tehnički list</strong>
-                            <p class="inline-help">PDF/DOC/DOCX STL očita se u zaseban red tablice. Naziv dokumenta i izvučeni tekst spremaju se u procjenu za kasnije pretraživanje.</p>
-                          </div>
-                        </div>
-                        <div id="risk-assessment-chemical-stl-dropzone" class="risk-assessment-stl-dropzone" data-stl-phase="idle">
-                          <input id="risk-assessment-chemical-stl-file" class="sr-only" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple />
-                          <label for="risk-assessment-chemical-stl-file" class="risk-assessment-stl-dropzone-label">
-                            <span class="risk-assessment-stl-dropzone-icon">STL</span>
-                            <span>
-                              <strong>Odaberi ili povuci STL dokumente</strong>
-                              <small>Podržani su PDF, DOC i DOCX. Svaki dokument se obrađuje zasebno i dobiva zaseban pregled.</small>
-                            </span>
+                    <div class="risk-assessment-hazard-stack">
+                      <details class="risk-assessment-hazard-panel is-text">
+                        <summary>
+                          <span class="risk-assessment-hazard-panel-icon">TXT</span>
+                          <span>
+                            <strong>Tekstualna procjena kemijskih štetnosti</strong>
+                            <small>Sažetak za dokument, STL nalaze i obrazloženje procjene. Otvori samo kada uređuješ tekst.</small>
+                          </span>
+                        </summary>
+                        <div class="risk-assessment-hazard-text-body">
+                          <label class="field">
+                            <span>Procjena rizika od kemijskih štetnosti</span>
+                            <textarea id="risk-assessment-appendix-chemical-risk" rows="5" data-risk-autogrow placeholder="Sažetak procjene kemijskih štetnosti i povezanih STL podataka."></textarea>
                           </label>
-                          <div id="risk-assessment-chemical-stl-file-meta" class="risk-assessment-stl-file-meta">Nema odabranog dokumenta.</div>
                         </div>
-                        <div class="risk-assessment-chemical-upload">
-                          <button id="risk-assessment-chemical-stl-button" type="button" class="primary-button">Pokreni STL ekstrakciju</button>
-                        </div>
-                        <p id="risk-assessment-chemical-import-message" class="inline-help" aria-live="polite"></p>
-                        <div id="risk-assessment-chemical-stl-preview" class="risk-assessment-chemical-stl-preview" hidden></div>
-                      </section>
-                    </div>
+                      </details>
 
-                    <div class="offers-items-head">
-                      <div>
-                        <strong>Tablica kemikalija u procjeni</strong>
-                        <p class="inline-help">Svaki red možeš ručno mijenjati. GVI/KGVI se popunjava iz Priloga I; ako ga nema, koristi se Prilog II/III smjernica.</p>
-                      </div>
-                      <button id="risk-assessment-add-chemical" type="button" class="ghost-button">+ Redak</button>
+                      <details class="risk-assessment-hazard-panel is-register" open>
+                        <summary>
+                          <span class="risk-assessment-hazard-panel-icon">STL</span>
+                          <span>
+                            <strong>Kemikalije i sigurnosno-tehnički listovi</strong>
+                            <small>STL upload, ekstrakcija i uređiva tablica kemijskih štetnosti.</small>
+                          </span>
+                        </summary>
+                        <div class="risk-assessment-hazard-panel-body">
+                          <div class="risk-assessment-chemical-workspace">
+                            <section class="risk-assessment-chemical-panel is-import">
+                              <div class="risk-assessment-stl-assistant-head">
+                                <div>
+                                  <span class="section-kicker">STL upload</span>
+                                  <strong>Učitaj sigurnosno-tehnički list</strong>
+                                  <p class="inline-help">PDF/DOC/DOCX STL očita se u zaseban red tablice. Naziv dokumenta i izvučeni tekst spremaju se u procjenu za kasnije pretraživanje.</p>
+                                </div>
+                              </div>
+                              <div id="risk-assessment-chemical-stl-dropzone" class="risk-assessment-stl-dropzone" data-stl-phase="idle">
+                                <input id="risk-assessment-chemical-stl-file" class="sr-only" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple />
+                                <label for="risk-assessment-chemical-stl-file" class="risk-assessment-stl-dropzone-label">
+                                  <span class="risk-assessment-stl-dropzone-icon">STL</span>
+                                  <span>
+                                    <strong>Odaberi ili povuci STL dokumente</strong>
+                                    <small>Podržani su PDF, DOC i DOCX. Svaki dokument se obrađuje zasebno i dobiva zaseban pregled.</small>
+                                  </span>
+                                </label>
+                                <div id="risk-assessment-chemical-stl-file-meta" class="risk-assessment-stl-file-meta">Nema odabranog dokumenta.</div>
+                              </div>
+                              <div class="risk-assessment-chemical-upload">
+                                <button id="risk-assessment-chemical-stl-button" type="button" class="primary-button">Pokreni STL ekstrakciju</button>
+                              </div>
+                              <p id="risk-assessment-chemical-import-message" class="inline-help" aria-live="polite"></p>
+                              <div id="risk-assessment-chemical-stl-preview" class="risk-assessment-chemical-stl-preview" hidden></div>
+                            </section>
+                          </div>
+
+                          <div class="offers-items-head">
+                            <div>
+                              <strong>Tablica kemikalija u procjeni</strong>
+                              <p class="inline-help">Svaki red možeš ručno mijenjati. GVI/KGVI se popunjava iz Priloga I; ako ga nema, koristi se Prilog II/III smjernica.</p>
+                            </div>
+                            <button id="risk-assessment-add-chemical" type="button" class="ghost-button">+ Redak</button>
+                          </div>
+                          <div id="risk-assessment-chemicals" class="risk-assessment-chemical-list"></div>
+                        </div>
+                      </details>
                     </div>
-                    <div id="risk-assessment-chemicals" class="risk-assessment-chemical-list"></div>
                   </section>
 
                   <section id="risk-assessment-block-biological" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="biological">
@@ -5771,43 +5796,67 @@
                       </div>
                       <p>Biološki agensi, izvori izloženosti, skupine radnika i mjere zaštite povezane s poslovima i mjestima rada.</p>
                     </div>
-                    <section class="risk-assessment-biological-rule-panel">
-                      <div class="risk-assessment-biological-rule-head">
-                        <div>
-                          <span class="section-kicker">NN 129/2020</span>
-                          <strong>Brzi odabir bioloških štetnosti</strong>
-                          <p class="inline-help">Odaberi agens ili izvor izloženosti i dodaj ga u tablicu procjene. Klasifikacija iz Priloga III popunjava se automatski kada je agens prepoznat.</p>
+                    <div class="risk-assessment-hazard-stack">
+                      <details class="risk-assessment-hazard-panel is-register">
+                        <summary>
+                          <span class="risk-assessment-hazard-panel-icon">BIO</span>
+                          <span>
+                            <strong>Biološki agensi i izvori izloženosti</strong>
+                            <small>Popis agensa i odabrane biološke štetnosti skriven je dok ga ne trebaš uređivati.</small>
+                          </span>
+                        </summary>
+                        <div class="risk-assessment-hazard-panel-body">
+                          <section class="risk-assessment-biological-rule-panel">
+                            <div class="risk-assessment-biological-rule-head">
+                              <div>
+                                <span class="section-kicker">NN 129/2020</span>
+                                <strong>Brzi odabir bioloških štetnosti</strong>
+                                <p class="inline-help">Odaberi agens ili izvor izloženosti i dodaj ga u tablicu procjene. Klasifikacija iz Priloga III popunjava se automatski kada je agens prepoznat.</p>
+                              </div>
+                              <div class="risk-assessment-biological-rule-actions">
+                                <button type="button" class="secondary-button" data-risk-biological-insert="summary">Umetni pregled</button>
+                              </div>
+                            </div>
+                            <div id="risk-assessment-biological-rule-content" class="risk-assessment-biological-rule-content"></div>
+                            <p id="risk-assessment-biological-rule-message" class="inline-help" aria-live="polite"></p>
+                          </section>
+                          <section id="risk-assessment-biological-risks" class="risk-assessment-chemical-register risk-assessment-biological-risk-register"></section>
                         </div>
-                        <div class="risk-assessment-biological-rule-actions">
-                          <button type="button" class="secondary-button" data-risk-biological-insert="summary">Umetni pregled</button>
+                      </details>
+                      <details class="risk-assessment-hazard-panel is-text">
+                        <summary>
+                          <span class="risk-assessment-hazard-panel-icon">TXT</span>
+                          <span>
+                            <strong>Tekstualna procjena bioloških štetnosti</strong>
+                            <small>Uredi obrazloženje za dokument tek kada trebaš opisni dio procjene.</small>
+                          </span>
+                        </summary>
+                        <div class="risk-assessment-hazard-text-body">
+                          <label class="field field-span-full risk-assessment-rich-field">
+                            <span>Procjena bioloških štetnosti</span>
+                            <div class="risk-assessment-rich-editor">
+                              <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="biologicalHazards" aria-label="Alati za uređivanje bioloških štetnosti">
+                                <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                                <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                                <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                                <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                                <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                                <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                                <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                                <button type="button" data-risk-rich-preset="biologicalHazards" data-risk-rich-preset-key="biologicalHazards">Predefinirani tekst</button>
+                                <select data-risk-rich-template-select="biologicalHazards" aria-label="Predložak za biološke štetnosti"></select>
+                                <button type="button" data-risk-rich-template-save="biologicalHazards">Spremi predložak</button>
+                                <button type="button" data-risk-rich-image="file">Slika</button>
+                                <button type="button" data-risk-rich-image="url">URL slike</button>
+                                <input type="file" accept="image/*" data-risk-rich-file="biologicalHazards" hidden />
+                              </div>
+                              <div id="risk-assessment-biological-hazards-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="biologicalHazards" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Procjena bioloških štetnosti"></div>
+                              <textarea id="risk-assessment-biological-hazards" class="risk-assessment-rich-value" data-risk-rich-storage="biologicalHazards" hidden></textarea>
+                            </div>
+                          </label>
                         </div>
-                      </div>
-                      <div id="risk-assessment-biological-rule-content" class="risk-assessment-biological-rule-content"></div>
-                      <p id="risk-assessment-biological-rule-message" class="inline-help" aria-live="polite"></p>
-                    </section>
-                    <section id="risk-assessment-biological-risks" class="risk-assessment-chemical-register risk-assessment-biological-risk-register"></section>
-                    <label class="field field-span-full risk-assessment-rich-field">
-                      <span>Procjena bioloških štetnosti</span>
-                      <div class="risk-assessment-rich-editor">
-                        <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="biologicalHazards" aria-label="Alati za uređivanje bioloških štetnosti">
-                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
-                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
-                          <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
-                          <button type="button" data-risk-rich-command="italic"><em>I</em></button>
-                          <button type="button" data-risk-rich-command="underline"><u>U</u></button>
-                          <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
-                          <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
-                          <button type="button" data-risk-rich-preset="biologicalHazards" data-risk-rich-preset-key="biologicalHazards">Predefinirani tekst</button>
-                          <select data-risk-rich-template-select="biologicalHazards" aria-label="Predložak za biološke štetnosti"></select>
-                          <button type="button" data-risk-rich-template-save="biologicalHazards">Spremi predložak</button>
-                          <button type="button" data-risk-rich-image="file">Slika</button>
-                          <button type="button" data-risk-rich-image="url">URL slike</button>
-                          <input type="file" accept="image/*" data-risk-rich-file="biologicalHazards" hidden />
-                        </div>
-                        <div id="risk-assessment-biological-hazards-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="biologicalHazards" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Procjena bioloških štetnosti"></div>
-                        <textarea id="risk-assessment-biological-hazards" class="risk-assessment-rich-value" data-risk-rich-storage="biologicalHazards" hidden></textarea>
-                      </div>
-                    </label>
+                      </details>
+                    </div>
                   </section>
 
                   <section id="risk-assessment-block-overview" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="overview">

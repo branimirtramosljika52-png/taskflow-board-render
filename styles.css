@@ -64722,6 +64722,126 @@ button.risk-assessment-job-tree-row:focus-visible,
   align-items: stretch;
 }
 
+.risk-assessment-hazard-stack {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 1120px);
+  justify-self: center;
+}
+
+.risk-assessment-hazard-panel {
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.76);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94)),
+    radial-gradient(circle at 96% 0%, rgba(59, 130, 246, 0.12), transparent 34%);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.07);
+}
+
+.risk-assessment-hazard-panel.is-text {
+  width: min(100%, 940px);
+  justify-self: center;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.96)),
+    radial-gradient(circle at 10% 0%, rgba(124, 58, 237, 0.1), transparent 32%);
+}
+
+.risk-assessment-hazard-panel.is-register {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94)),
+    radial-gradient(circle at top right, rgba(34, 197, 94, 0.12), transparent 32%);
+}
+
+.risk-assessment-hazard-panel summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.risk-assessment-hazard-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.risk-assessment-hazard-panel summary::after {
+  content: "+";
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #2563eb;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.risk-assessment-hazard-panel[open] summary::after {
+  content: "-";
+  color: #0f766e;
+}
+
+.risk-assessment-hazard-panel summary > span:not(.risk-assessment-hazard-panel-icon) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.risk-assessment-hazard-panel summary strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.risk-assessment-hazard-panel summary small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.42;
+}
+
+.risk-assessment-hazard-panel-icon {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(147, 197, 253, 0.52);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(236, 253, 245, 0.9));
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.risk-assessment-hazard-panel-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 14px 14px;
+}
+
+.risk-assessment-hazard-text-body {
+  display: grid;
+  padding: 0 16px 16px;
+}
+
+.risk-assessment-hazard-text-body > .field {
+  width: min(100%, 780px);
+  justify-self: center;
+}
+
+.risk-assessment-hazard-text-body textarea {
+  min-height: 140px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  line-height: 1.52;
+}
+
 .risk-assessment-chemical-panel {
   display: grid;
   gap: 12px;
@@ -69156,6 +69276,40 @@ button.risk-assessment-armor-tree-row:focus-visible,
   min-height: 168px;
   padding: 14px 16px;
   line-height: 1.55;
+}
+
+#risk-assessment-block-chemicals,
+#risk-assessment-block-biological {
+  justify-items: center;
+}
+
+#risk-assessment-block-chemicals > *,
+#risk-assessment-block-biological > * {
+  width: min(100%, 1120px);
+}
+
+#risk-assessment-block-chemicals .risk-assessment-editor-section-head,
+#risk-assessment-block-biological .risk-assessment-editor-section-head {
+  width: min(100%, 980px);
+}
+
+.risk-assessment-hazard-text-body .risk-assessment-rich-field {
+  width: min(100%, 820px);
+  justify-self: center;
+}
+
+.risk-assessment-hazard-text-body .risk-assessment-rich-editor {
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.055);
+}
+
+.risk-assessment-hazard-text-body .risk-assessment-rich-surface {
+  min-height: 210px;
+  padding: 18px 20px;
+  border-radius: 16px;
 }
 
 /* 20260618-risk-assessment-places-alignment */
