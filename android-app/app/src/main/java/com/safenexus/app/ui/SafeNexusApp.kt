@@ -12543,7 +12543,6 @@ private fun RnCompanyBlock(workOrder: WorkOrder, modifier: Modifier = Modifier) 
 @Composable
 private fun RnInfoBlock(
     icon: ImageVector,
-    label: String,
     value: String,
     tint: Color,
     modifier: Modifier = Modifier,
@@ -12556,9 +12555,8 @@ private fun RnInfoBlock(
         Spacer(Modifier.width(10.dp))
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
             Text(
                 value,
                 style = MaterialTheme.typography.bodyMedium,
@@ -12660,8 +12658,7 @@ private fun WorkOrderCard(
                         tint = statusStyle.accent,
                     )
                     Spacer(Modifier.width(10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Tvrtka", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
                             workOrder.companyName.ifBlank { "Bez tvrtke" },
                             style = MaterialTheme.typography.bodyLarge,
@@ -12677,14 +12674,12 @@ private fun WorkOrderCard(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RnInfoBlock(
                     icon = Icons.Rounded.LocationOn,
-                    label = "Lokacija",
                     value = workOrder.locationName.ifBlank { "Lokacija nije upisana" },
                     tint = statusStyle.accent,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 RnInfoBlock(
-                    icon = Icons.Rounded.Business,
-                    label = "Izvršitelj",
+                    icon = Icons.Rounded.Person,
                     value = workOrder.primaryExecutorLabel(),
                     tint = statusStyle.accent,
                     modifier = Modifier.fillMaxWidth(),
