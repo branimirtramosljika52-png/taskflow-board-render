@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.149.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.150.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -23364,6 +23364,40 @@ function isMobileClosedWorkOrderStatus(status = "") {
     || normalized === "zavrsen rn";
 }
 
+function buildMobileJobRecord(item = {}) {
+  const title = normalizeInputValue(item.title) || "Posao";
+  const description = normalizeInputValue(item.description);
+  const status = normalizeInputValue(item.status) || "draft";
+  const hazards = Array.isArray(item.hazards) ? item.hazards : [];
+  const ppeItems = Array.isArray(item.ppeItems) ? item.ppeItems : [];
+  const environment = item.environment && typeof item.environment === "object" ? item.environment : {};
+  const conditions = item.conditions && typeof item.conditions === "object" ? item.conditions : {};
+  const enabledEnvironmentCount = Object.keys(environment).filter((key) => key.endsWith("Enabled") && environment[key]).length;
+  const activeConditionCount = Object.entries(conditions).filter(([, value]) => value === true).length;
+
+  return {
+    id: normalizeInputValue(item.id),
+    title,
+    subtitle: description || [
+      hazards.length ? `${hazards.length} opasnosti` : "",
+      ppeItems.length ? `${ppeItems.length} OZO` : "",
+      enabledEnvironmentCount ? `${enabledEnvironmentCount} okruženje` : "",
+    ].filter(Boolean).join(" - "),
+    status,
+    kind: "job",
+    date: firstMobileRecordValue(item, ["reviewDate", "updatedAt", "createdAt"]),
+    relatedId: normalizeInputValue(item.id),
+    coordinates: "",
+    meta: {
+      description,
+      hazardsCount: String(hazards.length),
+      ppeCount: String(ppeItems.length),
+      environmentCount: String(enabledEnvironmentCount),
+      conditionCount: String(activeConditionCount),
+    },
+  };
+}
+
 function buildMobileVehicleRecord(item = {}) {
   const nowValue = new Date().toISOString();
   const availabilityStatus = getVehicleAvailabilityStatus(item, nowValue);
@@ -24542,6 +24576,7 @@ async function writeMobileBootstrap(response, user, request) {
   const measurementEquipmentRecords = limitMobileRecords((scopedSnapshot.measurementEquipment ?? []).map(buildMobileMeasurementEquipmentRecord));
   const fieldInquiries = limitMobileRecords((scopedSnapshot.fieldInquiries ?? []).map(buildMobileFieldInquiryRecord));
   const todoTasks = limitMobileRecords((scopedSnapshot.todoTasks ?? []).map(buildMobileTodoTaskRecord));
+  const jobs = limitMobileRecords((scopedSnapshot.jobs ?? []).map(buildMobileJobRecord));
   const offers = limitMobileRecords((scopedSnapshot.offers ?? []).map(buildMobileOfferRecord));
   const documentRecords = await buildMobileDocumentRecords(scopedSnapshot);
 
@@ -24598,6 +24633,7 @@ async function writeMobileBootstrap(response, user, request) {
     workOrders,
     fieldInquiries,
     todoTasks,
+    jobs,
     offers,
     companies,
     locations,

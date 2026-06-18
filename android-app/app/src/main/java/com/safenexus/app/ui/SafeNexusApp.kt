@@ -24,6 +24,7 @@ import android.os.Looper
 import android.provider.OpenableColumns
 import android.provider.MediaStore
 import android.provider.Settings
+import android.speech.RecognizerIntent
 import android.webkit.JavascriptInterface
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
@@ -106,6 +107,7 @@ import androidx.compose.material.icons.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Refresh
@@ -192,7 +194,10 @@ import com.safenexus.app.data.IsznrManualWorkEquipment
 import com.safenexus.app.data.IsznrRoAttachmentFile
 import com.safenexus.app.data.IsznrRoAssessmentItem
 import com.safenexus.app.data.IsznrWorkEquipmentSubmitResult
+import com.safenexus.app.data.JobCreateDraft
 import com.safenexus.app.data.MobileRecord
+import com.safenexus.app.data.RiskAssessmentCreateDraft
+import com.safenexus.app.data.RiskAssessmentJobDraft
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
@@ -285,6 +290,7 @@ enum class MoreSectionFocus(val title: String) {
     Services("Service liste"),
     People("People"),
     MeasurementEquipment("Mjerna oprema"),
+    RiskAssessments("Procjene rizika"),
     Foundation("Pravilnici"),
     Training("Osposobljavanja"),
 }
@@ -851,6 +857,64 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         error = error.message ?: "Ne mogu spremiti terenski upit.",
+                    )
+                }
+        }
+    }
+
+    fun createJob(draft: JobCreateDraft) {
+        if (draft.title.trim().isBlank()) {
+            state = state.copy(error = "Upiši naziv posla.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createJob(draft)
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        section = AppSection.More,
+                        moreFocus = MoreSectionFocus.RiskAssessments,
+                        notice = "Job je dodan u katalog.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu dodati Job.",
+                    )
+                }
+        }
+    }
+
+    fun createRiskAssessment(draft: RiskAssessmentCreateDraft) {
+        if (draft.companyId.isBlank()) {
+            state = state.copy(error = "Odaberi tvrtku za procjenu rizika.")
+            return
+        }
+        if (draft.jobs.isEmpty()) {
+            state = state.copy(error = "Dodaj barem jedan Job / radno mjesto u procjenu.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createRiskAssessment(draft)
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        section = AppSection.More,
+                        moreFocus = MoreSectionFocus.RiskAssessments,
+                        notice = "Procjena rizika je spremljena.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu spremiti procjenu rizika.",
                     )
                 }
         }
@@ -2068,6 +2132,8 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onAddDocumentation = openDocumentationActions,
                         onSaveFieldInquiry = viewModel::saveFieldInquiry,
                         onConvertFieldInquiry = viewModel::convertFieldInquiryToWorkOrder,
+                        onCreateJob = viewModel::createJob,
+                        onCreateRiskAssessment = viewModel::createRiskAssessment,
                         onLoadIsznrMeasurementEquipment = viewModel::loadIsznrMeasurementEquipment,
                         onLoadIsznrPeople = viewModel::loadIsznrPeople,
                         onDownloadDocument = { record ->
@@ -4405,6 +4471,455 @@ private fun FieldInquiryEditorDialog(
             }
         },
     )
+}
+
+@Composable
+private fun RiskAssessmentMobileContent(
+    records: List<MobileRecord>,
+    jobs: List<MobileRecord>,
+    totalJobs: Int,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onNewRiskAssessment: () -> Unit,
+    onNewJob: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(
+                        Icons.Rounded.Badge,
+                        contentDescription = null,
+                        modifier = Modifier.size(44.dp).padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Procjene rizika", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Text(
+                        "${records.size} procjena · $totalJobs Jobs u katalogu",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = onNewRiskAssessment, shape = RoundedCornerShape(16.dp)) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Nova procjena")
+                }
+                OutlinedButton(onClick = onNewJob, shape = RoundedCornerShape(16.dp)) {
+                    Icon(Icons.Rounded.Work, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Job")
+                }
+            }
+
+            if (records.isEmpty()) {
+                Text(
+                    "Nema procjena za prikaz. Kreni s tvrtkom, lokacijom i Jobs radnim mjestima.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                )
+            } else {
+                records.take(12).forEach { record ->
+                    RecordLine(
+                        title = record.title,
+                        subtitle = listOf(record.meta["companyName"].orEmpty(), record.meta["locationName"].orEmpty()).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { record.subtitle },
+                        status = record.status,
+                        date = record.date,
+                        icon = Icons.Rounded.Description,
+                        onClick = { onOpenRecord(record) },
+                    )
+                }
+            }
+
+            Text("Jobs katalog", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            if (jobs.isEmpty()) {
+                Text("Nema Jobs stavki za trenutnu pretragu.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            } else {
+                jobs.take(8).forEach { job ->
+                    RecordLine(
+                        title = job.title,
+                        subtitle = job.meta["description"].orEmpty().ifBlank { job.subtitle },
+                        status = job.status,
+                        date = "",
+                        icon = Icons.Rounded.Work,
+                        onClick = { onOpenRecord(job) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JobEditorDialog(
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (JobCreateDraft) -> Unit,
+) {
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("draft") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Novi Job", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Naziv radnog mjesta / posla") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                WorkOrderSelectField(
+                    label = "Status",
+                    value = status,
+                    valueLabel = if (status == "active") "Aktivan" else "Skica",
+                    options = listOf("draft" to "Skica", "active" to "Aktivan"),
+                    enabled = !isLoading,
+                    onSelect = { status = it },
+                )
+                VoiceTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = "Opis posla",
+                    placeholder = "Diktiraj ili upiši aktivnosti, radno okruženje i posebnosti posla.",
+                    enabled = !isLoading,
+                    minLines = 4,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(JobCreateDraft(title = title, status = status, description = description))
+                },
+                enabled = !isLoading && title.trim().isNotBlank(),
+            ) {
+                Text("Spremi Job")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
+@Composable
+private fun RiskAssessmentEditorDialog(
+    data: BootstrapData,
+    currentUserLabel: String,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (RiskAssessmentCreateDraft) -> Unit,
+    onNewJob: () -> Unit,
+) {
+    val today = remember { LocalDate.now().toString() }
+    var title by remember { mutableStateOf("") }
+    var companyId by remember { mutableStateOf("") }
+    var locationId by remember { mutableStateOf("") }
+    var workOrderId by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("draft") }
+    var assessmentDate by remember { mutableStateOf(today) }
+    var revisionDate by remember { mutableStateOf("") }
+    var intro by remember { mutableStateOf("") }
+    var workProcess by remember { mutableStateOf("") }
+    var generalData by remember { mutableStateOf("") }
+    var conclusion by remember { mutableStateOf("") }
+    var selectedJobIds by remember { mutableStateOf(emptyList<String>()) }
+
+    val companyOptions = remember(data.workOrderCompanies) {
+        data.workOrderCompanies.map { company ->
+            WorkOrderPickerOption(
+                value = company.id,
+                label = company.name,
+                meta = listOf(company.headquarters, company.oib.takeIf { it.isNotBlank() }?.let { "OIB $it" }).filterNotNull().joinToString(" · "),
+                searchText = listOf(company.name, company.oib, company.headquarters).joinToString(" "),
+            )
+        }
+    }
+    val locationOptions = remember(data.workOrderLocations, companyId) {
+        data.workOrderLocations
+            .filter { companyId.isBlank() || it.companyId == companyId }
+            .map { location ->
+                WorkOrderPickerOption(
+                    value = location.id,
+                    label = location.name,
+                    meta = location.region,
+                    searchText = listOf(location.name, location.region, location.coordinates).joinToString(" "),
+                )
+            }
+    }
+    val workOrderOptions = remember(data.workOrders, companyId, locationId) {
+        data.workOrders
+            .filter { companyId.isBlank() || it.companyId == companyId }
+            .filter { locationId.isBlank() || it.locationId == locationId }
+            .take(250)
+            .map { workOrder ->
+                WorkOrderPickerOption(
+                    value = workOrder.id,
+                    label = workOrder.displayNumber,
+                    meta = listOf(workOrder.companyName, workOrder.locationName, workOrder.displayService).filter { it.isNotBlank() }.joinToString(" · "),
+                    searchText = listOf(workOrder.number, workOrder.companyName, workOrder.locationName, workOrder.displayService).joinToString(" "),
+                )
+            }
+    }
+    val selectedCompany = data.workOrderCompanies.firstOrNull { it.id == companyId }
+    val selectedLocation = data.workOrderLocations.firstOrNull { it.id == locationId }
+    val selectedWorkOrder = data.workOrders.firstOrNull { it.id == workOrderId }
+    val jobOptions = remember(data.jobs) {
+        data.jobs.map { job ->
+            job.id to job.title.ifBlank { "Job" }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(14.dp),
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Mobilna procjena rizika", fontWeight = FontWeight.Black)
+                Text("Osnovno, Jobs i tekstovi uz mikrofon.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 680.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                WorkOrderSearchSelectField(
+                    label = "Tvrtka",
+                    value = companyId,
+                    valueLabel = selectedCompany?.name ?: "Odaberi tvrtku",
+                    options = companyOptions,
+                    enabled = !isLoading,
+                    onSelect = {
+                        companyId = it
+                        locationId = ""
+                        workOrderId = ""
+                        data.workOrderCompanies.firstOrNull { company -> company.id == it }?.let { company ->
+                            if (title.isBlank()) title = "Procjena rizika - ${company.name}"
+                        }
+                    },
+                    icon = Icons.Rounded.Business,
+                )
+                WorkOrderSearchSelectField(
+                    label = "Lokacija",
+                    value = locationId,
+                    valueLabel = selectedLocation?.name ?: "Sve lokacije / odaberi",
+                    options = locationOptions,
+                    enabled = !isLoading,
+                    onSelect = { locationId = it },
+                    icon = Icons.Rounded.LocationOn,
+                )
+                WorkOrderSearchSelectField(
+                    label = "Povezani RN",
+                    value = workOrderId,
+                    valueLabel = selectedWorkOrder?.displayNumber ?: "Bez RN-a",
+                    options = workOrderOptions,
+                    enabled = !isLoading,
+                    onSelect = { selected ->
+                        workOrderId = selected
+                        data.workOrders.firstOrNull { it.id == selected }?.let { workOrder ->
+                            companyId = workOrder.companyId
+                            locationId = workOrder.locationId
+                            if (title.isBlank()) title = "Procjena rizika - ${workOrder.companyName}"
+                        }
+                    },
+                    icon = Icons.Rounded.Work,
+                )
+                WorkOrderSelectField(
+                    label = "Status",
+                    value = status,
+                    valueLabel = if (status == "completed") "Završeno" else "Skica",
+                    options = listOf("draft" to "Skica", "completed" to "Završeno"),
+                    enabled = !isLoading,
+                    onSelect = { status = it },
+                )
+                WorkOrderDatePickerField("Datum procjene", assessmentDate, { assessmentDate = it }, !isLoading)
+                WorkOrderDatePickerField("Rok / revizija", revisionDate, { revisionDate = it }, !isLoading)
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Naziv procjene") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+
+                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Jobs / radna mjesta", modifier = Modifier.weight(1f), fontWeight = FontWeight.Black)
+                            OutlinedButton(onClick = onNewJob, shape = RoundedCornerShape(14.dp)) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Novi")
+                            }
+                        }
+                        WorkOrderMultiSelectChips(
+                            options = jobOptions,
+                            selected = selectedJobIds,
+                            enabled = !isLoading,
+                            emptyText = "Jobs katalog je prazan. Dodaj novi Job.",
+                        ) { jobId ->
+                            selectedJobIds = selectedJobIds.toggleValue(jobId)
+                        }
+                    }
+                }
+
+                VoiceTextField(intro, { intro = it }, "Uvod", "Diktiraj uvodni tekst procjene.", !isLoading, minLines = 3)
+                VoiceTextField(workProcess, { workProcess = it }, "Opis procesa rada", "Diktiraj stvarni proces rada i organizaciju.", !isLoading, minLines = 3)
+                VoiceTextField(generalData, { generalData = it }, "Opći podaci", "Dodatni podaci koji idu u osnovni dio.", !isLoading, minLines = 3)
+                VoiceTextField(conclusion, { conclusion = it }, "Zaključak", "Kratki zaključak ili napomena.", !isLoading, minLines = 3)
+
+                Text(
+                    "Po defaultu kao izrađivač ide trenutni korisnik: ${currentUserLabel.ifBlank { "trenutni korisnik" }}. Detaljni tim i potpisi se mogu doraditi u webu.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val selectedJobs = selectedJobIds.mapNotNull { id -> data.jobs.firstOrNull { it.id == id } }
+                    onSave(
+                        RiskAssessmentCreateDraft(
+                            companyId = companyId,
+                            companyName = selectedCompany?.name.orEmpty(),
+                            locationId = locationId,
+                            locationName = selectedLocation?.name.orEmpty(),
+                            workOrderId = workOrderId,
+                            workOrderNumber = selectedWorkOrder?.displayNumber.orEmpty(),
+                            title = title.ifBlank { "Procjena rizika - ${selectedCompany?.name.orEmpty()}" },
+                            status = status,
+                            assessmentDate = assessmentDate,
+                            revisionDate = revisionDate,
+                            intro = intro,
+                            workProcessDescription = workProcess,
+                            generalData = generalData,
+                            conclusion = conclusion,
+                            jobs = selectedJobs.map { job ->
+                                RiskAssessmentJobDraft(
+                                    sourceJobId = job.id,
+                                    jobTitle = job.title,
+                                    description = job.meta["description"].orEmpty().ifBlank { job.subtitle },
+                                    tasks = job.meta["description"].orEmpty().ifBlank { job.subtitle },
+                                )
+                            },
+                        ),
+                    )
+                },
+                enabled = !isLoading && companyId.isNotBlank() && selectedJobIds.isNotEmpty(),
+            ) {
+                Text("Spremi procjenu")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
+@Composable
+private fun VoiceTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String,
+    enabled: Boolean,
+    minLines: Int = 3,
+) {
+    val context = LocalContext.current
+    var voiceError by remember { mutableStateOf("") }
+    var pendingLaunch by remember { mutableStateOf(false) }
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                .orEmpty()
+                .trim()
+            if (spoken.isNotBlank()) {
+                val separator = if (value.isBlank() || value.endsWith(" ") || value.endsWith("\n")) "" else " "
+                onValueChange(value + separator + spoken)
+            }
+        }
+        pendingLaunch = false
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            pendingLaunch = true
+        } else {
+            voiceError = "Mikrofon nije dopušten."
+        }
+    }
+
+    LaunchedEffect(pendingLaunch) {
+        if (!pendingLaunch) return@LaunchedEffect
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hr-HR")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, label)
+        runCatching { speechLauncher.launch(intent) }
+            .onFailure {
+                voiceError = "Govorni unos nije dostupan na ovom uređaju."
+                pendingLaunch = false
+            }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text(label) },
+            placeholder = { Text(placeholder) },
+            enabled = enabled,
+            minLines = minLines,
+            maxLines = (minLines + 4).coerceAtLeast(5),
+            shape = RoundedCornerShape(16.dp),
+            trailingIcon = {
+                IconButton(
+                    enabled = enabled,
+                    onClick = {
+                        voiceError = ""
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                        if (granted) {
+                            pendingLaunch = true
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                ) {
+                    Icon(Icons.Rounded.Mic, contentDescription = "Diktiraj tekst")
+                }
+            },
+        )
+        if (voiceError.isNotBlank()) {
+            Text(voiceError, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
 
 @Composable
@@ -7052,6 +7567,8 @@ private fun WorkOrdersScreen(
     onAddDocumentation: (WorkOrder) -> Unit,
     onSaveFieldInquiry: (FieldInquiryDraft) -> Unit,
     onConvertFieldInquiry: (MobileRecord) -> Unit,
+    onCreateJob: (JobCreateDraft) -> Unit,
+    onCreateRiskAssessment: (RiskAssessmentCreateDraft) -> Unit,
     onLoadIsznrMeasurementEquipment: (Boolean) -> Unit,
     onLoadIsznrPeople: (Boolean) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
@@ -7092,6 +7609,9 @@ private fun WorkOrdersScreen(
     val filteredAssessments = remember(state.data.riskAssessmentRecords, normalizedQuery) {
         state.data.riskAssessmentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredJobs = remember(state.data.jobs, normalizedQuery) {
+        state.data.jobs.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
     val periodicEntries = remember(state.data, state.workOrders, normalizedQuery) {
         buildPeriodicEntries(state.data, state.workOrders, normalizedQuery)
     }
@@ -7125,6 +7645,8 @@ private fun WorkOrdersScreen(
     val moreFocus = state.moreFocus
     var fieldInquiryDialogRecord by remember { mutableStateOf<MobileRecord?>(null) }
     var fieldInquiryDialogOpen by remember { mutableStateOf(false) }
+    var riskAssessmentDialogOpen by remember { mutableStateOf(false) }
+    var jobDialogOpen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val openMenuShortcut: (AppSection, MoreSectionFocus?) -> Unit = { section, focus ->
         mainMenuExpanded = false
@@ -7284,6 +7806,7 @@ private fun WorkOrdersScreen(
                             MoreSectionFocus.Services -> "Pretraga service lista"
                             MoreSectionFocus.People -> "Pretraga People korisnika, OIB-a ili IS ZNR statusa"
                             MoreSectionFocus.MeasurementEquipment -> "Pretraga mjerne opreme, ISZNR ID-a, serijskog ili inv. broja"
+                            MoreSectionFocus.RiskAssessments -> "Pretraga procjena rizika, Jobs kataloga, tvrtke ili radnog mjesta"
                             MoreSectionFocus.Foundation -> "Pretraga pravilnika i procjena"
                             MoreSectionFocus.Training -> "Pretraga osposobljavanja"
                             MoreSectionFocus.Overview -> "Pretraga evidencija i modula"
@@ -7384,6 +7907,16 @@ private fun WorkOrdersScreen(
                                 displayLimit = 8,
                                 onLoadIsznr = onLoadIsznrMeasurementEquipment,
                                 onOpenRecord = onOpenRecord,
+                            )
+                        }
+                        item {
+                            RiskAssessmentMobileContent(
+                                records = filteredAssessments,
+                                jobs = filteredJobs,
+                                totalJobs = state.data.jobs.size,
+                                onOpenRecord = onOpenRecord,
+                                onNewRiskAssessment = { riskAssessmentDialogOpen = true },
+                                onNewJob = { jobDialogOpen = true },
                             )
                         }
                         item {
@@ -7495,6 +8028,16 @@ private fun WorkOrdersScreen(
                             onOpenRecord = onOpenRecord,
                         )
                     }
+                    MoreSectionFocus.RiskAssessments -> item {
+                        RiskAssessmentMobileContent(
+                            records = filteredAssessments,
+                            jobs = filteredJobs,
+                            totalJobs = state.data.jobs.size,
+                            onOpenRecord = onOpenRecord,
+                            onNewRiskAssessment = { riskAssessmentDialogOpen = true },
+                            onNewJob = { jobDialogOpen = true },
+                        )
+                    }
                     MoreSectionFocus.Foundation -> item {
                         FoundationDocumentationPreview(
                             rulebooks = filteredRulebooks,
@@ -7600,6 +8143,29 @@ private fun WorkOrdersScreen(
                 fieldInquiryDialogOpen = false
                 fieldInquiryDialogRecord = null
                 onSaveFieldInquiry(draft)
+            },
+        )
+    }
+    if (riskAssessmentDialogOpen) {
+        RiskAssessmentEditorDialog(
+            data = state.data,
+            currentUserLabel = state.user?.displayName.orEmpty(),
+            isLoading = state.isLoading,
+            onDismiss = { riskAssessmentDialogOpen = false },
+            onSave = { draft ->
+                riskAssessmentDialogOpen = false
+                onCreateRiskAssessment(draft)
+            },
+            onNewJob = { jobDialogOpen = true },
+        )
+    }
+    if (jobDialogOpen) {
+        JobEditorDialog(
+            isLoading = state.isLoading,
+            onDismiss = { jobDialogOpen = false },
+            onSave = { draft ->
+                jobDialogOpen = false
+                onCreateJob(draft)
             },
         )
     }
@@ -7783,6 +8349,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Service liste", "Pravilnici, mjerna oprema i autorizacije", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Services),
             MainMenuShortcut("People", "Korisnici, OIB i IS ZNR status", AppSection.More, Icons.Rounded.Person, MoreSectionFocus.People),
             MainMenuShortcut("Mjerna oprema", "Popis opreme i ISZNR oznake", AppSection.More, Icons.Rounded.Work, MoreSectionFocus.MeasurementEquipment),
+            MainMenuShortcut("Procjene rizika", "Jobs, radna mjesta i mobilni unos", AppSection.More, Icons.Rounded.Badge, MoreSectionFocus.RiskAssessments),
             MainMenuShortcut("Pravilnici", "Temeljna dokumentacija i procjene", AppSection.More, Icons.Rounded.Lock, MoreSectionFocus.Foundation),
             MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint, MoreSectionFocus.Training),
         )
@@ -11864,6 +12431,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
     "training" -> Icons.Rounded.Fingerprint
     "company" -> Icons.Rounded.Business
     "location" -> Icons.Rounded.LocationOn
+    "job" -> Icons.Rounded.Work
     "rulebook" -> Icons.Rounded.Lock
     "risk_assessment" -> Icons.Rounded.Description
     "client_portal" -> Icons.Rounded.Map
@@ -11881,6 +12449,7 @@ private fun recordKindLabel(kind: String): String = when (kind) {
     "training" -> "Osposobljavanje"
     "company" -> "Tvrtka"
     "location" -> "Lokacija"
+    "job" -> "Job"
     "rulebook" -> "Pravilnik"
     "risk_assessment" -> "Procjena rizika"
     "client_portal" -> "Klijentski portal"

@@ -26,6 +26,7 @@ data class BootstrapData(
     val clientPortalRecords: List<MobileRecord> = emptyList(),
     val rulebooks: List<MobileRecord> = emptyList(),
     val riskAssessmentRecords: List<MobileRecord> = emptyList(),
+    val jobs: List<MobileRecord> = emptyList(),
     val offers: List<MobileRecord> = emptyList(),
     val fieldInquiries: List<MobileRecord> = emptyList(),
     val todoTasks: List<MobileRecord> = emptyList(),
@@ -155,6 +156,37 @@ data class FieldInquiryDraft(
     val assignedUserIds: List<String>,
     val assignedUserLabels: List<String>,
     val syncWorkOrderExecutionDate: Boolean,
+)
+
+data class JobCreateDraft(
+    val title: String,
+    val status: String,
+    val description: String,
+)
+
+data class RiskAssessmentJobDraft(
+    val sourceJobId: String,
+    val jobTitle: String,
+    val description: String,
+    val tasks: String,
+)
+
+data class RiskAssessmentCreateDraft(
+    val companyId: String,
+    val companyName: String,
+    val locationId: String,
+    val locationName: String,
+    val workOrderId: String,
+    val workOrderNumber: String,
+    val title: String,
+    val status: String,
+    val assessmentDate: String,
+    val revisionDate: String,
+    val intro: String,
+    val workProcessDescription: String,
+    val generalData: String,
+    val conclusion: String,
+    val jobs: List<RiskAssessmentJobDraft>,
 )
 
 data class WorkOrderDocumentationDraft(

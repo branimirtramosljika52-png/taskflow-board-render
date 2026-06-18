@@ -88,6 +88,7 @@ class SafeNexusApi(
                 clientPortalRecords = json.optJSONArray("clientPortalRecords").toRecords(),
                 rulebooks = json.optJSONArray("rulebooks").toRecords(),
                 riskAssessmentRecords = json.optJSONArray("riskAssessmentRecords").toRecords(),
+                jobs = json.optJSONArray("jobs").toRecords(),
                 offers = json.optJSONArray("offers").toRecords(),
                 fieldInquiries = json.optJSONArray("fieldInquiries").toRecords(),
                 todoTasks = json.optJSONArray("todoTasks").toRecords(),
@@ -135,6 +136,25 @@ class SafeNexusApi(
     suspend fun createFieldInquiry(draft: FieldInquiryDraft): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request("/api/mobile/field-inquiries", method = "POST", body = draft.toJsonPayload())
+            Unit
+        }
+    }
+
+    suspend fun createJob(draft: JobCreateDraft): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            request("/api/jobs", method = "POST", body = draft.toJsonPayload())
+            Unit
+        }
+    }
+
+    suspend fun createRiskAssessment(draft: RiskAssessmentCreateDraft): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            request(
+                "/api/risk-assessments",
+                method = "POST",
+                body = draft.toJsonPayload(),
+                readTimeoutMs = 60_000,
+            )
             Unit
         }
     }
@@ -1367,6 +1387,63 @@ private fun FieldInquiryDraft.toJsonPayload(): String =
         .put("assignedUserLabels", JSONArray(assignedUserLabels))
         .put("syncWorkOrderExecutionDate", syncWorkOrderExecutionDate)
         .toString()
+
+private fun JobCreateDraft.toJsonPayload(): String =
+    JSONObject()
+        .put("title", title.trim())
+        .put("status", status.ifBlank { "draft" })
+        .put("description", description.trim())
+        .put("environment", JSONObject())
+        .put("conditions", JSONObject())
+        .put("hazards", JSONArray())
+        .put("ppeItems", JSONArray())
+        .toString()
+
+private fun RiskAssessmentCreateDraft.toJsonPayload(): String {
+    val jobArray = JSONArray()
+    jobs.forEachIndexed { index, job ->
+        jobArray.put(
+            JSONObject()
+                .put("id", "mobile-job-${System.currentTimeMillis()}-$index")
+                .put("sourceJobIds", JSONArray(listOf(job.sourceJobId).filter { it.isNotBlank() }))
+                .put("status", "draft")
+                .put("jobTitle", job.jobTitle.trim())
+                .put("shortDescription", job.description.trim().take(220))
+                .put("description", job.description.trim())
+                .put("tasks", job.tasks.trim())
+                .put("riskRows", JSONArray())
+                .put("ppeItems", JSONArray()),
+        )
+    }
+
+    val titleValue = title.trim().ifBlank {
+        listOf(companyName, "Procjena rizika").filter { it.isNotBlank() }.joinToString(" - ")
+    }
+    return JSONObject()
+        .put("companyId", companyId)
+        .put("companyName", companyName)
+        .put("locationId", locationId)
+        .put("locationName", locationName)
+        .put("workOrderId", workOrderId)
+        .put("workOrderNumber", workOrderNumber)
+        .put("status", status.ifBlank { "draft" })
+        .put("title", titleValue)
+        .put("assessmentNumber", "")
+        .put("assessmentType", "Procjena rizika")
+        .put("assessmentDate", assessmentDate)
+        .put("revisionDate", revisionDate)
+        .put("completionDate", assessmentDate)
+        .put("intro", intro.trim())
+        .put("workProcessDescription", workProcessDescription.trim())
+        .put("generalData", generalData.trim())
+        .put("conclusion", conclusion.trim())
+        .put("jobs", jobArray)
+        .put("organizationUnits", JSONArray())
+        .put("measures", JSONArray())
+        .put("chemicals", JSONArray())
+        .put("biologicalRisks", JSONArray())
+        .toString()
+}
 
 private fun WorkOrderMeasurementSheet.toJsonObject(): JSONObject {
     val columnArray = JSONArray()
