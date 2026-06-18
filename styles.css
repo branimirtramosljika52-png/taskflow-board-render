@@ -71446,6 +71446,15 @@ button.risk-assessment-armor-tree-row:focus-visible,
   box-shadow: 0 16px 34px rgba(239, 68, 68, 0.09);
 }
 
+.risk-assessment-risk-card.is-active {
+  border-color: rgba(37, 99, 235, 0.38);
+  box-shadow: 0 18px 38px rgba(37, 99, 235, 0.12);
+}
+
+.risk-assessment-risk-card.is-collapsed {
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.055);
+}
+
 .risk-assessment-risk-card-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -71533,11 +71542,36 @@ button.risk-assessment-armor-tree-row:focus-visible,
   align-items: center;
 }
 
+.risk-assessment-risk-collapse-icon,
 .risk-assessment-risk-remove-icon {
   display: inline-grid;
   place-items: center;
   width: 32px;
   height: 32px;
+  font-size: 1rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.risk-assessment-risk-collapse-icon {
+  border: 1px solid rgba(37, 99, 235, 0.26);
+  border-radius: 10px;
+  background: rgba(239, 246, 255, 0.92);
+  color: #1d4ed8;
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.08);
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.risk-assessment-risk-collapse-icon:hover,
+.risk-assessment-risk-collapse-icon:focus-visible {
+  border-color: rgba(37, 99, 235, 0.62);
+  background: rgba(219, 234, 254, 0.96);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.risk-assessment-risk-remove-icon {
   border: 1px solid rgba(248, 113, 113, 0.44);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.96);
@@ -72100,6 +72134,10 @@ button.risk-assessment-armor-tree-row:focus-visible,
   align-items: stretch;
   padding: 8px;
   background: #f8fafc;
+}
+
+.risk-assessment-risk-body[hidden] {
+  display: none;
 }
 
 .risk-assessment-risk-assessment-panel {

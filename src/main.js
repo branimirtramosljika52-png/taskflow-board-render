@@ -11518,6 +11518,7 @@ function normalizeRiskAssessmentWorkplaceOptionText(value = "") {
 
 function buildRiskAssessmentWorkplaceTrainingDescription(job = {}, assessment = {}) {
   const risks = (job.riskRows ?? [])
+    .filter(isRiskAssessmentArmorRiskRow)
     .map((risk) => normalizeRiskAssessmentWorkplaceOptionText(joinUniqueRiskAssessmentTextBlocks([
       risk.workNote,
       risk.description,
@@ -11548,6 +11549,7 @@ function buildRiskAssessmentWorkplaceMedicalSummary(job = {}) {
   const purPoints = normalizeJobPurPointValues(job.purPoints ?? []);
   const purSummary = getJobPurPointSummary(purPoints);
   const riskMedicalLines = (job.riskRows ?? [])
+    .filter(isRiskAssessmentArmorRiskRow)
     .filter((risk) => /zdravst|lijec|liječ|vid|posebn/i.test([
       risk.hazard,
       risk.workNote,
@@ -139890,32 +139892,6 @@ function buildRiskAssessmentChemicalWorkSubstanceLine(chemical = {}) {
   ].filter(Boolean).join(" · ");
 }
 
-function buildRiskAssessmentChemicalRiskRow(chemical = {}) {
-  const hazardText = chemical.hazardStatements?.slice(0, 4).join("; ") || chemical.classification || "Moguća kemijska štetnost.";
-  const probability = chemical.probability || "mv";
-  const consequence = chemical.consequence || "mš";
-  const riskLevel = calculateJobHazardRiskLevel(probability, consequence) || chemical.riskLevel || "Mali rizik";
-  const measuresText = joinUniqueRiskAssessmentTextBlocks([
-    chemical.ppe ? `Primijeniti OZO: ${chemical.ppe}` : "",
-    chemical.storage ? `Skladištenje: ${chemical.storage}` : "",
-    chemical.exposureLimits ? `Pratiti granične vrijednosti: ${chemical.exposureLimits}` : "",
-    chemical.precautionaryStatements?.slice(0, 5).join("; "),
-  ]);
-  return createRiskAssessmentRiskRowDraft({
-    category: "II. ŠTETNOSTI",
-    group: "1. Kemijske štetnosti",
-    code: "1.1",
-    hazard: chemical.name || "Opasne kemikalije",
-    description: hazardText,
-    source: buildRiskAssessmentChemicalWorkSubstanceLine(chemical),
-    possibleConsequences: hazardText,
-    probability,
-    consequence,
-    riskLevel,
-    existingMeasures: measuresText || "Raditi prema sigurnosno-tehničkom listu, označenoj ambalaži, internim uputama i uz odgovarajuću osobnu zaštitnu opremu.",
-  });
-}
-
 function applyRiskAssessmentChemicalToJobs(index) {
   const chemical = riskAssessmentChemicalDrafts[index];
   if (!chemical) {
@@ -139931,7 +139907,6 @@ function applyRiskAssessmentChemicalToJobs(index) {
     return;
   }
   const substanceLine = buildRiskAssessmentChemicalWorkSubstanceLine(chemical);
-  const chemicalRisk = buildRiskAssessmentChemicalRiskRow(chemical);
   targetIndexes.forEach((jobIndex) => {
     const job = riskAssessmentJobDrafts[jobIndex];
     riskAssessmentJobDrafts[jobIndex] = {
@@ -139943,13 +139918,12 @@ function applyRiskAssessmentChemicalToJobs(index) {
         `Kemijske štetnosti: ${chemical.name || "kemikalija"}${chemical.casNumber ? ` (CAS ${chemical.casNumber})` : ""}.`,
       ]),
       ppeText: joinUniqueRiskAssessmentTextBlocks([job.ppeText, chemical.ppe]),
-      riskRows: mergeRiskAssessmentRiskRows(job.riskRows ?? [], [chemicalRisk]),
     };
   });
   renderRiskAssessmentJobs();
   renderRiskAssessmentChemicals();
   scheduleRiskAssessmentDraftAutosave();
-  setInlineMessage(riskAssessmentChemicalImportMessage || riskAssessmentError, `Kemikalija "${chemical.name || "kemikalija"}" dodana je u radne tvari i kemijske rizike.`, "success");
+  setInlineMessage(riskAssessmentChemicalImportMessage || riskAssessmentError, `Kemikalija "${chemical.name || "kemikalija"}" povezana je s radnim mjestima i ostaje u tabu Kemijske štetnosti.`, "success");
 }
 
 async function searchRiskAssessmentPubChemChemicals() {
@@ -140215,25 +140189,6 @@ function getRiskAssessmentBiologicalRiskIndexFromElement(element) {
   return Number.isInteger(index) && index >= 0 ? index : -1;
 }
 
-function buildRiskAssessmentBiologicalRiskRow(entry = {}) {
-  const probability = entry.probability || "mv";
-  const consequence = entry.consequence || "mš";
-  return createRiskAssessmentRiskRowDraft({
-    category: "II. ŠTETNOSTI",
-    group: "2. Biološke štetnosti",
-    code: "2.1",
-    hazard: entry.agentName || "Biološki agens / izvor izloženosti",
-    description: getRiskAssessmentBiologicalRiskMeta(entry),
-    source: entry.source,
-    possibleConsequences: entry.possibleConsequences || "Moguće zarazne, alergijske ili toksične posljedice ovisno o agensu i izloženosti.",
-    probability,
-    consequence,
-    riskLevel: calculateJobHazardRiskLevel(probability, consequence) || entry.riskLevel || "",
-    workNote: entry.note,
-    existingMeasures: entry.existingMeasures || getRiskAssessmentBiologicalFallbackMeasures(),
-  });
-}
-
 function applyRiskAssessmentBiologicalRiskToJobs(index) {
   const entry = riskAssessmentBiologicalRiskDrafts[index];
   if (!entry) {
@@ -140248,7 +140203,6 @@ function applyRiskAssessmentBiologicalRiskToJobs(index) {
     setInlineMessage(riskAssessmentBiologicalRuleMessage || riskAssessmentError, "Dodaj barem jedan posao ili ostavi odabir prazan za primjenu na sve poslove.", "error");
     return;
   }
-  const riskRow = buildRiskAssessmentBiologicalRiskRow(entry);
   const sourceLine = joinUniqueRiskAssessmentTextBlocks([
     entry.agentName || "Biološki agens / izvor izloženosti",
     entry.classification ? `Skupina ${entry.classification}` : "",
@@ -140264,13 +140218,12 @@ function applyRiskAssessmentBiologicalRiskToJobs(index) {
         job.harmfulSources,
         `Biološke štetnosti: ${entry.agentName || "biološki agens / izvor izloženosti"}.`,
       ]),
-      riskRows: mergeRiskAssessmentRiskRows(job.riskRows ?? [], [riskRow]),
     };
   });
   renderRiskAssessmentJobs();
   renderRiskAssessmentBiologicalRisks();
   scheduleRiskAssessmentDraftAutosave();
-  setInlineMessage(riskAssessmentBiologicalRuleMessage || riskAssessmentError, `Biološka štetnost "${entry.agentName || "redak"}" dodana je u radna mjesta.`, "success");
+  setInlineMessage(riskAssessmentBiologicalRuleMessage || riskAssessmentError, `Biološka štetnost "${entry.agentName || "redak"}" povezana je s radnim mjestima i ostaje u tabu Biološke štetnosti.`, "success");
 }
 
 function handleRiskAssessmentBiologicalRisksInput(event) {
@@ -141104,6 +141057,9 @@ function cloneJobDraft(job = {}) {
 function getJobHazardCatalogRows() {
   const seen = new Set();
   return RISK_ASSESSMENT_CATALOG_ROWS.filter((row) => {
+    if (!isRiskAssessmentArmorRiskRow(row)) {
+      return false;
+    }
     const key = `${row.category || ""}::${row.group || ""}::${row.code || ""}::${row.hazard || ""}`;
     if (seen.has(key)) {
       return false;
@@ -146340,7 +146296,8 @@ function buildRiskAssessmentJobEligibilityExportTable(job = {}) {
 
 function buildRiskAssessmentJobRiskExportTable(job = {}) {
   const riskRows = sortRiskAssessmentRiskRowsByPrilogOrder((job.riskRows ?? []).filter((risk) => (
-    getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures || risk.workNote
+    isRiskAssessmentArmorRiskRow(risk)
+    && (getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures || risk.workNote)
   )));
   const columns = [
     { id: "risk", label: "Opasnosti, štetnosti i napori (Prilog III.)", width: 250 },
@@ -146683,19 +146640,6 @@ function buildRiskAssessmentChemicalsExportBlocks() {
   ];
 }
 
-function isRiskAssessmentBiologicalRiskRow(risk = {}) {
-  const normalized = normalizeRiskAssessmentIdentityComparable([
-    risk.topCategory,
-    risk.category,
-    risk.group,
-    risk.code,
-    risk.hazard,
-    risk.description,
-    risk.workNote,
-  ].filter(Boolean).join(" "));
-  return normalized.includes("biolos");
-}
-
 function getRiskAssessmentBiologicalFallbackMeasures() {
   return "Primjenjivati higijenske mjere, čišćenje i dezinfekciju, pravilno postupanje s kontaminiranim materijalom, osposobljavanje radnika i odgovarajuću OZO prema izvoru izloženosti.";
 }
@@ -146750,24 +146694,7 @@ function getRiskAssessmentBiologicalRiskExportRows() {
   }
   const rows = [];
   riskAssessmentJobDrafts.forEach((job, jobIndex) => {
-    const biologicalRows = sortRiskAssessmentRiskRowsByPrilogOrder(job.riskRows ?? [])
-      .filter(isRiskAssessmentBiologicalRiskRow);
-    biologicalRows.forEach((risk, riskIndex) => {
-      rows.push({
-        id: `biological-risk-${job.id || jobIndex + 1}-${risk.id || riskIndex + 1}`,
-        subject: joinUniqueRiskAssessmentTextBlocks([
-          getRiskAssessmentRiskIdentityText(risk, { includeConsequences: true }),
-          job.jobTitle ? `Radno mjesto: ${job.jobTitle}` : "",
-        ]),
-        probability: risk.probability,
-        consequence: risk.consequence,
-        riskLevel: risk.riskLevel,
-        special: formatRiskAssessmentRiskSpecialWorkCell(risk),
-        note: joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source, job.biologicalHazards]),
-        measures: joinUniqueRiskAssessmentTextBlocks([risk.existingMeasures, risk.additionalMeasures, risk.measures]) || getRiskAssessmentBiologicalFallbackMeasures(),
-      });
-    });
-    if (!biologicalRows.length && (job.biologicalWork || String(job.biologicalHazards || "").trim() || (job.biologicalHazardOptions ?? []).length)) {
+    if (job.biologicalWork || String(job.biologicalHazards || "").trim() || (job.biologicalHazardOptions ?? []).length) {
       const probability = "mv";
       const consequence = "sš";
       rows.push({
@@ -148788,7 +148715,7 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
 function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
   const drafts = jobs.map((job) => createRiskAssessmentJobDraftFromCatalogJob(job));
   const titles = jobs.map((job) => job.title || "").filter(Boolean);
-  const riskRows = drafts.reduce((rows, draft) => mergeRiskAssessmentRiskRows(rows, draft.riskRows ?? []), []);
+  const riskRows = drafts.reduce((rows, draft) => mergeRiskAssessmentRiskRows(rows, (draft.riskRows ?? []).filter(isRiskAssessmentArmorRiskRow)), []);
   const ppeItems = mergeRiskAssessmentPpeItems([], drafts.flatMap((draft) => draft.ppeItems ?? []));
   const mergedPurPoints = normalizeJobPurPointValues(drafts.map((draft) => draft.purPoints ?? []));
   const mergedManualSpecialWorkReason = drafts.map((draft) => getRiskAssessmentManualSpecialWorkReason(
@@ -149276,6 +149203,9 @@ function getRiskAssessmentFilteredCatalogRows(job = {}) {
   return RISK_ASSESSMENT_CATALOG_ROWS
     .map((row, catalogIndex) => ({ ...row, catalogIndex }))
     .filter((row) => {
+      if (!isRiskAssessmentArmorRiskRow(row)) {
+        return false;
+      }
       if (type !== "all" && getRiskAssessmentCatalogType(row.category) !== type) {
         return false;
       }
@@ -150470,7 +150400,7 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           <div class="risk-assessment-armor-workspace">
             <div class="risk-assessment-armor-workspace-head">
               <div>
-                <strong>Uredi odabranu ARMOR stavku</strong>
+                <strong>ARMOR stavke radnog mjesta</strong>
                 <small>${escapeHtml(`${getRiskAssessmentFilledRiskRowCount(item)} stavki · ${item.jobTitle || "radno mjesto"}`)}</small>
               </div>
               <div>
@@ -150773,7 +150703,7 @@ function clearRiskAssessmentDraftAutosave({ preserveStatus = false, clearServer 
 }
 
 function renderRiskAssessmentCatalogPicker(job = {}) {
-  const selectedKeys = new Set((job.riskRows ?? []).map((row) => getRiskAssessmentRiskRowKey(row)).filter(Boolean));
+  const selectedKeys = new Set((job.riskRows ?? []).filter(isRiskAssessmentArmorRiskRow).map((row) => getRiskAssessmentRiskRowKey(row)).filter(Boolean));
   const catalogRows = sortRiskAssessmentRiskRowsByPrilogOrder(getRiskAssessmentFilteredCatalogRows(job));
   const sections = getRiskAssessmentCatalogSections(catalogRows);
   const selectedCount = selectedKeys.size;
@@ -151555,8 +151485,9 @@ function setRiskAssessmentJobAiProposal(jobIndex, action = "description") {
     return;
   }
   if (action === "ppe") {
-    const riskRows = (job.riskRows ?? []).some((risk) => getRiskAssessmentRiskRowKey(risk))
-      ? (job.riskRows ?? [])
+    const armorRiskRows = (job.riskRows ?? []).filter(isRiskAssessmentArmorRiskRow);
+    const riskRows = armorRiskRows.some((risk) => getRiskAssessmentRiskRowKey(risk))
+      ? armorRiskRows
       : buildRiskAssessmentAiRiskSuggestions(job);
     const ppeItems = buildRiskAssessmentAiPpeSuggestions(job, riskRows);
     riskAssessmentJobDrafts[jobIndex] = {
@@ -151594,7 +151525,7 @@ function setRiskAssessmentJobAiProposal(jobIndex, action = "description") {
 }
 
 function renderRiskAssessmentAiRiskPreview(riskRows = []) {
-  const rows = sortRiskAssessmentRiskRowsByPrilogOrder(riskRows ?? []).slice(0, 14);
+  const rows = sortRiskAssessmentRiskRowsByPrilogOrder((riskRows ?? []).filter(isRiskAssessmentArmorRiskRow)).slice(0, 14);
   if (!rows.length) {
     return `<p class="inline-help">NexAI nije pronašao dovoljno povezanih stavki. Dopuni opis posla, opremu ili uvjete rada pa pokušaj ponovno.</p>`;
   }
@@ -151738,7 +151669,10 @@ function renderRiskAssessmentDocumentPpeSection(job = {}) {
 }
 
 function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
-  const riskRows = sortRiskAssessmentRiskRowsByPrilogOrder((job.riskRows ?? []).filter((risk) => getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures));
+  const riskRows = sortRiskAssessmentRiskRowsByPrilogOrder((job.riskRows ?? []).filter((risk) => (
+    isRiskAssessmentArmorRiskRow(risk)
+    && (getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures)
+  )));
   const jobTasks = getRiskAssessmentJobTasksForExport(job);
   const equipment = joinUniqueRiskAssessmentTextBlocks([job.workEquipment, job.toolsAndMachines]);
   const specialWorkDocumentText = mergeRiskAssessmentSpecialWorkReason(
@@ -153230,6 +153164,7 @@ function createRiskAssessmentRiskRowDraft(initial = {}) {
     deadline: String(initial.deadline || ""),
     responsiblePerson: String(initial.responsiblePerson || ""),
     controlMethod: String(initial.controlMethod || ""),
+    collapsed: Boolean(initial.collapsed),
   };
 }
 
@@ -153340,7 +153275,7 @@ function createRiskAssessmentJobDraft(initial = {}) {
 }
 
 function getRiskAssessmentFilledRiskRowCount(job = {}) {
-  return (job.riskRows ?? []).filter((risk) => (
+  return (job.riskRows ?? []).filter((risk) => isRiskAssessmentArmorRiskRow(risk) && (
     risk.code || risk.category || risk.group || risk.hazard || risk.description || risk.source
     || risk.possibleConsequences || risk.riskLevel || risk.workNote || risk.existingMeasures
     || risk.additionalMeasures || risk.measures || risk.deadline || risk.responsiblePerson || risk.controlMethod
@@ -153358,6 +153293,43 @@ function getRiskAssessmentRiskRowKey(row = {}) {
     group,
     hazard,
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join("::");
+}
+
+function isRiskAssessmentChemicalOrBiologicalRiskRow(row = {}) {
+  const hierarchy = getRiskAssessmentCatalogHierarchy(row);
+  const section = normalizeRiskAssessmentIdentityComparable(hierarchy.category || row.topCategory || row.category || "");
+  const family = normalizeRiskAssessmentIdentityComparable(hierarchy.family || row.category || "");
+  const subgroup = normalizeRiskAssessmentIdentityComparable(hierarchy.subgroup || row.group || "");
+  const text = normalizeRiskAssessmentIdentityComparable([
+    row.topCategory,
+    row.category,
+    row.group,
+    row.code,
+    row.hazard,
+    row.description,
+  ].filter(Boolean).join(" "));
+  if (text.includes("kemij") || text.includes("biolos")) {
+    return true;
+  }
+  if (!section.includes("ii stetnosti")) {
+    return false;
+  }
+  return family.startsWith("1 kemijske")
+    || family.startsWith("2 bioloske")
+    || subgroup.startsWith("1 ")
+    || subgroup.startsWith("1.")
+    || subgroup.startsWith("2 ")
+    || subgroup.startsWith("2.");
+}
+
+function isRiskAssessmentArmorRiskRow(row = {}) {
+  return !isRiskAssessmentChemicalOrBiologicalRiskRow(row);
+}
+
+function getRiskAssessmentArmorRiskRowsWithIndexes(job = {}) {
+  return (job.riskRows ?? [])
+    .map((risk, riskIndex) => ({ risk, riskIndex }))
+    .filter(({ risk }) => isRiskAssessmentArmorRiskRow(risk));
 }
 
 function mergeRiskAssessmentRiskRows(currentRows = [], incomingRows = []) {
@@ -153387,7 +153359,7 @@ function seedRiskAssessmentArmorCatalogRowsForJob(job = {}) {
     armorCatalogSeeded: true,
     riskRows: mergeRiskAssessmentRiskRows(
       job.riskRows ?? [],
-      prepareRiskAssessmentCatalogRowsForJob(job, RISK_ASSESSMENT_CATALOG_ROWS),
+      prepareRiskAssessmentCatalogRowsForJob(job, RISK_ASSESSMENT_CATALOG_ROWS.filter(isRiskAssessmentArmorRiskRow)),
     ),
   };
 }
@@ -153934,7 +153906,7 @@ function mergeCatalogJobsIntoExistingRiskAssessmentJob(current = {}, selectedJob
     psychosocialRelevant: Boolean(current.psychosocialRelevant || imported.psychosocialRelevant),
     increasedInsurance: current.increasedInsurance || imported.increasedInsurance,
     alcoholLimit: preferCurrent("alcoholLimit"),
-    riskRows: mergeRiskAssessmentRiskRows(current.riskRows ?? [], imported.riskRows ?? []),
+    riskRows: mergeRiskAssessmentRiskRows(current.riskRows ?? [], (imported.riskRows ?? []).filter(isRiskAssessmentArmorRiskRow)),
     ppeItems: mergeRiskAssessmentPpeItems(current.ppeItems ?? [], imported.ppeItems ?? []),
     hiddenBlocks: current.hiddenBlocks ?? imported.hiddenBlocks,
     clientInput: current.clientInput,
@@ -156249,6 +156221,18 @@ function handleRiskAssessmentJobsListClick(event) {
     event.preventDefault();
     const riskIndex = Number(button.dataset.riskRowSelect);
     if (setRiskAssessmentActiveRiskRowIndex(jobIndex, riskIndex)) {
+      const current = riskAssessmentJobDrafts[jobIndex];
+      const riskRows = [...(current?.riskRows ?? [])];
+      if (riskRows[riskIndex]) {
+        riskRows[riskIndex] = {
+          ...riskRows[riskIndex],
+          collapsed: false,
+        };
+        riskAssessmentJobDrafts[jobIndex] = {
+          ...current,
+          riskRows,
+        };
+      }
       renderRiskAssessmentJobs({
         refreshLinkedSheets: false,
         refreshOverview: false,
@@ -156443,13 +156427,38 @@ function handleRiskAssessmentJobsListClick(event) {
     return;
   }
 
+  if (button.matches("[data-risk-row-collapse]")) {
+    event.preventDefault();
+    const riskIndex = Number(button.dataset.riskRowCollapse);
+    const current = riskAssessmentJobDrafts[jobIndex];
+    const riskRows = [...(current?.riskRows ?? [])];
+    if (!current || !riskRows[riskIndex]) {
+      return;
+    }
+    riskRows[riskIndex] = {
+      ...riskRows[riskIndex],
+      collapsed: !Boolean(riskRows[riskIndex].collapsed),
+    };
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...current,
+      riskRows,
+    };
+    renderRiskAssessmentJobs({
+      refreshLinkedSheets: false,
+      refreshOverview: false,
+      refreshCatalogOptions: false,
+    });
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+
   if (button.matches("[data-risk-catalog-add-selected]")) {
     event.preventDefault();
     const currentJob = riskAssessmentJobDrafts[jobIndex];
     const selection = currentJob?.catalogSelection ?? [];
     const catalogRows = selection
       .map((value) => RISK_ASSESSMENT_CATALOG_ROWS[Number(value)])
-      .filter(Boolean);
+      .filter((row) => row && isRiskAssessmentArmorRiskRow(row));
     riskAssessmentJobDrafts[jobIndex] = {
       ...currentJob,
       riskRows: mergeRiskAssessmentRiskRows(currentJob.riskRows, prepareRiskAssessmentCatalogRowsForJob(currentJob, catalogRows)),
@@ -156466,7 +156475,7 @@ function handleRiskAssessmentJobsListClick(event) {
     event.preventDefault();
     const catalogIndex = Number(button.dataset.riskCatalogRow);
     const catalogRow = RISK_ASSESSMENT_CATALOG_ROWS[catalogIndex];
-    if (catalogRow) {
+    if (catalogRow && isRiskAssessmentArmorRiskRow(catalogRow)) {
       const currentJob = riskAssessmentJobDrafts[jobIndex];
       riskAssessmentJobDrafts[jobIndex] = {
         ...currentJob,
@@ -156486,7 +156495,10 @@ function handleRiskAssessmentJobsListClick(event) {
     const [category, family, subgroup] = String(button.dataset.riskCatalogGroup || "").split("||");
     const catalogRows = RISK_ASSESSMENT_CATALOG_ROWS.filter((row) => {
       const hierarchy = getRiskAssessmentCatalogHierarchy(row);
-      return hierarchy.category === category && hierarchy.family === family && hierarchy.subgroup === subgroup;
+      return isRiskAssessmentArmorRiskRow(row)
+        && hierarchy.category === category
+        && hierarchy.family === family
+        && hierarchy.subgroup === subgroup;
     });
     const currentJob = riskAssessmentJobDrafts[jobIndex];
     riskAssessmentJobDrafts[jobIndex] = {
@@ -156506,7 +156518,9 @@ function handleRiskAssessmentJobsListClick(event) {
     const [category, family] = String(button.dataset.riskCatalogFamily || "").split("||");
     const catalogRows = RISK_ASSESSMENT_CATALOG_ROWS.filter((row) => {
       const hierarchy = getRiskAssessmentCatalogHierarchy(row);
-      return hierarchy.category === category && hierarchy.family === family;
+      return isRiskAssessmentArmorRiskRow(row)
+        && hierarchy.category === category
+        && hierarchy.family === family;
     });
     const currentJob = riskAssessmentJobDrafts[jobIndex];
     riskAssessmentJobDrafts[jobIndex] = {
@@ -156527,7 +156541,7 @@ function handleRiskAssessmentJobsListClick(event) {
       ...sanitizeRiskAssessmentTransientJob(source),
       id: crypto.randomUUID(),
       jobTitle: `${source.jobTitle || "Radno mjesto"} - kopija`,
-      riskRows: (source.riskRows ?? []).map((risk) => ({ ...risk, id: crypto.randomUUID() })),
+      riskRows: (source.riskRows ?? []).filter(isRiskAssessmentArmorRiskRow).map((risk) => ({ ...risk, id: crypto.randomUUID() })),
       ppeItems: (source.ppeItems ?? []).map((ppe) => ({ ...ppe, id: crypto.randomUUID() })),
     });
     riskAssessmentJobDrafts.splice(jobIndex + 1, 0, copy);
@@ -156550,7 +156564,7 @@ function handleRiskAssessmentJobsListClick(event) {
       id: crypto.randomUUID(),
       name,
       jobHint: job?.jobTitle || "",
-      riskRows: (job?.riskRows ?? []).filter((risk) => getRiskAssessmentRiskRowKey(risk)).map((risk) => createRiskAssessmentRiskRowDraft(risk)),
+      riskRows: (job?.riskRows ?? []).filter((risk) => isRiskAssessmentArmorRiskRow(risk) && getRiskAssessmentRiskRowKey(risk)).map((risk) => createRiskAssessmentRiskRowDraft(risk)),
       ppeItems: (job?.ppeItems ?? []).map((ppe) => createRiskAssessmentPpeDraft(ppe)),
     });
     renderRiskAssessmentJobs();
@@ -156681,7 +156695,7 @@ function handleRiskAssessmentJobsListClick(event) {
       riskAssessmentJobDrafts[jobIndex] = {
         ...job,
         ...(proposal.patch ?? {}),
-        riskRows: mergeRiskAssessmentRiskRows(job.riskRows, proposal.riskRows ?? []),
+        riskRows: mergeRiskAssessmentRiskRows(job.riskRows, (proposal.riskRows ?? []).filter(isRiskAssessmentArmorRiskRow)),
         ppeItems: nextPpeItems,
         ppeText: proposal.patch?.ppeText || syncRiskAssessmentPpeSummaryText(job, nextPpeItems),
         aiProposal: null,
@@ -156696,7 +156710,7 @@ function handleRiskAssessmentJobsListClick(event) {
       ];
       riskAssessmentJobDrafts[jobIndex] = {
         ...job,
-        riskRows: mergeRiskAssessmentRiskRows(job.riskRows, proposal.riskRows ?? []),
+        riskRows: mergeRiskAssessmentRiskRows(job.riskRows, (proposal.riskRows ?? []).filter(isRiskAssessmentArmorRiskRow)),
         ppeItems: nextPpeItems,
         ppeText: syncRiskAssessmentPpeSummaryText(job, nextPpeItems),
         aiProposal: null,
@@ -156954,18 +156968,18 @@ function isRiskAssessmentRiskRowComplete(risk = {}) {
 }
 
 function getRiskAssessmentActiveRiskRowIndex(job = {}) {
-  const riskRows = job.riskRows ?? [];
-  if (!riskRows.length) {
+  const armorRows = getRiskAssessmentArmorRiskRowsWithIndexes(job);
+  if (!armorRows.length) {
     return -1;
   }
   const activeId = String(job.activeRiskRowId || "");
   if (activeId) {
-    const activeIndex = riskRows.findIndex((risk) => String(risk.id || "") === activeId);
-    if (activeIndex >= 0) {
-      return activeIndex;
+    const active = armorRows.find(({ risk }) => String(risk.id || "") === activeId);
+    if (active) {
+      return active.riskIndex;
     }
   }
-  return 0;
+  return armorRows[0].riskIndex;
 }
 
 function setRiskAssessmentActiveRiskRowIndex(jobIndex, riskIndex) {
@@ -157022,11 +157036,11 @@ function getRiskAssessmentArmorHierarchy(risk = {}) {
 }
 
 function renderRiskAssessmentArmorExplorer(item = {}, jobIndex = 0) {
-  const riskRows = item.riskRows ?? [];
+  const armorRows = getRiskAssessmentArmorRiskRowsWithIndexes(item);
   const activeIndex = getRiskAssessmentActiveRiskRowIndex(item);
   const sections = [];
   const sectionMap = new Map();
-  riskRows.forEach((risk, riskIndex) => {
+  armorRows.forEach(({ risk, riskIndex }) => {
     const hierarchy = getRiskAssessmentArmorHierarchy(risk);
     const sectionKey = hierarchy.category;
     let section = sectionMap.get(sectionKey);
@@ -157059,7 +157073,7 @@ function renderRiskAssessmentArmorExplorer(item = {}, jobIndex = 0) {
     <section class="risk-assessment-armor-explorer">
       <div class="risk-assessment-armor-explorer-head">
         <strong>ARMOR explorer</strong>
-        <span>${escapeHtml(`${riskRows.length} stavki`)}</span>
+        <span>${escapeHtml(`${armorRows.length} stavki`)}</span>
       </div>
       <div class="risk-assessment-armor-tree-nodes">
         ${sections.length ? sections.map((section) => `
@@ -157131,11 +157145,8 @@ function renderRiskAssessmentArmorExplorer(item = {}, jobIndex = 0) {
 }
 
 function renderRiskAssessmentRiskCards(item = {}) {
-  const riskRows = item.riskRows ?? [];
   const activeIndex = getRiskAssessmentActiveRiskRowIndex(item);
-  const visibleRows = activeIndex >= 0 && riskRows[activeIndex]
-    ? [{ risk: riskRows[activeIndex], riskIndex: activeIndex }]
-    : [];
+  const visibleRows = getRiskAssessmentArmorRiskRowsWithIndexes(item);
   return `
     <div class="risk-assessment-risk-cards">
       ${visibleRows.length ? visibleRows.map(({ risk, riskIndex }) => {
@@ -157147,8 +157158,10 @@ function renderRiskAssessmentRiskCards(item = {}) {
         const classificationText = getRiskAssessmentRiskHierarchyParts(risk).join("\n");
         const workNoteValue = risk.workNote || risk.note || risk.possibleConsequences || "";
         const measuresValue = risk.existingMeasures || risk.measures || risk.additionalMeasures || "";
+        const isActive = riskIndex === activeIndex;
+        const isCollapsed = Boolean(risk.collapsed);
         return `
-        <article class="risk-assessment-risk-card is-${riskTone}">
+        <article class="risk-assessment-risk-card is-${riskTone} ${isActive ? "is-active" : ""} ${isCollapsed ? "is-collapsed" : ""}">
           <div class="risk-assessment-risk-card-head">
             <div class="risk-assessment-risk-title-shell">
               <div class="risk-assessment-risk-title-row">
@@ -157161,10 +157174,11 @@ function renderRiskAssessmentRiskCards(item = {}) {
               </div>
             </div>
             <div class="risk-assessment-risk-head-actions">
+              <button type="button" class="risk-assessment-risk-collapse-icon" data-risk-row-collapse="${riskIndex}" aria-label="${escapeHtml(isCollapsed ? "Prikaži ARMOR stavku" : "Sakrij ARMOR stavku")}" aria-expanded="${isCollapsed ? "false" : "true"}">${isCollapsed ? "+" : "−"}</button>
               <button type="button" class="risk-assessment-risk-remove-icon" data-risk-row-remove="${riskIndex}" aria-label="Ukloni ARMOR stavku">${renderRiskAssessmentRiskIcon("close")}</button>
             </div>
           </div>
-          <div class="risk-assessment-risk-body">
+          <div class="risk-assessment-risk-body" ${isCollapsed ? "hidden" : ""}>
             <section class="risk-assessment-risk-assessment-panel">
               <div class="risk-assessment-risk-panel-title">
                 <span class="risk-assessment-risk-panel-icon">${renderRiskAssessmentRiskIcon("shield")}</span>
@@ -157229,8 +157243,8 @@ function renderRiskAssessmentRiskCards(item = {}) {
       `;
       }).join("") : `
         <div class="risk-assessment-job-tree-empty">
-          <strong>Nema odabrane ARMOR stavke</strong>
-          <span>Odaberi stavku u exploreru ili dodaj novu.</span>
+          <strong>Nema ARMOR stavki</strong>
+          <span>Dodaj stavku ili cijeli popis iz Priloga III.</span>
         </div>
       `}
     </div>
