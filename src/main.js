@@ -125017,6 +125017,65 @@ function createPeopleUserActivityCell(user, { canEditUser = false } = {}) {
     stack.append(createListLine("Tvoj račun", "list-tertiary"));
   }
 
+  if (canEditUser) {
+    const actionWrap = document.createElement("div");
+    actionWrap.className = "people-user-activity-actions";
+
+    const resetButton = document.createElement("button");
+    resetButton.type = "button";
+    resetButton.className = "people-user-sheet-action";
+    resetButton.textContent = "Lozinka";
+    resetButton.title = "Pošalji privremenu lozinku korisniku";
+    resetButton.disabled = user.isActive === false;
+    resetButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (user.isActive === false) {
+        return;
+      }
+      if (!window.confirm(`Poslati privremenu lozinku korisniku ${user.fullName || user.email}?`)) {
+        return;
+      }
+      void runMutation(() => apiRequest(`/users/${encodeURIComponent(String(user.id))}/password-reset`, {
+        method: "POST",
+      }), userError).then((success) => {
+        if (success) {
+          setInlineMessage(userError, "Privremena lozinka je poslana na email korisnika.", "success");
+        }
+      });
+    });
+
+    const toggleButton = document.createElement("button");
+    toggleButton.type = "button";
+    toggleButton.className = `people-user-sheet-action ${user.isActive ? "is-archive" : "is-restore"}`;
+    toggleButton.textContent = user.isActive ? "Deaktiviraj" : "Vrati";
+    toggleButton.disabled = isCurrentUser;
+    toggleButton.title = isCurrentUser
+      ? "Ne možeš deaktivirati vlastiti račun"
+      : user.isActive
+        ? "Makni korisnika iz aktivnog tima bez brisanja povijesti"
+        : "Vrati korisnika u aktivni tim";
+    toggleButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (isCurrentUser) {
+        return;
+      }
+      const nextActive = user.isActive === false;
+      const actionLabel = nextActive ? "vratiti u aktivne korisnike" : "deaktivirati";
+      if (!window.confirm(`Želiš ${actionLabel} korisnika ${user.fullName || user.email}?`)) {
+        return;
+      }
+      void runMutation(() => apiRequest(`/users/${encodeURIComponent(String(user.id))}`, {
+        method: "PATCH",
+        body: {
+          isActive: String(nextActive),
+        },
+      }), userError);
+    });
+
+    actionWrap.append(resetButton, toggleButton);
+    stack.append(actionWrap);
+  }
+
   cell.append(stack);
   return cell;
 }

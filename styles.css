@@ -11991,6 +11991,13 @@ body.is-location-editor-open {
   gap: 7px;
 }
 
+.people-user-activity-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
 .people-user-sheet-action {
   width: 100%;
   min-height: 30px;
@@ -12019,6 +12026,12 @@ body.is-location-editor-open {
 .people-user-sheet-action.is-restore {
   border-color: rgba(16, 185, 129, 0.24);
   color: #047857;
+}
+
+.people-user-sheet-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+  box-shadow: none;
 }
 
 .people-workspace-panel {
