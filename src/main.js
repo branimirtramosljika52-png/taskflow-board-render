@@ -4449,6 +4449,9 @@ const clientPortalOpenCompanyButton = document.querySelector("#client-portal-ope
 const clientPortalDownloadAccessExcelButton = document.querySelector("#client-portal-download-access-excel");
 const clientPortalImportAccessExcelButton = document.querySelector("#client-portal-import-access-excel");
 const clientPortalImportAccessInput = document.querySelector("#client-portal-import-access-input");
+const clientPortalDownloadTrainingTemplateButton = document.querySelector("#client-portal-download-training-template");
+const clientPortalUploadTrainingImportButton = document.querySelector("#client-portal-upload-training-import");
+const clientPortalTrainingImportInput = document.querySelector("#client-portal-training-import-input");
 const clientPortalTotalUsers = document.querySelector("#client-portal-total-users");
 const clientPortalCompanyCount = document.querySelector("#client-portal-company-count");
 const clientPortalLocationScopedCount = document.querySelector("#client-portal-location-scoped-count");
@@ -5926,6 +5929,13 @@ const companyIsznrTrainingStatus = document.querySelector("#company-isznr-traini
 const companyIsznrTrainingSummary = document.querySelector("#company-isznr-training-summary");
 const companyIsznrTrainingRegisters = document.querySelector("#company-isznr-training-registers");
 const companyIsznrTrainingCandidates = document.querySelector("#company-isznr-training-candidates");
+const companyTrainingImportProfileNameInput = document.querySelector("#company-training-import-profile-name");
+const companyTrainingImportSheetInput = document.querySelector("#company-training-import-sheet");
+const companyTrainingImportHeaderRowInput = document.querySelector("#company-training-import-header-row");
+const companyTrainingImportFirstDataRowInput = document.querySelector("#company-training-import-first-data-row");
+const companyTrainingImportModeInput = document.querySelector("#company-training-import-mode");
+const companyTrainingImportColumnsInput = document.querySelector("#company-training-import-columns");
+const companyTrainingImportResetButton = document.querySelector("#company-training-import-reset");
 const companyPeriodInput = document.querySelector("#company-period");
 const companyIsActiveInput = document.querySelector("#company-is-active");
 const companyRepresentativeInput = document.querySelector("#company-representative");
@@ -6001,6 +6011,71 @@ const COMPANY_INTERNAL_TRAINING_PLACEHOLDER_GROUPS = [
     ],
   },
 ];
+
+const COMPANY_TRAINING_IMPORT_DEFAULT_COLUMNS = [
+  { key: "fullName", label: "Ime i prezime", required: true, aliases: ["Radnik", "Osoba"] },
+  { key: "oib", label: "OIB osobe", required: true, aliases: ["OIB"] },
+  { key: "jobTitle", label: "Naziv radnog mjesta", required: true, aliases: ["Radno mjesto"] },
+  { key: "location", label: "Lokacija", required: false, aliases: ["Mjesto rada"] },
+  { key: "workOrderNumber", label: "Broj RN", required: false, aliases: ["Radni nalog"] },
+  { key: "safeWorkDate", label: "ZOS datum", required: false, aliases: ["Rad na siguran nacin datum"] },
+  { key: "safeWorkValidUntil", label: "ZOS vrijedi do", required: false, aliases: ["Rok ZOS"] },
+  { key: "safeWorkValidForever", label: "ZOS trajno", required: false, aliases: ["Bez isteka"] },
+  { key: "safeWorkCertificateNumber", label: "ZOS broj uvjerenja", required: false, aliases: ["Broj uvjerenja"] },
+  { key: "fireDate", label: "PGP datum polaganja", required: false, aliases: ["Pocetno gasenje pozara"] },
+  { key: "flammableDate", label: "SPZTP datum polaganja", required: false, aliases: ["Zapaljive tekucine datum"] },
+  { key: "flammableValidUntil", label: "SPZTP vrijedi do", required: false, aliases: ["Zapaljive tekucine rok"] },
+  { key: "adrDate", label: "ADR datum polaganja", required: false, aliases: ["ADR datum"] },
+  { key: "adrValidUntil", label: "ADR vrijedi do", required: false, aliases: ["ADR rok"] },
+  { key: "note", label: "Napomena", required: false, aliases: [] },
+];
+
+const COMPANY_TRAINING_IMPORT_ALLOWED_KEYS = new Set([
+  "recordId",
+  "company",
+  "location",
+  "firstName",
+  "lastName",
+  "fatherName",
+  "fullName",
+  "oib",
+  "language",
+  "birthDate",
+  "birthCountry",
+  "birthPlace",
+  "arrivalDate",
+  "workPlace",
+  "activity",
+  "email",
+  "phone",
+  "workOrderNumber",
+  "serviceCode",
+  "certificateNumber",
+  "jobTitle",
+  "jobDescription",
+  "theoryPlace",
+  "theoryDate",
+  "theoryMethod",
+  "employerRepresentativeName",
+  "employerRepresentativeOib",
+  "additionalPersonName",
+  "additionalPersonOib",
+  "practicalPlace",
+  "safeWorkPeriodFrom",
+  "safeWorkPeriodTo",
+  "safeWorkDate",
+  "safeWorkValidUntil",
+  "safeWorkValidForever",
+  "safeWorkCertificateNumber",
+  "safeWorkProvider",
+  "fireDate",
+  "flammableDate",
+  "flammableValidUntil",
+  "adrDate",
+  "adrValidUntil",
+  "note",
+]);
+
 const companyClientUsersCount = document.querySelector("#company-client-users-count");
 const companyClientFirstNameInput = document.querySelector("#company-client-first-name");
 const companyClientLastNameInput = document.querySelector("#company-client-last-name");
@@ -89511,6 +89586,95 @@ async function importClientPortalAccessExcel(file) {
   }
 }
 
+function setClientPortalTrainingImportBusy(isBusy = false) {
+  const companyId = getClientPortalRecordsCompanyId();
+  const canUse = Boolean(getCanUseClientPortalRecords() && companyId);
+  [clientPortalDownloadTrainingTemplateButton, clientPortalUploadTrainingImportButton].forEach((button) => {
+    if (button) {
+      button.disabled = isBusy || !canUse;
+    }
+  });
+}
+
+async function downloadClientPortalTrainingTemplate() {
+  const companyId = getClientPortalRecordsCompanyId();
+  if (!getCanUseClientPortalRecords() || !companyId) {
+    setInlineMessage(clientPortalRecordsFeedback, "Odaberi tvrtku za Excel osposobljavanja.");
+    return;
+  }
+
+  setClientPortalTrainingImportBusy(true);
+  setInlineMessage(clientPortalRecordsFeedback, "");
+  try {
+    const query = `?companyId=${encodeURIComponent(companyId)}`;
+    const { blob, fileName } = await apiBinaryRequest(`/client-portal/training-import-template${query}`);
+    triggerBlobDownload(blob, fileName || "osposobljavanja-import.xlsx");
+    setInlineMessage(clientPortalRecordsFeedback, "Excel za osposobljavanja je preuzet.", "success");
+  } catch (error) {
+    setInlineMessage(clientPortalRecordsFeedback, error?.message || "Ne mogu preuzeti Excel za osposobljavanja.");
+  } finally {
+    setClientPortalTrainingImportBusy(false);
+  }
+}
+
+async function uploadClientPortalTrainingImport(file) {
+  if (!file) {
+    return;
+  }
+  const companyId = getClientPortalRecordsCompanyId();
+  if (!getCanUseClientPortalRecords() || !companyId) {
+    setInlineMessage(clientPortalRecordsFeedback, "Odaberi tvrtku za slanje Excel osposobljavanja.");
+    return;
+  }
+
+  setClientPortalTrainingImportBusy(true);
+  setInlineMessage(clientPortalRecordsFeedback, "");
+  try {
+    const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Excel osposobljavanja.");
+    const company = getCompany(companyId);
+    const importMode = normalizeCompanyTrainingImportMode(company?.isznrTraining?.importProfile?.defaultImportMode || "new");
+    const payload = await apiRequest("/client-portal/training-imports", {
+      method: "POST",
+      body: {
+        companyId,
+        fileName: file.name,
+        dataUrl,
+        importMode,
+      },
+    });
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+      applySnapshot(payload);
+    }
+    state.clientPortalRecordsUi.activeType = "training_import";
+    renderClientPortalModule();
+    setInlineMessage(clientPortalRecordsFeedback, "Excel je zaprimljen. Provjeri preview i potvrdi import.", "success");
+  } catch (error) {
+    setInlineMessage(clientPortalRecordsFeedback, error?.message || "Ne mogu poslati Excel osposobljavanja.");
+  } finally {
+    setClientPortalTrainingImportBusy(false);
+  }
+}
+
+async function confirmClientPortalTrainingImport(recordId = "") {
+  if (!recordId) {
+    return;
+  }
+  setInlineMessage(clientPortalRecordsFeedback, "");
+  try {
+    const payload = await apiRequest(`/client-portal/training-imports/${encodeURIComponent(recordId)}/apply`, {
+      method: "POST",
+      body: {},
+    });
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+      applySnapshot(payload);
+    }
+    renderClientPortalModule();
+    setInlineMessage(clientPortalRecordsFeedback, "Import osposobljavanja je potvrđen.", "success");
+  } catch (error) {
+    setInlineMessage(clientPortalRecordsFeedback, error?.message || "Ne mogu potvrditi import osposobljavanja.");
+  }
+}
+
 function getClientPortalUserSearchText(user = {}) {
   const companyNames = normalizeClientScopeIdsClient(user.clientCompanyIds)
     .map((companyId) => getCompany(companyId)?.name || "")
@@ -90252,6 +90416,12 @@ function getClientPortalRecordTypeMeta(type = "worker") {
       title: "Dokumenti",
       accent: "green",
     },
+    training_import: {
+      icon: "training_import",
+      eyebrow: "Excel osposobljavanja",
+      title: "Import",
+      accent: "cyan",
+    },
     deadline: {
       icon: "deadline",
       eyebrow: "Ostali rokovi",
@@ -90273,6 +90443,7 @@ function getClientPortalRecordIconMarkup(type = "worker") {
     internal_inspection: '<path d="M7 3.75h10a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5V5.25A1.5 1.5 0 0 1 7 3.75Z"></path><path d="M9 7.25h6"></path><path d="m8.75 11.75 1.25 1.25 2.25-2.75"></path><path d="M13.75 12h2.5"></path><path d="m8.75 16 1.25 1.25 2.25-2.75"></path><path d="M13.75 16.25h2.5"></path>',
     alcohol_test: '<path d="M9.5 3.75h5"></path><path d="M11 3.75v5.05l-3.7 6.4A2.8 2.8 0 0 0 9.72 19.5h4.56a2.8 2.8 0 0 0 2.42-4.3L13 8.8V3.75"></path><path d="M9.25 14.25h5.5"></path><path d="M10.25 16.5h3.5"></path>',
     document: '<path d="M6.5 3.5h7l4 4v13h-11Z"></path><path d="M13.5 3.5v4h4"></path><path d="M9 12h5.5"></path><path d="M9 15h5.5"></path><path d="M9 18h3.5"></path>',
+    training_import: '<path d="M6.5 3.5h7l4 4v13h-11Z"></path><path d="M13.5 3.5v4h4"></path><path d="M9 11h6"></path><path d="M9 14h6"></path><path d="M9 17h3"></path><path d="m16 16.25 2 2 3-4"></path>',
     deadline: '<path d="M5.25 4.5h13.5"></path><path d="M7 2.75v3.5"></path><path d="M17 2.75v3.5"></path><path d="M6.25 5.25h11.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H6.25a1.5 1.5 0 0 1-1.5-1.5v-10a1.5 1.5 0 0 1 1.5-1.5Z"></path><path d="M8.5 10.25h3.25"></path><path d="M8.5 14h6.25"></path>',
   };
   return `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">${icons[iconName] || icons.worker}</svg>`;
@@ -91348,12 +91519,63 @@ function getClientPortalRecordDetailLines(record = {}) {
       details.note,
     ].filter(Boolean);
   }
+  if (record.type === "training_import") {
+    const totals = details.preview?.totals || {};
+    const result = details.result || {};
+    return [
+      details.fileName ? `Datoteka: ${details.fileName}` : "",
+      details.importMode ? `Import: ${details.importMode}` : "",
+      Number.isFinite(Number(totals.total)) ? `Redaka: ${totals.total}` : "",
+      Number.isFinite(Number(totals.create)) ? `Novi: ${totals.create}` : "",
+      Number.isFinite(Number(totals.update)) ? `Promjene: ${totals.update}` : "",
+      Number.isFinite(Number(totals.departure)) ? `Odlasci: ${totals.departure}` : "",
+      Number.isFinite(Number(totals.applicable)) ? `Za potvrdu: ${totals.applicable}` : "",
+      result.created || result.updated || result.departures ? `Potvrđeno: +${result.created || 0}, až. ${result.updated || 0}, odlasci ${result.departures || 0}` : "",
+      details.uploadedAt ? `Zaprimljeno: ${formatCompactDate(details.uploadedAt)}` : "",
+      details.appliedAt ? `Potvrđeno: ${formatCompactDate(details.appliedAt)}` : "",
+    ].filter(Boolean);
+  }
   return [
     details.deadlineType,
     details.dueDate ? `Datum: ${formatCompactDate(details.dueDate)}` : "",
     details.ownerName ? `Odgovoran: ${details.ownerName}` : "",
     details.description,
   ].filter(Boolean);
+}
+
+function createClientPortalTrainingImportPreview(record = {}) {
+  if (record.type !== "training_import") {
+    return null;
+  }
+  const details = record.details || {};
+  const previewRows = Array.isArray(details.preview?.rows) ? details.preview.rows.slice(0, 6) : [];
+  const block = document.createElement("div");
+  block.className = "client-portal-training-import-preview";
+  if (previewRows.length) {
+    const list = document.createElement("div");
+    list.className = "client-portal-training-import-preview-list";
+    previewRows.forEach((row) => {
+      const item = document.createElement("span");
+      item.textContent = [
+        row.personName,
+        row.oib ? `OIB ${row.oib}` : "",
+        row.actionLabel,
+      ].filter(Boolean).join(" · ");
+      list.append(item);
+    });
+    block.append(list);
+  }
+  if (record.status !== "done" && getCanManagePeople()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "primary-button client-portal-training-import-confirm";
+    button.textContent = "Potvrdi import";
+    button.addEventListener("click", () => {
+      void confirmClientPortalTrainingImport(record.id);
+    });
+    block.append(button);
+  }
+  return block.childNodes.length ? block : null;
 }
 
 function createClientPortalRecordCard(record = {}) {
@@ -91393,14 +91615,14 @@ function createClientPortalRecordCard(record = {}) {
 
   const actions = document.createElement("div");
   actions.className = "client-portal-record-card-actions";
-  actions.append(
-    createIconActionButton("Uredi", "edit", "", () => {
+  if (record.type !== "training_import") {
+    actions.append(createIconActionButton("Uredi", "edit", "", () => {
       openClientPortalRecordModal(record.type, record.id);
-    }),
-    createIconActionButton("Obriši", "trash", "card-danger", () => {
-      void deleteClientPortalRecord(record.id);
-    }),
-  );
+    }));
+  }
+  actions.append(createIconActionButton("Obriši", "trash", "card-danger", () => {
+    void deleteClientPortalRecord(record.id);
+  }));
   head.append(icon, copy, statusWrap, actions);
 
   const lines = document.createElement("div");
@@ -91416,9 +91638,13 @@ function createClientPortalRecordCard(record = {}) {
 
   const attachments = createClientPortalRecordAttachmentChips(record);
   const workerTrainingBlock = record.type === "worker" ? createClientPortalWorkerTrainingBlock(record) : null;
+  const trainingImportBlock = createClientPortalTrainingImportPreview(record);
   card.append(head, lines);
   if (workerTrainingBlock) {
     card.append(workerTrainingBlock);
+  }
+  if (trainingImportBlock) {
+    card.append(trainingImportBlock);
   }
   if (attachments) {
     card.append(attachments);
@@ -92167,7 +92393,7 @@ function renderClientPortalRecordsPanel() {
   addButton.type = "button";
   addButton.className = "primary-button client-portal-record-add-button";
   addButton.dataset.clientPortalRecordAdd = activeType;
-  addButton.textContent = "+ Dodaj zapis";
+  addButton.textContent = activeType === "training_import" ? "Pošalji Excel" : "+ Dodaj zapis";
   const listActions = document.createElement("div");
   listActions.className = "client-portal-record-list-actions";
   listActions.append(listPill);
@@ -92240,6 +92466,12 @@ function renderClientPortalModule() {
         button.disabled = true;
       }
     });
+    [clientPortalDownloadTrainingTemplateButton, clientPortalUploadTrainingImportButton].forEach((button) => {
+      if (button) {
+        button.hidden = true;
+        button.disabled = true;
+      }
+    });
     clientPortalUsersList?.replaceChildren();
     if (clientPortalUsersEmpty) {
       clientPortalUsersEmpty.hidden = false;
@@ -92274,6 +92506,12 @@ function renderClientPortalModule() {
         button.disabled = true;
       }
     });
+    [clientPortalDownloadTrainingTemplateButton, clientPortalUploadTrainingImportButton].forEach((button) => {
+      if (button) {
+        button.hidden = false;
+      }
+    });
+    setClientPortalTrainingImportBusy(false);
     clientPortalUsersList?.replaceChildren();
     if (clientPortalUsersEmpty) {
       clientPortalUsersEmpty.hidden = true;
@@ -92288,6 +92526,11 @@ function renderClientPortalModule() {
     clientPortalOpenAccessButton.hidden = false;
   }
   [clientPortalDownloadAccessExcelButton, clientPortalImportAccessExcelButton].forEach((button) => {
+    if (button) {
+      button.hidden = false;
+    }
+  });
+  [clientPortalDownloadTrainingTemplateButton, clientPortalUploadTrainingImportButton].forEach((button) => {
     if (button) {
       button.hidden = false;
     }
@@ -92342,6 +92585,7 @@ function renderClientPortalModule() {
     clientPortalOpenCompanyButton.disabled = !companyId || !getCompany(companyId);
   }
   setClientPortalExcelBusy(false);
+  setClientPortalTrainingImportBusy(false);
 
   syncClientPortalAccessModal();
   renderClientPortalPreview();
@@ -92520,6 +92764,122 @@ function parseCompanyIsznrTrainingDraft() {
   }
 }
 
+function normalizeCompanyTrainingImportMode(value = "") {
+  const normalized = String(value || "").trim();
+  return ["new", "changes", "departures"].includes(normalized) ? normalized : "new";
+}
+
+function normalizeCompanyTrainingImportColumnClient(column = {}, index = 0) {
+  const source = column && typeof column === "object" && !Array.isArray(column) ? column : {};
+  const key = String(source.key || source.field || "").trim();
+  if (!COMPANY_TRAINING_IMPORT_ALLOWED_KEYS.has(key)) {
+    return null;
+  }
+  const defaults = COMPANY_TRAINING_IMPORT_DEFAULT_COLUMNS.find((item) => item.key === key) || {};
+  const aliases = Array.isArray(source.aliases)
+    ? source.aliases
+    : String(source.aliases || source.alias || "").split(/[,;\n]/);
+  return {
+    key,
+    label: String(source.label || source.column || defaults.label || key).trim().slice(0, 120) || key,
+    required: source.required === true || source.required === "true" || source.required === "1" || String(source.required || "").toLowerCase() === "da",
+    aliases: Array.from(new Set([...(defaults.aliases || []), ...aliases].map((alias) => String(alias || "").trim()).filter(Boolean))).slice(0, 12),
+    order: Number.isFinite(Number(source.order)) ? Number(source.order) : index,
+  };
+}
+
+function normalizeCompanyTrainingImportProfileClient(profile = {}) {
+  const source = profile && typeof profile === "object" && !Array.isArray(profile) ? profile : {};
+  const headerRow = Math.max(1, Math.min(50, Number.parseInt(source.headerRow || source.header || 1, 10) || 1));
+  const firstDataRow = Math.max(headerRow + 1, Math.min(200, Number.parseInt(source.firstDataRow || source.dataRow || 2, 10) || 2));
+  const rawColumns = Array.isArray(source.columns) ? source.columns : COMPANY_TRAINING_IMPORT_DEFAULT_COLUMNS;
+  const columns = rawColumns
+    .map((column, index) => normalizeCompanyTrainingImportColumnClient(column, index))
+    .filter(Boolean)
+    .sort((left, right) => Number(left.order || 0) - Number(right.order || 0))
+    .slice(0, 80);
+  return {
+    enabled: source.enabled !== false && source.enabled !== "false",
+    profileName: String(source.profileName || source.name || "Import osposobljavanja").trim().slice(0, 120) || "Import osposobljavanja",
+    sheetName: String(source.sheetName || source.sheet || "Osposobljavanja").trim().slice(0, 80) || "Osposobljavanja",
+    headerRow,
+    firstDataRow,
+    defaultImportMode: normalizeCompanyTrainingImportMode(source.defaultImportMode || source.importMode || source.mode),
+    createMissingPeople: source.createMissingPeople !== false && source.createMissingPeople !== "false",
+    columns: columns.length ? columns : COMPANY_TRAINING_IMPORT_DEFAULT_COLUMNS.map((column, index) => normalizeCompanyTrainingImportColumnClient(column, index)).filter(Boolean),
+    note: String(source.note || "").trim().slice(0, 1000),
+  };
+}
+
+function stringifyCompanyTrainingImportColumns(columns = []) {
+  return (columns.length ? columns : COMPANY_TRAINING_IMPORT_DEFAULT_COLUMNS)
+    .map((column) => {
+      const normalized = normalizeCompanyTrainingImportColumnClient(column) || column;
+      return [
+        normalized.key,
+        normalized.label,
+        normalized.required ? "da" : "ne",
+        (normalized.aliases || []).join(", "),
+      ].join(" | ");
+    })
+    .join("\n");
+}
+
+function parseCompanyTrainingImportColumnsText(value = "") {
+  return String(value || "")
+    .split(/\n+/)
+    .map((line, index) => {
+      const parts = line.split("|").map((part) => part.trim());
+      if (!parts[0]) {
+        return null;
+      }
+      return normalizeCompanyTrainingImportColumnClient({
+        key: parts[0],
+        label: parts[1] || parts[0],
+        required: /^(1|true|da|yes|obavezno)$/i.test(parts[2] || ""),
+        aliases: parts[3] || "",
+        order: index,
+      }, index);
+    })
+    .filter(Boolean);
+}
+
+function hydrateCompanyTrainingImportProfile(profile = {}) {
+  const normalized = normalizeCompanyTrainingImportProfileClient(profile);
+  if (companyTrainingImportProfileNameInput) {
+    companyTrainingImportProfileNameInput.value = normalized.profileName;
+  }
+  if (companyTrainingImportSheetInput) {
+    companyTrainingImportSheetInput.value = normalized.sheetName;
+  }
+  if (companyTrainingImportHeaderRowInput) {
+    companyTrainingImportHeaderRowInput.value = String(normalized.headerRow);
+  }
+  if (companyTrainingImportFirstDataRowInput) {
+    companyTrainingImportFirstDataRowInput.value = String(normalized.firstDataRow);
+  }
+  if (companyTrainingImportModeInput) {
+    companyTrainingImportModeInput.value = normalized.defaultImportMode;
+  }
+  if (companyTrainingImportColumnsInput) {
+    companyTrainingImportColumnsInput.value = stringifyCompanyTrainingImportColumns(normalized.columns);
+  }
+  return normalized;
+}
+
+function collectCompanyTrainingImportProfile() {
+  const headerRow = Math.max(1, Number.parseInt(companyTrainingImportHeaderRowInput?.value || "1", 10) || 1);
+  const firstDataRow = Math.max(headerRow + 1, Number.parseInt(companyTrainingImportFirstDataRowInput?.value || "2", 10) || 2);
+  return normalizeCompanyTrainingImportProfileClient({
+    profileName: companyTrainingImportProfileNameInput?.value || "Import osposobljavanja",
+    sheetName: companyTrainingImportSheetInput?.value || "Osposobljavanja",
+    headerRow,
+    firstDataRow,
+    defaultImportMode: companyTrainingImportModeInput?.value || "new",
+    columns: parseCompanyTrainingImportColumnsText(companyTrainingImportColumnsInput?.value || ""),
+  });
+}
+
 function normalizeCompanyIsznrTrainingDraft(value = {}) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const sourceMode = String(source.source || companyIsznrTrainingSourceInput?.value || "internal").trim();
@@ -92537,6 +92897,7 @@ function normalizeCompanyIsznrTrainingDraft(value = {}) {
     authorizedCompanyOib: String(source.authorizedCompanyOib || "").trim(),
     zosRegisterIris: Array.from(new Set(selectedRegisters.map((entry) => String(entry || "").trim()).filter(Boolean))),
     zosRegisterLabels: selectedLabels.map((entry) => String(entry || "").trim()).filter(Boolean),
+    importProfile: normalizeCompanyTrainingImportProfileClient(source.importProfile || source.trainingImportProfile),
     syncedAt: String(source.syncedAt || source.checkedAt || "").trim(),
     note: String(source.note || "").trim(),
   };
@@ -92595,7 +92956,12 @@ function renderCompanyInternalTrainingTemplatePanel(draft = getCompanyIsznrTrain
 }
 
 function writeCompanyIsznrTrainingDraft(value = {}) {
-  const draft = normalizeCompanyIsznrTrainingDraft(value);
+  const previousDraft = parseCompanyIsznrTrainingDraft();
+  const draft = normalizeCompanyIsznrTrainingDraft({
+    ...previousDraft,
+    ...value,
+    importProfile: value.importProfile || previousDraft.importProfile || collectCompanyTrainingImportProfile(),
+  });
   if (companyIsznrTrainingJsonInput) {
     companyIsznrTrainingJsonInput.value = JSON.stringify(draft);
   }
@@ -92612,6 +92978,7 @@ function getCompanyIsznrTrainingPayload() {
   return normalizeCompanyIsznrTrainingDraft({
     ...draft,
     source: companyIsznrTrainingSourceInput?.value || draft.source || "internal",
+    importProfile: collectCompanyTrainingImportProfile(),
   });
 }
 
@@ -94382,7 +94749,11 @@ function resetCompanyForm() {
   syncCompanyEmployeeSizeInput("");
   rebuildCompanyManagerUserOptions([]);
   renderCompanyTemplateAssignments([]);
-  writeCompanyIsznrTrainingDraft({ source: "internal" });
+  hydrateCompanyTrainingImportProfile();
+  writeCompanyIsznrTrainingDraft({
+    source: "internal",
+    importProfile: collectCompanyTrainingImportProfile(),
+  });
   setCompanyContractPriceListDraft([]);
   if (companyContractValidForeverInput) {
     companyContractValidForeverInput.checked = false;
@@ -94642,6 +95013,7 @@ function hydrateCompanyForm(company) {
   }
   rebuildCompanyManagerUserOptions(Array.isArray(company.managerUserIds) ? company.managerUserIds : []);
   renderCompanyTemplateAssignments(company.templateAssignments ?? []);
+  hydrateCompanyTrainingImportProfile(company.isznrTraining?.importProfile);
   writeCompanyIsznrTrainingDraft(company.isznrTraining ?? { source: "internal" });
   companyPeriodInput.value = company.period;
   companyIsActiveInput.value = String(company.isActive);
@@ -133542,6 +133914,27 @@ clientPortalImportAccessInput?.addEventListener("change", () => {
   });
 });
 
+clientPortalDownloadTrainingTemplateButton?.addEventListener("click", () => {
+  void downloadClientPortalTrainingTemplate();
+});
+
+clientPortalUploadTrainingImportButton?.addEventListener("click", () => {
+  if (clientPortalTrainingImportInput instanceof HTMLInputElement) {
+    clientPortalTrainingImportInput.value = "";
+    clientPortalTrainingImportInput.click();
+  }
+});
+
+clientPortalTrainingImportInput?.addEventListener("change", () => {
+  const [file] = Array.from(clientPortalTrainingImportInput.files ?? []);
+  if (!file) {
+    return;
+  }
+  void uploadClientPortalTrainingImport(file).finally(() => {
+    clientPortalTrainingImportInput.value = "";
+  });
+});
+
 clientPortalOpenCompanyButton?.addEventListener("click", () => {
   const company = getCompany(getClientPortalSelectedCompanyId());
   if (!company) {
@@ -133568,6 +133961,13 @@ clientPortalRecordsRoot?.addEventListener("click", (event) => {
 
   const addButton = target?.closest("[data-client-portal-record-add]");
   if (addButton instanceof HTMLButtonElement && clientPortalRecordsRoot.contains(addButton)) {
+    if ((addButton.dataset.clientPortalRecordAdd || "") === "training_import") {
+      if (clientPortalTrainingImportInput instanceof HTMLInputElement) {
+        clientPortalTrainingImportInput.value = "";
+        clientPortalTrainingImportInput.click();
+      }
+      return;
+    }
     openClientPortalRecordModal(addButton.dataset.clientPortalRecordAdd || state.clientPortalRecordsUi.activeType || "worker");
     return;
   }
@@ -133873,6 +134273,15 @@ companyIsznrTrainingSourceInput?.addEventListener("change", () => {
 
 companyIsznrTrainingRefreshButton?.addEventListener("click", () => {
   void loadCompanyIsznrTrainingOverview();
+});
+
+companyTrainingImportResetButton?.addEventListener("click", () => {
+  hydrateCompanyTrainingImportProfile();
+  writeCompanyIsznrTrainingDraft({
+    ...getCompanyIsznrTrainingPayload(),
+    importProfile: collectCompanyTrainingImportProfile(),
+  });
+  setInlineMessage(companyError, "Zadani Excel profil osposobljavanja je vraćen.", "success");
 });
 
 companyForm.addEventListener("submit", (event) => {

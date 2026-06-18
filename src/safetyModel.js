@@ -124,6 +124,7 @@ export const CLIENT_PORTAL_RECORD_TYPE_OPTIONS = [
   { value: "internal_inspection", label: "Unutarnji nadzori" },
   { value: "alcohol_test", label: "Alkotest" },
   { value: "document", label: "Dokumenti" },
+  { value: "training_import", label: "Import osposobljavanja" },
   { value: "vehicle", label: "Vozni park" },
   { value: "deadline", label: "Ostali rokovi" },
 ];
@@ -4477,6 +4478,116 @@ function normalizeCompanyIriList(values = []) {
   )).slice(0, 80);
 }
 
+const COMPANY_TRAINING_IMPORT_FIELD_KEYS = new Set([
+  "recordId",
+  "company",
+  "location",
+  "firstName",
+  "lastName",
+  "fatherName",
+  "fullName",
+  "oib",
+  "language",
+  "birthDate",
+  "birthCountry",
+  "birthPlace",
+  "arrivalDate",
+  "workPlace",
+  "activity",
+  "email",
+  "phone",
+  "workOrderNumber",
+  "serviceCode",
+  "certificateNumber",
+  "jobTitle",
+  "jobDescription",
+  "theoryPlace",
+  "theoryDate",
+  "theoryMethod",
+  "employerRepresentativeName",
+  "employerRepresentativeOib",
+  "additionalPersonName",
+  "additionalPersonOib",
+  "practicalPlace",
+  "safeWorkPeriodFrom",
+  "safeWorkPeriodTo",
+  "safeWorkDate",
+  "safeWorkValidUntil",
+  "safeWorkValidForever",
+  "safeWorkCertificateNumber",
+  "safeWorkProvider",
+  "fireDate",
+  "flammableDate",
+  "flammableValidUntil",
+  "adrDate",
+  "adrValidUntil",
+  "note",
+]);
+
+const DEFAULT_COMPANY_TRAINING_IMPORT_COLUMNS = Object.freeze([
+  { key: "fullName", label: "Ime i prezime", required: true, aliases: ["Radnik", "Osoba"] },
+  { key: "oib", label: "OIB osobe", required: true, aliases: ["OIB"] },
+  { key: "jobTitle", label: "Naziv radnog mjesta", required: true, aliases: ["Radno mjesto"] },
+  { key: "location", label: "Lokacija", required: false, aliases: ["Mjesto rada"] },
+  { key: "workOrderNumber", label: "Broj RN", required: false, aliases: ["Radni nalog"] },
+  { key: "safeWorkDate", label: "ZOS datum", required: false, aliases: ["Rad na siguran nacin datum"] },
+  { key: "safeWorkValidUntil", label: "ZOS vrijedi do", required: false, aliases: ["Rok ZOS"] },
+  { key: "safeWorkValidForever", label: "ZOS trajno", required: false, aliases: ["Bez isteka"] },
+  { key: "safeWorkCertificateNumber", label: "ZOS broj uvjerenja", required: false, aliases: ["Broj uvjerenja"] },
+  { key: "fireDate", label: "PGP datum polaganja", required: false, aliases: ["Pocetno gasenje pozara"] },
+  { key: "flammableDate", label: "SPZTP datum polaganja", required: false, aliases: ["Zapaljive tekucine datum"] },
+  { key: "flammableValidUntil", label: "SPZTP vrijedi do", required: false, aliases: ["Zapaljive tekucine rok"] },
+  { key: "adrDate", label: "ADR datum polaganja", required: false, aliases: ["ADR datum"] },
+  { key: "adrValidUntil", label: "ADR vrijedi do", required: false, aliases: ["ADR rok"] },
+  { key: "note", label: "Napomena", required: false, aliases: [] },
+]);
+
+function normalizeCompanyTrainingImportColumn(input = {}, index = 0) {
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const key = normalizeText(source.key ?? source.field ?? source.value).trim();
+  if (!COMPANY_TRAINING_IMPORT_FIELD_KEYS.has(key)) {
+    return null;
+  }
+  const defaults = DEFAULT_COMPANY_TRAINING_IMPORT_COLUMNS.find((column) => column.key === key) ?? {};
+  const aliases = Array.isArray(source.aliases)
+    ? source.aliases
+    : String(source.aliases ?? source.alias ?? "")
+      .split(/[,;\n]/)
+      .map((alias) => alias.trim())
+      .filter(Boolean);
+  return {
+    key,
+    label: normalizeText(source.label ?? source.column ?? defaults.label ?? key).slice(0, 120) || String(defaults.label || key),
+    required: normalizeBoolean(source.required, Boolean(defaults.required)),
+    aliases: normalizeCompanyIriList([...(defaults.aliases ?? []), ...aliases]).slice(0, 12),
+    order: Number.isFinite(Number(source.order)) ? Number(source.order) : index,
+  };
+}
+
+function normalizeCompanyTrainingImportProfile(input = {}) {
+  const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const rawColumns = Array.isArray(source.columns) ? source.columns : DEFAULT_COMPANY_TRAINING_IMPORT_COLUMNS;
+  const columns = rawColumns
+    .map((column, index) => normalizeCompanyTrainingImportColumn(column, index))
+    .filter(Boolean)
+    .sort((left, right) => Number(left.order || 0) - Number(right.order || 0))
+    .slice(0, 80);
+  const headerRow = Math.max(1, Math.min(50, Number.parseInt(source.headerRow ?? source.header ?? 1, 10) || 1));
+  const firstDataRow = Math.max(headerRow + 1, Math.min(200, Number.parseInt(source.firstDataRow ?? source.dataRow ?? 2, 10) || 2));
+  const mode = normalizeText(source.defaultImportMode ?? source.importMode ?? source.mode).toLowerCase();
+  return {
+    enabled: normalizeBoolean(source.enabled, true),
+    profileName: normalizeText(source.profileName ?? source.name ?? "Import osposobljavanja").slice(0, 120),
+    sheetName: normalizeText(source.sheetName ?? source.sheet ?? "Osposobljavanja").slice(0, 80) || "Osposobljavanja",
+    headerRow,
+    firstDataRow,
+    defaultImportMode: ["new", "changes", "departures"].includes(mode) ? mode : "new",
+    createMissingPeople: normalizeBoolean(source.createMissingPeople, true),
+    columns: columns.length ? columns : DEFAULT_COMPANY_TRAINING_IMPORT_COLUMNS.map((column, index) => normalizeCompanyTrainingImportColumn(column, index)).filter(Boolean),
+    note: normalizeText(source.note).slice(0, 1000),
+  };
+}
+
 function normalizeCompanyIsznrTraining(input = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const sourceMode = normalizeText(source.source ?? source.mode ?? source.trainingSource).toLowerCase();
@@ -4496,6 +4607,7 @@ function normalizeCompanyIsznrTraining(input = {}) {
     authorizedCompanyOib: normalizeText(source.authorizedCompanyOib ?? source.isznrAuthorizedCompanyOib).replace(/\s+/g, "").slice(0, 11),
     zosRegisterIris: normalizeCompanyIriList(source.zosRegisterIris ?? source.zosRegisters ?? source.zosRegister),
     zosRegisterLabels: normalizeCompanyIriList(source.zosRegisterLabels ?? source.zosRegisterNames),
+    importProfile: normalizeCompanyTrainingImportProfile(source.importProfile ?? source.trainingImportProfile),
     syncedAt: normalizeOptionalDateTime(source.syncedAt ?? source.checkedAt),
     note: normalizeText(source.note).slice(0, 1000),
   };

@@ -3664,6 +3664,46 @@
                           <div id="company-isznr-training-registers" class="company-linked-records-list"></div>
                           <div id="company-isznr-training-candidates" class="company-linked-records-list"></div>
                         </div>
+                        <div class="company-training-import-profile">
+                          <div class="company-internal-training-copy">
+                            <strong>Excel import osposobljavanja</strong>
+                            <span>Po tvrtki definiraš redoslijed stupaca koji klijent preuzima, popunjava i vraća kroz portal.</span>
+                          </div>
+                          <div class="form-grid masterdata-company-grid">
+                            <label class="field">
+                              <span>Naziv profila</span>
+                              <input id="company-training-import-profile-name" type="text" maxlength="120" placeholder="npr. Import zaposlenika i ZOS" />
+                            </label>
+                            <label class="field">
+                              <span>Sheet</span>
+                              <input id="company-training-import-sheet" type="text" maxlength="80" placeholder="Osposobljavanja" />
+                            </label>
+                            <label class="field">
+                              <span>Red zaglavlja</span>
+                              <input id="company-training-import-header-row" type="number" min="1" max="50" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Prvi red podataka</span>
+                              <input id="company-training-import-first-data-row" type="number" min="2" max="200" step="1" />
+                            </label>
+                            <label class="field">
+                              <span>Zadani import</span>
+                              <select id="company-training-import-mode">
+                                <option value="new">Novi zaposlenici</option>
+                                <option value="changes">Promjene</option>
+                                <option value="departures">Odlasci</option>
+                              </select>
+                            </label>
+                          </div>
+                          <label class="field">
+                            <span>Stupci Excelice</span>
+                            <textarea id="company-training-import-columns" rows="10" placeholder="fullName | Ime i prezime | da | Radnik, Osoba&#10;oib | OIB osobe | da | OIB&#10;jobTitle | Naziv radnog mjesta | da | Radno mjesto"></textarea>
+                          </label>
+                          <div class="company-training-import-profile-actions">
+                            <button id="company-training-import-reset" type="button" class="ghost-button">Vrati zadani profil</button>
+                            <p class="inline-help">Format: kljuc | naziv stupca | obavezno da/ne | aliasi. Ključevi: fullName, oib, jobTitle, location, workOrderNumber, safeWorkDate, safeWorkValidUntil, safeWorkValidForever, fireDate, flammableDate, adrDate, note.</p>
+                          </div>
+                        </div>
                       </section>
                     </section>
 
@@ -8232,7 +8272,12 @@
                     <p class="section-kicker">Evidencije</p>
                     <h3>Klijentske evidencije</h3>
                   </div>
-                  <span id="client-portal-records-count" class="work-order-activity-count is-compact">0</span>
+                  <div class="client-portal-training-import-actions">
+                    <button id="client-portal-download-training-template" type="button" class="ghost-button">Preuzmi Excel osposobljavanja</button>
+                    <button id="client-portal-upload-training-import" type="button" class="primary-button">Pošalji Excel</button>
+                    <input id="client-portal-training-import-input" type="file" accept=".xlsx,.xls" hidden />
+                    <span id="client-portal-records-count" class="work-order-activity-count is-compact">0</span>
+                  </div>
                 </div>
                 <div id="client-portal-records-root" class="client-portal-records-root"></div>
                 <p id="client-portal-records-feedback" class="form-error" aria-live="polite"></p>

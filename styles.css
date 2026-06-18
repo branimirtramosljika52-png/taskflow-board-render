@@ -9002,6 +9002,34 @@ body.is-location-editor-open {
   background: rgba(219, 234, 254, 0.78);
 }
 
+.company-training-import-profile {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(147, 197, 253, 0.72);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.92));
+}
+
+.company-training-import-profile textarea {
+  min-height: 220px;
+  font-family: var(--mono-font, "SFMono-Regular", Consolas, monospace);
+  line-height: 1.45;
+}
+
+.company-training-import-profile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.company-training-import-profile-actions .inline-help {
+  flex: 1 1 420px;
+  margin: 0;
+}
+
 @media (max-width: 860px) {
   .company-internal-training-panel {
     grid-template-columns: 1fr;
@@ -10085,6 +10113,42 @@ body.is-location-editor-open {
 .client-portal-record-summary-card.is-defect { --record-accent: #7c3aed; --record-accent-soft: #f5f3ff; }
 .client-portal-record-summary-card.is-inspection { --record-accent: #4f46e5; --record-accent-soft: #eef2ff; }
 .client-portal-record-summary-card.is-training { --record-accent: #0e7490; --record-accent-soft: #ecfeff; }
+
+.client-portal-training-import-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.client-portal-training-import-preview {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(14, 116, 144, 0.18);
+  border-radius: 14px;
+  background: rgba(236, 254, 255, 0.6);
+}
+
+.client-portal-training-import-preview-list {
+  display: grid;
+  gap: 6px;
+}
+
+.client-portal-training-import-preview-list span {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.client-portal-training-import-confirm {
+  justify-self: start;
+}
 
 .client-portal-record-summary-icon,
 .client-portal-record-tab-icon,

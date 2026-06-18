@@ -8406,6 +8406,12 @@ function buildPeopleTrainingImportExportRow(record = {}, columns = [], typeOptio
 }
 
 function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
+  const options = arguments.length > 1 && arguments[1] && typeof arguments[1] === "object" ? arguments[1] : {};
+  const companyProfile = getCompanyTrainingImportProfile(scopedSnapshot, options.companyId, options.profile);
+  if (companyProfile?.enabled && Array.isArray(companyProfile.columns) && companyProfile.columns.length > 0) {
+    return buildPeopleTrainingCompanyImportTemplateXlsxBuffer(scopedSnapshot, companyProfile, options.companyId);
+  }
+
   const typeOptions = getPersonTrainingImportTypeOptions(scopedSnapshot).slice(0, 12);
   const baseColumns = [
     "ID zapisa",
@@ -10560,6 +10566,260 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
 
   const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
   return { pdfBuffer, fileName };
+}
+
+const PEOPLE_TRAINING_IMPORT_PROFILE_DEFAULT_COLUMNS = Object.freeze([
+  { key: "fullName", label: "Ime i prezime", required: true, aliases: ["Radnik", "Osoba"] },
+  { key: "oib", label: "OIB osobe", required: true, aliases: ["OIB"] },
+  { key: "jobTitle", label: "Naziv radnog mjesta", required: true, aliases: ["Radno mjesto"] },
+  { key: "location", label: "Lokacija", required: false, aliases: ["Mjesto rada"] },
+  { key: "workOrderNumber", label: "Broj RN", required: false, aliases: ["Radni nalog"] },
+  { key: "safeWorkDate", label: "ZOS datum", required: false, aliases: ["Rad na siguran nacin datum"] },
+  { key: "safeWorkValidUntil", label: "ZOS vrijedi do", required: false, aliases: ["Rok ZOS"] },
+  { key: "safeWorkValidForever", label: "ZOS trajno", required: false, aliases: ["Bez isteka"] },
+  { key: "safeWorkCertificateNumber", label: "ZOS broj uvjerenja", required: false, aliases: ["Broj uvjerenja"] },
+  { key: "fireDate", label: "PGP datum polaganja", required: false, aliases: ["Pocetno gasenje pozara"] },
+  { key: "flammableDate", label: "SPZTP datum polaganja", required: false, aliases: ["Zapaljive tekucine datum"] },
+  { key: "flammableValidUntil", label: "SPZTP vrijedi do", required: false, aliases: ["Zapaljive tekucine rok"] },
+  { key: "adrDate", label: "ADR datum polaganja", required: false, aliases: ["ADR datum"] },
+  { key: "adrValidUntil", label: "ADR vrijedi do", required: false, aliases: ["ADR rok"] },
+  { key: "note", label: "Napomena", required: false, aliases: [] },
+]);
+
+const PEOPLE_TRAINING_IMPORT_PROFILE_CANONICAL_LABELS = Object.freeze({
+  recordId: "ID zapisa",
+  company: "Tvrtka",
+  location: "Lokacija",
+  firstName: "Ime",
+  lastName: "Prezime",
+  fatherName: "Ime oca",
+  fullName: "Ime i prezime",
+  oib: "OIB osobe",
+  language: "Jezik",
+  birthDate: "Datum rodenja",
+  birthCountry: "Drzava rodenja",
+  birthPlace: "Mjesto rodenja",
+  arrivalDate: "Datum dolaska",
+  workPlace: "Mjesto rada",
+  activity: "Aktivnost",
+  email: "Email",
+  phone: "Mobitel",
+  workOrderNumber: "Broj RN",
+  serviceCode: "Sifra usluge",
+  certificateNumber: "Broj zapisnika",
+  jobTitle: "Naziv radnog mjesta",
+  jobDescription: "Opis poslova i aktivnosti",
+  theoryPlace: "Mjesto provodenja osposobljavanja radnika - teorijsko",
+  theoryDate: "Datum teorijski dio",
+  theoryMethod: "Nacin provodenja teorijskog dijela",
+  employerRepresentativeName: "Ime i prezime Poslodavca/Ovlastenika poslodavca",
+  employerRepresentativeOib: "OIB Poslodavca/Ovlastenika poslodavca",
+  additionalPersonName: "Ostale osobe ukljucene u osposobljavanje - ime i prezime",
+  additionalPersonOib: "Ostale osobe ukljucene u osposobljavanje - OIB",
+  practicalPlace: "Mjesto provodenja osposobljavanja radnika - prakticno",
+  safeWorkPeriodFrom: "Razdoblje pracenja sigurnog nacina rada - od",
+  safeWorkPeriodTo: "Razdoblje pracenja sigurnog nacina rada - do",
+  safeWorkDate: "Rad na siguran nacin - datum",
+  safeWorkValidUntil: "Rad na siguran nacin - vrijedi do",
+  safeWorkValidForever: "Rad na siguran nacin - vrijedi trajno",
+  safeWorkCertificateNumber: "Rad na siguran nacin - broj uvjerenja",
+  safeWorkProvider: "Rad na siguran nacin - ustanova",
+  fireDate: "PGP datum polaganja",
+  flammableDate: "SPZTP datum polaganja",
+  flammableValidUntil: "SPZTP vrijedi do",
+  adrDate: "ADR datum polaganja",
+  adrValidUntil: "ADR vrijedi do",
+  note: "Napomena",
+});
+
+function normalizePeopleTrainingImportProfileColumn(column = {}, index = 0) {
+  const key = normalizeInputValue(column.key || column.field || column.value);
+  if (!PEOPLE_TRAINING_IMPORT_PROFILE_CANONICAL_LABELS[key]) {
+    return null;
+  }
+  const fallback = PEOPLE_TRAINING_IMPORT_PROFILE_DEFAULT_COLUMNS.find((item) => item.key === key) ?? {};
+  const aliases = Array.isArray(column.aliases)
+    ? column.aliases
+    : normalizeInputValue(column.aliases || column.alias).split(/[,;\n]/);
+  return {
+    key,
+    label: normalizeInputValue(column.label || column.column || fallback.label || PEOPLE_TRAINING_IMPORT_PROFILE_CANONICAL_LABELS[key]).slice(0, 120)
+      || PEOPLE_TRAINING_IMPORT_PROFILE_CANONICAL_LABELS[key],
+    required: column.required === true || column.required === "true" || column.required === "1" || column.required === "da",
+    aliases: Array.from(new Set([...(fallback.aliases ?? []), ...aliases].map((alias) => normalizeInputValue(alias)).filter(Boolean))).slice(0, 12),
+    order: Number.isFinite(Number(column.order)) ? Number(column.order) : index,
+  };
+}
+
+function normalizePeopleTrainingImportProfile(profile = {}) {
+  const source = profile && typeof profile === "object" && !Array.isArray(profile) ? profile : {};
+  const headerRow = Math.max(1, Math.min(50, Number.parseInt(source.headerRow ?? source.header ?? 1, 10) || 1));
+  const firstDataRow = Math.max(headerRow + 1, Math.min(200, Number.parseInt(source.firstDataRow ?? source.dataRow ?? 2, 10) || 2));
+  const mode = normalizePeopleTrainingImportMode(source.defaultImportMode || source.importMode || source.mode);
+  const rawColumns = Array.isArray(source.columns) ? source.columns : PEOPLE_TRAINING_IMPORT_PROFILE_DEFAULT_COLUMNS;
+  const columns = rawColumns
+    .map((column, index) => normalizePeopleTrainingImportProfileColumn(column, index))
+    .filter(Boolean)
+    .sort((left, right) => Number(left.order || 0) - Number(right.order || 0))
+    .slice(0, 80);
+  return {
+    enabled: source.enabled !== false && source.enabled !== "false",
+    profileName: normalizeInputValue(source.profileName || source.name || "Import osposobljavanja").slice(0, 120) || "Import osposobljavanja",
+    sheetName: normalizeInputValue(source.sheetName || source.sheet || "Osposobljavanja").slice(0, 80) || "Osposobljavanja",
+    headerRow,
+    firstDataRow,
+    defaultImportMode: mode,
+    createMissingPeople: source.createMissingPeople !== false && source.createMissingPeople !== "false",
+    columns: columns.length ? columns : PEOPLE_TRAINING_IMPORT_PROFILE_DEFAULT_COLUMNS.map((column, index) => normalizePeopleTrainingImportProfileColumn(column, index)).filter(Boolean),
+    note: normalizeInputValue(source.note).slice(0, 1000),
+  };
+}
+
+function getCompanyTrainingImportProfile(scopedSnapshot = {}, companyId = "", overrideProfile = null) {
+  if (overrideProfile && typeof overrideProfile === "object" && !Array.isArray(overrideProfile)) {
+    return normalizePeopleTrainingImportProfile(overrideProfile);
+  }
+  const normalizedCompanyId = normalizeInputValue(companyId);
+  if (!normalizedCompanyId) {
+    return null;
+  }
+  const company = normalizedCompanyId
+    ? (scopedSnapshot.companies ?? []).find((item) => String(item.id) === normalizedCompanyId)
+    : null;
+  return normalizePeopleTrainingImportProfile(company?.isznrTraining?.importProfile);
+}
+
+function getPeopleTrainingImportProfileSheet(workbook = {}, profile = {}) {
+  const wanted = normalizeLookupKey(profile.sheetName);
+  return (workbook.SheetNames ?? []).find((name) => normalizeLookupKey(name) === wanted)
+    || (workbook.SheetNames ?? []).find((name) => normalizeLookupKey(name).includes(wanted) || wanted.includes(normalizeLookupKey(name)))
+    || workbook.SheetNames?.[0]
+    || "";
+}
+
+function getPeopleTrainingImportProfileCellValue(record = {}, column = {}, context = {}) {
+  const key = column.key;
+  const company = (context.scopedSnapshot?.companies ?? []).find((item) => String(item.id) === String(record.companyId))
+    || context.company
+    || {};
+  const location = (context.scopedSnapshot?.locations ?? []).find((item) => String(item.id) === String(record.locationId))
+    || context.location
+    || {};
+  const safeWorkItem = findPeopleTrainingImportTemplateItem(record, { value: "safe_work", label: "Rad na siguran nacin", serviceCode: "ZOS" });
+  const fireItem = findPeopleTrainingImportTemplateItem(record, { value: "fire_initial", label: "Pocetno gasenje pozara", serviceCode: "PGP" });
+  const flammableItem = findPeopleTrainingImportTemplateItem(record, { value: "flammable_storage", label: "Zapaljive tekucine i plinovi", serviceCode: "SPZTP" });
+  const adrItem = findPeopleTrainingImportTemplateItem(record, { value: "adr", label: "ADR", serviceCode: "ADR" });
+  const details = safeWorkItem?.details ?? {};
+  const sample = context.sample === true;
+  const values = {
+    recordId: record.id || "",
+    company: company.name || (sample ? "Primjer d.o.o." : ""),
+    location: location.name || record.workPlace || (sample ? "Zagreb - sjediste" : ""),
+    firstName: record.firstName || (sample ? "Ana" : ""),
+    lastName: record.lastName || (sample ? "Savanovic" : ""),
+    fatherName: record.fatherName || (sample ? "Ivan" : ""),
+    fullName: record.fullName || (sample ? "Ana Savanovic" : ""),
+    oib: record.oib || (sample ? "12345678910" : ""),
+    language: record.language || (sample ? "hrvatski" : ""),
+    birthDate: formatPeopleTrainingImportCellDate(record.birthDate) || (sample ? "29.04.1990" : ""),
+    birthCountry: record.birthCountry || (sample ? "Hrvatska" : ""),
+    birthPlace: record.birthPlace || (sample ? "Zagreb" : ""),
+    arrivalDate: formatPeopleTrainingImportCellDate(record.arrivalDate) || (sample ? "29.04.2026" : ""),
+    workPlace: record.workPlace || location.name || (sample ? "Zagreb - sjediste" : ""),
+    activity: record.activityStatus || (sample ? "DA" : ""),
+    email: record.email || (sample ? "ana@example.hr" : ""),
+    phone: record.phone || (sample ? "+385 91 000 0000" : ""),
+    workOrderNumber: details.workOrderNumber || safeWorkItem?.workOrderNumber || (sample ? "RN-26-001" : ""),
+    serviceCode: safeWorkItem?.serviceCode || safeWorkItem?.shortLabel || (sample ? "ZOS" : ""),
+    certificateNumber: details.recordNumber || safeWorkItem?.certificateNumber || safeWorkItem?.recordNumber || (sample ? "RN-26-001-ZOS-12345678910" : ""),
+    jobTitle: details.jobTitle || record.jobTitle || (sample ? "Voditelj prodaje" : ""),
+    jobDescription: details.jobDescription || (sample ? "Opis poslova i aktivnosti radnika." : ""),
+    theoryPlace: details.theoryPlace || location.name || (sample ? "Zagreb - sjediste" : ""),
+    theoryDate: formatPeopleTrainingImportCellDate(details.theoryDate || safeWorkItem?.issuedOn || safeWorkItem?.passedOn) || (sample ? "29.04.2026" : ""),
+    theoryMethod: details.theoryMethod || (sample ? "Uzivo" : ""),
+    employerRepresentativeName: details.employerRepresentativeName || company.representative || (sample ? "Ovlastenik poslodavca" : ""),
+    employerRepresentativeOib: details.employerRepresentativeOib || company.representativeOib || "",
+    additionalPersonName: details.additionalPersonName || "",
+    additionalPersonOib: details.additionalPersonOib || "",
+    practicalPlace: details.practicalPlace || location.name || (sample ? "Zagreb - sjediste" : ""),
+    safeWorkPeriodFrom: formatPeopleTrainingImportCellDate(details.safeWorkPeriodFrom) || (sample ? "29.04.2026" : ""),
+    safeWorkPeriodTo: formatPeopleTrainingImportCellDate(details.safeWorkPeriodTo) || (sample ? "29.05.2026" : ""),
+    safeWorkDate: formatPeopleTrainingImportCellDate(safeWorkItem?.issuedOn || safeWorkItem?.passedOn || details.theoryDate) || (sample ? "29.04.2026" : ""),
+    safeWorkValidUntil: formatPeopleTrainingImportCellDate(safeWorkItem?.validUntil) || (sample ? "29.04.2030" : ""),
+    safeWorkValidForever: safeWorkItem?.validForever ? "DA" : (sample ? "NE" : ""),
+    safeWorkCertificateNumber: safeWorkItem?.certificateNumber || safeWorkItem?.recordNumber || (sample ? "RN-26-001-ZOS-12345678910" : ""),
+    safeWorkProvider: safeWorkItem?.provider || (sample ? "SafeNexus" : ""),
+    fireDate: formatPeopleTrainingImportCellDate(fireItem?.issuedOn || fireItem?.passedOn) || (sample ? "29.04.2026" : ""),
+    flammableDate: formatPeopleTrainingImportCellDate(flammableItem?.issuedOn || flammableItem?.passedOn) || (sample ? "29.04.2026" : ""),
+    flammableValidUntil: formatPeopleTrainingImportCellDate(flammableItem?.validUntil) || (sample ? "29.04.2030" : ""),
+    adrDate: formatPeopleTrainingImportCellDate(adrItem?.issuedOn || adrItem?.passedOn) || (sample ? "29.04.2026" : ""),
+    adrValidUntil: formatPeopleTrainingImportCellDate(adrItem?.validUntil) || (sample ? "29.04.2030" : ""),
+    note: record.note || (sample ? "Primjer retka za import" : ""),
+  };
+  return values[key] ?? "";
+}
+
+function buildPeopleTrainingCompanyImportTemplateXlsxBuffer(scopedSnapshot = {}, profile = {}, companyId = "") {
+  const normalizedProfile = normalizePeopleTrainingImportProfile(profile);
+  const company = (scopedSnapshot.companies ?? []).find((item) => String(item.id) === String(companyId))
+    || (scopedSnapshot.companies ?? [])[0]
+    || {};
+  const location = (scopedSnapshot.locations ?? []).find((item) => String(item.companyId) === String(company.id)) ?? {};
+  const columns = normalizedProfile.columns;
+  const header = columns.map((column) => column.label);
+  const existingRecords = (scopedSnapshot.peopleTrainingRecords ?? [])
+    .filter((record) => !company.id || String(record.companyId) === String(company.id))
+    .slice()
+    .sort((left, right) => String(left.fullName || "").localeCompare(String(right.fullName || ""), "hr", { sensitivity: "base" }));
+  const rows = [];
+  while (rows.length < normalizedProfile.headerRow - 1) {
+    rows.push([]);
+  }
+  rows.push(header);
+  while (rows.length < normalizedProfile.firstDataRow - 1) {
+    rows.push([]);
+  }
+  const context = { scopedSnapshot, company, location };
+  if (existingRecords.length) {
+    existingRecords.forEach((record) => {
+      rows.push(columns.map((column) => getPeopleTrainingImportProfileCellValue(record, column, context)));
+    });
+  } else {
+    rows.push(columns.map((column) => getPeopleTrainingImportProfileCellValue({}, column, { ...context, sample: true })));
+  }
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!cols"] = columns.map((column) => ({ wch: Math.min(Math.max(String(column.label).length + 4, 16), 42) }));
+  worksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { r: normalizedProfile.headerRow - 1, c: 0 },
+      e: { r: Math.max(rows.length - 1, normalizedProfile.headerRow - 1), c: columns.length - 1 },
+    }),
+  };
+  const instructions = [
+    ["Profil", normalizedProfile.profileName],
+    ["Sheet", normalizedProfile.sheetName],
+    ["Red zaglavlja", normalizedProfile.headerRow],
+    ["Prvi red podataka", normalizedProfile.firstDataRow],
+    ["Vrsta importa", PEOPLE_TRAINING_IMPORT_MODE_LABELS[normalizedProfile.defaultImportMode] || "Import za nove zaposlenike"],
+    [],
+    ["Polje", "Naziv stupca", "Obavezno", "Aliasi"],
+    ...columns.map((column) => [
+      column.key,
+      column.label,
+      column.required ? "DA" : "NE",
+      (column.aliases ?? []).join(", "),
+    ]),
+  ];
+  const instructionsWorksheet = XLSX.utils.aoa_to_sheet(instructions);
+  instructionsWorksheet["!cols"] = [{ wch: 28 }, { wch: 42 }, { wch: 14 }, { wch: 60 }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, normalizedProfile.sheetName.slice(0, 31) || "Osposobljavanja");
+  XLSX.utils.book_append_sheet(workbook, instructionsWorksheet, "Upute");
+  return XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+    compression: true,
+  });
 }
 
 async function hydrateWorkOrderMeasurementSheet(workOrder = {}) {
@@ -15282,6 +15542,79 @@ function applyPeopleTrainingImportDetails(record = {}, details = []) {
   };
 }
 
+function normalizePeopleTrainingImportRowByProfile(row = {}, profile = {}) {
+  const columns = Array.isArray(profile.columns) ? profile.columns : [];
+  if (!columns.length) {
+    return row;
+  }
+  const normalizedRow = { ...row };
+  columns.forEach((column) => {
+    const candidates = [
+      column.label,
+      PEOPLE_TRAINING_IMPORT_PROFILE_CANONICAL_LABELS[column.key],
+      ...(column.aliases ?? []),
+    ].filter(Boolean);
+    const value = getImportRowValue(row, candidates);
+    if (normalizeInputValue(value) === "") {
+      return;
+    }
+    const canonicalLabel = PEOPLE_TRAINING_IMPORT_PROFILE_CANONICAL_LABELS[column.key];
+    if (canonicalLabel) {
+      normalizedRow[canonicalLabel] = value;
+    }
+    if (column.key === "safeWorkDate") {
+      normalizedRow["Rad na siguran nacin - datum"] = value;
+      normalizedRow["ZNR datum"] = value;
+      normalizedRow["ZOS datum"] = value;
+    }
+    if (column.key === "safeWorkValidUntil") {
+      normalizedRow["Rad na siguran nacin - vrijedi do"] = value;
+      normalizedRow["ZNR vrijedi do"] = value;
+      normalizedRow["ZOS vrijedi do"] = value;
+    }
+    if (column.key === "safeWorkValidForever") {
+      normalizedRow["Rad na siguran nacin - vrijedi trajno"] = value;
+      normalizedRow["ZNR vrijedi trajno"] = value;
+      normalizedRow["ZOS trajno"] = value;
+    }
+    if (column.key === "safeWorkCertificateNumber") {
+      normalizedRow["Rad na siguran nacin - broj uvjerenja"] = value;
+      normalizedRow["ZNR broj uvjerenja"] = value;
+      normalizedRow["Broj zapisnika"] = normalizedRow["Broj zapisnika"] || value;
+    }
+    if (column.key === "safeWorkProvider") {
+      normalizedRow["Rad na siguran nacin - ustanova"] = value;
+      normalizedRow["ZNR ustanova"] = value;
+    }
+  });
+  return normalizedRow;
+}
+
+function readPeopleTrainingImportRowsFromWorkbook(workbook = {}, profile = null) {
+  if (!profile?.enabled) {
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    return XLSX.utils.sheet_to_json(sheet, {
+      defval: "",
+      raw: false,
+    });
+  }
+  const sheetName = getPeopleTrainingImportProfileSheet(workbook, profile);
+  if (!sheetName || !workbook.Sheets[sheetName]) {
+    throw new Error(`Excel ne sadrži sheet "${profile.sheetName}".`);
+  }
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    defval: "",
+    raw: false,
+    range: Math.max(0, Number(profile.headerRow || 1) - 1),
+  });
+  const rowsToSkip = Math.max(0, Number(profile.firstDataRow || 2) - Number(profile.headerRow || 1) - 1);
+  return rows
+    .slice(rowsToSkip)
+    .map((row) => normalizePeopleTrainingImportRowByProfile(row, profile))
+    .filter((row) => Object.values(row).some((value) => normalizeInputValue(value)));
+}
+
 function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
   const fileDataUrl = normalizeInputValue(body.dataUrl || body.fileDataUrl || body.contentDataUrl);
   const buffer = readDataUrlBuffer(fileDataUrl);
@@ -15293,15 +15626,11 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
     type: "buffer",
     cellDates: true,
   });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, {
-    defval: "",
-    raw: false,
-  });
-  const detailIndex = buildPeopleTrainingImportDetailIndex(readPeopleTrainingImportDetailRows(workbook));
   const selectedCompanyId = normalizeInputValue(body.companyId);
   const selectedLocationId = normalizeInputValue(body.locationId);
+  const importProfile = getCompanyTrainingImportProfile(scopedSnapshot, selectedCompanyId, body.importProfile || body.trainingImportProfile);
+  const rows = readPeopleTrainingImportRowsFromWorkbook(workbook, importProfile);
+  const detailIndex = buildPeopleTrainingImportDetailIndex(readPeopleTrainingImportDetailRows(workbook));
   const trainingTypeOptions = getPersonTrainingImportTypeOptions(scopedSnapshot);
   const companiesByName = new Map(
     (scopedSnapshot.companies ?? []).flatMap((company) => [
@@ -15779,6 +16108,53 @@ function serializePeopleTrainingImportPlan(plan = {}, scopedSnapshot = {}) {
     modeLabel: plan.modeLabel || PEOPLE_TRAINING_IMPORT_MODE_LABELS.new,
     totals: plan.totals ?? summarizePeopleTrainingImportPlan(rows, plan.mode).totals,
     rows,
+  };
+}
+
+async function applyPeopleTrainingImportPlanToRepository(importPlan = {}, scopedSnapshot = {}) {
+  if ((importPlan.totals?.applicable ?? 0) === 0) {
+    throw new Error("Nema promjena za potvrdu u odabranoj vrsti importa.");
+  }
+
+  let createdCount = 0;
+  let updatedCount = 0;
+  let departureCount = 0;
+  let skippedCount = 0;
+
+  for (const row of importPlan.rows ?? []) {
+    if (!row.canApply) {
+      skippedCount += 1;
+      continue;
+    }
+
+    if (row.action === "create") {
+      const created = await domainRepository.createPersonTrainingRecord(row.nextRecord || row.record);
+      await persistPeopleTrainingCertificates(created, scopedSnapshot);
+      createdCount += 1;
+      continue;
+    }
+
+    if ((row.action === "update" || row.action === "departure") && row.existingId) {
+      const updated = await domainRepository.updatePersonTrainingRecord(row.existingId, row.nextRecord || row.record);
+      if (updated) {
+        await persistPeopleTrainingCertificates(updated, scopedSnapshot);
+        updatedCount += 1;
+        if (row.action === "departure") {
+          departureCount += 1;
+        }
+      }
+      continue;
+    }
+
+    skippedCount += 1;
+  }
+
+  return {
+    mode: importPlan.mode || "new",
+    created: createdCount,
+    updated: updatedCount,
+    departures: departureCount,
+    skipped: skippedCount,
   };
 }
 
@@ -25472,6 +25848,7 @@ async function handleApiRequest(request, response, url) {
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
     const riskAssessmentMatch = url.pathname.match(/^\/api\/risk-assessments\/([^/]+)$/);
     const clientPortalRecordMatch = url.pathname.match(/^\/api\/client-portal-records\/([^/]+)$/);
+    const clientPortalTrainingImportApplyMatch = url.pathname.match(/^\/api\/client-portal\/training-imports\/([^/]+)\/apply$/);
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)$/);
     const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
     const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
@@ -26416,6 +26793,141 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/client-portal/training-import-template") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseClientPortalRecords(user, scopedSnapshot)) {
+        sendError(response, 403, "Nemate pravo koristiti klijentski portal.");
+        return true;
+      }
+      const requestedCompanyId = normalizeInputValue(url.searchParams.get("companyId"));
+      const company = requestedCompanyId
+        ? assertInScope(scopedSnapshot.companies ?? [], requestedCompanyId, "Tvrtka nije pronađena.")
+        : (scopedSnapshot.companies ?? [])[0];
+      if (!company?.id) {
+        sendError(response, 400, "Odaberi tvrtku za Excel osposobljavanja.");
+        return true;
+      }
+      const profile = getCompanyTrainingImportProfile(scopedSnapshot, company.id);
+      const todayIso = new Date().toISOString().slice(0, 10);
+      sendBinary(response, 200, buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot, {
+        companyId: company.id,
+        profile,
+      }), {
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        fileName: sanitizeGeneratedDocumentFileName(`osposobljavanja-${company.name || "tvrtka"}-${todayIso}`, {
+          fallback: "osposobljavanja-import",
+          extension: "xlsx",
+        }),
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/client-portal/training-imports") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseClientPortalRecords(user, scopedSnapshot)) {
+        sendError(response, 403, "Nemate pravo koristiti klijentski portal.");
+        return true;
+      }
+      const companyId = normalizeInputValue(body.companyId) || String((scopedSnapshot.companies ?? [])[0]?.id || "");
+      const company = assertInScope(scopedSnapshot.companies ?? [], companyId, "Tvrtka nije pronađena.");
+      const profile = getCompanyTrainingImportProfile(scopedSnapshot, company.id, body.importProfile || body.trainingImportProfile);
+      const importMode = normalizePeopleTrainingImportMode(body.importMode || profile.defaultImportMode || "new");
+      const records = buildPeopleTrainingImportRecords({
+        ...body,
+        companyId: company.id,
+        importMode,
+        importProfile: profile,
+      }, scopedSnapshot);
+      if (records.length === 0) {
+        sendError(response, 400, "U Excelu nema prepoznatih osoba za import.");
+        return true;
+      }
+      const importPlan = buildPeopleTrainingImportPlan(records, scopedSnapshot, importMode, body.rowDecisions);
+      const previewPayload = serializePeopleTrainingImportPlan(importPlan, scopedSnapshot);
+      const fileName = normalizeInputValue(body.fileName || body.name || "osposobljavanja-import.xlsx");
+      const uploadedAt = new Date().toISOString();
+      await domainRepository.createClientPortalRecord({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        companyId: company.id,
+        locationId: normalizeInputValue(body.locationId),
+        type: "training_import",
+        title: `Import osposobljavanja - ${fileName}`,
+        status: previewPayload.totals?.applicable ? "attention" : "active",
+        dueDate: "",
+        details: {
+          fileName,
+          importMode,
+          uploadedAt,
+          uploadedBy: user?.displayName || user?.email || user?.username || "",
+          profileSnapshot: profile,
+          preview: previewPayload,
+          attachments: [{
+            id: randomUUID(),
+            name: fileName,
+            fileName,
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            dataUrl: normalizeInputValue(body.dataUrl || body.fileDataUrl || body.contentDataUrl),
+            uploadedAt,
+          }],
+        },
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (clientPortalTrainingImportApplyMatch && request.method === "POST") {
+      if (!canManagePeopleTrainingRecords(user) && !(await canUseScopedAppPermission(user, request, "people.manage"))) {
+        sendError(response, 403, "Nemate pravo potvrditi import osposobljavanja.");
+        return true;
+      }
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const record = assertInScope(
+        scopedSnapshot.clientPortalRecords ?? [],
+        clientPortalTrainingImportApplyMatch[1],
+        "Portalni import nije pronađen.",
+      );
+      if (record.type !== "training_import") {
+        sendError(response, 400, "Odabrani zapis nije import osposobljavanja.");
+        return true;
+      }
+      const details = record.details && typeof record.details === "object" && !Array.isArray(record.details)
+        ? record.details
+        : {};
+      const attachment = (details.attachments ?? []).find((item) => normalizeInputValue(item.dataUrl));
+      if (!attachment?.dataUrl) {
+        sendError(response, 400, "Excel datoteka nije pronađena u portalnom zapisu.");
+        return true;
+      }
+      const profile = details.profileSnapshot || getCompanyTrainingImportProfile(scopedSnapshot, record.companyId);
+      const importMode = normalizePeopleTrainingImportMode(body.importMode || details.importMode || profile.defaultImportMode || "new");
+      const records = buildPeopleTrainingImportRecords({
+        companyId: record.companyId,
+        locationId: record.locationId,
+        dataUrl: attachment.dataUrl,
+        importMode,
+        importProfile: profile,
+      }, scopedSnapshot);
+      const importPlan = buildPeopleTrainingImportPlan(records, scopedSnapshot, importMode, body.rowDecisions);
+      const previewPayload = serializePeopleTrainingImportPlan(importPlan, scopedSnapshot);
+      const result = await applyPeopleTrainingImportPlanToRepository(importPlan, scopedSnapshot);
+      await domainRepository.updateClientPortalRecord(record.id, {
+        status: "done",
+        details: {
+          ...details,
+          importMode,
+          appliedAt: new Date().toISOString(),
+          appliedBy: user?.displayName || user?.email || user?.username || "",
+          result,
+          preview: previewPayload,
+        },
+      }, user);
+      response.setHeader("X-People-Training-Import", JSON.stringify(result));
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/client-portal-records") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
@@ -26829,45 +27341,14 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      let createdCount = 0;
-      let updatedCount = 0;
-      let departureCount = 0;
-      let skippedCount = 0;
-
-      for (const row of importPlan.rows ?? []) {
-        if (!row.canApply) {
-          skippedCount += 1;
-          continue;
-        }
-
-        if (row.action === "create") {
-          const created = await domainRepository.createPersonTrainingRecord(row.nextRecord || row.record);
-          await persistPeopleTrainingCertificates(created, scopedSnapshot);
-          createdCount += 1;
-          continue;
-        }
-
-        if ((row.action === "update" || row.action === "departure") && row.existingId) {
-          const updated = await domainRepository.updatePersonTrainingRecord(row.existingId, row.nextRecord || row.record);
-          if (updated) {
-            await persistPeopleTrainingCertificates(updated, scopedSnapshot);
-            updatedCount += 1;
-            if (row.action === "departure") {
-              departureCount += 1;
-            }
-          }
-          continue;
-        }
-
-        skippedCount += 1;
-      }
+      const importResult = await applyPeopleTrainingImportPlanToRepository(importPlan, scopedSnapshot);
 
       response.setHeader("X-People-Training-Import", JSON.stringify({
         mode: importMode,
-        created: createdCount,
-        updated: updatedCount,
-        departures: departureCount,
-        skipped: skippedCount,
+        created: importResult.created,
+        updated: importResult.updated,
+        departures: importResult.departures,
+        skipped: importResult.skipped,
       }));
       await writeSnapshot(response, user, request, 201);
       return true;
