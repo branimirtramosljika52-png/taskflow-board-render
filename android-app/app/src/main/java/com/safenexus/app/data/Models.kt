@@ -360,6 +360,89 @@ data class WorkOrderDocumentationAdditionalRecord(
     val objectName: String,
 )
 
+data class WorkOrderTrainingImportProfile(
+    val enabled: Boolean = false,
+    val profileName: String = "",
+    val sheetName: String = "",
+    val headerRow: Int = 1,
+    val firstDataRow: Int = 2,
+    val defaultImportMode: String = "",
+    val columnCount: Int = 0,
+    val requiredColumnCount: Int = 0,
+    val columnsLabel: String = "",
+)
+
+data class WorkOrderTrainingService(
+    val id: String = "",
+    val serviceId: String = "",
+    val serviceKey: String = "",
+    val serviceCode: String = "",
+    val serviceName: String = "",
+    val label: String = "",
+    val shortLabel: String = "",
+    val validityMonths: String = "",
+    val linkedLearningTestIds: List<String> = emptyList(),
+    val linkedLearningTestTitles: List<String> = emptyList(),
+    val modeDefault: String = "",
+)
+
+data class WorkOrderTrainingAssignment(
+    val serviceId: String = "",
+    val serviceKey: String = "",
+    val serviceCode: String = "",
+    val serviceName: String = "",
+    val label: String = "",
+    val mode: String = "",
+    val recommended: Boolean = false,
+    val status: String = "",
+    val statusLabel: String = "",
+    val proposalReason: String = "",
+    val linkedLearningTestIds: List<String> = emptyList(),
+    val linkedLearningTestTitles: List<String> = emptyList(),
+    val linkedLearningTestCount: Int = 0,
+    val existingItemId: String = "",
+    val existingValidUntil: String = "",
+    val existingPassedOn: String = "",
+    val existingDocumentId: String = "",
+)
+
+data class WorkOrderTrainingPerson(
+    val id: String = "",
+    val fullName: String = "",
+    val firstName: String = "",
+    val lastName: String = "",
+    val oib: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val companyId: String = "",
+    val companyName: String = "",
+    val locationId: String = "",
+    val locationName: String = "",
+    val jobTitle: String = "",
+    val active: Boolean = true,
+    val recommended: Boolean = false,
+    val recommendedCount: Int = 0,
+    val assignments: List<WorkOrderTrainingAssignment> = emptyList(),
+)
+
+data class WorkOrderTrainingContext(
+    val enabled: Boolean = false,
+    val companyId: String = "",
+    val companyName: String = "",
+    val locationId: String = "",
+    val locationName: String = "",
+    val defaultMode: String = "online",
+    val services: List<WorkOrderTrainingService> = emptyList(),
+    val people: List<WorkOrderTrainingPerson> = emptyList(),
+    val peopleCount: Int = 0,
+    val recommendedPeopleCount: Int = 0,
+    val proposedAssignments: Int = 0,
+    val onlineAssignments: Int = 0,
+    val liveAssignments: Int = 0,
+    val importProfile: WorkOrderTrainingImportProfile = WorkOrderTrainingImportProfile(),
+    val importTemplateUrl: String = "",
+)
+
 data class WorkOrderDocumentationContext(
     val workOrderId: String = "",
     val workOrderNumber: String = "",
@@ -379,6 +462,7 @@ data class WorkOrderDocumentationContext(
     val workEquipmentStatus: Map<String, String> = emptyMap(),
     val workEnvironmentOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val workEnvironmentStatus: Map<String, String> = emptyMap(),
+    val trainingContext: WorkOrderTrainingContext = WorkOrderTrainingContext(),
     val legalFrameworkOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val rulebookOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val signaturePersonOptions: List<WorkOrderDocumentationSignatureAreaOptions> = emptyList(),

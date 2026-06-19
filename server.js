@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.151.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.152.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -17424,6 +17424,525 @@ function getMobileWorkOrderServiceTemplateIds(service = {}, scopedSnapshot = {})
     .filter(Boolean);
 }
 
+function normalizeMobileTrainingLinkedArray(...values) {
+  const entries = [];
+  values.forEach((value) => {
+    if (Array.isArray(value)) {
+      value.forEach((entry) => entries.push(entry));
+      return;
+    }
+    if (value && typeof value === "object") {
+      entries.push(value.id || value.value || value.title || value.label || "");
+      return;
+    }
+    const raw = normalizeInputValue(value);
+    if (!raw) {
+      return;
+    }
+    if ((raw.startsWith("[") && raw.endsWith("]")) || (raw.startsWith("{") && raw.endsWith("}"))) {
+      try {
+        normalizeMobileTrainingLinkedArray(JSON.parse(raw)).forEach((entry) => entries.push(entry));
+        return;
+      } catch {
+        // Fall back to comma-separated parsing below.
+      }
+    }
+    raw.split(",").map((entry) => entry.trim()).filter(Boolean).forEach((entry) => entries.push(entry));
+  });
+  return Array.from(new Set(entries.map(normalizeInputValue).filter(Boolean)));
+}
+
+function isMobileTrainingServiceCatalogItem(service = {}, catalogItem = {}) {
+  const lookup = normalizeMobileTemplateLookupKey([
+    service?.name,
+    service?.serviceName,
+    service?.title,
+    service?.serviceCode,
+    service?.code,
+    service?.type,
+    service?.serviceType,
+    catalogItem?.name,
+    catalogItem?.title,
+    catalogItem?.serviceName,
+    catalogItem?.serviceCode,
+    catalogItem?.code,
+    catalogItem?.type,
+    catalogItem?.serviceType,
+    catalogItem?.category,
+  ].filter(Boolean).join(" "));
+  if (catalogItem?.isTraining === true || catalogItem?.is_training === true) {
+    return true;
+  }
+  return [
+    "osposob",
+    "edukac",
+    "elearning",
+    "e learning",
+    "ucenje",
+    "rad na siguran nacin",
+    "zastita na radu",
+    "gasenje pozara",
+    "pozar",
+    "adr",
+    "zos",
+    "people training",
+  ].some((token) => lookup.includes(token));
+}
+
+function getMobileWorkOrderTrainingServices(workOrder = {}, scopedSnapshot = {}) {
+  const sourceServices = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
+    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
+    : [{ name: workOrder.serviceLine || workOrder.displayService || "" }];
+  const learningTestsById = new Map((Array.isArray(scopedSnapshot.learningTests) ? scopedSnapshot.learningTests : [])
+    .map((test) => [normalizeInputValue(test?.id), test])
+    .filter(([id]) => Boolean(id)));
+
+  return sourceServices
+    .map((service, index) => {
+      const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot) || {};
+      if (!isMobileTrainingServiceCatalogItem(service, catalogItem)) {
+        return null;
+      }
+      const linkedLearningTestIds = normalizeMobileTrainingLinkedArray(
+        service.linkedLearningTestIds,
+        service.linked_learning_test_ids_json,
+        service.learningTestIds,
+        service.learningTests,
+        catalogItem.linkedLearningTestIds,
+        catalogItem.linked_learning_test_ids_json,
+        catalogItem.learningTestIds,
+        catalogItem.learningTests,
+      );
+      const explicitTitles = normalizeMobileTrainingLinkedArray(
+        service.linkedLearningTestTitles,
+        catalogItem.linkedLearningTestTitles,
+      );
+      const linkedLearningTestTitles = Array.from(new Set([
+        ...linkedLearningTestIds.map((id) => normalizeInputValue(learningTestsById.get(id)?.title)).filter(Boolean),
+        ...explicitTitles,
+      ]));
+      const serviceId = normalizeInputValue(service.serviceId || service.serviceCatalogId || catalogItem.id || service.id);
+      const serviceCode = normalizeInputValue(service.serviceCode || service.code || catalogItem.serviceCode || catalogItem.code);
+      const serviceName = normalizeInputValue(service.name || service.serviceName || service.title || catalogItem.name || catalogItem.title || "Osposobljavanje");
+      const serviceKey = serviceId || serviceCode || normalizeMobileTemplateLookupKey(serviceName) || `training-${index + 1}`;
+      const validityMonths = normalizeMobileDocumentValidityMonths(
+        service.validityMonths || catalogItem.validityMonths || catalogItem.validity_months,
+        "",
+      );
+      return {
+        id: serviceKey,
+        serviceId,
+        serviceKey,
+        serviceCode,
+        serviceName,
+        label: [serviceCode, serviceName].filter(Boolean).join(" - ") || serviceName,
+        shortLabel: serviceCode || normalizeInputValue(catalogItem.shortLabel || service.shortLabel),
+        validityMonths,
+        linkedLearningTestIds,
+        linkedLearningTestTitles,
+        modeDefault: linkedLearningTestIds.length > 0 ? "online" : "live",
+        sourceIndex: index,
+      };
+    })
+    .filter(Boolean)
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.serviceKey === item.serviceKey) === index);
+}
+
+function findMobilePeopleTrainingItemForService(record = {}, trainingService = {}) {
+  const hints = [
+    trainingService.serviceId,
+    trainingService.serviceCode,
+    trainingService.shortLabel,
+    trainingService.serviceName,
+    trainingService.label,
+  ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+  if (hints.length === 0) {
+    return null;
+  }
+  return (Array.isArray(record.trainingItems) ? record.trainingItems : []).find((item) => {
+    const lookupValues = [
+      item?.type,
+      item?.label,
+      item?.shortLabel,
+      item?.serviceId,
+      item?.serviceCatalogId,
+      item?.serviceCode,
+      item?.serviceName,
+    ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+    return hints.some((hint) => lookupValues.some((value) => value === hint || value.includes(hint) || hint.includes(value)));
+  }) || null;
+}
+
+function getMobileTrainingAssignmentStatus(item = null) {
+  if (!item) {
+    return "missing";
+  }
+  const status = normalizeMobileTemplateLookupKey(item.status || item.certificateStatus);
+  const validUntil = normalizeDateOnlyValue(item.validUntil || item.certificateValidUntil);
+  const today = new Date().toISOString().slice(0, 10);
+  if (isMobileTrainingBooleanTrue(item.validForever) || status.includes("valid") || status.includes("vazec")) {
+    return "valid";
+  }
+  if (validUntil) {
+    return validUntil >= today ? "valid" : "expired";
+  }
+  if (status.includes("assigned") || status.includes("pending") || status.includes("in progress")) {
+    return "pending";
+  }
+  if (item.passedOn || item.issuedOn || item.certificateNumber || item.recordNumber) {
+    return "done";
+  }
+  return "missing";
+}
+
+function buildMobileWorkOrderTrainingAssignment(record = {}, trainingService = {}, scopedSnapshot = {}) {
+  const item = findMobilePeopleTrainingItemForService(record, trainingService);
+  const status = getMobileTrainingAssignmentStatus(item);
+  const needsAssignment = status === "missing" || status === "expired";
+  const mode = trainingService.linkedLearningTestIds.length > 0 ? "online" : "live";
+  const linkedLearningTestTitles = trainingService.linkedLearningTestTitles.length
+    ? trainingService.linkedLearningTestTitles
+    : trainingService.linkedLearningTestIds.map((id) => {
+        const test = (scopedSnapshot.learningTests ?? []).find((candidate) => String(candidate?.id) === String(id));
+        return normalizeInputValue(test?.title || id);
+      }).filter(Boolean);
+  return {
+    serviceId: trainingService.serviceId,
+    serviceKey: trainingService.serviceKey,
+    serviceCode: trainingService.serviceCode,
+    serviceName: trainingService.serviceName,
+    label: trainingService.label,
+    mode,
+    recommended: needsAssignment,
+    status,
+    statusLabel: status === "valid"
+      ? "Polozeno / vazece"
+      : status === "expired"
+        ? "Isteklo"
+        : status === "pending"
+          ? "Poslano / ceka"
+          : status === "done"
+            ? "Evidentirano"
+            : "Nedostaje",
+    proposalReason: needsAssignment
+      ? (status === "expired" ? "Postoji zapis, ali je istekao." : "Nema vazeceg zapisa za ovu uslugu.")
+      : "Vec postoji vazece osposobljavanje.",
+    linkedLearningTestIds: trainingService.linkedLearningTestIds,
+    linkedLearningTestTitles,
+    linkedLearningTestCount: trainingService.linkedLearningTestIds.length,
+    existingItemId: normalizeInputValue(item?.id || item?.type || item?.serviceId),
+    existingValidUntil: normalizeDateOnlyValue(item?.validUntil || item?.certificateValidUntil),
+    existingPassedOn: normalizeDateOnlyValue(item?.passedOn || item?.issuedOn),
+    existingDocumentId: normalizeInputValue(item?.certificateDocumentId || item?.documentId),
+  };
+}
+
+function buildMobileWorkOrderTrainingPerson(record = {}, trainingServices = [], scopedSnapshot = {}) {
+  const assignments = trainingServices.map((service) => buildMobileWorkOrderTrainingAssignment(record, service, scopedSnapshot));
+  const recommendedCount = assignments.filter((item) => item.recommended).length;
+  const fullName = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "));
+  return {
+    id: normalizeInputValue(record.id),
+    fullName: fullName || "Osoba",
+    firstName: normalizeInputValue(record.firstName),
+    lastName: normalizeInputValue(record.lastName),
+    oib: normalizeInputValue(record.oib),
+    email: normalizeInputValue(record.email),
+    phone: normalizeInputValue(record.phone),
+    companyId: normalizeInputValue(record.companyId),
+    companyName: normalizeInputValue(record.companyName),
+    locationId: normalizeInputValue(record.locationId),
+    locationName: normalizeInputValue(record.locationName),
+    jobTitle: normalizeInputValue(record.jobTitle || record.workPlace),
+    active: normalizeInputValue(record.activityStatus || record.employmentStatus).toLowerCase() !== "ne"
+      && normalizeInputValue(record.employmentStatus).toLowerCase() !== "inactive",
+    recommended: recommendedCount > 0,
+    recommendedCount,
+    assignments,
+  };
+}
+
+function buildMobileTrainingImportProfileSummary(scopedSnapshot = {}, companyId = "") {
+  const profile = getCompanyTrainingImportProfile(scopedSnapshot, companyId);
+  if (!profile?.enabled) {
+    return {
+      enabled: false,
+      profileName: "Standardni import",
+      sheetName: "Osposobljavanja",
+      headerRow: 1,
+      firstDataRow: 2,
+      defaultImportMode: "new_people",
+      columnCount: 0,
+      requiredColumnCount: 0,
+      columnsLabel: "Standardni predlozak",
+    };
+  }
+  const columns = Array.isArray(profile.columns) ? profile.columns : [];
+  const required = columns.filter((column) => column?.required).length;
+  return {
+    enabled: true,
+    profileName: normalizeInputValue(profile.profileName || "Import osposobljavanja"),
+    sheetName: normalizeInputValue(profile.sheetName || "Osposobljavanja"),
+    headerRow: Number(profile.headerRow || 1),
+    firstDataRow: Number(profile.firstDataRow || 2),
+    defaultImportMode: normalizeInputValue(profile.defaultImportMode || "new_people"),
+    columnCount: columns.length,
+    requiredColumnCount: required,
+    columnsLabel: columns.slice(0, 8).map((column) => normalizeInputValue(column.label || column.key)).filter(Boolean).join(", "),
+  };
+}
+
+function buildMobileWorkOrderTrainingContext(workOrder = {}, scopedSnapshot = {}) {
+  const services = getMobileWorkOrderTrainingServices(workOrder, scopedSnapshot);
+  if (services.length === 0) {
+    return { enabled: false, services: [], people: [] };
+  }
+  const companyId = normalizeInputValue(workOrder.companyId);
+  const locationId = normalizeInputValue(workOrder.locationId);
+  const people = (Array.isArray(scopedSnapshot.peopleTrainingRecords) ? scopedSnapshot.peopleTrainingRecords : [])
+    .filter((record) => !companyId || normalizeInputValue(record?.companyId) === companyId)
+    .map((record) => buildMobileWorkOrderTrainingPerson(record, services, scopedSnapshot))
+    .filter((person) => person.id)
+    .sort((left, right) => {
+      const leftLocation = locationId && left.locationId === locationId ? 0 : 1;
+      const rightLocation = locationId && right.locationId === locationId ? 0 : 1;
+      return (leftLocation - rightLocation)
+        || (right.recommendedCount - left.recommendedCount)
+        || left.fullName.localeCompare(right.fullName, "hr", { sensitivity: "base" });
+    })
+    .slice(0, 300);
+  const recommendedPeopleCount = people.filter((person) => person.recommended).length;
+  const proposedAssignments = people.reduce((sum, person) => sum + person.recommendedCount, 0);
+  const onlineAssignments = people.reduce((sum, person) => (
+    sum + person.assignments.filter((assignment) => assignment.recommended && assignment.mode === "online").length
+  ), 0);
+  const liveAssignments = proposedAssignments - onlineAssignments;
+  return {
+    enabled: true,
+    companyId,
+    companyName: normalizeInputValue(workOrder.companyName),
+    locationId,
+    locationName: normalizeInputValue(workOrder.locationName),
+    defaultMode: services.some((service) => service.modeDefault === "online") ? "online" : "live",
+    services,
+    people,
+    peopleCount: people.length,
+    recommendedPeopleCount,
+    proposedAssignments,
+    onlineAssignments,
+    liveAssignments,
+    importProfile: buildMobileTrainingImportProfileSummary(scopedSnapshot, companyId),
+    importTemplateUrl: companyId
+      ? `/api/people-training-records/import-template?companyId=${encodeURIComponent(companyId)}`
+      : "/api/people-training-records/import-template",
+  };
+}
+
+function findMobileLearningAssignmentForRecord(assignment = {}, record = {}, workOrder = {}) {
+  const recordOib = normalizeInputValue(record.oib);
+  const recordEmail = normalizeInputValue(record.email).toLowerCase();
+  const recordName = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" ")).toLowerCase();
+  const workOrderId = normalizeInputValue(workOrder.id);
+  if (workOrderId && normalizeInputValue(assignment.workOrderId) && normalizeInputValue(assignment.workOrderId) !== workOrderId) {
+    return false;
+  }
+  const assignmentOib = normalizeInputValue(assignment.externalOib);
+  const assignmentEmail = normalizeInputValue(assignment.externalEmail || assignment.email).toLowerCase();
+  const assignmentName = normalizeInputValue(assignment.externalFullName || assignment.userLabel).toLowerCase();
+  return Boolean(
+    (recordOib && assignmentOib && recordOib === assignmentOib)
+      || (recordEmail && assignmentEmail && recordEmail === assignmentEmail)
+      || (recordName && assignmentName && recordName === assignmentName)
+  );
+}
+
+function buildMobileTrainingLearningAssignment(record = {}, workOrder = {}, service = {}, test = {}, existing = null, user = {}) {
+  const timestamp = new Date().toISOString();
+  const fullName = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "));
+  return {
+    id: normalizeInputValue(existing?.id) || randomUUID(),
+    assigneeType: "external",
+    userId: "",
+    userLabel: fullName,
+    email: normalizeInputValue(record.email),
+    externalFullName: fullName,
+    externalEmail: normalizeInputValue(record.email),
+    externalPhone: normalizeInputValue(record.phone),
+    externalCompany: normalizeInputValue(record.companyName || workOrder.companyName),
+    externalOib: normalizeInputValue(record.oib),
+    accessToken: normalizeInputValue(existing?.accessToken) || randomUUID(),
+    status: normalizeInputValue(existing?.status) || "pending",
+    assignedAt: normalizeInputValue(existing?.assignedAt) || timestamp,
+    workOrderId: normalizeInputValue(workOrder.id),
+    workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+    serviceId: normalizeInputValue(service.serviceId),
+    serviceName: normalizeInputValue(service.serviceName || service.label),
+    assignedByUserId: normalizeInputValue(user?.id),
+    assignedByLabel: normalizeInputValue(user?.fullName || user?.email),
+  };
+}
+
+async function sendMobileTrainingAssignmentEmail({ request, assignment = {}, test = {}, service = {}, workOrder = {} } = {}) {
+  const to = normalizeInputValue(assignment.externalEmail || assignment.email);
+  if (!to) {
+    return { ok: false, skipped: true, error: "Osoba nema email." };
+  }
+  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const requestHost = String(request.headers.host || "").trim();
+  const requestBaseUrl = requestHost ? `${forwardedProto || "https"}://${requestHost}` : "";
+  const accessBaseUrl = publicAppUrl || requestBaseUrl;
+  const accessUrl = `${accessBaseUrl.replace(/\/$/, "")}/learning-test.html?token=${encodeURIComponent(String(assignment.accessToken || ""))}`;
+  const serviceName = normalizeInputValue(service.label || service.serviceName);
+  const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number);
+  const subject = `Online ispit: ${normalizeInputValue(test.title || serviceName || "osposobljavanje")}`;
+  const assigneeName = normalizeInputValue(assignment.externalFullName || assignment.userLabel) || "Postovani";
+  const intro = [
+    serviceName ? `Dodijeljen vam je online ispit za ${serviceName}.` : "Dodijeljen vam je online ispit.",
+    workOrderNumber ? `Radni nalog: ${workOrderNumber}.` : "",
+  ].filter(Boolean).join(" ");
+  const result = await sendMail({
+    to,
+    subject,
+    text: `${assigneeName},\n\n${intro}\n\nPristup ispitu: ${accessUrl}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a;">
+        <div>${escapeEmailHtml(assigneeName)},</div>
+        <div style="margin-top:12px;">${escapeEmailHtml(intro)}</div>
+        <div style="margin-top:18px;">
+          <a href="${escapeEmailHtml(accessUrl)}" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;">Otvori online ispit</a>
+        </div>
+        <div style="margin-top:14px;color:#64748b;word-break:break-all;">${escapeEmailHtml(accessUrl)}</div>
+      </div>
+    `,
+  });
+  return result.ok ? { ok: true, url: accessUrl } : { ok: false, error: result.error || "Email nije poslan." };
+}
+
+async function confirmMobileWorkOrderTrainingAssignments({
+  user,
+  request,
+  workOrder = {},
+  scopedSnapshot = {},
+  body = {},
+} = {}) {
+  const context = buildMobileWorkOrderTrainingContext(workOrder, scopedSnapshot);
+  if (!context.enabled) {
+    const error = new Error("RN nema usluge osposobljavanja.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const selectedPeople = new Set(normalizeRequestIdList(body.personIds));
+  const selectedServices = new Set(normalizeRequestIdList(body.serviceKeys || body.serviceIds));
+  const mode = ["online", "live"].includes(normalizeInputValue(body.mode).toLowerCase())
+    ? normalizeInputValue(body.mode).toLowerCase()
+    : context.defaultMode;
+  const onlyRecommended = body.onlyRecommended !== false;
+  const sendEmails = body.sendEmails !== false;
+  const services = context.services.filter((service) => selectedServices.size === 0 || selectedServices.has(service.serviceKey) || selectedServices.has(service.serviceId));
+  const records = (scopedSnapshot.peopleTrainingRecords ?? []).filter((record) => (
+    selectedPeople.has(normalizeInputValue(record.id))
+      && normalizeInputValue(record.companyId) === normalizeInputValue(workOrder.companyId)
+  ));
+  const result = {
+    ok: true,
+    peopleUpdated: 0,
+    itemsLinked: 0,
+    onlineAssignments: 0,
+    liveAssignments: 0,
+    emailsSent: 0,
+    emailsSkipped: 0,
+    emailErrors: 0,
+  };
+
+  for (const record of records) {
+    const currentItems = Array.isArray(record.trainingItems) ? record.trainingItems : [];
+    let changed = false;
+    const nextItems = [...currentItems];
+    for (const service of services) {
+      const existing = findMobilePeopleTrainingItemForService({ ...record, trainingItems: nextItems }, service);
+      const status = getMobileTrainingAssignmentStatus(existing);
+      if (onlyRecommended && !["missing", "expired"].includes(status)) {
+        continue;
+      }
+      const useOnline = mode === "online" && service.linkedLearningTestIds.length > 0;
+      const primaryLearningTestId = useOnline ? service.linkedLearningTestIds[0] : "";
+      const primaryLearningTest = primaryLearningTestId
+        ? (scopedSnapshot.learningTests ?? []).find((test) => String(test?.id) === String(primaryLearningTestId))
+        : null;
+      const nextItem = {
+        ...(existing || {}),
+        type: normalizeInputValue(existing?.type || service.shortLabel || service.serviceCode || service.serviceKey),
+        label: service.serviceName || service.label,
+        shortLabel: service.shortLabel || service.serviceCode,
+        serviceId: service.serviceId,
+        serviceName: service.serviceName,
+        serviceCode: service.serviceCode,
+        linkedLearningTestIds: service.linkedLearningTestIds,
+        linkedLearningTestTitles: service.linkedLearningTestTitles,
+        examMode: useOnline ? "online" : "live",
+        workOrderId: normalizeInputValue(workOrder.id),
+        workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+        learningTestId: useOnline ? primaryLearningTestId : normalizeInputValue(existing?.learningTestId),
+        learningTestTitle: useOnline ? normalizeInputValue(primaryLearningTest?.title) : normalizeInputValue(existing?.learningTestTitle),
+        certificateStatus: useOnline ? "assigned" : (normalizeInputValue(existing?.certificateStatus) || "live_ready"),
+        status: "",
+      };
+      const existingIndex = nextItems.findIndex((item) => item === existing);
+      if (existingIndex >= 0) {
+        nextItems[existingIndex] = nextItem;
+      } else {
+        nextItems.push(nextItem);
+      }
+      changed = true;
+      result.itemsLinked += 1;
+      if (useOnline && primaryLearningTest) {
+        const assignmentItems = Array.isArray(primaryLearningTest.assignmentItems) ? [...primaryLearningTest.assignmentItems] : [];
+        const existingAssignment = assignmentItems.find((assignment) => findMobileLearningAssignmentForRecord(assignment, record, workOrder)) || null;
+        const nextAssignment = buildMobileTrainingLearningAssignment(record, workOrder, service, primaryLearningTest, existingAssignment, user);
+        const remainingAssignments = assignmentItems.filter((assignment) => !findMobileLearningAssignmentForRecord(assignment, record, workOrder));
+        const updatedTest = await domainRepository.updateLearningTestItem(primaryLearningTest.id, {
+          assignmentItems: [...remainingAssignments, nextAssignment],
+          organizationId: scopedSnapshot.activeOrganizationId,
+        });
+        if (updatedTest) {
+          result.onlineAssignments += 1;
+          primaryLearningTest.assignmentItems = [...remainingAssignments, nextAssignment];
+          if (sendEmails) {
+            const emailResult = await sendMobileTrainingAssignmentEmail({
+              request,
+              assignment: nextAssignment,
+              test: primaryLearningTest,
+              service,
+              workOrder,
+            });
+            if (emailResult.ok) {
+              result.emailsSent += 1;
+            } else if (emailResult.skipped) {
+              result.emailsSkipped += 1;
+            } else {
+              result.emailErrors += 1;
+            }
+          }
+        }
+      } else {
+        result.liveAssignments += 1;
+      }
+    }
+    if (changed) {
+      await domainRepository.updatePersonTrainingRecord(record.id, {
+        trainingItems: nextItems,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      result.peopleUpdated += 1;
+    }
+  }
+
+  return {
+    ...result,
+    message: `Osposobljavanje pripremljeno: ${result.peopleUpdated} osoba, ${result.itemsLinked} stavki.`,
+  };
+}
+
 function normalizeMobileDocumentWizardArray(value = []) {
   const source = Array.isArray(value)
     ? value
@@ -20860,6 +21379,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     workEnvironmentStatus: scopedSnapshot.isznrWorkEnvironmentStatus && typeof scopedSnapshot.isznrWorkEnvironmentStatus === "object"
       ? scopedSnapshot.isznrWorkEnvironmentStatus
       : {},
+    trainingContext: buildMobileWorkOrderTrainingContext(workOrder, scopedSnapshot),
     legalFrameworkOptions: buildMobileLegalFrameworkOptions(scopedSnapshot),
     signaturePersonOptions: buildMobileSignaturePersonOptions(scopedSnapshot, [...signatureAreaKeys], workOrder),
   };
@@ -25326,6 +25846,31 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    const mobileWorkOrderTrainingConfirmMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/training\/confirm$/);
+    if (mobileWorkOrderTrainingConfirmMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo pripremiti osposobljavanje za RN.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderTrainingConfirmMatch[1],
+        "Radni nalog nije pronaden.",
+      );
+      const result = await confirmMobileWorkOrderTrainingAssignments({
+        user,
+        request,
+        workOrder,
+        scopedSnapshot,
+        body,
+      });
+      sendJson(response, 200, result);
+      return true;
+    }
+
     const mobileWorkOrderIsznrWorkEquipmentMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/isznr-work-equipment$/);
     const mobileWorkOrderIsznrWorkEnvironmentMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/isznr-work-environment$/);
     if (mobileWorkOrderIsznrWorkEquipmentMatch && request.method === "GET") {
@@ -27335,11 +27880,18 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(user, request);
+      const companyId = normalizeInputValue(url.searchParams.get("companyId") || "");
+      if (companyId) {
+        assertCompanyPayloadInScope(scopedSnapshot, { companyId });
+      }
+      const company = companyId
+        ? (scopedSnapshot.companies ?? []).find((item) => String(item.id) === String(companyId))
+        : null;
       const todayIso = new Date().toISOString().slice(0, 10);
       const hasExistingRows = (scopedSnapshot.peopleTrainingRecords ?? []).length > 0;
-      sendBinary(response, 200, buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot), {
+      sendBinary(response, 200, buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot, { companyId }), {
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        fileName: sanitizeGeneratedDocumentFileName(`${hasExistingRows ? "osposobljavanja-podaci" : "osposobljavanja-import-primjer"}-${todayIso}`, {
+        fileName: sanitizeGeneratedDocumentFileName(`${hasExistingRows ? "osposobljavanja-podaci" : "osposobljavanja-import-primjer"}${company?.name ? `-${company.name}` : ""}-${todayIso}`, {
           fallback: hasExistingRows ? "osposobljavanja-podaci" : "osposobljavanja-import-primjer",
           extension: "xlsx",
         }),

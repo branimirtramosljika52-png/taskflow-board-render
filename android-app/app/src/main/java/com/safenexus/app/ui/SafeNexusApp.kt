@@ -236,6 +236,9 @@ import com.safenexus.app.data.WorkOrderMeasurementSheet
 import com.safenexus.app.data.WorkOrderMeasurementTable
 import com.safenexus.app.data.WorkOrderServiceItem
 import com.safenexus.app.data.WorkOrderServiceOption
+import com.safenexus.app.data.WorkOrderTrainingAssignment
+import com.safenexus.app.data.WorkOrderTrainingContext
+import com.safenexus.app.data.WorkOrderTrainingPerson
 import com.safenexus.app.data.WorkOrderUploadFile
 import com.safenexus.app.data.WorkOrderUserOption
 import com.safenexus.app.data.parseDateOrNull
@@ -1159,6 +1162,45 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                             error = error.message ?: "Ne mogu učitati polja predloška za RN.",
                         )
                     }
+                }
+        }
+    }
+
+    fun confirmWorkOrderTraining(
+        workOrder: WorkOrder,
+        mode: String,
+        personIds: List<String>,
+        serviceKeys: List<String>,
+        objectId: String = "",
+    ) {
+        val workOrderId = workOrder.id.trim()
+        val normalizedPeople = personIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val normalizedServices = serviceKeys.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (workOrderId.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za osposobljavanje.", notice = "")
+            return
+        }
+        if (normalizedPeople.isEmpty()) {
+            state = state.copy(error = "Odaberi barem jednu osobu za osposobljavanje.", notice = "")
+            return
+        }
+        if (normalizedServices.isEmpty()) {
+            state = state.copy(error = "RN nema prepoznatu uslugu osposobljavanja.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "Pripremam osposobljavanje...")
+        viewModelScope.launch {
+            api.confirmWorkOrderTraining(workOrderId, mode, normalizedPeople, normalizedServices)
+                .onSuccess { message ->
+                    state = state.copy(isLoading = false, notice = message, error = "")
+                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu pripremiti osposobljavanje.",
+                        notice = "",
+                    )
                 }
         }
     }
@@ -2282,6 +2324,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             },
             onSubmitIsznrPhysicalFactors = { selectedItemIds, manualPhysicalFactors ->
                 viewModel.submitWorkOrderIsznrPhysicalFactors(workOrder, selectedItemIds, manualPhysicalFactors, documentationWizardObjectId)
+            },
+            onConfirmTraining = { mode, personIds, serviceKeys ->
+                viewModel.confirmWorkOrderTraining(workOrder, mode, personIds, serviceKeys, documentationWizardObjectId)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -16459,6 +16504,7 @@ private fun WorkOrderDocumentationWizardDialog(
     ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
+    onConfirmTraining: (String, List<String>, List<String>) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -16645,6 +16691,20 @@ private fun WorkOrderDocumentationWizardDialog(
         if (nextPhysicalFactors != manualPhysicalFactors) {
             manualPhysicalFactors = nextPhysicalFactors
         }
+    }
+    val trainingContext = context.trainingContext
+    var trainingMode by remember(workOrder.id, trainingContext.defaultMode) {
+        mutableStateOf(trainingContext.defaultMode.ifBlank { "online" })
+    }
+    var showOnlyRecommendedTraining by remember(workOrder.id, trainingContext.people) {
+        mutableStateOf(true)
+    }
+    var selectedTrainingPersonIds by remember(workOrder.id, trainingContext.people) {
+        val recommended = trainingContext.people.filter { it.recommended }.map { it.id }
+        mutableStateOf((recommended.ifEmpty { trainingContext.people.take(12).map { it.id } }).toSet())
+    }
+    val selectedTrainingServiceKeys = remember(trainingContext.services) {
+        trainingContext.services.map { service -> service.serviceKey.ifBlank { service.id } }.filter { it.isNotBlank() }
     }
     var weather by remember(workOrder.id, selectedObjectId, defaults.weather) { mutableStateOf(defaults.weather) }
     var groundCondition by remember(workOrder.id, selectedObjectId, defaults.groundCondition) { mutableStateOf(defaults.groundCondition) }
@@ -17357,6 +17417,23 @@ private fun WorkOrderDocumentationWizardDialog(
                         workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
                         onWorkEnvironmentAuthorizationHolderUserIdChange = { workEnvironmentAuthorizationHolderUserId = it },
                         enabled = !formLoading,
+                    )
+                    DocumentationTrainingLaunchSection(
+                        context = trainingContext,
+                        mode = trainingMode,
+                        selectedPersonIds = selectedTrainingPersonIds,
+                        showOnlyRecommended = showOnlyRecommendedTraining,
+                        enabled = !formLoading,
+                        onModeChange = { trainingMode = it },
+                        onSelectedPersonIdsChange = { selectedTrainingPersonIds = it },
+                        onShowOnlyRecommendedChange = { showOnlyRecommendedTraining = it },
+                        onConfirm = {
+                            onConfirmTraining(
+                                trainingMode,
+                                selectedTrainingPersonIds.toList(),
+                                selectedTrainingServiceKeys,
+                            )
+                        },
                     )
                 }
                 }
@@ -21810,6 +21887,255 @@ private fun DocumentationExecutorsEditor(
             )
         }
     }
+}
+
+@Composable
+private fun DocumentationTrainingLaunchSection(
+    context: WorkOrderTrainingContext,
+    mode: String,
+    selectedPersonIds: Set<String>,
+    showOnlyRecommended: Boolean,
+    enabled: Boolean,
+    onModeChange: (String) -> Unit,
+    onSelectedPersonIdsChange: (Set<String>) -> Unit,
+    onShowOnlyRecommendedChange: (Boolean) -> Unit,
+    onConfirm: () -> Unit,
+) {
+    if (!context.enabled) {
+        return
+    }
+    val visiblePeople = remember(context.people, showOnlyRecommended) {
+        if (showOnlyRecommended) context.people.filter { it.recommended } else context.people
+    }
+    val selectedCount = selectedPersonIds.size
+    WizardSection(title = "Osposobljavanje", icon = Icons.Rounded.Badge) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "${context.services.size} usluga · ${context.peopleCount} osoba · ${context.proposedAssignments} prijedloga",
+                    fontWeight = FontWeight.Black,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = mode == "online",
+                        onClick = { onModeChange("online") },
+                        enabled = enabled,
+                        label = { Text("Online") },
+                    )
+                    FilterChip(
+                        selected = mode == "live",
+                        onClick = { onModeChange("live") },
+                        enabled = enabled,
+                        label = { Text("Uživo") },
+                    )
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("${context.onlineAssignments} online") },
+                    )
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("${context.liveAssignments} live") },
+                    )
+                }
+                if (context.services.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        context.services.forEach { service ->
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        service.label.ifBlank { service.serviceName },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("Masovni import ljudi", fontWeight = FontWeight.Black)
+                Text(
+                    if (context.importProfile.enabled) {
+                        "${context.importProfile.profileName} · ${context.importProfile.sheetName} · ${context.importProfile.columnCount} polja"
+                    } else {
+                        "Standardni predložak · možeš definirati drugačiji profil u tvrtki"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                )
+                if (context.importProfile.columnsLabel.isNotBlank()) {
+                    Text(
+                        context.importProfile.columnsLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Radnici", fontWeight = FontWeight.Black)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = showOnlyRecommended,
+                    onClick = { onShowOnlyRecommendedChange(!showOnlyRecommended) },
+                    enabled = enabled,
+                    label = { Text(if (showOnlyRecommended) "Samo prijedlozi" else "Svi") },
+                )
+                AssistChip(onClick = {}, label = { Text("$selectedCount odabrano") })
+            }
+        }
+
+        if (visiblePeople.isEmpty()) {
+            Text(
+                if (context.people.isEmpty()) {
+                    "Nema osoba za ovu tvrtku. Koristi masovni import u webu ili dodaj radnike u People."
+                } else {
+                    "Nema novih prijedloga. Prikaži sve osobe za ručni odabir."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+            )
+        } else {
+            visiblePeople.take(80).forEach { person ->
+                DocumentationTrainingPersonRow(
+                    person = person,
+                    checked = selectedPersonIds.contains(person.id),
+                    enabled = enabled,
+                    onCheckedChange = { checked ->
+                        onSelectedPersonIdsChange(
+                            if (checked) selectedPersonIds + person.id else selectedPersonIds - person.id,
+                        )
+                    },
+                )
+            }
+        }
+
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onConfirm,
+            enabled = enabled && selectedPersonIds.isNotEmpty() && context.services.isNotEmpty(),
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Text(
+                if (mode == "online") "Potvrdi i pošalji ispite" else "Potvrdi live osposobljavanje",
+                fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocumentationTrainingPersonRow(
+    person: WorkOrderTrainingPerson,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!checked) },
+        shape = RoundedCornerShape(18.dp),
+        color = if (checked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = if (enabled) onCheckedChange else null,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(person.fullName.ifBlank { "Osoba" }, fontWeight = FontWeight.Black)
+                Text(
+                    listOf(
+                        person.oib.takeIf { it.isNotBlank() }?.let { "OIB $it" },
+                        person.jobTitle,
+                        person.locationName,
+                    ).filterNotNull().joinToString(" · ").ifBlank { "Bez dodatnih podataka" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    person.assignments
+                        .filter { it.recommended || it.status == "pending" }
+                        .take(6)
+                        .forEach { assignment ->
+                            DocumentationTrainingAssignmentChip(assignment)
+                        }
+                    if (person.recommendedCount > 6) {
+                        AssistChip(onClick = {}, label = { Text("+${person.recommendedCount - 6}") })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationTrainingAssignmentChip(assignment: WorkOrderTrainingAssignment) {
+    val tint = when (assignment.status) {
+        "valid", "done" -> Color(0xFF047857)
+        "expired" -> Color(0xFFB45309)
+        "pending" -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.error
+    }
+    AssistChip(
+        onClick = {},
+        label = {
+            Text(
+                listOf(
+                    assignment.serviceCode.takeIf { it.isNotBlank() },
+                    assignment.label.ifBlank { assignment.serviceName },
+                    assignment.statusLabel,
+                ).filterNotNull().joinToString(" · "),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        leadingIcon = {
+            Icon(
+                if (assignment.recommended) Icons.Rounded.Info else Icons.Rounded.CheckCircle,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(16.dp),
+            )
+        },
+    )
 }
 
 @Composable

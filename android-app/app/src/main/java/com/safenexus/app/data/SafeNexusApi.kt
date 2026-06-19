@@ -568,6 +568,32 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun confirmWorkOrderTraining(
+        workOrderId: String,
+        mode: String,
+        personIds: List<String>,
+        serviceKeys: List<String>,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("mode", mode.trim().ifBlank { "online" })
+                .put("personIds", JSONArray(personIds.map { it.trim() }.filter { it.isNotBlank() }))
+                .put("serviceKeys", JSONArray(serviceKeys.map { it.trim() }.filter { it.isNotBlank() }))
+                .put("onlyRecommended", true)
+                .put("sendEmails", true)
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/mobile/work-orders/${workOrderId.pathSegment()}/training/confirm",
+                    method = "POST",
+                    body = payload,
+                    readTimeoutMs = 90_000,
+                ),
+            )
+            json.firstClean("message").ifBlank { "Osposobljavanje je pripremljeno." }
+        }
+    }
+
     suspend fun submitWorkOrderIsznrWorkEquipment(
         workOrderId: String,
         selectedItemIds: List<String>,
@@ -2070,6 +2096,125 @@ private fun JSONArray?.toWorkOrderDocumentationSignatureAreaOptions(): List<Work
     }.distinctBy { it.key }
 }
 
+private fun JSONObject?.toWorkOrderTrainingImportProfile(): WorkOrderTrainingImportProfile {
+    if (this == null) return WorkOrderTrainingImportProfile()
+    return WorkOrderTrainingImportProfile(
+        enabled = optBoolean("enabled", false),
+        profileName = firstClean("profileName", "name"),
+        sheetName = firstClean("sheetName", "sheet"),
+        headerRow = optInt("headerRow", 1),
+        firstDataRow = optInt("firstDataRow", 2),
+        defaultImportMode = firstClean("defaultImportMode"),
+        columnCount = optInt("columnCount", 0),
+        requiredColumnCount = optInt("requiredColumnCount", 0),
+        columnsLabel = firstClean("columnsLabel"),
+    )
+}
+
+private fun JSONArray?.toWorkOrderTrainingServices(): List<WorkOrderTrainingService> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderTrainingService(
+                    id = item.firstClean("id"),
+                    serviceId = item.firstClean("serviceId"),
+                    serviceKey = item.firstClean("serviceKey").ifBlank { item.firstClean("id") },
+                    serviceCode = item.firstClean("serviceCode"),
+                    serviceName = item.firstClean("serviceName"),
+                    label = item.firstClean("label", "serviceName"),
+                    shortLabel = item.firstClean("shortLabel"),
+                    validityMonths = item.firstClean("validityMonths"),
+                    linkedLearningTestIds = item.optJSONArray("linkedLearningTestIds").toStringList(),
+                    linkedLearningTestTitles = item.optJSONArray("linkedLearningTestTitles").toStringList(),
+                    modeDefault = item.firstClean("modeDefault"),
+                ),
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toWorkOrderTrainingAssignments(): List<WorkOrderTrainingAssignment> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderTrainingAssignment(
+                    serviceId = item.firstClean("serviceId"),
+                    serviceKey = item.firstClean("serviceKey"),
+                    serviceCode = item.firstClean("serviceCode"),
+                    serviceName = item.firstClean("serviceName"),
+                    label = item.firstClean("label", "serviceName"),
+                    mode = item.firstClean("mode"),
+                    recommended = item.optBoolean("recommended", false),
+                    status = item.firstClean("status"),
+                    statusLabel = item.firstClean("statusLabel"),
+                    proposalReason = item.firstClean("proposalReason"),
+                    linkedLearningTestIds = item.optJSONArray("linkedLearningTestIds").toStringList(),
+                    linkedLearningTestTitles = item.optJSONArray("linkedLearningTestTitles").toStringList(),
+                    linkedLearningTestCount = item.optInt("linkedLearningTestCount", 0),
+                    existingItemId = item.firstClean("existingItemId"),
+                    existingValidUntil = item.firstClean("existingValidUntil"),
+                    existingPassedOn = item.firstClean("existingPassedOn"),
+                    existingDocumentId = item.firstClean("existingDocumentId"),
+                ),
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toWorkOrderTrainingPeople(): List<WorkOrderTrainingPerson> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderTrainingPerson(
+                    id = item.firstClean("id"),
+                    fullName = item.firstClean("fullName", "name"),
+                    firstName = item.firstClean("firstName"),
+                    lastName = item.firstClean("lastName"),
+                    oib = item.firstClean("oib"),
+                    email = item.firstClean("email"),
+                    phone = item.firstClean("phone"),
+                    companyId = item.firstClean("companyId"),
+                    companyName = item.firstClean("companyName"),
+                    locationId = item.firstClean("locationId"),
+                    locationName = item.firstClean("locationName"),
+                    jobTitle = item.firstClean("jobTitle", "workPlace"),
+                    active = item.optBoolean("active", true),
+                    recommended = item.optBoolean("recommended", false),
+                    recommendedCount = item.optInt("recommendedCount", 0),
+                    assignments = item.optJSONArray("assignments").toWorkOrderTrainingAssignments(),
+                ),
+            )
+        }
+    }
+}
+
+private fun JSONObject?.toWorkOrderTrainingContext(): WorkOrderTrainingContext {
+    if (this == null) return WorkOrderTrainingContext()
+    return WorkOrderTrainingContext(
+        enabled = optBoolean("enabled", false),
+        companyId = firstClean("companyId"),
+        companyName = firstClean("companyName"),
+        locationId = firstClean("locationId"),
+        locationName = firstClean("locationName"),
+        defaultMode = firstClean("defaultMode").ifBlank { "online" },
+        services = optJSONArray("services").toWorkOrderTrainingServices(),
+        people = optJSONArray("people").toWorkOrderTrainingPeople(),
+        peopleCount = optInt("peopleCount", 0),
+        recommendedPeopleCount = optInt("recommendedPeopleCount", 0),
+        proposedAssignments = optInt("proposedAssignments", 0),
+        onlineAssignments = optInt("onlineAssignments", 0),
+        liveAssignments = optInt("liveAssignments", 0),
+        importProfile = optJSONObject("importProfile").toWorkOrderTrainingImportProfile(),
+        importTemplateUrl = firstClean("importTemplateUrl"),
+    )
+}
+
 private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentationContext =
     WorkOrderDocumentationContext(
         workOrderId = firstClean("workOrderId"),
@@ -2090,6 +2235,7 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         workEquipmentStatus = optJSONObject("workEquipmentStatus").toStringMap(),
         workEnvironmentOptions = optJSONArray("workEnvironmentOptions").toWorkOrderDocumentationOptions(),
         workEnvironmentStatus = optJSONObject("workEnvironmentStatus").toStringMap(),
+        trainingContext = optJSONObject("trainingContext").toWorkOrderTrainingContext(),
         legalFrameworkOptions = optJSONArray("legalFrameworkOptions").toWorkOrderDocumentationOptions(),
         rulebookOptions = optJSONArray("rulebookOptions").toWorkOrderDocumentationOptions(),
         signaturePersonOptions = optJSONArray("signaturePersonOptions").toWorkOrderDocumentationSignatureAreaOptions(),
