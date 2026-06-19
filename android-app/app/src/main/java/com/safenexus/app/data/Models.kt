@@ -431,7 +431,7 @@ data class WorkOrderTrainingContext(
     val companyName: String = "",
     val locationId: String = "",
     val locationName: String = "",
-    val defaultMode: String = "online",
+    val defaultMode: String = "online_test",
     val services: List<WorkOrderTrainingService> = emptyList(),
     val people: List<WorkOrderTrainingPerson> = emptyList(),
     val peopleCount: Int = 0,

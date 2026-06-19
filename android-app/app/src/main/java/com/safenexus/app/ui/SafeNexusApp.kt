@@ -98,6 +98,7 @@ import androidx.compose.material.icons.rounded.EventNote
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.InsertDriveFile
@@ -21948,26 +21949,34 @@ private data class DocumentationTrainingModeOption(
 
 private val documentationTrainingModeOptions = listOf(
     DocumentationTrainingModeOption(
-        value = "online",
-        label = "Online",
-        helper = "Link ide na email i rješava se na daljinu.",
-        actionLabel = "Pošalji online ispite",
+        value = "online_teams",
+        label = "Online - Teams",
+        helper = "Remote classroom session. No automatic test link is sent.",
+        actionLabel = "Prepare Online - Teams",
+        icon = Icons.Rounded.Groups,
+        sendEmails = false,
+    ),
+    DocumentationTrainingModeOption(
+        value = "online_test",
+        label = "Online - Test",
+        helper = "Sends test links by email and tracks remote completion.",
+        actionLabel = "Send Online - Test",
         icon = Icons.Rounded.Mail,
         sendEmails = true,
     ),
     DocumentationTrainingModeOption(
         value = "live_paper",
-        label = "Live papir",
-        helper = "Predavanje uživo, ispit se vodi kao papirnati zapis.",
-        actionLabel = "Pripremi live papir",
+        label = "Live Paper",
+        helper = "In-person training with paper exam evidence.",
+        actionLabel = "Prepare Live Paper",
         icon = Icons.Rounded.Description,
         sendEmails = false,
     ),
     DocumentationTrainingModeOption(
-        value = "live_app",
-        label = "Live app",
-        helper = "Predavanje uživo, test se rješava preko aplikacije ili linka.",
-        actionLabel = "Pripremi live app",
+        value = "live_application",
+        label = "Live Application",
+        helper = "In-person training with the test completed in the app or by link.",
+        actionLabel = "Prepare Live Application",
         icon = Icons.Rounded.Fingerprint,
         sendEmails = false,
     ),
@@ -21975,7 +21984,16 @@ private val documentationTrainingModeOptions = listOf(
 
 private fun normalizeDocumentationTrainingMode(value: String): String {
     val normalized = value.trim().lowercase(Locale.getDefault())
-    return documentationTrainingModeOptions.firstOrNull { it.value == normalized }?.value ?: "online"
+        .replace("-", "_")
+        .replace(Regex("\\s+"), "_")
+    val canonical = when (normalized) {
+        "online", "online_test", "onlinetest", "test" -> "online_test"
+        "online_teams", "onlineteams", "teams" -> "online_teams"
+        "live", "live_paper", "livepaper", "paper" -> "live_paper"
+        "live_app", "live_application", "liveapp", "liveapplication", "application" -> "live_application"
+        else -> normalized
+    }
+    return documentationTrainingModeOptions.firstOrNull { it.value == canonical }?.value ?: "online_test"
 }
 
 private fun WorkOrderTrainingService.trainingSelectionKey(): String =

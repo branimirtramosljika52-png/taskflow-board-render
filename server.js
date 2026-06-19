@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.154.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.155.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -17540,7 +17540,7 @@ function getMobileWorkOrderTrainingServices(workOrder = {}, scopedSnapshot = {})
         validityMonths,
         linkedLearningTestIds,
         linkedLearningTestTitles,
-        modeDefault: linkedLearningTestIds.length > 0 ? "online" : "live",
+        modeDefault: linkedLearningTestIds.length > 0 ? "online_test" : "live_paper",
         sourceIndex: index,
       };
     })
@@ -17573,6 +17573,41 @@ function findMobilePeopleTrainingItemForService(record = {}, trainingService = {
   }) || null;
 }
 
+function normalizeMobileTrainingMode(value = "", fallback = "online_test") {
+  const normalized = normalizeInputValue(value).toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
+  const aliases = {
+    online: "online_test",
+    online_test: "online_test",
+    onlinetest: "online_test",
+    test: "online_test",
+    online_teams: "online_teams",
+    onlineteams: "online_teams",
+    teams: "online_teams",
+    live: "live_paper",
+    live_paper: "live_paper",
+    livepaper: "live_paper",
+    paper: "live_paper",
+    live_app: "live_application",
+    live_application: "live_application",
+    liveapp: "live_application",
+    liveapplication: "live_application",
+    application: "live_application",
+  };
+  const canonical = aliases[normalized] || normalized;
+  return ["online_teams", "online_test", "live_paper", "live_application"].includes(canonical)
+    ? canonical
+    : normalizeMobileTrainingMode(fallback, "online_test");
+}
+
+function mobileTrainingModeUsesLearningTest(mode = "") {
+  const normalized = normalizeMobileTrainingMode(mode);
+  return normalized === "online_test" || normalized === "live_application";
+}
+
+function mobileTrainingModeSendsEmail(mode = "") {
+  return normalizeMobileTrainingMode(mode) === "online_test";
+}
+
 function getMobileTrainingAssignmentStatus(item = null) {
   if (!item) {
     return "missing";
@@ -17599,7 +17634,7 @@ function buildMobileWorkOrderTrainingAssignment(record = {}, trainingService = {
   const item = findMobilePeopleTrainingItemForService(record, trainingService);
   const status = getMobileTrainingAssignmentStatus(item);
   const needsAssignment = status === "missing" || status === "expired";
-  const mode = trainingService.linkedLearningTestIds.length > 0 ? "online" : "live";
+  const mode = trainingService.linkedLearningTestIds.length > 0 ? "online_test" : "live_paper";
   const linkedLearningTestTitles = trainingService.linkedLearningTestTitles.length
     ? trainingService.linkedLearningTestTitles
     : trainingService.linkedLearningTestIds.map((id) => {
@@ -17714,7 +17749,7 @@ function buildMobileWorkOrderTrainingContext(workOrder = {}, scopedSnapshot = {}
   const recommendedPeopleCount = people.filter((person) => person.recommended).length;
   const proposedAssignments = people.reduce((sum, person) => sum + person.recommendedCount, 0);
   const onlineAssignments = people.reduce((sum, person) => (
-    sum + person.assignments.filter((assignment) => assignment.recommended && assignment.mode === "online").length
+    sum + person.assignments.filter((assignment) => assignment.recommended && mobileTrainingModeUsesLearningTest(assignment.mode)).length
   ), 0);
   const liveAssignments = proposedAssignments - onlineAssignments;
   return {
@@ -17723,7 +17758,7 @@ function buildMobileWorkOrderTrainingContext(workOrder = {}, scopedSnapshot = {}
     companyName: normalizeInputValue(workOrder.companyName),
     locationId,
     locationName: normalizeInputValue(workOrder.locationName),
-    defaultMode: services.some((service) => service.modeDefault === "online") ? "online" : "live",
+    defaultMode: services.some((service) => mobileTrainingModeUsesLearningTest(service.modeDefault)) ? "online_test" : "live_paper",
     services,
     people,
     peopleCount: people.length,
@@ -17833,14 +17868,12 @@ async function confirmMobileWorkOrderTrainingAssignments({
   }
   const selectedPeople = new Set(normalizeRequestIdList(body.personIds));
   const selectedServices = new Set(normalizeRequestIdList(body.serviceKeys || body.serviceIds));
-  const requestedMode = normalizeInputValue(body.mode).toLowerCase();
-  const mode = ["online", "live", "live_app", "live_paper"].includes(requestedMode)
-    ? requestedMode
-    : context.defaultMode;
-  const isOnlineMode = mode === "online" || mode === "live_app";
-  const storedExamMode = mode === "live_app" || mode === "live_paper" ? mode : mode;
+  const requestedMode = normalizeMobileTrainingMode(body.mode, context.defaultMode);
+  const mode = requestedMode;
+  const isOnlineMode = mobileTrainingModeUsesLearningTest(mode);
+  const storedExamMode = mode;
   const onlyRecommended = body.onlyRecommended !== false;
-  const sendEmails = body.sendEmails !== false;
+  const sendEmails = mobileTrainingModeSendsEmail(mode) && body.sendEmails !== false;
   const services = context.services.filter((service) => selectedServices.size === 0 || selectedServices.has(service.serviceKey) || selectedServices.has(service.serviceId));
   const records = (scopedSnapshot.peopleTrainingRecords ?? []).filter((record) => (
     selectedPeople.has(normalizeInputValue(record.id))
@@ -17882,7 +17915,7 @@ async function confirmMobileWorkOrderTrainingAssignments({
         serviceCode: service.serviceCode,
         linkedLearningTestIds: service.linkedLearningTestIds,
         linkedLearningTestTitles: service.linkedLearningTestTitles,
-        examMode: useOnline ? storedExamMode : (mode === "live_paper" ? "live_paper" : "live"),
+        examMode: useOnline ? storedExamMode : mode,
         workOrderId: normalizeInputValue(workOrder.id),
         workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
         learningTestId: useOnline ? primaryLearningTestId : normalizeInputValue(existing?.learningTestId),

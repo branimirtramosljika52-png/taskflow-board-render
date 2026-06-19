@@ -2526,7 +2526,7 @@ const state = {
     },
     overrides: {},
     learningDrafts: {},
-    trainingMode: "online",
+    trainingMode: "online_test",
     trainingSelection: {},
     trainingLastMessage: "",
     trainingBusy: false,
@@ -14960,10 +14960,8 @@ function createPeopleTrainingCertificatePill(record = {}, item = {}) {
 
 function getPeopleTrainingItemSourceText(item = {}) {
   const parts = [];
-  if (item.examMode === "online") {
-    parts.push("Online");
-  } else if (item.examMode === "live") {
-    parts.push("Uživo");
+  if (item.examMode) {
+    parts.push(getWorkOrderDocumentTrainingModeOption(item.examMode).label);
   }
   if (item.workOrderNumber) {
     parts.push(`RN ${item.workOrderNumber}`);
@@ -15904,11 +15902,10 @@ async function linkPeopleTrainingEntriesToWorkOrder(entries = [], workOrder = {}
       const typeOption = entry.typeOption ?? {};
       const linkedLearningTests = getPeopleTrainingLinkedLearningTests(typeOption);
       const alreadyPassed = isPeopleTrainingItemPassed(item);
-      const requestedExamMode = ["online", "live", "live_app", "live_paper"].includes(String(options.examMode || "").trim().toLowerCase())
-        ? String(options.examMode || "").trim().toLowerCase()
-        : "";
+      const rawExamMode = String(options.examMode || "").trim();
+      const requestedExamMode = rawExamMode ? normalizeWorkOrderDocumentTrainingMode(rawExamMode) : "";
       const useOnlineExam = requestedExamMode
-        ? requestedExamMode === "online" || requestedExamMode === "live_app"
+        ? workOrderDocumentTrainingModeUsesLearningTest(requestedExamMode)
         : linkedLearningTests.length > 0 && !alreadyPassed;
       const primaryLearningTest = useOnlineExam ? (linkedLearningTests[0] ?? null) : null;
       const assignOnlineTest = Boolean(primaryLearningTest && !alreadyPassed);
@@ -15923,7 +15920,7 @@ async function linkPeopleTrainingEntriesToWorkOrder(entries = [], workOrder = {}
         linkedTemplateTitles: typeOption.linkedTemplateTitles || item.linkedTemplateTitles || [],
         linkedLearningTestIds: typeOption.linkedLearningTestIds || item.linkedLearningTestIds || [],
         linkedLearningTestTitles: typeOption.linkedLearningTestTitles || item.linkedLearningTestTitles || [],
-        examMode: requestedExamMode || (useOnlineExam ? "online" : "live"),
+        examMode: requestedExamMode || (useOnlineExam ? "online_test" : "live_paper"),
         workOrderId: String(workOrder.id || ""),
         workOrderNumber: String(workOrder.workOrderNumber || ""),
         learningTestId: assignOnlineTest ? String(primaryLearningTest.id || "") : item.learningTestId,
@@ -16018,7 +16015,10 @@ async function createPeopleTrainingWorkOrdersForRecords(records = [], selection 
       if (!linked) {
         return createdWorkOrders;
       }
-      if (String(options.examMode || "").trim().toLowerCase() !== "live") {
+      const createdExamMode = String(options.examMode || "").trim()
+        ? normalizeWorkOrderDocumentTrainingMode(options.examMode)
+        : "online_test";
+      if (workOrderDocumentTrainingModeUsesLearningTest(createdExamMode)) {
         const assigned = await assignPeopleTrainingLearningTestsForEntries(group.entries, created);
         if (!assigned) {
           return createdWorkOrders;
@@ -16046,7 +16046,7 @@ function closePeopleTrainingServiceLaunchDialog(dialog = null) {
   document.body.classList.remove("modal-open");
 }
 
-async function startPeopleTrainingServiceMode(record = {}, item = {}, mode = "online", dialog = null) {
+async function startPeopleTrainingServiceMode(record = {}, item = {}, mode = "online_test", dialog = null) {
   if (!record?.id) {
     return;
   }
@@ -16069,7 +16069,7 @@ async function startPeopleTrainingServiceMode(record = {}, item = {}, mode = "on
 
   if (created[0]) {
     hydrateWorkOrderForm(created[0]);
-    const modeLabel = mode === "live" ? "uživo osposobljavanje" : "online osposobljavanje";
+    const modeLabel = getWorkOrderDocumentTrainingModeOption(mode).label;
     setPeopleTrainingFeedback(`Otvoren je RN ${created[0].workOrderNumber || ""} za ${modeLabel}: ${typeOption.label || "osposobljavanje"}.`.trim(), "success");
   }
 }
@@ -16140,15 +16140,27 @@ function openPeopleTrainingForService(record = {}, item = {}) {
 
   choices.append(
     createChoice({
-      mode: "online",
-      title: "Online osposobljavanje",
-      text: "Otvori RN i dodijeli povezani online ispit ako postoji.",
+      mode: "online_teams",
+      title: "Online - Teams",
+      text: "Create the work order for a remote Teams session without automatic test assignment.",
       icon: "service",
     }),
     createChoice({
-      mode: "live",
-      title: "Uživo / live osposobljavanje",
-      text: "Otvori RN bez automatskog slanja online testa.",
+      mode: "online_test",
+      title: "Online - Test",
+      text: "Create the work order and assign the linked online test.",
+      icon: "service",
+    }),
+    createChoice({
+      mode: "live_paper",
+      title: "Live Paper",
+      text: "Create the work order for in-person training with paper exam evidence.",
+      icon: "team",
+    }),
+    createChoice({
+      mode: "live_application",
+      title: "Live Application",
+      text: "Create the work order and prepare app or link based testing on site.",
       icon: "team",
     }),
   );
@@ -16159,7 +16171,7 @@ function openPeopleTrainingForService(record = {}, item = {}) {
     existing.className = "ghost-button people-training-service-existing-button";
     existing.textContent = `Otvori postojeći RN ${existingWorkOrder.workOrderNumber || ""}`.trim();
     existing.addEventListener("click", () => {
-      void startPeopleTrainingServiceMode(record, item, "online", backdrop);
+      void startPeopleTrainingServiceMode(record, item, "online_test", backdrop);
     });
     choices.append(existing);
   }
@@ -16229,7 +16241,8 @@ async function handlePeopleTrainingQuickExamSubmit(record = {}, form = null) {
   }
   const formData = new FormData(form);
   const trainingType = String(formData.get("trainingType") || "").trim();
-  const examMode = String(formData.get("examMode") || "live").trim();
+  const rawExamMode = String(formData.get("examMode") || "live_paper").trim();
+  const examMode = rawExamMode === "manual" ? "manual" : normalizeWorkOrderDocumentTrainingMode(rawExamMode);
   const passedOn = normalizePeopleTrainingDate(formData.get("passedOn"));
   const workOrderId = String(formData.get("workOrderId") || "").trim();
   const learningTestId = String(formData.get("learningTestId") || "").trim();
@@ -16264,10 +16277,10 @@ async function handlePeopleTrainingQuickExamSubmit(record = {}, form = null) {
       certificateNumber,
       provider: item.provider || selectedTest?.title || "SafeNexus",
       examMode,
-      workOrderId: examMode === "live" ? (selectedWorkOrder?.id || workOrderId) : "",
-      workOrderNumber: examMode === "live" ? (selectedWorkOrder?.workOrderNumber || "") : "",
-      learningTestId: examMode === "online" ? (selectedTest?.id || learningTestId) : "",
-      learningTestTitle: examMode === "online" ? (selectedTest?.title || "") : "",
+      workOrderId: ["live_paper", "live_application", "online_teams"].includes(examMode) ? (selectedWorkOrder?.id || workOrderId) : "",
+      workOrderNumber: ["live_paper", "live_application", "online_teams"].includes(examMode) ? (selectedWorkOrder?.workOrderNumber || "") : "",
+      learningTestId: workOrderDocumentTrainingModeUsesLearningTest(examMode) ? (selectedTest?.id || learningTestId) : "",
+      learningTestTitle: workOrderDocumentTrainingModeUsesLearningTest(examMode) ? (selectedTest?.title || "") : "",
       certificateStatus: "ready",
       status: "",
     };
@@ -16310,10 +16323,12 @@ function createPeopleTrainingQuickExamForm(record = {}) {
   const modeSelect = document.createElement("select");
   modeSelect.name = "examMode";
   replaceSelectOptions(modeSelect, [
-    { value: "live", label: "Uživo / RN" },
-    { value: "online", label: "Online test" },
-    { value: "manual", label: "Ručni unos" },
-  ], "live");
+    { value: "live_paper", label: "Live Paper" },
+    { value: "live_application", label: "Live Application" },
+    { value: "online_teams", label: "Online - Teams" },
+    { value: "online_test", label: "Online - Test" },
+    { value: "manual", label: "Manual" },
+  ], "live_paper");
 
   const workOrderSelect = document.createElement("select");
   workOrderSelect.name = "workOrderId";
@@ -16347,9 +16362,9 @@ function createPeopleTrainingQuickExamForm(record = {}) {
   saveButton.textContent = "Upiši";
 
   const syncSourceControls = () => {
-    const mode = modeSelect.value;
-    workOrderSelect.hidden = mode !== "live";
-    testSelect.hidden = mode !== "online";
+    const mode = modeSelect.value === "manual" ? "manual" : normalizeWorkOrderDocumentTrainingMode(modeSelect.value);
+    workOrderSelect.hidden = !["live_paper", "live_application", "online_teams"].includes(mode);
+    testSelect.hidden = !workOrderDocumentTrainingModeUsesLearningTest(mode);
   };
   modeSelect.addEventListener("change", syncSourceControls);
   syncSourceControls();
@@ -120549,39 +120564,75 @@ function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
 
 const WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS = Object.freeze([
   Object.freeze({
-    value: "online",
-    label: "Online",
-    helper: "Šalje linkove na email i prati rješavanje na daljinu.",
-    actionLabel: "Pošalji online ispite",
-    examMode: "online",
+    value: "online_teams",
+    label: "Online - Teams",
+    helper: "Remote classroom session. No automatic test link is sent.",
+    actionLabel: "Prepare Online - Teams",
+    examMode: "online_teams",
+  }),
+  Object.freeze({
+    value: "online_test",
+    label: "Online - Test",
+    helper: "Sends test links by email and tracks remote completion.",
+    actionLabel: "Send Online - Test",
+    examMode: "online_test",
   }),
   Object.freeze({
     value: "live_paper",
-    label: "Live papir",
-    helper: "Predavanje uživo, ispit se evidentira kao papirnati zapis.",
-    actionLabel: "Pripremi live papir",
+    label: "Live Paper",
+    helper: "In-person training with paper exam evidence.",
+    actionLabel: "Prepare Live Paper",
     examMode: "live_paper",
   }),
   Object.freeze({
-    value: "live_app",
-    label: "Live aplikacija",
-    helper: "Predavanje uživo, test se rješava preko aplikacije ili linka na licu mjesta.",
-    actionLabel: "Pripremi live app",
-    examMode: "live_app",
+    value: "live_application",
+    label: "Live Application",
+    helper: "In-person training with the test completed in the app or by link.",
+    actionLabel: "Prepare Live Application",
+    examMode: "live_application",
   }),
 ]);
 
 function normalizeWorkOrderDocumentTrainingMode(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
-  return WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS.some((option) => option.value === normalized)
-    ? normalized
-    : "online";
+  const aliases = {
+    online: "online_test",
+    "online-test": "online_test",
+    onlinetest: "online_test",
+    test: "online_test",
+    teams: "online_teams",
+    "online-teams": "online_teams",
+    onlineteams: "online_teams",
+    live: "live_paper",
+    paper: "live_paper",
+    livepaper: "live_paper",
+    "live-paper": "live_paper",
+    live_app: "live_application",
+    liveapp: "live_application",
+    "live-app": "live_application",
+    application: "live_application",
+    liveapplication: "live_application",
+    "live-application": "live_application",
+  };
+  const canonical = aliases[normalized] ?? normalized;
+  return WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS.some((option) => option.value === canonical)
+    ? canonical
+    : "online_test";
 }
 
 function getWorkOrderDocumentTrainingModeOption(value = state.workOrderDocumentWizard.trainingMode) {
   const normalized = normalizeWorkOrderDocumentTrainingMode(value);
   return WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS.find((option) => option.value === normalized)
     ?? WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS[0];
+}
+
+function workOrderDocumentTrainingModeUsesLearningTest(mode = "") {
+  const normalized = normalizeWorkOrderDocumentTrainingMode(mode);
+  return normalized === "online_test" || normalized === "live_application";
+}
+
+function workOrderDocumentTrainingModeSendsEmail(mode = "") {
+  return normalizeWorkOrderDocumentTrainingMode(mode) === "online_test";
 }
 
 function getPeopleTrainingTypeOptionForWorkOrderService(service = {}) {
@@ -121066,9 +121117,9 @@ async function confirmWorkOrderDocumentWizardTrainingAssignments() {
   }
 
   const modeOption = getWorkOrderDocumentTrainingModeOption();
-  const examMode = modeOption.examMode || modeOption.value || "online";
-  const shouldCreateLearningAssignments = examMode === "online" || examMode === "live_app";
-  const shouldSendEmails = examMode === "online";
+  const examMode = normalizeWorkOrderDocumentTrainingMode(modeOption.examMode || modeOption.value || "online_test");
+  const shouldCreateLearningAssignments = workOrderDocumentTrainingModeUsesLearningTest(examMode);
+  const shouldSendEmails = workOrderDocumentTrainingModeSendsEmail(examMode);
   state.workOrderDocumentWizard.trainingBusy = true;
   state.workOrderDocumentWizard.trainingLastMessage = "";
   if (workOrderDocumentWizardError) {

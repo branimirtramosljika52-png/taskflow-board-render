@@ -578,7 +578,7 @@ class SafeNexusApi(
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
-                .put("mode", mode.trim().ifBlank { "online" })
+                .put("mode", mode.trim().ifBlank { "online_test" })
                 .put("personIds", JSONArray(personIds.map { it.trim() }.filter { it.isNotBlank() }))
                 .put("serviceKeys", JSONArray(serviceKeys.map { it.trim() }.filter { it.isNotBlank() }))
                 .put("onlyRecommended", onlyRecommended)
@@ -2204,7 +2204,7 @@ private fun JSONObject?.toWorkOrderTrainingContext(): WorkOrderTrainingContext {
         companyName = firstClean("companyName"),
         locationId = firstClean("locationId"),
         locationName = firstClean("locationName"),
-        defaultMode = firstClean("defaultMode").ifBlank { "online" },
+        defaultMode = firstClean("defaultMode").ifBlank { "online_test" },
         services = optJSONArray("services").toWorkOrderTrainingServices(),
         people = optJSONArray("people").toWorkOrderTrainingPeople(),
         peopleCount = optInt("peopleCount", 0),
