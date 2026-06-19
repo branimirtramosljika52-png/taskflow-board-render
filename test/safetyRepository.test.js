@@ -711,3 +711,61 @@ test("learning test scoring supports single, multiple and ordered answers", asyn
   assert.equal(result.submission.scorePercent, 100);
   assert.equal(result.assignment.scorePercent, 100);
 });
+
+test("learning test public access and scoring use assigned random question subset", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  await repository.createLearningTestItem({
+    organizationId: "org-1",
+    title: "Random subset",
+    status: "active",
+    secondsPerQuestion: 45,
+    questionItems: [
+      {
+        id: "q1",
+        prompt: "Prikazano pitanje",
+        questionType: "single_choice",
+        options: [
+          { id: "q1-a", text: "A", isCorrect: true },
+          { id: "q1-b", text: "B" },
+        ],
+      },
+      {
+        id: "q2",
+        prompt: "Skriveno pitanje",
+        questionType: "single_choice",
+        options: [
+          { id: "q2-a", text: "A" },
+          { id: "q2-b", text: "B", isCorrect: true },
+        ],
+      },
+    ],
+    assignmentItems: [
+      {
+        assigneeType: "external",
+        externalFullName: "Ana Radnica",
+        email: "ana@example.hr",
+        accessToken: "learning-token-subset",
+        selectedQuestionIds: ["q1"],
+        questionLimit: 1,
+        timePerQuestionSeconds: 45,
+        timeLimitSeconds: 45,
+      },
+    ],
+  });
+
+  const access = await repository.getLearningAccessByToken("learning-token-subset");
+  assert.deepEqual(access.test.questionItems.map((question) => question.id), ["q1"]);
+  assert.equal(access.assignment.timeLimitSeconds, 45);
+
+  const result = await repository.submitLearningTestAccess("learning-token-subset", [
+    { questionId: "q1", optionId: "q1-a" },
+    { questionId: "q2", optionId: "q2-a" },
+  ]);
+
+  assert.equal(result.submission.scorePercent, 100);
+  const snapshot = await repository.getSnapshot();
+  const storedTest = snapshot.learningTests.find((item) => item.title === "Random subset");
+  assert.deepEqual(storedTest.attemptItems.at(-1).answers.map((answer) => answer.questionId), ["q1"]);
+});

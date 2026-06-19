@@ -761,6 +761,21 @@ function cloneLearningTest(test = {}) {
   };
 }
 
+function getLearningQuestionItemsForAssignment(test = {}, assignment = {}) {
+  const questions = Array.isArray(test.questionItems) ? test.questionItems : [];
+  const selectedIds = Array.isArray(assignment?.selectedQuestionIds)
+    ? assignment.selectedQuestionIds.map((entry) => dbString(entry)).filter(Boolean)
+    : [];
+  if (!selectedIds.length) {
+    return questions;
+  }
+  const byId = new Map(questions.map((question) => [String(question.id ?? ""), question]));
+  const selectedQuestions = selectedIds
+    .map((id) => byId.get(String(id)))
+    .filter(Boolean);
+  return selectedQuestions.length > 0 ? selectedQuestions : questions;
+}
+
 export function mapStoredDocumentTemplateCustomField(field = {}) {
   const source = field && typeof field === "object" && !Array.isArray(field)
     ? field
@@ -824,6 +839,7 @@ export function mapStoredDocumentTemplateCustomField(field = {}) {
 }
 
 function sanitizeLearningTestAccess(test = {}, assignment = {}) {
+  const visibleQuestions = getLearningQuestionItemsForAssignment(test, assignment);
   return {
     test: {
       id: String(test.id ?? ""),
@@ -832,9 +848,10 @@ function sanitizeLearningTestAccess(test = {}, assignment = {}) {
       intendedFor: String(test.intendedFor ?? ""),
       recommendationRules: String(test.recommendationRules ?? ""),
       matchKeywords: String(test.matchKeywords ?? ""),
+      secondsPerQuestion: Number(test.secondsPerQuestion ?? 60) || 60,
       handbookDocuments: cloneJsonValue(test.handbookDocuments ?? []),
       videoItems: cloneJsonValue(test.videoItems ?? []),
-      questionItems: (test.questionItems ?? []).map((question) => ({
+      questionItems: visibleQuestions.map((question) => ({
         id: String(question.id ?? ""),
         code: String(question.code ?? ""),
         groupLabel: String(question.groupLabel ?? ""),
@@ -869,6 +886,10 @@ function sanitizeLearningTestAccess(test = {}, assignment = {}) {
       startedAt: normalizeTimestamp(assignment.startedAt),
       completedAt: normalizeTimestamp(assignment.completedAt),
       scorePercent: Number(assignment.scorePercent ?? 0) || 0,
+      questionLimit: Number(assignment.questionLimit ?? 0) || 0,
+      selectedQuestionIds: cloneJsonValue(assignment.selectedQuestionIds ?? []),
+      timePerQuestionSeconds: Number(assignment.timePerQuestionSeconds ?? 0) || 0,
+      timeLimitSeconds: Number(assignment.timeLimitSeconds ?? 0) || 0,
       accessToken: String(assignment.accessToken ?? ""),
       accessUrl: String(assignment.accessUrl ?? ""),
     },
@@ -883,7 +904,7 @@ function normalizeLearningAnswerSnapshot(answers = []) {
   })).filter((answer) => answer.questionId);
 }
 
-function scoreLearningTestSubmission(test = {}, answers = []) {
+function scoreLearningTestSubmission(test = {}, answers = [], selectedQuestionIds = []) {
   const answersByQuestion = new Map();
   normalizeLearningAnswerSnapshot(answers)
     .filter((answer) => answer.optionId)
@@ -893,7 +914,7 @@ function scoreLearningTestSubmission(test = {}, answers = []) {
       list.push(answer);
       answersByQuestion.set(questionId, list);
     });
-  const questions = Array.isArray(test.questionItems) ? test.questionItems : [];
+  const questions = getLearningQuestionItemsForAssignment(test, { selectedQuestionIds });
   const totalQuestions = questions.length;
 
   if (totalQuestions === 0) {
@@ -4447,7 +4468,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [learningTestRows] = await connection.query(`
     SELECT id, organization_id, title, status, description,
-           intended_for_text, recommendation_rules_text, match_keywords_text,
+           intended_for_text, recommendation_rules_text, match_keywords_text, seconds_per_question,
            handbook_documents_json, video_items_json, question_items_json,
            assignment_items_json, attempt_items_json, created_at, updated_at
     FROM web_learning_tests
@@ -4471,6 +4492,7 @@ async function fetchSnapshotFromConnection(connection) {
     intendedFor: dbString(row.intended_for_text),
     recommendationRules: dbString(row.recommendation_rules_text),
     matchKeywords: dbString(row.match_keywords_text),
+    secondsPerQuestion: Number(row.seconds_per_question ?? 60) || 60,
     handbookDocuments: parseJsonArray(row.handbook_documents_json).map((document) => mapStoredAttachmentDocument(document)),
     videoItems: parseJsonArray(row.video_items_json),
     questionItems: parseJsonArray(row.question_items_json).map((question) => ({
@@ -7018,7 +7040,7 @@ export class InMemorySafetyRepository {
         return test;
       }
 
-      const scoring = scoreLearningTestSubmission(test, answers);
+      const scoring = scoreLearningTestSubmission(test, answers, assignment.selectedQuestionIds);
       const attempt = {
         id: crypto.randomUUID(),
         assignmentId: String(assignment.id ?? ""),
@@ -8793,6 +8815,7 @@ export class MySqlSafetyRepository {
         intended_for_text TEXT NULL,
         recommendation_rules_text TEXT NULL,
         match_keywords_text TEXT NULL,
+        seconds_per_question INT NOT NULL DEFAULT 60,
         handbook_documents_json LONGTEXT NULL,
         video_items_json LONGTEXT NULL,
         question_items_json LONGTEXT NULL,
@@ -8807,6 +8830,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_learning_tests", "intended_for_text", "TEXT NULL AFTER description");
     await ensureColumnExists(this.pool, "web_learning_tests", "recommendation_rules_text", "TEXT NULL AFTER intended_for_text");
     await ensureColumnExists(this.pool, "web_learning_tests", "match_keywords_text", "TEXT NULL AFTER recommendation_rules_text");
+    await ensureColumnExists(this.pool, "web_learning_tests", "seconds_per_question", "INT NOT NULL DEFAULT 60 AFTER match_keywords_text");
     await ensureColumnExists(this.pool, "web_vehicles", "vin_number", "VARCHAR(64) NOT NULL DEFAULT '' AFTER plate_number");
     await ensureColumnExists(this.pool, "web_vehicles", "documents_json", "LONGTEXT NULL AFTER reservations_json");
     await ensureColumnExists(this.pool, "web_vehicles", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
@@ -14838,9 +14862,9 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_learning_tests
             (organization_id, title, status, description, intended_for_text, recommendation_rules_text,
-             match_keywords_text, handbook_documents_json, video_items_json,
+             match_keywords_text, seconds_per_question, handbook_documents_json, video_items_json,
              question_items_json, assignment_items_json, attempt_items_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(storedTest.organizationId),
@@ -14850,6 +14874,7 @@ export class MySqlSafetyRepository {
           storedTest.intendedFor,
           storedTest.recommendationRules,
           storedTest.matchKeywords,
+          Number(storedTest.secondsPerQuestion ?? 60) || 60,
           JSON.stringify(storedTest.handbookDocuments ?? []),
           JSON.stringify(storedTest.videoItems ?? []),
           JSON.stringify(storedTest.questionItems ?? []),
@@ -14898,7 +14923,7 @@ export class MySqlSafetyRepository {
           UPDATE web_learning_tests
           SET organization_id = ?, title = ?, status = ?, description = ?,
               intended_for_text = ?, recommendation_rules_text = ?, match_keywords_text = ?,
-              handbook_documents_json = ?, video_items_json = ?, question_items_json = ?,
+              seconds_per_question = ?, handbook_documents_json = ?, video_items_json = ?, question_items_json = ?,
               assignment_items_json = ?, attempt_items_json = ?
           WHERE id = ?
         `,
@@ -14910,6 +14935,7 @@ export class MySqlSafetyRepository {
           storedTest.intendedFor,
           storedTest.recommendationRules,
           storedTest.matchKeywords,
+          Number(storedTest.secondsPerQuestion ?? 60) || 60,
           JSON.stringify(storedTest.handbookDocuments ?? []),
           JSON.stringify(storedTest.videoItems ?? []),
           JSON.stringify(storedTest.questionItems ?? []),
@@ -15042,7 +15068,7 @@ export class MySqlSafetyRepository {
       }
 
       const currentAssignment = (current.assignmentItems ?? []).find((assignment) => String(assignment.accessToken ?? "") === safeToken);
-      const scoring = scoreLearningTestSubmission(current, answers);
+      const scoring = scoreLearningTestSubmission(current, answers, currentAssignment?.selectedQuestionIds);
       const timestamp = new Date().toISOString();
       const assignmentItems = (current.assignmentItems ?? []).map((assignment) => (
         String(assignment.accessToken ?? "") === safeToken

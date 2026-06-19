@@ -36,6 +36,13 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
     return text;
   }
 
+  function formatDuration(totalSeconds = 0) {
+    const seconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+  }
+
   function getStatusLabel(status = "") {
     const normalized = cleanText(status).toLowerCase();
     if (normalized === "completed") {
@@ -391,6 +398,76 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
     const questions = Array.isArray(test.questionItems) ? test.questionItems : [];
     const materials = Array.isArray(test.handbookDocuments) ? test.handbookDocuments : [];
     const videos = Array.isArray(test.videoItems) ? test.videoItems : [];
+    const timeLimitSeconds = Math.max(0, Math.round(Number(assignment.timeLimitSeconds) || 0));
+    const timePerQuestionSeconds = Math.max(0, Math.round(Number(assignment.timePerQuestionSeconds) || Number(test.secondsPerQuestion) || 0));
+    let timerInterval = null;
+    let timerStartedAt = 0;
+    let timerSubmitted = false;
+
+    const stopTimer = () => {
+      if (timerInterval) {
+        window.clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    };
+
+    const submitAnswers = async (submitButton, { timeout = false } = {}) => {
+      if (timerSubmitted) {
+        return;
+      }
+      timerSubmitted = true;
+      stopTimer();
+      setError("");
+      setSuccess("");
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = timeout ? "Vrijeme je isteklo..." : "Predajem...";
+      }
+      try {
+        const result = await fetchJson("/api/public/learning-tests/access/submit", {
+          method: "POST",
+          body: {
+            token: accessToken,
+            answers: buildSubmissionPayload(test, answersMap),
+          },
+        });
+        const score = Number(result?.item?.submission?.scorePercent ?? result?.item?.assignment?.scorePercent ?? 0);
+        setSuccess(`Test je predan. Rezultat: ${Number.isFinite(score) ? Math.round(score) : 0}%`);
+      } catch (error) {
+        timerSubmitted = false;
+        setError(error?.message || "Predaja testa nije uspjela.");
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = "Predaj test";
+        }
+        return;
+      }
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "Predano";
+      }
+    };
+
+    const startQuestionTimer = (timerNode, submitButton) => {
+      if (!timeLimitSeconds || timerInterval || timerStartedAt) {
+        return;
+      }
+      timerStartedAt = Date.now();
+      const tick = () => {
+        const elapsed = Math.floor((Date.now() - timerStartedAt) / 1000);
+        const remaining = Math.max(0, timeLimitSeconds - elapsed);
+        if (timerNode) {
+          timerNode.textContent = `Vrijeme: ${formatDuration(remaining)}`;
+          timerNode.classList.toggle("is-warning", remaining <= 60);
+        }
+        if (remaining <= 0) {
+          stopTimer();
+          void submitAnswers(submitButton, { timeout: true });
+        }
+      };
+      tick();
+      timerInterval = window.setInterval(tick, 1000);
+    };
 
     const renderDataStep = () => {
       contentNode.replaceChildren(createSteps("data"));
@@ -426,6 +503,9 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
       examGrid.append(
         createInfoField("Namjena ispita", test.intendedFor),
         createInfoField("Pravila dodjele", test.recommendationRules),
+        createInfoField("Broj pitanja", String(questions.length || "")),
+        createInfoField("Vrijeme za rješavanje", timeLimitSeconds ? formatDuration(timeLimitSeconds) : ""),
+        createInfoField("Vrijeme po pitanju", timePerQuestionSeconds ? `${timePerQuestionSeconds} s` : ""),
         createInfoField("Stručnjak / predavač", assignment.safetySpecialistLabel),
         createInfoField("Dodijelio", assignment.assignedByLabel),
       );
@@ -502,7 +582,9 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
       contentNode.append(createSectionHead(
         "Test",
         cleanText(test.title) || "Pitanja",
-        `${questions.length} pitanja`,
+        timeLimitSeconds
+          ? `${questions.length} pitanja - ${formatDuration(timeLimitSeconds)}`
+          : `${questions.length} pitanja`,
       ));
 
       if (questions.length === 0) {
@@ -513,47 +595,29 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
         return;
       }
 
+      const timerNode = document.createElement("div");
+      timerNode.className = "learning-public-timer";
+      timerNode.textContent = timeLimitSeconds
+        ? `Vrijeme: ${formatDuration(timeLimitSeconds)}`
+        : "Bez vremenskog ograničenja";
+      contentNode.append(timerNode);
+
       questions.forEach((question) => {
         contentNode.append(renderQuestion(question, answersMap));
       });
 
       const actions = document.createElement("div");
-      actions.className = "learning-public-actions is-split";
-      const backButton = document.createElement("button");
-      backButton.type = "button";
-      backButton.className = "secondary-button";
-      backButton.textContent = "Natrag na literaturu";
-      backButton.addEventListener("click", renderMaterialsStep);
+      actions.className = "learning-public-actions";
 
       const submitButton = document.createElement("button");
       submitButton.type = "button";
       submitButton.className = "primary-button";
       submitButton.textContent = "Predaj test";
-      submitButton.addEventListener("click", async () => {
-        setError("");
-        setSuccess("");
-        submitButton.disabled = true;
-        try {
-          const result = await fetchJson("/api/public/learning-tests/access/submit", {
-            method: "POST",
-            body: {
-              token: accessToken,
-              answers: buildSubmissionPayload(test, answersMap),
-            },
-          });
-          const score = Number(result?.item?.submission?.scorePercent ?? result?.item?.assignment?.scorePercent ?? 0);
-          setSuccess(`Test je predan. Rezultat: ${Number.isFinite(score) ? Math.round(score) : 0}%`);
-        } catch (error) {
-          setError(error?.message || "Predaja testa nije uspjela.");
-          submitButton.disabled = false;
-          return;
-        }
-        submitButton.disabled = true;
-        submitButton.textContent = "Predano";
-      });
+      submitButton.addEventListener("click", () => submitAnswers(submitButton));
 
-      actions.append(backButton, submitButton);
+      actions.append(submitButton);
       contentNode.append(actions);
+      startQuestionTimer(timerNode, submitButton);
     };
 
     renderDataStep();

@@ -1799,6 +1799,46 @@ function normalizeLearningVideoItems(items = []) {
   })).filter((item) => item.title || item.url);
 }
 
+function normalizeLearningSecondsPerQuestion(value, fallback = 60) {
+  const normalized = Math.round(normalizeFiniteNumber(value, fallback));
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    return Math.max(5, Math.min(3600, Math.round(normalizeFiniteNumber(fallback, 60))));
+  }
+  return Math.max(5, Math.min(3600, normalized));
+}
+
+function normalizeLearningQuestionLimit(value) {
+  const normalized = Math.round(normalizeFiniteNumber(value, 0));
+  return Math.max(0, Math.min(500, Number.isFinite(normalized) ? normalized : 0));
+}
+
+function normalizeLearningOptionalSeconds(value) {
+  const normalized = Math.round(normalizeFiniteNumber(value, 0));
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    return 0;
+  }
+  return Math.max(5, Math.min(86400, normalized));
+}
+
+function normalizeLearningQuestionIdList(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[\n,;|]/);
+  const seen = new Set();
+  return source
+    .map((entry) => normalizeId(entry) || normalizeText(entry))
+    .filter(Boolean)
+    .filter((entry) => {
+      const key = String(entry);
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 500);
+}
+
 function normalizeLearningAssignmentItems(items = [], users = []) {
   const source = Array.isArray(items) ? items : [];
   const userIndex = new Map((users ?? []).map((user) => [String(user.id), user]));
@@ -1838,6 +1878,10 @@ function normalizeLearningAssignmentItems(items = [], users = []) {
       startedAt: normalizeOptionalDateTime(item?.startedAt),
       completedAt: normalizeOptionalDateTime(item?.completedAt),
       scorePercent: Math.max(0, Math.min(100, Math.round(normalizeFiniteNumber(item?.scorePercent, 0)))),
+      questionLimit: normalizeLearningQuestionLimit(item?.questionLimit ?? item?.questionCount),
+      selectedQuestionIds: normalizeLearningQuestionIdList(item?.selectedQuestionIds ?? item?.questionIds),
+      timePerQuestionSeconds: normalizeLearningOptionalSeconds(item?.timePerQuestionSeconds ?? item?.secondsPerQuestion),
+      timeLimitSeconds: normalizeLearningOptionalSeconds(item?.timeLimitSeconds ?? item?.durationSeconds),
     };
   }).filter((item) => item.userId || item.email || item.userLabel || item.externalFullName);
 }
@@ -7791,6 +7835,7 @@ export function createLearningTest(
     intendedFor: normalizeText(input.intendedFor ?? input.intended_for),
     recommendationRules: normalizeText(input.recommendationRules ?? input.recommendation_rules),
     matchKeywords: normalizeLearningTestMatchKeywords(input.matchKeywords ?? input.match_keywords),
+    secondsPerQuestion: normalizeLearningSecondsPerQuestion(input.secondsPerQuestion ?? input.timePerQuestionSeconds),
     handbookDocuments: normalizeAttachmentDocuments(input.handbookDocuments),
     videoItems: normalizeLearningVideoItems(input.videoItems),
     questionItems: normalizeLearningQuestionItems(input.questionItems),
@@ -7813,6 +7858,9 @@ export function updateLearningTest(current, patch, state, now = isoNow) {
     intendedFor: hasOwn(patch, "intendedFor") ? normalizeText(patch.intendedFor) : normalizeText(current.intendedFor),
     recommendationRules: hasOwn(patch, "recommendationRules") ? normalizeText(patch.recommendationRules) : normalizeText(current.recommendationRules),
     matchKeywords: hasOwn(patch, "matchKeywords") ? normalizeLearningTestMatchKeywords(patch.matchKeywords) : normalizeLearningTestMatchKeywords(current.matchKeywords),
+    secondsPerQuestion: hasOwn(patch, "secondsPerQuestion") || hasOwn(patch, "timePerQuestionSeconds")
+      ? normalizeLearningSecondsPerQuestion(patch.secondsPerQuestion ?? patch.timePerQuestionSeconds)
+      : normalizeLearningSecondsPerQuestion(current.secondsPerQuestion ?? current.timePerQuestionSeconds),
     handbookDocuments: hasOwn(patch, "handbookDocuments")
       ? normalizeAttachmentDocuments(patch.handbookDocuments)
       : normalizeAttachmentDocuments(current.handbookDocuments),

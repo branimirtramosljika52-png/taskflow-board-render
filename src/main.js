@@ -2529,6 +2529,7 @@ const state = {
     learningDrafts: {},
     trainingMode: "online_test",
     trainingSelection: {},
+    trainingQuestionConfig: {},
     trainingLastMessage: "",
     trainingBusy: false,
     isznrWorkEquipment: {},
@@ -4926,6 +4927,7 @@ const learningTestForm = document.querySelector("#learning-test-form");
 const learningTestIdInput = document.querySelector("#learning-test-id");
 const learningTestTitleInput = document.querySelector("#learning-test-title");
 const learningTestStatusInput = document.querySelector("#learning-test-status");
+const learningTestSecondsPerQuestionInput = document.querySelector("#learning-test-seconds-per-question");
 const learningTestDescriptionInput = document.querySelector("#learning-test-description");
 const learningTestIntendedForInput = document.querySelector("#learning-test-intended-for");
 const learningTestRecommendationRulesInput = document.querySelector("#learning-test-recommendation-rules");
@@ -15849,6 +15851,7 @@ function buildPeopleTrainingLearningAssignment(record = {}, workOrder = {}, type
     serviceName: String(typeOption.label || typeOption.serviceName || typeOption.serviceCode || "").trim(),
     assignedByUserId: String(state.user?.id || "").trim(),
     assignedByLabel: String(state.user?.fullName || state.user?.email || "").trim(),
+    ...buildLearningAssignmentQuestionSnapshot(test, existingAssignment),
   };
 }
 
@@ -62888,6 +62891,7 @@ async function assignLearningTestToWorkOrderPerson(workOrder = {}, test = {}, se
     safetySpecialistLabel: specialist
       ? String(specialist.fullName || specialist.email || "").trim()
       : "",
+    ...buildLearningAssignmentQuestionSnapshot(test, existingAssignment),
   };
 
   const remaining = assignmentItems.filter((item) => (
@@ -81356,6 +81360,7 @@ function buildLearningTestPayload() {
     organizationId: state.activeOrganizationId || "",
     title: learningTestTitleInput?.value || "",
     status: learningTestStatusInput?.value || "draft",
+    secondsPerQuestion: Number(learningTestSecondsPerQuestionInput?.value || 60) || 60,
     description: learningTestDescriptionInput?.value || "",
     intendedFor: learningTestIntendedForInput?.value || "",
     recommendationRules: learningTestRecommendationRulesInput?.value || "",
@@ -81509,6 +81514,9 @@ function resetLearningTestForm() {
   if (learningTestStatusInput) {
     learningTestStatusInput.value = "draft";
   }
+  if (learningTestSecondsPerQuestionInput) {
+    learningTestSecondsPerQuestionInput.value = "60";
+  }
   if (learningTestIntendedForInput) {
     learningTestIntendedForInput.value = "";
   }
@@ -81545,6 +81553,9 @@ function hydrateLearningTestForm(item) {
   }
   if (learningTestStatusInput) {
     learningTestStatusInput.value = item.status || "draft";
+  }
+  if (learningTestSecondsPerQuestionInput) {
+    learningTestSecondsPerQuestionInput.value = String(Number(item.secondsPerQuestion ?? 60) || 60);
   }
   if (learningTestDescriptionInput) {
     learningTestDescriptionInput.value = item.description || "";
@@ -81935,6 +81946,7 @@ function renderLearningTestsModule() {
     stats.className = "learning-test-list-stats";
     [
       ["Pitanja", item.questionItems?.length ?? 0],
+      ["Sek./pitanje", Number(item.secondsPerQuestion ?? 60) || 60],
       ["Materijali", item.handbookDocuments?.length ?? 0],
       ["Dodjele", item.assignmentItems?.length ?? 0],
       ["Azurirano", item.updatedAt ? formatCompactDate(item.updatedAt) : "-"],
@@ -118322,6 +118334,7 @@ function openWorkOrderDocumentWizard(requestedMode = "", options = {}) {
   if (mode === "znr") {
     state.workOrderDocumentWizard.trainingMode = normalizeWorkOrderDocumentTrainingMode(state.workOrderDocumentWizard.trainingMode);
     state.workOrderDocumentWizard.trainingSelection = {};
+    state.workOrderDocumentWizard.trainingQuestionConfig = {};
     state.workOrderDocumentWizard.trainingLastMessage = "";
     state.workOrderDocumentWizard.trainingBusy = false;
   }
@@ -120686,6 +120699,149 @@ function workOrderDocumentTrainingModeSendsEmail(mode = "") {
   return normalizeWorkOrderDocumentTrainingMode(mode) === "online_test";
 }
 
+function getLearningTestQuestionItems(test = {}) {
+  return Array.isArray(test?.questionItems)
+    ? test.questionItems.filter((question) => String(question?.id || "").trim())
+    : [];
+}
+
+function normalizeLearningTestSecondsForUi(value, fallback = 60) {
+  const numeric = Math.round(Number(value));
+  const fallbackNumeric = Math.round(Number(fallback));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return Math.max(5, Math.min(3600, Number.isFinite(fallbackNumeric) && fallbackNumeric > 0 ? fallbackNumeric : 60));
+  }
+  return Math.max(5, Math.min(3600, numeric));
+}
+
+function normalizeLearningTestQuestionLimitForUi(value, totalQuestions = 0) {
+  const total = Math.max(0, Math.min(500, Math.round(Number(totalQuestions)) || 0));
+  const numeric = Math.round(Number(value));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return total;
+  }
+  return Math.max(1, Math.min(total || 1, numeric));
+}
+
+function formatDurationLabel(totalSeconds = 0) {
+  const seconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes <= 0) {
+    return `${remainder} s`;
+  }
+  if (remainder === 0) {
+    return `${minutes} min`;
+  }
+  return `${minutes} min ${remainder} s`;
+}
+
+function getWorkOrderDocumentTrainingQuestionConfig(test = {}) {
+  const testId = String(test?.id || "").trim();
+  const questionItems = getLearningTestQuestionItems(test);
+  const totalQuestions = questionItems.length;
+  const stored = testId ? (state.workOrderDocumentWizard.trainingQuestionConfig?.[testId] ?? {}) : {};
+  return {
+    questionLimit: normalizeLearningTestQuestionLimitForUi(stored.questionLimit, totalQuestions),
+    timePerQuestionSeconds: normalizeLearningTestSecondsForUi(
+      stored.timePerQuestionSeconds,
+      test.secondsPerQuestion ?? 60,
+    ),
+  };
+}
+
+function setWorkOrderDocumentTrainingQuestionConfig(test = {}, patch = {}) {
+  const testId = String(test?.id || "").trim();
+  if (!testId) {
+    return;
+  }
+  const current = getWorkOrderDocumentTrainingQuestionConfig(test);
+  const questionItems = getLearningTestQuestionItems(test);
+  const next = {
+    questionLimit: normalizeLearningTestQuestionLimitForUi(
+      patch.questionLimit ?? current.questionLimit,
+      questionItems.length,
+    ),
+    timePerQuestionSeconds: normalizeLearningTestSecondsForUi(
+      patch.timePerQuestionSeconds ?? current.timePerQuestionSeconds,
+      test.secondsPerQuestion ?? 60,
+    ),
+  };
+  state.workOrderDocumentWizard.trainingQuestionConfig = {
+    ...(state.workOrderDocumentWizard.trainingQuestionConfig ?? {}),
+    [testId]: next,
+  };
+}
+
+function getRandomLearningIndex(maxExclusive = 0) {
+  const max = Math.max(0, Math.floor(Number(maxExclusive) || 0));
+  if (max <= 1) {
+    return 0;
+  }
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.getRandomValues) {
+    const values = new Uint32Array(1);
+    cryptoApi.getRandomValues(values);
+    return values[0] % max;
+  }
+  return Math.floor(Math.random() * max);
+}
+
+function pickRandomLearningQuestionIds(questionItems = [], questionLimit = 0) {
+  const ids = getLearningTestQuestionItems({ questionItems })
+    .map((question) => String(question.id || "").trim())
+    .filter(Boolean);
+  const shuffled = [...ids];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = getRandomLearningIndex(index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  const limit = normalizeLearningTestQuestionLimitForUi(questionLimit, shuffled.length);
+  return shuffled.slice(0, limit || shuffled.length);
+}
+
+function buildLearningAssignmentQuestionSnapshot(test = {}, existingAssignment = null) {
+  const config = getWorkOrderDocumentTrainingQuestionConfig(test);
+  const questionItems = getLearningTestQuestionItems(test);
+  const questionIds = questionItems.map((question) => String(question.id || "").trim()).filter(Boolean);
+  const questionIdSet = new Set(questionIds);
+  const existingIds = Array.isArray(existingAssignment?.selectedQuestionIds)
+    ? existingAssignment.selectedQuestionIds.map((entry) => String(entry || "").trim()).filter((entry) => questionIdSet.has(entry))
+    : [];
+  if (String(existingAssignment?.status || "").toLowerCase() === "completed" && existingIds.length > 0) {
+    const timePerQuestionSeconds = normalizeLearningTestSecondsForUi(
+      existingAssignment?.timePerQuestionSeconds,
+      config.timePerQuestionSeconds,
+    );
+    return {
+      questionLimit: existingIds.length,
+      selectedQuestionIds: existingIds,
+      timePerQuestionSeconds,
+      timeLimitSeconds: Math.max(
+        existingIds.length * timePerQuestionSeconds,
+        Math.round(Number(existingAssignment?.timeLimitSeconds) || 0),
+      ),
+    };
+  }
+  const existingLimit = normalizeLearningTestQuestionLimitForUi(existingAssignment?.questionLimit, questionIds.length);
+  const existingSeconds = normalizeLearningTestSecondsForUi(existingAssignment?.timePerQuestionSeconds, config.timePerQuestionSeconds);
+  const shouldKeepExisting = existingIds.length > 0
+    && (
+      String(existingAssignment?.status || "").toLowerCase() === "completed"
+      || (existingLimit === config.questionLimit && existingSeconds === config.timePerQuestionSeconds)
+    );
+  const selectedQuestionIds = shouldKeepExisting
+    ? existingIds
+    : pickRandomLearningQuestionIds(questionItems, config.questionLimit);
+  const timePerQuestionSeconds = config.timePerQuestionSeconds;
+  return {
+    questionLimit: selectedQuestionIds.length,
+    selectedQuestionIds,
+    timePerQuestionSeconds,
+    timeLimitSeconds: selectedQuestionIds.length * timePerQuestionSeconds,
+  };
+}
+
 function getPeopleTrainingTypeOptionForWorkOrderService(service = {}) {
   const catalogItem = getServiceCatalogItemForWorkOrderService(service) ?? service;
   const serviceId = String(catalogItem?.id ?? service?.serviceId ?? service?.id ?? "").trim();
@@ -120916,6 +121072,99 @@ function createWorkOrderDocumentTrainingModeButton(option = {}) {
   return button;
 }
 
+function getUniqueLearningTestsFromTrainingRows(rows = []) {
+  const byId = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    getPeopleTrainingLinkedLearningTests(row?.typeOption).forEach((test) => {
+      const id = String(test?.id || "").trim();
+      if (id && !byId.has(id)) {
+        byId.set(id, test);
+      }
+    });
+  });
+  return [...byId.values()];
+}
+
+function createWorkOrderDocumentTrainingQuestionSettingsPanel(rows = []) {
+  const tests = getUniqueLearningTestsFromTrainingRows(rows);
+  const panel = document.createElement("div");
+  panel.className = "work-order-document-training-question-settings";
+
+  const head = document.createElement("div");
+  head.className = "work-order-document-training-question-settings-head";
+  const title = document.createElement("strong");
+  title.textContent = "Postavke ispita";
+  const helper = document.createElement("span");
+  helper.textContent = "Broj pitanja se pri dodjeli izvlači random za svakog polaznika.";
+  head.append(title, helper);
+  panel.append(head);
+
+  if (tests.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema povezanih testova za odabrane usluge.";
+    panel.append(empty);
+    return panel;
+  }
+
+  const list = document.createElement("div");
+  list.className = "work-order-document-training-question-settings-list";
+  tests.forEach((test) => {
+    const questionItems = getLearningTestQuestionItems(test);
+    const config = getWorkOrderDocumentTrainingQuestionConfig(test);
+    const totalSeconds = config.questionLimit * config.timePerQuestionSeconds;
+    const row = document.createElement("article");
+    row.className = "work-order-document-training-question-setting";
+
+    const copy = document.createElement("div");
+    copy.className = "work-order-document-training-question-setting-copy";
+    const name = document.createElement("strong");
+    name.textContent = test.title || "Ispit";
+    const meta = document.createElement("span");
+    meta.textContent = `${questionItems.length} pitanja u bazi · ukupno ${formatDurationLabel(totalSeconds)}`;
+    copy.append(name, meta);
+
+    const controls = document.createElement("div");
+    controls.className = "work-order-document-training-question-setting-controls";
+    const questionField = document.createElement("label");
+    questionField.className = "field compact-field";
+    const questionLabel = document.createElement("span");
+    questionLabel.textContent = "Pitanja";
+    const questionInput = document.createElement("input");
+    questionInput.type = "number";
+    questionInput.min = questionItems.length > 0 ? "1" : "0";
+    questionInput.max = String(Math.max(questionItems.length, 1));
+    questionInput.value = String(config.questionLimit);
+    questionInput.addEventListener("change", () => {
+      setWorkOrderDocumentTrainingQuestionConfig(test, { questionLimit: questionInput.value });
+      renderWorkOrderDocumentWizard();
+    });
+    questionField.append(questionLabel, questionInput);
+
+    const secondsField = document.createElement("label");
+    secondsField.className = "field compact-field";
+    const secondsLabel = document.createElement("span");
+    secondsLabel.textContent = "Sek. / pitanje";
+    const secondsInput = document.createElement("input");
+    secondsInput.type = "number";
+    secondsInput.min = "5";
+    secondsInput.max = "3600";
+    secondsInput.step = "5";
+    secondsInput.value = String(config.timePerQuestionSeconds);
+    secondsInput.addEventListener("change", () => {
+      setWorkOrderDocumentTrainingQuestionConfig(test, { timePerQuestionSeconds: secondsInput.value });
+      renderWorkOrderDocumentWizard();
+    });
+    secondsField.append(secondsLabel, secondsInput);
+    controls.append(questionField, secondsField);
+
+    row.append(copy, controls);
+    list.append(row);
+  });
+  panel.append(list);
+  return panel;
+}
+
 function renderWorkOrderDocumentWizardTrainingControlSection(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
   if (!workOrderDocumentWizardCommonZnrSection) {
     return;
@@ -120955,6 +121204,8 @@ function renderWorkOrderDocumentWizardTrainingControlSection(workOrders = getAll
   const modes = document.createElement("div");
   modes.className = "work-order-document-training-mode-grid";
   modes.replaceChildren(...WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS.map(createWorkOrderDocumentTrainingModeButton));
+
+  const questionSettings = createWorkOrderDocumentTrainingQuestionSettingsPanel(rows);
 
   const quick = document.createElement("div");
   quick.className = "work-order-document-training-quick-actions";
@@ -120997,9 +121248,9 @@ function renderWorkOrderDocumentWizardTrainingControlSection(workOrders = getAll
     const message = document.createElement("p");
     message.className = "work-order-document-training-message";
     message.textContent = state.workOrderDocumentWizard.trainingLastMessage;
-    shell.append(head, modes, quick, notice, message);
+    shell.append(head, modes, questionSettings, quick, notice, message);
   } else {
-    shell.append(head, modes, quick, notice);
+    shell.append(head, modes, questionSettings, quick, notice);
   }
 
   workOrderDocumentWizardCommonZnrSection.replaceChildren(shell);
