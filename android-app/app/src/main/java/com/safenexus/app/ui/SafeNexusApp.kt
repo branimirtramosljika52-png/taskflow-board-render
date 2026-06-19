@@ -16598,16 +16598,27 @@ private fun WorkOrderDocumentationWizardDialog(
         context.workEnvironmentOptions.filter { option -> selectedIds.contains(option.id.trim()) }
     }
     val lastWorkEquipmentSubmitResult = workEquipmentSubmitResult
+    val trainingContext = context.trainingContext
+    val isTrainingDocumentationFlow = trainingContext.enabled
     var additionalRecords by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
     }
-    val flowTabs = remember(serviceFlowItems, additionalRecords, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr) {
-        buildDocumentationFlowTabs(
-            flowItems = serviceFlowItems,
-            additionalRecords = additionalRecords,
-            includeWorkEquipmentTab = showWorkEquipmentFromIsznr,
-            includePhysicalFactorsTab = showPhysicalFactorsFromIsznr,
-        )
+    val flowTabs = remember(serviceFlowItems, additionalRecords, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr, isTrainingDocumentationFlow) {
+        if (isTrainingDocumentationFlow) {
+            listOf(
+                DocumentationFlowTab(
+                    key = DOCUMENTATION_BASICS_FLOW_KEY,
+                    label = "Osposobljavanje",
+                ),
+            )
+        } else {
+            buildDocumentationFlowTabs(
+                flowItems = serviceFlowItems,
+                additionalRecords = additionalRecords,
+                includeWorkEquipmentTab = showWorkEquipmentFromIsznr,
+                includePhysicalFactorsTab = showPhysicalFactorsFromIsznr,
+            )
+        }
     }
     var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(DOCUMENTATION_BASICS_FLOW_KEY)
@@ -16703,7 +16714,6 @@ private fun WorkOrderDocumentationWizardDialog(
             manualPhysicalFactors = nextPhysicalFactors
         }
     }
-    val trainingContext = context.trainingContext
     var trainingMode by remember(workOrder.id, trainingContext.defaultMode) {
         mutableStateOf(normalizeDocumentationTrainingMode(trainingContext.defaultMode))
     }
@@ -16720,6 +16730,20 @@ private fun WorkOrderDocumentationWizardDialog(
                 .map { service -> service.trainingSelectionKey() }
                 .filter { it.isNotBlank() }
                 .toSet(),
+        )
+    }
+    val selectedTrainingModeOption = remember(trainingMode) {
+        documentationTrainingModeOptions
+            .firstOrNull { option -> option.value == normalizeDocumentationTrainingMode(trainingMode) }
+            ?: documentationTrainingModeOptions.first()
+    }
+    val launchTrainingDocumentation = {
+        onConfirmTraining(
+            selectedTrainingModeOption.value,
+            selectedTrainingPersonIds.toList(),
+            selectedTrainingServiceKeys.toList(),
+            selectedTrainingModeOption.sendEmails,
+            onlyTrainingNeedsAction,
         )
     }
     var weather by remember(workOrder.id, selectedObjectId, defaults.weather) { mutableStateOf(defaults.weather) }
@@ -17318,6 +17342,21 @@ private fun WorkOrderDocumentationWizardDialog(
                 ) {
 
                 if (basicsFlowSelected) {
+                    if (isTrainingDocumentationFlow) {
+                        DocumentationTrainingLaunchSection(
+                            context = trainingContext,
+                            mode = trainingMode,
+                            selectedPersonIds = selectedTrainingPersonIds,
+                            selectedServiceKeys = selectedTrainingServiceKeys,
+                            onlyNeedsAction = onlyTrainingNeedsAction,
+                            enabled = !formLoading,
+                            onModeChange = { trainingMode = it },
+                            onSelectedPersonIdsChange = { selectedTrainingPersonIds = it },
+                            onSelectedServiceKeysChange = { selectedTrainingServiceKeys = it },
+                            onOnlyNeedsActionChange = { onlyTrainingNeedsAction = it },
+                            onConfirm = launchTrainingDocumentation,
+                        )
+                    } else {
                 WizardSection(title = "Osnovno", icon = Icons.Rounded.Description) {
                     Text(
                         "Podaci vrijede za sve zapisnike u ovom RN-u i automatski popunjavaju povezana polja iz web predložaka.",
@@ -17434,31 +17473,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         onWorkEnvironmentAuthorizationHolderUserIdChange = { workEnvironmentAuthorizationHolderUserId = it },
                         enabled = !formLoading,
                     )
-                    DocumentationTrainingLaunchSection(
-                        context = trainingContext,
-                        mode = trainingMode,
-                        selectedPersonIds = selectedTrainingPersonIds,
-                        selectedServiceKeys = selectedTrainingServiceKeys,
-                        onlyNeedsAction = onlyTrainingNeedsAction,
-                        enabled = !formLoading,
-                        onModeChange = { trainingMode = it },
-                        onSelectedPersonIdsChange = { selectedTrainingPersonIds = it },
-                        onSelectedServiceKeysChange = { selectedTrainingServiceKeys = it },
-                        onOnlyNeedsActionChange = { onlyTrainingNeedsAction = it },
-                        onConfirm = {
-                            val modeOption = documentationTrainingModeOptions
-                                .firstOrNull { option -> option.value == normalizeDocumentationTrainingMode(trainingMode) }
-                                ?: documentationTrainingModeOptions.first()
-                            onConfirmTraining(
-                                modeOption.value,
-                                selectedTrainingPersonIds.toList(),
-                                selectedTrainingServiceKeys.toList(),
-                                modeOption.sendEmails,
-                                onlyTrainingNeedsAction,
-                            )
-                        },
-                    )
                 }
+                    }
                 }
 
                 if (workEquipmentFlowSelected) {
@@ -17801,6 +17817,10 @@ private fun WorkOrderDocumentationWizardDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    if (isTrainingDocumentationFlow) {
+                        launchTrainingDocumentation()
+                        return@Button
+                    }
                     if (!summaryFlowSelected) {
                         selectedFlowService = nextFlowKey ?: DOCUMENTATION_SUMMARY_FLOW_KEY
                         return@Button
@@ -17881,7 +17901,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     )
                     onConfirm(draft)
                 },
-                enabled = !formLoading,
+                enabled = !formLoading &&
+                    (!isTrainingDocumentationFlow || (selectedTrainingPersonIds.isNotEmpty() && selectedTrainingServiceKeys.isNotEmpty())),
                 shape = RoundedCornerShape(16.dp),
             ) {
                 if (formLoading) {
@@ -17889,7 +17910,11 @@ private fun WorkOrderDocumentationWizardDialog(
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(
-                    if (summaryFlowSelected) "Izradi dokumentaciju" else "Dalje",
+                    when {
+                        isTrainingDocumentationFlow -> selectedTrainingModeOption.actionLabel
+                        summaryFlowSelected -> "Izradi dokumentaciju"
+                        else -> "Dalje"
+                    },
                     fontWeight = FontWeight.Black,
                 )
             }
