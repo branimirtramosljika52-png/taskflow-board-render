@@ -15733,6 +15733,37 @@ private fun isDocumentationPhysicalFactorsService(item: DocumentationServiceFlow
         isDocumentationPhysicalFactorsText(item.serviceCode) ||
         isDocumentationPhysicalFactorsText(item.serviceKey)
 
+private fun isDocumentationTrainingText(value: String): Boolean {
+    val normalized = normalizeDocumentationWorkEquipmentText(value)
+    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value) || isDocumentationPhysicalFactorsText(value)) return false
+    return normalized == "znr" ||
+        normalized == "zos" ||
+        normalized == "pgp" ||
+        normalized == "szptp" ||
+        normalized == "safe work" ||
+        normalized == "fire initial" ||
+        normalized.startsWith("znr ") ||
+        normalized.startsWith("zos ") ||
+        normalized.startsWith("pgp ") ||
+        normalized.startsWith("szptp ") ||
+        normalized.contains("osposoblj") ||
+        normalized.contains("rad na siguran") ||
+        normalized.contains("siguran nacin") ||
+        normalized.contains("zastita na radu") ||
+        normalized.contains("safe work") ||
+        normalized.contains("fire initial") ||
+        normalized.contains("pocetno gasenje") ||
+        normalized.contains("gasenje pozara") ||
+        normalized.contains("pozar") ||
+        normalized.contains("zapaljivih tekucina") ||
+        normalized.contains("adr")
+}
+
+private fun isDocumentationTrainingService(item: DocumentationServiceFlowItem): Boolean =
+    isDocumentationTrainingText(item.serviceName) ||
+        isDocumentationTrainingText(item.serviceCode) ||
+        isDocumentationTrainingText(item.serviceKey)
+
 private fun documentationAdditionalRecordFlowKey(record: DocumentationAdditionalObjectRecord, index: Int): String =
     "$DOCUMENTATION_EXTRA_FLOW_PREFIX:${record.serviceKey}:${record.objectId}:$index"
 
@@ -16600,7 +16631,11 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val lastWorkEquipmentSubmitResult = workEquipmentSubmitResult
     val trainingContext = context.trainingContext
-    val isTrainingDocumentationFlow = trainingContext.enabled
+    val hasTrainingDocumentationIntent = remember(serviceFlowItems, workOrder.displayService) {
+        serviceFlowItems.any { isDocumentationTrainingService(it) } ||
+            isDocumentationTrainingText(workOrder.displayService)
+    }
+    val isTrainingDocumentationFlow = trainingContext.enabled || (contextLoading && hasTrainingDocumentationIntent)
     var additionalRecords by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
     }
