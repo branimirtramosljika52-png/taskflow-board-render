@@ -47483,6 +47483,266 @@ body.is-measurement-equipment-export-open {
   color: var(--muted);
 }
 
+.work-order-document-training-cockpit {
+  display: grid;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.work-order-document-training-cockpit-head,
+.work-order-document-training-quick-actions,
+.work-order-document-training-card-chips {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.work-order-document-training-cockpit-head > div:first-child {
+  display: grid;
+  gap: 0.22rem;
+  min-width: min(320px, 100%);
+}
+
+.work-order-document-training-cockpit-head strong {
+  color: #18223a;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.work-order-document-training-cockpit-head span {
+  color: #66738d;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.work-order-document-training-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(82px, 1fr));
+  gap: 0.48rem;
+}
+
+.work-order-document-training-stats span {
+  min-height: 54px;
+  padding: 0.55rem 0.68rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(91, 124, 255, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(240, 246, 255, 0.92));
+  box-shadow: 0 8px 18px rgba(42, 72, 145, 0.07);
+  display: grid;
+  align-content: center;
+}
+
+.work-order-document-training-stats strong {
+  color: #1d4ed8;
+  font-size: 1.08rem;
+}
+
+.work-order-document-training-stats small {
+  color: #69758e;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.work-order-document-training-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.work-order-document-training-mode-button {
+  min-height: 76px;
+  border-radius: 1rem;
+  padding: 0.7rem 0.82rem;
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 0.18rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.work-order-document-training-mode-button strong {
+  color: #1d2b4d;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.work-order-document-training-mode-button span {
+  color: #6d7890;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.work-order-document-training-mode-button.is-active {
+  border-color: rgba(37, 99, 235, 0.34);
+  background: linear-gradient(135deg, rgba(233, 242, 255, 0.98), rgba(242, 247, 255, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.14), 0 14px 28px rgba(37, 99, 235, 0.12);
+}
+
+.work-order-document-training-quick-actions {
+  justify-content: flex-start;
+}
+
+.work-order-document-training-notice,
+.work-order-document-training-message {
+  margin: 0;
+  padding: 0.72rem 0.86rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(100, 116, 139, 0.16);
+  background: rgba(248, 250, 252, 0.9);
+  color: #526078;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.work-order-document-training-notice.is-warning {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(255, 247, 237, 0.94);
+  color: #8a4b0f;
+}
+
+.work-order-document-training-message {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(240, 253, 244, 0.94);
+  color: #166534;
+  font-weight: 750;
+}
+
+.work-order-document-training-card-chips {
+  justify-content: flex-end;
+}
+
+.work-order-document-training-card-chips .is-selected {
+  background: rgba(219, 234, 254, 0.95);
+  color: #1d4ed8;
+}
+
+.work-order-document-training-card-chips .is-completed {
+  background: rgba(220, 252, 231, 0.95);
+  color: #15803d;
+}
+
+.work-order-document-training-card-chips .is-pending {
+  background: rgba(254, 243, 199, 0.95);
+  color: #92400e;
+}
+
+.work-order-document-training-service-header,
+.work-order-document-training-person-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.1fr) minmax(0, 2.4fr);
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.work-order-document-training-service-header {
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.9rem;
+  background: rgba(241, 245, 249, 0.82);
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.work-order-document-training-service-header > span:not(:first-child) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.work-order-document-training-service-header > span:first-child {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.work-order-document-training-service-header {
+  grid-template-columns: minmax(240px, 1.1fr) repeat(var(--training-service-count, 1), minmax(116px, 1fr));
+}
+
+.work-order-document-training-person-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.work-order-document-training-person-row {
+  padding: 0.62rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 22px rgba(30, 41, 59, 0.05);
+}
+
+.work-order-document-training-service-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--training-service-count, 1), minmax(116px, 1fr));
+  gap: 0.45rem;
+}
+
+.work-order-document-training-service-cell {
+  min-height: 48px;
+  padding: 0.44rem 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.82rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.12rem 0.42rem;
+  align-items: center;
+  background: rgba(248, 250, 252, 0.94);
+  color: #334155;
+  cursor: pointer;
+}
+
+.work-order-document-training-service-cell input {
+  grid-row: span 2;
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+}
+
+.work-order-document-training-service-cell strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.work-order-document-training-service-cell span {
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.work-order-document-training-service-cell.is-selected {
+  border-color: rgba(37, 99, 235, 0.38);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.95));
+}
+
+.work-order-document-training-service-cell.is-completed {
+  border-color: rgba(34, 197, 94, 0.26);
+  background: rgba(240, 253, 244, 0.92);
+}
+
+.work-order-document-training-service-cell.is-pending,
+.work-order-document-training-service-cell.is-in_progress {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(255, 251, 235, 0.92);
+}
+
+.work-order-document-training-service-cell.is-recommended strong::after {
+  content: " AI";
+  color: #7c3aed;
+  font-size: 0.64rem;
+  font-weight: 900;
+}
+
 @media (max-width: 760px) {
   .work-order-document-category-row {
     grid-template-columns: 38px minmax(0, 1fr);
@@ -47507,6 +47767,23 @@ body.is-measurement-equipment-export-open {
   .work-order-document-training-assignment-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .work-order-document-training-mode-grid,
+  .work-order-document-training-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-document-training-service-header {
+    display: none;
+  }
+
+  .work-order-document-training-person-row {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-document-training-service-cells {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
 }
 
