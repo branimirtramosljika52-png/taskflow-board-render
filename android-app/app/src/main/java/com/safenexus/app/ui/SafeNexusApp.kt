@@ -239,6 +239,7 @@ import com.safenexus.app.data.WorkOrderServiceOption
 import com.safenexus.app.data.WorkOrderTrainingAssignment
 import com.safenexus.app.data.WorkOrderTrainingContext
 import com.safenexus.app.data.WorkOrderTrainingPerson
+import com.safenexus.app.data.WorkOrderTrainingService
 import com.safenexus.app.data.WorkOrderUploadFile
 import com.safenexus.app.data.WorkOrderUserOption
 import com.safenexus.app.data.parseDateOrNull
@@ -1171,6 +1172,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         mode: String,
         personIds: List<String>,
         serviceKeys: List<String>,
+        sendEmails: Boolean = true,
+        onlyRecommended: Boolean = true,
         objectId: String = "",
     ) {
         val workOrderId = workOrder.id.trim()
@@ -1190,7 +1193,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
         state = state.copy(isLoading = true, error = "", notice = "Pripremam osposobljavanje...")
         viewModelScope.launch {
-            api.confirmWorkOrderTraining(workOrderId, mode, normalizedPeople, normalizedServices)
+            api.confirmWorkOrderTraining(workOrderId, mode, normalizedPeople, normalizedServices, sendEmails, onlyRecommended)
                 .onSuccess { message ->
                     state = state.copy(isLoading = false, notice = message, error = "")
                     loadWorkOrderDocumentationContext(workOrder, objectId)
@@ -2325,8 +2328,16 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             onSubmitIsznrPhysicalFactors = { selectedItemIds, manualPhysicalFactors ->
                 viewModel.submitWorkOrderIsznrPhysicalFactors(workOrder, selectedItemIds, manualPhysicalFactors, documentationWizardObjectId)
             },
-            onConfirmTraining = { mode, personIds, serviceKeys ->
-                viewModel.confirmWorkOrderTraining(workOrder, mode, personIds, serviceKeys, documentationWizardObjectId)
+            onConfirmTraining = { mode, personIds, serviceKeys, sendEmails, onlyRecommended ->
+                viewModel.confirmWorkOrderTraining(
+                    workOrder,
+                    mode,
+                    personIds,
+                    serviceKeys,
+                    sendEmails,
+                    onlyRecommended,
+                    documentationWizardObjectId,
+                )
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -16504,7 +16515,7 @@ private fun WorkOrderDocumentationWizardDialog(
     ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
-    onConfirmTraining: (String, List<String>, List<String>) -> Unit,
+    onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -16694,17 +16705,22 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val trainingContext = context.trainingContext
     var trainingMode by remember(workOrder.id, trainingContext.defaultMode) {
-        mutableStateOf(trainingContext.defaultMode.ifBlank { "online" })
+        mutableStateOf(normalizeDocumentationTrainingMode(trainingContext.defaultMode))
     }
-    var showOnlyRecommendedTraining by remember(workOrder.id, trainingContext.people) {
+    var onlyTrainingNeedsAction by remember(workOrder.id, trainingContext.people) {
         mutableStateOf(true)
     }
     var selectedTrainingPersonIds by remember(workOrder.id, trainingContext.people) {
         val recommended = trainingContext.people.filter { it.recommended }.map { it.id }
         mutableStateOf((recommended.ifEmpty { trainingContext.people.take(12).map { it.id } }).toSet())
     }
-    val selectedTrainingServiceKeys = remember(trainingContext.services) {
-        trainingContext.services.map { service -> service.serviceKey.ifBlank { service.id } }.filter { it.isNotBlank() }
+    var selectedTrainingServiceKeys by remember(workOrder.id, trainingContext.services) {
+        mutableStateOf(
+            trainingContext.services
+                .map { service -> service.trainingSelectionKey() }
+                .filter { it.isNotBlank() }
+                .toSet(),
+        )
     }
     var weather by remember(workOrder.id, selectedObjectId, defaults.weather) { mutableStateOf(defaults.weather) }
     var groundCondition by remember(workOrder.id, selectedObjectId, defaults.groundCondition) { mutableStateOf(defaults.groundCondition) }
@@ -17422,16 +17438,23 @@ private fun WorkOrderDocumentationWizardDialog(
                         context = trainingContext,
                         mode = trainingMode,
                         selectedPersonIds = selectedTrainingPersonIds,
-                        showOnlyRecommended = showOnlyRecommendedTraining,
+                        selectedServiceKeys = selectedTrainingServiceKeys,
+                        onlyNeedsAction = onlyTrainingNeedsAction,
                         enabled = !formLoading,
                         onModeChange = { trainingMode = it },
                         onSelectedPersonIdsChange = { selectedTrainingPersonIds = it },
-                        onShowOnlyRecommendedChange = { showOnlyRecommendedTraining = it },
+                        onSelectedServiceKeysChange = { selectedTrainingServiceKeys = it },
+                        onOnlyNeedsActionChange = { onlyTrainingNeedsAction = it },
                         onConfirm = {
+                            val modeOption = documentationTrainingModeOptions
+                                .firstOrNull { option -> option.value == normalizeDocumentationTrainingMode(trainingMode) }
+                                ?: documentationTrainingModeOptions.first()
                             onConfirmTraining(
-                                trainingMode,
+                                modeOption.value,
                                 selectedTrainingPersonIds.toList(),
-                                selectedTrainingServiceKeys,
+                                selectedTrainingServiceKeys.toList(),
+                                modeOption.sendEmails,
+                                onlyTrainingNeedsAction,
                             )
                         },
                     )
@@ -21889,72 +21912,224 @@ private fun DocumentationExecutorsEditor(
     }
 }
 
+private data class DocumentationTrainingModeOption(
+    val value: String,
+    val label: String,
+    val helper: String,
+    val actionLabel: String,
+    val icon: ImageVector,
+    val sendEmails: Boolean,
+)
+
+private val documentationTrainingModeOptions = listOf(
+    DocumentationTrainingModeOption(
+        value = "online",
+        label = "Online",
+        helper = "Link ide na email i rješava se na daljinu.",
+        actionLabel = "Pošalji online ispite",
+        icon = Icons.Rounded.Mail,
+        sendEmails = true,
+    ),
+    DocumentationTrainingModeOption(
+        value = "live_paper",
+        label = "Live papir",
+        helper = "Predavanje uživo, ispit se vodi kao papirnati zapis.",
+        actionLabel = "Pripremi live papir",
+        icon = Icons.Rounded.Description,
+        sendEmails = false,
+    ),
+    DocumentationTrainingModeOption(
+        value = "live_app",
+        label = "Live app",
+        helper = "Predavanje uživo, test se rješava preko aplikacije ili linka.",
+        actionLabel = "Pripremi live app",
+        icon = Icons.Rounded.Fingerprint,
+        sendEmails = false,
+    ),
+)
+
+private fun normalizeDocumentationTrainingMode(value: String): String {
+    val normalized = value.trim().lowercase(Locale.getDefault())
+    return documentationTrainingModeOptions.firstOrNull { it.value == normalized }?.value ?: "online"
+}
+
+private fun WorkOrderTrainingService.trainingSelectionKey(): String =
+    serviceKey.ifBlank { serviceId.ifBlank { id.ifBlank { serviceCode } } }.trim()
+
+private fun WorkOrderTrainingService.trainingShortLabel(): String =
+    serviceCode.ifBlank { shortLabel.ifBlank { label.ifBlank { serviceName }.take(4).uppercase(Locale.getDefault()) } }
+
+private fun WorkOrderTrainingService.trainingTitle(): String =
+    label.ifBlank { serviceName.ifBlank { serviceCode.ifBlank { "Osposobljavanje" } } }
+
+private fun WorkOrderTrainingAssignment.trainingStatusKey(): String =
+    status.trim().lowercase(Locale.getDefault()).ifBlank {
+        when {
+            existingValidUntil.isNotBlank() || existingPassedOn.isNotBlank() -> "valid"
+            linkedLearningTestIds.isNotEmpty() -> "pending"
+            else -> "missing"
+        }
+    }
+
+private fun trainingAssignmentNeedsAction(assignment: WorkOrderTrainingAssignment?): Boolean {
+    val status = assignment?.trainingStatusKey().orEmpty()
+    return status !in setOf("valid", "done", "completed", "passed", "not_required")
+}
+
+private fun WorkOrderTrainingPerson.assignmentFor(service: WorkOrderTrainingService): WorkOrderTrainingAssignment? {
+    val serviceKey = service.trainingSelectionKey()
+    val serviceId = service.serviceId.trim()
+    val serviceCode = service.serviceCode.trim()
+    return assignments.firstOrNull { assignment ->
+        listOf(assignment.serviceKey, assignment.serviceId, assignment.serviceCode)
+            .map { it.trim() }
+            .any { value ->
+                value.isNotBlank() && (
+                    value.equals(serviceKey, ignoreCase = true) ||
+                        value.equals(serviceId, ignoreCase = true) ||
+                        value.equals(serviceCode, ignoreCase = true)
+                    )
+            }
+    }
+}
+
+private fun WorkOrderTrainingPerson.needsTrainingAction(services: List<WorkOrderTrainingService>): Boolean =
+    services.any { service -> trainingAssignmentNeedsAction(assignmentFor(service)) }
+
 @Composable
 private fun DocumentationTrainingLaunchSection(
     context: WorkOrderTrainingContext,
     mode: String,
     selectedPersonIds: Set<String>,
-    showOnlyRecommended: Boolean,
+    selectedServiceKeys: Set<String>,
+    onlyNeedsAction: Boolean,
     enabled: Boolean,
     onModeChange: (String) -> Unit,
     onSelectedPersonIdsChange: (Set<String>) -> Unit,
-    onShowOnlyRecommendedChange: (Boolean) -> Unit,
+    onSelectedServiceKeysChange: (Set<String>) -> Unit,
+    onOnlyNeedsActionChange: (Boolean) -> Unit,
     onConfirm: () -> Unit,
 ) {
     if (!context.enabled) {
         return
     }
-    val visiblePeople = remember(context.people, showOnlyRecommended) {
-        if (showOnlyRecommended) context.people.filter { it.recommended } else context.people
+    val normalizedMode = normalizeDocumentationTrainingMode(mode)
+    val activeMode = documentationTrainingModeOptions.firstOrNull { it.value == normalizedMode }
+        ?: documentationTrainingModeOptions.first()
+    val selectedServices = remember(context.services, selectedServiceKeys) {
+        context.services.filter { service -> selectedServiceKeys.contains(service.trainingSelectionKey()) }
+            .ifEmpty { context.services }
+    }
+    val visiblePeople = remember(context.people, selectedServices, onlyNeedsAction) {
+        val source = if (onlyNeedsAction) {
+            context.people.filter { person -> person.recommended || person.needsTrainingAction(selectedServices) }
+        } else {
+            context.people
+        }
+        source.ifEmpty { if (onlyNeedsAction) emptyList() else context.people }
+    }
+    val completedCount = remember(context.people, selectedServices) {
+        context.people.sumOf { person -> selectedServices.count { service -> !trainingAssignmentNeedsAction(person.assignmentFor(service)) } }
+    }
+    val needsActionCount = remember(context.people, selectedServices) {
+        context.people.sumOf { person -> selectedServices.count { service -> trainingAssignmentNeedsAction(person.assignmentFor(service)) } }
     }
     val selectedCount = selectedPersonIds.size
+
     WizardSection(title = "Osposobljavanje", icon = Icons.Rounded.Badge) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
         ) {
             Column(
                 modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    "${context.services.size} usluga · ${context.peopleCount} osoba · ${context.proposedAssignments} prijedloga",
-                    fontWeight = FontWeight.Black,
-                )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = mode == "online",
-                        onClick = { onModeChange("online") },
-                        enabled = enabled,
-                        label = { Text("Online") },
-                    )
-                    FilterChip(
-                        selected = mode == "live",
-                        onClick = { onModeChange("live") },
-                        enabled = enabled,
-                        label = { Text("Uživo") },
-                    )
-                    AssistChip(
-                        onClick = {},
-                        label = { Text("${context.onlineAssignments} online") },
-                    )
-                    AssistChip(
-                        onClick = {},
-                        label = { Text("${context.liveAssignments} live") },
-                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                        Icon(
+                            activeMode.icon,
+                            contentDescription = null,
+                            modifier = Modifier.padding(10.dp).size(22.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Pokretanje osposobljavanja", fontWeight = FontWeight.Black)
+                        Text(
+                            "${context.peopleCount} osoba · ${context.services.size} usluga · ${context.proposedAssignments} prijedloga",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        )
+                    }
                 }
-                if (context.services.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = {}, label = { Text("$selectedCount odabrano") })
+                    AssistChip(onClick = {}, label = { Text("$completedCount položeno") })
+                    AssistChip(onClick = {}, label = { Text("$needsActionCount treba riješiti") })
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Način provedbe", fontWeight = FontWeight.Black)
+            documentationTrainingModeOptions.forEach { option ->
+                DocumentationTrainingModeCard(
+                    option = option,
+                    selected = option.value == normalizedMode,
+                    enabled = enabled,
+                    onClick = { onModeChange(option.value) },
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Usluge / ispiti", fontWeight = FontWeight.Black)
+                if (context.services.isEmpty()) {
+                    Text(
+                        "RN nema povezanu uslugu osposobljavanja.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         context.services.forEach { service ->
-                            AssistChip(
-                                onClick = {},
+                            val key = service.trainingSelectionKey()
+                            FilterChip(
+                                selected = selectedServiceKeys.contains(key),
+                                onClick = {
+                                    onSelectedServiceKeysChange(
+                                        if (selectedServiceKeys.contains(key)) {
+                                            selectedServiceKeys - key
+                                        } else {
+                                            selectedServiceKeys + key
+                                        },
+                                    )
+                                },
+                                enabled = enabled,
                                 label = {
                                     Text(
-                                        service.label.ifBlank { service.serviceName },
+                                        service.trainingTitle(),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
+                                },
+                                leadingIcon = {
+                                    Text(service.trainingShortLabel(), fontWeight = FontWeight.Black)
                                 },
                             )
                         }
@@ -21966,18 +22141,22 @@ private fun DocumentationTrainingLaunchSection(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
         ) {
             Column(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("Masovni import ljudi", fontWeight = FontWeight.Black)
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text("Masovni import ljudi", fontWeight = FontWeight.Black)
+                    Icon(Icons.Rounded.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
                 Text(
                     if (context.importProfile.enabled) {
                         "${context.importProfile.profileName} · ${context.importProfile.sheetName} · ${context.importProfile.columnCount} polja"
                     } else {
-                        "Standardni predložak · možeš definirati drugačiji profil u tvrtki"
+                        "Predložak se uređuje u webu po tvrtki. Na mobitelu koristi već uvezene osobe."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
@@ -21999,24 +22178,36 @@ private fun DocumentationTrainingLaunchSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Radnici", fontWeight = FontWeight.Black)
+            Column {
+                Text("Radnici", fontWeight = FontWeight.Black)
+                Text(
+                    "${visiblePeople.size} prikazano · ${context.peopleCount} ukupno",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                )
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
-                    selected = showOnlyRecommended,
-                    onClick = { onShowOnlyRecommendedChange(!showOnlyRecommended) },
+                    selected = onlyNeedsAction,
+                    onClick = { onOnlyNeedsActionChange(!onlyNeedsAction) },
                     enabled = enabled,
-                    label = { Text(if (showOnlyRecommended) "Samo prijedlozi" else "Svi") },
+                    label = { Text(if (onlyNeedsAction) "Treba riješiti" else "Svi") },
                 )
-                AssistChip(onClick = {}, label = { Text("$selectedCount odabrano") })
+                TextButton(
+                    onClick = { onSelectedPersonIdsChange(visiblePeople.map { it.id }.filter { it.isNotBlank() }.toSet()) },
+                    enabled = enabled && visiblePeople.isNotEmpty(),
+                ) {
+                    Text("Sve")
+                }
             }
         }
 
         if (visiblePeople.isEmpty()) {
             Text(
                 if (context.people.isEmpty()) {
-                    "Nema osoba za ovu tvrtku. Koristi masovni import u webu ili dodaj radnike u People."
+                    "Nema osoba za ovu tvrtku. Masovni import napravi u webu ili dodaj radnike u People."
                 } else {
-                    "Nema novih prijedloga. Prikaži sve osobe za ručni odabir."
+                    "Nema osoba koje trebaju rješavati odabrane usluge. Prikaži sve za ručni odabir."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
@@ -22025,6 +22216,7 @@ private fun DocumentationTrainingLaunchSection(
             visiblePeople.take(80).forEach { person ->
                 DocumentationTrainingPersonRow(
                     person = person,
+                    services = selectedServices,
                     checked = selectedPersonIds.contains(person.id),
                     enabled = enabled,
                     onCheckedChange = { checked ->
@@ -22034,18 +22226,59 @@ private fun DocumentationTrainingLaunchSection(
                     },
                 )
             }
+            if (visiblePeople.size > 80) {
+                Text(
+                    "Prikazano prvih 80 osoba. Za veći popis koristi web.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                )
+            }
         }
 
         Button(
             modifier = Modifier.fillMaxWidth(),
             onClick = onConfirm,
-            enabled = enabled && selectedPersonIds.isNotEmpty() && context.services.isNotEmpty(),
+            enabled = enabled && selectedPersonIds.isNotEmpty() && selectedServiceKeys.isNotEmpty(),
             shape = RoundedCornerShape(18.dp),
         ) {
-            Text(
-                if (mode == "online") "Potvrdi i pošalji ispite" else "Potvrdi live osposobljavanje",
-                fontWeight = FontWeight.Black,
-            )
+            Text(activeMode.actionLabel, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+private fun DocumentationTrainingModeCard(
+    option: DocumentationTrainingModeOption,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.36f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(option.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(option.label, fontWeight = FontWeight.Black)
+                Text(
+                    option.helper,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                )
+            }
+            RadioButton(selected = selected, onClick = if (enabled) onClick else null)
         }
     }
 }
@@ -22053,52 +22286,70 @@ private fun DocumentationTrainingLaunchSection(
 @Composable
 private fun DocumentationTrainingPersonRow(
     person: WorkOrderTrainingPerson,
+    services: List<WorkOrderTrainingService>,
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val needsAction = person.needsTrainingAction(services)
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) { onCheckedChange(!checked) },
-        shape = RoundedCornerShape(18.dp),
-        color = if (checked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f) else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+        shape = RoundedCornerShape(20.dp),
+        color = when {
+            checked -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+            needsAction -> Color(0xFFFFFBEB)
+            else -> MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            when {
+                checked -> MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
+                needsAction -> Color(0xFFF59E0B).copy(alpha = 0.24f)
+                else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
+            },
+        ),
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Checkbox(
-                checked = checked,
-                onCheckedChange = if (enabled) onCheckedChange else null,
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Text(person.fullName.ifBlank { "Osoba" }, fontWeight = FontWeight.Black)
+                Checkbox(
+                    checked = checked,
+                    onCheckedChange = if (enabled) onCheckedChange else null,
+                )
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(person.fullName.ifBlank { "Osoba" }, fontWeight = FontWeight.Black)
+                    Text(
+                        listOf(
+                            person.oib.takeIf { it.isNotBlank() }?.let { "OIB $it" },
+                            person.jobTitle,
+                            person.locationName,
+                            person.email,
+                        ).filterNotNull().joinToString(" · ").ifBlank { "Bez dodatnih podataka" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            if (services.isEmpty()) {
                 Text(
-                    listOf(
-                        person.oib.takeIf { it.isNotBlank() }?.let { "OIB $it" },
-                        person.jobTitle,
-                        person.locationName,
-                    ).filterNotNull().joinToString(" · ").ifBlank { "Bez dodatnih podataka" },
+                    "Nema odabrane usluge.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    person.assignments
-                        .filter { it.recommended || it.status == "pending" }
-                        .take(6)
-                        .forEach { assignment ->
-                            DocumentationTrainingAssignmentChip(assignment)
-                        }
-                    if (person.recommendedCount > 6) {
-                        AssistChip(onClick = {}, label = { Text("+${person.recommendedCount - 6}") })
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    services.forEach { service ->
+                        DocumentationTrainingAssignmentRow(service, person.assignmentFor(service))
                     }
                 }
             }
@@ -22107,35 +22358,64 @@ private fun DocumentationTrainingPersonRow(
 }
 
 @Composable
-private fun DocumentationTrainingAssignmentChip(assignment: WorkOrderTrainingAssignment) {
-    val tint = when (assignment.status) {
-        "valid", "done" -> Color(0xFF047857)
-        "expired" -> Color(0xFFB45309)
-        "pending" -> MaterialTheme.colorScheme.primary
+private fun DocumentationTrainingAssignmentRow(
+    service: WorkOrderTrainingService,
+    assignment: WorkOrderTrainingAssignment?,
+) {
+    val status = assignment?.trainingStatusKey().orEmpty()
+    val label = assignment?.statusLabel?.takeIf { it.isNotBlank() } ?: when (status) {
+        "valid", "done", "completed", "passed" -> "Položeno"
+        "expired" -> "Isteklo"
+        "expiring" -> "Istječe"
+        "pending", "assigned" -> "Dodijeljeno"
+        "in_progress" -> "U tijeku"
+        else -> "Nedostaje"
+    }
+    val tint = when (status) {
+        "valid", "done", "completed", "passed" -> Color(0xFF047857)
+        "pending", "assigned", "in_progress" -> MaterialTheme.colorScheme.primary
+        "expired", "expiring" -> Color(0xFFB45309)
         else -> MaterialTheme.colorScheme.error
     }
-    AssistChip(
-        onClick = {},
-        label = {
-            Text(
-                listOf(
-                    assignment.serviceCode.takeIf { it.isNotBlank() },
-                    assignment.label.ifBlank { assignment.serviceName },
-                    assignment.statusLabel,
-                ).filterNotNull().joinToString(" · "),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        leadingIcon = {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = tint.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.16f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Icon(
-                if (assignment.recommended) Icons.Rounded.Info else Icons.Rounded.CheckCircle,
+                if (trainingAssignmentNeedsAction(assignment)) Icons.Rounded.ErrorOutline else Icons.Rounded.CheckCircle,
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(18.dp),
             )
-        },
-    )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    service.trainingTitle(),
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    listOf(
+                        assignment?.existingPassedOn?.takeIf { it.isNotBlank() }?.let { "Ispit $it" },
+                        assignment?.existingValidUntil?.takeIf { it.isNotBlank() }?.let { "Rok $it" },
+                        assignment?.linkedLearningTestCount?.takeIf { it > 0 }?.let { "$it test" },
+                    ).filterNotNull().joinToString(" · ").ifBlank { label },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(label, color = tint, fontWeight = FontWeight.Black, style = MaterialTheme.typography.labelMedium)
+        }
+    }
 }
 
 @Composable

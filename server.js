@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.152.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.153.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -17833,9 +17833,12 @@ async function confirmMobileWorkOrderTrainingAssignments({
   }
   const selectedPeople = new Set(normalizeRequestIdList(body.personIds));
   const selectedServices = new Set(normalizeRequestIdList(body.serviceKeys || body.serviceIds));
-  const mode = ["online", "live"].includes(normalizeInputValue(body.mode).toLowerCase())
-    ? normalizeInputValue(body.mode).toLowerCase()
+  const requestedMode = normalizeInputValue(body.mode).toLowerCase();
+  const mode = ["online", "live", "live_app", "live_paper"].includes(requestedMode)
+    ? requestedMode
     : context.defaultMode;
+  const isOnlineMode = mode === "online" || mode === "live_app";
+  const storedExamMode = mode === "live_app" || mode === "live_paper" ? mode : mode;
   const onlyRecommended = body.onlyRecommended !== false;
   const sendEmails = body.sendEmails !== false;
   const services = context.services.filter((service) => selectedServices.size === 0 || selectedServices.has(service.serviceKey) || selectedServices.has(service.serviceId));
@@ -17864,7 +17867,7 @@ async function confirmMobileWorkOrderTrainingAssignments({
       if (onlyRecommended && !["missing", "expired"].includes(status)) {
         continue;
       }
-      const useOnline = mode === "online" && service.linkedLearningTestIds.length > 0;
+      const useOnline = isOnlineMode && service.linkedLearningTestIds.length > 0;
       const primaryLearningTestId = useOnline ? service.linkedLearningTestIds[0] : "";
       const primaryLearningTest = primaryLearningTestId
         ? (scopedSnapshot.learningTests ?? []).find((test) => String(test?.id) === String(primaryLearningTestId))
@@ -17879,7 +17882,7 @@ async function confirmMobileWorkOrderTrainingAssignments({
         serviceCode: service.serviceCode,
         linkedLearningTestIds: service.linkedLearningTestIds,
         linkedLearningTestTitles: service.linkedLearningTestTitles,
-        examMode: useOnline ? "online" : "live",
+        examMode: useOnline ? storedExamMode : (mode === "live_paper" ? "live_paper" : "live"),
         workOrderId: normalizeInputValue(workOrder.id),
         workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
         learningTestId: useOnline ? primaryLearningTestId : normalizeInputValue(existing?.learningTestId),

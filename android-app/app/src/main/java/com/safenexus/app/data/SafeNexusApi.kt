@@ -573,14 +573,16 @@ class SafeNexusApi(
         mode: String,
         personIds: List<String>,
         serviceKeys: List<String>,
+        sendEmails: Boolean = true,
+        onlyRecommended: Boolean = true,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
                 .put("mode", mode.trim().ifBlank { "online" })
                 .put("personIds", JSONArray(personIds.map { it.trim() }.filter { it.isNotBlank() }))
                 .put("serviceKeys", JSONArray(serviceKeys.map { it.trim() }.filter { it.isNotBlank() }))
-                .put("onlyRecommended", true)
-                .put("sendEmails", true)
+                .put("onlyRecommended", onlyRecommended)
+                .put("sendEmails", sendEmails)
                 .toString()
             val json = JSONObject(
                 request(
