@@ -183,6 +183,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
+import com.safenexus.app.BuildConfig
 import com.safenexus.app.data.BootstrapData
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
@@ -2006,8 +2007,115 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         Settings.Secure.getString(getApplication<Application>().contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
 }
 
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
+private fun SafeNexusLearningTestApp(token: String) {
+    val context = LocalContext.current
+    val activity = context.findFragmentActivity()
+    val testUrl = remember(token) {
+        Uri.parse(BuildConfig.SAFE_NEXUS_BASE_URL.trimEnd('/'))
+            .buildUpon()
+            .appendEncodedPath("learning-test.html")
+            .appendQueryParameter("token", token)
+            .appendQueryParameter("mobile", "app")
+            .build()
+            .toString()
+    }
+
+    BackHandler(enabled = true) {
+        activity?.finish()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("SafeNexus ispit", fontWeight = FontWeight.Black)
+                        Text(
+                            "Samo dio za polaganje",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = { activity?.finish() }) {
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Zatvori")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Column {
+                        Text("Ispit je otvoren iz email linka", fontWeight = FontWeight.Black)
+                        Text(
+                            "Ne otvara se cijeli SafeNexus workspace.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        )
+                    }
+                }
+            }
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                factory = { viewContext ->
+                    WebView(viewContext).apply {
+                        webViewClient = WebViewClient()
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.allowContentAccess = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        setBackgroundColor(AndroidColor.WHITE)
+                    }
+                },
+                update = { webView ->
+                    if (webView.tag != testUrl) {
+                        webView.tag = testUrl
+                        webView.loadUrl(testUrl)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+fun SafeNexusApp(learningTestToken: String = "") {
+    if (learningTestToken.isNotBlank()) {
+        SafeNexusLearningTestApp(token = learningTestToken)
+        return
+    }
+    SafeNexusWorkspaceApp()
+}
+
+@Composable
+private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     val state = viewModel.state
     val context = LocalContext.current
     LaunchedEffect(state.pendingExternalUrl) {
@@ -22013,7 +22121,7 @@ private val documentationTrainingModeOptions = listOf(
         helper = "In-person training with the test completed in the app or by link.",
         actionLabel = "Prepare Live - Application",
         icon = Icons.Rounded.Fingerprint,
-        sendEmails = false,
+        sendEmails = true,
     ),
 )
 

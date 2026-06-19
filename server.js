@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.157.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.158.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -415,6 +415,153 @@ function buildAndroidPlainDownloadPage() {
   <p><a href="${apiApkUrl}">3. API download</a></p>
   <p><a href="${assetApkUrl}">4. Static APK link</a></p>
   <p>Datoteka: ${MOBILE_ANDROID_APK_FILE_NAME}</p>
+</body>
+</html>`;
+}
+
+function buildLearningTestAccessUrls(request, token = "") {
+  const normalizedToken = String(token || "").trim();
+  const baseUrl = getRequestPublicBaseUrl(request).replace(/\/+$/, "");
+  const encodedToken = encodeURIComponent(normalizedToken);
+  const webUrl = `${baseUrl}/learning-test.html?token=${encodedToken}`;
+  const startUrl = `${baseUrl}/learning-test/start?token=${encodedToken}`;
+  const fallbackUrl = `${baseUrl}/learning-test/start?token=${encodedToken}&fallback=1`;
+  const appUrl = `safenexus://learning-test?token=${encodedToken}`;
+  const intentUrl = `intent://learning-test?token=${encodedToken}#Intent;scheme=safenexus;package=com.safenexus.app;S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
+  return {
+    appUrl,
+    intentUrl,
+    startUrl,
+    fallbackUrl,
+    webUrl,
+    downloadUrl: `${baseUrl}/download-apk`,
+  };
+}
+
+function buildLearningTestStartPage({ request, token = "" } = {}) {
+  const urls = buildLearningTestAccessUrls(request, token);
+  const versionLabel = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
+  const safeToken = escapeEmailHtml(token);
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafeNexus ispit</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef5ff;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #d7e4ff;
+      --blue: #2563eb;
+      --green: #059669;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 15% 10%, #dbeafe 0, transparent 32%), radial-gradient(circle at 90% 0, #dcfce7 0, transparent 26%), var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(100%, 560px);
+      background: rgba(255,255,255,.94);
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      padding: 28px;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, .14);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      background: #ecfdf5;
+      color: #047857;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    h1 { margin: 18px 0 8px; font-size: clamp(30px, 8vw, 44px); line-height: 1.02; letter-spacing: 0; }
+    p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.55; }
+    .actions { display: grid; gap: 12px; margin-top: 24px; }
+    a.button {
+      display: flex;
+      min-height: 56px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 16px;
+      padding: 14px 16px;
+      text-decoration: none;
+      font-weight: 850;
+      color: white;
+      background: linear-gradient(135deg, #2563eb, #06b6d4);
+      box-shadow: 0 16px 34px rgba(37, 99, 235, .28);
+    }
+    a.button.secondary { background: #0f172a; box-shadow: none; }
+    a.button.ghost {
+      color: var(--blue);
+      background: #f8fbff;
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+    .status {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      font-size: 14px;
+      color: #475569;
+    }
+    .tiny { margin-top: 14px; font-size: 12px; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">SafeNexus ispit · Android ${escapeEmailHtml(versionLabel)}</span>
+    <h1>Otvori ispit</h1>
+    <p>Ako je aplikacija instalirana, ispit se otvara direktno u posebnom dijelu aplikacije. Ako nije, preuzmi aplikaciju ili riješi ispit u pregledniku.</p>
+    <div class="actions">
+      <a class="button" id="open-app-link" href="${escapeEmailHtml(urls.intentUrl)}">Otvori u aplikaciji</a>
+      <a class="button secondary" href="${escapeEmailHtml(urls.downloadUrl)}">Preuzmi Android aplikaciju</a>
+      <a class="button ghost" href="${escapeEmailHtml(urls.webUrl)}">Otvori u web pregledniku</a>
+    </div>
+    <div class="status" id="status">Pokušavam otvoriti aplikaciju...</div>
+    <p class="tiny">Token: ${safeToken}</p>
+  </main>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var shouldAutoOpen = params.get("fallback") !== "1";
+      var intentUrl = ${JSON.stringify(urls.intentUrl)};
+      var appUrl = ${JSON.stringify(urls.appUrl)};
+      var status = document.getElementById("status");
+      var openLink = document.getElementById("open-app-link");
+      if (openLink) {
+        openLink.addEventListener("click", function () {
+          if (status) status.textContent = "Otvaram aplikaciju...";
+        });
+      }
+      if (shouldAutoOpen) {
+        setTimeout(function () {
+          window.location.href = intentUrl || appUrl;
+        }, 250);
+        setTimeout(function () {
+          if (status) status.textContent = "Ako se aplikacija nije otvorila, preuzmi aplikaciju ili riješi ispit u web pregledniku.";
+        }, 1600);
+      } else if (status) {
+        status.textContent = "Aplikacija nije otvorena automatski. Preuzmi aplikaciju ili riješi ispit u web pregledniku.";
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -17605,7 +17752,8 @@ function mobileTrainingModeUsesLearningTest(mode = "") {
 }
 
 function mobileTrainingModeSendsEmail(mode = "") {
-  return normalizeMobileTrainingMode(mode) === "online_test";
+  const normalizedMode = normalizeMobileTrainingMode(mode);
+  return normalizedMode === "online_test" || normalizedMode === "live_application";
 }
 
 function getMobileTrainingAssignmentStatus(item = null) {
@@ -17812,6 +17960,7 @@ function buildMobileTrainingLearningAssignment(record = {}, workOrder = {}, serv
     workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
     serviceId: normalizeInputValue(service.serviceId),
     serviceName: normalizeInputValue(service.serviceName || service.label),
+    examMode: normalizeMobileTrainingMode(service.examMode || service.mode || service.modeDefault || "online_test"),
     assignedByUserId: normalizeInputValue(user?.id),
     assignedByLabel: normalizeInputValue(user?.fullName || user?.email),
   };
@@ -17822,18 +17971,20 @@ async function sendMobileTrainingAssignmentEmail({ request, assignment = {}, tes
   if (!to) {
     return { ok: false, skipped: true, error: "Osoba nema email." };
   }
-  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-  const requestHost = String(request.headers.host || "").trim();
-  const requestBaseUrl = requestHost ? `${forwardedProto || "https"}://${requestHost}` : "";
-  const accessBaseUrl = publicAppUrl || requestBaseUrl;
-  const accessUrl = `${accessBaseUrl.replace(/\/$/, "")}/learning-test.html?token=${encodeURIComponent(String(assignment.accessToken || ""))}`;
+  const accessUrls = buildLearningTestAccessUrls(request, assignment.accessToken || "");
+  const accessUrl = accessUrls.startUrl;
   const serviceName = normalizeInputValue(service.label || service.serviceName);
   const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number);
-  const subject = `Online ispit: ${normalizeInputValue(test.title || serviceName || "osposobljavanje")}`;
+  const normalizedMode = normalizeMobileTrainingMode(assignment.examMode || service.modeDefault || "");
+  const modeLabel = normalizedMode === "live_application" ? "Ispit u aplikaciji" : "Online ispit";
+  const subject = `${modeLabel}: ${normalizeInputValue(test.title || serviceName || "osposobljavanje")}`;
   const assigneeName = normalizeInputValue(assignment.externalFullName || assignment.userLabel) || "Postovani";
   const intro = [
-    serviceName ? `Dodijeljen vam je online ispit za ${serviceName}.` : "Dodijeljen vam je online ispit.",
+    serviceName ? `Dodijeljen vam je ispit za ${serviceName}.` : "Dodijeljen vam je ispit.",
     workOrderNumber ? `Radni nalog: ${workOrderNumber}.` : "",
+    normalizedMode === "live_application"
+      ? "Link otvara samo ispitni dio Android aplikacije; ako aplikacija nije instalirana, stranica nudi preuzimanje."
+      : "",
   ].filter(Boolean).join(" ");
   const result = await sendMail({
     to,
@@ -17844,7 +17995,7 @@ async function sendMobileTrainingAssignmentEmail({ request, assignment = {}, tes
         <div>${escapeEmailHtml(assigneeName)},</div>
         <div style="margin-top:12px;">${escapeEmailHtml(intro)}</div>
         <div style="margin-top:18px;">
-          <a href="${escapeEmailHtml(accessUrl)}" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;">Otvori online ispit</a>
+          <a href="${escapeEmailHtml(accessUrl)}" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;">Otvori ispit</a>
         </div>
         <div style="margin-top:14px;color:#64748b;word-break:break-all;">${escapeEmailHtml(accessUrl)}</div>
       </div>
@@ -17934,7 +18085,12 @@ async function confirmMobileWorkOrderTrainingAssignments({
       if (useOnline && primaryLearningTest) {
         const assignmentItems = Array.isArray(primaryLearningTest.assignmentItems) ? [...primaryLearningTest.assignmentItems] : [];
         const existingAssignment = assignmentItems.find((assignment) => findMobileLearningAssignmentForRecord(assignment, record, workOrder)) || null;
-        const nextAssignment = buildMobileTrainingLearningAssignment(record, workOrder, service, primaryLearningTest, existingAssignment, user);
+        const assignmentService = {
+          ...service,
+          examMode: storedExamMode,
+          mode,
+        };
+        const nextAssignment = buildMobileTrainingLearningAssignment(record, workOrder, assignmentService, primaryLearningTest, existingAssignment, user);
         const remainingAssignments = assignmentItems.filter((assignment) => !findMobileLearningAssignmentForRecord(assignment, record, workOrder));
         const updatedTest = await domainRepository.updateLearningTestItem(primaryLearningTest.id, {
           assignmentItems: [...remainingAssignments, nextAssignment],
@@ -17948,7 +18104,7 @@ async function confirmMobileWorkOrderTrainingAssignments({
               request,
               assignment: nextAssignment,
               test: primaryLearningTest,
-              service,
+              service: assignmentService,
               workOrder,
             });
             if (emailResult.ok) {
@@ -17975,7 +18131,9 @@ async function confirmMobileWorkOrderTrainingAssignments({
 
   return {
     ...result,
-    message: `Osposobljavanje pripremljeno: ${result.peopleUpdated} osoba, ${result.itemsLinked} stavki.`,
+    message: `Osposobljavanje pripremljeno: ${result.peopleUpdated} osoba, ${result.itemsLinked} stavki.${
+      result.emailsSent > 0 ? ` Poslano email linkova: ${result.emailsSent}.` : ""
+    }${result.emailErrors > 0 ? ` Greške emaila: ${result.emailErrors}.` : ""}`,
   };
 }
 
@@ -31168,11 +31326,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-      const requestHost = String(request.headers.host || "").trim();
-      const requestBaseUrl = requestHost ? `${forwardedProto || "https"}://${requestHost}` : "";
-      const accessBaseUrl = publicAppUrl || requestBaseUrl;
-      const accessUrl = `${accessBaseUrl.replace(/\/$/, "")}/learning-test.html?token=${encodeURIComponent(String(assignment.accessToken || ""))}`;
+      const accessUrl = buildLearningTestAccessUrls(request, assignment.accessToken || "").startUrl;
       const serviceName = String(body?.serviceName || assignment.serviceName || "").trim();
       const serviceCode = String(body?.serviceCode || "").trim();
       const workOrderNumber = String(body?.workOrderNumber || assignment.workOrderNumber || "").trim();
@@ -31187,16 +31341,16 @@ async function handleApiRequest(request, response, url) {
       const result = await sendMail({
         to,
         subject,
-        text: `${assigneeName},\n\n${intro}\n\nPristup ispitu: ${accessUrl}\n\nSafeNexus`,
+        text: `${assigneeName},\n\n${intro}\n\nPristup ispitu: ${accessUrl}\n\nAko imaš Android aplikaciju, link otvara ispit u aplikaciji. Ako nemaš, stranica nudi preuzimanje.`,
         html: `
           <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a;">
             <div>${escapeEmailHtml(assigneeName)},</div>
             <div style="margin-top:12px;">${escapeEmailHtml(intro)}</div>
             <div style="margin-top:18px;">
-              <a href="${escapeEmailHtml(accessUrl)}" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;">Otvori online ispit</a>
+              <a href="${escapeEmailHtml(accessUrl)}" style="display:inline-block;padding:10px 14px;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;">Otvori ispit</a>
             </div>
             <div style="margin-top:14px;color:#64748b;word-break:break-all;">${escapeEmailHtml(accessUrl)}</div>
-            <div style="margin-top:18px;color:#64748b;">SafeNexus</div>
+            <div style="margin-top:18px;color:#64748b;">Ako imaš Android aplikaciju, link otvara samo ispit. Ako nemaš, stranica nudi preuzimanje.</div>
           </div>
         `,
       });
@@ -32084,6 +32238,34 @@ const server = createServer(async (request, response) => {
       recordKind,
     });
     response.setHeader("Content-Security-Policy", ISZNR_RO_PDF_BRIDGE_CSP);
+    writeBufferResponse(response, 200, body, {
+      contentType: "text/html; charset=utf-8",
+      headers: NO_STORE_HEADERS,
+    });
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/learning-test/start") {
+    const token = String(url.searchParams.get("token") || "").trim();
+    if (!token) {
+      writeBufferResponse(response, 400, "Nedostaje token za pristup ispitu.", {
+        contentType: "text/plain; charset=utf-8",
+        headers: NO_STORE_HEADERS,
+      });
+      return;
+    }
+    const body = buildLearningTestStartPage({ request, token });
+    if (request.method === "HEAD") {
+      const payload = Buffer.from(body, "utf8");
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "text/html; charset=utf-8");
+      response.setHeader("Content-Length", String(payload.length));
+      Object.entries(NO_STORE_HEADERS).forEach(([headerName, headerValue]) => {
+        response.setHeader(headerName, headerValue);
+      });
+      response.end();
+      return;
+    }
     writeBufferResponse(response, 200, body, {
       contentType: "text/html; charset=utf-8",
       headers: NO_STORE_HEADERS,
