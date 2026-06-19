@@ -34530,6 +34530,13 @@ body.is-vehicle-usage-open {
     minmax(110px, 150px);
 }
 
+.service-catalog-filters {
+  grid-template-columns:
+    minmax(280px, 1fr)
+    minmax(160px, 220px)
+    minmax(160px, 220px);
+}
+
 .measurement-equipment-isznr-head-actions {
   display: flex;
   flex-wrap: wrap;
@@ -47549,7 +47556,7 @@ body.is-measurement-equipment-export-open {
 
 .work-order-document-training-mode-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.6rem;
 }
 
@@ -47558,11 +47565,32 @@ body.is-measurement-equipment-export-open {
   border-radius: 1rem;
   padding: 0.7rem 0.82rem;
   display: grid;
-  justify-items: start;
-  align-content: start;
-  gap: 0.18rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.58rem;
   text-align: left;
   white-space: normal;
+}
+
+.work-order-document-training-mode-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(47, 111, 237, 0.14), rgba(216, 77, 193, 0.12));
+  color: #2563eb;
+}
+
+.work-order-document-training-mode-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.work-order-document-training-mode-copy {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
 }
 
 .work-order-document-training-mode-button strong {
@@ -47571,7 +47599,7 @@ body.is-measurement-equipment-export-open {
   font-weight: 900;
 }
 
-.work-order-document-training-mode-button span {
+.work-order-document-training-mode-copy small {
   color: #6d7890;
   font-size: 0.72rem;
   line-height: 1.35;
@@ -52231,7 +52259,7 @@ body.is-global-loading {
 .people-training-service-launch-modal {
   display: grid;
   gap: 14px;
-  width: min(760px, calc(100vw - 32px));
+  width: min(980px, calc(100vw - 32px));
   padding: 18px;
   border: 1px solid rgba(190, 204, 232, 0.86);
   border-radius: 24px;
@@ -52265,7 +52293,7 @@ body.is-global-loading {
 
 .people-training-service-launch-choices {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -58389,6 +58417,15 @@ button.work-order-editor-section-head:focus-visible {
   font-size: 22px;
 }
 
+.people-training-bulk-preview-body {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+  padding: 14px;
+}
+
 .people-training-bulk-preview-actions {
   border-top: 1px solid rgba(191, 219, 254, 0.75);
   justify-content: flex-end;
@@ -59462,6 +59499,123 @@ button.work-order-editor-section-head:focus-visible {
   align-items: center;
 }
 
+.people-training-bulk-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.people-training-bulk-flow span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid rgba(191, 219, 254, 0.82);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+  color: #1f2d48;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.people-training-bulk-flow strong {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.people-training-bulk-flow small {
+  overflow: hidden;
+  color: #42526d;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-bulk-mode-panel {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.48fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.1), transparent 36%),
+    rgba(255, 255, 255, 0.78);
+}
+
+.people-training-bulk-mode-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-bulk-mode-copy strong {
+  color: #17213a;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.people-training-bulk-mode-copy span {
+  color: #60708c;
+  font-size: 0.76rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.people-training-bulk-mode-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.people-training-bulk-mode-button {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(178, 198, 230, 0.9);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1f2d48;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.people-training-bulk-mode-button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.people-training-bulk-mode-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-training-bulk-mode-button:hover,
+.people-training-bulk-mode-button:focus-visible,
+.people-training-bulk-mode-button.is-active {
+  border-color: rgba(37, 99, 235, 0.64);
+  background: rgba(239, 246, 255, 0.96);
+  color: #1d4ed8;
+  outline: none;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.12);
+}
+
 .people-training-bulk-quick-actions {
   display: flex;
   align-items: center;
@@ -59489,7 +59643,7 @@ button.work-order-editor-section-head:focus-visible {
 
 .people-training-bulk-preview-groups {
   overflow: auto;
-  padding: 14px;
+  padding: 0 2px 2px;
 }
 
 .people-training-bulk-person-plan {
@@ -59697,6 +59851,8 @@ button.work-order-editor-section-head:focus-visible {
   }
 
   .people-training-bulk-preview-head,
+  .people-training-bulk-flow,
+  .people-training-bulk-mode-panel,
   .people-training-rn-card-head,
   .people-training-rn-card-meta,
   .people-training-rn-person-row,
@@ -59708,7 +59864,9 @@ button.work-order-editor-section-head:focus-visible {
   }
 
   .people-training-bulk-service-header,
-  .people-training-bulk-service-cells {
+  .people-training-bulk-service-cells,
+  .people-training-service-launch-choices,
+  .people-training-bulk-mode-buttons {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

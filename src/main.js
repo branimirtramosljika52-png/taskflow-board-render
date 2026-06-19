@@ -2290,6 +2290,7 @@ const state = {
   serviceCatalogFilters: {
     query: "",
     status: "all",
+    type: "all",
   },
   learningTestsFilters: {
     query: "",
@@ -2354,7 +2355,7 @@ const state = {
   jobEditorSheet: "basic",
   peopleTrainingExamSelection: "rn",
   peopleTrainingExamQuery: "",
-  peopleTrainingExamCollapsed: false,
+  peopleTrainingExamCollapsed: true,
   peopleTrainingSelectedRecordIds: new Set(),
   activePeopleTrainingRecordId: "",
   peopleTrainingEditorOpen: false,
@@ -4677,6 +4678,7 @@ const serviceCatalogInactiveCount = document.querySelector("#service-catalog-ina
 const serviceCatalogTemplateCount = document.querySelector("#service-catalog-template-count");
 const serviceCatalogSearchInput = document.querySelector("#service-catalog-search");
 const serviceCatalogFilterStatusInput = document.querySelector("#service-catalog-filter-status");
+const serviceCatalogFilterTypeInput = document.querySelector("#service-catalog-filter-type");
 const serviceCatalogHelper = document.querySelector("#service-catalog-helper");
 const serviceCatalogList = document.querySelector("#service-catalog-list");
 const serviceCatalogEmpty = document.querySelector("#service-catalog-empty");
@@ -15520,6 +15522,7 @@ function closePeopleTrainingBulkPreviewDialog(dialog = null) {
 function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
   const serviceOptions = getPeopleTrainingTypeOptions();
   const selectionMap = createPeopleTrainingBulkSelectionMap(records, typeOption);
+  let selectedMode = normalizeWorkOrderDocumentTrainingMode(state.workOrderDocumentWizard.trainingMode || "online_test");
 
   const backdrop = document.createElement("div");
   backdrop.className = "people-training-bulk-preview-backdrop";
@@ -15556,6 +15559,51 @@ function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
   closeButton.addEventListener("click", () => closePeopleTrainingBulkPreviewDialog(backdrop));
   head.append(copy, quickActions, closeButton);
 
+  const body = document.createElement("div");
+  body.className = "people-training-bulk-preview-body";
+
+  const flow = document.createElement("div");
+  flow.className = "people-training-bulk-flow";
+  [
+    ["1", "Osobe"],
+    ["2", "Usluge"],
+    ["3", "RN"],
+    ["4", "Nastavi izradu"],
+  ].forEach(([step, label]) => {
+    const item = document.createElement("span");
+    item.innerHTML = `<strong>${escapeHtml(step)}</strong><small>${escapeHtml(label)}</small>`;
+    flow.append(item);
+  });
+
+  const modePanel = document.createElement("div");
+  modePanel.className = "people-training-bulk-mode-panel";
+  const modeCopy = document.createElement("div");
+  modeCopy.className = "people-training-bulk-mode-copy";
+  const modeTitle = document.createElement("strong");
+  modeTitle.textContent = "Način provedbe";
+  const modeHelp = document.createElement("span");
+  modeHelp.textContent = "Odaberi kako se polaganje pokreće nakon otvaranja RN-a.";
+  modeCopy.append(modeTitle, modeHelp);
+  const modeButtons = document.createElement("div");
+  modeButtons.className = "people-training-bulk-mode-buttons";
+  const renderModeButtons = () => {
+    modeButtons.replaceChildren(...WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS.map((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "people-training-bulk-mode-button";
+      button.classList.toggle("is-active", option.value === selectedMode);
+      button.innerHTML = `${getWorkOrderIconMarkup(option.iconName || "service")}<span>${escapeHtml(option.label)}</span>`;
+      button.addEventListener("click", () => {
+        selectedMode = option.value;
+        state.workOrderDocumentWizard.trainingMode = option.value;
+        renderModeButtons();
+        renderPreviewGroups();
+      });
+      return button;
+    }));
+  };
+  modePanel.append(modeCopy, modeButtons);
+
   const groupList = document.createElement("div");
   groupList.className = "people-training-bulk-preview-groups";
 
@@ -15570,7 +15618,7 @@ function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
   const openButton = document.createElement("button");
   openButton.type = "button";
   openButton.className = "primary-button";
-  openButton.textContent = "Otvori RN";
+  openButton.textContent = "Otvori RN i nastavi";
   openButton.addEventListener("click", () => {
     const selectedEntries = getPeopleTrainingBulkSelectedEntries(records, selectionMap, serviceOptions);
     if (selectedEntries.length === 0) {
@@ -15578,7 +15626,7 @@ function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
       return;
     }
     closePeopleTrainingBulkPreviewDialog(backdrop);
-    void executeBulkPeopleTrainingWorkOrders(records, selectionMap);
+    void executeBulkPeopleTrainingWorkOrders(records, selectionMap, { examMode: selectedMode });
   });
   actions.append(cancelButton, openButton);
 
@@ -15587,7 +15635,8 @@ function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
     const workOrderGroups = groupPeopleTrainingEntriesForWorkOrders(selectedEntries);
     const uniqueServices = new Set(selectedEntries.map((entry) => entry.typeOption.value));
     const groups = buildPeopleTrainingBulkPreviewGroups(records, serviceOptions, selectionMap);
-    summary.textContent = `${records.length} osoba · ${workOrderGroups.length} RN po tvrtki i lokaciji · ${selectedEntries.length} odabranih polaganja · ${uniqueServices.size} usluga u RN.`;
+    const modeLabel = getWorkOrderDocumentTrainingModeOption(selectedMode).label;
+    summary.textContent = `${records.length} osoba · ${workOrderGroups.length} RN po tvrtki i lokaciji · ${selectedEntries.length} odabranih polaganja · ${uniqueServices.size} usluga u RN · ${modeLabel}.`;
     groupList.replaceChildren(...groups.map((group) => (
       createPeopleTrainingBulkPreviewGroupCard(group, serviceOptions, selectionMap, renderPreviewGroups)
     )));
@@ -15596,7 +15645,7 @@ function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
       ? "Odaberi usluge po osobama prije otvaranja RN-a."
       : workOrderGroups.length === 0
         ? "Za odabrane osobe nedostaje tvrtka."
-        : "Otvori RN po tvrtki i lokaciji.";
+        : "Otvori RN po tvrtki i lokaciji pa nastavi izradu dokumentacije.";
   };
 
   const addQuickButton = (label = "", preset = {}) => {
@@ -15619,8 +15668,10 @@ function openPeopleTrainingBulkPreviewDialog(records = [], typeOption = {}) {
   addQuickButton("Sve", { mode: "all" });
   addQuickButton("Očisti", { mode: "clear" });
 
+  renderModeButtons();
   renderPreviewGroups();
-  modal.append(head, groupList, actions);
+  body.append(flow, modePanel, groupList);
+  modal.append(head, body, actions);
   backdrop.append(modal);
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop) {
@@ -16139,30 +16190,12 @@ function openPeopleTrainingForService(record = {}, item = {}) {
   };
 
   choices.append(
-    createChoice({
-      mode: "online_teams",
-      title: "Online - Teams",
-      text: "Create the work order for a remote Teams session without automatic test assignment.",
-      icon: "service",
-    }),
-    createChoice({
-      mode: "online_test",
-      title: "Online - Test",
-      text: "Create the work order and assign the linked online test.",
-      icon: "service",
-    }),
-    createChoice({
-      mode: "live_paper",
-      title: "Live Paper",
-      text: "Create the work order for in-person training with paper exam evidence.",
-      icon: "team",
-    }),
-    createChoice({
-      mode: "live_application",
-      title: "Live Application",
-      text: "Create the work order and prepare app or link based testing on site.",
-      icon: "team",
-    }),
+    ...WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS.map((option) => createChoice({
+      mode: option.value,
+      title: option.label,
+      text: option.helper,
+      icon: option.iconName || "service",
+    })),
   );
 
   if (existingWorkOrder) {
@@ -16323,10 +16356,10 @@ function createPeopleTrainingQuickExamForm(record = {}) {
   const modeSelect = document.createElement("select");
   modeSelect.name = "examMode";
   replaceSelectOptions(modeSelect, [
-    { value: "live_paper", label: "Live Paper" },
-    { value: "live_application", label: "Live Application" },
     { value: "online_teams", label: "Online - Teams" },
     { value: "online_test", label: "Online - Test" },
+    { value: "live_paper", label: "Live - Paper" },
+    { value: "live_application", label: "Live - Application" },
     { value: "manual", label: "Manual" },
   ], "live_paper");
 
@@ -16550,7 +16583,7 @@ function syncPeopleTrainingBulkActions(records = getPeopleTrainingFilteredRecord
   }
 }
 
-async function executeBulkPeopleTrainingWorkOrders(records = [], selection = {}) {
+async function executeBulkPeopleTrainingWorkOrders(records = [], selection = {}, options = {}) {
   peopleTrainingLastBulkOpenSummary = {
     assignedTests: 0,
     sentEmails: 0,
@@ -16563,7 +16596,7 @@ async function executeBulkPeopleTrainingWorkOrders(records = [], selection = {})
   }
 
   const selectedEntries = getPeopleTrainingBulkSelectedEntries(records, selection);
-  const created = await createPeopleTrainingWorkOrdersForRecords(records, selection);
+  const created = await createPeopleTrainingWorkOrdersForRecords(records, selection, options);
   if (created.length > 0) {
     clearPeopleTrainingSelection();
     renderPeopleTrainingModule();
@@ -75078,12 +75111,20 @@ function renderServiceCatalogModule() {
   const filters = {
     query: serviceCatalogSearchInput?.value?.trim() || state.serviceCatalogFilters.query || "",
     status: serviceCatalogFilterStatusInput?.value || state.serviceCatalogFilters.status || "all",
+    type: serviceCatalogFilterTypeInput?.value || state.serviceCatalogFilters.type || "all",
   };
   state.serviceCatalogFilters = filters;
 
   const serviceCatalogItems = canAccessServiceCatalog ? (state.serviceCatalog ?? []) : [];
   const allItems = sortServiceCatalogItems(serviceCatalogItems);
-  const visibleItems = sortServiceCatalogItems(filterServiceCatalogItems(serviceCatalogItems, filters));
+  const visibleItems = sortServiceCatalogItems(
+    filterServiceCatalogItems(serviceCatalogItems, filters).filter((item) => {
+      if (filters.type === "all") {
+        return true;
+      }
+      return normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === filters.type;
+    }),
+  );
 
   if (serviceCatalogOpenFormButton) {
     serviceCatalogOpenFormButton.hidden = !canManageMasterData;
@@ -107882,6 +107923,12 @@ function renderSharedOptions() {
       ...SERVICE_CATALOG_STATUS_OPTIONS,
     ], state.serviceCatalogFilters.status || "all");
   }
+  if (serviceCatalogFilterTypeInput) {
+    replaceSelectOptions(serviceCatalogFilterTypeInput, [
+      { value: "all", label: "Sve vrste" },
+      ...SERVICE_CATALOG_TYPE_OPTIONS,
+    ], state.serviceCatalogFilters.type || "all");
+  }
   if (measurementEquipmentKindInput) {
     replaceSelectOptions(measurementEquipmentKindInput, MEASUREMENT_EQUIPMENT_KIND_OPTIONS, measurementEquipmentKindInput.value || "combined");
   }
@@ -120569,6 +120616,7 @@ const WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS = Object.freeze([
     helper: "Remote classroom session. No automatic test link is sent.",
     actionLabel: "Prepare Online - Teams",
     examMode: "online_teams",
+    iconName: "team",
   }),
   Object.freeze({
     value: "online_test",
@@ -120576,20 +120624,23 @@ const WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS = Object.freeze([
     helper: "Sends test links by email and tracks remote completion.",
     actionLabel: "Send Online - Test",
     examMode: "online_test",
+    iconName: "mail",
   }),
   Object.freeze({
     value: "live_paper",
-    label: "Live Paper",
+    label: "Live - Paper",
     helper: "In-person training with paper exam evidence.",
-    actionLabel: "Prepare Live Paper",
+    actionLabel: "Prepare Live - Paper",
     examMode: "live_paper",
+    iconName: "document",
   }),
   Object.freeze({
     value: "live_application",
-    label: "Live Application",
+    label: "Live - Application",
     helper: "In-person training with the test completed in the app or by link.",
-    actionLabel: "Prepare Live Application",
+    actionLabel: "Prepare Live - Application",
     examMode: "live_application",
+    iconName: "todo",
   }),
 ]);
 
@@ -120851,7 +120902,13 @@ function createWorkOrderDocumentTrainingModeButton(option = {}) {
   button.className = "ghost-button work-order-document-training-mode-button";
   const activeMode = normalizeWorkOrderDocumentTrainingMode(state.workOrderDocumentWizard.trainingMode);
   button.classList.toggle("is-active", option.value === activeMode);
-  button.innerHTML = `<strong>${escapeHtml(option.label)}</strong><span>${escapeHtml(option.helper)}</span>`;
+  button.innerHTML = `
+    <span class="work-order-document-training-mode-icon">${getWorkOrderIconMarkup(option.iconName || "service")}</span>
+    <span class="work-order-document-training-mode-copy">
+      <strong>${escapeHtml(option.label)}</strong>
+      <small>${escapeHtml(option.helper)}</small>
+    </span>
+  `;
   button.addEventListener("click", () => {
     state.workOrderDocumentWizard.trainingMode = option.value;
     renderWorkOrderDocumentWizard();
@@ -133260,6 +133317,11 @@ serviceCatalogSearchInput?.addEventListener("input", () => {
 
 serviceCatalogFilterStatusInput?.addEventListener("change", () => {
   state.serviceCatalogFilters.status = serviceCatalogFilterStatusInput.value || "all";
+  renderServiceCatalogModule();
+});
+
+serviceCatalogFilterTypeInput?.addEventListener("change", () => {
+  state.serviceCatalogFilters.type = serviceCatalogFilterTypeInput.value || "all";
   renderServiceCatalogModule();
 });
 
@@ -159266,8 +159328,12 @@ peopleTrainingDownloadTemplateButton?.addEventListener("click", () => {
 peopleTrainingOpenTemplateButton?.addEventListener("click", () => {
   activateSidebarItem("list-of-services", { expandSidebar: true });
   state.serviceCatalogFilters.query = "";
+  state.serviceCatalogFilters.type = "znr";
   if (serviceCatalogSearchInput) {
     serviceCatalogSearchInput.value = "";
+  }
+  if (serviceCatalogFilterTypeInput) {
+    serviceCatalogFilterTypeInput.value = "znr";
   }
   renderServiceCatalogModule();
   const selectedType = String(state.peopleTrainingFilters.trainingType || "all").trim();
