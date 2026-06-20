@@ -4928,6 +4928,7 @@ const learningTestIdInput = document.querySelector("#learning-test-id");
 const learningTestTitleInput = document.querySelector("#learning-test-title");
 const learningTestStatusInput = document.querySelector("#learning-test-status");
 const learningTestSecondsPerQuestionInput = document.querySelector("#learning-test-seconds-per-question");
+const learningTestPassPercentInput = document.querySelector("#learning-test-pass-percent");
 const learningTestDescriptionInput = document.querySelector("#learning-test-description");
 const learningTestIntendedForInput = document.querySelector("#learning-test-intended-for");
 const learningTestRecommendationRulesInput = document.querySelector("#learning-test-recommendation-rules");
@@ -12131,8 +12132,38 @@ function getPeopleTrainingItemLearningAssignments(record = {}, item = {}) {
   });
 }
 
+function getLearningAssignmentPassPercent(test = {}, assignment = {}) {
+  const numeric = Math.round(Number(assignment?.passPercent ?? test?.passPercent ?? 80));
+  return Math.max(1, Math.min(100, Number.isFinite(numeric) && numeric > 0 ? numeric : 80));
+}
+
+function isLearningAssignmentCompleted(assignment = {}) {
+  return String(assignment?.status || "").toLowerCase() === "completed";
+}
+
+function isLearningAssignmentPassed(test = {}, assignment = {}) {
+  if (!isLearningAssignmentCompleted(assignment)) {
+    return false;
+  }
+  if (assignment?.passed !== undefined) {
+    return Boolean(assignment.passed);
+  }
+  const score = Math.round(Number(assignment?.scorePercent ?? 0));
+  return Number.isFinite(score) && score >= getLearningAssignmentPassPercent(test, assignment);
+}
+
+function isLearningAssignmentFailed(test = {}, assignment = {}) {
+  return isLearningAssignmentCompleted(assignment) && !isLearningAssignmentPassed(test, assignment);
+}
+
 function getPeopleTrainingItemExamProgress(record = {}, item = {}) {
   const assignments = getPeopleTrainingItemLearningAssignments(record, item);
+  if (assignments.length > 0 && assignments.every(({ test, assignment }) => isLearningAssignmentPassed(test, assignment))) {
+    return "completed";
+  }
+  if (assignments.some(({ test, assignment }) => isLearningAssignmentFailed(test, assignment))) {
+    return "failed";
+  }
   if (assignments.some(({ assignment }) => String(assignment.status || "").toLowerCase() === "in_progress")) {
     return "in_progress";
   }
@@ -12322,7 +12353,9 @@ function getPeopleTrainingExamTrackingRowsByWorkOrder() {
         return null;
       }
       const assignmentStatuses = assignments.map(({ assignment }) => String(assignment.status || "pending").toLowerCase());
-      const completedAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "completed");
+      const passedAssignment = assignments.find(({ test, assignment }) => isLearningAssignmentPassed(test, assignment));
+      const failedAssignment = assignments.find(({ test, assignment }) => isLearningAssignmentFailed(test, assignment));
+      const completedAssignment = passedAssignment || failedAssignment || null;
       const inProgressAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "in_progress");
       const pendingAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "pending");
       const assignmentWorkOrderId = assignments[0]?.assignment?.workOrderId || "";
@@ -12334,9 +12367,11 @@ function getPeopleTrainingExamTrackingRowsByWorkOrder() {
       const workOrderId = workOrder?.id || item.workOrderId || assignmentWorkOrderId || "";
       const workOrderNumber = workOrder?.workOrderNumber || item.workOrderNumber || assignmentWorkOrderNumber || "";
       const fallbackGroupKey = `bez-rn::${record.companyId || ""}::${record.locationId || ""}`;
-      const progress = isPeopleTrainingItemPassed(item) || completedAssignment
+      const progress = isPeopleTrainingItemPassed(item) || (assignments.length > 0 && assignments.every(({ test, assignment }) => isLearningAssignmentPassed(test, assignment)))
         ? "completed"
-        : inProgressAssignment
+        : failedAssignment
+          ? "failed"
+          : inProgressAssignment
           ? "in_progress"
           : (pendingAssignment || String(item.certificateStatus || "").toLowerCase() === "assigned")
             ? "pending"
@@ -12351,6 +12386,7 @@ function getPeopleTrainingExamTrackingRowsByWorkOrder() {
         workOrderNumber,
         testTitles: assignments.map(({ test }) => test.title || "Online test").filter(Boolean),
         scorePercent: completedAssignment?.assignment?.scorePercent ?? "",
+        passPercent: completedAssignment ? getLearningAssignmentPassPercent(completedAssignment.test, completedAssignment.assignment) : "",
         assignmentStatuses,
       };
     })
@@ -12363,16 +12399,20 @@ function getPeopleTrainingExamTrackingRowsByPerson() {
   return records.flatMap((record) => normalizePeopleTrainingItemsForUi(record.trainingItems)
     .map((item) => {
       const assignments = getPeopleTrainingItemLearningAssignments(record, item);
-      const completedAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "completed");
+      const passedAssignment = assignments.find(({ test, assignment }) => isLearningAssignmentPassed(test, assignment));
+      const failedAssignment = assignments.find(({ test, assignment }) => isLearningAssignmentFailed(test, assignment));
+      const completedAssignment = passedAssignment || failedAssignment || null;
       const inProgressAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "in_progress");
       const pendingAssignment = assignments.find(({ assignment }) => String(assignment.status || "").toLowerCase() === "pending");
       const workOrder = findPeopleTrainingTrackingWorkOrder(
         item.workOrderId || assignments[0]?.assignment?.workOrderId || "",
         item.workOrderNumber || assignments[0]?.assignment?.workOrderNumber || "",
       );
-      const progress = isPeopleTrainingItemPassed(item) || completedAssignment
+      const progress = isPeopleTrainingItemPassed(item) || (assignments.length > 0 && assignments.every(({ test, assignment }) => isLearningAssignmentPassed(test, assignment)))
         ? "completed"
-        : inProgressAssignment
+        : failedAssignment
+          ? "failed"
+          : inProgressAssignment
           ? "in_progress"
           : (pendingAssignment || String(item.certificateStatus || "").toLowerCase() === "assigned")
             ? "pending"
@@ -12387,13 +12427,21 @@ function getPeopleTrainingExamTrackingRowsByPerson() {
         workOrderNumber: workOrder?.workOrderNumber || item.workOrderNumber || assignments[0]?.assignment?.workOrderNumber || "",
         testTitles: assignments.map(({ test }) => test.title || "Online test").filter(Boolean),
         scorePercent: completedAssignment?.assignment?.scorePercent ?? "",
+        passPercent: completedAssignment ? getLearningAssignmentPassPercent(completedAssignment.test, completedAssignment.assignment) : "",
       };
     }));
 }
 
 function getPeopleTrainingExamTrackingProgressLabel(row = {}) {
   if (row.progress === "completed") {
-    return row.scorePercent !== "" ? `Položeno · ${row.scorePercent}%` : "Položeno";
+    return row.scorePercent !== ""
+      ? `Položeno · ${row.scorePercent}% / ${row.passPercent || 80}%`
+      : "Položeno";
+  }
+  if (row.progress === "failed") {
+    return row.scorePercent !== ""
+      ? `Nije položeno · ${row.scorePercent}% / ${row.passPercent || 80}%`
+      : "Nije položeno";
   }
   if (row.progress === "in_progress") {
     return "Ispit u tijeku";
@@ -12443,6 +12491,9 @@ function getPeopleTrainingTrackingGroupProgress(group = {}) {
   if (statuses.length > 0 && statuses.every((status) => status === "completed")) {
     return "completed";
   }
+  if (statuses.includes("failed")) {
+    return "failed";
+  }
   if (statuses.includes("in_progress")) {
     return "in_progress";
   }
@@ -12456,6 +12507,9 @@ function getPeopleTrainingTrackingGroupProgressLabel(group = {}) {
   const progress = getPeopleTrainingTrackingGroupProgress(group);
   if (progress === "completed") {
     return "Položeno";
+  }
+  if (progress === "failed") {
+    return "Nije položeno";
   }
   if (progress === "in_progress") {
     return "U tijeku";
@@ -15851,7 +15905,7 @@ function buildPeopleTrainingLearningAssignment(record = {}, workOrder = {}, type
     serviceName: String(typeOption.label || typeOption.serviceName || typeOption.serviceCode || "").trim(),
     assignedByUserId: String(state.user?.id || "").trim(),
     assignedByLabel: String(state.user?.fullName || state.user?.email || "").trim(),
-    ...buildLearningAssignmentQuestionSnapshot(test, existingAssignment),
+    ...buildLearningAssignmentQuestionSnapshot(test, existingAssignment, { workOrder, typeOption }),
   };
 }
 
@@ -62891,7 +62945,7 @@ async function assignLearningTestToWorkOrderPerson(workOrder = {}, test = {}, se
     safetySpecialistLabel: specialist
       ? String(specialist.fullName || specialist.email || "").trim()
       : "",
-    ...buildLearningAssignmentQuestionSnapshot(test, existingAssignment),
+    ...buildLearningAssignmentQuestionSnapshot(test, existingAssignment, { workOrder, service }),
   };
 
   const remaining = assignmentItems.filter((item) => (
@@ -81361,6 +81415,7 @@ function buildLearningTestPayload() {
     title: learningTestTitleInput?.value || "",
     status: learningTestStatusInput?.value || "draft",
     secondsPerQuestion: Number(learningTestSecondsPerQuestionInput?.value || 60) || 60,
+    passPercent: Number(learningTestPassPercentInput?.value || 80) || 80,
     description: learningTestDescriptionInput?.value || "",
     intendedFor: learningTestIntendedForInput?.value || "",
     recommendationRules: learningTestRecommendationRulesInput?.value || "",
@@ -81517,6 +81572,9 @@ function resetLearningTestForm() {
   if (learningTestSecondsPerQuestionInput) {
     learningTestSecondsPerQuestionInput.value = "60";
   }
+  if (learningTestPassPercentInput) {
+    learningTestPassPercentInput.value = "80";
+  }
   if (learningTestIntendedForInput) {
     learningTestIntendedForInput.value = "";
   }
@@ -81556,6 +81614,9 @@ function hydrateLearningTestForm(item) {
   }
   if (learningTestSecondsPerQuestionInput) {
     learningTestSecondsPerQuestionInput.value = String(Number(item.secondsPerQuestion ?? 60) || 60);
+  }
+  if (learningTestPassPercentInput) {
+    learningTestPassPercentInput.value = String(Number(item.passPercent ?? 80) || 80);
   }
   if (learningTestDescriptionInput) {
     learningTestDescriptionInput.value = item.description || "";
@@ -81947,6 +82008,7 @@ function renderLearningTestsModule() {
     [
       ["Pitanja", item.questionItems?.length ?? 0],
       ["Sek./pitanje", Number(item.secondsPerQuestion ?? 60) || 60],
+      ["Prolaz", `${Number(item.passPercent ?? 80) || 80}%`],
       ["Materijali", item.handbookDocuments?.length ?? 0],
       ["Dodjele", item.assignmentItems?.length ?? 0],
       ["Azurirano", item.updatedAt ? formatCompactDate(item.updatedAt) : "-"],
@@ -120714,6 +120776,15 @@ function normalizeLearningTestSecondsForUi(value, fallback = 60) {
   return Math.max(5, Math.min(3600, numeric));
 }
 
+function normalizeLearningTestPassPercentForUi(value, fallback = 80) {
+  const numeric = Math.round(Number(value));
+  const fallbackNumeric = Math.round(Number(fallback));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return Math.max(1, Math.min(100, Number.isFinite(fallbackNumeric) && fallbackNumeric > 0 ? fallbackNumeric : 80));
+  }
+  return Math.max(1, Math.min(100, numeric));
+}
+
 function normalizeLearningTestQuestionLimitForUi(value, totalQuestions = 0) {
   const total = Math.max(0, Math.min(500, Math.round(Number(totalQuestions)) || 0));
   const numeric = Math.round(Number(value));
@@ -120736,26 +120807,57 @@ function formatDurationLabel(totalSeconds = 0) {
   return `${minutes} min ${remainder} s`;
 }
 
-function getWorkOrderDocumentTrainingQuestionConfig(test = {}) {
+function getWorkOrderDocumentTrainingQuestionConfigKey(test = {}, context = {}) {
   const testId = String(test?.id || "").trim();
+  if (!testId) {
+    return "";
+  }
+  const workOrderId = String(context?.workOrder?.id || context?.workOrderId || context?.assignment?.workOrderId || "").trim();
+  const workOrderNumber = String(context?.workOrder?.workOrderNumber || context?.workOrderNumber || context?.assignment?.workOrderNumber || "").trim();
+  const serviceId = String(
+    context?.typeOption?.serviceId
+      || context?.typeOption?.value
+      || context?.typeOption?.serviceCode
+      || context?.service?.serviceId
+      || context?.service?.id
+      || context?.service?.serviceCode
+      || context?.serviceId
+      || context?.assignment?.serviceId
+      || context?.assignment?.serviceName
+      || "",
+  ).trim();
+  return [workOrderId || workOrderNumber || "rn", serviceId || "service", testId].join("::");
+}
+
+function getWorkOrderDocumentTrainingQuestionConfig(test = {}, context = {}) {
+  const testId = String(test?.id || "").trim();
+  const configKey = getWorkOrderDocumentTrainingQuestionConfigKey(test, context);
   const questionItems = getLearningTestQuestionItems(test);
   const totalQuestions = questionItems.length;
-  const stored = testId ? (state.workOrderDocumentWizard.trainingQuestionConfig?.[testId] ?? {}) : {};
+  const stored = configKey
+    ? (state.workOrderDocumentWizard.trainingQuestionConfig?.[configKey]
+      ?? state.workOrderDocumentWizard.trainingQuestionConfig?.[testId]
+      ?? {})
+    : {};
   return {
     questionLimit: normalizeLearningTestQuestionLimitForUi(stored.questionLimit, totalQuestions),
     timePerQuestionSeconds: normalizeLearningTestSecondsForUi(
       stored.timePerQuestionSeconds,
       test.secondsPerQuestion ?? 60,
     ),
+    passPercent: normalizeLearningTestPassPercentForUi(
+      stored.passPercent,
+      test.passPercent ?? 80,
+    ),
   };
 }
 
-function setWorkOrderDocumentTrainingQuestionConfig(test = {}, patch = {}) {
-  const testId = String(test?.id || "").trim();
-  if (!testId) {
+function setWorkOrderDocumentTrainingQuestionConfig(test = {}, patch = {}, context = {}) {
+  const configKey = getWorkOrderDocumentTrainingQuestionConfigKey(test, context);
+  if (!configKey) {
     return;
   }
-  const current = getWorkOrderDocumentTrainingQuestionConfig(test);
+  const current = getWorkOrderDocumentTrainingQuestionConfig(test, context);
   const questionItems = getLearningTestQuestionItems(test);
   const next = {
     questionLimit: normalizeLearningTestQuestionLimitForUi(
@@ -120766,10 +120868,14 @@ function setWorkOrderDocumentTrainingQuestionConfig(test = {}, patch = {}) {
       patch.timePerQuestionSeconds ?? current.timePerQuestionSeconds,
       test.secondsPerQuestion ?? 60,
     ),
+    passPercent: normalizeLearningTestPassPercentForUi(
+      patch.passPercent ?? current.passPercent,
+      test.passPercent ?? 80,
+    ),
   };
   state.workOrderDocumentWizard.trainingQuestionConfig = {
     ...(state.workOrderDocumentWizard.trainingQuestionConfig ?? {}),
-    [testId]: next,
+    [configKey]: next,
   };
 }
 
@@ -120800,8 +120906,11 @@ function pickRandomLearningQuestionIds(questionItems = [], questionLimit = 0) {
   return shuffled.slice(0, limit || shuffled.length);
 }
 
-function buildLearningAssignmentQuestionSnapshot(test = {}, existingAssignment = null) {
-  const config = getWorkOrderDocumentTrainingQuestionConfig(test);
+function buildLearningAssignmentQuestionSnapshot(test = {}, existingAssignment = null, context = {}) {
+  const config = getWorkOrderDocumentTrainingQuestionConfig(test, {
+    ...context,
+    assignment: existingAssignment,
+  });
   const questionItems = getLearningTestQuestionItems(test);
   const questionIds = questionItems.map((question) => String(question.id || "").trim()).filter(Boolean);
   const questionIdSet = new Set(questionIds);
@@ -120821,6 +120930,8 @@ function buildLearningAssignmentQuestionSnapshot(test = {}, existingAssignment =
         existingIds.length * timePerQuestionSeconds,
         Math.round(Number(existingAssignment?.timeLimitSeconds) || 0),
       ),
+      passPercent: normalizeLearningTestPassPercentForUi(existingAssignment?.passPercent, config.passPercent),
+      passed: existingAssignment?.passed,
     };
   }
   const existingLimit = normalizeLearningTestQuestionLimitForUi(existingAssignment?.questionLimit, questionIds.length);
@@ -120839,6 +120950,7 @@ function buildLearningAssignmentQuestionSnapshot(test = {}, existingAssignment =
     selectedQuestionIds,
     timePerQuestionSeconds,
     timeLimitSeconds: selectedQuestionIds.length * timePerQuestionSeconds,
+    passPercent: config.passPercent,
   };
 }
 
@@ -120957,6 +121069,9 @@ function getWorkOrderDocumentTrainingProgressLabel(progress = "", item = {}) {
   if (normalized === "completed") {
     return "Položeno";
   }
+  if (normalized === "failed") {
+    return "Nije položio";
+  }
   if (normalized === "in_progress") {
     return "U tijeku";
   }
@@ -121072,21 +121187,35 @@ function createWorkOrderDocumentTrainingModeButton(option = {}) {
   return button;
 }
 
-function getUniqueLearningTestsFromTrainingRows(rows = []) {
-  const byId = new Map();
+function getWorkOrderDocumentTrainingQuestionSettingGroups(rows = []) {
+  const byKey = new Map();
   (Array.isArray(rows) ? rows : []).forEach((row) => {
     getPeopleTrainingLinkedLearningTests(row?.typeOption).forEach((test) => {
-      const id = String(test?.id || "").trim();
-      if (id && !byId.has(id)) {
-        byId.set(id, test);
+      const key = getWorkOrderDocumentTrainingQuestionConfigKey(test, row);
+      if (!key) {
+        return;
       }
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          key,
+          test,
+          workOrder: row.workOrder,
+          typeOption: row.typeOption,
+          rows: [],
+        });
+      }
+      byKey.get(key).rows.push(row);
     });
   });
-  return [...byId.values()];
+  return [...byKey.values()].sort((left, right) => (
+    String(left.workOrder?.workOrderNumber || "").localeCompare(String(right.workOrder?.workOrderNumber || ""), "hr", { numeric: true })
+    || String(left.typeOption?.label || left.typeOption?.serviceName || "").localeCompare(String(right.typeOption?.label || right.typeOption?.serviceName || ""), "hr")
+    || String(left.test?.title || "").localeCompare(String(right.test?.title || ""), "hr")
+  ));
 }
 
 function createWorkOrderDocumentTrainingQuestionSettingsPanel(rows = []) {
-  const tests = getUniqueLearningTestsFromTrainingRows(rows);
+  const groups = getWorkOrderDocumentTrainingQuestionSettingGroups(rows);
   const panel = document.createElement("div");
   panel.className = "work-order-document-training-question-settings";
 
@@ -121095,34 +121224,42 @@ function createWorkOrderDocumentTrainingQuestionSettingsPanel(rows = []) {
   const title = document.createElement("strong");
   title.textContent = "Postavke ispita";
   const helper = document.createElement("span");
-  helper.textContent = "Broj pitanja se pri dodjeli izvlači random za svakog polaznika.";
+  helper.textContent = "Postavke ovise o RN-u, usluzi i testu. Pitanja se izvlače random za svakog polaznika.";
   head.append(title, helper);
   panel.append(head);
 
-  if (tests.length === 0) {
+  if (groups.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema povezanih testova za odabrane usluge.";
+    empty.textContent = "Nema povezanih testova za odabrane RN/usluge.";
     panel.append(empty);
     return panel;
   }
 
   const list = document.createElement("div");
   list.className = "work-order-document-training-question-settings-list";
-  tests.forEach((test) => {
+  groups.forEach((group) => {
+    const test = group.test;
     const questionItems = getLearningTestQuestionItems(test);
-    const config = getWorkOrderDocumentTrainingQuestionConfig(test);
+    const config = getWorkOrderDocumentTrainingQuestionConfig(test, group);
     const totalSeconds = config.questionLimit * config.timePerQuestionSeconds;
     const row = document.createElement("article");
     row.className = "work-order-document-training-question-setting";
 
     const copy = document.createElement("div");
     copy.className = "work-order-document-training-question-setting-copy";
+    const eyebrow = document.createElement("small");
+    eyebrow.className = "work-order-document-training-question-setting-eyebrow";
+    eyebrow.textContent = [
+      group.workOrder?.workOrderNumber ? `RN ${group.workOrder.workOrderNumber}` : "RN",
+      group.typeOption?.serviceCode || group.typeOption?.shortLabel || group.typeOption?.label || group.typeOption?.serviceName || "Usluga",
+      `${group.rows.length} polaznika`,
+    ].filter(Boolean).join(" · ");
     const name = document.createElement("strong");
     name.textContent = test.title || "Ispit";
     const meta = document.createElement("span");
-    meta.textContent = `${questionItems.length} pitanja u bazi · ukupno ${formatDurationLabel(totalSeconds)}`;
-    copy.append(name, meta);
+    meta.textContent = `${questionItems.length} pitanja u bazi · ukupno ${formatDurationLabel(totalSeconds)} · prolaz ${config.passPercent}%`;
+    copy.append(eyebrow, name, meta);
 
     const controls = document.createElement("div");
     controls.className = "work-order-document-training-question-setting-controls";
@@ -121136,7 +121273,7 @@ function createWorkOrderDocumentTrainingQuestionSettingsPanel(rows = []) {
     questionInput.max = String(Math.max(questionItems.length, 1));
     questionInput.value = String(config.questionLimit);
     questionInput.addEventListener("change", () => {
-      setWorkOrderDocumentTrainingQuestionConfig(test, { questionLimit: questionInput.value });
+      setWorkOrderDocumentTrainingQuestionConfig(test, { questionLimit: questionInput.value }, group);
       renderWorkOrderDocumentWizard();
     });
     questionField.append(questionLabel, questionInput);
@@ -121152,11 +121289,27 @@ function createWorkOrderDocumentTrainingQuestionSettingsPanel(rows = []) {
     secondsInput.step = "5";
     secondsInput.value = String(config.timePerQuestionSeconds);
     secondsInput.addEventListener("change", () => {
-      setWorkOrderDocumentTrainingQuestionConfig(test, { timePerQuestionSeconds: secondsInput.value });
+      setWorkOrderDocumentTrainingQuestionConfig(test, { timePerQuestionSeconds: secondsInput.value }, group);
       renderWorkOrderDocumentWizard();
     });
     secondsField.append(secondsLabel, secondsInput);
-    controls.append(questionField, secondsField);
+
+    const passField = document.createElement("label");
+    passField.className = "field compact-field";
+    const passLabel = document.createElement("span");
+    passLabel.textContent = "Prolaz %";
+    const passInput = document.createElement("input");
+    passInput.type = "number";
+    passInput.min = "1";
+    passInput.max = "100";
+    passInput.step = "1";
+    passInput.value = String(config.passPercent);
+    passInput.addEventListener("change", () => {
+      setWorkOrderDocumentTrainingQuestionConfig(test, { passPercent: passInput.value }, group);
+      renderWorkOrderDocumentWizard();
+    });
+    passField.append(passLabel, passInput);
+    controls.append(questionField, secondsField, passField);
 
     row.append(copy, controls);
     list.append(row);
@@ -121205,7 +121358,7 @@ function renderWorkOrderDocumentWizardTrainingControlSection(workOrders = getAll
   modes.className = "work-order-document-training-mode-grid";
   modes.replaceChildren(...WORK_ORDER_DOCUMENT_TRAINING_MODE_OPTIONS.map(createWorkOrderDocumentTrainingModeButton));
 
-  const questionSettings = createWorkOrderDocumentTrainingQuestionSettingsPanel(rows);
+  const questionSettings = createWorkOrderDocumentTrainingQuestionSettingsPanel(selectedRows);
 
   const quick = document.createElement("div");
   quick.className = "work-order-document-training-quick-actions";

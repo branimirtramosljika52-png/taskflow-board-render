@@ -655,6 +655,7 @@ test("learning test scoring supports single, multiple and ordered answers", asyn
     organizationId: "org-1",
     title: "Sigurnost na radu",
     status: "active",
+    passPercent: 80,
     questionItems: [
       {
         id: "q1",
@@ -695,6 +696,7 @@ test("learning test scoring supports single, multiple and ordered answers", asyn
         externalFullName: "Ivan Radnik",
         email: "ivan@example.hr",
         accessToken: "learning-token-1",
+        passPercent: 90,
       },
     ],
   });
@@ -709,7 +711,11 @@ test("learning test scoring supports single, multiple and ordered answers", asyn
   ]);
 
   assert.equal(result.submission.scorePercent, 100);
+  assert.equal(result.submission.passPercent, 90);
+  assert.equal(result.submission.passed, true);
   assert.equal(result.assignment.scorePercent, 100);
+  assert.equal(result.assignment.passPercent, 90);
+  assert.equal(result.assignment.passed, true);
 });
 
 test("learning test public access and scoring use assigned random question subset", async () => {
@@ -721,6 +727,7 @@ test("learning test public access and scoring use assigned random question subse
     title: "Random subset",
     status: "active",
     secondsPerQuestion: 45,
+    passPercent: 80,
     questionItems: [
       {
         id: "q1",
@@ -751,13 +758,16 @@ test("learning test public access and scoring use assigned random question subse
         questionLimit: 1,
         timePerQuestionSeconds: 45,
         timeLimitSeconds: 45,
+        passPercent: 75,
       },
     ],
   });
 
   const access = await repository.getLearningAccessByToken("learning-token-subset");
   assert.deepEqual(access.test.questionItems.map((question) => question.id), ["q1"]);
+  assert.equal(access.test.passPercent, 80);
   assert.equal(access.assignment.timeLimitSeconds, 45);
+  assert.equal(access.assignment.passPercent, 75);
 
   const result = await repository.submitLearningTestAccess("learning-token-subset", [
     { questionId: "q1", optionId: "q1-a" },
@@ -765,7 +775,58 @@ test("learning test public access and scoring use assigned random question subse
   ]);
 
   assert.equal(result.submission.scorePercent, 100);
+  assert.equal(result.submission.passPercent, 75);
+  assert.equal(result.submission.passed, true);
   const snapshot = await repository.getSnapshot();
   const storedTest = snapshot.learningTests.find((item) => item.title === "Random subset");
   assert.deepEqual(storedTest.attemptItems.at(-1).answers.map((answer) => answer.questionId), ["q1"]);
+});
+
+test("learning test submission stores failed result when score is below assigned pass percent", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  await repository.createLearningTestItem({
+    organizationId: "org-1",
+    title: "Pass percent",
+    status: "active",
+    passPercent: 80,
+    questionItems: [
+      {
+        id: "q1",
+        prompt: "Točan odgovor",
+        questionType: "single_choice",
+        options: [
+          { id: "q1-a", text: "A", isCorrect: true },
+          { id: "q1-b", text: "B" },
+        ],
+      },
+    ],
+    assignmentItems: [
+      {
+        assigneeType: "external",
+        externalFullName: "Marko Radnik",
+        email: "marko@example.hr",
+        accessToken: "learning-token-fail",
+        passPercent: 90,
+      },
+    ],
+  });
+
+  const result = await repository.submitLearningTestAccess("learning-token-fail", [
+    { questionId: "q1", optionId: "q1-b" },
+  ]);
+
+  assert.equal(result.submission.scorePercent, 0);
+  assert.equal(result.submission.passPercent, 90);
+  assert.equal(result.submission.passed, false);
+  assert.equal(result.assignment.scorePercent, 0);
+  assert.equal(result.assignment.passPercent, 90);
+  assert.equal(result.assignment.passed, false);
+
+  const snapshot = await repository.getSnapshot();
+  const storedTest = snapshot.learningTests.find((item) => item.title === "Pass percent");
+  assert.equal(storedTest.assignmentItems[0].status, "completed");
+  assert.equal(storedTest.assignmentItems[0].passed, false);
+  assert.equal(storedTest.attemptItems[0].passed, false);
 });

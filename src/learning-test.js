@@ -400,6 +400,7 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
     const videos = Array.isArray(test.videoItems) ? test.videoItems : [];
     const timeLimitSeconds = Math.max(0, Math.round(Number(assignment.timeLimitSeconds) || 0));
     const timePerQuestionSeconds = Math.max(0, Math.round(Number(assignment.timePerQuestionSeconds) || Number(test.secondsPerQuestion) || 0));
+    const passPercent = Math.max(1, Math.min(100, Math.round(Number(assignment.passPercent) || Number(test.passPercent) || 80)));
     let timerInterval = null;
     let timerStartedAt = 0;
     let timerSubmitted = false;
@@ -432,7 +433,8 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
           },
         });
         const score = Number(result?.item?.submission?.scorePercent ?? result?.item?.assignment?.scorePercent ?? 0);
-        setSuccess(`Test je predan. Rezultat: ${Number.isFinite(score) ? Math.round(score) : 0}%`);
+        const passed = Boolean(result?.item?.submission?.passed ?? result?.item?.assignment?.passed ?? (score >= passPercent));
+        setSuccess(`Test je predan. ${passed ? "Položeno" : "Nije položeno"}: ${Number.isFinite(score) ? Math.round(score) : 0}% / prolaz ${passPercent}%`);
       } catch (error) {
         timerSubmitted = false;
         setError(error?.message || "Predaja testa nije uspjela.");
@@ -506,6 +508,7 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
         createInfoField("Broj pitanja", String(questions.length || "")),
         createInfoField("Vrijeme za rješavanje", timeLimitSeconds ? formatDuration(timeLimitSeconds) : ""),
         createInfoField("Vrijeme po pitanju", timePerQuestionSeconds ? `${timePerQuestionSeconds} s` : ""),
+        createInfoField("Prolaz", `${passPercent}%`),
         createInfoField("Stručnjak / predavač", assignment.safetySpecialistLabel),
         createInfoField("Dodijelio", assignment.assignedByLabel),
       );
@@ -536,7 +539,8 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
 
       if (String(assignment.status || "").toLowerCase() === "completed") {
         const score = Number(assignment.scorePercent ?? 0);
-        setSuccess(`Test je već predan. Rezultat: ${Number.isFinite(score) ? Math.round(score) : 0}%`);
+        const passed = Boolean(assignment.passed ?? (score >= passPercent));
+        setSuccess(`Test je već predan. ${passed ? "Položeno" : "Nije položeno"}: ${Number.isFinite(score) ? Math.round(score) : 0}% / prolaz ${passPercent}%`);
       }
     };
 

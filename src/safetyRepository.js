@@ -849,6 +849,7 @@ function sanitizeLearningTestAccess(test = {}, assignment = {}) {
       recommendationRules: String(test.recommendationRules ?? ""),
       matchKeywords: String(test.matchKeywords ?? ""),
       secondsPerQuestion: Number(test.secondsPerQuestion ?? 60) || 60,
+      passPercent: Number(test.passPercent ?? 80) || 80,
       handbookDocuments: cloneJsonValue(test.handbookDocuments ?? []),
       videoItems: cloneJsonValue(test.videoItems ?? []),
       questionItems: visibleQuestions.map((question) => ({
@@ -886,6 +887,8 @@ function sanitizeLearningTestAccess(test = {}, assignment = {}) {
       startedAt: normalizeTimestamp(assignment.startedAt),
       completedAt: normalizeTimestamp(assignment.completedAt),
       scorePercent: Number(assignment.scorePercent ?? 0) || 0,
+      passPercent: Number(assignment.passPercent ?? test.passPercent ?? 80) || 80,
+      passed: assignment.passed === undefined ? undefined : Boolean(assignment.passed),
       questionLimit: Number(assignment.questionLimit ?? 0) || 0,
       selectedQuestionIds: cloneJsonValue(assignment.selectedQuestionIds ?? []),
       timePerQuestionSeconds: Number(assignment.timePerQuestionSeconds ?? 0) || 0,
@@ -902,6 +905,15 @@ function normalizeLearningAnswerSnapshot(answers = []) {
     optionId: dbString(answer?.optionId),
     orderIndex: dbString(answer?.orderIndex),
   })).filter((answer) => answer.questionId);
+}
+
+function normalizeLearningPassPercentForRepository(value, fallback = 80) {
+  const normalized = Math.round(Number(value ?? fallback));
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    const fallbackValue = Math.round(Number(fallback ?? 80));
+    return Math.max(1, Math.min(100, Number.isFinite(fallbackValue) && fallbackValue > 0 ? fallbackValue : 80));
+  }
+  return Math.max(1, Math.min(100, normalized));
 }
 
 function scoreLearningTestSubmission(test = {}, answers = [], selectedQuestionIds = []) {
@@ -4468,7 +4480,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [learningTestRows] = await connection.query(`
     SELECT id, organization_id, title, status, description,
-           intended_for_text, recommendation_rules_text, match_keywords_text, seconds_per_question,
+           intended_for_text, recommendation_rules_text, match_keywords_text, seconds_per_question, pass_percent,
            handbook_documents_json, video_items_json, question_items_json,
            assignment_items_json, attempt_items_json, created_at, updated_at
     FROM web_learning_tests
@@ -4493,6 +4505,7 @@ async function fetchSnapshotFromConnection(connection) {
     recommendationRules: dbString(row.recommendation_rules_text),
     matchKeywords: dbString(row.match_keywords_text),
     secondsPerQuestion: Number(row.seconds_per_question ?? 60) || 60,
+    passPercent: Number(row.pass_percent ?? 80) || 80,
     handbookDocuments: parseJsonArray(row.handbook_documents_json).map((document) => mapStoredAttachmentDocument(document)),
     videoItems: parseJsonArray(row.video_items_json),
     questionItems: parseJsonArray(row.question_items_json).map((question) => ({
@@ -7041,6 +7054,8 @@ export class InMemorySafetyRepository {
       }
 
       const scoring = scoreLearningTestSubmission(test, answers, assignment.selectedQuestionIds);
+      const passPercent = normalizeLearningPassPercentForRepository(assignment.passPercent, test.passPercent);
+      const passed = scoring.scorePercent >= passPercent;
       const attempt = {
         id: crypto.randomUUID(),
         assignmentId: String(assignment.id ?? ""),
@@ -7048,6 +7063,8 @@ export class InMemorySafetyRepository {
         userLabel: String(assignment.userLabel ?? ""),
         answers: scoring.answers,
         scorePercent: scoring.scorePercent,
+        passPercent,
+        passed,
         submittedAt: timestamp,
       };
 
@@ -7059,6 +7076,8 @@ export class InMemorySafetyRepository {
             startedAt: item.startedAt || timestamp,
             completedAt: timestamp,
             scorePercent: scoring.scorePercent,
+            passPercent,
+            passed,
           }
           : item
       ));
@@ -7077,6 +7096,8 @@ export class InMemorySafetyRepository {
         }),
         submission: {
           scorePercent: scoring.scorePercent,
+          passPercent,
+          passed,
           submittedAt: timestamp,
         },
       };
@@ -8816,6 +8837,7 @@ export class MySqlSafetyRepository {
         recommendation_rules_text TEXT NULL,
         match_keywords_text TEXT NULL,
         seconds_per_question INT NOT NULL DEFAULT 60,
+        pass_percent INT NOT NULL DEFAULT 80,
         handbook_documents_json LONGTEXT NULL,
         video_items_json LONGTEXT NULL,
         question_items_json LONGTEXT NULL,
@@ -8831,6 +8853,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_learning_tests", "recommendation_rules_text", "TEXT NULL AFTER intended_for_text");
     await ensureColumnExists(this.pool, "web_learning_tests", "match_keywords_text", "TEXT NULL AFTER recommendation_rules_text");
     await ensureColumnExists(this.pool, "web_learning_tests", "seconds_per_question", "INT NOT NULL DEFAULT 60 AFTER match_keywords_text");
+    await ensureColumnExists(this.pool, "web_learning_tests", "pass_percent", "INT NOT NULL DEFAULT 80 AFTER seconds_per_question");
     await ensureColumnExists(this.pool, "web_vehicles", "vin_number", "VARCHAR(64) NOT NULL DEFAULT '' AFTER plate_number");
     await ensureColumnExists(this.pool, "web_vehicles", "documents_json", "LONGTEXT NULL AFTER reservations_json");
     await ensureColumnExists(this.pool, "web_vehicles", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
@@ -14862,9 +14885,9 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_learning_tests
             (organization_id, title, status, description, intended_for_text, recommendation_rules_text,
-             match_keywords_text, seconds_per_question, handbook_documents_json, video_items_json,
+             match_keywords_text, seconds_per_question, pass_percent, handbook_documents_json, video_items_json,
              question_items_json, assignment_items_json, attempt_items_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(storedTest.organizationId),
@@ -14875,6 +14898,7 @@ export class MySqlSafetyRepository {
           storedTest.recommendationRules,
           storedTest.matchKeywords,
           Number(storedTest.secondsPerQuestion ?? 60) || 60,
+          normalizeLearningPassPercentForRepository(storedTest.passPercent),
           JSON.stringify(storedTest.handbookDocuments ?? []),
           JSON.stringify(storedTest.videoItems ?? []),
           JSON.stringify(storedTest.questionItems ?? []),
@@ -14923,7 +14947,7 @@ export class MySqlSafetyRepository {
           UPDATE web_learning_tests
           SET organization_id = ?, title = ?, status = ?, description = ?,
               intended_for_text = ?, recommendation_rules_text = ?, match_keywords_text = ?,
-              seconds_per_question = ?, handbook_documents_json = ?, video_items_json = ?, question_items_json = ?,
+              seconds_per_question = ?, pass_percent = ?, handbook_documents_json = ?, video_items_json = ?, question_items_json = ?,
               assignment_items_json = ?, attempt_items_json = ?
           WHERE id = ?
         `,
@@ -14936,6 +14960,7 @@ export class MySqlSafetyRepository {
           storedTest.recommendationRules,
           storedTest.matchKeywords,
           Number(storedTest.secondsPerQuestion ?? 60) || 60,
+          normalizeLearningPassPercentForRepository(storedTest.passPercent),
           JSON.stringify(storedTest.handbookDocuments ?? []),
           JSON.stringify(storedTest.videoItems ?? []),
           JSON.stringify(storedTest.questionItems ?? []),
@@ -15069,6 +15094,8 @@ export class MySqlSafetyRepository {
 
       const currentAssignment = (current.assignmentItems ?? []).find((assignment) => String(assignment.accessToken ?? "") === safeToken);
       const scoring = scoreLearningTestSubmission(current, answers, currentAssignment?.selectedQuestionIds);
+      const passPercent = normalizeLearningPassPercentForRepository(currentAssignment?.passPercent, current.passPercent);
+      const passed = scoring.scorePercent >= passPercent;
       const timestamp = new Date().toISOString();
       const assignmentItems = (current.assignmentItems ?? []).map((assignment) => (
         String(assignment.accessToken ?? "") === safeToken
@@ -15078,6 +15105,8 @@ export class MySqlSafetyRepository {
             startedAt: assignment.startedAt || timestamp,
             completedAt: timestamp,
             scorePercent: scoring.scorePercent,
+            passPercent,
+            passed,
           }
           : assignment
       ));
@@ -15090,6 +15119,8 @@ export class MySqlSafetyRepository {
           userLabel: String(currentAssignment?.userLabel ?? ""),
           answers: scoring.answers,
           scorePercent: scoring.scorePercent,
+          passPercent,
+          passed,
           submittedAt: timestamp,
         },
       ];
@@ -15117,6 +15148,8 @@ export class MySqlSafetyRepository {
         }),
         submission: {
           scorePercent: scoring.scorePercent,
+          passPercent,
+          passed,
           submittedAt: timestamp,
         },
       };

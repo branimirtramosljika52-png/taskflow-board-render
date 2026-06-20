@@ -1807,6 +1807,14 @@ function normalizeLearningSecondsPerQuestion(value, fallback = 60) {
   return Math.max(5, Math.min(3600, normalized));
 }
 
+function normalizeLearningPassPercent(value, fallback = 80) {
+  const normalized = Math.round(normalizeFiniteNumber(value, fallback));
+  if (!Number.isFinite(normalized) || normalized <= 0) {
+    return Math.max(1, Math.min(100, Math.round(normalizeFiniteNumber(fallback, 80))));
+  }
+  return Math.max(1, Math.min(100, normalized));
+}
+
 function normalizeLearningQuestionLimit(value) {
   const normalized = Math.round(normalizeFiniteNumber(value, 0));
   return Math.max(0, Math.min(500, Number.isFinite(normalized) ? normalized : 0));
@@ -1878,6 +1886,10 @@ function normalizeLearningAssignmentItems(items = [], users = []) {
       startedAt: normalizeOptionalDateTime(item?.startedAt),
       completedAt: normalizeOptionalDateTime(item?.completedAt),
       scorePercent: Math.max(0, Math.min(100, Math.round(normalizeFiniteNumber(item?.scorePercent, 0)))),
+      passPercent: normalizeLearningPassPercent(item?.passPercent ?? item?.passingPercent ?? item?.minimumPassPercent),
+      passed: item?.passed === undefined && item?.isPassed === undefined
+        ? undefined
+        : normalizeBoolean(item?.passed ?? item?.isPassed, false),
       questionLimit: normalizeLearningQuestionLimit(item?.questionLimit ?? item?.questionCount),
       selectedQuestionIds: normalizeLearningQuestionIdList(item?.selectedQuestionIds ?? item?.questionIds),
       timePerQuestionSeconds: normalizeLearningOptionalSeconds(item?.timePerQuestionSeconds ?? item?.secondsPerQuestion),
@@ -1895,6 +1907,10 @@ function normalizeLearningAttemptItems(items = []) {
     userLabel: normalizeText(item?.userLabel),
     answers: cloneJsonArray(item?.answers ?? []),
     scorePercent: Math.max(0, Math.min(100, Math.round(normalizeFiniteNumber(item?.scorePercent, 0)))),
+    passPercent: normalizeLearningPassPercent(item?.passPercent ?? item?.passingPercent ?? item?.minimumPassPercent),
+    passed: item?.passed === undefined && item?.isPassed === undefined
+      ? undefined
+      : normalizeBoolean(item?.passed ?? item?.isPassed, false),
     submittedAt: normalizeOptionalDateTime(item?.submittedAt) ?? isoNow(),
   })).filter((item) => item.assignmentId);
 }
@@ -7836,6 +7852,7 @@ export function createLearningTest(
     recommendationRules: normalizeText(input.recommendationRules ?? input.recommendation_rules),
     matchKeywords: normalizeLearningTestMatchKeywords(input.matchKeywords ?? input.match_keywords),
     secondsPerQuestion: normalizeLearningSecondsPerQuestion(input.secondsPerQuestion ?? input.timePerQuestionSeconds),
+    passPercent: normalizeLearningPassPercent(input.passPercent ?? input.passingPercent ?? input.minimumPassPercent),
     handbookDocuments: normalizeAttachmentDocuments(input.handbookDocuments),
     videoItems: normalizeLearningVideoItems(input.videoItems),
     questionItems: normalizeLearningQuestionItems(input.questionItems),
@@ -7861,6 +7878,9 @@ export function updateLearningTest(current, patch, state, now = isoNow) {
     secondsPerQuestion: hasOwn(patch, "secondsPerQuestion") || hasOwn(patch, "timePerQuestionSeconds")
       ? normalizeLearningSecondsPerQuestion(patch.secondsPerQuestion ?? patch.timePerQuestionSeconds)
       : normalizeLearningSecondsPerQuestion(current.secondsPerQuestion ?? current.timePerQuestionSeconds),
+    passPercent: hasOwn(patch, "passPercent") || hasOwn(patch, "passingPercent") || hasOwn(patch, "minimumPassPercent")
+      ? normalizeLearningPassPercent(patch.passPercent ?? patch.passingPercent ?? patch.minimumPassPercent)
+      : normalizeLearningPassPercent(current.passPercent ?? current.passingPercent ?? current.minimumPassPercent),
     handbookDocuments: hasOwn(patch, "handbookDocuments")
       ? normalizeAttachmentDocuments(patch.handbookDocuments)
       : normalizeAttachmentDocuments(current.handbookDocuments),
