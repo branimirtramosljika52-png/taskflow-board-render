@@ -481,6 +481,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     private val api = SafeNexusApi()
     private val authStore = SafeNexusAuthStore(application)
     private val workOrderMutationVersions = mutableMapOf<String, Int>()
+    private val documentationContextCache = mutableMapOf<String, WorkOrderDocumentationContext>()
+    private val documentationContextRequests = mutableSetOf<String>()
     private val navigationBackStack = mutableListOf<AppNavigationDestination>()
     private var shouldRememberSession = false
 
@@ -753,6 +755,9 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             notice = "",
         )
         value?.id?.takeIf { it.isNotBlank() }?.let(::loadWorkOrderDocuments)
+        value?.takeIf { it.id.isNotBlank() }?.let { workOrder ->
+            loadWorkOrderDocumentationContext(workOrder, workOrder.objectId, silent = true)
+        }
     }
 
     fun selectRecord(value: MobileRecord?) {
@@ -1125,47 +1130,70 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         loadWorkOrderDocuments(workOrderId)
     }
 
-    fun loadWorkOrderDocumentationContext(workOrder: WorkOrder, objectId: String = "") {
+    private fun documentationContextCacheKey(workOrderId: String, objectId: String): String =
+        "${workOrderId.trim()}::${objectId.trim()}"
+
+    fun loadWorkOrderDocumentationContext(
+        workOrder: WorkOrder,
+        objectId: String = "",
+        forceRefresh: Boolean = false,
+        silent: Boolean = false,
+    ) {
         val workOrderId = workOrder.id.trim()
         val contextObjectId = objectId.trim()
         if (workOrderId.isBlank()) {
-            state = state.copy(error = "RN nema ispravan ID za izradu dokumentacije.")
+            if (!silent) {
+                state = state.copy(error = "RN nema ispravan ID za izradu dokumentacije.")
+            }
             return
         }
 
-        state = state.copy(
-            documentationContextWorkOrderId = workOrderId,
-            documentationContextObjectId = contextObjectId,
-            documentationContext = WorkOrderDocumentationContext(workOrderId = workOrderId, workOrderNumber = workOrder.displayNumber),
-            documentationContextLoading = true,
-            error = "",
-            notice = "",
-        )
+        val cacheKey = documentationContextCacheKey(workOrderId, contextObjectId)
+        val cachedContext = documentationContextCache[cacheKey]
+        if (!silent) {
+            state = state.copy(
+                documentationContextWorkOrderId = workOrderId,
+                documentationContextObjectId = contextObjectId,
+                documentationContext = cachedContext
+                    ?: WorkOrderDocumentationContext(workOrderId = workOrderId, workOrderNumber = workOrder.displayNumber),
+                documentationContextLoading = cachedContext == null || forceRefresh,
+                error = "",
+                notice = "",
+            )
+        }
+        if (!forceRefresh && cachedContext != null) return
+        if (!documentationContextRequests.add(cacheKey)) return
         viewModelScope.launch {
-            api.workOrderDocumentationContext(workOrderId, contextObjectId)
-                .onSuccess { context ->
-                    if (
-                        state.documentationContextWorkOrderId == workOrderId &&
-                        state.documentationContextObjectId == contextObjectId
-                    ) {
-                        state = state.copy(
-                            documentationContext = context,
-                            documentationContextLoading = false,
-                            error = "",
-                        )
+            try {
+                api.workOrderDocumentationContext(workOrderId, contextObjectId)
+                    .onSuccess { context ->
+                        documentationContextCache[cacheKey] = context
+                        if (
+                            state.documentationContextWorkOrderId == workOrderId &&
+                            state.documentationContextObjectId == contextObjectId
+                        ) {
+                            state = state.copy(
+                                documentationContext = context,
+                                documentationContextLoading = false,
+                                error = "",
+                            )
+                        }
                     }
-                }
-                .onFailure { error ->
-                    if (
-                        state.documentationContextWorkOrderId == workOrderId &&
-                        state.documentationContextObjectId == contextObjectId
-                    ) {
-                        state = state.copy(
-                            documentationContextLoading = false,
-                            error = error.message ?: "Ne mogu učitati polja predloška za RN.",
-                        )
+                    .onFailure { error ->
+                        if (
+                            state.documentationContextLoading &&
+                            state.documentationContextWorkOrderId == workOrderId &&
+                            state.documentationContextObjectId == contextObjectId
+                        ) {
+                            state = state.copy(
+                                documentationContextLoading = false,
+                                error = error.message ?: "Ne mogu učitati polja predloška za RN.",
+                            )
+                        }
                     }
-                }
+            } finally {
+                documentationContextRequests.remove(cacheKey)
+            }
         }
     }
 
@@ -1198,7 +1226,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             api.confirmWorkOrderTraining(workOrderId, mode, normalizedPeople, normalizedServices, sendEmails, onlyRecommended)
                 .onSuccess { message ->
                     state = state.copy(isLoading = false, notice = message, error = "")
-                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                    loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
                 }
                 .onFailure { error ->
                     state = state.copy(
@@ -1224,7 +1252,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             api.generateWorkOrderTrainingRecord(workOrderId)
                 .onSuccess { message ->
                     state = state.copy(isLoading = false, notice = message, error = "")
-                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                    loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
                     loadWorkOrderDocuments(workOrder.id)
                 }
                 .onFailure { error ->
@@ -1290,7 +1318,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         pendingExternalUrl = pdfBridgeUrl,
                         workEquipmentSubmitResults = state.workEquipmentSubmitResults + (workOrderId to result),
                     )
-                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                    loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
                     state = state.copy(notice = successMessage)
                     refreshWorkOrderDocuments()
                 }
@@ -1337,7 +1365,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         pendingExternalUrl = pdfBridgeUrl,
                         physicalFactorsSubmitResults = state.physicalFactorsSubmitResults + (workOrderId to result),
                     )
-                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                    loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
                     state = state.copy(notice = successMessage)
                     refreshWorkOrderDocuments()
                 }
@@ -2442,7 +2470,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
             onCreateObject = { name ->
                 viewModel.createWorkOrderLocationObject(workOrder, name) { createdObject ->
                     documentationWizardObjectId = createdObject.id
-                    viewModel.loadWorkOrderDocumentationContext(workOrder, createdObject.id)
+                    viewModel.loadWorkOrderDocumentationContext(workOrder, createdObject.id, forceRefresh = true)
                 }
             },
             onExecutorsChange = { executors ->
