@@ -389,6 +389,13 @@ private val workOrderDocumentAllowedMimeTypes = arrayOf(
     "text/plain",
 )
 
+private val peopleTrainingImportMimeTypes = arrayOf(
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "text/csv",
+    "application/octet-stream",
+)
+
 private val workOrderDocumentationAiMimeTypes = arrayOf(
     "application/pdf",
     "image/*",
@@ -1672,6 +1679,95 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun downloadTrainingImportTemplate(context: Context, workOrder: WorkOrder) {
+        if (workOrder.companyId.isBlank()) {
+            state = state.copy(error = "RN nema odabranu tvrtku za Excel predložak osposobljavanja.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadPeopleTrainingImportTemplate(workOrder.companyId)
+                .onSuccess { downloaded ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess {
+                            state = state.copy(
+                                isLoading = false,
+                                notice = "Excel predložak je spremljen u Preuzimanja / SafeNexus.",
+                                error = "",
+                            )
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti Excel predložak.",
+                                notice = "",
+                            )
+                        }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti Excel predložak osposobljavanja.",
+                        notice = "",
+                    )
+                }
+        }
+    }
+
+    fun importTrainingPeopleFromExcel(
+        context: Context,
+        workOrder: WorkOrder,
+        uri: Uri,
+        objectId: String = "",
+    ) {
+        if (workOrder.companyId.isBlank()) {
+            state = state.copy(error = "RN nema odabranu tvrtku za import osposobljavanja.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "Učitavam Excel osposobljavanja...")
+        val importMode = if (
+            state.documentationContextWorkOrderId == workOrder.id &&
+            state.documentationContextObjectId == objectId
+        ) {
+            state.documentationContext.trainingContext.importProfile.defaultImportMode
+        } else {
+            ""
+        }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val fileName = resolveUriDisplayName(context, uri, 0, WorkOrderDocumentInputMode.File)
+                        .ifBlank { "osposobljavanja-import.xlsx" }
+                    val mimeType = resolveUriMimeType(context, uri, fileName)
+                        .ifBlank { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+                    val bytes = readUriBytes(context, uri)
+                    if (bytes.isEmpty()) {
+                        error("Odabrana Excel datoteka je prazna.")
+                    }
+                    api.importPeopleTrainingRecords(
+                        companyId = workOrder.companyId,
+                        locationId = workOrder.locationId,
+                        fileName = fileName,
+                        fileType = mimeType,
+                        bytes = bytes,
+                        importMode = importMode,
+                    ).getOrThrow()
+                }
+            }
+                .onSuccess { message ->
+                    state = state.copy(isLoading = false, notice = message, error = "")
+                    loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu uvesti Excel osposobljavanja.",
+                        notice = "",
+                    )
+                }
+        }
+    }
+
     fun deleteWorkOrderDocument(document: WorkOrderDocument) {
         val workOrderId = state.selectedWorkOrder?.id ?: document.workOrderId
         if (workOrderId.isBlank() || document.id.isBlank()) {
@@ -2188,6 +2284,8 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     var documentationWizardObjectId by remember { mutableStateOf("") }
     var signatureActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var serviceManagementTarget by remember { mutableStateOf<WorkOrder?>(null) }
+    var pendingTrainingImportTarget by remember { mutableStateOf<WorkOrder?>(null) }
+    var pendingTrainingImportObjectId by remember { mutableStateOf("") }
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
     var workOrderDocumentPreview by remember { mutableStateOf<WorkOrderDocumentPreviewState?>(null) }
@@ -2226,6 +2324,20 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
         pendingPicker = null
         if (target != null && uris.isNotEmpty()) {
             pendingSelection = PendingDocumentSelection(target.first, uris, target.second)
+        }
+    }
+    val trainingImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val target = pendingTrainingImportTarget
+        val objectId = pendingTrainingImportObjectId
+        pendingTrainingImportTarget = null
+        pendingTrainingImportObjectId = ""
+        if (target != null && uri != null) {
+            viewModel.importTrainingPeopleFromExcel(
+                context = context.applicationContext,
+                workOrder = target,
+                uri = uri,
+                objectId = objectId,
+            )
         }
     }
     val documentScannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -2505,6 +2617,14 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
             },
             onGenerateTrainingRecord = {
                 viewModel.generateWorkOrderTrainingRecord(workOrder, documentationWizardObjectId)
+            },
+            onDownloadTrainingImportTemplate = {
+                viewModel.downloadTrainingImportTemplate(context.applicationContext, workOrder)
+            },
+            onUploadTrainingImport = {
+                pendingTrainingImportTarget = workOrder
+                pendingTrainingImportObjectId = documentationWizardObjectId
+                trainingImportLauncher.launch(peopleTrainingImportMimeTypes)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -16715,6 +16835,8 @@ private fun WorkOrderDocumentationWizardDialog(
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
     onGenerateTrainingRecord: () -> Unit,
+    onDownloadTrainingImportTemplate: () -> Unit,
+    onUploadTrainingImport: () -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -17556,11 +17678,13 @@ private fun WorkOrderDocumentationWizardDialog(
                             onModeChange = { trainingMode = it },
                             onSelectedPersonIdsChange = { selectedTrainingPersonIds = it },
                             onSelectedServiceKeysChange = { selectedTrainingServiceKeys = it },
-                            onOnlyNeedsActionChange = { onlyTrainingNeedsAction = it },
-                            onGenerateRecord = onGenerateTrainingRecord,
-                            onConfirm = launchTrainingDocumentation,
-                        )
-                    } else {
+                        onOnlyNeedsActionChange = { onlyTrainingNeedsAction = it },
+                        onGenerateRecord = onGenerateTrainingRecord,
+                        onDownloadImportTemplate = onDownloadTrainingImportTemplate,
+                        onUploadImport = onUploadTrainingImport,
+                        onConfirm = launchTrainingDocumentation,
+                    )
+                } else {
                 WizardSection(title = "Osnovno", icon = Icons.Rounded.Description) {
                     Text(
                         "Podaci vrijede za sve zapisnike u ovom RN-u i automatski popunjavaju povezana polja iz web predložaka.",
@@ -22288,6 +22412,8 @@ private fun DocumentationTrainingLaunchSection(
     onSelectedServiceKeysChange: (Set<String>) -> Unit,
     onOnlyNeedsActionChange: (Boolean) -> Unit,
     onGenerateRecord: () -> Unit,
+    onDownloadImportTemplate: () -> Unit,
+    onUploadImport: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     if (!context.enabled) {
@@ -22464,6 +22590,31 @@ private fun DocumentationTrainingLaunchSection(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = onDownloadImportTemplate,
+                        enabled = enabled,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Predložak")
+                    }
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = onUploadImport,
+                        enabled = enabled,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Icon(Icons.Rounded.InsertDriveFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Učitaj Excel")
+                    }
                 }
             }
         }

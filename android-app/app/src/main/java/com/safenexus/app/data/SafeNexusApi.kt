@@ -422,6 +422,71 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun downloadPeopleTrainingImportTemplate(
+        companyId: String,
+    ): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val query = companyId.trim().takeIf { it.isNotBlank() }
+                ?.let { "?companyId=${it.pathSegment()}" }
+                ?: ""
+            val connection = openConnection(
+                "/api/people-training-records/import-template$query",
+                method = "GET",
+                body = null,
+                accept = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
+            )
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti Excel predložak osposobljavanja (${connection.responseCode})."
+                })
+            }
+            DownloadedDocument(
+                fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
+                    .ifBlank { "osposobljavanja-import.xlsx" },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+                    ?: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                bytes = bytes,
+            )
+        }
+    }
+
+    suspend fun importPeopleTrainingRecords(
+        companyId: String,
+        locationId: String,
+        fileName: String,
+        fileType: String,
+        bytes: ByteArray,
+        importMode: String = "",
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanCompanyId = companyId.trim()
+            if (cleanCompanyId.isBlank()) {
+                throw IllegalStateException("RN nema odabranu tvrtku za import osposobljavanja.")
+            }
+            val mimeType = fileType.ifBlank { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+            val payload = JSONObject()
+                .put("companyId", cleanCompanyId)
+                .put("locationId", locationId.trim())
+                .put("fileName", fileName.ifBlank { "osposobljavanja-import.xlsx" })
+                .put("fileType", mimeType)
+                .put("dataUrl", "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}")
+                .put("importMode", importMode.trim())
+                .toString()
+            request(
+                "/api/people-training-records/import",
+                method = "POST",
+                body = payload,
+                readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
+            )
+            "Masovni import ljudi je spremljen."
+        }
+    }
+
     suspend fun generateWorkOrderDocumentation(
         workOrderId: String,
         draft: WorkOrderDocumentationDraft,
