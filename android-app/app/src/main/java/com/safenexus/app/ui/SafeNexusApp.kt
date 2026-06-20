@@ -1210,6 +1210,33 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun generateWorkOrderTrainingRecord(
+        workOrder: WorkOrder,
+        objectId: String = "",
+    ) {
+        val workOrderId = workOrder.id.trim()
+        if (workOrderId.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za zapisnik osposobljavanja.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "Generiram zapisnik osposobljavanja...")
+        viewModelScope.launch {
+            api.generateWorkOrderTrainingRecord(workOrderId)
+                .onSuccess { message ->
+                    state = state.copy(isLoading = false, notice = message, error = "")
+                    loadWorkOrderDocumentationContext(workOrder, objectId)
+                    loadWorkOrderDocuments(workOrder.id)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu generirati zapisnik osposobljavanja.",
+                        notice = "",
+                    )
+                }
+        }
+    }
+
     fun submitWorkOrderIsznrWorkEquipment(
         workOrder: WorkOrder,
         selectedItemIds: List<String>,
@@ -2447,6 +2474,9 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onlyRecommended,
                     documentationWizardObjectId,
                 )
+            },
+            onGenerateTrainingRecord = {
+                viewModel.generateWorkOrderTrainingRecord(workOrder, documentationWizardObjectId)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -16656,6 +16686,7 @@ private fun WorkOrderDocumentationWizardDialog(
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
+    onGenerateTrainingRecord: () -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -17498,6 +17529,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             onSelectedPersonIdsChange = { selectedTrainingPersonIds = it },
                             onSelectedServiceKeysChange = { selectedTrainingServiceKeys = it },
                             onOnlyNeedsActionChange = { onlyTrainingNeedsAction = it },
+                            onGenerateRecord = onGenerateTrainingRecord,
                             onConfirm = launchTrainingDocumentation,
                         )
                     } else {
@@ -22201,6 +22233,7 @@ private fun DocumentationTrainingLaunchSection(
     onSelectedPersonIdsChange: (Set<String>) -> Unit,
     onSelectedServiceKeysChange: (Set<String>) -> Unit,
     onOnlyNeedsActionChange: (Boolean) -> Unit,
+    onGenerateRecord: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     if (!context.enabled) {
@@ -22435,6 +22468,20 @@ private fun DocumentationTrainingLaunchSection(
             shape = RoundedCornerShape(18.dp),
         ) {
             Text(activeMode.actionLabel, fontWeight = FontWeight.Black)
+        }
+
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onGenerateRecord,
+            enabled = enabled && completedCount > 0,
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (completedCount > 0) "Generiraj zapisnik ($completedCount)" else "Zapisnik nakon polaganja",
+                fontWeight = FontWeight.Black,
+            )
         }
     }
 }

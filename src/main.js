@@ -12609,6 +12609,70 @@ function createPeopleTrainingRnPdfButton(workOrder = {}, workOrderNumber = "") {
   return button;
 }
 
+function getPeopleTrainingRnCompletedRows(group = {}) {
+  return (group.rows ?? []).filter((row) => row.progress === "completed");
+}
+
+async function generatePeopleTrainingRnRecordDocument(workOrder = {}, button = null) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const workOrderNumber = String(workOrder?.workOrderNumber || workOrder?.number || "").trim();
+  if (!workOrderId) {
+    setPeopleTrainingFeedback("RN još nije spreman za zapisnik.", "error");
+    return null;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+  }
+  setPeopleTrainingFeedback(`Generiram zapisnik osposobljavanja za RN ${workOrderNumber || workOrderId}.`, "success");
+
+  try {
+    const result = await apiRequestWithTransientRetry(`/work-orders/${encodeURIComponent(workOrderId)}/training-record`, {
+      method: "POST",
+    }, {
+      maxAttempts: 3,
+      delays: [1800, 3500],
+      onRetry: () => setPeopleTrainingFeedback("Server još obrađuje zapisnik, pokušavam ponovno...", "success"),
+    });
+    setPeopleTrainingFeedback(result?.message || "Zapisnik osposobljavanja je spremljen u Dokumente.", "success");
+    renderPeopleTrainingExamOverview();
+    return result;
+  } catch (error) {
+    console.error("Zapisnik osposobljavanja nije generiran.", error);
+    setPeopleTrainingFeedback(error?.message || "Zapisnik osposobljavanja nije generiran.", "error");
+    return null;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.classList.remove("is-loading");
+      button.removeAttribute("aria-busy");
+    }
+  }
+}
+
+function createPeopleTrainingRnRecordButton(group = {}) {
+  const workOrder = group.workOrder ?? {};
+  const completedRows = getPeopleTrainingRnCompletedRows(group);
+  const workOrderId = String(workOrder?.id || "").trim();
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "people-training-rn-pdf-button is-record";
+  button.innerHTML = `${getWorkOrderIconMarkup("document")}<span>Zapisnik</span>`;
+  button.disabled = !workOrderId || completedRows.length === 0;
+  button.title = completedRows.length
+    ? `Generiraj zapisnik osposobljavanja (${completedRows.length} položeno)`
+    : "Zapisnik je dostupan nakon položenog osposobljavanja.";
+  button.setAttribute("aria-label", button.title);
+  button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await generatePeopleTrainingRnRecordDocument(workOrder, button);
+  });
+  return button;
+}
+
 function createPeopleTrainingRnPersonRow(personRows = []) {
   const record = personRows[0]?.record ?? {};
   const row = document.createElement("article");
@@ -12674,7 +12738,14 @@ function createPeopleTrainingRnTrackingCard(group = {}, index = 0) {
   const services = document.createElement("span");
   services.className = "soft-pill people-training-rn-service-summary";
   services.textContent = serviceSummary ? `Usluge: ${serviceSummary}` : "Usluge: -";
-  chips.append(progress, count, exams, services, createPeopleTrainingRnPdfButton(workOrder, group.workOrderNumber));
+  chips.append(
+    progress,
+    count,
+    exams,
+    services,
+    createPeopleTrainingRnPdfButton(workOrder, group.workOrderNumber),
+    createPeopleTrainingRnRecordButton(group),
+  );
 
   summary.append(title, chips);
 
@@ -121447,6 +121518,13 @@ function buildWorkOrderDocumentWizardTrainingCard(workOrder = {}) {
     chip.textContent = label;
     chips.append(chip);
   });
+  chips.append(createPeopleTrainingRnRecordButton({
+    workOrder,
+    rows: rows.map((row) => ({
+      ...row,
+      progress: getWorkOrderDocumentTrainingRowProgress(row),
+    })),
+  }));
   head.append(copy, chips);
 
   const serviceHeader = document.createElement("div");

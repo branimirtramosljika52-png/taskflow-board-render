@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.159.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.160.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -18289,6 +18289,390 @@ async function confirmMobileWorkOrderTrainingAssignments({
   };
 }
 
+function formatTrainingRecordDateLabel(value = "") {
+  const normalized = normalizeDateOnlyValue(value);
+  if (!normalized) {
+    return "";
+  }
+  const [year, month, day] = normalized.split("-");
+  return `${day}.${month}.${year}.`;
+}
+
+function getWorkOrderTrainingRecordPersonName(record = {}) {
+  return normalizeInputValue(
+    record.fullName
+      || [record.firstName, record.lastName].filter(Boolean).join(" ")
+      || record.email
+      || record.oib,
+  ) || "Osoba";
+}
+
+function getWorkOrderTrainingRecordServiceLabel(service = {}) {
+  return normalizeInputValue(
+    service.label
+      || [service.serviceCode, service.serviceName].filter(Boolean).join(" - ")
+      || service.serviceName
+      || service.serviceCode
+      || "Osposobljavanje",
+  );
+}
+
+function getWorkOrderTrainingRecordItemStatus(item = null) {
+  const status = getMobileTrainingAssignmentStatus(item);
+  if (["valid", "done"].includes(status)) {
+    return "passed";
+  }
+  const rawStatus = normalizeMobileTemplateLookupKey(item?.status || item?.certificateStatus);
+  if (["passed", "completed", "done", "issued", "valid", "vazece", "polozeno"].some((value) => rawStatus.includes(value))) {
+    return "passed";
+  }
+  if (item?.passedOn || item?.issuedOn || item?.certificateNumber || item?.recordNumber) {
+    return "passed";
+  }
+  return status;
+}
+
+function getWorkOrderTrainingRecordRows(workOrder = {}, scopedSnapshot = {}) {
+  const services = getMobileWorkOrderTrainingServices(workOrder, scopedSnapshot);
+  if (services.length === 0) {
+    return [];
+  }
+  const workOrderId = normalizeInputValue(workOrder.id);
+  const companyId = normalizeInputValue(workOrder.companyId);
+  return (Array.isArray(scopedSnapshot.peopleTrainingRecords) ? scopedSnapshot.peopleTrainingRecords : [])
+    .filter((record) => !companyId || normalizeInputValue(record?.companyId) === companyId)
+    .flatMap((record) => services.map((service) => {
+      const item = findMobilePeopleTrainingItemForService(record, service);
+      const learningEntries = getMobileTrainingLearningEntries(record, workOrder, service, scopedSnapshot);
+      const linkedEntries = learningEntries.filter((entry) => entry.test);
+      const hasLinkedTests = linkedEntries.length > 0
+        || (Array.isArray(service.linkedLearningTestIds) && service.linkedLearningTestIds.length > 0);
+      const passedLearningEntries = linkedEntries.filter((entry) => entry.assignment && entry.passed === true);
+      const failedLearningEntries = linkedEntries.filter((entry) => entry.assignment && entry.passed === false);
+      const learningPassed = hasLinkedTests
+        && linkedEntries.length > 0
+        && passedLearningEntries.length === linkedEntries.length
+        && failedLearningEntries.length === 0;
+      const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number);
+      const itemLinkedToWorkOrder = item && (
+        (workOrderId && normalizeInputValue(item.workOrderId) === workOrderId)
+          || (workOrderNumber && normalizeInputValue(item.workOrderNumber) === workOrderNumber)
+      );
+      const itemPassed = itemLinkedToWorkOrder && getWorkOrderTrainingRecordItemStatus(item) === "passed";
+      if (!learningPassed && !itemPassed) {
+        return null;
+      }
+      const passedDates = [
+        ...passedLearningEntries.map((entry) => entry.submittedAt),
+        item?.passedOn,
+        item?.issuedOn,
+        item?.date,
+        item?.trainingDate,
+      ].map(normalizeDateOnlyValue).filter(Boolean);
+      const validUntil = normalizeDateOnlyValue(item?.validUntil || item?.certificateValidUntil);
+      const certificateNumber = normalizeInputValue(item?.certificateNumber || item?.recordNumber);
+      const scores = passedLearningEntries
+        .map((entry) => normalizeInputValue(entry.scorePercent))
+        .filter(Boolean);
+      const normalizeRecordPassPercent = (value = "") => {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed >= 1 && parsed <= 100 ? parsed : 0;
+      };
+      const passPercents = [
+        ...passedLearningEntries.map((entry) => entry.passPercent),
+        service.passPercent,
+        item?.passPercent,
+      ]
+        .map(normalizeRecordPassPercent)
+        .filter((value) => value > 0);
+      return {
+        record,
+        service,
+        item,
+        learningEntries,
+        personName: getWorkOrderTrainingRecordPersonName(record),
+        oib: normalizeInputValue(record.oib),
+        jobTitle: normalizeInputValue(record.jobTitle || record.workPlace),
+        email: normalizeInputValue(record.email),
+        serviceLabel: getWorkOrderTrainingRecordServiceLabel(service),
+        serviceCode: normalizeInputValue(service.serviceCode || service.shortLabel),
+        testTitles: passedLearningEntries
+          .map((entry) => normalizeInputValue(entry.title))
+          .filter(Boolean),
+        passedOn: passedDates[0] || "",
+        validUntil,
+        certificateNumber,
+        scoreLabel: scores.length ? `${scores.join(", ")}%` : "",
+        passPercent: passPercents[0] || "",
+        mode: normalizeMobileTrainingMode(item?.examMode || service.modeDefault || ""),
+      };
+    }))
+    .filter(Boolean)
+    .sort((left, right) => (
+      left.personName.localeCompare(right.personName, "hr", { sensitivity: "base" })
+        || left.serviceLabel.localeCompare(right.serviceLabel, "hr", { sensitivity: "base" })
+    ));
+}
+
+function getWorkOrderTrainingRecordSigner(user = {}, scopedSnapshot = {}) {
+  const userId = normalizeInputValue(user?.id);
+  const userEmail = normalizeInputValue(user?.email).toLowerCase();
+  const scopedUser = (Array.isArray(scopedSnapshot.users) ? scopedSnapshot.users : [])
+    .find((candidate) => (
+      (userId && normalizeInputValue(candidate?.id) === userId)
+        || (userEmail && normalizeInputValue(candidate?.email).toLowerCase() === userEmail)
+    )) || user || {};
+  return {
+    name: getMobileUserDocumentName(scopedUser) || normalizeInputValue(user?.fullName || user?.email) || "Izradio zapisnik",
+    title: getMobileUserDocumentTitle(scopedUser),
+    email: normalizeInputValue(scopedUser?.email || user?.email),
+    oib: normalizeSignatureFieldOib(
+      getMobileUserDocumentOib(scopedUser, "znr", scopedSnapshot)
+        || getIsznrUserCandidateOib(scopedUser)
+        || getIsznrUserCandidateOib(user),
+    ),
+    organizationName: normalizeInputValue(scopedSnapshot.currentOrganization?.name || scopedSnapshot.organization?.name || ""),
+  };
+}
+
+function buildWorkOrderTrainingRecordSignatureFields(signer = {}) {
+  const oib = normalizeSignatureFieldOib(signer.oib);
+  if (!oib) {
+    return [];
+  }
+  const role = "ZNR_OSPOSOBLJAVANJE";
+  return [{
+    fieldName: buildSignatureFieldName(role, oib),
+    signatureFieldRole: role,
+    signatureFieldOib: oib,
+    signatureFieldStandard: "SIGN_{ROLE}_{OIB}",
+    label: signer.name || "Potpisnik",
+    name: signer.name || "Potpisnik",
+    roleLabel: "Izradio / ovjerio zapisnik",
+    signerTitle: signer.title || "",
+    signerOrganization: signer.organizationName || "",
+    signerEmail: signer.email || "",
+    signerOib: oib,
+    page: Number.NaN,
+    x: 334,
+    y: 88,
+    width: 196,
+    height: 38,
+    drawPlaceholder: false,
+    signatureMode: "digital",
+  }];
+}
+
+function buildWorkOrderTrainingRecordSignatureMetadata(signatureFields = []) {
+  const fields = (Array.isArray(signatureFields) ? signatureFields : []).filter((field) => field?.fieldName);
+  const primary = fields[0] || {};
+  return {
+    signatureFieldRole: primary.signatureFieldRole || "",
+    signatureFieldOib: primary.signatureFieldOib || "",
+    preferredField: primary.fieldName || "",
+    signerOib: primary.signatureFieldOib || "",
+    signatureFieldsJson: fields.length > 0 ? JSON.stringify(fields.map((field) => ({
+      fieldName: field.fieldName,
+      label: field.label || field.name || "",
+      name: field.name || field.label || "",
+      roleLabel: field.roleLabel || "",
+      signerTitle: field.signerTitle || "",
+      signerOrganization: field.signerOrganization || "",
+      signerEmail: field.signerEmail || "",
+      page: field.page || "",
+      x: Number.isFinite(Number(field.x)) ? Number(field.x) : null,
+      y: Number.isFinite(Number(field.y)) ? Number(field.y) : null,
+      width: Number.isFinite(Number(field.width)) ? Number(field.width) : null,
+      height: Number.isFinite(Number(field.height)) ? Number(field.height) : null,
+      role: field.signatureFieldRole || "ZNR",
+      oib: field.signatureFieldOib || "",
+      status: "available",
+      standard: field.signatureFieldStandard || "SIGN_{ROLE}_{OIB}",
+    }))) : "",
+  };
+}
+
+function buildWorkOrderTrainingRecordHtml({
+  workOrder = {},
+  rows = [],
+  signer = {},
+} = {}) {
+  const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number || workOrder.id || "RN");
+  const generatedDate = formatTrainingRecordDateLabel(new Date().toISOString());
+  const companyName = normalizeInputValue(workOrder.companyName || "Tvrtka");
+  const locationName = normalizeInputValue(workOrder.locationName || workOrder.locationAddressSnapshot || "Sve lokacije");
+  const services = Array.from(new Set(rows.map((row) => row.serviceLabel).filter(Boolean)));
+  const peopleCount = new Set(rows.map((row) => row.oib || row.personName).filter(Boolean)).size;
+  const serviceCount = services.length;
+  const rowHtml = rows.map((row, index) => `
+    <tr>
+      <td class="col-num">${index + 1}</td>
+      <td>
+        <strong>${escapeEmailHtml(row.personName)}</strong>
+        <span>${escapeEmailHtml([row.jobTitle, row.oib ? `OIB ${row.oib}` : "", row.email].filter(Boolean).join(" · "))}</span>
+      </td>
+      <td>
+        <strong>${escapeEmailHtml(row.serviceLabel)}</strong>
+        <span>${escapeEmailHtml([row.serviceCode, row.testTitles.length ? `Test: ${row.testTitles.join(", ")}` : ""].filter(Boolean).join(" · "))}</span>
+      </td>
+      <td>${escapeEmailHtml(formatTrainingRecordDateLabel(row.passedOn) || "-")}</td>
+      <td>${escapeEmailHtml(row.validUntil ? formatTrainingRecordDateLabel(row.validUntil) : "trajno")}</td>
+      <td>${escapeEmailHtml([row.scoreLabel, row.passPercent ? `prolaz ${row.passPercent}%` : ""].filter(Boolean).join(" / ") || "-")}</td>
+      <td>${escapeEmailHtml(row.certificateNumber || "-")}</td>
+    </tr>
+  `).join("");
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <title>Zapisnik osposobljavanja ${escapeEmailHtml(workOrderNumber)}</title>
+  <style>
+    @page { size: A4; margin: 15mm 13mm 18mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #0f172a; font-size: 10.5px; line-height: 1.35; }
+    .topline { color: #2563eb; font-size: 9px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+    h1 { margin: 8px 0 4px; font-size: 26px; line-height: 1.05; letter-spacing: 0; }
+    .subtitle { margin: 0; color: #475569; font-size: 11px; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 18px 0 14px; }
+    .summary div { border: 1px solid #dbeafe; background: #eff6ff; border-radius: 10px; padding: 8px 9px; min-height: 48px; }
+    .summary span { display: block; color: #64748b; font-size: 8px; text-transform: uppercase; letter-spacing: .8px; font-weight: 800; }
+    .summary strong { display: block; margin-top: 3px; font-size: 13px; }
+    .section-title { margin: 14px 0 7px; padding: 7px 9px; border-radius: 8px; background: #e2e8f0; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .9px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 7px 6px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: .4px; }
+    td { border: 1px solid #d7dee9; padding: 7px 6px; vertical-align: top; }
+    td strong { display: block; font-size: 10.5px; }
+    td span { display: block; margin-top: 2px; color: #64748b; font-size: 9px; }
+    .col-num { width: 28px; text-align: center; font-weight: 800; }
+    .signature { display: grid; grid-template-columns: 1fr 210px; gap: 20px; margin-top: 34px; page-break-inside: avoid; }
+    .signature .note { color: #475569; }
+    .sign-box { min-height: 92px; text-align: center; }
+    .sign-box strong { display: block; margin-bottom: 42px; }
+    .sign-line { border-top: 1px solid #0f172a; padding-top: 5px; font-size: 9px; color: #475569; }
+    .footer { position: fixed; left: 0; right: 0; bottom: -9mm; color: #94a3b8; font-size: 8px; display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="topline">SafeNexus · Zapisnik osposobljavanja</div>
+  <h1>Zapisnik o osposobljavanju</h1>
+  <p class="subtitle">Radni nalog ${escapeEmailHtml(workOrderNumber)} · ${escapeEmailHtml(companyName)} · ${escapeEmailHtml(locationName)}</p>
+  <section class="summary">
+    <div><span>RN</span><strong>${escapeEmailHtml(workOrderNumber)}</strong></div>
+    <div><span>Osoba</span><strong>${escapeEmailHtml(String(peopleCount))}</strong></div>
+    <div><span>Usluga</span><strong>${escapeEmailHtml(String(serviceCount))}</strong></div>
+    <div><span>Polaganja</span><strong>${escapeEmailHtml(String(rows.length))}</strong></div>
+  </section>
+  <div class="section-title">Osnovni podaci</div>
+  <table>
+    <tbody>
+      <tr><th>Tvrtka</th><td colspan="3">${escapeEmailHtml(companyName)}</td></tr>
+      <tr><th>Lokacija</th><td colspan="3">${escapeEmailHtml(locationName)}</td></tr>
+      <tr><th>Datum zapisnika</th><td>${escapeEmailHtml(generatedDate)}</td><th>Izradio</th><td>${escapeEmailHtml([signer.name, signer.title].filter(Boolean).join(", "))}</td></tr>
+      <tr><th>Usluge</th><td colspan="3">${escapeEmailHtml(services.join(", ") || "-")}</td></tr>
+    </tbody>
+  </table>
+  <div class="section-title">Polaznici i rezultati</div>
+  <table>
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th>Osoba</th>
+        <th>Osposobljavanje / ispit</th>
+        <th>Datum</th>
+        <th>Vrijedi do</th>
+        <th>Rezultat</th>
+        <th>Broj</th>
+      </tr>
+    </thead>
+    <tbody>${rowHtml}</tbody>
+  </table>
+  <section class="signature">
+    <div class="note">
+      Zapisnik je generiran iz evidencije radnog naloga, People modula i online/live rezultata polaganja.
+      Dokument se sprema u Dokumente radnog naloga i može se poslati na digitalni potpis.
+    </div>
+    <div class="sign-box">
+      <strong>Izradio / ovjerio zapisnik:</strong>
+      <div class="sign-line">${escapeEmailHtml([signer.name, signer.oib ? `OIB ${signer.oib}` : ""].filter(Boolean).join(" · ") || "Potpisnik")}</div>
+    </div>
+  </section>
+  <div class="footer"><span>SafeNexus</span><span>RN ${escapeEmailHtml(workOrderNumber)}</span></div>
+</body>
+</html>`;
+}
+
+async function generateWorkOrderTrainingRecordDocument({
+  user,
+  workOrder = {},
+  scopedSnapshot = {},
+} = {}) {
+  const rows = getWorkOrderTrainingRecordRows(workOrder, scopedSnapshot);
+  if (rows.length === 0) {
+    const error = new Error("Nema položenih ili važećih osposobljavanja za izradu zapisnika.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const signer = getWorkOrderTrainingRecordSigner(user, scopedSnapshot);
+  const signatureFields = buildWorkOrderTrainingRecordSignatureFields(signer);
+  const workOrderNumber = normalizeInputValue(workOrder.workOrderNumber || workOrder.number || workOrder.id || "RN");
+  const html = buildWorkOrderTrainingRecordHtml({ workOrder, rows, signer });
+  const fileName = sanitizeGeneratedDocumentFileName(`Zapisnik-osposobljavanje-${workOrderNumber}`, {
+    fallback: "zapisnik-osposobljavanje",
+    extension: "pdf",
+  });
+  const pdfBuffer = await convertHtmlToPdfBuffer(html, {
+    fileName,
+    title: `Zapisnik osposobljavanja ${workOrderNumber}`,
+  });
+  const pdfWithSignatureFields = signatureFields.length > 0
+    ? await addPdfSignatureFieldsToBuffer(pdfBuffer, signatureFields, {
+      appearance: {
+        showQualifiedLabel: false,
+        showName: false,
+        showTitle: false,
+        showRole: false,
+        showOib: false,
+        border: false,
+        transparentBackground: true,
+      },
+    })
+    : pdfBuffer;
+  const metadata = buildWorkOrderTrainingRecordSignatureMetadata(signatureFields);
+  const saved = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
+    ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrder.id, {
+      fileName,
+      fileType: "application/pdf",
+      fileSize: pdfWithSignatureFields.length,
+      documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+      description: signatureFields.length > 0
+        ? `Zapisnik osposobljavanja za RN ${workOrderNumber}. Dokument je spreman za digitalni potpis.`
+        : `Zapisnik osposobljavanja za RN ${workOrderNumber}. Dodaj OIB potpisnika za signature field.`,
+      sourceType: "pdf",
+      ...metadata,
+      dataUrl: `data:application/pdf;base64,${pdfWithSignatureFields.toString("base64")}`,
+    }, user)
+    : (await domainRepository.addWorkOrderDocuments(workOrder.id, [{
+      fileName,
+      fileType: "application/pdf",
+      fileSize: pdfWithSignatureFields.length,
+      documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+      description: `Zapisnik osposobljavanja za RN ${workOrderNumber}.`,
+      sourceType: "pdf",
+      ...metadata,
+      dataUrl: `data:application/pdf;base64,${pdfWithSignatureFields.toString("base64")}`,
+    }], user, { sourceType: "pdf" }))[0] ?? null;
+  return {
+    ok: true,
+    item: stripStoredDocumentPayloadForResponse(saved),
+    passedCount: rows.length,
+    peopleCount: new Set(rows.map((row) => row.oib || row.personName).filter(Boolean)).size,
+    signatureFieldCount: signatureFields.length,
+    message: signatureFields.length > 0
+      ? `Zapisnik osposobljavanja je spremljen u Dokumente i spreman za potpis (${rows.length} polaganja).`
+      : `Zapisnik osposobljavanja je spremljen u Dokumente (${rows.length} polaganja). Potpisnik nema OIB za signature field.`,
+  };
+}
+
 function normalizeMobileDocumentWizardArray(value = []) {
   const source = Array.isArray(value)
     ? value
@@ -26193,6 +26577,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     const mobileWorkOrderTrainingConfirmMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/training\/confirm$/);
+    const mobileWorkOrderTrainingRecordMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/training-record$/);
     if (mobileWorkOrderTrainingConfirmMatch && request.method === "POST") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo pripremiti osposobljavanje za RN.");
@@ -26214,6 +26599,31 @@ async function handleApiRequest(request, response, url) {
         body,
       });
       sendJson(response, 200, result);
+      return true;
+    }
+
+    if (mobileWorkOrderTrainingRecordMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati zapisnik osposobljavanja.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderTrainingRecordMatch[1],
+        "Radni nalog nije pronaden.",
+      );
+      try {
+        const result = await generateWorkOrderTrainingRecordDocument({
+          user,
+          workOrder,
+          scopedSnapshot,
+        });
+        sendJson(response, 200, result);
+      } catch (error) {
+        sendError(response, error.statusCode || 500, error.message || "Zapisnik osposobljavanja nije generiran.");
+      }
       return true;
     }
 
@@ -26826,6 +27236,7 @@ async function handleApiRequest(request, response, url) {
     const chatConversationClearHistoryMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/clear-history$/);
     const workOrderPdfExportMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/export-pdf$/);
     const workOrderPdfSaveMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/save-pdf$/);
+    const workOrderTrainingRecordMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/training-record$/);
     const workOrderPdfSignatureMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/signature-pdf$/);
     const workOrderPdfDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
@@ -30112,6 +30523,31 @@ async function handleApiRequest(request, response, url) {
       const templateId = String(body?.templateId ?? "").trim();
       const item = await saveGeneratedWorkOrderPdfDocument(workOrderPdfSaveMatch[1], workOrder, scopedSnapshot, user, templateId);
       sendJson(response, 200, { item });
+      return true;
+    }
+
+    if (workOrderTrainingRecordMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati zapisnik osposobljavanja.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        workOrderTrainingRecordMatch[1],
+        "Radni nalog nije pronaden.",
+      );
+      try {
+        const result = await generateWorkOrderTrainingRecordDocument({
+          user,
+          workOrder,
+          scopedSnapshot,
+        });
+        sendJson(response, 200, result);
+      } catch (error) {
+        sendError(response, error.statusCode || 500, error.message || "Zapisnik osposobljavanja nije generiran.");
+      }
       return true;
     }
 

@@ -596,6 +596,20 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun generateWorkOrderTrainingRecord(workOrderId: String): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = JSONObject(
+                request(
+                    "/api/mobile/work-orders/${workOrderId.pathSegment()}/training-record",
+                    method = "POST",
+                    body = "{}",
+                    readTimeoutMs = 90_000,
+                ),
+            )
+            json.firstClean("message").ifBlank { "Zapisnik osposobljavanja je spremljen u Dokumente." }
+        }
+    }
+
     suspend fun submitWorkOrderIsznrWorkEquipment(
         workOrderId: String,
         selectedItemIds: List<String>,
