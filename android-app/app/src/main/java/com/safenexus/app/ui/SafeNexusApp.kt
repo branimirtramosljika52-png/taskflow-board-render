@@ -1733,9 +1733,14 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             state = state.copy(error = "Upiši ime i prezime osobe.", notice = "")
             return
         }
+        if (draft.oib.filter { it.isDigit() }.length != 11) {
+            state = state.copy(error = "OIB je obavezan i mora imati 11 znamenki.", notice = "")
+            return
+        }
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
             api.createPeopleTrainingRecord(
+                workOrderId = workOrder.id,
                 companyId = workOrder.companyId,
                 locationId = workOrder.locationId,
                 draft = draft,
@@ -22825,7 +22830,8 @@ private fun DocumentationTrainingManualPersonDialog(
     var jobTitle by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    val canSubmit = fullName.trim().isNotBlank()
+    val cleanOib = oib.filter { it.isDigit() }
+    val canSubmit = fullName.trim().isNotBlank() && cleanOib.length == 11
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -22855,10 +22861,14 @@ private fun DocumentationTrainingManualPersonDialog(
                 OutlinedTextField(
                     value = oib,
                     onValueChange = { oib = it.filter { char -> char.isDigit() }.take(11) },
-                    label = { Text("OIB") },
+                    label = { Text("OIB *") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     enabled = enabled,
+                    isError = oib.isNotBlank() && cleanOib.length != 11,
+                    supportingText = {
+                        Text(if (cleanOib.length == 11) "Provjera postojeće osobe ide po OIB-u." else "Obavezno 11 znamenki.")
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                 )
                 OutlinedTextField(

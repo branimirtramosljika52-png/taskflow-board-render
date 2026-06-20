@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.165.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.166.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -8552,7 +8552,168 @@ function buildPeopleTrainingImportExportRow(record = {}, columns = [], typeOptio
   });
 }
 
-function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
+function escapeXlsxXml(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function getExcelColumnName(index = 0) {
+  let value = Math.max(0, Number(index) || 0) + 1;
+  let label = "";
+  while (value > 0) {
+    const modulo = (value - 1) % 26;
+    label = String.fromCharCode(65 + modulo) + label;
+    value = Math.floor((value - modulo) / 26);
+  }
+  return label || "A";
+}
+
+function isPeopleTrainingJobTitleColumn(column = {}) {
+  const key = normalizeLookupKey(column.key || column.label || column);
+  return key === "jobtitle" || key === "nazivradnogmjesta" || key === "radnomjesto";
+}
+
+function addUniquePeopleTrainingJobTitle(target, value = "") {
+  const title = normalizeInputValue(value).slice(0, 180);
+  if (!title) {
+    return;
+  }
+  const key = normalizeLookupKey(title);
+  if (!key || target.has(key)) {
+    return;
+  }
+  target.set(key, title);
+}
+
+function collectCompanyTrainingJobTitles(scopedSnapshot = {}, companyId = "") {
+  const titles = new Map();
+  const normalizedCompanyId = normalizeInputValue(companyId);
+  (scopedSnapshot.peopleTrainingRecords ?? [])
+    .filter((record) => !normalizedCompanyId || String(record.companyId) === normalizedCompanyId)
+    .forEach((record) => {
+      addUniquePeopleTrainingJobTitle(titles, record.jobTitle || record.workPlace);
+      (record.trainingItems ?? []).forEach((item) => {
+        addUniquePeopleTrainingJobTitle(titles, item?.details?.jobTitle);
+        addUniquePeopleTrainingJobTitle(titles, item?.details?.medicalJobTitle);
+      });
+    });
+  (scopedSnapshot.riskAssessments ?? [])
+    .filter((assessment) => !normalizedCompanyId || String(assessment.companyId) === normalizedCompanyId)
+    .forEach((assessment) => {
+      (assessment.employerData?.workplaceJobs ?? []).forEach((job) => {
+        addUniquePeopleTrainingJobTitle(titles, job?.jobTitle || job?.title || job?.name);
+      });
+      (assessment.organizationUnits ?? []).forEach((unit) => {
+        const unitType = normalizeLookupKey(unit?.type);
+        addUniquePeopleTrainingJobTitle(titles, unit?.jobTitle);
+        if (unitType.includes("job") || unitType.includes("workplace") || unitType.includes("radnomjesto")) {
+          addUniquePeopleTrainingJobTitle(titles, unit?.title);
+          addUniquePeopleTrainingJobTitle(titles, unit?.name);
+        }
+        addUniquePeopleTrainingJobTitle(titles, unit?.workplace);
+        (unit?.workplaceOptions ?? []).forEach((option) => addUniquePeopleTrainingJobTitle(titles, option));
+        (unit?.clientInput?.workplaceOptions ?? []).forEach((option) => addUniquePeopleTrainingJobTitle(titles, option));
+      });
+      (assessment.jobs ?? []).forEach((job) => {
+        addUniquePeopleTrainingJobTitle(titles, job?.jobTitle || job?.title || job?.name);
+      });
+    });
+  return Array.from(titles.values()).sort((left, right) => left.localeCompare(right, "hr", { sensitivity: "base" })).slice(0, 500);
+}
+
+function addPeopleTrainingJobTitleSheet(workbook, jobTitles = []) {
+  const rows = [
+    ["Radno mjesto"],
+    ...(jobTitles.length ? jobTitles.map((title) => [title]) : [["Nema radnih mjesta u procjeni rizika za ovu tvrtku"]]),
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  worksheet["!cols"] = [{ wch: 44 }];
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Radna mjesta");
+}
+
+async function addPeopleTrainingJobTitleDropdownsToXlsx(buffer, validations = [], jobTitleCount = 0) {
+  const usableValidations = validations.filter((item) => item?.sheetName && item?.columnIndex >= 0 && jobTitleCount > 0);
+  if (!usableValidations.length) {
+    return buffer;
+  }
+
+  const zip = await JSZip.loadAsync(buffer);
+  const workbookXmlPath = "xl/workbook.xml";
+  const workbookRelsPath = "xl/_rels/workbook.xml.rels";
+  const workbookXml = await zip.file(workbookXmlPath)?.async("string");
+  const relsXml = await zip.file(workbookRelsPath)?.async("string");
+  if (!workbookXml || !relsXml) {
+    return buffer;
+  }
+
+  const sheetRidByName = new Map();
+  const sheetRegex = /<sheet\b([^>]*)\/>/g;
+  let sheetMatch;
+  while ((sheetMatch = sheetRegex.exec(workbookXml)) !== null) {
+    const attrs = sheetMatch[1] || "";
+    const name = attrs.match(/\bname="([^"]*)"/)?.[1] || "";
+    const rid = attrs.match(/\br:id="([^"]*)"/)?.[1] || "";
+    if (name && rid) {
+      sheetRidByName.set(name, rid);
+    }
+  }
+
+  const targetByRid = new Map();
+  const relRegex = /<Relationship\b([^>]*)\/>/g;
+  let relMatch;
+  while ((relMatch = relRegex.exec(relsXml)) !== null) {
+    const attrs = relMatch[1] || "";
+    const id = attrs.match(/\bId="([^"]*)"/)?.[1] || "";
+    const target = attrs.match(/\bTarget="([^"]*)"/)?.[1] || "";
+    if (id && target) {
+      targetByRid.set(id, target.replace(/^\/?xl\//, ""));
+    }
+  }
+
+  const formula = `'Radna mjesta'!$A$2:$A$${jobTitleCount + 1}`;
+  for (const validation of usableValidations) {
+    const rid = sheetRidByName.get(validation.sheetName);
+    const target = targetByRid.get(rid);
+    if (!target) {
+      continue;
+    }
+    const sheetPath = `xl/${target}`;
+    const file = zip.file(sheetPath);
+    const sheetXml = await file?.async("string");
+    if (!sheetXml) {
+      continue;
+    }
+    const column = getExcelColumnName(validation.columnIndex);
+    const firstRow = Math.max(2, Number(validation.firstDataRow) || 2);
+    const lastRow = Math.max(firstRow, Number(validation.lastDataRow) || firstRow + 999);
+    const node = `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Radno mjesto" error="Odaberi radno mjesto iz liste." sqref="${column}${firstRow}:${column}${lastRow}"><formula1>${escapeXlsxXml(formula)}</formula1></dataValidation>`;
+    let nextXml = sheetXml;
+    if (nextXml.includes("<dataValidations")) {
+      nextXml = nextXml.replace(/<dataValidations\b([^>]*)count="(\d+)"([^>]*)>/, (full, before, count, after) => (
+        `<dataValidations${before}count="${Number(count || 0) + 1}"${after}>`
+      ));
+      nextXml = nextXml.replace("</dataValidations>", `${node}</dataValidations>`);
+    } else {
+      const wrapper = `<dataValidations count="1">${node}</dataValidations>`;
+      if (nextXml.includes("<pageMargins")) {
+        nextXml = nextXml.replace("<pageMargins", `${wrapper}<pageMargins`);
+      } else if (nextXml.includes("</worksheet>")) {
+        nextXml = nextXml.replace("</worksheet>", `${wrapper}</worksheet>`);
+      } else {
+        continue;
+      }
+    }
+    zip.file(sheetPath, nextXml);
+  }
+
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+async function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
   const options = arguments.length > 1 && arguments[1] && typeof arguments[1] === "object" ? arguments[1] : {};
   const companyProfile = getCompanyTrainingImportProfile(scopedSnapshot, options.companyId, options.profile);
   if (companyProfile?.enabled && Array.isArray(companyProfile.columns) && companyProfile.columns.length > 0) {
@@ -8740,11 +8901,19 @@ function buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot = {}) {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Osposobljavanja");
   XLSX.utils.book_append_sheet(workbook, detailsWorksheet, "Detalji");
-  return XLSX.write(workbook, {
+  const jobTitles = collectCompanyTrainingJobTitles(scopedSnapshot, options.companyId || firstCompany.id || "");
+  addPeopleTrainingJobTitleSheet(workbook, jobTitles);
+  const buffer = XLSX.write(workbook, {
     type: "buffer",
     bookType: "xlsx",
     compression: true,
   });
+  const mainJobTitleColumnIndex = columns.findIndex((column) => isPeopleTrainingJobTitleColumn(column));
+  const detailsJobTitleColumnIndex = detailsColumns.findIndex((column) => isPeopleTrainingJobTitleColumn(column));
+  return addPeopleTrainingJobTitleDropdownsToXlsx(buffer, [
+    { sheetName: "Osposobljavanja", columnIndex: mainJobTitleColumnIndex, firstDataRow: 2, lastDataRow: Math.max(rows.length + 200, 500) },
+    { sheetName: "Detalji", columnIndex: detailsJobTitleColumnIndex, firstDataRow: 2, lastDataRow: Math.max(detailRows.length + 200, 500) },
+  ], jobTitles.length);
 }
 
 function sanitizeZipPathSegment(value = "", fallback = "stavka") {
@@ -10804,9 +10973,22 @@ function normalizePeopleTrainingImportProfile(profile = {}) {
   const firstDataRow = Math.max(headerRow + 1, Math.min(200, Number.parseInt(source.firstDataRow ?? source.dataRow ?? 2, 10) || 2));
   const mode = normalizePeopleTrainingImportMode(source.defaultImportMode || source.importMode || source.mode);
   const rawColumns = Array.isArray(source.columns) ? source.columns : PEOPLE_TRAINING_IMPORT_PROFILE_DEFAULT_COLUMNS;
-  const columns = rawColumns
+  const normalizedColumns = rawColumns
     .map((column, index) => normalizePeopleTrainingImportProfileColumn(column, index))
-    .filter(Boolean)
+    .filter(Boolean);
+  ["fullName", "oib", "jobTitle"].forEach((requiredKey, index) => {
+    const existing = normalizedColumns.find((column) => column.key === requiredKey);
+    if (existing) {
+      existing.required = true;
+      return;
+    }
+    const fallback = PEOPLE_TRAINING_IMPORT_PROFILE_DEFAULT_COLUMNS.find((column) => column.key === requiredKey);
+    const column = normalizePeopleTrainingImportProfileColumn({ ...fallback, required: true, order: index - 100 }, index - 100);
+    if (column) {
+      normalizedColumns.push(column);
+    }
+  });
+  const columns = normalizedColumns
     .sort((left, right) => Number(left.order || 0) - Number(right.order || 0))
     .slice(0, 80);
   return {
@@ -10906,7 +11088,7 @@ function getPeopleTrainingImportProfileCellValue(record = {}, column = {}, conte
   return values[key] ?? "";
 }
 
-function buildPeopleTrainingCompanyImportTemplateXlsxBuffer(scopedSnapshot = {}, profile = {}, companyId = "") {
+async function buildPeopleTrainingCompanyImportTemplateXlsxBuffer(scopedSnapshot = {}, profile = {}, companyId = "") {
   const normalizedProfile = normalizePeopleTrainingImportProfile(profile);
   const company = (scopedSnapshot.companies ?? []).find((item) => String(item.id) === String(companyId))
     || (scopedSnapshot.companies ?? [])[0]
@@ -10960,13 +11142,25 @@ function buildPeopleTrainingCompanyImportTemplateXlsxBuffer(scopedSnapshot = {},
   const instructionsWorksheet = XLSX.utils.aoa_to_sheet(instructions);
   instructionsWorksheet["!cols"] = [{ wch: 28 }, { wch: 42 }, { wch: 14 }, { wch: 60 }];
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, normalizedProfile.sheetName.slice(0, 31) || "Osposobljavanja");
+  const sheetName = normalizedProfile.sheetName.slice(0, 31) || "Osposobljavanja";
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
   XLSX.utils.book_append_sheet(workbook, instructionsWorksheet, "Upute");
-  return XLSX.write(workbook, {
+  const jobTitles = collectCompanyTrainingJobTitles(scopedSnapshot, company.id || companyId);
+  addPeopleTrainingJobTitleSheet(workbook, jobTitles);
+  const buffer = XLSX.write(workbook, {
     type: "buffer",
     bookType: "xlsx",
     compression: true,
   });
+  const jobTitleColumnIndex = columns.findIndex((column) => isPeopleTrainingJobTitleColumn(column));
+  return addPeopleTrainingJobTitleDropdownsToXlsx(buffer, [
+    {
+      sheetName,
+      columnIndex: jobTitleColumnIndex,
+      firstDataRow: normalizedProfile.firstDataRow,
+      lastDataRow: Math.max(normalizedProfile.firstDataRow + 999, rows.length + 200),
+    },
+  ], jobTitles.length);
 }
 
 async function hydrateWorkOrderMeasurementSheet(workOrder = {}) {
@@ -26463,6 +26657,80 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    const mobileWorkOrderTrainingPersonMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/training\/person$/);
+    if (mobileWorkOrderTrainingPersonMatch && request.method === "POST") {
+      if (!canManagePeopleTrainingRecords(user) && !(await canUseScopedAppPermission(user, request, "people.manage"))) {
+        sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderTrainingPersonMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const companyId = normalizeInputValue(workOrder.companyId || body.companyId);
+      const locationId = normalizeInputValue(body.locationId || workOrder.locationId);
+      if (!companyId) {
+        sendError(response, 400, "RN nema odabranu tvrtku za dodavanje osobe.");
+        return true;
+      }
+      assertCompanyPayloadInScope(scopedSnapshot, { companyId });
+      if (locationId) {
+        assertLocationPayloadInScope(scopedSnapshot, { locationId, companyId });
+      }
+
+      const fullName = normalizeInputValue(body.fullName).slice(0, 240);
+      const oib = normalizeInputValue(body.oib).replace(/\s+/g, "");
+      if (!fullName) {
+        sendError(response, 400, "Upiši ime i prezime osobe.");
+        return true;
+      }
+      if (!/^\d{11}$/.test(oib)) {
+        sendError(response, 400, "OIB je obavezan i mora imati 11 znamenki.");
+        return true;
+      }
+
+      const existing = (scopedSnapshot.peopleTrainingRecords ?? []).find((record) => (
+        String(record.companyId) === String(companyId)
+        && normalizeInputValue(record.oib).replace(/\s+/g, "") === oib
+      ));
+      const patch = {
+        companyId,
+        locationId,
+        fullName,
+        oib,
+        email: normalizeInputValue(body.email).toLowerCase(),
+        phone: normalizeInputValue(body.phone),
+        jobTitle: normalizeInputValue(body.jobTitle),
+        activityStatus: "DA",
+      };
+      const record = existing
+        ? await domainRepository.updatePersonTrainingRecord(existing.id, {
+          ...patch,
+          email: patch.email || existing.email,
+          phone: patch.phone || existing.phone,
+          jobTitle: patch.jobTitle || existing.jobTitle,
+          locationId: patch.locationId || existing.locationId,
+          trainingItems: existing.trainingItems ?? [],
+          attachments: existing.attachments ?? [],
+        })
+        : await domainRepository.createPersonTrainingRecord({
+          ...patch,
+          organizationId: scopedSnapshot.activeOrganizationId,
+          trainingItems: [],
+        });
+      sendJson(response, existing ? 200 : 201, {
+        ok: true,
+        existing: Boolean(existing),
+        id: record?.id || existing?.id || "",
+        message: existing ? "Osoba s tim OIB-om već postoji i zapis je ažuriran." : "Osoba je dodana u osposobljavanja.",
+      });
+      return true;
+    }
+
     const mobileWorkOrderDocumentationContextMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/documentation-context$/);
     if (mobileWorkOrderDocumentationContextMatch && request.method === "GET") {
       if (!canManageWorkOrders(user)) {
@@ -28150,10 +28418,11 @@ async function handleApiRequest(request, response, url) {
       }
       const profile = getCompanyTrainingImportProfile(scopedSnapshot, company.id);
       const todayIso = new Date().toISOString().slice(0, 10);
-      sendBinary(response, 200, buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot, {
+      const templateBuffer = await buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot, {
         companyId: company.id,
         profile,
-      }), {
+      });
+      sendBinary(response, 200, templateBuffer, {
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         fileName: sanitizeGeneratedDocumentFileName(`osposobljavanja-${company.name || "tvrtka"}-${todayIso}`, {
           fallback: "osposobljavanja-import",
@@ -28646,7 +28915,8 @@ async function handleApiRequest(request, response, url) {
         : null;
       const todayIso = new Date().toISOString().slice(0, 10);
       const hasExistingRows = (scopedSnapshot.peopleTrainingRecords ?? []).length > 0;
-      sendBinary(response, 200, buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot, { companyId }), {
+      const templateBuffer = await buildPeopleTrainingImportTemplateXlsxBuffer(scopedSnapshot, { companyId });
+      sendBinary(response, 200, templateBuffer, {
         contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         fileName: sanitizeGeneratedDocumentFileName(`${hasExistingRows ? "osposobljavanja-podaci" : "osposobljavanja-import-primjer"}${company?.name ? `-${company.name}` : ""}-${todayIso}`, {
           fallback: hasExistingRows ? "osposobljavanja-podaci" : "osposobljavanja-import-primjer",
@@ -28712,8 +28982,22 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
+      const cleanOib = normalizeInputValue(body.oib).replace(/\s+/g, "");
+      if (!/^\d{11}$/.test(cleanOib)) {
+        sendError(response, 400, "OIB je obavezan i mora imati 11 znamenki.");
+        return true;
+      }
+      const duplicate = (scopedSnapshot.peopleTrainingRecords ?? []).find((record) => (
+        String(record.companyId) === String(body.companyId)
+        && normalizeInputValue(record.oib).replace(/\s+/g, "") === cleanOib
+      ));
+      if (duplicate) {
+        sendError(response, 409, "Osoba s tim OIB-om već postoji u osposobljavanjima za ovu tvrtku.");
+        return true;
+      }
       const created = await domainRepository.createPersonTrainingRecord({
         ...body,
+        oib: cleanOib,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
       await persistPeopleTrainingCertificates(created, scopedSnapshot);
@@ -30285,6 +30569,25 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.peopleTrainingRecords ?? [], peopleTrainingRecordMatch[1], "Evidencija osposobljavanja nije pronađena.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
+      if (Object.prototype.hasOwnProperty.call(body, "oib")) {
+        const cleanOib = normalizeInputValue(body.oib).replace(/\s+/g, "");
+        if (!/^\d{11}$/.test(cleanOib)) {
+          sendError(response, 400, "OIB je obavezan i mora imati 11 znamenki.");
+          return true;
+        }
+        const currentTrainingRecord = (scopedSnapshot.peopleTrainingRecords ?? []).find((record) => String(record.id) === String(peopleTrainingRecordMatch[1])) || {};
+        const nextCompanyId = normalizeInputValue(body.companyId || currentTrainingRecord.companyId);
+        const duplicate = (scopedSnapshot.peopleTrainingRecords ?? []).find((record) => (
+          String(record.id) !== String(currentTrainingRecord.id)
+          && String(record.companyId) === String(nextCompanyId)
+          && normalizeInputValue(record.oib).replace(/\s+/g, "") === cleanOib
+        ));
+        if (duplicate) {
+          sendError(response, 409, "Osoba s tim OIB-om već postoji u osposobljavanjima za ovu tvrtku.");
+          return true;
+        }
+        body.oib = cleanOib;
+      }
       const updated = await domainRepository.updatePersonTrainingRecord(peopleTrainingRecordMatch[1], body);
 
       if (!updated) {

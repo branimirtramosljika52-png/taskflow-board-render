@@ -488,6 +488,7 @@ class SafeNexusApi(
     }
 
     suspend fun createPeopleTrainingRecord(
+        workOrderId: String,
         companyId: String,
         locationId: String,
         draft: WorkOrderTrainingManualPersonDraft,
@@ -505,20 +506,20 @@ class SafeNexusApi(
                 .put("companyId", cleanCompanyId)
                 .put("locationId", locationId.trim())
                 .put("fullName", fullName)
-                .put("oib", draft.oib.trim())
+                .put("oib", draft.oib.filter { it.isDigit() })
                 .put("email", draft.email.trim())
                 .put("phone", draft.phone.trim())
                 .put("jobTitle", draft.jobTitle.trim())
                 .put("activityStatus", "DA")
                 .put("trainingItems", JSONArray())
                 .toString()
-            request(
-                "/api/people-training-records",
+            val response = request(
+                "/api/mobile/work-orders/${workOrderId.pathSegment()}/training/person",
                 method = "POST",
                 body = payload,
                 readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
             )
-            "Osoba je dodana u osposobljavanja."
+            JSONObject(response).optString("message").ifBlank { "Osoba je dodana u osposobljavanja." }
         }
     }
 
