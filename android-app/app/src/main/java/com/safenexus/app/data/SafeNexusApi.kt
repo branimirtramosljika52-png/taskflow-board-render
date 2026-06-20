@@ -1325,6 +1325,37 @@ private fun JSONObject.firstClean(vararg keys: String): String {
     return ""
 }
 
+private fun JSONObject.firstInt(defaultValue: Int, vararg keys: String): Int {
+    for (key in keys) {
+        if (!has(key) || isNull(key)) continue
+        val raw = opt(key)
+        val value = when (raw) {
+            is Number -> raw.toInt()
+            is String -> raw.trim().toIntOrNull()
+            else -> null
+        }
+        if (value != null) return value
+    }
+    return defaultValue
+}
+
+private fun JSONObject.firstNullableBoolean(vararg keys: String): Boolean? {
+    for (key in keys) {
+        if (!has(key) || isNull(key)) continue
+        val raw = opt(key)
+        when (raw) {
+            is Boolean -> return raw
+            is Number -> return raw.toInt() != 0
+            is String -> {
+                val normalized = raw.trim().lowercase()
+                if (normalized in setOf("true", "1", "yes", "da", "passed", "pass", "polozeno")) return true
+                if (normalized in setOf("false", "0", "no", "ne", "failed", "fail", "nije_polozeno")) return false
+            }
+        }
+    }
+    return null
+}
+
 private fun JSONArray?.toStringList(vararg keys: String): List<String> {
     if (this == null) return emptyList()
     return buildList {
@@ -1337,6 +1368,21 @@ private fun JSONArray?.toStringList(vararg keys: String): List<String> {
             if (value.isNotBlank()) add(value)
         }
     }.distinct()
+}
+
+private fun JSONArray?.toIntList(): List<Int> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val entry = opt(index)
+            val value = when (entry) {
+                is Number -> entry.toInt()
+                is String -> entry.trim().toIntOrNull()
+                else -> null
+            }
+            if (value != null) add(value)
+        }
+    }
 }
 
 private fun JSONObject?.toDashboardStats(): DashboardStats {
@@ -2130,6 +2176,8 @@ private fun JSONArray?.toWorkOrderTrainingServices(): List<WorkOrderTrainingServ
                     validityMonths = item.firstClean("validityMonths"),
                     linkedLearningTestIds = item.optJSONArray("linkedLearningTestIds").toStringList(),
                     linkedLearningTestTitles = item.optJSONArray("linkedLearningTestTitles").toStringList(),
+                    linkedLearningTestPassPercents = item.optJSONArray("linkedLearningTestPassPercents").toIntList(),
+                    passPercent = item.firstInt(80, "passPercent"),
                     modeDefault = item.firstClean("modeDefault"),
                 ),
             )
@@ -2156,7 +2204,17 @@ private fun JSONArray?.toWorkOrderTrainingAssignments(): List<WorkOrderTrainingA
                     proposalReason = item.firstClean("proposalReason"),
                     linkedLearningTestIds = item.optJSONArray("linkedLearningTestIds").toStringList(),
                     linkedLearningTestTitles = item.optJSONArray("linkedLearningTestTitles").toStringList(),
+                    linkedLearningTestPassPercents = item.optJSONArray("linkedLearningTestPassPercents").toIntList(),
                     linkedLearningTestCount = item.optInt("linkedLearningTestCount", 0),
+                    passPercent = item.firstInt(80, "passPercent"),
+                    scorePercent = item.firstClean("scorePercent"),
+                    passed = item.firstNullableBoolean("passed"),
+                    learningStatus = item.firstClean("learningStatus"),
+                    completedLearningTestCount = item.optInt("completedLearningTestCount", 0),
+                    failedLearningTestCount = item.optInt("failedLearningTestCount", 0),
+                    questionLimit = item.optInt("questionLimit", 0),
+                    timePerQuestionSeconds = item.optInt("timePerQuestionSeconds", 0),
+                    timeLimitSeconds = item.optInt("timeLimitSeconds", 0),
                     existingItemId = item.firstClean("existingItemId"),
                     existingValidUntil = item.firstClean("existingValidUntil"),
                     existingPassedOn = item.firstClean("existingPassedOn"),

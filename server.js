@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.158.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.159.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -17668,6 +17668,9 @@ function getMobileWorkOrderTrainingServices(workOrder = {}, scopedSnapshot = {})
         ...linkedLearningTestIds.map((id) => normalizeInputValue(learningTestsById.get(id)?.title)).filter(Boolean),
         ...explicitTitles,
       ]));
+      const linkedLearningTestPassPercents = linkedLearningTestIds
+        .map((id) => normalizeMobileLearningPassPercent(learningTestsById.get(id)?.passPercent, 80));
+      const passPercent = linkedLearningTestPassPercents[0] || 80;
       const serviceId = normalizeInputValue(service.serviceId || service.serviceCatalogId || catalogItem.id || service.id);
       const serviceCode = normalizeInputValue(service.serviceCode || service.code || catalogItem.serviceCode || catalogItem.code);
       const serviceName = normalizeInputValue(service.name || service.serviceName || service.title || catalogItem.name || catalogItem.title || "Osposobljavanje");
@@ -17687,6 +17690,8 @@ function getMobileWorkOrderTrainingServices(workOrder = {}, scopedSnapshot = {})
         validityMonths,
         linkedLearningTestIds,
         linkedLearningTestTitles,
+        linkedLearningTestPassPercents,
+        passPercent,
         modeDefault: linkedLearningTestIds.length > 0 ? "online_test" : "live_paper",
         sourceIndex: index,
       };
@@ -17756,6 +17761,50 @@ function mobileTrainingModeSendsEmail(mode = "") {
   return normalizedMode === "online_test" || normalizedMode === "live_application";
 }
 
+function normalizeMobileLearningPassPercent(value = "", fallback = 80) {
+  const fallbackNumber = Number.parseInt(fallback, 10);
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 100) {
+    return parsed;
+  }
+  if (Number.isFinite(fallbackNumber) && fallbackNumber >= 1 && fallbackNumber <= 100) {
+    return fallbackNumber;
+  }
+  return 80;
+}
+
+function normalizeMobileLearningPositiveInt(value = "", fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  const fallbackNumber = Number.parseInt(fallback, 10);
+  return Number.isFinite(fallbackNumber) && fallbackNumber > 0 ? fallbackNumber : 0;
+}
+
+function normalizeMobileNullableBoolean(value) {
+  if (value === true || value === false) {
+    return value;
+  }
+  const normalized = normalizeInputValue(value).toLowerCase();
+  if (["true", "1", "yes", "da", "passed", "pass", "polozeno"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "ne", "failed", "fail", "nije_polozeno"].includes(normalized)) {
+    return false;
+  }
+  return null;
+}
+
+function getMobileLearningTestById(scopedSnapshot = {}, id = "") {
+  const lookupId = normalizeInputValue(id);
+  if (!lookupId) {
+    return null;
+  }
+  return (Array.isArray(scopedSnapshot.learningTests) ? scopedSnapshot.learningTests : [])
+    .find((test) => normalizeInputValue(test?.id) === lookupId) || null;
+}
+
 function getMobileTrainingAssignmentStatus(item = null) {
   if (!item) {
     return "missing";
@@ -17778,10 +17827,69 @@ function getMobileTrainingAssignmentStatus(item = null) {
   return "missing";
 }
 
-function buildMobileWorkOrderTrainingAssignment(record = {}, trainingService = {}, scopedSnapshot = {}) {
+function getMobileTrainingLearningEntries(record = {}, workOrder = {}, trainingService = {}, scopedSnapshot = {}) {
+  const linkedLearningTestIds = Array.isArray(trainingService.linkedLearningTestIds)
+    ? trainingService.linkedLearningTestIds
+    : [];
+  return linkedLearningTestIds
+    .map((testId) => getMobileLearningTestById(scopedSnapshot, testId))
+    .filter(Boolean)
+    .map((test) => {
+      const assignment = (Array.isArray(test.assignmentItems) ? test.assignmentItems : [])
+        .find((candidate) => findMobileLearningAssignmentForRecord(candidate, record, workOrder)) || null;
+      const passPercent = normalizeMobileLearningPassPercent(assignment?.passPercent, test.passPercent);
+      const scoreRaw = Number.parseFloat(assignment?.scorePercent);
+      const hasScore = Number.isFinite(scoreRaw);
+      const explicitPassed = normalizeMobileNullableBoolean(assignment?.passed);
+      const passed = explicitPassed !== null
+        ? explicitPassed
+        : (hasScore ? scoreRaw >= passPercent : null);
+      const status = normalizeMobileTemplateLookupKey(assignment?.status);
+      return {
+        test,
+        assignment,
+        title: normalizeInputValue(test.title),
+        passPercent,
+        scorePercent: hasScore ? Math.max(0, Math.min(100, Math.round(scoreRaw))) : "",
+        passed,
+        status,
+        assignedAt: normalizeInputValue(assignment?.assignedAt),
+        submittedAt: normalizeInputValue(assignment?.submittedAt || assignment?.completedAt),
+        questionLimit: normalizeMobileLearningPositiveInt(
+          assignment?.questionLimit,
+          Array.isArray(assignment?.selectedQuestionIds) ? assignment.selectedQuestionIds.length : 0,
+        ),
+        timePerQuestionSeconds: normalizeMobileLearningPositiveInt(
+          assignment?.timePerQuestionSeconds,
+          test.secondsPerQuestion || 60,
+        ),
+        timeLimitSeconds: normalizeMobileLearningPositiveInt(assignment?.timeLimitSeconds, 0),
+      };
+    });
+}
+
+function buildMobileWorkOrderTrainingAssignment(record = {}, trainingService = {}, scopedSnapshot = {}, workOrder = {}) {
   const item = findMobilePeopleTrainingItemForService(record, trainingService);
-  const status = getMobileTrainingAssignmentStatus(item);
-  const needsAssignment = status === "missing" || status === "expired";
+  const learningEntries = getMobileTrainingLearningEntries(record, workOrder, trainingService, scopedSnapshot);
+  const failedEntry = learningEntries.find((entry) => entry.assignment && entry.passed === false) || null;
+  const passedEntry = learningEntries.find((entry) => entry.assignment && entry.passed === true) || null;
+  const activeEntry = failedEntry
+    || passedEntry
+    || learningEntries.find((entry) => entry.assignment)
+    || learningEntries[0]
+    || null;
+  const baseStatus = getMobileTrainingAssignmentStatus(item);
+  const hasPendingLearningAssignment = learningEntries.some((entry) => (
+    entry.assignment && ["assigned", "pending", "in_progress"].includes(entry.status)
+  ));
+  const status = failedEntry
+    ? "failed"
+    : passedEntry
+      ? "passed"
+      : hasPendingLearningAssignment
+        ? "pending"
+        : baseStatus;
+  const needsAssignment = status === "missing" || status === "expired" || status === "failed";
   const mode = trainingService.linkedLearningTestIds.length > 0 ? "online_test" : "live_paper";
   const linkedLearningTestTitles = trainingService.linkedLearningTestTitles.length
     ? trainingService.linkedLearningTestTitles
@@ -17800,6 +17908,10 @@ function buildMobileWorkOrderTrainingAssignment(record = {}, trainingService = {
     status,
     statusLabel: status === "valid"
       ? "Polozeno / vazece"
+      : status === "passed"
+        ? "Polozeno"
+        : status === "failed"
+          ? "Nije polozeno"
       : status === "expired"
         ? "Isteklo"
         : status === "pending"
@@ -17812,7 +17924,17 @@ function buildMobileWorkOrderTrainingAssignment(record = {}, trainingService = {
       : "Vec postoji vazece osposobljavanje.",
     linkedLearningTestIds: trainingService.linkedLearningTestIds,
     linkedLearningTestTitles,
+    linkedLearningTestPassPercents: learningEntries.map((entry) => entry.passPercent),
     linkedLearningTestCount: trainingService.linkedLearningTestIds.length,
+    passPercent: normalizeMobileLearningPassPercent(activeEntry?.passPercent, trainingService.passPercent),
+    scorePercent: activeEntry?.scorePercent ?? "",
+    passed: activeEntry?.passed,
+    learningStatus: activeEntry?.status || "",
+    completedLearningTestCount: learningEntries.filter((entry) => entry.assignment && entry.passed === true).length,
+    failedLearningTestCount: learningEntries.filter((entry) => entry.assignment && entry.passed === false).length,
+    questionLimit: activeEntry?.questionLimit || 0,
+    timePerQuestionSeconds: activeEntry?.timePerQuestionSeconds || 0,
+    timeLimitSeconds: activeEntry?.timeLimitSeconds || 0,
     existingItemId: normalizeInputValue(item?.id || item?.type || item?.serviceId),
     existingValidUntil: normalizeDateOnlyValue(item?.validUntil || item?.certificateValidUntil),
     existingPassedOn: normalizeDateOnlyValue(item?.passedOn || item?.issuedOn),
@@ -17820,8 +17942,8 @@ function buildMobileWorkOrderTrainingAssignment(record = {}, trainingService = {
   };
 }
 
-function buildMobileWorkOrderTrainingPerson(record = {}, trainingServices = [], scopedSnapshot = {}) {
-  const assignments = trainingServices.map((service) => buildMobileWorkOrderTrainingAssignment(record, service, scopedSnapshot));
+function buildMobileWorkOrderTrainingPerson(record = {}, trainingServices = [], scopedSnapshot = {}, workOrder = {}) {
+  const assignments = trainingServices.map((service) => buildMobileWorkOrderTrainingAssignment(record, service, scopedSnapshot, workOrder));
   const recommendedCount = assignments.filter((item) => item.recommended).length;
   const fullName = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "));
   return {
@@ -17884,7 +18006,7 @@ function buildMobileWorkOrderTrainingContext(workOrder = {}, scopedSnapshot = {}
   const locationId = normalizeInputValue(workOrder.locationId);
   const people = (Array.isArray(scopedSnapshot.peopleTrainingRecords) ? scopedSnapshot.peopleTrainingRecords : [])
     .filter((record) => !companyId || normalizeInputValue(record?.companyId) === companyId)
-    .map((record) => buildMobileWorkOrderTrainingPerson(record, services, scopedSnapshot))
+    .map((record) => buildMobileWorkOrderTrainingPerson(record, services, scopedSnapshot, workOrder))
     .filter((person) => person.id)
     .sort((left, right) => {
       const leftLocation = locationId && left.locationId === locationId ? 0 : 1;
@@ -17942,6 +18064,18 @@ function findMobileLearningAssignmentForRecord(assignment = {}, record = {}, wor
 function buildMobileTrainingLearningAssignment(record = {}, workOrder = {}, service = {}, test = {}, existing = null, user = {}) {
   const timestamp = new Date().toISOString();
   const fullName = normalizeInputValue(record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "));
+  const questionItems = Array.isArray(test.questionItems) ? test.questionItems : [];
+  const existingSelectedQuestionIds = Array.isArray(existing?.selectedQuestionIds)
+    ? existing.selectedQuestionIds.map((entry) => normalizeInputValue(entry)).filter(Boolean)
+    : [];
+  const questionLimit = normalizeMobileLearningPositiveInt(
+    existing?.questionLimit,
+    existingSelectedQuestionIds.length || questionItems.length,
+  );
+  const timePerQuestionSeconds = normalizeMobileLearningPositiveInt(
+    existing?.timePerQuestionSeconds,
+    test.secondsPerQuestion || 60,
+  ) || 60;
   return {
     id: normalizeInputValue(existing?.id) || randomUUID(),
     assigneeType: "external",
@@ -17961,6 +18095,13 @@ function buildMobileTrainingLearningAssignment(record = {}, workOrder = {}, serv
     serviceId: normalizeInputValue(service.serviceId),
     serviceName: normalizeInputValue(service.serviceName || service.label),
     examMode: normalizeMobileTrainingMode(service.examMode || service.mode || service.modeDefault || "online_test"),
+    questionLimit,
+    selectedQuestionIds: existingSelectedQuestionIds,
+    timePerQuestionSeconds,
+    timeLimitSeconds: normalizeMobileLearningPositiveInt(existing?.timeLimitSeconds, questionLimit * timePerQuestionSeconds),
+    passPercent: normalizeMobileLearningPassPercent(existing?.passPercent, service.passPercent || test.passPercent),
+    scorePercent: existing?.scorePercent ?? "",
+    passed: existing?.passed,
     assignedByUserId: normalizeInputValue(user?.id),
     assignedByLabel: normalizeInputValue(user?.fullName || user?.email),
   };
@@ -18048,14 +18189,19 @@ async function confirmMobileWorkOrderTrainingAssignments({
     for (const service of services) {
       const existing = findMobilePeopleTrainingItemForService({ ...record, trainingItems: nextItems }, service);
       const status = getMobileTrainingAssignmentStatus(existing);
-      if (onlyRecommended && !["missing", "expired"].includes(status)) {
+      const learningEntries = getMobileTrainingLearningEntries(record, workOrder, service, scopedSnapshot);
+      const effectiveStatus = learningEntries.some((entry) => entry.assignment && entry.passed === false)
+        ? "failed"
+        : status;
+      if (onlyRecommended && !["missing", "expired", "failed"].includes(effectiveStatus)) {
         continue;
       }
       const useOnline = isOnlineMode && service.linkedLearningTestIds.length > 0;
-      const primaryLearningTestId = useOnline ? service.linkedLearningTestIds[0] : "";
-      const primaryLearningTest = primaryLearningTestId
-        ? (scopedSnapshot.learningTests ?? []).find((test) => String(test?.id) === String(primaryLearningTestId))
-        : null;
+      const serviceLearningTests = useOnline
+        ? service.linkedLearningTestIds.map((testId) => getMobileLearningTestById(scopedSnapshot, testId)).filter(Boolean)
+        : [];
+      const primaryLearningTest = serviceLearningTests[0] || null;
+      const primaryLearningTestId = normalizeInputValue(primaryLearningTest?.id);
       const nextItem = {
         ...(existing || {}),
         type: normalizeInputValue(existing?.type || service.shortLabel || service.serviceCode || service.serviceKey),
@@ -18066,11 +18212,15 @@ async function confirmMobileWorkOrderTrainingAssignments({
         serviceCode: service.serviceCode,
         linkedLearningTestIds: service.linkedLearningTestIds,
         linkedLearningTestTitles: service.linkedLearningTestTitles,
+        linkedLearningTestPassPercents: service.linkedLearningTestPassPercents,
         examMode: useOnline ? storedExamMode : mode,
         workOrderId: normalizeInputValue(workOrder.id),
         workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
         learningTestId: useOnline ? primaryLearningTestId : normalizeInputValue(existing?.learningTestId),
         learningTestTitle: useOnline ? normalizeInputValue(primaryLearningTest?.title) : normalizeInputValue(existing?.learningTestTitle),
+        passPercent: useOnline
+          ? normalizeMobileLearningPassPercent(primaryLearningTest?.passPercent, service.passPercent)
+          : normalizeMobileLearningPassPercent(existing?.passPercent, service.passPercent),
         certificateStatus: useOnline ? "assigned" : (normalizeInputValue(existing?.certificateStatus) || "live_ready"),
         status: "",
       };
@@ -18082,37 +18232,39 @@ async function confirmMobileWorkOrderTrainingAssignments({
       }
       changed = true;
       result.itemsLinked += 1;
-      if (useOnline && primaryLearningTest) {
-        const assignmentItems = Array.isArray(primaryLearningTest.assignmentItems) ? [...primaryLearningTest.assignmentItems] : [];
-        const existingAssignment = assignmentItems.find((assignment) => findMobileLearningAssignmentForRecord(assignment, record, workOrder)) || null;
-        const assignmentService = {
-          ...service,
-          examMode: storedExamMode,
-          mode,
-        };
-        const nextAssignment = buildMobileTrainingLearningAssignment(record, workOrder, assignmentService, primaryLearningTest, existingAssignment, user);
-        const remainingAssignments = assignmentItems.filter((assignment) => !findMobileLearningAssignmentForRecord(assignment, record, workOrder));
-        const updatedTest = await domainRepository.updateLearningTestItem(primaryLearningTest.id, {
-          assignmentItems: [...remainingAssignments, nextAssignment],
-          organizationId: scopedSnapshot.activeOrganizationId,
-        });
-        if (updatedTest) {
-          result.onlineAssignments += 1;
-          primaryLearningTest.assignmentItems = [...remainingAssignments, nextAssignment];
-          if (sendEmails) {
-            const emailResult = await sendMobileTrainingAssignmentEmail({
-              request,
-              assignment: nextAssignment,
-              test: primaryLearningTest,
-              service: assignmentService,
-              workOrder,
-            });
-            if (emailResult.ok) {
-              result.emailsSent += 1;
-            } else if (emailResult.skipped) {
-              result.emailsSkipped += 1;
-            } else {
-              result.emailErrors += 1;
+      if (useOnline && serviceLearningTests.length > 0) {
+        for (const learningTest of serviceLearningTests) {
+          const assignmentItems = Array.isArray(learningTest.assignmentItems) ? [...learningTest.assignmentItems] : [];
+          const existingAssignment = assignmentItems.find((assignment) => findMobileLearningAssignmentForRecord(assignment, record, workOrder)) || null;
+          const assignmentService = {
+            ...service,
+            examMode: storedExamMode,
+            mode,
+          };
+          const nextAssignment = buildMobileTrainingLearningAssignment(record, workOrder, assignmentService, learningTest, existingAssignment, user);
+          const remainingAssignments = assignmentItems.filter((assignment) => !findMobileLearningAssignmentForRecord(assignment, record, workOrder));
+          const updatedTest = await domainRepository.updateLearningTestItem(learningTest.id, {
+            assignmentItems: [...remainingAssignments, nextAssignment],
+            organizationId: scopedSnapshot.activeOrganizationId,
+          });
+          if (updatedTest) {
+            result.onlineAssignments += 1;
+            learningTest.assignmentItems = [...remainingAssignments, nextAssignment];
+            if (sendEmails) {
+              const emailResult = await sendMobileTrainingAssignmentEmail({
+                request,
+                assignment: nextAssignment,
+                test: learningTest,
+                service: assignmentService,
+                workOrder,
+              });
+              if (emailResult.ok) {
+                result.emailsSent += 1;
+              } else if (emailResult.skipped) {
+                result.emailsSkipped += 1;
+              } else {
+                result.emailErrors += 1;
+              }
             }
           }
         }

@@ -22149,15 +22149,22 @@ private fun WorkOrderTrainingService.trainingTitle(): String =
     label.ifBlank { serviceName.ifBlank { serviceCode.ifBlank { "Osposobljavanje" } } }
 
 private fun WorkOrderTrainingAssignment.trainingStatusKey(): String =
-    status.trim().lowercase(Locale.getDefault()).ifBlank {
-        when {
-            existingValidUntil.isNotBlank() || existingPassedOn.isNotBlank() -> "valid"
-            linkedLearningTestIds.isNotEmpty() -> "pending"
-            else -> "missing"
+    when (passed) {
+        true -> "passed"
+        false -> "failed"
+        null -> status.trim().lowercase(Locale.getDefault()).ifBlank {
+            learningStatus.trim().lowercase(Locale.getDefault()).ifBlank {
+                when {
+                    existingValidUntil.isNotBlank() || existingPassedOn.isNotBlank() -> "valid"
+                    linkedLearningTestIds.isNotEmpty() -> "pending"
+                    else -> "missing"
+                }
+            }
         }
     }
 
 private fun trainingAssignmentNeedsAction(assignment: WorkOrderTrainingAssignment?): Boolean {
+    if (assignment?.passed == false) return true
     val status = assignment?.trainingStatusKey().orEmpty()
     return status !in setOf("valid", "done", "completed", "passed", "not_required")
 }
@@ -22549,20 +22556,52 @@ private fun DocumentationTrainingAssignmentRow(
     assignment: WorkOrderTrainingAssignment?,
 ) {
     val status = assignment?.trainingStatusKey().orEmpty()
-    val label = assignment?.statusLabel?.takeIf { it.isNotBlank() } ?: when (status) {
-        "valid", "done", "completed", "passed" -> "Položeno"
-        "expired" -> "Isteklo"
-        "expiring" -> "Istječe"
-        "pending", "assigned" -> "Dodijeljeno"
-        "in_progress" -> "U tijeku"
-        else -> "Nedostaje"
+    val label = when {
+        assignment?.passed == true -> "Položeno"
+        assignment?.passed == false -> "Nije položeno"
+        else -> when (status) {
+            "valid", "done", "completed", "passed" -> "Položeno"
+            "failed", "not_passed" -> "Nije položeno"
+            "expired" -> "Isteklo"
+            "expiring" -> "Istječe"
+            "pending", "assigned" -> "Dodijeljeno"
+            "in_progress" -> "U tijeku"
+            else -> "Nedostaje"
+        }
     }
     val tint = when (status) {
         "valid", "done", "completed", "passed" -> Color(0xFF047857)
         "pending", "assigned", "in_progress" -> MaterialTheme.colorScheme.primary
         "expired", "expiring" -> Color(0xFFB45309)
+        "failed", "not_passed" -> Color(0xFFB91C1C)
         else -> MaterialTheme.colorScheme.error
     }
+    val passPercent = assignment?.passPercent ?: service.passPercent
+    val scoreText = assignment?.scorePercent
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "Rezultat $it% / prolaz $passPercent%" }
+    val testTitles = assignment?.linkedLearningTestTitles
+        ?.takeIf { it.isNotEmpty() }
+        ?: service.linkedLearningTestTitles
+    val testsText = when {
+        testTitles.isNotEmpty() -> testTitles.joinToString(", ")
+        (assignment?.linkedLearningTestCount ?: 0) > 0 -> "${assignment?.linkedLearningTestCount} test"
+        service.linkedLearningTestIds.isNotEmpty() -> "${service.linkedLearningTestIds.size} test"
+        else -> ""
+    }
+    val scheduleText = when {
+        (assignment?.questionLimit ?: 0) > 0 && (assignment?.timePerQuestionSeconds ?: 0) > 0 ->
+            "${assignment?.questionLimit} pitanja · ${assignment?.timePerQuestionSeconds}s/pitanje"
+        passPercent > 0 && service.linkedLearningTestIds.isNotEmpty() -> "Prolaz $passPercent%"
+        else -> ""
+    }
+    val metaText = listOf(
+        scoreText,
+        testsText.takeIf { it.isNotBlank() },
+        scheduleText.takeIf { it.isNotBlank() },
+        assignment?.existingPassedOn?.takeIf { it.isNotBlank() }?.let { "Ispit $it" },
+        assignment?.existingValidUntil?.takeIf { it.isNotBlank() }?.let { "Rok $it" },
+    ).filterNotNull().joinToString(" · ").ifBlank { label }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -22588,14 +22627,10 @@ private fun DocumentationTrainingAssignmentRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    listOf(
-                        assignment?.existingPassedOn?.takeIf { it.isNotBlank() }?.let { "Ispit $it" },
-                        assignment?.existingValidUntil?.takeIf { it.isNotBlank() }?.let { "Rok $it" },
-                        assignment?.linkedLearningTestCount?.takeIf { it > 0 }?.let { "$it test" },
-                    ).filterNotNull().joinToString(" · ").ifBlank { label },
+                    metaText,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
