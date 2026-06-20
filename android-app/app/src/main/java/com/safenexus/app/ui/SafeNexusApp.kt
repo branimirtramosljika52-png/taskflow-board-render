@@ -22221,6 +22221,32 @@ private fun WorkOrderTrainingPerson.assignmentFor(service: WorkOrderTrainingServ
 private fun WorkOrderTrainingPerson.needsTrainingAction(services: List<WorkOrderTrainingService>): Boolean =
     services.any { service -> trainingAssignmentNeedsAction(assignmentFor(service)) }
 
+private enum class DocumentationTrainingPeopleFilter {
+    NeedsAction,
+    Pending,
+    Passed,
+    Selected,
+    All,
+}
+
+private fun trainingAssignmentCompleted(assignment: WorkOrderTrainingAssignment?): Boolean =
+    assignment != null && !trainingAssignmentNeedsAction(assignment)
+
+private fun trainingAssignmentPending(assignment: WorkOrderTrainingAssignment?): Boolean {
+    val status = assignment?.trainingStatusKey().orEmpty()
+    return status in setOf("pending", "assigned", "in_progress") ||
+        (
+            assignment?.linkedLearningTestIds?.isNotEmpty() == true &&
+                !trainingAssignmentCompleted(assignment)
+            )
+}
+
+private fun WorkOrderTrainingPerson.hasPendingTraining(services: List<WorkOrderTrainingService>): Boolean =
+    services.any { service -> trainingAssignmentPending(assignmentFor(service)) }
+
+private fun WorkOrderTrainingPerson.hasPassedTraining(services: List<WorkOrderTrainingService>): Boolean =
+    services.isNotEmpty() && services.all { service -> trainingAssignmentCompleted(assignmentFor(service)) }
+
 @Composable
 private fun DocumentationTrainingLaunchSection(
     context: WorkOrderTrainingContext,
@@ -22246,13 +22272,25 @@ private fun DocumentationTrainingLaunchSection(
         context.services.filter { service -> selectedServiceKeys.contains(service.trainingSelectionKey()) }
             .ifEmpty { context.services }
     }
-    val visiblePeople = remember(context.people, selectedServices, onlyNeedsAction) {
-        val source = if (onlyNeedsAction) {
-            context.people.filter { person -> person.recommended || person.needsTrainingAction(selectedServices) }
-        } else {
-            context.people
+    var peopleFilter by remember(context.people, selectedServices) {
+        mutableStateOf(if (onlyNeedsAction) DocumentationTrainingPeopleFilter.NeedsAction else DocumentationTrainingPeopleFilter.All)
+    }
+    fun updatePeopleFilter(filter: DocumentationTrainingPeopleFilter) {
+        peopleFilter = filter
+        onOnlyNeedsActionChange(filter == DocumentationTrainingPeopleFilter.NeedsAction)
+    }
+    val visiblePeople = remember(context.people, selectedServices, selectedPersonIds, peopleFilter) {
+        when (peopleFilter) {
+            DocumentationTrainingPeopleFilter.NeedsAction ->
+                context.people.filter { person -> person.recommended || person.needsTrainingAction(selectedServices) }
+            DocumentationTrainingPeopleFilter.Pending ->
+                context.people.filter { person -> person.hasPendingTraining(selectedServices) }
+            DocumentationTrainingPeopleFilter.Passed ->
+                context.people.filter { person -> person.hasPassedTraining(selectedServices) }
+            DocumentationTrainingPeopleFilter.Selected ->
+                context.people.filter { person -> selectedPersonIds.contains(person.id) }
+            DocumentationTrainingPeopleFilter.All -> context.people
         }
-        source.ifEmpty { if (onlyNeedsAction) emptyList() else context.people }
     }
     val completedCount = remember(context.people, selectedServices) {
         context.people.sumOf { person -> selectedServices.count { service -> !trainingAssignmentNeedsAction(person.assignmentFor(service)) } }
@@ -22260,7 +22298,15 @@ private fun DocumentationTrainingLaunchSection(
     val needsActionCount = remember(context.people, selectedServices) {
         context.people.sumOf { person -> selectedServices.count { service -> trainingAssignmentNeedsAction(person.assignmentFor(service)) } }
     }
-    val selectedCount = selectedPersonIds.size
+    val peopleNeedingActionCount = remember(context.people, selectedServices) {
+        context.people.count { person -> person.recommended || person.needsTrainingAction(selectedServices) }
+    }
+    val peoplePendingCount = remember(context.people, selectedServices) {
+        context.people.count { person -> person.hasPendingTraining(selectedServices) }
+    }
+    val peoplePassedCount = remember(context.people, selectedServices) {
+        context.people.count { person -> person.hasPassedTraining(selectedServices) }
+    }
 
     WizardSection(title = "Osposobljavanje", icon = Icons.Rounded.Badge) {
         Surface(
@@ -22288,16 +22334,11 @@ private fun DocumentationTrainingLaunchSection(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Pokretanje osposobljavanja", fontWeight = FontWeight.Black)
                         Text(
-                            "${context.peopleCount} osoba · ${context.services.size} usluga · ${context.proposedAssignments} prijedloga",
+                            "${context.peopleCount} osoba · ${context.services.size} usluga",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                         )
                     }
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(onClick = {}, label = { Text("$selectedCount odabrano") })
-                    AssistChip(onClick = {}, label = { Text("$completedCount položeno") })
-                    AssistChip(onClick = {}, label = { Text("$needsActionCount treba riješiti") })
                 }
             }
         }
@@ -22407,25 +22448,60 @@ private fun DocumentationTrainingLaunchSection(
             Column {
                 Text("Radnici", fontWeight = FontWeight.Black)
                 Text(
-                    "${visiblePeople.size} prikazano · ${context.peopleCount} ukupno",
+                    "${visiblePeople.size} prikazano · $completedCount položeno · $needsActionCount treba",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                 )
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = onlyNeedsAction,
-                    onClick = { onOnlyNeedsActionChange(!onlyNeedsAction) },
-                    enabled = enabled,
-                    label = { Text(if (onlyNeedsAction) "Treba riješiti" else "Svi") },
-                )
-                TextButton(
-                    onClick = { onSelectedPersonIdsChange(visiblePeople.map { it.id }.filter { it.isNotBlank() }.toSet()) },
-                    enabled = enabled && visiblePeople.isNotEmpty(),
-                ) {
-                    Text("Sve")
-                }
+            TextButton(
+                onClick = { onSelectedPersonIdsChange(visiblePeople.map { it.id }.filter { it.isNotBlank() }.toSet()) },
+                enabled = enabled && visiblePeople.isNotEmpty(),
+            ) {
+                Text("Odaberi")
             }
+        }
+
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DocumentationTrainingPeopleFilterChip(
+                label = "Treba",
+                count = peopleNeedingActionCount,
+                icon = Icons.Rounded.ErrorOutline,
+                selected = peopleFilter == DocumentationTrainingPeopleFilter.NeedsAction,
+                enabled = enabled,
+                onClick = { updatePeopleFilter(DocumentationTrainingPeopleFilter.NeedsAction) },
+            )
+            DocumentationTrainingPeopleFilterChip(
+                label = "Čeka",
+                count = peoplePendingCount,
+                icon = Icons.Rounded.Mail,
+                selected = peopleFilter == DocumentationTrainingPeopleFilter.Pending,
+                enabled = enabled,
+                onClick = { updatePeopleFilter(DocumentationTrainingPeopleFilter.Pending) },
+            )
+            DocumentationTrainingPeopleFilterChip(
+                label = "Položeno",
+                count = peoplePassedCount,
+                icon = Icons.Rounded.CheckCircle,
+                selected = peopleFilter == DocumentationTrainingPeopleFilter.Passed,
+                enabled = enabled,
+                onClick = { updatePeopleFilter(DocumentationTrainingPeopleFilter.Passed) },
+            )
+            DocumentationTrainingPeopleFilterChip(
+                label = "Odabrani",
+                count = selectedPersonIds.size,
+                icon = Icons.Rounded.Person,
+                selected = peopleFilter == DocumentationTrainingPeopleFilter.Selected,
+                enabled = enabled,
+                onClick = { updatePeopleFilter(DocumentationTrainingPeopleFilter.Selected) },
+            )
+            DocumentationTrainingPeopleFilterChip(
+                label = "Svi",
+                count = context.peopleCount,
+                icon = Icons.Rounded.Groups,
+                selected = peopleFilter == DocumentationTrainingPeopleFilter.All,
+                enabled = enabled,
+                onClick = { updatePeopleFilter(DocumentationTrainingPeopleFilter.All) },
+            )
         }
 
         if (visiblePeople.isEmpty()) {
@@ -22484,6 +22560,26 @@ private fun DocumentationTrainingLaunchSection(
             )
         }
     }
+}
+
+@Composable
+private fun DocumentationTrainingPeopleFilterChip(
+    label: String,
+    count: Int,
+    icon: ImageVector,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        enabled = enabled,
+        label = { Text("$label $count", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+        },
+    )
 }
 
 @Composable
