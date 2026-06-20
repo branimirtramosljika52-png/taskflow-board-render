@@ -487,6 +487,41 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun createPeopleTrainingRecord(
+        companyId: String,
+        locationId: String,
+        draft: WorkOrderTrainingManualPersonDraft,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanCompanyId = companyId.trim()
+            if (cleanCompanyId.isBlank()) {
+                throw IllegalStateException("RN nema odabranu tvrtku za dodavanje osobe.")
+            }
+            val fullName = draft.fullName.trim()
+            if (fullName.isBlank()) {
+                throw IllegalStateException("Upiši ime i prezime osobe.")
+            }
+            val payload = JSONObject()
+                .put("companyId", cleanCompanyId)
+                .put("locationId", locationId.trim())
+                .put("fullName", fullName)
+                .put("oib", draft.oib.trim())
+                .put("email", draft.email.trim())
+                .put("phone", draft.phone.trim())
+                .put("jobTitle", draft.jobTitle.trim())
+                .put("activityStatus", "DA")
+                .put("trainingItems", JSONArray())
+                .toString()
+            request(
+                "/api/people-training-records",
+                method = "POST",
+                body = payload,
+                readTimeoutMs = PDF_ACTION_READ_TIMEOUT_MS,
+            )
+            "Osoba je dodana u osposobljavanja."
+        }
+    }
+
     suspend fun generateWorkOrderDocumentation(
         workOrderId: String,
         draft: WorkOrderDocumentationDraft,

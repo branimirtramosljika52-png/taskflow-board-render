@@ -240,6 +240,7 @@ import com.safenexus.app.data.WorkOrderServiceItem
 import com.safenexus.app.data.WorkOrderServiceOption
 import com.safenexus.app.data.WorkOrderTrainingAssignment
 import com.safenexus.app.data.WorkOrderTrainingContext
+import com.safenexus.app.data.WorkOrderTrainingManualPersonDraft
 import com.safenexus.app.data.WorkOrderTrainingPerson
 import com.safenexus.app.data.WorkOrderTrainingService
 import com.safenexus.app.data.WorkOrderUploadFile
@@ -1689,10 +1690,15 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             api.downloadPeopleTrainingImportTemplate(workOrder.companyId)
                 .onSuccess { downloaded ->
                     runCatching { saveDownloadedDocument(context, downloaded) }
-                        .onSuccess {
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
                             state = state.copy(
                                 isLoading = false,
-                                notice = "Excel predložak je spremljen u Preuzimanja / SafeNexus.",
+                                notice = if (opened) {
+                                    "Excel predložak je preuzet i otvoren."
+                                } else {
+                                    "Excel predložak je spremljen u Preuzimanja / SafeNexus."
+                                },
                                 error = "",
                             )
                         }
@@ -1708,6 +1714,40 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         error = error.message ?: "Ne mogu preuzeti Excel predložak osposobljavanja.",
+                        notice = "",
+                    )
+                }
+        }
+    }
+
+    fun addTrainingPersonManually(
+        workOrder: WorkOrder,
+        draft: WorkOrderTrainingManualPersonDraft,
+        objectId: String = "",
+    ) {
+        if (workOrder.companyId.isBlank()) {
+            state = state.copy(error = "RN nema odabranu tvrtku za dodavanje osobe.", notice = "")
+            return
+        }
+        if (draft.fullName.trim().isBlank()) {
+            state = state.copy(error = "Upiši ime i prezime osobe.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createPeopleTrainingRecord(
+                companyId = workOrder.companyId,
+                locationId = workOrder.locationId,
+                draft = draft,
+            )
+                .onSuccess { message ->
+                    state = state.copy(isLoading = false, notice = message, error = "")
+                    loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu dodati osobu u osposobljavanja.",
                         notice = "",
                     )
                 }
@@ -2625,6 +2665,9 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                 pendingTrainingImportTarget = workOrder
                 pendingTrainingImportObjectId = documentationWizardObjectId
                 trainingImportLauncher.launch(peopleTrainingImportMimeTypes)
+            },
+            onAddTrainingPerson = { draft ->
+                viewModel.addTrainingPersonManually(workOrder, draft, documentationWizardObjectId)
             },
             onConfirm = { draft ->
                 documentationWizardTarget = null
@@ -16837,6 +16880,7 @@ private fun WorkOrderDocumentationWizardDialog(
     onGenerateTrainingRecord: () -> Unit,
     onDownloadTrainingImportTemplate: () -> Unit,
     onUploadTrainingImport: () -> Unit,
+    onAddTrainingPerson: (WorkOrderTrainingManualPersonDraft) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -17682,6 +17726,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         onGenerateRecord = onGenerateTrainingRecord,
                         onDownloadImportTemplate = onDownloadTrainingImportTemplate,
                         onUploadImport = onUploadTrainingImport,
+                        onAddManualPerson = onAddTrainingPerson,
                         onConfirm = launchTrainingDocumentation,
                     )
                 } else {
@@ -22414,11 +22459,13 @@ private fun DocumentationTrainingLaunchSection(
     onGenerateRecord: () -> Unit,
     onDownloadImportTemplate: () -> Unit,
     onUploadImport: () -> Unit,
+    onAddManualPerson: (WorkOrderTrainingManualPersonDraft) -> Unit,
     onConfirm: () -> Unit,
 ) {
     if (!context.enabled) {
         return
     }
+    var manualPersonDialogOpen by remember { mutableStateOf(false) }
     val normalizedMode = normalizeDocumentationTrainingMode(mode)
     val activeMode = documentationTrainingModeOptions.firstOrNull { it.value == normalizedMode }
         ?: documentationTrainingModeOptions.first()
@@ -22460,6 +22507,19 @@ private fun DocumentationTrainingLaunchSection(
     }
     val peoplePassedCount = remember(context.people, selectedServices) {
         context.people.count { person -> person.hasPassedTraining(selectedServices) }
+    }
+
+    if (manualPersonDialogOpen) {
+        DocumentationTrainingManualPersonDialog(
+            companyName = context.companyName,
+            locationName = context.locationName,
+            enabled = enabled,
+            onDismiss = { manualPersonDialogOpen = false },
+            onConfirm = { draft ->
+                manualPersonDialogOpen = false
+                onAddManualPerson(draft)
+            },
+        )
     }
 
     WizardSection(title = "Osposobljavanje", icon = Icons.Rounded.Badge) {
@@ -22600,20 +22660,31 @@ private fun DocumentationTrainingLaunchSection(
                         onClick = onDownloadImportTemplate,
                         enabled = enabled,
                         shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                     ) {
-                        Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Predložak")
+                        Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Predložak", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Button(
                         modifier = Modifier.weight(1f),
                         onClick = onUploadImport,
                         enabled = enabled,
                         shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                     ) {
-                        Icon(Icons.Rounded.InsertDriveFile, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Učitaj Excel")
+                        Icon(Icons.Rounded.InsertDriveFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Excel", maxLines = 1)
+                    }
+                    OutlinedButton(
+                        modifier = Modifier.width(54.dp),
+                        onClick = { manualPersonDialogOpen = true },
+                        enabled = enabled,
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 10.dp),
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = "Dodaj osobu", modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -22686,7 +22757,7 @@ private fun DocumentationTrainingLaunchSection(
         if (visiblePeople.isEmpty()) {
             Text(
                 if (context.people.isEmpty()) {
-                    "Nema osoba za ovu tvrtku. Masovni import napravi u webu ili dodaj radnike u People."
+                    "Nema osoba za ovu tvrtku. Uvezi Excel ili dodaj osobu ručno preko plusa."
                 } else {
                     "Nema osoba koje trebaju rješavati odabrane usluge. Prikaži sve za ručni odabir."
                 },
@@ -22739,6 +22810,111 @@ private fun DocumentationTrainingLaunchSection(
             )
         }
     }
+}
+
+@Composable
+private fun DocumentationTrainingManualPersonDialog(
+    companyName: String,
+    locationName: String,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (WorkOrderTrainingManualPersonDraft) -> Unit,
+) {
+    var fullName by remember { mutableStateOf("") }
+    var oib by remember { mutableStateOf("") }
+    var jobTitle by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    val canSubmit = fullName.trim().isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Dodaj osobu", fontWeight = FontWeight.Black)
+                Text(
+                    listOf(companyName, locationName).filter { it.isNotBlank() }.joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = fullName,
+                    onValueChange = { fullName = it },
+                    label = { Text("Ime i prezime *") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                )
+                OutlinedTextField(
+                    value = oib,
+                    onValueChange = { oib = it.filter { char -> char.isDigit() }.take(11) },
+                    label = { Text("OIB") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                )
+                OutlinedTextField(
+                    value = jobTitle,
+                    onValueChange = { jobTitle = it },
+                    label = { Text("Radno mjesto") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                )
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Telefon") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(
+                        WorkOrderTrainingManualPersonDraft(
+                            fullName = fullName.trim(),
+                            oib = oib.trim(),
+                            email = email.trim(),
+                            phone = phone.trim(),
+                            jobTitle = jobTitle.trim(),
+                        ),
+                    )
+                },
+                enabled = enabled && canSubmit,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text("Dodaj", fontWeight = FontWeight.Black)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = enabled) {
+                Text("Odustani")
+            }
+        },
+    )
 }
 
 @Composable

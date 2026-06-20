@@ -455,6 +455,14 @@ data class WorkOrderTrainingContext(
     val importTemplateUrl: String = "",
 )
 
+data class WorkOrderTrainingManualPersonDraft(
+    val fullName: String = "",
+    val oib: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val jobTitle: String = "",
+)
+
 data class WorkOrderDocumentationContext(
     val workOrderId: String = "",
     val workOrderNumber: String = "",
