@@ -272,6 +272,17 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun updateWorkOrderMeta(workOrderId: String, priority: String, tagText: String): Result<WorkOrder> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("priority", priority.trim())
+                .put("tagText", tagText.trim())
+                .toString()
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
+        }
+    }
+
     suspend fun createVehicleReservation(
         vehicleId: String,
         purpose: String,

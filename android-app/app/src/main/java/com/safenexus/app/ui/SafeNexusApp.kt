@@ -209,6 +209,7 @@ import com.safenexus.app.data.IsznrRoAssessmentItem
 import com.safenexus.app.data.IsznrWorkEquipmentSubmitResult
 import com.safenexus.app.data.JobCreateDraft
 import com.safenexus.app.data.MobileRecord
+import com.safenexus.app.data.OptionItem
 import com.safenexus.app.data.RiskAssessmentBiologicalDraft
 import com.safenexus.app.data.RiskAssessmentChemicalDraft
 import com.safenexus.app.data.RiskAssessmentCreateDraft
@@ -1427,6 +1428,48 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun updateWorkOrderMeta(workOrder: WorkOrder, priority: String, tags: List<String>) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za spremanje prioriteta i tagova.")
+            return
+        }
+        val normalizedPriority = priority.trim().ifBlank { "Normal" }
+        val normalizedTags = tags
+            .flatMap { tag -> tag.split(',', ';', '\n', '•') }
+            .map { it.trim().trim('#') }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+        if (
+            normalizedPriority == workOrder.priority &&
+            normalizedTags.map { it.lowercase(Locale.getDefault()) } == workOrder.tags.map { it.lowercase(Locale.getDefault()) }
+        ) {
+            return
+        }
+
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(
+            workOrder.copy(
+                priority = normalizedPriority,
+                tags = normalizedTags,
+            ),
+        )
+        viewModelScope.launch {
+            api.updateWorkOrderMeta(workOrder.id, normalizedPriority, normalizedTags.joinToString(", "))
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, "Prioritet i tagovi su spremljeni.")
+                    }
+                }
+                .onFailure { error ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(error = error.message ?: "Ne mogu spremiti prioritet i tagove RN-a.", notice = "")
+                    }
+                }
+        }
+    }
+
     fun createVehicleReservation(
         vehicle: MobileRecord,
         purpose: String,
@@ -2567,6 +2610,10 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     workOrder = selected,
                     services = state.data.workOrderServices,
                     users = state.data.workOrderUsers,
+                    priorityOptions = state.data.priorities,
+                    tagSuggestions = state.workOrders
+                        .flatMap { it.tags }
+                        .distinctBy { it.lowercase(Locale.getDefault()) },
                     isLoading = state.isLoading,
                     error = state.error,
                     notice = state.notice,
@@ -2575,6 +2622,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                     onBack = { viewModel.navigateBack() },
                     onStatusChange = viewModel::updateWorkOrderStatus,
+                    onMetaChange = viewModel::updateWorkOrderMeta,
                     onExecutorsChange = viewModel::updateWorkOrderExecutors,
                     onManageServices = { workOrder -> serviceManagementTarget = workOrder },
                     onGenerateDocumentation = { workOrder ->
@@ -15202,6 +15250,8 @@ private fun WorkOrderDetailScreen(
     workOrder: WorkOrder,
     services: List<WorkOrderServiceOption>,
     users: List<WorkOrderUserOption>,
+    priorityOptions: List<OptionItem>,
+    tagSuggestions: List<String>,
     isLoading: Boolean,
     error: String,
     notice: String,
@@ -15210,6 +15260,7 @@ private fun WorkOrderDetailScreen(
     statusOptions: List<String>,
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
+    onMetaChange: (WorkOrder, String, List<String>) -> Unit,
     onExecutorsChange: (WorkOrder, List<String>) -> Unit,
     onManageServices: (WorkOrder) -> Unit,
     onGenerateDocumentation: (WorkOrder) -> Unit,
@@ -15251,6 +15302,40 @@ private fun WorkOrderDetailScreen(
         hasContactData
     var showLocationDetails by remember(workOrder.id) { mutableStateOf(false) }
     var showExecutorsEditor by remember(workOrder.id) { mutableStateOf(false) }
+    var showMetaEditor by remember(workOrder.id) { mutableStateOf(false) }
+    if (showMetaEditor) {
+        AlertDialog(
+            onDismissRequest = { showMetaEditor = false },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Prioritet i tagovi", fontWeight = FontWeight.Black)
+                    Text(
+                        workOrder.displayNumber,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            },
+            text = {
+                WorkOrderMetaEditor(
+                    workOrder = workOrder,
+                    priorityOptions = priorityOptions,
+                    tagSuggestions = tagSuggestions,
+                    enabled = !isLoading,
+                    onSave = { priority, tags ->
+                        onMetaChange(workOrder, priority, tags)
+                        showMetaEditor = false
+                    },
+                )
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMetaEditor = false }) {
+                    Text("Zatvori", fontWeight = FontWeight.Bold)
+                }
+            },
+        )
+    }
     if (showExecutorsEditor) {
         AlertDialog(
             onDismissRequest = { showExecutorsEditor = false },
@@ -15301,7 +15386,7 @@ private fun WorkOrderDetailScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            WorkOrderHeaderMeta(workOrder)
+                            WorkOrderHeaderMeta(workOrder, onClick = { showMetaEditor = true })
                         }
                         Text(
                             workOrder.status,
@@ -15526,9 +15611,16 @@ private fun WorkOrderDetailScreen(
 }
 
 @Composable
-private fun WorkOrderHeaderMeta(workOrder: WorkOrder) {
+private fun WorkOrderHeaderMeta(
+    workOrder: WorkOrder,
+    onClick: () -> Unit,
+) {
     val tags = workOrder.tags
     Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(start = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -15547,6 +15639,126 @@ private fun WorkOrderHeaderMeta(workOrder: WorkOrder) {
                 label = "+${tags.size - 2}",
                 color = Color(0xFF64748B),
             )
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderMetaEditor(
+    workOrder: WorkOrder,
+    priorityOptions: List<OptionItem>,
+    tagSuggestions: List<String>,
+    enabled: Boolean,
+    onSave: (String, List<String>) -> Unit,
+) {
+    val options = remember(priorityOptions, workOrder.priority) {
+        (
+            priorityOptions.map { option -> option.value to option.label.ifBlank { option.value } } +
+                listOf(
+                    "Normal" to "Normal",
+                    "Hitno" to "Hitno",
+                    "Visok" to "Visok",
+                    "Nizak" to "Nizak",
+                    workOrder.priority to workOrder.priority,
+                )
+            )
+            .map { (value, label) -> value.trim() to label.trim().ifBlank { value.trim() } }
+            .filter { (value, _) -> value.isNotBlank() }
+            .distinctBy { (value, _) -> value.lowercase(Locale.getDefault()) }
+    }
+    var priority by remember(workOrder.id, workOrder.priority) { mutableStateOf(workOrder.priority.ifBlank { "Normal" }) }
+    var tagText by remember(workOrder.id, workOrder.tags) { mutableStateOf(workOrder.tags.joinToString(", ")) }
+    val selectedTags = remember(tagText) { normalizeWorkOrderTagText(tagText) }
+    val visibleSuggestions = remember(tagSuggestions, selectedTags) {
+        tagSuggestions
+            .map { it.trim().trim('#') }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .filterNot { suggestion -> selectedTags.any { it.equals(suggestion, ignoreCase = true) } }
+            .take(12)
+    }
+
+    fun setTags(tags: List<String>) {
+        tagText = tags
+            .map { it.trim().trim('#') }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .joinToString(", ")
+    }
+
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Prioritet", fontWeight = FontWeight.Black)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                options.forEach { (value, label) ->
+                    FilterChip(
+                        selected = priority.equals(value, ignoreCase = true),
+                        enabled = enabled,
+                        onClick = { priority = value },
+                        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Tagovi", fontWeight = FontWeight.Black)
+            OutlinedTextField(
+                value = tagText,
+                onValueChange = { tagText = it },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = enabled,
+                label = { Text("Npr. teren, hitno, papir") },
+                supportingText = { Text("Odvoji tagove zarezom ili novim redom.") },
+                minLines = 2,
+                maxLines = 4,
+                shape = RoundedCornerShape(16.dp),
+            )
+            AnimatedVisibility(selectedTags.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    selectedTags.forEach { tag ->
+                        AssistChip(
+                            onClick = { setTags(selectedTags.filterNot { it.equals(tag, ignoreCase = true) }) },
+                            enabled = enabled,
+                            label = { Text("#$tag") },
+                            leadingIcon = {
+                                Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                        )
+                    }
+                }
+            }
+            AnimatedVisibility(visibleSuggestions.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Brzi odabir",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        visibleSuggestions.forEach { suggestion ->
+                            AssistChip(
+                                onClick = { setTags(selectedTags + suggestion) },
+                                enabled = enabled,
+                                label = { Text("#$suggestion") },
+                                leadingIcon = {
+                                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Button(
+            onClick = { onSave(priority, normalizeWorkOrderTagText(tagText)) },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Text("Spremi prioritet i tagove", fontWeight = FontWeight.Black)
         }
     }
 }
@@ -15574,6 +15786,13 @@ private fun WorkOrderHeaderMetaChip(
         )
     }
 }
+
+private fun normalizeWorkOrderTagText(value: String): List<String> =
+    value
+        .split(',', ';', '\n', '•')
+        .map { it.trim().trim('#') }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
 
 private fun workOrderPriorityAccent(priority: String): Color {
     val normalized = priority.lowercase(Locale.getDefault())
