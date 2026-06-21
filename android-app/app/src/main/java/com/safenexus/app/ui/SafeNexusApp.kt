@@ -13,6 +13,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -47,6 +48,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -77,6 +79,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,6 +88,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Business
@@ -164,9 +169,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -417,10 +424,10 @@ private data class PendingDocumentSelection(
 )
 
 private data class WorkOrderDocumentPreviewState(
-    val document: WorkOrderDocument,
-    val fileName: String,
-    val fileType: String,
-    val uri: Uri,
+    val documents: List<WorkOrderDocument>,
+    val initialIndex: Int,
+    val resolvedUris: Map<String, Uri> = emptyMap(),
+    val resolvedFileTypes: Map<String, String> = emptyMap(),
 )
 
 private val biometricAuthenticators =
@@ -2435,18 +2442,34 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     val openDocumentationActions: (WorkOrder) -> Unit = { workOrder ->
         documentationActionTarget = workOrder
     }
-    val openDocumentPreview: (WorkOrderDocument) -> Unit = { document ->
+    val resolveDocumentPreview: (WorkOrderDocument) -> Unit = { document ->
         viewModel.previewWorkOrderDocument(
             context = context.applicationContext,
             document = document,
         ) { uri, fileType ->
-            workOrderDocumentPreview = WorkOrderDocumentPreviewState(
-                document = document,
-                fileName = document.displayName,
-                fileType = fileType.ifBlank { document.fileType },
-                uri = uri,
-            )
+            workOrderDocumentPreview = workOrderDocumentPreview?.let { preview ->
+                if (preview.documents.none { it.id == document.id }) {
+                    preview
+                } else {
+                    preview.copy(
+                        resolvedUris = preview.resolvedUris + (document.id to uri),
+                        resolvedFileTypes = preview.resolvedFileTypes + (document.id to fileType.ifBlank { document.fileType }),
+                    )
+                }
+            }
         }
+    }
+    val openDocumentPreview: (WorkOrderDocument) -> Unit = { document ->
+        val galleryDocuments = state.workOrderDocuments
+            .filter { it.isImage }
+            .ifEmpty { listOf(document) }
+        val selectedIndex = galleryDocuments.indexOfFirst { it.id == document.id }
+            .takeIf { it >= 0 }
+            ?: 0
+        workOrderDocumentPreview = WorkOrderDocumentPreviewState(
+            documents = galleryDocuments,
+            initialIndex = selectedIndex,
+        )
     }
     val openMobileRecord: (MobileRecord) -> Unit = { record ->
         val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
@@ -2719,10 +2742,9 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     }
     workOrderDocumentPreview?.let { preview ->
         WorkOrderDocumentPreviewDialog(
-            documentName = preview.fileName,
-            fileType = preview.fileType,
-            uri = preview.uri,
-            onOpenExternal = { viewModel.openWorkOrderDocument(context.applicationContext, preview.document) },
+            preview = preview,
+            onResolveDocument = resolveDocumentPreview,
+            onOpenExternal = { document -> viewModel.openWorkOrderDocument(context.applicationContext, document) },
             onDismiss = { workOrderDocumentPreview = null },
         )
     }
@@ -16194,20 +16216,39 @@ private fun canPreviewDocumentInApp(fileType: String, fileName: String): Boolean
         resolvedName.endsWith(".webp")
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WorkOrderDocumentPreviewDialog(
-    documentName: String,
-    fileType: String,
-    uri: Uri,
-    onOpenExternal: () -> Unit,
+    preview: WorkOrderDocumentPreviewState,
+    onResolveDocument: (WorkOrderDocument) -> Unit,
+    onOpenExternal: (WorkOrderDocument) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val canPreview = canPreviewDocumentInApp(fileType, documentName)
+    val documents = remember(preview.documents) { preview.documents.filter { it.isImage }.ifEmpty { preview.documents } }
+    val initialPage = preview.initialIndex.coerceIn(0, (documents.size - 1).coerceAtLeast(0))
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { documents.size })
+    val scope = rememberCoroutineScope()
+    val currentPage = pagerState.currentPage.coerceIn(0, (documents.size - 1).coerceAtLeast(0))
+    val currentDocument = documents.getOrNull(currentPage)
+
+    LaunchedEffect(documents, initialPage) {
+        if (documents.isNotEmpty() && pagerState.currentPage != initialPage) {
+            pagerState.scrollToPage(initialPage)
+        }
+    }
+
+    LaunchedEffect(documents, currentPage, preview.resolvedUris) {
+        val document = documents.getOrNull(currentPage) ?: return@LaunchedEffect
+        if (preview.resolvedUris[document.id] == null) {
+            onResolveDocument(document)
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
-            Text("Pregled fotografije", fontWeight = FontWeight.Black)
+            Text("Pregled fotografija", fontWeight = FontWeight.Black)
         },
         text = {
             Column(
@@ -16215,62 +16256,72 @@ private fun WorkOrderDocumentPreviewDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    text = documentName,
+                    text = currentDocument?.displayName.orEmpty(),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (canPreview) {
-                    val previewUri = uri.toString()
-                    AndroidView(
+                if (documents.isNotEmpty()) {
+                    HorizontalPager(
+                        state = pagerState,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 260.dp, max = 520.dp),
-                        factory = { context ->
-                            WebView(context).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.allowFileAccess = true
-                                settings.allowContentAccess = true
-                                settings.builtInZoomControls = true
-                                settings.displayZoomControls = false
-                                setBackgroundColor(AndroidColor.WHITE)
-                            }
-                        },
-                        update = { webView ->
-                            if (webView.tag != previewUri) {
-                                webView.tag = previewUri
-                                webView.loadUrl(previewUri)
-                            }
-                        },
-                    )
-                } else {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            .heightIn(min = 300.dp, max = 520.dp),
+                    ) { page ->
+                        val document = documents[page]
+                        WorkOrderImagePreviewPage(
+                            documentName = document.displayName,
+                            uri = preview.resolvedUris[document.id],
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
+                                }
+                            },
+                            enabled = currentPage > 0,
                         ) {
-                            Text("Ova vrsta datoteke ne prikazuje se u aplikaciji.")
-                            Text(
-                                "Za ovaj dokument možeš koristiti opciju \"preuzmi\" pa otvoriti aplikacijom na uređaju.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                            )
+                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Prethodna fotografija")
+                        }
+                        Text(
+                            text = "${currentPage + 1} / ${documents.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        )
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    pagerState.animateScrollToPage((pagerState.currentPage + 1).coerceAtMost(documents.lastIndex))
+                                }
+                            },
+                            enabled = currentPage < documents.lastIndex,
+                        ) {
+                            Icon(Icons.Rounded.ArrowForward, contentDescription = "Sljedeća fotografija")
                         }
                     }
+                } else {
+                    Text(
+                        "Nema fotografija za prikaz.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
                 }
             }
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(onClick = onOpenExternal) {
+                TextButton(
+                    onClick = { currentDocument?.let(onOpenExternal) },
+                    enabled = currentDocument != null,
+                ) {
                     Text("Otvori vanjskom aplikacijom")
                 }
                 TextButton(onClick = onDismiss) {
@@ -16280,6 +16331,74 @@ private fun WorkOrderDocumentPreviewDialog(
         },
     )
 }
+
+@Composable
+private fun WorkOrderImagePreviewPage(
+    documentName: String,
+    uri: Uri?,
+) {
+    val context = LocalContext.current
+    var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
+    var failed by remember(uri) { mutableStateOf(false) }
+
+    LaunchedEffect(uri) {
+        bitmap = null
+        failed = false
+        if (uri != null) {
+            bitmap = withContext(Dispatchers.IO) { decodePreviewBitmap(context, uri) }
+            if (bitmap == null) failed = true
+        }
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 300.dp, max = 520.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                bitmap != null -> {
+                    ComposeImage(
+                        bitmap = bitmap!!.asImageBitmap(),
+                        contentDescription = documentName,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+                failed -> {
+                    Text(
+                        "Fotografiju nije moguće prikazati u aplikaciji.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                else -> {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                }
+            }
+        }
+    }
+}
+
+private fun decodePreviewBitmap(context: Context, uri: Uri): Bitmap? =
+    runCatching {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path.orEmpty()
+            if (path.isBlank()) return@runCatching null
+            File(path).inputStream().use { input -> BitmapFactory.decodeStream(input) }
+        } else {
+            context.contentResolver.openInputStream(uri)?.use { input -> BitmapFactory.decodeStream(input) }
+        }
+    }.getOrNull()
 
 @Composable
 private fun WorkOrderDocumentationActionDialog(
