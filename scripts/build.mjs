@@ -127,15 +127,15 @@ async function copyMobileAssets() {
   const apkNameMatch = serverSource.match(/const\s+MOBILE_ANDROID_APK_FILE_NAME\s*=\s*"([^"]+)"/);
   const currentApkName = apkNameMatch?.[1] || "";
   const debugApkName = "SafeNexus-debug.apk";
-  const copiedDebug = await copyOptionalFile(resolve(sourceDir, debugApkName), resolve(targetDir, debugApkName));
+  await copyOptionalFile(resolve(sourceDir, debugApkName), resolve(targetDir, debugApkName));
 
   if (!currentApkName || currentApkName === debugApkName) {
     return;
   }
 
   const copiedCurrent = await copyOptionalFile(resolve(sourceDir, currentApkName), resolve(targetDir, currentApkName));
-  if (!copiedCurrent && copiedDebug) {
-    await cp(resolve(targetDir, debugApkName), resolve(targetDir, currentApkName));
+  if (!copiedCurrent) {
+    throw new Error(`Missing mobile APK asset: ${currentApkName}`);
   }
 }
 
