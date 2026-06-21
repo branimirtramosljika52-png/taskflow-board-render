@@ -15250,6 +15250,35 @@ private fun WorkOrderDetailScreen(
         workOrder.coordinates.isNotBlank() ||
         hasContactData
     var showLocationDetails by remember(workOrder.id) { mutableStateOf(false) }
+    var showExecutorsEditor by remember(workOrder.id) { mutableStateOf(false) }
+    if (showExecutorsEditor) {
+        AlertDialog(
+            onDismissRequest = { showExecutorsEditor = false },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Izvršitelji RN-a", fontWeight = FontWeight.Black)
+                    Text(
+                        workOrder.displayNumber,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            },
+            text = {
+                DocumentationExecutorsEditor(
+                    executorOptions = executorOptions,
+                    selectedExecutors = workOrder.executors,
+                    enabled = !isLoading,
+                    onChange = { next -> onExecutorsChange(workOrder, next) },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showExecutorsEditor = false }) {
+                    Text("Zatvori", fontWeight = FontWeight.Bold)
+                }
+            },
+        )
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -15386,11 +15415,22 @@ private fun WorkOrderDetailScreen(
                                 enabled = !isLoading,
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
                             ) {
                                 Icon(Icons.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Usluge")
+                                Text("Usluge", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            OutlinedButton(
+                                onClick = { showExecutorsEditor = true },
+                                enabled = !isLoading,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
+                            ) {
+                                Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Izvršitelji", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                         OutlinedButton(
