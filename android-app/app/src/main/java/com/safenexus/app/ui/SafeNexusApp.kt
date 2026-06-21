@@ -15494,30 +15494,23 @@ private fun normalizeServiceFilterText(value: String): String =
 
 private fun WorkOrderServiceOption.workOrderServiceFilterKey(): String {
     val text = normalizeServiceFilterText(listOf(name, serviceCode, type, note).joinToString(" "))
+    val code = normalizeServiceFilterText(serviceCode)
     return when {
+        code in setOf("spr", "tzin", "rog", "ro", "fc", "kc") ||
+            text.contains("inspection") ||
+            text.contains("ispitiv") ||
+            text.contains("pregled") ||
+            text.contains("mjeren") ||
+            text.contains("radna oprema") ||
+            text.contains("radni okolis") -> "inspection"
         text.contains("osposob") ||
             text.contains("znr") ||
             text.contains("zastita") ||
             text.contains("pozar") ||
             text.contains("adr") ||
             text.contains("procjena rizika") ||
+            code in setOf("zos", "pgp", "spztp", "adr", "znr", "pr") ||
             text.contains("pravilnik") -> "safety"
-        text.contains("dokument") ||
-            text.contains("zapisnik") ||
-            text.contains("template") ||
-            text.contains("word") ||
-            text.contains("pdf") -> "documents"
-        text.contains("inspection") ||
-            text.contains("ispitiv") ||
-            text.contains("pregled") ||
-            text.contains("mjeren") ||
-            text.contains("radna oprema") ||
-            text.contains("radni okolis") ||
-            text.contains("spr") ||
-            text.contains("tzin") ||
-            text.contains("rog") ||
-            text.contains("fc") ||
-            text.contains("kc") -> "inspection"
         else -> "other"
     }
 }
@@ -15553,20 +15546,28 @@ private fun WorkOrderServiceManagementDialog(
     var selectedIds by remember(workOrder.id, workOrder.serviceDetails, services) {
         mutableStateOf(resolveWorkOrderSelectedServiceIds(workOrder, services).toSet())
     }
-    var selectedFilter by remember(workOrder.id) { mutableStateOf("all") }
-    var didInitializeAutoSave by remember(workOrder.id) { mutableStateOf(false) }
-    var lastAutoSavedIds by remember(workOrder.id) { mutableStateOf(selectedIds) }
-    var saveStatus by remember(workOrder.id) { mutableStateOf("Spremljeno") }
     val filterTabs = remember {
         listOf(
-            WorkOrderServiceFilterTab("all", "Sve", Icons.Rounded.ListAlt),
-            WorkOrderServiceFilterTab("selected", "Odabrano", Icons.Rounded.CheckCircle),
             WorkOrderServiceFilterTab("inspection", "Ispitivanja", Icons.Rounded.Tune),
             WorkOrderServiceFilterTab("safety", "ZNR", Icons.Rounded.Work),
-            WorkOrderServiceFilterTab("documents", "Dokumenti", Icons.Rounded.Description),
             WorkOrderServiceFilterTab("other", "Ostalo", Icons.Rounded.FilterList),
         )
     }
+    val serviceFilterById = remember(services) {
+        services.associate { service -> service.id to service.workOrderServiceFilterKey() }
+    }
+    fun initialServiceFilterKey(selected: Set<String>): String {
+        val selectedCategory = selected.asSequence()
+            .mapNotNull { serviceFilterById[it] }
+            .firstOrNull()
+        if (selectedCategory != null) return selectedCategory
+        return filterTabs.firstOrNull { tab -> services.any { it.workOrderServiceFilterKey() == tab.key } }?.key
+            ?: "inspection"
+    }
+    var selectedFilter by remember(workOrder.id, services) { mutableStateOf(initialServiceFilterKey(selectedIds)) }
+    var didInitializeAutoSave by remember(workOrder.id) { mutableStateOf(false) }
+    var lastAutoSavedIds by remember(workOrder.id) { mutableStateOf(selectedIds) }
+    var saveStatus by remember(workOrder.id) { mutableStateOf("Spremljeno") }
     val serviceSearchIndex = remember(services) {
         services.associate { service ->
             service.id to normalizeServiceMatch(
@@ -15577,23 +15578,23 @@ private fun WorkOrderServiceManagementDialog(
     }
     val filterCounts = remember(services, selectedIds) {
         filterTabs.associate { tab ->
-            val count = when (tab.key) {
-                "all" -> services.size
-                "selected" -> services.count { it.id in selectedIds }
-                else -> services.count { it.workOrderServiceFilterKey() == tab.key }
-            }
-            tab.key to count
+            tab.key to services.count { it.workOrderServiceFilterKey() == tab.key }
         }
     }
-    val filteredServices = remember(services, serviceSearchIndex, query, selectedFilter, selectedIds) {
+    val filteredServices = remember(services, serviceSearchIndex, query, selectedFilter) {
         val normalizedQuery = normalizeServiceMatch(query)
         services.filter { service ->
-            val matchesFilter = when (selectedFilter) {
-                "all" -> true
-                "selected" -> service.id in selectedIds
-                else -> service.workOrderServiceFilterKey() == selectedFilter
-            }
+            val matchesFilter = service.workOrderServiceFilterKey() == selectedFilter
             matchesFilter && (normalizedQuery.isBlank() || serviceSearchIndex[service.id]?.contains(normalizedQuery) == true)
+        }
+    }
+    fun setServiceChecked(service: WorkOrderServiceOption, checked: Boolean) {
+        val category = serviceFilterById[service.id] ?: service.workOrderServiceFilterKey()
+        selectedFilter = category
+        selectedIds = if (checked) {
+            selectedIds.filter { serviceFilterById[it] == category }.toSet() + service.id
+        } else {
+            selectedIds - service.id
         }
     }
     LaunchedEffect(selectedIds) {
@@ -15621,7 +15622,7 @@ private fun WorkOrderServiceManagementDialog(
             Column {
                 Text("Usluge radnog naloga", fontWeight = FontWeight.Black)
                 Text(
-                    "${workOrder.displayNumber} · ${selectedIds.size} odabrano",
+                    "${workOrder.displayNumber} · ${filterTabs.firstOrNull { it.key == selectedFilter }?.label ?: "Usluge"} · ${selectedIds.size} odabrano",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
@@ -15675,6 +15676,11 @@ private fun WorkOrderServiceManagementDialog(
                         )
                     }
                 }
+                Text(
+                    "Odabir je ograničen na jednu skupinu usluga.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                )
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -15701,11 +15707,7 @@ private fun WorkOrderServiceManagementDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable(enabled = !isLoading) {
-                                        selectedIds = if (selected) {
-                                            selectedIds - service.id
-                                        } else {
-                                            selectedIds + service.id
-                                        }
+                                        setServiceChecked(service, !selected)
                                     },
                                 shape = RoundedCornerShape(14.dp),
                                 color = if (selected) {
@@ -15722,7 +15724,7 @@ private fun WorkOrderServiceManagementDialog(
                                     Checkbox(
                                         checked = selected,
                                         onCheckedChange = { checked ->
-                                            selectedIds = if (checked) selectedIds + service.id else selectedIds - service.id
+                                            setServiceChecked(service, checked)
                                         },
                                         enabled = !isLoading,
                                         modifier = Modifier.size(30.dp),
