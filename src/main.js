@@ -51920,6 +51920,109 @@ function getWorkOrderDocumentCategoryLabel(value = "") {
     || normalized;
 }
 
+function normalizeWorkOrderDocumentGroupText(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function getWorkOrderDocumentGroupKey(item = {}) {
+  const category = normalizeWorkOrderDocumentGroupText(item.documentCategory);
+  const fileName = normalizeWorkOrderDocumentGroupText(item.fileName);
+  const fileType = normalizeWorkOrderDocumentGroupText(item.fileType);
+  const extension = getWorkOrderDocumentExtension(item.fileName, item.fileType).toLowerCase();
+  const text = `${category} ${fileName} ${fileType}`;
+  const isImage = fileType.startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(extension);
+  const isPdf = fileType === "application/pdf" || extension === "pdf";
+
+  if (
+    category.includes("ovjereni radni nalog")
+    || category.includes("radni nalog pdf")
+    || fileName.includes("radni nalog")
+    || /\b\d{2}-\d+\.pdf$/.test(fileName)
+  ) {
+    return "work-order";
+  }
+
+  if (isImage || category.includes("fotograf") || text.includes("slik")) {
+    return "photos";
+  }
+
+  if (
+    category.includes("projekt")
+    || category.includes("shema")
+    || category.includes("elaborat")
+    || category.includes("radni list")
+  ) {
+    return "projects";
+  }
+
+  if (isPdf || category.includes("zapisnik") || category.includes("pdf")) {
+    return "reports";
+  }
+
+  return "other";
+}
+
+function getWorkOrderDocumentGroupMeta(key = "other") {
+  const groups = {
+    "work-order": {
+      key: "work-order",
+      title: "Radni nalozi",
+      subtitle: "Skenirani, potpisani i automatski RN PDF.",
+      iconName: "id",
+    },
+    reports: {
+      key: "reports",
+      title: "Zapisnici i PDF",
+      subtitle: "Generirani zapisnici, potvrde i dokumenti za potpis.",
+      iconName: "document",
+    },
+    photos: {
+      key: "photos",
+      title: "Fotografije",
+      subtitle: "Slike s terena i foto prilozi uz zapisnik.",
+      iconName: "preview",
+    },
+    projects: {
+      key: "projects",
+      title: "Projekti i tehnička dokumentacija",
+      subtitle: "Projekti, sheme, elaborati i radni listovi.",
+      iconName: "folder",
+    },
+    other: {
+      key: "other",
+      title: "Ostalo",
+      subtitle: "Mailovi, Word, Excel i drugi prilozi.",
+      iconName: "document",
+    },
+  };
+
+  return groups[key] || groups.other;
+}
+
+function groupWorkOrderDocuments(items = []) {
+  const order = ["work-order", "reports", "photos", "projects", "other"];
+  const grouped = new Map(order.map((key) => [key, []]));
+
+  items.forEach((item) => {
+    const key = getWorkOrderDocumentGroupKey(item);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(item);
+  });
+
+  return order
+    .map((key) => ({
+      ...getWorkOrderDocumentGroupMeta(key),
+      items: grouped.get(key) || [],
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
 function formatFileSize(value) {
   const size = Number(value);
 
@@ -51977,7 +52080,7 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
   const saveButton = document.createElement("button");
   saveButton.type = "button";
   saveButton.className = "ghost-button work-order-document-button";
-  saveButton.textContent = isBusy ? "Spremam..." : "Spremi";
+  saveButton.textContent = isBusy ? "Spremam..." : "Spremi opis";
   saveButton.disabled = isBusy;
   saveButton.addEventListener("click", () => {
     void saveWorkOrderDocument(item.id, {
@@ -51986,14 +52089,22 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
     });
   });
 
-  const link = document.createElement("a");
-  link.className = "ghost-button work-order-document-link";
-  link.href = item.dataUrl || "#";
-  link.target = "_blank";
-  link.rel = "noreferrer";
-  link.download = item.fileName || "dokument";
-  link.textContent = "Otvori";
-  link.setAttribute("aria-disabled", String(isBusy));
+  const previewLink = document.createElement("a");
+  previewLink.className = "ghost-button work-order-document-link";
+  previewLink.href = item.dataUrl || "#";
+  previewLink.target = "_blank";
+  previewLink.rel = "noreferrer";
+  previewLink.textContent = "Pregled";
+  previewLink.setAttribute("aria-disabled", String(isBusy || !item.dataUrl));
+
+  const downloadLink = document.createElement("a");
+  downloadLink.className = "ghost-button work-order-document-link";
+  downloadLink.href = item.dataUrl || "#";
+  downloadLink.target = "_blank";
+  downloadLink.rel = "noreferrer";
+  downloadLink.download = item.fileName || "dokument";
+  downloadLink.textContent = "Preuzmi";
+  downloadLink.setAttribute("aria-disabled", String(isBusy || !item.dataUrl));
 
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
@@ -52004,10 +52115,48 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
     void deleteWorkOrderDocument(item.id, item.fileName);
   });
 
-  actions.append(saveButton, link, deleteButton);
+  actions.append(saveButton, previewLink, downloadLink, deleteButton);
 
   card.append(badge, body, actions);
   return card;
+}
+
+function createWorkOrderDocumentGroup(group, { compact = false } = {}) {
+  const section = document.createElement("section");
+  section.className = `work-order-document-group is-${group.key}${compact ? " is-compact" : ""}`;
+
+  const head = document.createElement("div");
+  head.className = "work-order-document-group-head";
+
+  const icon = document.createElement("span");
+  icon.className = "work-order-document-group-icon";
+  icon.innerHTML = getWorkOrderIconMarkup(group.iconName || "document");
+
+  const copy = document.createElement("div");
+  copy.className = "work-order-document-group-copy";
+
+  const title = document.createElement("strong");
+  title.textContent = group.title;
+
+  const subtitle = document.createElement("span");
+  subtitle.textContent = group.subtitle;
+
+  copy.append(title, subtitle);
+
+  const count = document.createElement("span");
+  count.className = "work-order-document-group-count";
+  count.textContent = String(group.items.length);
+
+  head.append(icon, copy, count);
+
+  const list = document.createElement("div");
+  list.className = "work-order-document-group-list";
+  group.items.forEach((item) => {
+    list.append(createWorkOrderDocumentCard(item, { compact }));
+  });
+
+  section.append(head, list);
+  return section;
 }
 
 function syncWorkOrderDocumentDropzone(dropzone, uploading, defaultTitle, defaultSubtitle) {
@@ -52051,9 +52200,8 @@ function renderWorkOrderDocuments() {
     return;
   }
 
-  const visibleItems = items.filter((item) => (
-    String(item?.documentCategory || "").trim() !== GENERATED_WORK_ORDER_PDF_CATEGORY
-  ));
+  const visibleItems = items.filter(Boolean);
+  const groupedItems = groupWorkOrderDocuments(visibleItems);
 
   if (workOrderDocumentCount) {
     workOrderDocumentCount.textContent = String(visibleItems.length);
@@ -52085,9 +52233,9 @@ function renderWorkOrderDocuments() {
     "Povuci ili klikni za upload. Drag and drop radi i bilo gdje u desnom activity dijelu.",
   );
 
-  visibleItems.forEach((item) => {
-    workOrderDocumentList.append(createWorkOrderDocumentCard(item));
-    workOrderActivityDocumentList.append(createWorkOrderDocumentCard(item, { compact: true }));
+  groupedItems.forEach((group) => {
+    workOrderDocumentList.append(createWorkOrderDocumentGroup(group));
+    workOrderActivityDocumentList.append(createWorkOrderDocumentGroup(group, { compact: true }));
   });
 
   const editorEmptyMessage = !workOrderId

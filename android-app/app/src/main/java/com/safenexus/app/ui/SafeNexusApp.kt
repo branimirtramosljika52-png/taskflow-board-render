@@ -15199,6 +15199,20 @@ private fun WorkOrderDetailScreen(
             .distinctBy { it.lowercase(Locale.getDefault()) }
             .map { it to it }
     }
+    val statusStyle = rnStatusStyle(workOrder)
+    val heroLocation = remember(workOrder.locationName, workOrder.objectName) {
+        listOf(
+            workOrder.locationName.ifBlank { "Lokacija nije upisana" },
+            workOrder.objectName.takeIf { it.isNotBlank() }?.let { "Objekt: $it" },
+        )
+            .filterNotNull()
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+    }
+    val hasContactData = workOrder.contactName.isNotBlank() ||
+        workOrder.contactPhone.isNotBlank() ||
+        workOrder.contactEmail.isNotBlank() ||
+        workOrder.coordinates.isNotBlank()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -15232,7 +15246,8 @@ private fun WorkOrderDetailScreen(
         ) {
             Card(
                 shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                colors = CardDefaults.cardColors(containerColor = statusStyle.background),
+                border = BorderStroke(1.dp, statusStyle.accent.copy(alpha = 0.22f)),
             ) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatusChip(workOrder)
@@ -15241,16 +15256,31 @@ private fun WorkOrderDetailScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Black,
                     )
-                    Text(workOrder.displayService, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        listOf(workOrder.locationName, workOrder.objectName.takeIf { it.isNotBlank() }?.let { "Objekt: $it" })
-                            .filterNotNull()
-                            .filter { it.isNotBlank() }
-                            .joinToString(" · ")
-                            .ifBlank { "Lokacija nije upisana" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.48f),
+                        border = BorderStroke(1.dp, statusStyle.accent.copy(alpha = 0.12f)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Rounded.LocationOn,
+                                contentDescription = null,
+                                tint = statusStyle.accent,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                heroLocation,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -15323,6 +15353,10 @@ private fun WorkOrderDetailScreen(
                             enabled = !isLoading,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = statusStyle.accent,
+                                contentColor = Color.White,
+                            ),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
                         ) {
                             Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -15334,10 +15368,6 @@ private fun WorkOrderDetailScreen(
             }
 
             DetailSection("Osnovno") {
-                DetailRow(Icons.Rounded.LocationOn, "Lokacija", workOrder.locationName.ifBlank { "Nije upisano" })
-                if (workOrder.objectName.isNotBlank()) {
-                    DetailRow(Icons.Rounded.Business, "Objekt", workOrder.objectName)
-                }
                 DetailRow(Icons.Rounded.CalendarMonth, "Otvoren", formatDateLabel(workOrder.openedDate).ifBlank { "Nije upisano" })
                 DetailRow(Icons.Rounded.CalendarMonth, "Rok", formatDateLabel(workOrder.dueDate).ifBlank { "Nije upisano" })
                 DetailRow(Icons.Rounded.CalendarMonth, "Izvršenje", formatDateLabel(workOrder.executionDate).ifBlank { "Nije upisano" })
@@ -15371,21 +15401,17 @@ private fun WorkOrderDetailScreen(
                 onRefreshDocuments = onRefreshDocuments,
             )
 
-            WorkOrderServicesDetailSection(
-                workOrder = workOrder,
-                services = services,
-                isBusy = isLoading,
-                onManageServices = { onManageServices(workOrder) },
-            )
-
-            DetailSection("Lokacija i kontakt") {
-                DetailRow(Icons.Rounded.LocationOn, "Lokacija", workOrder.locationName.ifBlank { "Nije upisano" })
+            DetailSection("Kontakt") {
                 if (workOrder.coordinates.isNotBlank()) {
                     DetailRow(Icons.Rounded.Map, "Koordinate", workOrder.coordinates)
                 }
-                DetailRow(Icons.Rounded.Business, "Kontakt", workOrder.contactName.ifBlank { "Nije upisano" })
-                DetailRow(Icons.Rounded.Call, "Telefon", workOrder.contactPhone.ifBlank { "Nije upisano" })
-                DetailRow(Icons.Rounded.Mail, "Email", workOrder.contactEmail.ifBlank { "Nije upisano" })
+                if (hasContactData) {
+                    DetailRow(Icons.Rounded.Business, "Kontakt", workOrder.contactName.ifBlank { "Nije upisano" })
+                    DetailRow(Icons.Rounded.Call, "Telefon", workOrder.contactPhone.ifBlank { "Nije upisano" })
+                    DetailRow(Icons.Rounded.Mail, "Email", workOrder.contactEmail.ifBlank { "Nije upisano" })
+                } else {
+                    DetailRow(Icons.Rounded.Info, "Kontakt", "Nije upisano")
+                }
             }
 
             DetailSection("Opis") {
@@ -15532,6 +15558,90 @@ private fun resolveWorkOrderSelectedServiceIds(
     return workOrder.serviceItems
         .mapNotNull { label -> serviceLookup[normalizeServiceMatch(label)] }
         .distinct()
+}
+
+private data class WorkOrderDocumentGroupUi(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val accent: Color,
+)
+
+private fun normalizeWorkOrderDocumentText(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace("š", "s")
+        .replace("ž", "z")
+        .replace("č", "c")
+        .replace("ć", "c")
+        .replace("đ", "d")
+
+private fun workOrderDocumentGroupKey(document: WorkOrderDocument): String {
+    val category = normalizeWorkOrderDocumentText(document.documentCategory)
+    val name = normalizeWorkOrderDocumentText(document.fileName)
+    val text = "$category $name ${normalizeWorkOrderDocumentText(document.fileType)}"
+
+    return when {
+        category.contains("ovjereni radni nalog") ||
+            category.contains("radni nalog pdf") ||
+            name.matches(Regex(".*\\b\\d{2}-\\d+\\.pdf$")) ||
+            name.contains("radni nalog") -> "work-order"
+        document.isImage || category.contains("fotograf") || text.contains("slik") -> "photos"
+        category.contains("projekt") ||
+            category.contains("shema") ||
+            category.contains("elaborat") ||
+            category.contains("radni list") -> "projects"
+        document.isPdf || category.contains("zapisnik") || category.contains("pdf") -> "reports"
+        else -> "other"
+    }
+}
+
+private fun workOrderDocumentGroupMeta(key: String): WorkOrderDocumentGroupUi = when (key) {
+    "work-order" -> WorkOrderDocumentGroupUi(
+        key = key,
+        title = "Radni nalozi",
+        subtitle = "Skenirani, potpisani i automatski RN PDF",
+        icon = Icons.Rounded.Badge,
+        accent = Color(0xFF2563EB),
+    )
+    "photos" -> WorkOrderDocumentGroupUi(
+        key = key,
+        title = "Fotografije",
+        subtitle = "Slike s terena i prilozi uz zapisnik",
+        icon = Icons.Rounded.Image,
+        accent = Color(0xFF0F766E),
+    )
+    "projects" -> WorkOrderDocumentGroupUi(
+        key = key,
+        title = "Projekti i tehnička dokumentacija",
+        subtitle = "Projekti, sheme, elaborati i radni listovi",
+        icon = Icons.Rounded.Folder,
+        accent = Color(0xFF7C3AED),
+    )
+    "reports" -> WorkOrderDocumentGroupUi(
+        key = key,
+        title = "Zapisnici i PDF",
+        subtitle = "Generirani zapisnici, potvrde i dokumenti za potpis",
+        icon = Icons.Rounded.PictureAsPdf,
+        accent = Color(0xFFDC2626),
+    )
+    else -> WorkOrderDocumentGroupUi(
+        key = "other",
+        title = "Ostalo",
+        subtitle = "Mailovi, Word, Excel i drugi prilozi",
+        icon = Icons.Rounded.InsertDriveFile,
+        accent = Color(0xFF475569),
+    )
+}
+
+private fun groupWorkOrderDocuments(documents: List<WorkOrderDocument>): List<Pair<WorkOrderDocumentGroupUi, List<WorkOrderDocument>>> {
+    val order = listOf("work-order", "reports", "photos", "projects", "other")
+    val grouped = documents.groupBy { workOrderDocumentGroupKey(it) }
+    return order.mapNotNull { key ->
+        val items = grouped[key].orEmpty()
+        if (items.isEmpty()) null else workOrderDocumentGroupMeta(key) to items
+    }
 }
 
 @Composable
@@ -15781,6 +15891,7 @@ private fun WorkOrderDocumentationSection(
     onRefreshDocuments: () -> Unit,
 ) {
     DetailSection("Dokumentacija") {
+        val groupedDocuments = remember(documents) { groupWorkOrderDocuments(documents) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -15841,14 +15952,85 @@ private fun WorkOrderDocumentationSection(
             }
         }
 
-        documents.forEach { document ->
-            WorkOrderDocumentCard(
-                document = document,
+        groupedDocuments.forEach { (group, groupDocuments) ->
+            WorkOrderDocumentGroupCard(
+                group = group,
+                documents = groupDocuments,
                 enabled = !isBusy,
-                onOpen = { onOpenDocument(document) },
-                onDownload = { onDownloadDocument(document) },
-                onDelete = { onDeleteDocument(document) },
+                onOpenDocument = onOpenDocument,
+                onDownloadDocument = onDownloadDocument,
+                onDeleteDocument = onDeleteDocument,
             )
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderDocumentGroupCard(
+    group: WorkOrderDocumentGroupUi,
+    documents: List<WorkOrderDocument>,
+    enabled: Boolean,
+    onOpenDocument: (WorkOrderDocument) -> Unit,
+    onDownloadDocument: (WorkOrderDocument) -> Unit,
+    onDeleteDocument: (WorkOrderDocument) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = group.accent.copy(alpha = 0.06f),
+        border = BorderStroke(1.dp, group.accent.copy(alpha = 0.16f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = group.accent.copy(alpha = 0.12f),
+                ) {
+                    Icon(
+                        group.icon,
+                        contentDescription = null,
+                        tint = group.accent,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(9.dp),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(group.title, fontWeight = FontWeight.Black)
+                    Text(
+                        group.subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.7f)) {
+                    Text(
+                        "${documents.size}",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = group.accent,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            }
+            documents.forEach { document ->
+                WorkOrderDocumentCard(
+                    document = document,
+                    enabled = enabled,
+                    onOpen = { onOpenDocument(document) },
+                    onDownload = { onDownloadDocument(document) },
+                    onDelete = { onDeleteDocument(document) },
+                )
+            }
         }
     }
 }
@@ -15864,51 +16046,78 @@ private fun WorkOrderDocumentCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Surface(shape = RoundedCornerShape(12.dp), color = workOrderDocumentAccent(document).copy(alpha = 0.13f)) {
-                Icon(
-                    imageVector = workOrderDocumentIcon(document),
-                    contentDescription = null,
-                    tint = workOrderDocumentAccent(document),
-                    modifier = Modifier
-                        .size(38.dp)
-                        .padding(9.dp),
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(12.dp), color = workOrderDocumentAccent(document).copy(alpha = 0.13f)) {
+                    Icon(
+                        imageVector = workOrderDocumentIcon(document),
+                        contentDescription = null,
+                        tint = workOrderDocumentAccent(document),
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(9.dp),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = document.displayName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = listOf(
+                            document.documentCategory,
+                            formatFileSizeLabel(document.fileSize),
+                            formatDateLabel(document.createdAt),
+                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = document.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = listOf(
-                        document.documentCategory,
-                        formatFileSizeLabel(document.fileSize),
-                        formatDateLabel(document.createdAt),
-                    ).filter { it.isNotBlank() }.joinToString(" · "),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            IconButton(onClick = onOpen, enabled = enabled) {
-                Icon(Icons.Rounded.Visibility, contentDescription = "Pregled", tint = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = onDownload, enabled = enabled) {
-                Icon(Icons.Rounded.Download, contentDescription = "Preuzmi", tint = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = onDelete, enabled = enabled) {
-                Icon(Icons.Rounded.Delete, contentDescription = "Briši", tint = Color(0xFFDC2626))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onOpen,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                ) {
+                    Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Pregled", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = onDownload,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                ) {
+                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Preuzmi", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
+                TextButton(
+                    onClick = onDelete,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFDC2626)),
+                ) {
+                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Obriši", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
