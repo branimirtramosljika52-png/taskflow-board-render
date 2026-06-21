@@ -73,6 +73,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -90,6 +91,7 @@ import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
@@ -2558,7 +2560,13 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
                     onSignWorkOrder = { workOrder -> signatureActionTarget = workOrder },
                     onOpenDocument = openDocumentPreview,
-                    onDownloadDocument = { document -> viewModel.downloadWorkOrderDocument(context.applicationContext, document) },
+                    onDownloadDocument = { document ->
+                        viewModel.downloadWorkOrderDocument(
+                            context.applicationContext,
+                            document,
+                            openAfterDownload = !document.isImage,
+                        )
+                    },
                     onDeleteDocument = viewModel::deleteWorkOrderDocument,
                     onRefreshDocuments = viewModel::refreshWorkOrderDocuments,
                 )
@@ -15213,6 +15221,10 @@ private fun WorkOrderDetailScreen(
         workOrder.contactPhone.isNotBlank() ||
         workOrder.contactEmail.isNotBlank() ||
         workOrder.coordinates.isNotBlank()
+    val hasLocationDetails = workOrder.region.isNotBlank() ||
+        workOrder.coordinates.isNotBlank() ||
+        hasContactData
+    var showLocationDetails by remember(workOrder.id) { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -15257,12 +15269,19 @@ private fun WorkOrderDetailScreen(
                         fontWeight = FontWeight.Black,
                     )
                     Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(enabled = hasLocationDetails) {
+                                showLocationDetails = !showLocationDetails
+                            },
                         shape = RoundedCornerShape(16.dp),
                         color = Color.White.copy(alpha = 0.48f),
                         border = BorderStroke(1.dp, statusStyle.accent.copy(alpha = 0.12f)),
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
@@ -15278,7 +15297,47 @@ private fun WorkOrderDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
                             )
+                            if (hasLocationDetails) {
+                                Spacer(Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Rounded.Info,
+                                    contentDescription = "Detalji lokacije",
+                                    tint = statusStyle.accent,
+                                    modifier = Modifier.size(17.dp),
+                                )
+                            }
+                        }
+                    }
+                    AnimatedVisibility(showLocationDetails && hasLocationDetails) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color.White.copy(alpha = 0.64f),
+                            border = BorderStroke(1.dp, statusStyle.accent.copy(alpha = 0.14f)),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("Detalji lokacije", fontWeight = FontWeight.Black, color = statusStyle.accent)
+                                if (workOrder.region.isNotBlank()) {
+                                    CompactInfoLine(Icons.Rounded.Map, "Regija", workOrder.region)
+                                }
+                                if (workOrder.coordinates.isNotBlank()) {
+                                    CompactInfoLine(Icons.Rounded.LocationOn, "Koordinate", workOrder.coordinates)
+                                }
+                                if (workOrder.contactName.isNotBlank()) {
+                                    CompactInfoLine(Icons.Rounded.Person, "Kontakt", workOrder.contactName)
+                                }
+                                if (workOrder.contactPhone.isNotBlank()) {
+                                    CompactInfoLine(Icons.Rounded.Call, "Telefon", workOrder.contactPhone)
+                                }
+                                if (workOrder.contactEmail.isNotBlank()) {
+                                    CompactInfoLine(Icons.Rounded.Mail, "Email", workOrder.contactEmail)
+                                }
+                            }
                         }
                     }
                     Column(
@@ -16087,15 +16146,17 @@ private fun WorkOrderDocumentCard(
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = onOpen,
-                    enabled = enabled,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
-                ) {
-                    Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Pregled", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                if (document.isImage) {
+                    OutlinedButton(
+                        onClick = onOpen,
+                        enabled = enabled,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                    ) {
+                        Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Pregled", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
                 }
                 OutlinedButton(
                     onClick = onDownload,
@@ -16125,9 +16186,12 @@ private fun WorkOrderDocumentCard(
 
 private fun canPreviewDocumentInApp(fileType: String, fileName: String): Boolean {
     val resolvedType = fileType.lowercase(Locale.getDefault()).trim()
-    return resolvedType.startsWith("image/")
-        || resolvedType == "application/pdf"
-        || fileName.lowercase(Locale.getDefault()).endsWith(".pdf")
+    val resolvedName = fileName.lowercase(Locale.getDefault()).trim()
+    return resolvedType.startsWith("image/") ||
+        resolvedName.endsWith(".jpg") ||
+        resolvedName.endsWith(".jpeg") ||
+        resolvedName.endsWith(".png") ||
+        resolvedName.endsWith(".webp")
 }
 
 @Composable
@@ -16143,7 +16207,7 @@ private fun WorkOrderDocumentPreviewDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
-            Text("Pregled dokumenta", fontWeight = FontWeight.Black)
+            Text("Pregled fotografije", fontWeight = FontWeight.Black)
         },
         text = {
             Column(
@@ -22484,15 +22548,13 @@ private fun DocumentationExecutorsEditor(
     enabled: Boolean,
     onChange: (List<String>) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    val selectedLabels = remember(executorOptions, selectedExecutors) {
+    val selectedEntries = remember(executorOptions, selectedExecutors) {
         val labelByValue = executorOptions.associate { it.first to it.second }
         selectedExecutors
-            .map { value -> labelByValue[value] ?: value }
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .map { value -> value.trim() to (labelByValue[value] ?: value).trim() }
+            .filter { it.first.isNotBlank() && it.second.isNotBlank() }
+            .distinctBy { it.first.lowercase(Locale.getDefault()) }
     }
     val filteredOptions = remember(executorOptions, query) {
         val normalizedQuery = query.trim().lowercase(Locale.getDefault())
@@ -22501,13 +22563,14 @@ private fun DocumentationExecutorsEditor(
                 normalizedQuery.isBlank() ||
                     option.second.lowercase(Locale.getDefault()).contains(normalizedQuery)
             }
-            .take(36)
+            .take(42)
     }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -22522,72 +22585,99 @@ private fun DocumentationExecutorsEditor(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Izvršitelji RN-a", fontWeight = FontWeight.Black)
                     Text(
-                        if (selectedLabels.isEmpty()) "Nije dodijeljeno" else "${selectedLabels.size} odabrano",
+                        if (selectedEntries.isEmpty()) "Nije dodijeljeno" else "${selectedEntries.size} odabrano",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
                 }
-                TextButton(onClick = { expanded = !expanded }, enabled = enabled || expanded) {
-                    Text(if (expanded) "Zatvori" else "Uredi", fontWeight = FontWeight.Bold)
+                if (selectedEntries.isNotEmpty()) {
+                    TextButton(onClick = { onChange(emptyList()) }, enabled = enabled) {
+                        Text("Očisti", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
-            if (selectedLabels.isEmpty()) {
-                Text(
-                    "Nije dodijeljeno",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                )
+            if (selectedEntries.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                ) {
+                    Text(
+                        "Nema odabranih izvršitelja.",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    selectedLabels.take(3).forEach { label ->
-                        AssistChip(
-                            onClick = { expanded = true },
-                            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        )
-                    }
-                    if (selectedLabels.size > 3) {
-                        AssistChip(
-                            onClick = { expanded = true },
-                            label = { Text("+${selectedLabels.size - 3}") },
-                        )
+                    selectedEntries.forEach { (value, label) ->
+                        Surface(
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .clickable(enabled = enabled) {
+                                    onChange(selectedExecutors.filterNot { it.trim() == value })
+                                },
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(start = 10.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "Makni izvršitelja",
+                                    modifier = Modifier.size(15.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            AnimatedVisibility(expanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        enabled = enabled,
-                        singleLine = true,
-                        label = { Text("Traži izvršitelja") },
-                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth(),
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                enabled = enabled,
+                singleLine = true,
+                label = { Text("Dodaj ili traži izvršitelja") },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 190.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                WorkOrderMultiSelectChips(
+                    options = filteredOptions,
+                    selected = selectedExecutors,
+                    enabled = enabled,
+                    emptyText = "Nema dostupnih korisnika za odabir izvršitelja.",
+                    onToggle = { value -> onChange(selectedExecutors.toggleValue(value)) },
+                )
+                if (executorOptions.size > filteredOptions.size) {
+                    Text(
+                        "Prikazano ${filteredOptions.size} od ${executorOptions.size}.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                     )
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 210.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        WorkOrderMultiSelectChips(
-                            options = filteredOptions,
-                            selected = selectedExecutors,
-                            enabled = enabled,
-                            emptyText = "Nema dostupnih korisnika za odabir izvršitelja.",
-                            onToggle = { value -> onChange(selectedExecutors.toggleValue(value)) },
-                        )
-                        if (executorOptions.size > filteredOptions.size) {
-                            Text(
-                                "Prikazano ${filteredOptions.size} od ${executorOptions.size}.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                            )
-                        }
-                    }
                 }
             }
 
@@ -24431,6 +24521,37 @@ private fun DetailRow(icon: ImageVector, label: String, value: String) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
             Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+@Composable
+private fun CompactInfoLine(icon: ImageVector, label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+            modifier = Modifier.width(72.dp),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
