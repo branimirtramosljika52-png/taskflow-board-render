@@ -15597,15 +15597,6 @@ private fun WorkOrderDetailScreen(
                 onRefreshDocuments = onRefreshDocuments,
             )
 
-            AnimatedVisibility(workOrder.description.isNotBlank()) {
-                DetailSection("Opis") {
-                    Text(
-                        text = workOrder.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
-                    )
-                }
-            }
         }
     }
 }
