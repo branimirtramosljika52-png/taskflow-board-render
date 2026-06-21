@@ -843,6 +843,7 @@ data class WorkOrder(
     val description: String,
     val executors: List<String>,
     val completedBy: String = "",
+    val tags: List<String> = emptyList(),
 ) {
     val parsedDueDate: LocalDate? = parseDateOrNull(dueDate)
 

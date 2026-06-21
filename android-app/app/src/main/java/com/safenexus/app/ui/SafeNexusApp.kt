@@ -15288,8 +15288,21 @@ private fun WorkOrderDetailScreen(
                     }
                 },
                 title = {
-                    Column {
-                        Text(workOrder.displayNumber, fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                workOrder.displayNumber,
+                                modifier = Modifier.weight(1f),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            WorkOrderHeaderMeta(workOrder)
+                        }
                         Text(
                             workOrder.status,
                             style = MaterialTheme.typography.labelMedium,
@@ -15499,28 +15512,76 @@ private fun WorkOrderDetailScreen(
                 onRefreshDocuments = onRefreshDocuments,
             )
 
-            DetailSection("Kontakt") {
-                if (workOrder.coordinates.isNotBlank()) {
-                    DetailRow(Icons.Rounded.Map, "Koordinate", workOrder.coordinates)
+            AnimatedVisibility(workOrder.description.isNotBlank()) {
+                DetailSection("Opis") {
+                    Text(
+                        text = workOrder.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                    )
                 }
-                if (hasContactData) {
-                    DetailRow(Icons.Rounded.Business, "Kontakt", workOrder.contactName.ifBlank { "Nije upisano" })
-                    DetailRow(Icons.Rounded.Call, "Telefon", workOrder.contactPhone.ifBlank { "Nije upisano" })
-                    DetailRow(Icons.Rounded.Mail, "Email", workOrder.contactEmail.ifBlank { "Nije upisano" })
-                } else {
-                    DetailRow(Icons.Rounded.Info, "Kontakt", "Nije upisano")
-                }
-            }
-
-            DetailSection("Opis") {
-                DetailRow(Icons.Rounded.Work, "Prioritet", workOrder.priority)
-                Text(
-                    text = workOrder.description.ifBlank { "Nema dodatnog opisa." },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
-                )
             }
         }
+    }
+}
+
+@Composable
+private fun WorkOrderHeaderMeta(workOrder: WorkOrder) {
+    val tags = workOrder.tags
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WorkOrderHeaderMetaChip(
+            label = workOrder.priority.ifBlank { "Normal" },
+            color = workOrderPriorityAccent(workOrder.priority),
+        )
+        tags.take(2).forEach { tag ->
+            WorkOrderHeaderMetaChip(
+                label = "#$tag",
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        if (tags.size > 2) {
+            WorkOrderHeaderMetaChip(
+                label = "+${tags.size - 2}",
+                color = Color(0xFF64748B),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderHeaderMetaChip(
+    label: String,
+    color: Color,
+) {
+    Surface(
+        modifier = Modifier.widthIn(max = 86.dp),
+        shape = RoundedCornerShape(999.dp),
+        color = color.copy(alpha = 0.11f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.14f)),
+        tonalElevation = 0.dp,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun workOrderPriorityAccent(priority: String): Color {
+    val normalized = priority.lowercase(Locale.getDefault())
+    return when {
+        normalized.contains("urgent") || normalized.contains("hitno") -> Color(0xFFDC2626)
+        normalized.contains("high") || normalized.contains("visok") -> Color(0xFFD97706)
+        normalized.contains("low") || normalized.contains("niz") -> Color(0xFF64748B)
+        else -> Color(0xFF2563EB)
     }
 }
 

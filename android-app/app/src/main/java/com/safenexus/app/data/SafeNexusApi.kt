@@ -16,6 +16,7 @@ import java.net.URLEncoder
 import java.net.URL
 import java.time.LocalDate
 import java.util.Base64
+import java.util.Locale
 import java.util.zip.GZIPInputStream
 
 class SafeNexusApi(
@@ -2854,5 +2855,17 @@ private fun JSONObject.toWorkOrder(): WorkOrder {
         description = firstClean("description", "note"),
         executors = optJSONArray("executors").toStringList("fullName", "name", "label", "email"),
         completedBy = firstClean("completedBy", "completedByLabel", "createdByLabel"),
+        tags = toWorkOrderTags(),
     )
+}
+
+private fun JSONObject.toWorkOrderTags(): List<String> {
+    val arrayTags = optJSONArray("tags").toStringList("name", "label", "value", "title")
+    val textTags = firstClean("tagText", "tagsText", "tag")
+        .split(',', ';', '\n', '•')
+        .map { it.trim().trim('#') }
+    return (arrayTags + textTags)
+        .map { it.trim().trim('#') }
+        .filter { it.isNotBlank() && it != "null" }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
 }
