@@ -18696,6 +18696,11 @@ button.work-order-editor-section-head {
   background: linear-gradient(135deg, rgba(255, 241, 242, 0.8), rgba(255, 255, 255, 0.96));
 }
 
+.work-order-document-group.is-worksheets {
+  border-color: rgba(234, 179, 8, 0.24);
+  background: linear-gradient(135deg, rgba(254, 252, 232, 0.92), rgba(255, 255, 255, 0.96));
+}
+
 .work-order-document-group.is-photos {
   border-color: rgba(15, 118, 110, 0.18);
   background: linear-gradient(135deg, rgba(240, 253, 250, 0.88), rgba(255, 255, 255, 0.96));
@@ -18727,6 +18732,11 @@ button.work-order-editor-section-head {
 .work-order-document-group.is-reports .work-order-document-group-icon {
   color: #dc2626;
   background: rgba(220, 38, 38, 0.1);
+}
+
+.work-order-document-group.is-worksheets .work-order-document-group-icon {
+  color: #a16207;
+  background: rgba(234, 179, 8, 0.14);
 }
 
 .work-order-document-group.is-photos .work-order-document-group-icon {
@@ -19001,6 +19011,23 @@ button.work-order-editor-section-head {
   color: #1e2b45;
   padding: 0 12px;
   font-weight: 700;
+}
+
+.work-order-document-category-project-name {
+  grid-column: 2 / -1;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+  color: #1e2b45;
+  padding: 0 12px;
+  font-weight: 700;
+}
+
+.work-order-document-category-project-name::placeholder {
+  color: #7d8aa2;
+  font-weight: 600;
 }
 
 .work-order-document-category-error {
@@ -47942,6 +47969,10 @@ body.is-measurement-equipment-export-open {
   }
 
   .work-order-document-category-select {
+    grid-column: 1 / -1;
+  }
+
+  .work-order-document-category-project-name {
     grid-column: 1 / -1;
   }
 

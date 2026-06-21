@@ -250,21 +250,29 @@ const RULEBOOK_PRESETS = Object.freeze([
   }),
 ]);
 const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
-  { value: "Ovjereni Radni nalog", label: "Ovjereni radni nalog" },
-  { value: "Zapisnik", label: "Zapisnik" },
-  { value: "Projekt", label: "Projekt" },
-  { value: "Jednopolna shema", label: "Jednopolna shema" },
-  { value: "Fotografije", label: "Fotografije" },
-  { value: "Elaborat", label: "Elaborat" },
+  { value: "Radni nalog", label: "Radni nalog" },
   { value: "Radni listovi", label: "Radni listovi" },
   { value: "Projektna dokumentacija", label: "Projektna dokumentacija" },
-  { value: "Ostalo", label: "Ostalo" },
+  { value: "Fotografije", label: "Fotografije" },
+  { value: "Zapisnici", label: "Zapisnici" },
 ]);
 const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS[0]?.value ?? "";
 const VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
 const GENERATED_RISK_ASSESSMENT_PDF_CATEGORY = "Procjena rizika PDF";
+const WORK_ORDER_DOCUMENT_CATEGORY_LABEL_ALIASES = Object.freeze({
+  "Ovjereni Radni nalog": "Radni nalog",
+  "Radni nalog PDF": "Radni nalog",
+  Zapisnik: "Zapisnici",
+  "Zapisnik PDF": "Zapisnici",
+  "Zapisnik DOCX": "Zapisnici",
+  "Procjena rizika PDF": "Zapisnici",
+  "Automatsko uvjerenje": "Zapisnici",
+  Projekt: "Projektna dokumentacija",
+  "Jednopolna shema": "Projektna dokumentacija",
+  Elaborat: "Projektna dokumentacija",
+});
 const SIGNATURE_PDF_DOCUMENT_CATEGORIES = Object.freeze([
   GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
   GENERATED_RISK_ASSESSMENT_PDF_CATEGORY,
@@ -51916,8 +51924,24 @@ function getWorkOrderDocumentSourceLabel(sourceType = "editor") {
 
 function getWorkOrderDocumentCategoryLabel(value = "") {
   const normalized = String(value || "").trim();
+  if (WORK_ORDER_DOCUMENT_CATEGORY_LABEL_ALIASES[normalized]) {
+    return WORK_ORDER_DOCUMENT_CATEGORY_LABEL_ALIASES[normalized];
+  }
   return WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS.find((option) => option.value === normalized)?.label
     || normalized;
+}
+
+function isProjectDocumentationCategory(value = "") {
+  return getWorkOrderDocumentCategoryLabel(value) === "Projektna dokumentacija";
+}
+
+function buildProjectDocumentationDefaultName(fileName = "") {
+  return String(fileName || "")
+    .trim()
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeWorkOrderDocumentGroupText(value = "") {
@@ -51938,12 +51962,25 @@ function getWorkOrderDocumentGroupKey(item = {}) {
   const isPdf = fileType === "application/pdf" || extension === "pdf";
 
   if (
-    category.includes("ovjereni radni nalog")
-    || category.includes("radni nalog pdf")
+    category.includes("radni nalog")
+    || category.includes("ovjereni radni nalog")
     || fileName.includes("radni nalog")
     || /\b\d{2}-\d+\.pdf$/.test(fileName)
   ) {
     return "work-order";
+  }
+
+  if (category.includes("radni list")) {
+    return "worksheets";
+  }
+
+  if (
+    category.includes("projektna dokumentacija")
+    || category.includes("projekt")
+    || category.includes("shema")
+    || category.includes("elaborat")
+  ) {
+    return "projects";
   }
 
   if (isImage || category.includes("fotograf") || text.includes("slik")) {
@@ -51951,15 +51988,13 @@ function getWorkOrderDocumentGroupKey(item = {}) {
   }
 
   if (
-    category.includes("projekt")
-    || category.includes("shema")
-    || category.includes("elaborat")
-    || category.includes("radni list")
+    category.includes("zapisnik")
+    || category.includes("zapisnici")
+    || category.includes("primopredaj")
+    || category.includes("uvjeren")
+    || category.includes("pdf")
+    || isPdf
   ) {
-    return "projects";
-  }
-
-  if (isPdf || category.includes("zapisnik") || category.includes("pdf")) {
     return "reports";
   }
 
@@ -51976,9 +52011,15 @@ function getWorkOrderDocumentGroupMeta(key = "other") {
     },
     reports: {
       key: "reports",
-      title: "Zapisnici i PDF",
-      subtitle: "Generirani zapisnici, potvrde i dokumenti za potpis.",
+      title: "Zapisnici",
+      subtitle: "PDF, Word i primopredajni zapisnici.",
       iconName: "document",
+    },
+    worksheets: {
+      key: "worksheets",
+      title: "Radni listovi",
+      subtitle: "Terenski zapisnici, radni listovi i pripreme s terena.",
+      iconName: "notes",
     },
     photos: {
       key: "photos",
@@ -51988,8 +52029,8 @@ function getWorkOrderDocumentGroupMeta(key = "other") {
     },
     projects: {
       key: "projects",
-      title: "Projekti i tehnička dokumentacija",
-      subtitle: "Projekti, sheme, elaborati i radni listovi.",
+      title: "Projektna dokumentacija",
+      subtitle: "Dokumenti lokacije: projekti, sheme i elaborati.",
       iconName: "folder",
     },
     other: {
@@ -52004,7 +52045,7 @@ function getWorkOrderDocumentGroupMeta(key = "other") {
 }
 
 function groupWorkOrderDocuments(items = []) {
-  const order = ["work-order", "reports", "photos", "projects", "other"];
+  const order = ["work-order", "worksheets", "projects", "photos", "reports", "other"];
   const grouped = new Map(order.map((key) => [key, []]));
 
   items.forEach((item) => {
@@ -52335,11 +52376,35 @@ function renderWorkOrderDocumentCategoryDialog() {
     select.value = entry.documentCategory || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY;
     select.addEventListener("change", () => {
       state.workOrderDocumentCategoryDialog.entries = state.workOrderDocumentCategoryDialog.entries.map((item, itemIndex) => (
-        itemIndex === index ? { ...item, documentCategory: select.value } : item
+        itemIndex === index
+          ? {
+            ...item,
+            documentCategory: select.value,
+            description: isProjectDocumentationCategory(select.value)
+              ? (item.description || buildProjectDocumentationDefaultName(item.fileName))
+              : item.description,
+          }
+          : item
       ));
+      renderWorkOrderDocumentCategoryDialog();
     });
 
     row.append(icon, copy, select);
+
+    if (isProjectDocumentationCategory(select.value)) {
+      const projectName = document.createElement("input");
+      projectName.type = "text";
+      projectName.className = "work-order-document-category-project-name";
+      projectName.placeholder = "Naziv projektne dokumentacije, npr. Glavni projekt, Jednopolna shema...";
+      projectName.value = entry.description || buildProjectDocumentationDefaultName(entry.fileName);
+      projectName.addEventListener("input", () => {
+        state.workOrderDocumentCategoryDialog.entries = state.workOrderDocumentCategoryDialog.entries.map((item, itemIndex) => (
+          itemIndex === index ? { ...item, description: projectName.value } : item
+        ));
+      });
+      row.append(projectName);
+    }
+
     workOrderDocumentCategoryList.append(row);
   });
 }
@@ -52364,6 +52429,7 @@ function confirmWorkOrderDocumentCategoryDialog() {
   const entries = dialog.entries.map((entry) => ({
     ...entry,
     documentCategory: entry.documentCategory || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+    description: String(entry.description || "").trim(),
   }));
 
   if (entries.some((entry) => !entry.documentCategory)) {
@@ -52372,9 +52438,16 @@ function confirmWorkOrderDocumentCategoryDialog() {
     return;
   }
 
+  if (entries.some((entry) => isProjectDocumentationCategory(entry.documentCategory) && !entry.description)) {
+    state.workOrderDocumentCategoryDialog.error = "Za projektnu dokumentaciju upiši naziv koji će se prikazivati na lokaciji.";
+    renderWorkOrderDocumentCategoryDialog();
+    return;
+  }
+
   const result = dialog.files.map((file, index) => ({
     file,
     documentCategory: entries[index]?.documentCategory || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+    description: entries[index]?.description || "",
   }));
   closeWorkOrderDocumentCategoryDialog(result);
 }
@@ -52400,6 +52473,7 @@ function openWorkOrderDocumentCategoryDialog(files, {
         fileType: file.type,
         fileSize: file.size,
         documentCategory: DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+        description: "",
       })),
       error: "",
       resolve,
@@ -52580,7 +52654,7 @@ async function handleWorkOrderDocumentSelection(files, sourceType = "editor", op
     }
 
     const workOrder = options.workOrder || findWorkOrderById(workOrderId);
-    const selectedCategories = options.askCategory === true
+    const selectedCategories = options.askCategory !== false
       ? await openWorkOrderDocumentCategoryDialog(selectedFiles, {
         title: options.title || getWorkOrderDocumentDialogTitle(workOrderId, workOrder),
         helper: options.helper || "Odaberi vrstu za svaku datoteku. Ako ih je više, svaka dobiva svoj red.",

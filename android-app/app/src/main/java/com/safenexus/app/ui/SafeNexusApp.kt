@@ -367,18 +367,16 @@ enum class WorkOrderDocumentInputMode(
         "Odaberi datoteku",
         "PDF, Word, Excel, slike i ostali prilozi.",
         Icons.Rounded.Folder,
-        WorkOrderDocumentCategory.Other,
+        WorkOrderDocumentCategory.Worksheet,
     ),
 }
 
 enum class WorkOrderDocumentCategory(val value: String, val label: String) {
-    VerifiedWorkOrder("Ovjereni Radni nalog", "Ovjereni radni nalog"),
-    Report("Zapisnik", "Zapisnik"),
-    Project("Projekt", "Projekt"),
-    SingleLineDiagram("Jednopolna shema", "Jednopolna shema"),
+    VerifiedWorkOrder("Radni nalog", "Radni nalog"),
+    Worksheet("Radni listovi", "Radni listovi"),
+    ProjectDocumentation("Projektna dokumentacija", "Projektna dokumentacija"),
     Photos("Fotografije", "Fotografije"),
-    Elaborate("Elaborat", "Elaborat"),
-    Other("Ostalo", "Ostalo"),
+    Report("Zapisnici", "Zapisnici"),
 }
 
 private const val WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12L * 1024L * 1024L
@@ -1641,6 +1639,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         uris: List<Uri>,
         category: WorkOrderDocumentCategory,
         mode: WorkOrderDocumentInputMode,
+        projectDocumentName: String = "",
     ) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "RN nema ispravan ID za dodavanje dokumentacije.")
@@ -1660,6 +1659,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     uris = uris,
                     category = category,
                     mode = mode,
+                    projectDocumentName = projectDocumentName,
                 )
                 api.uploadWorkOrderDocuments(
                     workOrderId = workOrder.id,
@@ -2348,7 +2348,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     BackHandler(enabled = state.user != null && state.hasAndroidBackTarget()) {
         viewModel.navigateBack()
     }
-    val confirmDocumentSelection: (WorkOrderDocumentCategory) -> Unit = { category ->
+    val confirmDocumentSelection: (WorkOrderDocumentCategory, String) -> Unit = { category, projectDocumentName ->
         val selection = pendingSelection
         pendingSelection = null
         if (selection != null) {
@@ -2358,6 +2358,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                 uris = selection.uris,
                 category = category,
                 mode = selection.mode,
+                projectDocumentName = projectDocumentName,
             )
         }
     }
@@ -15666,16 +15667,21 @@ private fun workOrderDocumentGroupKey(document: WorkOrderDocument): String {
     val text = "$category $name ${normalizeWorkOrderDocumentText(document.fileType)}"
 
     return when {
+        category.contains("radni nalog") ||
         category.contains("ovjereni radni nalog") ||
-            category.contains("radni nalog pdf") ||
             name.matches(Regex(".*\\b\\d{2}-\\d+\\.pdf$")) ||
             name.contains("radni nalog") -> "work-order"
-        document.isImage || category.contains("fotograf") || text.contains("slik") -> "photos"
+        category.contains("radni list") -> "worksheets"
         category.contains("projekt") ||
             category.contains("shema") ||
-            category.contains("elaborat") ||
-            category.contains("radni list") -> "projects"
-        document.isPdf || category.contains("zapisnik") || category.contains("pdf") -> "reports"
+            category.contains("elaborat") -> "projects"
+        document.isImage || category.contains("fotograf") || text.contains("slik") -> "photos"
+        category.contains("zapisnik") ||
+            category.contains("zapisnici") ||
+            category.contains("primopredaj") ||
+            category.contains("uvjeren") ||
+            category.contains("pdf") ||
+            document.isPdf -> "reports"
         else -> "other"
     }
 }
@@ -15688,6 +15694,13 @@ private fun workOrderDocumentGroupMeta(key: String): WorkOrderDocumentGroupUi = 
         icon = Icons.Rounded.Badge,
         accent = Color(0xFF2563EB),
     )
+    "worksheets" -> WorkOrderDocumentGroupUi(
+        key = key,
+        title = "Radni listovi",
+        subtitle = "Terenski zapisnici, radni listovi i pripreme",
+        icon = Icons.Rounded.EventNote,
+        accent = Color(0xFFA16207),
+    )
     "photos" -> WorkOrderDocumentGroupUi(
         key = key,
         title = "Fotografije",
@@ -15697,15 +15710,15 @@ private fun workOrderDocumentGroupMeta(key: String): WorkOrderDocumentGroupUi = 
     )
     "projects" -> WorkOrderDocumentGroupUi(
         key = key,
-        title = "Projekti i tehnička dokumentacija",
-        subtitle = "Projekti, sheme, elaborati i radni listovi",
+        title = "Projektna dokumentacija",
+        subtitle = "Dokumenti lokacije: projekti, sheme i elaborati",
         icon = Icons.Rounded.Folder,
         accent = Color(0xFF7C3AED),
     )
     "reports" -> WorkOrderDocumentGroupUi(
         key = key,
-        title = "Zapisnici i PDF",
-        subtitle = "Generirani zapisnici, potvrde i dokumenti za potpis",
+        title = "Zapisnici",
+        subtitle = "PDF, Word i primopredajni zapisnici",
         icon = Icons.Rounded.PictureAsPdf,
         accent = Color(0xFFDC2626),
     )
@@ -15719,7 +15732,7 @@ private fun workOrderDocumentGroupMeta(key: String): WorkOrderDocumentGroupUi = 
 }
 
 private fun groupWorkOrderDocuments(documents: List<WorkOrderDocument>): List<Pair<WorkOrderDocumentGroupUi, List<WorkOrderDocument>>> {
-    val order = listOf("work-order", "reports", "photos", "projects", "other")
+    val order = listOf("work-order", "worksheets", "projects", "photos", "reports", "other")
     val grouped = documents.groupBy { workOrderDocumentGroupKey(it) }
     return order.mapNotNull { key ->
         val items = grouped[key].orEmpty()
@@ -24593,9 +24606,15 @@ private fun WorkOrderDocumentCategoryDialog(
     selection: PendingDocumentSelection,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (WorkOrderDocumentCategory) -> Unit,
+    onConfirm: (WorkOrderDocumentCategory, String) -> Unit,
 ) {
     var selectedCategory by remember(selection) { mutableStateOf(selection.mode.defaultCategory) }
+    var projectDocumentName by remember(selection) {
+        mutableStateOf(selection.uris.firstOrNull()?.let { uri ->
+            buildProjectDocumentationDefaultName(uri.lastPathSegment.orEmpty())
+        }.orEmpty())
+    }
+    val requiresProjectName = selectedCategory == WorkOrderDocumentCategory.ProjectDocumentation
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Vrsta dokumentacije", fontWeight = FontWeight.Black) },
@@ -24617,25 +24636,46 @@ private fun WorkOrderDocumentCategoryDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
-                                .clickable(enabled = !isLoading) { selectedCategory = category }
+                                .clickable(enabled = !isLoading) {
+                                    selectedCategory = category
+                                    if (category == WorkOrderDocumentCategory.ProjectDocumentation && projectDocumentName.isBlank()) {
+                                        projectDocumentName = "Projektna dokumentacija"
+                                    }
+                                }
                                 .padding(vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(
                                 selected = selectedCategory == category,
-                                onClick = { selectedCategory = category },
+                                onClick = {
+                                    selectedCategory = category
+                                    if (category == WorkOrderDocumentCategory.ProjectDocumentation && projectDocumentName.isBlank()) {
+                                        projectDocumentName = "Projektna dokumentacija"
+                                    }
+                                },
                                 enabled = !isLoading,
                             )
                             Text(category.label, fontWeight = if (selectedCategory == category) FontWeight.Black else FontWeight.SemiBold)
                         }
                     }
                 }
+                AnimatedVisibility(visible = requiresProjectName) {
+                    OutlinedTextField(
+                        value = projectDocumentName,
+                        onValueChange = { projectDocumentName = it },
+                        enabled = !isLoading,
+                        singleLine = true,
+                        label = { Text("Naziv projektne dokumentacije") },
+                        placeholder = { Text("npr. Glavni projekt, Jednopolna shema...") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(selectedCategory) },
-                enabled = !isLoading,
+                onClick = { onConfirm(selectedCategory, projectDocumentName.trim()) },
+                enabled = !isLoading && (!requiresProjectName || projectDocumentName.isNotBlank()),
                 shape = RoundedCornerShape(14.dp),
             ) {
                 Text("Spremi")
@@ -24807,10 +24847,11 @@ private fun workOrderDocumentIcon(document: WorkOrderDocument): ImageVector = wh
 }
 
 private fun workOrderDocumentAccent(document: WorkOrderDocument): Color = when {
-    document.isPdf -> Color(0xFFDC2626)
-    document.isImage -> Color(0xFF0F766E)
-    document.documentCategory.equals(WorkOrderDocumentCategory.SingleLineDiagram.value, ignoreCase = true) -> Color(0xFF7C3AED)
-    document.documentCategory.equals(WorkOrderDocumentCategory.Project.value, ignoreCase = true) -> Color(0xFF2563EB)
+    workOrderDocumentGroupKey(document) == "work-order" -> Color(0xFF2563EB)
+    workOrderDocumentGroupKey(document) == "worksheets" -> Color(0xFFA16207)
+    workOrderDocumentGroupKey(document) == "projects" -> Color(0xFF7C3AED)
+    workOrderDocumentGroupKey(document) == "photos" -> Color(0xFF0F766E)
+    workOrderDocumentGroupKey(document) == "reports" -> Color(0xFFDC2626)
     else -> Color(0xFF475569)
 }
 
@@ -24884,6 +24925,7 @@ private suspend fun buildWorkOrderDocumentUploadFiles(
     uris: List<Uri>,
     category: WorkOrderDocumentCategory,
     mode: WorkOrderDocumentInputMode,
+    projectDocumentName: String = "",
 ): List<WorkOrderUploadFile> = withContext(Dispatchers.IO) {
     uris.mapIndexed { index, uri ->
         val bytes = readUriBytes(context, uri)
@@ -24903,7 +24945,7 @@ private suspend fun buildWorkOrderDocumentUploadFiles(
             fileType = mimeType,
             fileSize = bytes.size.toLong(),
             documentCategory = category.value,
-            description = buildWorkOrderDocumentDescription(mode),
+            description = buildWorkOrderDocumentDescription(mode, category, projectDocumentName),
             bytes = bytes,
         )
     }
@@ -25024,12 +25066,28 @@ private fun buildWorkOrderDocumentFileName(
     return "$categorySlug-$number-$stamp.$extension"
 }
 
-private fun buildWorkOrderDocumentDescription(mode: WorkOrderDocumentInputMode): String = when (mode) {
-    WorkOrderDocumentInputMode.Scan -> "Skenirani dokument iz SafeNexus Android aplikacije."
-    WorkOrderDocumentInputMode.Photos -> "Fotografija dodana iz SafeNexus Android aplikacije."
-    WorkOrderDocumentInputMode.Pdf -> "PDF dokument dodan iz SafeNexus Android aplikacije."
-    WorkOrderDocumentInputMode.File -> "Datoteka dodana iz SafeNexus Android aplikacije."
+private fun buildWorkOrderDocumentDescription(
+    mode: WorkOrderDocumentInputMode,
+    category: WorkOrderDocumentCategory,
+    projectDocumentName: String = "",
+): String {
+    if (category == WorkOrderDocumentCategory.ProjectDocumentation && projectDocumentName.isNotBlank()) {
+        return projectDocumentName.trim()
+    }
+    return when (mode) {
+        WorkOrderDocumentInputMode.Scan -> "Skenirani dokument iz SafeNexus Android aplikacije."
+        WorkOrderDocumentInputMode.Photos -> "Fotografija dodana iz SafeNexus Android aplikacije."
+        WorkOrderDocumentInputMode.Pdf -> "PDF dokument dodan iz SafeNexus Android aplikacije."
+        WorkOrderDocumentInputMode.File -> "Datoteka dodana iz SafeNexus Android aplikacije."
+    }
 }
+
+private fun buildProjectDocumentationDefaultName(value: String): String =
+    value.substringAfterLast('/')
+        .substringBeforeLast('.', missingDelimiterValue = value.substringAfterLast('/'))
+        .replace(Regex("[_-]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 
 private fun cacheDownloadedDocumentFile(context: Context, document: DownloadedDocument): File {
     val directory = File(context.cacheDir, "work-order-documents").apply { mkdirs() }
