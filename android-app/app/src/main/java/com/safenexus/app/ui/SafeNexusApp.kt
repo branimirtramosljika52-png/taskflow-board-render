@@ -15410,67 +15410,47 @@ private fun WorkOrderDetailScreen(
                                 onStatusSelected = { status -> onStatusChange(workOrder, status) },
                                 modifier = Modifier.weight(1f),
                             )
-                            OutlinedButton(
+                            WorkOrderHeroActionTile(
+                                label = "Usluge",
+                                icon = Icons.Rounded.ListAlt,
                                 onClick = { onManageServices(workOrder) },
                                 enabled = !isLoading,
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
-                            ) {
-                                Icon(Icons.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Usluge", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            OutlinedButton(
+                            )
+                            WorkOrderHeroActionTile(
+                                label = "Izvršitelji",
+                                icon = Icons.Rounded.Person,
                                 onClick = { showExecutorsEditor = true },
                                 enabled = !isLoading,
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp),
-                            ) {
-                                Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Izvršitelji", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                        OutlinedButton(
-                            onClick = { onGenerateDocumentation(workOrder) },
-                            enabled = !isLoading,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
-                        ) {
-                            Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Izradi dokumentaciju")
+                            )
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            OutlinedButton(
+                            WorkOrderHeroActionTile(
+                                label = "Izradi dokumentaciju",
+                                icon = Icons.Rounded.Description,
+                                onClick = { onGenerateDocumentation(workOrder) },
+                                enabled = !isLoading,
+                                modifier = Modifier.weight(1f),
+                            )
+                            WorkOrderHeroActionTile(
+                                label = "Dokumentacija",
+                                icon = Icons.Rounded.Description,
                                 onClick = { onAddDocumentation(workOrder) },
                                 enabled = !isLoading,
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
-                            ) {
-                                Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Dokumentacija", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            OutlinedButton(
+                            )
+                            WorkOrderHeroActionTile(
+                                label = "PDF RN",
+                                icon = Icons.Rounded.PictureAsPdf,
                                 onClick = { onDownloadPdf(workOrder) },
                                 enabled = !isLoading,
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
-                            ) {
-                                Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("PDF RN")
-                            }
+                            )
                         }
                         Button(
                             onClick = { onSignWorkOrder(workOrder) },
@@ -15495,12 +15475,6 @@ private fun WorkOrderDetailScreen(
                 DetailRow(Icons.Rounded.CalendarMonth, "Otvoren", formatDateLabel(workOrder.openedDate).ifBlank { "Nije upisano" })
                 DetailRow(Icons.Rounded.CalendarMonth, "Rok", formatDateLabel(workOrder.dueDate).ifBlank { "Nije upisano" })
                 DetailRow(Icons.Rounded.CalendarMonth, "Izvršenje", formatDateLabel(workOrder.executionDate).ifBlank { "Nije upisano" })
-                DocumentationExecutorsEditor(
-                    executorOptions = executorOptions,
-                    selectedExecutors = workOrder.executors,
-                    enabled = !isLoading,
-                    onChange = { next -> onExecutorsChange(workOrder, next) },
-                )
             }
 
             AnimatedVisibility(isLoading) {
@@ -24799,6 +24773,50 @@ private fun CompactInfoLine(icon: ImageVector, label: String, value: String) {
 }
 
 @Composable
+private fun WorkOrderHeroActionTile(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val contentAlpha = if (enabled) 1f else 0.42f
+    Surface(
+        modifier = modifier
+            .height(64.dp)
+            .clickable(enabled = enabled) { onClick() },
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 5.dp, vertical = 7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = contentAlpha),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = contentAlpha),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
 private fun WorkOrderStatusMenu(
     currentStatus: String,
     statusOptions: List<String>,
@@ -24808,16 +24826,13 @@ private fun WorkOrderStatusMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
-        OutlinedButton(
-            onClick = { expanded = true },
+        WorkOrderHeroActionTile(
+            label = "Status",
+            icon = Icons.Rounded.CheckCircle,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-        ) {
-            Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Status")
-        }
+            onClick = { expanded = true },
+        )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             statusOptions.ifEmpty { workOrderStatusOptions }.forEach { status ->
                 DropdownMenuItem(
