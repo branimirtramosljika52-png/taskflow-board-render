@@ -15478,6 +15478,50 @@ private fun normalizeServiceMatch(value: String): String =
         .lowercase(Locale.getDefault())
         .replace(Regex("\\s+"), " ")
 
+private data class WorkOrderServiceFilterTab(
+    val key: String,
+    val label: String,
+    val icon: ImageVector,
+)
+
+private fun normalizeServiceFilterText(value: String): String =
+    normalizeServiceMatch(value)
+        .replace("š", "s")
+        .replace("ž", "z")
+        .replace("č", "c")
+        .replace("ć", "c")
+        .replace("đ", "d")
+
+private fun WorkOrderServiceOption.workOrderServiceFilterKey(): String {
+    val text = normalizeServiceFilterText(listOf(name, serviceCode, type, note).joinToString(" "))
+    return when {
+        text.contains("osposob") ||
+            text.contains("znr") ||
+            text.contains("zastita") ||
+            text.contains("pozar") ||
+            text.contains("adr") ||
+            text.contains("procjena rizika") ||
+            text.contains("pravilnik") -> "safety"
+        text.contains("dokument") ||
+            text.contains("zapisnik") ||
+            text.contains("template") ||
+            text.contains("word") ||
+            text.contains("pdf") -> "documents"
+        text.contains("inspection") ||
+            text.contains("ispitiv") ||
+            text.contains("pregled") ||
+            text.contains("mjeren") ||
+            text.contains("radna oprema") ||
+            text.contains("radni okolis") ||
+            text.contains("spr") ||
+            text.contains("tzin") ||
+            text.contains("rog") ||
+            text.contains("fc") ||
+            text.contains("kc") -> "inspection"
+        else -> "other"
+    }
+}
+
 private fun resolveWorkOrderSelectedServiceIds(
     workOrder: WorkOrder,
     services: List<WorkOrderServiceOption>,
@@ -15509,9 +15553,20 @@ private fun WorkOrderServiceManagementDialog(
     var selectedIds by remember(workOrder.id, workOrder.serviceDetails, services) {
         mutableStateOf(resolveWorkOrderSelectedServiceIds(workOrder, services).toSet())
     }
+    var selectedFilter by remember(workOrder.id) { mutableStateOf("all") }
     var didInitializeAutoSave by remember(workOrder.id) { mutableStateOf(false) }
     var lastAutoSavedIds by remember(workOrder.id) { mutableStateOf(selectedIds) }
     var saveStatus by remember(workOrder.id) { mutableStateOf("Spremljeno") }
+    val filterTabs = remember {
+        listOf(
+            WorkOrderServiceFilterTab("all", "Sve", Icons.Rounded.ListAlt),
+            WorkOrderServiceFilterTab("selected", "Odabrano", Icons.Rounded.CheckCircle),
+            WorkOrderServiceFilterTab("inspection", "Ispitivanja", Icons.Rounded.Tune),
+            WorkOrderServiceFilterTab("safety", "ZNR", Icons.Rounded.Work),
+            WorkOrderServiceFilterTab("documents", "Dokumenti", Icons.Rounded.Description),
+            WorkOrderServiceFilterTab("other", "Ostalo", Icons.Rounded.FilterList),
+        )
+    }
     val serviceSearchIndex = remember(services) {
         services.associate { service ->
             service.id to normalizeServiceMatch(
@@ -15520,20 +15575,26 @@ private fun WorkOrderServiceManagementDialog(
             )
         }
     }
-    val filteredServices = remember(services, serviceSearchIndex, query) {
-        val normalizedQuery = normalizeServiceMatch(query)
-        if (normalizedQuery.isBlank()) {
-            services
-        } else {
-            services.filter { service ->
-                serviceSearchIndex[service.id]?.contains(normalizedQuery) == true
+    val filterCounts = remember(services, selectedIds) {
+        filterTabs.associate { tab ->
+            val count = when (tab.key) {
+                "all" -> services.size
+                "selected" -> services.count { it.id in selectedIds }
+                else -> services.count { it.workOrderServiceFilterKey() == tab.key }
             }
+            tab.key to count
         }
     }
-    val groupedServices = remember(filteredServices) {
-        filteredServices
-            .groupBy { service -> service.type.ifBlank { "Bez odjela" } }
-            .toSortedMap(compareBy<String> { it == "Bez odjela" }.thenBy { it.lowercase(Locale.getDefault()) })
+    val filteredServices = remember(services, serviceSearchIndex, query, selectedFilter, selectedIds) {
+        val normalizedQuery = normalizeServiceMatch(query)
+        services.filter { service ->
+            val matchesFilter = when (selectedFilter) {
+                "all" -> true
+                "selected" -> service.id in selectedIds
+                else -> service.workOrderServiceFilterKey() == selectedFilter
+            }
+            matchesFilter && (normalizedQuery.isBlank() || serviceSearchIndex[service.id]?.contains(normalizedQuery) == true)
+        }
     }
     LaunchedEffect(selectedIds) {
         if (!didInitializeAutoSave) {
@@ -15577,7 +15638,7 @@ private fun WorkOrderServiceManagementDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AnimatedVisibility(saveStatus.startsWith("Sprema")) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
@@ -15591,16 +15652,39 @@ private fun WorkOrderServiceManagementDialog(
                     enabled = !isLoading,
                     shape = RoundedCornerShape(16.dp),
                 )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    filterTabs.forEach { tab ->
+                        val count = filterCounts[tab.key] ?: 0
+                        FilterChip(
+                            selected = selectedFilter == tab.key,
+                            onClick = { selectedFilter = tab.key },
+                            enabled = !isLoading && (tab.key == "all" || count > 0),
+                            leadingIcon = {
+                                Icon(tab.icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                            label = {
+                                Text(
+                                    "${tab.label} $count",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
+                }
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 430.dp),
-                    shape = RoundedCornerShape(20.dp),
+                        .heightIn(max = 390.dp),
+                    shape = RoundedCornerShape(18.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
                 ) {
                     LazyColumn(
-                        modifier = Modifier.padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                        modifier = Modifier.padding(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         if (filteredServices.isEmpty()) {
                             item {
@@ -15611,66 +15695,57 @@ private fun WorkOrderServiceManagementDialog(
                                 )
                             }
                         }
-                        groupedServices.forEach { (department, departmentServices) ->
-                            item("department-$department") {
-                                Text(
-                                    department,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Black,
-                                )
-                            }
-                            items(departmentServices, key = { it.id }) { service ->
-                                val selected = service.id in selectedIds
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(enabled = !isLoading) {
-                                            selectedIds = if (selected) {
-                                                selectedIds - service.id
-                                            } else {
-                                                selectedIds + service.id
-                                            }
-                                        },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (selected) {
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.surface
-                                    },
-                                    tonalElevation = if (selected) 2.dp else 0.dp,
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Checkbox(
-                                            checked = selected,
-                                            onCheckedChange = { checked ->
-                                                selectedIds = if (checked) selectedIds + service.id else selectedIds - service.id
-                                            },
-                                            enabled = !isLoading,
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                service.name.ifBlank { service.serviceCode.ifBlank { "Usluga" } },
-                                                fontWeight = FontWeight.Black,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Text(
-                                                listOf(service.serviceCode, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." })
-                                                    .filterNotNull()
-                                                    .filter { it.isNotBlank() }
-                                                    .joinToString(" · "),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
+                        items(filteredServices, key = { it.id }) { service ->
+                            val selected = service.id in selectedIds
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !isLoading) {
+                                        selectedIds = if (selected) {
+                                            selectedIds - service.id
+                                        } else {
+                                            selectedIds + service.id
                                         }
+                                    },
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                tonalElevation = if (selected) 2.dp else 0.dp,
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Checkbox(
+                                        checked = selected,
+                                        onCheckedChange = { checked ->
+                                            selectedIds = if (checked) selectedIds + service.id else selectedIds - service.id
+                                        },
+                                        enabled = !isLoading,
+                                        modifier = Modifier.size(30.dp),
+                                    )
+                                    Spacer(Modifier.width(9.dp))
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            service.name.ifBlank { service.serviceCode.ifBlank { "Usluga" } },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Black,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            listOf(service.serviceCode, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." })
+                                                .filterNotNull()
+                                                .filter { it.isNotBlank() }
+                                                .joinToString(" · "),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
                                     }
                                 }
                             }
