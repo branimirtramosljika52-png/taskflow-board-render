@@ -15502,7 +15502,7 @@ private fun WorkOrderServiceOption.workOrderServiceFilterKey(): String {
             text.contains("pregled") ||
             text.contains("mjeren") ||
             text.contains("radna oprema") ||
-            text.contains("radni okolis") -> "inspection"
+            text.contains("radni okolis") -> "ispitivanja"
         text.contains("osposob") ||
             text.contains("znr") ||
             text.contains("zastita") ||
@@ -15510,8 +15510,8 @@ private fun WorkOrderServiceOption.workOrderServiceFilterKey(): String {
             text.contains("adr") ||
             text.contains("procjena rizika") ||
             code in setOf("zos", "pgp", "spztp", "adr", "znr", "pr") ||
-            text.contains("pravilnik") -> "safety"
-        else -> "other"
+            text.contains("pravilnik") -> "znr"
+        else -> "ostalo"
     }
 }
 
@@ -15548,9 +15548,9 @@ private fun WorkOrderServiceManagementDialog(
     }
     val filterTabs = remember {
         listOf(
-            WorkOrderServiceFilterTab("inspection", "Ispitivanja", Icons.Rounded.Tune),
-            WorkOrderServiceFilterTab("safety", "ZNR", Icons.Rounded.Work),
-            WorkOrderServiceFilterTab("other", "Ostalo", Icons.Rounded.FilterList),
+            WorkOrderServiceFilterTab("ispitivanja", "Ispitivanja", Icons.Rounded.Tune),
+            WorkOrderServiceFilterTab("znr", "ZNR", Icons.Rounded.Work),
+            WorkOrderServiceFilterTab("ostalo", "Ostalo", Icons.Rounded.FilterList),
         )
     }
     val serviceFilterById = remember(services) {
@@ -15562,7 +15562,7 @@ private fun WorkOrderServiceManagementDialog(
             .firstOrNull()
         if (selectedCategory != null) return selectedCategory
         return filterTabs.firstOrNull { tab -> services.any { it.workOrderServiceFilterKey() == tab.key } }?.key
-            ?: "inspection"
+            ?: "ispitivanja"
     }
     var selectedFilter by remember(workOrder.id, services) { mutableStateOf(initialServiceFilterKey(selectedIds)) }
     var didInitializeAutoSave by remember(workOrder.id) { mutableStateOf(false) }
