@@ -15626,18 +15626,22 @@ private fun WorkOrderHeaderMeta(
     ) {
         WorkOrderHeaderMetaChip(
             label = workOrder.priority.ifBlank { "Normal" },
-            color = workOrderPriorityAccent(workOrder.priority),
+            style = workOrderPriorityStyle(workOrder.priority),
         )
         tags.take(2).forEach { tag ->
             WorkOrderHeaderMetaChip(
-                label = "#$tag",
-                color = MaterialTheme.colorScheme.primary,
+                label = tag,
+                style = workOrderTagStyle(tag),
             )
         }
         if (tags.size > 2) {
             WorkOrderHeaderMetaChip(
                 label = "+${tags.size - 2}",
-                color = Color(0xFF64748B),
+                style = WorkOrderMetaChipStyle(
+                    background = Color(0xFFF8FAFC),
+                    border = Color(0xFFCBD5E1),
+                    content = Color(0xFF475569),
+                ),
             )
         }
     }
@@ -15719,13 +15723,11 @@ private fun WorkOrderMetaEditor(
             AnimatedVisibility(selectedTags.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     selectedTags.forEach { tag ->
-                        AssistChip(
-                            onClick = { setTags(selectedTags.filterNot { it.equals(tag, ignoreCase = true) }) },
+                        WorkOrderEditableTagChip(
+                            tag = tag,
+                            icon = Icons.Rounded.Close,
                             enabled = enabled,
-                            label = { Text("#$tag") },
-                            leadingIcon = {
-                                Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                            },
+                            onClick = { setTags(selectedTags.filterNot { it.equals(tag, ignoreCase = true) }) },
                         )
                     }
                 }
@@ -15739,13 +15741,11 @@ private fun WorkOrderMetaEditor(
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         visibleSuggestions.forEach { suggestion ->
-                            AssistChip(
-                                onClick = { setTags(selectedTags + suggestion) },
+                            WorkOrderEditableTagChip(
+                                tag = suggestion,
+                                icon = Icons.Rounded.Add,
                                 enabled = enabled,
-                                label = { Text("#$suggestion") },
-                                leadingIcon = {
-                                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                },
+                                onClick = { setTags(selectedTags + suggestion) },
                             )
                         }
                     }
@@ -15766,24 +15766,65 @@ private fun WorkOrderMetaEditor(
 @Composable
 private fun WorkOrderHeaderMetaChip(
     label: String,
-    color: Color,
+    style: WorkOrderMetaChipStyle,
 ) {
     Surface(
         modifier = Modifier.widthIn(max = 86.dp),
         shape = RoundedCornerShape(999.dp),
-        color = color.copy(alpha = 0.11f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.14f)),
+        color = style.background,
+        border = BorderStroke(1.dp, style.border),
         tonalElevation = 0.dp,
     ) {
         Text(
             text = label,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall,
-            color = color,
+            color = style.content,
             fontWeight = FontWeight.Black,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun WorkOrderEditableTagChip(
+    tag: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val style = workOrderTagStyle(tag)
+    Surface(
+        modifier = Modifier
+            .widthIn(max = 170.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(999.dp),
+        color = style.background,
+        border = BorderStroke(1.dp, style.border),
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp),
+                tint = style.content,
+            )
+            Text(
+                tag,
+                style = MaterialTheme.typography.labelMedium,
+                color = style.content,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -15794,14 +15835,51 @@ private fun normalizeWorkOrderTagText(value: String): List<String> =
         .filter { it.isNotBlank() }
         .distinctBy { it.lowercase(Locale.getDefault()) }
 
-private fun workOrderPriorityAccent(priority: String): Color {
+private data class WorkOrderMetaChipStyle(
+    val background: Color,
+    val border: Color,
+    val content: Color,
+)
+
+private fun workOrderPriorityStyle(priority: String): WorkOrderMetaChipStyle {
     val normalized = priority.lowercase(Locale.getDefault())
     return when {
-        normalized.contains("urgent") || normalized.contains("hitno") -> Color(0xFFDC2626)
-        normalized.contains("high") || normalized.contains("visok") -> Color(0xFFD97706)
-        normalized.contains("low") || normalized.contains("niz") -> Color(0xFF64748B)
-        else -> Color(0xFF2563EB)
+        normalized.contains("urgent") || normalized.contains("hitno") -> WorkOrderMetaChipStyle(
+            background = Color(0xFFFEF2F2),
+            border = Color(0xFFFECACA),
+            content = Color(0xFFB91C1C),
+        )
+        normalized.contains("high") || normalized.contains("visok") -> WorkOrderMetaChipStyle(
+            background = Color(0xFFFFF7ED),
+            border = Color(0xFFFED7AA),
+            content = Color(0xFFC2410C),
+        )
+        normalized.contains("low") || normalized.contains("niz") -> WorkOrderMetaChipStyle(
+            background = Color(0xFFF8FAFC),
+            border = Color(0xFFCBD5E1),
+            content = Color(0xFF475569),
+        )
+        else -> WorkOrderMetaChipStyle(
+            background = Color(0xFFEFF6FF),
+            border = Color(0xFFBFDBFE),
+            content = Color(0xFF1D4ED8),
+        )
     }
+}
+
+private fun workOrderTagStyle(tag: String): WorkOrderMetaChipStyle {
+    val palette = listOf(
+        WorkOrderMetaChipStyle(Color(0xFFFDF2F8), Color(0xFFFBCFE8), Color(0xFFBE185D)),
+        WorkOrderMetaChipStyle(Color(0xFFF0FDF4), Color(0xFFBBF7D0), Color(0xFF15803D)),
+        WorkOrderMetaChipStyle(Color(0xFFECFEFF), Color(0xFFA5F3FC), Color(0xFF0E7490)),
+        WorkOrderMetaChipStyle(Color(0xFFF5F3FF), Color(0xFFDDD6FE), Color(0xFF6D28D9)),
+        WorkOrderMetaChipStyle(Color(0xFFFFF7ED), Color(0xFFFED7AA), Color(0xFFC2410C)),
+        WorkOrderMetaChipStyle(Color(0xFFEEF2FF), Color(0xFFC7D2FE), Color(0xFF4338CA)),
+        WorkOrderMetaChipStyle(Color(0xFFFEFCE8), Color(0xFFFEF08A), Color(0xFFA16207)),
+        WorkOrderMetaChipStyle(Color(0xFFF8FAFC), Color(0xFFCBD5E1), Color(0xFF475569)),
+    )
+    val index = (tag.lowercase(Locale.getDefault()).hashCode() and Int.MAX_VALUE) % palette.size
+    return palette[index]
 }
 
 @Composable
