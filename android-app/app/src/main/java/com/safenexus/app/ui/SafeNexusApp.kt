@@ -102,6 +102,8 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.EventNote
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Folder
@@ -15973,6 +15975,7 @@ private fun WorkOrderDocumentationSection(
 ) {
     DetailSection("Dokumentacija") {
         val groupedDocuments = remember(documents) { groupWorkOrderDocuments(documents) }
+        var collapsedGroups by remember { mutableStateOf<Set<String>>(emptySet()) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -16034,10 +16037,19 @@ private fun WorkOrderDocumentationSection(
         }
 
         groupedDocuments.forEach { (group, groupDocuments) ->
+            val expanded = group.key !in collapsedGroups
             WorkOrderDocumentGroupCard(
                 group = group,
                 documents = groupDocuments,
+                expanded = expanded,
                 enabled = !isBusy,
+                onToggleExpanded = {
+                    collapsedGroups = if (expanded) {
+                        collapsedGroups + group.key
+                    } else {
+                        collapsedGroups - group.key
+                    }
+                },
                 onOpenDocument = onOpenDocument,
                 onDownloadDocument = onDownloadDocument,
                 onDeleteDocument = onDeleteDocument,
@@ -16050,7 +16062,9 @@ private fun WorkOrderDocumentationSection(
 private fun WorkOrderDocumentGroupCard(
     group: WorkOrderDocumentGroupUi,
     documents: List<WorkOrderDocument>,
+    expanded: Boolean,
     enabled: Boolean,
+    onToggleExpanded: () -> Unit,
     onOpenDocument: (WorkOrderDocument) -> Unit,
     onDownloadDocument: (WorkOrderDocument) -> Unit,
     onDeleteDocument: (WorkOrderDocument) -> Unit,
@@ -16066,7 +16080,11 @@ private fun WorkOrderDocumentGroupCard(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onToggleExpanded)
+                    .padding(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Surface(
@@ -16093,24 +16111,50 @@ private fun WorkOrderDocumentGroupCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.7f)) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.7f)) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                "${documents.size}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = group.accent,
+                                fontWeight = FontWeight.Black,
+                            )
+                            Icon(
+                                if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                contentDescription = if (expanded) "Sakrij blok" else "Prikaži blok",
+                                tint = group.accent,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
                     Text(
-                        "${documents.size}",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.labelMedium,
+                        if (expanded) "Sakrij" else "Prikaži",
+                        style = MaterialTheme.typography.labelSmall,
                         color = group.accent,
                         fontWeight = FontWeight.Black,
                     )
                 }
             }
-            documents.forEach { document ->
-                WorkOrderDocumentCard(
-                    document = document,
-                    enabled = enabled,
-                    onOpen = { onOpenDocument(document) },
-                    onDownload = { onDownloadDocument(document) },
-                    onDelete = { onDeleteDocument(document) },
-                )
+            AnimatedVisibility(expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    documents.forEach { document ->
+                        WorkOrderDocumentCard(
+                            document = document,
+                            enabled = enabled,
+                            onOpen = { onOpenDocument(document) },
+                            onDownload = { onDownloadDocument(document) },
+                            onDelete = { onDeleteDocument(document) },
+                        )
+                    }
+                }
             }
         }
     }
