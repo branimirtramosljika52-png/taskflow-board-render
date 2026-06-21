@@ -100,6 +100,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.EditCalendar
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.EventNote
 import androidx.compose.material.icons.rounded.ExpandLess
@@ -1057,6 +1058,39 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
                         replaceWorkOrderInState(previousWorkOrder)
                         state = state.copy(error = error.message ?: "Ne mogu spremiti status RN-a.", notice = "")
+                    }
+                }
+        }
+    }
+
+    fun updateWorkOrderDates(workOrder: WorkOrder, dueDate: String?, executionDate: String?) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za spremanje datuma.")
+            return
+        }
+        val normalizedDueDate = dueDate?.trim() ?: workOrder.dueDate
+        val normalizedExecutionDate = executionDate?.trim() ?: workOrder.executionDate
+        if (normalizedDueDate == workOrder.dueDate && normalizedExecutionDate == workOrder.executionDate) return
+
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(
+            workOrder.copy(
+                dueDate = normalizedDueDate,
+                executionDate = normalizedExecutionDate,
+            ),
+        )
+        viewModelScope.launch {
+            api.updateWorkOrderDates(workOrder.id, normalizedDueDate, normalizedExecutionDate)
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, "Datumi RN-a su spremljeni.")
+                    }
+                }
+                .onFailure { error ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(error = error.message ?: "Ne mogu spremiti datume RN-a.", notice = "")
                     }
                 }
         }
@@ -2386,6 +2420,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     var pendingTrainingImportTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var pendingTrainingImportObjectId by remember { mutableStateOf("") }
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
+    var pendingCameraCapture by remember { mutableStateOf<Pair<WorkOrder, Uri>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
     var workOrderDocumentPreview by remember { mutableStateOf<WorkOrderDocumentPreviewState?>(null) }
     BackHandler(enabled = state.user != null && state.hasAndroidBackTarget()) {
@@ -2424,6 +2459,13 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
         pendingPicker = null
         if (target != null && uris.isNotEmpty()) {
             pendingSelection = PendingDocumentSelection(target.first, uris, target.second)
+        }
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val target = pendingCameraCapture
+        pendingCameraCapture = null
+        if (success && target != null) {
+            pendingSelection = PendingDocumentSelection(target.first, listOf(target.second), WorkOrderDocumentInputMode.Photos)
         }
     }
     val trainingImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -2483,6 +2525,16 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
             WorkOrderDocumentInputMode.Photos -> photoLauncher.launch("image/*")
             WorkOrderDocumentInputMode.Pdf -> pdfLauncher.launch(arrayOf("application/pdf"))
             WorkOrderDocumentInputMode.File -> fileLauncher.launch(workOrderDocumentAllowedMimeTypes)
+        }
+    }
+    val startCameraDocumentationFlow: (WorkOrder) -> Unit = { workOrder ->
+        documentationActionTarget = null
+        val outputUri = createWorkOrderCameraCaptureUri(context.applicationContext)
+        if (outputUri == null) {
+            viewModel.showError("Ne mogu pripremiti fotografiju za spremanje.")
+        } else {
+            pendingCameraCapture = workOrder to outputUri
+            cameraLauncher.launch(outputUri)
         }
     }
     val openDocumentationActions: (WorkOrder) -> Unit = { workOrder ->
@@ -2623,6 +2675,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onBack = { viewModel.navigateBack() },
                     onStatusChange = viewModel::updateWorkOrderStatus,
                     onMetaChange = viewModel::updateWorkOrderMeta,
+                    onDatesChange = viewModel::updateWorkOrderDates,
                     onExecutorsChange = viewModel::updateWorkOrderExecutors,
                     onManageServices = { workOrder -> serviceManagementTarget = workOrder },
                     onGenerateDocumentation = { workOrder ->
@@ -2665,6 +2718,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
         WorkOrderDocumentationActionDialog(
             workOrder = workOrder,
             onDismiss = { documentationActionTarget = null },
+            onCapturePhoto = { startCameraDocumentationFlow(workOrder) },
             onSelect = { mode -> startDocumentationFlow(workOrder, mode) },
         )
     }
@@ -9146,7 +9200,9 @@ private fun WorkOrdersScreen(
                         WorkOrderMapPanel(
                             points = mapPoints,
                             totalWorkOrders = filtered.size,
+                            statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                             onOpenWorkOrder = onOpenWorkOrder,
+                            onStatusChange = onStatusChange,
                         )
                     }
                     items(mapPoints, key = { "map-${it.workOrder.id}" }) { entry ->
@@ -13637,7 +13693,9 @@ private fun NoCoordinateWorkOrders() {
 private fun WorkOrderMapPanel(
     points: List<WorkOrderMapPoint>,
     totalWorkOrders: Int,
+    statusOptions: List<String>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
+    onStatusChange: (WorkOrder, String) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -13656,7 +13714,9 @@ private fun WorkOrderMapPanel(
             }
             WorkOrderLeafletMap(
                 points = points,
+                statusOptions = statusOptions,
                 onOpenWorkOrder = onOpenWorkOrder,
+                onStatusChange = onStatusChange,
             )
         }
     }
@@ -13665,6 +13725,7 @@ private fun WorkOrderMapPanel(
 private class WorkOrderMapBridge(
     private val points: List<WorkOrderMapPoint>,
     private val onOpenWorkOrder: (WorkOrder) -> Unit,
+    private val onStatusChange: (WorkOrder, String) -> Unit,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -13679,17 +13740,31 @@ private class WorkOrderMapBridge(
             onOpenWorkOrder(workOrder)
         }
     }
+
+    @JavascriptInterface
+    fun changeWorkOrderStatus(workOrderId: String, status: String) {
+        val workOrder = points
+            .firstOrNull { entry -> entry.workOrder.id == workOrderId }
+            ?.workOrder
+            ?: return
+
+        mainHandler.post {
+            onStatusChange(workOrder, status)
+        }
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun WorkOrderLeafletMap(
     points: List<WorkOrderMapPoint>,
+    statusOptions: List<String>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
+    onStatusChange: (WorkOrder, String) -> Unit,
 ) {
-    val html = remember(points) { buildWorkOrderLeafletHtml(points) }
-    val bridge = remember(points, onOpenWorkOrder) {
-        WorkOrderMapBridge(points, onOpenWorkOrder)
+    val html = remember(points, statusOptions) { buildWorkOrderLeafletHtml(points, statusOptions) }
+    val bridge = remember(points, onOpenWorkOrder, onStatusChange) {
+        WorkOrderMapBridge(points, onOpenWorkOrder, onStatusChange)
     }
 
     AndroidView(
@@ -13701,7 +13776,7 @@ private fun WorkOrderLeafletMap(
             WebView(context).apply {
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        return handleWorkOrderMapUrl(request.url, points, onOpenWorkOrder)
+                        return handleWorkOrderMapUrl(request.url, points, onOpenWorkOrder, onStatusChange)
                     }
                 }
                 settings.javaScriptEnabled = true
@@ -13735,8 +13810,9 @@ private fun handleWorkOrderMapUrl(
     uri: Uri,
     points: List<WorkOrderMapPoint>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
+    onStatusChange: (WorkOrder, String) -> Unit,
 ): Boolean {
-    if (uri.scheme != "safenexus" || uri.host != "work-order") {
+    if (uri.scheme != "safenexus") {
         return false
     }
 
@@ -13745,24 +13821,44 @@ private fun handleWorkOrderMapUrl(
         .firstOrNull { entry -> entry.workOrder.id == workOrderId }
         ?.workOrder
         ?: return true
-    onOpenWorkOrder(workOrder)
+    when (uri.host) {
+        "work-order" -> onOpenWorkOrder(workOrder)
+        "work-order-status" -> uri.getQueryParameter("status")?.takeIf { it.isNotBlank() }?.let { status ->
+            onStatusChange(workOrder, status)
+        }
+        else -> return false
+    }
     return true
 }
 
-private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>): String {
+private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOptions: List<String>): String {
     val markers = JSONArray()
     points.forEach { entry ->
         val workOrder = entry.workOrder
+        val style = rnStatusStyle(workOrder)
         markers.put(
             JSONObject()
                 .put("id", workOrder.id)
                 .put("number", workOrder.displayNumber)
                 .put("company", workOrder.companyName.ifBlank { "Bez tvrtke" })
+                .put("location", workOrder.locationName.ifBlank { "Bez lokacije" })
+                .put("service", workOrder.displayService)
+                .put("executor", workOrder.primaryExecutorLabel())
+                .put("dueDate", formatDateLabel(workOrder.dueDate).ifBlank { "Rok nije upisan" })
+                .put("executionDate", formatDateLabel(workOrder.executionDate).ifBlank { "Izvršenje nije upisano" })
                 .put("status", workOrder.status.ifBlank { "Bez statusa" })
+                .put("statusAccent", style.accent.toCssHex())
+                .put("statusBackground", style.background.toCssHex())
                 .put("lat", entry.point.latitude)
                 .put("lng", entry.point.longitude),
         )
     }
+    val statuses = JSONArray()
+    statusOptions
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .forEach { statuses.put(it) }
 
     return """
         <!doctype html>
@@ -13792,13 +13888,13 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>): String {
             }
             .sn-popup {
               display: grid;
-              gap: 7px;
-              min-width: 210px;
+              gap: 8px;
+              min-width: 245px;
               color: #111827;
             }
             .sn-popup strong {
-              color: #1d4ed8;
-              font-size: 15px;
+              color: #0f172a;
+              font-size: 16px;
               font-weight: 800;
             }
             .sn-popup span {
@@ -13806,15 +13902,33 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>): String {
               font-size: 13px;
               line-height: 1.35;
             }
+            .sn-meta {
+              display: grid;
+              gap: 3px;
+              padding: 8px;
+              border-radius: 12px;
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+            }
             .sn-status {
               display: inline-flex;
               width: fit-content;
               padding: 4px 8px;
               border-radius: 999px;
-              background: #dbeafe;
-              color: #1d4ed8 !important;
+              background: var(--sn-status-bg, #dbeafe);
+              color: var(--sn-status-color, #1d4ed8) !important;
               font-size: 12px !important;
               font-weight: 800;
+            }
+            .sn-status-select {
+              width: 100%;
+              border: 1px solid #cbd5e1;
+              border-radius: 10px;
+              padding: 8px 10px;
+              background: #ffffff;
+              color: #0f172a;
+              font-weight: 700;
+              outline: none;
             }
             .sn-open {
               display: inline-flex;
@@ -13828,6 +13942,25 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>): String {
               font-size: 13px;
               font-weight: 800;
               text-decoration: none;
+            }
+            .sn-pin {
+              width: 28px;
+              height: 28px;
+              display: grid;
+              place-items: center;
+              background: var(--pin-bg, #dbeafe);
+              border: 3px solid #ffffff;
+              border-radius: 50% 50% 50% 0;
+              transform: rotate(-45deg);
+              box-shadow: 0 8px 18px rgba(15, 23, 42, 0.26);
+            }
+            .sn-pin::after {
+              content: "";
+              width: 10px;
+              height: 10px;
+              border-radius: 50%;
+              background: var(--pin, #2563eb);
+              transform: rotate(45deg);
             }
             .marker-cluster-small,
             .marker-cluster-medium,
@@ -13849,6 +13982,7 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>): String {
           <script src="leaflet.markercluster.js"></script>
           <script>
             const markers = $markers;
+            const statusOptions = $statuses;
             const map = L.map("map", {
               zoomControl: true,
               attributionControl: true
@@ -13877,14 +14011,40 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>): String {
               });
             }
 
+            function markerIcon(marker) {
+              return L.divIcon({
+                className: "sn-marker",
+                html: "<div class='sn-pin' style='--pin:" + escapeHtml(marker.statusAccent) + ";--pin-bg:" + escapeHtml(marker.statusBackground) + ";'></div>",
+                iconSize: [30, 30],
+                iconAnchor: [15, 30],
+                popupAnchor: [0, -28]
+              });
+            }
+
+            function statusSelect(marker) {
+              if (!statusOptions || statusOptions.length === 0) return "";
+              const options = statusOptions.map(function(status) {
+                const selected = status === marker.status ? " selected" : "";
+                return "<option value='" + escapeHtml(status) + "'" + selected + ">" + escapeHtml(status) + "</option>";
+              }).join("");
+              return "<select class='sn-status-select' onchange='window.SafeNexus.changeWorkOrderStatus(" + JSON.stringify(marker.id) + ", this.value)'>" + options + "</select>";
+            }
+
             markers.forEach(function(marker) {
-              const leafletMarker = L.marker([marker.lat, marker.lng]);
+              const leafletMarker = L.marker([marker.lat, marker.lng], { icon: markerIcon(marker) });
               const safeId = encodeURIComponent(marker.id);
               leafletMarker.bindPopup([
                 "<div class='sn-popup'>",
                 "<strong>" + escapeHtml(marker.number) + "</strong>",
                 "<span>" + escapeHtml(marker.company) + "</span>",
-                "<span class='sn-status'>" + escapeHtml(marker.status) + "</span>",
+                "<span class='sn-status' style='--sn-status-bg:" + escapeHtml(marker.statusBackground) + ";--sn-status-color:" + escapeHtml(marker.statusAccent) + ";'>" + escapeHtml(marker.status) + "</span>",
+                "<div class='sn-meta'>",
+                "<span>" + escapeHtml(marker.location) + "</span>",
+                "<span>" + escapeHtml(marker.service) + "</span>",
+                "<span>Izvršitelj: " + escapeHtml(marker.executor) + "</span>",
+                "<span>" + escapeHtml(marker.dueDate) + " · " + escapeHtml(marker.executionDate) + "</span>",
+                "</div>",
+                statusSelect(marker),
                 "<a class='sn-open' href='safenexus://work-order/" + safeId + "' onclick='window.SafeNexus.openWorkOrder(" + JSON.stringify(marker.id) + "); return false;'>Otvori radni nalog</a>",
                 "</div>"
               ].join(""));
@@ -14003,6 +14163,11 @@ private fun rnStatusStyle(status: String): RnStatusStyle {
         normalized.contains("faktur") -> RnStatusStyle("FAKTURIRAN", Color(0xFF166534), Color(0xFFBBF7D0))
         else -> RnStatusStyle(status.ifBlank { "STATUS" }.uppercase(Locale.getDefault()), Color(0xFF64748B), Color(0xFFF1F5F9), false)
     }
+}
+
+private fun Color.toCssHex(): String {
+    fun channel(value: Float): Int = (value.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
+    return "#%02X%02X%02X".format(channel(red), channel(green), channel(blue))
 }
 
 private fun workOrderFilterAccentColor(filter: WorkOrderFilter): Color = when (filter) {
@@ -15261,6 +15426,7 @@ private fun WorkOrderDetailScreen(
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onMetaChange: (WorkOrder, String, List<String>) -> Unit,
+    onDatesChange: (WorkOrder, String?, String?) -> Unit,
     onExecutorsChange: (WorkOrder, List<String>) -> Unit,
     onManageServices: (WorkOrder) -> Unit,
     onGenerateDocumentation: (WorkOrder) -> Unit,
@@ -15273,6 +15439,7 @@ private fun WorkOrderDetailScreen(
     onRefreshDocuments: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
+    val context = LocalContext.current
     val executorOptions = remember(users, workOrder.executors) {
         (
             users.map { user -> user.label.ifBlank { user.fullName.ifBlank { user.email } } } +
@@ -15484,10 +15651,20 @@ private fun WorkOrderDetailScreen(
                                     CompactInfoLine(Icons.Rounded.Person, "Kontakt", workOrder.contactName)
                                 }
                                 if (workOrder.contactPhone.isNotBlank()) {
-                                    CompactInfoLine(Icons.Rounded.Call, "Telefon", workOrder.contactPhone)
+                                    CompactInfoLine(
+                                        Icons.Rounded.Call,
+                                        "Telefon",
+                                        workOrder.contactPhone,
+                                        onClick = { openDialer(context, workOrder.contactPhone) },
+                                    )
                                 }
                                 if (workOrder.contactEmail.isNotBlank()) {
-                                    CompactInfoLine(Icons.Rounded.Mail, "Email", workOrder.contactEmail)
+                                    CompactInfoLine(
+                                        Icons.Rounded.Mail,
+                                        "Email",
+                                        workOrder.contactEmail,
+                                        onClick = { openEmailClient(context, workOrder.contactEmail) },
+                                    )
                                 }
                             }
                         }
@@ -15571,8 +15748,20 @@ private fun WorkOrderDetailScreen(
 
             DetailSection("Osnovno") {
                 DetailRow(Icons.Rounded.CalendarMonth, "Otvoren", formatDateLabel(workOrder.openedDate).ifBlank { "Nije upisano" })
-                DetailRow(Icons.Rounded.CalendarMonth, "Rok", formatDateLabel(workOrder.dueDate).ifBlank { "Nije upisano" })
-                DetailRow(Icons.Rounded.CalendarMonth, "Izvršenje", formatDateLabel(workOrder.executionDate).ifBlank { "Nije upisano" })
+                DetailDatePickerRow(
+                    icon = Icons.Rounded.CalendarMonth,
+                    label = "Rok",
+                    value = workOrder.dueDate,
+                    enabled = !isLoading,
+                    onChange = { date -> onDatesChange(workOrder, date, null) },
+                )
+                DetailDatePickerRow(
+                    icon = Icons.Rounded.CalendarMonth,
+                    label = "Izvršenje",
+                    value = workOrder.executionDate,
+                    enabled = !isLoading,
+                    onChange = { date -> onDatesChange(workOrder, null, date) },
+                )
             }
 
             AnimatedVisibility(isLoading) {
@@ -16150,12 +16339,15 @@ private fun WorkOrderServiceManagementDialog(
             tab.key to services.count { it.workOrderServiceFilterKey() == tab.key }
         }
     }
-    val filteredServices = remember(services, serviceSearchIndex, query, selectedFilter) {
+    val filteredServices = remember(services, serviceSearchIndex, query, selectedFilter, selectedIds) {
         val normalizedQuery = normalizeServiceMatch(query)
         services.filter { service ->
             val matchesFilter = service.workOrderServiceFilterKey() == selectedFilter
             matchesFilter && (normalizedQuery.isBlank() || serviceSearchIndex[service.id]?.contains(normalizedQuery) == true)
-        }
+        }.sortedWith(
+            compareByDescending<WorkOrderServiceOption> { service -> service.id in selectedIds }
+                .thenBy { service -> service.name.lowercase(Locale.getDefault()) },
+        )
     }
     fun setServiceChecked(service: WorkOrderServiceOption, checked: Boolean) {
         val category = serviceFilterById[service.id] ?: service.workOrderServiceFilterKey()
@@ -16551,10 +16743,13 @@ private fun WorkOrderDocumentCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Surface(shape = RoundedCornerShape(12.dp), color = workOrderDocumentAccent(document).copy(alpha = 0.13f)) {
                     Icon(
                         imageVector = workOrderDocumentIcon(document),
@@ -16586,40 +16781,18 @@ private fun WorkOrderDocumentCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (document.isImage) {
-                    OutlinedButton(
-                        onClick = onOpen,
-                        enabled = enabled,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
-                    ) {
-                        Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Pregled", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (document.isImage) {
+                        IconButton(onClick = onOpen, enabled = enabled) {
+                            Icon(Icons.Rounded.Visibility, contentDescription = "Pregled fotografije", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
-                }
-                OutlinedButton(
-                    onClick = onDownload,
-                    enabled = enabled,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
-                ) {
-                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Preuzmi", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                }
-                TextButton(
-                    onClick = onDelete,
-                    enabled = enabled,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFDC2626)),
-                ) {
-                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Obriši", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = onDownload, enabled = enabled) {
+                        Icon(Icons.Rounded.Download, contentDescription = "Preuzmi dokument", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(onClick = onDelete, enabled = enabled) {
+                        Icon(Icons.Rounded.Delete, contentDescription = "Obriši dokument", tint = Color(0xFFDC2626))
+                    }
                 }
             }
         }
@@ -16824,6 +16997,7 @@ private fun decodePreviewBitmap(context: Context, uri: Uri): Bitmap? =
 private fun WorkOrderDocumentationActionDialog(
     workOrder: WorkOrder,
     onDismiss: () -> Unit,
+    onCapturePhoto: () -> Unit,
     onSelect: (WorkOrderDocumentInputMode) -> Unit,
 ) {
     AlertDialog(
@@ -16842,6 +17016,29 @@ private fun WorkOrderDocumentationActionDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onCapturePhoto() },
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Slikaj fotoaparatom", fontWeight = FontWeight.Black)
+                            Text(
+                                "Otvori kameru i spremi novu fotografiju uz RN.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                            )
+                        }
+                    }
+                }
                 WorkOrderDocumentInputMode.entries.forEach { mode ->
                     Surface(
                         modifier = Modifier
@@ -25091,9 +25288,85 @@ private fun DetailRow(icon: ImageVector, label: String, value: String) {
 }
 
 @Composable
-private fun CompactInfoLine(icon: ImageVector, label: String, value: String) {
+private fun DetailDatePickerRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+) {
+    var openPicker by remember { mutableStateOf(false) }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled) { openPicker = true }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(36.dp)
+                    .padding(9.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
+            Text(
+                formatDateLabel(value).ifBlank { "Nije upisano" },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Icon(
+            Icons.Rounded.EditCalendar,
+            contentDescription = "Promijeni datum",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+    if (openPicker) {
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = isoDateToMillis(value))
+        DatePickerDialog(
+            onDismissRequest = { openPicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onChange(millisToIsoDate(pickerState.selectedDateMillis))
+                        openPicker = false
+                    },
+                ) {
+                    Text("Spremi")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { openPicker = false }) {
+                    Text("Odustani")
+                }
+            },
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
+}
+
+@Composable
+private fun CompactInfoLine(icon: ImageVector, label: String, value: String, onClick: (() -> Unit)? = null) {
+    val rowModifier = if (onClick == null) {
+        Modifier.fillMaxWidth()
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+    }
+    Row(
+        modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -25204,14 +25477,10 @@ private fun WorkOrderStatusMenu(
 
 @Composable
 private fun StatusChip(workOrder: WorkOrder) {
-    val color = when {
-        workOrder.isOverdue -> Color(0xFFDC2626)
-        workOrder.isClosed -> Color(0xFF059669)
-        else -> Color(0xFF2563EB)
-    }
+    val style = rnStatusStyle(workOrder)
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = color.copy(alpha = 0.12f),
+        color = style.background,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -25221,10 +25490,10 @@ private fun StatusChip(workOrder: WorkOrder) {
                 imageVector = if (workOrder.isClosed) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
                 contentDescription = null,
                 modifier = Modifier.size(15.dp),
-                tint = color,
+                tint = style.accent,
             )
             Spacer(Modifier.width(5.dp))
-            Text(workOrder.status, color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Text(workOrder.status, color = style.accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -25552,6 +25821,41 @@ private fun openExternalUrl(context: Context, url: String): Boolean {
         false
     }
 }
+
+private fun openDialer(context: Context, phone: String): Boolean {
+    val normalized = phone.trim().filterNot { it.isWhitespace() }
+    if (normalized.isBlank()) return false
+    val intent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", normalized, null)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+}
+
+private fun openEmailClient(context: Context, email: String): Boolean {
+    val normalized = email.trim()
+    if (normalized.isBlank()) return false
+    val intent = Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", normalized, null)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return try {
+        context.startActivity(Intent.createChooser(intent, "Pošalji email").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+}
+
+private fun createWorkOrderCameraCaptureUri(context: Context): Uri? =
+    runCatching {
+        val directory = File(context.cacheDir, "work-order-documents").apply { mkdirs() }
+        val file = File(directory, "fotografija-${System.currentTimeMillis()}.jpg")
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }.getOrNull()
 
 private fun openCachedDocument(context: Context, uri: Uri, mimeType: String): Boolean {
     val intent = Intent(Intent.ACTION_VIEW).apply {

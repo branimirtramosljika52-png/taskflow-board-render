@@ -245,6 +245,17 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun updateWorkOrderDates(workOrderId: String, dueDate: String, executionDate: String): Result<WorkOrder> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("dueDate", dueDate.trim())
+                .put("executionDate", executionDate.trim())
+                .toString()
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
+        }
+    }
+
     suspend fun updateWorkOrderServices(workOrderId: String, serviceIds: List<String>): Result<WorkOrder> = withContext(Dispatchers.IO) {
         runCatching {
             val serviceItems = JSONArray()
