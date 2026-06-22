@@ -11254,6 +11254,7 @@ private fun CalendarContent(
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
     var mode by remember { mutableStateOf(CalendarViewMode.Month) }
+    var showWeekends by remember { mutableStateOf(true) }
     val today = remember { LocalDate.now() }
     var selectedDate by remember { mutableStateOf(today) }
     val recordsByDate = remember(records) {
@@ -11264,21 +11265,23 @@ private fun CalendarContent(
                 entries.sortedWith(compareBy<MobileRecord> { recordKindLabel(it.kind) }.thenBy { it.title })
             }
     }
-    val selectedRecords = remember(recordsByDate, selectedDate) {
-        recordsByDate[selectedDate].orEmpty()
-    }
+    val selectedRecords = remember(recordsByDate, selectedDate) { recordsByDate[selectedDate].orEmpty() }
     val datedRecordsCount = remember(recordsByDate) {
         recordsByDate.values.sumOf { it.size }
     }
     val changePeriod = { delta: Long ->
-        selectedDate = when (mode) {
-            CalendarViewMode.Day -> selectedDate.plusDays(delta)
+        val nextDate = when (mode) {
+            CalendarViewMode.Day -> shiftCalendarDay(selectedDate, delta, showWeekends)
             CalendarViewMode.Week -> selectedDate.plusWeeks(delta)
             CalendarViewMode.Month -> selectedDate.plusMonths(delta)
         }
+        selectedDate = coerceVisibleCalendarDate(nextDate, showWeekends, delta >= 0)
     }
     val goToday = {
-        selectedDate = today
+        selectedDate = coerceVisibleCalendarDate(today, showWeekends, true)
+    }
+    LaunchedEffect(showWeekends) {
+        selectedDate = coerceVisibleCalendarDate(selectedDate, showWeekends, true)
     }
 
     Card(
@@ -11318,31 +11321,43 @@ private fun CalendarContent(
                 onModeChange = { mode = it },
             )
 
+            CalendarWeekendToggle(
+                showWeekends = showWeekends,
+                onToggle = { showWeekends = !showWeekends },
+            )
+
             CalendarNavigation(
-                title = calendarPeriodTitle(mode, selectedDate),
+                title = calendarPeriodTitle(mode, selectedDate, showWeekends),
                 onPrevious = { changePeriod(-1) },
                 onToday = goToday,
                 onNext = { changePeriod(1) },
             )
 
-            when (mode) {
-                CalendarViewMode.Day -> DayCalendarView(
-                    date = selectedDate,
-                    records = selectedRecords,
-                    onOpenRecord = onOpenRecord,
-                )
-                CalendarViewMode.Week -> WeekCalendarView(
-                    selectedDate = selectedDate,
-                    today = today,
-                    recordsByDate = recordsByDate,
-                    onDateSelected = { selectedDate = it },
-                )
-                CalendarViewMode.Month -> MonthCalendarView(
-                    selectedDate = selectedDate,
-                    today = today,
-                    recordsByDate = recordsByDate,
-                    onDateSelected = { selectedDate = it },
-                )
+            CalendarSwipeContainer(
+                onPrevious = { changePeriod(-1) },
+                onNext = { changePeriod(1) },
+            ) {
+                when (mode) {
+                    CalendarViewMode.Day -> DayCalendarView(
+                        date = selectedDate,
+                        records = selectedRecords,
+                        onOpenRecord = onOpenRecord,
+                    )
+                    CalendarViewMode.Week -> WeekCalendarView(
+                        selectedDate = selectedDate,
+                        today = today,
+                        recordsByDate = recordsByDate,
+                        showWeekends = showWeekends,
+                        onDateSelected = { selectedDate = it },
+                    )
+                    CalendarViewMode.Month -> MonthCalendarView(
+                        selectedDate = selectedDate,
+                        today = today,
+                        recordsByDate = recordsByDate,
+                        showWeekends = showWeekends,
+                        onDateSelected = { selectedDate = it },
+                    )
+                }
             }
 
             if (mode != CalendarViewMode.Day) {
@@ -11369,6 +11384,70 @@ private fun CalendarModePicker(
                 onClick = { onModeChange(entry) },
                 label = { Text(entry.label) },
             )
+        }
+    }
+}
+
+@Composable
+private fun CalendarWeekendToggle(
+    showWeekends: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            "Povuci lijevo/desno za sljedeći period",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+            maxLines = 2,
+        )
+        FilterChip(
+            selected = showWeekends,
+            onClick = onToggle,
+            label = { Text(if (showWeekends) "Vikendi ON" else "Vikendi OFF") },
+            leadingIcon = {
+                Icon(Icons.Rounded.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
+            },
+        )
+    }
+}
+
+@Composable
+private fun CalendarSwipeContainer(
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    var dragX by remember { mutableStateOf(0f) }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { dragX = 0f },
+                    onDragEnd = {
+                        when {
+                            dragX > 80f -> onPrevious()
+                            dragX < -80f -> onNext()
+                        }
+                        dragX = 0f
+                    },
+                    onDragCancel = { dragX = 0f },
+                    onDrag = { _, dragAmount ->
+                        dragX += dragAmount.x
+                    },
+                )
+            },
+        shape = RoundedCornerShape(22.dp),
+        color = Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+    ) {
+        Box(modifier = Modifier.padding(8.dp)) {
+            content()
         }
     }
 }
@@ -11446,11 +11525,13 @@ private fun WeekCalendarView(
     selectedDate: LocalDate,
     today: LocalDate,
     recordsByDate: Map<LocalDate, List<MobileRecord>>,
+    showWeekends: Boolean,
     onDateSelected: (LocalDate) -> Unit,
 ) {
     val weekStart = remember(selectedDate) { startOfCalendarWeek(selectedDate) }
-    val days = remember(weekStart, recordsByDate, today) {
-        (0 until 7).map { index ->
+    val dayCount = if (showWeekends) 7 else 5
+    val days = remember(weekStart, recordsByDate, today, dayCount) {
+        (0 until dayCount).map { index ->
             val date = weekStart.plusDays(index.toLong())
             CalendarDayCell(
                 date = date,
@@ -11480,15 +11561,18 @@ private fun MonthCalendarView(
     selectedDate: LocalDate,
     today: LocalDate,
     recordsByDate: Map<LocalDate, List<MobileRecord>>,
+    showWeekends: Boolean,
     onDateSelected: (LocalDate) -> Unit,
 ) {
-    val days = remember(selectedDate.year, selectedDate.monthValue, recordsByDate, today) {
-        buildCalendarMonthDays(selectedDate, recordsByDate, today)
+    val days = remember(selectedDate.year, selectedDate.monthValue, recordsByDate, today, showWeekends) {
+        buildCalendarMonthDays(selectedDate, recordsByDate, today, showWeekends)
     }
+    val labels = remember(showWeekends) { visibleCalendarWeekdayLabels(showWeekends) }
+    val columns = if (showWeekends) 7 else 5
 
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            calendarWeekdayLabels.forEach { label ->
+            labels.forEach { label ->
                 Text(
                     label,
                     modifier = Modifier.weight(1f),
@@ -11499,7 +11583,7 @@ private fun MonthCalendarView(
                 )
             }
         }
-        days.chunked(7).forEach { week ->
+        days.chunked(columns).forEach { week ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 week.forEach { day ->
                     CalendarMonthDay(
@@ -11523,17 +11607,27 @@ private fun CalendarWeekDay(
 ) {
     val containerColor = when {
         selected -> MaterialTheme.colorScheme.primary
-        day.isToday -> MaterialTheme.colorScheme.primaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f)
+        day.isToday -> Color(0xFFDBEAFE)
+        day.records.isNotEmpty() -> Color(0xFFEFF6FF)
+        else -> Color.White
     }
     val textColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
 
     Surface(
         modifier = modifier
-            .height(96.dp)
+            .height(108.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         color = containerColor,
+        border = BorderStroke(
+            1.dp,
+            when {
+                selected -> MaterialTheme.colorScheme.primary
+                day.isToday -> Color(0xFF60A5FA)
+                day.records.isNotEmpty() -> Color(0xFFBFDBFE)
+                else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+            },
+        ),
     ) {
         Column(
             modifier = Modifier.padding(8.dp),
@@ -11567,8 +11661,9 @@ private fun CalendarMonthDay(
     val muted = !day.inCurrentMonth
     val containerColor = when {
         selected -> MaterialTheme.colorScheme.primary
-        day.isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.86f)
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (muted) 0.28f else 0.62f)
+        day.isToday -> Color(0xFFDBEAFE)
+        day.records.isNotEmpty() -> Color(0xFFEFF6FF)
+        else -> if (muted) Color(0xFFF8FAFC) else Color.White
     }
     val textColor = if (selected) {
         MaterialTheme.colorScheme.onPrimary
@@ -11578,10 +11673,19 @@ private fun CalendarMonthDay(
 
     Surface(
         modifier = modifier
-            .height(88.dp)
+            .height(92.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         color = containerColor,
+        border = BorderStroke(
+            1.dp,
+            when {
+                selected -> MaterialTheme.colorScheme.primary
+                day.isToday -> Color(0xFF60A5FA)
+                day.records.isNotEmpty() -> Color(0xFFBFDBFE)
+                else -> MaterialTheme.colorScheme.outline.copy(alpha = if (muted) 0.06f else 0.12f)
+            },
+        ),
     ) {
         Column(
             modifier = Modifier.padding(7.dp),
@@ -11591,7 +11695,7 @@ private fun CalendarMonthDay(
                 Text(
                     day.date.dayOfMonth.toString(),
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.titleSmall,
                     color = textColor,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
@@ -11692,32 +11796,38 @@ private data class CalendarDayCell(
 
 private val calendarWeekdayLabels = listOf("Pon", "Uto", "Sri", "Cet", "Pet", "Sub", "Ned")
 
+private fun visibleCalendarWeekdayLabels(showWeekends: Boolean): List<String> =
+    if (showWeekends) calendarWeekdayLabels else calendarWeekdayLabels.take(5)
+
 private fun buildCalendarMonthDays(
     selectedDate: LocalDate,
     recordsByDate: Map<LocalDate, List<MobileRecord>>,
     today: LocalDate,
+    showWeekends: Boolean,
 ): List<CalendarDayCell> {
     val firstDayOfMonth = selectedDate.withDayOfMonth(1)
     val gridStart = startOfCalendarWeek(firstDayOfMonth)
-    return (0 until 42).map { index ->
-        val date = gridStart.plusDays(index.toLong())
-        CalendarDayCell(
-            date = date,
-            inCurrentMonth = date.month == selectedDate.month && date.year == selectedDate.year,
-            isToday = date == today,
-            records = recordsByDate[date].orEmpty(),
-        )
-    }
+    return (0 until 42)
+        .map { index -> gridStart.plusDays(index.toLong()) }
+        .filter { date -> showWeekends || !date.isCalendarWeekend() }
+        .map { date ->
+            CalendarDayCell(
+                date = date,
+                inCurrentMonth = date.month == selectedDate.month && date.year == selectedDate.year,
+                isToday = date == today,
+                records = recordsByDate[date].orEmpty(),
+            )
+        }
 }
 
 private fun startOfCalendarWeek(date: LocalDate): LocalDate =
     date.minusDays((date.dayOfWeek.value - 1).toLong())
 
-private fun calendarPeriodTitle(mode: CalendarViewMode, selectedDate: LocalDate): String = when (mode) {
+private fun calendarPeriodTitle(mode: CalendarViewMode, selectedDate: LocalDate, showWeekends: Boolean): String = when (mode) {
     CalendarViewMode.Day -> calendarDayTitle(selectedDate)
     CalendarViewMode.Week -> {
         val start = startOfCalendarWeek(selectedDate)
-        val end = start.plusDays(6)
+        val end = start.plusDays(if (showWeekends) 6 else 4)
         "${formatCalendarDate(start)} - ${formatCalendarDate(end)}"
     }
     CalendarViewMode.Month -> "${calendarMonthName(selectedDate.monthValue)} ${selectedDate.year}."
@@ -11725,6 +11835,31 @@ private fun calendarPeriodTitle(mode: CalendarViewMode, selectedDate: LocalDate)
 
 private fun calendarDayTitle(date: LocalDate): String =
     "${calendarWeekdayLabels[date.dayOfWeek.value - 1]}, ${formatCalendarDate(date)}"
+
+private fun LocalDate.isCalendarWeekend(): Boolean = dayOfWeek.value >= 6
+
+private fun coerceVisibleCalendarDate(date: LocalDate, showWeekends: Boolean, preferForward: Boolean): LocalDate {
+    if (showWeekends || !date.isCalendarWeekend()) return date
+    return if (preferForward) {
+        date.plusDays((8 - date.dayOfWeek.value).toLong())
+    } else {
+        date.minusDays((date.dayOfWeek.value - 5).toLong())
+    }
+}
+
+private fun shiftCalendarDay(date: LocalDate, delta: Long, showWeekends: Boolean): LocalDate {
+    if (delta == 0L) return date
+    val step = if (delta > 0) 1L else -1L
+    var remaining = kotlin.math.abs(delta)
+    var current = date
+    while (remaining > 0) {
+        current = current.plusDays(step)
+        if (showWeekends || !current.isCalendarWeekend()) {
+            remaining--
+        }
+    }
+    return current
+}
 
 private fun formatCalendarDate(date: LocalDate): String =
     "${date.dayOfMonth.toString().padStart(2, '0')}.${date.monthValue.toString().padStart(2, '0')}.${date.year}."
