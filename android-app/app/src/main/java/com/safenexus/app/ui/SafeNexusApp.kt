@@ -2805,6 +2805,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     workOrder = selected,
                     services = state.data.workOrderServices,
                     users = state.data.workOrderUsers,
+                    currentUser = state.user,
                     priorityOptions = state.data.priorities,
                     tagSuggestions = state.workOrders
                         .flatMap { it.tags }
@@ -16354,6 +16355,7 @@ private fun WorkOrderDetailScreen(
     workOrder: WorkOrder,
     services: List<WorkOrderServiceOption>,
     users: List<WorkOrderUserOption>,
+    currentUser: SafeNexusUser?,
     priorityOptions: List<OptionItem>,
     tagSuggestions: List<String>,
     isLoading: Boolean,
@@ -16390,14 +16392,20 @@ private fun WorkOrderDetailScreen(
             .distinctBy { it.lowercase(Locale.getDefault()) }
             .map { it to it }
     }
-    val watcherOptions = remember(users) {
-        users
-            .map { user ->
-                user.id to listOf(user.label, user.fullName, user.email).firstOrNull { it.isNotBlank() }.orEmpty()
-            }
-            .filter { (id, label) -> id.isNotBlank() && label.isNotBlank() }
-            .distinctBy { (id, _) -> id }
+    val currentWatcherUser = remember(users, currentUser?.displayName, currentUser?.email) {
+        val currentEmail = currentUser?.email.orEmpty().trim()
+        val currentLabel = currentUser?.displayName.orEmpty().trim()
+        users.firstOrNull { user ->
+            currentEmail.isNotBlank() && user.email.equals(currentEmail, ignoreCase = true)
+        } ?: users.firstOrNull { user ->
+            currentLabel.isNotBlank() &&
+                listOf(user.label, user.fullName, user.email)
+                    .any { value -> value.equals(currentLabel, ignoreCase = true) }
+        }
     }
+    val currentWatcherId = currentWatcherUser?.id.orEmpty()
+    val currentUserIsWatcher = currentWatcherId.isNotBlank() &&
+        workOrder.watcherIds.any { watcherId -> watcherId.equals(currentWatcherId, ignoreCase = true) }
     val statusStyle = rnStatusStyle(workOrder)
     val heroLocation = remember(workOrder.locationName, workOrder.objectName) {
         listOf(
@@ -16417,7 +16425,6 @@ private fun WorkOrderDetailScreen(
         hasContactData
     var showLocationDetails by remember(workOrder.id) { mutableStateOf(false) }
     var showExecutorsEditor by remember(workOrder.id) { mutableStateOf(false) }
-    var showWatchersEditor by remember(workOrder.id) { mutableStateOf(false) }
     var showMetaEditor by remember(workOrder.id) { mutableStateOf(false) }
     if (showMetaEditor) {
         AlertDialog(
@@ -16475,34 +16482,6 @@ private fun WorkOrderDetailScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showExecutorsEditor = false }) {
-                    Text("Zatvori", fontWeight = FontWeight.Bold)
-                }
-            },
-        )
-    }
-    if (showWatchersEditor) {
-        AlertDialog(
-            onDismissRequest = { showWatchersEditor = false },
-            title = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Watcheri RN-a", fontWeight = FontWeight.Black)
-                    Text(
-                        "Dobivaju obavijesti za promjene na ${workOrder.displayNumber}.",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                }
-            },
-            text = {
-                DocumentationExecutorsEditor(
-                    executorOptions = watcherOptions,
-                    selectedExecutors = workOrder.watcherIds,
-                    enabled = !isLoading,
-                    onChange = { next -> onWatchersChange(workOrder, next) },
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showWatchersEditor = false }) {
                     Text("Zatvori", fontWeight = FontWeight.Bold)
                 }
             },
@@ -16651,13 +16630,28 @@ private fun WorkOrderDetailScreen(
                         horizontalArrangement = Arrangement.End,
                     ) {
                         AssistChip(
-                            onClick = { showWatchersEditor = true },
+                            onClick = {
+                                if (currentWatcherId.isBlank()) return@AssistChip
+                                val nextWatcherIds = if (currentUserIsWatcher) {
+                                    workOrder.watcherIds.filterNot { watcherId ->
+                                        watcherId.equals(currentWatcherId, ignoreCase = true)
+                                    }
+                                } else {
+                                    (workOrder.watcherIds + currentWatcherId).distinct()
+                                }
+                                onWatchersChange(workOrder, nextWatcherIds)
+                            },
+                            enabled = !isLoading && currentWatcherId.isNotBlank(),
                             leadingIcon = {
                                 Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                             },
                             label = {
                                 Text(
-                                    if (workOrder.watcherIds.isEmpty()) "Dodaj watcher-a" else "Watcheri ${workOrder.watcherIds.size}",
+                                    when {
+                                        currentWatcherId.isBlank() -> "Nema profila"
+                                        currentUserIsWatcher -> "Pratiš RN"
+                                        else -> "Dodaj mene"
+                                    },
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
