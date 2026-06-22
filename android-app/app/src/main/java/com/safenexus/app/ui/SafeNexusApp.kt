@@ -8901,6 +8901,7 @@ private fun WorkOrdersScreen(
                 item {
                     VehicleFleetContent(
                         vehicles = filteredVehicles,
+                        currentUserLabel = state.user?.displayName.orEmpty(),
                         onOpenRecord = onOpenRecord,
                     )
                 }
@@ -11126,6 +11127,35 @@ private fun formatVehicleTripTimePart(value: String): String {
     return parsed.format(DateTimeFormatter.ofPattern("HH:mm"))
 }
 
+private fun vehiclePersonMatchesCurrentUser(value: String, currentUserLabel: String): Boolean {
+    val person = value.trim().lowercase(Locale.getDefault())
+    val current = currentUserLabel.trim().lowercase(Locale.getDefault())
+    if (person.isBlank() || current.isBlank()) return false
+    return person == current || person.contains(current) || current.contains(person)
+}
+
+private fun vehicleUserTripLabel(vehicle: MobileRecord, currentUserLabel: String): String {
+    if (currentUserLabel.isBlank()) return ""
+    val reservations = parseVehicleReservations(vehicle)
+    val trips = parseVehicleTrips(vehicle)
+    val hasOpenTrip = trips.any { trip ->
+        trip.returnAt.isBlank() &&
+            !trip.status.equals("completed", ignoreCase = true) &&
+            vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
+    }
+    val hasCheckedOutReservation = reservations.any { reservation ->
+        reservation.status.equals("checked_out", ignoreCase = true) &&
+            vehiclePersonMatchesCurrentUser(reservation.userLabel, currentUserLabel)
+    }
+    if (hasOpenTrip || hasCheckedOutReservation) return "Moj put"
+
+    val hasReservedReservation = reservations.any { reservation ->
+        reservation.status.equals("reserved", ignoreCase = true) &&
+            vehiclePersonMatchesCurrentUser(reservation.userLabel, currentUserLabel)
+    }
+    return if (hasReservedReservation) "Moja rezervacija" else ""
+}
+
 private fun vehicleReservationOverlapsHour(reservation: MobileVehicleReservation, date: LocalDate, hour: Int): Boolean {
     val start = parseVehicleDateTime(reservation.startAt) ?: return false
     val end = parseVehicleDateTime(reservation.endAt) ?: return false
@@ -11137,6 +11167,7 @@ private fun vehicleReservationOverlapsHour(reservation: MobileVehicleReservation
 @Composable
 private fun VehicleFleetContent(
     vehicles: List<MobileRecord>,
+    currentUserLabel: String,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
@@ -11206,7 +11237,11 @@ private fun VehicleFleetContent(
                     Text("Nema vozila za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
                 } else {
                     vehicles.take(80).forEach { vehicle ->
-                        VehicleFleetRow(vehicle = vehicle, onClick = { onOpenRecord(vehicle) })
+                        VehicleFleetRow(
+                            vehicle = vehicle,
+                            currentUserLabel = currentUserLabel,
+                            onClick = { onOpenRecord(vehicle) },
+                        )
                     }
                 }
             }
@@ -11279,9 +11314,10 @@ private fun VehicleScheduleGrid(
 }
 
 @Composable
-private fun VehicleFleetRow(vehicle: MobileRecord, onClick: () -> Unit) {
+private fun VehicleFleetRow(vehicle: MobileRecord, currentUserLabel: String, onClick: () -> Unit) {
     val status = vehicleAvailabilityStatus(vehicle)
     val statusColor = vehicleStatusColor(status)
+    val userTripLabel = vehicleUserTripLabel(vehicle, currentUserLabel)
     val nextPurpose = vehicle.meta["nextReservationPurpose"].orEmpty()
     val nextStart = vehicle.meta["nextReservationStartAt"].orEmpty()
     val nextUser = vehicle.meta["nextReservationUser"].orEmpty()
@@ -11316,7 +11352,18 @@ private fun VehicleFleetRow(vehicle: MobileRecord, onClick: () -> Unit) {
                     Text(nextText, style = MaterialTheme.typography.labelSmall, color = statusColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            AssistChip(onClick = {}, label = { Text(vehicleStatusLabel(status)) })
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (userTripLabel.isNotBlank()) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(userTripLabel, fontWeight = FontWeight.Black) },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                    )
+                }
+                AssistChip(onClick = {}, label = { Text(vehicleStatusLabel(status)) })
+            }
         }
     }
 }
@@ -15205,9 +15252,14 @@ private fun VehicleUsageDialog(
             }
         }
     }
-    val destinationSuggestions = remember(vehicle.id, trips, reservations, defaultReservation?.destination, openTrip?.destination) {
+    val destinationSuggestions = remember(vehicle.id, mode, trips, reservations, defaultReservation?.destination, openTrip?.destination) {
+        val primaryDestinations = if (mode == "return") {
+            listOf(openTrip?.destination.orEmpty(), defaultReservation?.destination.orEmpty())
+        } else {
+            listOf(defaultReservation?.destination.orEmpty(), openTrip?.destination.orEmpty())
+        }
         (
-            listOf(defaultReservation?.destination.orEmpty(), openTrip?.destination.orEmpty()) +
+            primaryDestinations +
                 reservations.map { it.destination } +
                 trips.map { it.destination }
             )
@@ -15230,7 +15282,12 @@ private fun VehicleUsageDialog(
     var actionDate by remember(vehicle.id, mode) { mutableStateOf(LocalDate.now().toString()) }
     var actionTime by remember(vehicle.id, mode) { mutableStateOf(defaultVehicleUsageTime()) }
     var destination by remember(vehicle.id, mode, defaultReservation?.destination, openTrip?.destination) {
-        mutableStateOf(defaultReservation?.destination.orEmpty().ifBlank { openTrip?.destination.orEmpty() })
+        val initialDestination = if (mode == "return") {
+            openTrip?.destination.orEmpty().ifBlank { defaultReservation?.destination.orEmpty() }
+        } else {
+            defaultReservation?.destination.orEmpty().ifBlank { openTrip?.destination.orEmpty() }
+        }
+        mutableStateOf(initialDestination)
     }
     var reservationId by remember(vehicle.id, mode, defaultReservation?.id) { mutableStateOf(defaultReservation?.id.orEmpty()) }
     var linkedWorkOrderId by remember(vehicle.id, mode, openTrip?.linkedWorkOrderId) {

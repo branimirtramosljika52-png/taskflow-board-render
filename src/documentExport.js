@@ -9745,6 +9745,12 @@ function getVehicleEvidenceNoteValue(note = "", prefix = "") {
   return matched ? clean(matched.slice(prefix.length)) : "";
 }
 
+function getVehicleEvidenceFirstValue(values = []) {
+  return getReportArray(values)
+    .map((value) => clean(value))
+    .find(Boolean) || "";
+}
+
 function compactVehicleEvidenceNote(note = "") {
   return String(note ?? "")
     .replace(/\r\n/g, "\n")
@@ -9829,16 +9835,31 @@ function buildVehicleEvidenceRows(vehicle = {}) {
         || clean(activity?.performedOn);
       const returnAt = clean(activity?.returnAt)
         || clean(activity?.completedAt);
+      const destination = getVehicleEvidenceFirstValue([
+        activity?.destination,
+        activity?.route,
+        activity?.location,
+        getVehicleEvidenceNoteValue(activity?.note, "Destinacija:"),
+        getVehicleEvidenceNoteValue(activity?.note, "Lokacija:"),
+      ]);
+      const startKm = getVehicleEvidenceFirstValue([
+        activity?.startKm,
+        !returnAt ? activity?.odometerKm : "",
+      ]);
+      const endKm = getVehicleEvidenceFirstValue([
+        activity?.endKm,
+        returnAt ? activity?.odometerKm : "",
+      ]);
       return {
         sortKey: getVehicleEvidenceTimestamp(departureAt),
         departureDate: formatVehicleEvidenceDatePart(departureAt),
         departureTime: formatVehicleEvidenceTimePart(departureAt),
         returnDate: formatVehicleEvidenceDatePart(returnAt),
         returnTime: formatVehicleEvidenceTimePart(returnAt),
-        destination: clean(activity?.destination),
+        destination,
         drivers,
-        startKm: clean(activity?.startKm) ? `${clean(activity?.startKm)} km` : "",
-        endKm: clean(activity?.endKm) ? `${clean(activity?.endKm)} km` : "",
+        startKm: startKm ? `${startKm} km` : "",
+        endKm: endKm ? `${endKm} km` : "",
         vehicleCondition: condition,
       };
     })
@@ -9928,8 +9949,8 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
     margins: {
       top: 34,
       bottom: 34,
-      left: 32,
-      right: 32,
+      left: 24,
+      right: 24,
     },
     bufferPages: true,
     info: {
@@ -9997,8 +10018,8 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
     margins: {
       top: 34,
       bottom: 34,
-      left: 32,
-      right: 32,
+      left: 24,
+      right: 24,
     },
   });
   renderReportTable(
@@ -10006,15 +10027,15 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
     helpers,
     "Evidencija putovanja",
     [
-      { key: "departureDate", label: "Datum polaska", width: 76 },
-      { key: "departureTime", label: "Vrijeme polaska", width: 70 },
-      { key: "returnDate", label: "Datum povratka", width: 76 },
-      { key: "returnTime", label: "Vrijeme povratka", width: 70 },
-      { key: "destination", label: "Lokacija gdje se ide", width: 126 },
-      { key: "drivers", label: "Vozaci", width: 112 },
-      { key: "startKm", label: "Pocetna km", width: 64 },
-      { key: "endKm", label: "Krajnja KM", width: 64 },
-      { key: "vehicleCondition", label: "Stanje vozila", width: 150 },
+      { key: "departureDate", label: "Datum polaska", width: 62 },
+      { key: "departureTime", label: "Vrijeme polaska", width: 52 },
+      { key: "returnDate", label: "Datum povratka", width: 62 },
+      { key: "returnTime", label: "Vrijeme povratka", width: 52 },
+      { key: "destination", label: "Lokacija gdje se ide", width: 128 },
+      { key: "drivers", label: "Vozaci", width: 106 },
+      { key: "startKm", label: "Pocetna km", width: 58 },
+      { key: "endKm", label: "Krajnja km", width: 58 },
+      { key: "vehicleCondition", label: "Stanje vozila", width: 142 },
     ],
     evidenceRows,
     { emptyMessage: "Za ovo vozilo jos nema evidentiranih putovanja." },
