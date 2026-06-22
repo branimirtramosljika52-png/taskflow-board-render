@@ -11040,6 +11040,25 @@ private fun parseVehicleReservations(vehicle: MobileRecord): List<MobileVehicleR
     }.getOrDefault(emptyList())
 }
 
+private fun extractVehicleTripNoteValue(note: String, label: String): String {
+    val normalizedLabel = label.trim()
+    if (note.isBlank() || normalizedLabel.isBlank()) return ""
+    return note
+        .lineSequence()
+        .map { it.trim() }
+        .firstOrNull { line -> line.startsWith(normalizedLabel, ignoreCase = true) }
+        ?.substringAfter(":", "")
+        ?.trim()
+        .orEmpty()
+}
+
+private fun getVehicleTripDestination(item: JSONObject): String =
+    item.optString("destination").trim()
+        .ifBlank { item.optString("route").trim() }
+        .ifBlank { item.optString("location").trim() }
+        .ifBlank { extractVehicleTripNoteValue(item.optString("note").trim(), "Destinacija:") }
+        .ifBlank { extractVehicleTripNoteValue(item.optString("note").trim(), "Lokacija:") }
+
 private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
     val raw = vehicle.meta["activityItemsJson"].orEmpty()
     if (raw.isBlank()) return emptyList()
@@ -11091,7 +11110,7 @@ private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
                             .ifBlank { item.optString("performedOn").trim() },
                         returnAt = item.optString("returnAt").trim()
                             .ifBlank { item.optString("completedAt").trim() },
-                        destination = item.optString("destination").trim(),
+                        destination = getVehicleTripDestination(item),
                         drivers = drivers,
                         startKm = item.optString("startKm").trim(),
                         endKm = item.optString("endKm").trim(),
@@ -11355,7 +11374,7 @@ private fun VehicleFleetRow(vehicle: MobileRecord, currentUserLabel: String, onC
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (userTripLabel.isNotBlank()) {
                     AssistChip(
-                        onClick = {},
+                        onClick = onClick,
                         label = { Text(userTripLabel, fontWeight = FontWeight.Black) },
                         leadingIcon = {
                             Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(16.dp))
