@@ -14,6 +14,7 @@ data class BootstrapData(
     val locations: List<MobileRecord> = emptyList(),
     val workOrderStatuses: List<OptionItem> = emptyList(),
     val priorities: List<OptionItem> = emptyList(),
+    val todoTaskStatuses: List<OptionItem> = emptyList(),
     val workOrderCompanies: List<WorkOrderCompanyOption> = emptyList(),
     val workOrderLocations: List<WorkOrderLocationOption> = emptyList(),
     val workOrderUsers: List<WorkOrderUserOption> = emptyList(),

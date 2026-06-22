@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.198.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.199.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25138,6 +25138,17 @@ function getTodoTaskStatusLabel(status = "") {
 }
 
 function buildMobileTodoTaskRecord(item = {}) {
+  const comments = Array.isArray(item.comments) ? item.comments : [];
+  const commentPreview = comments
+    .slice(-3)
+    .map((comment) => [
+      normalizeInputValue(comment?.createdByLabel || comment?.authorLabel || comment?.createdByName),
+      normalizeInputValue(comment?.message || comment?.comment || comment?.text),
+    ].filter(Boolean).join(": "))
+    .filter(Boolean)
+    .join("\n");
+  const invitedUserIds = Array.isArray(item.invitedUserIds) ? item.invitedUserIds.map(normalizeInputValue).filter(Boolean) : [];
+  const invitedUserLabels = Array.isArray(item.invitedUserLabels) ? item.invitedUserLabels.map(normalizeInputValue).filter(Boolean) : [];
   return {
     id: normalizeInputValue(item.id),
     title: normalizeInputValue(item.title || "ToDo"),
@@ -25161,9 +25172,16 @@ function buildMobileTodoTaskRecord(item = {}) {
       workOrderNumber: normalizeInputValue(item.workOrderNumber),
       assignedToUserId: normalizeInputValue(item.assignedToUserId),
       assignedToLabel: normalizeInputValue(item.assignedToLabel),
-      invitedUserLabels: Array.isArray(item.invitedUserLabels) ? item.invitedUserLabels.join(", ") : "",
+      createdByUserId: normalizeInputValue(item.createdByUserId),
+      createdByLabel: normalizeInputValue(item.createdByLabel),
+      invitedUserIds: invitedUserIds.join(","),
+      invitedUserLabels: invitedUserLabels.join(", "),
       priority: normalizeInputValue(item.priority),
       note: normalizeInputValue(item.message),
+      commentCount: String(Number(item.commentCount ?? comments.length) || 0),
+      commentsPreview: commentPreview,
+      updatedAt: normalizeInputValue(item.updatedAt),
+      createdAt: normalizeInputValue(item.createdAt),
     },
   };
 }
@@ -26449,6 +26467,7 @@ async function writeMobileBootstrap(response, user, request) {
       workOrderUsers: buildMobileWorkOrderUserOptions(scopedSnapshot.users),
       workOrderServices: buildMobileWorkOrderServiceOptions(scopedSnapshot.serviceCatalog),
       fieldInquiryStatuses: FIELD_INQUIRY_STATUS_OPTIONS,
+      todoTaskStatuses: TODO_TASK_STATUS_OPTIONS,
     },
     dashboard: buildMobileDashboard(scopedSnapshot, workOrders, documentRecords),
     workOrders,

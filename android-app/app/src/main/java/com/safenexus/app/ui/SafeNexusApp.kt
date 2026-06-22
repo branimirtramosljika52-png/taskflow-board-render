@@ -465,6 +465,21 @@ private val fieldInquiryStatusOptions = listOf(
     "converted" to "Pretvoreno u RN",
 )
 
+private val fallbackTodoTaskStatusOptions = listOf(
+    OptionItem("open", "Novo"),
+    OptionItem("in_progress", "U radu"),
+    OptionItem("waiting", "Čeka odgovor"),
+    OptionItem("done", "Završeno"),
+)
+
+private enum class TodoTaskScope(val label: String) {
+    Mine("Moje"),
+    Invited("Pozvan sam"),
+    WorkOrders("RN"),
+    Overdue("Kasni"),
+    All("Sve"),
+}
+
 data class AppState(
     val user: SafeNexusUser? = null,
     val rememberedUser: SafeNexusUser? = null,
@@ -640,6 +655,119 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     } else {
                         state = state.copy(isLoading = false, error = message)
                     }
+                }
+        }
+    }
+
+    private suspend fun reloadAfterTodoMutation(
+        selectedTodoId: String? = state.selectedRecord?.takeIf { it.kind == "todo_task" }?.id,
+        notice: String = "",
+    ) {
+        api.bootstrap()
+            .onSuccess { data ->
+                if (shouldRememberSession) {
+                    state.user?.let { user ->
+                        authStore.save(user, api.currentAccessToken(), api.currentAuthCookieHeader())
+                    }
+                }
+                val selectedWorkOrderId = state.selectedWorkOrder?.id
+                val nextSelectedRecord = if (!selectedTodoId.isNullOrBlank()) {
+                    data.todoTasks.firstOrNull { it.id == selectedTodoId } ?: state.selectedRecord
+                } else {
+                    state.selectedRecord
+                }
+                state = state.copy(
+                    data = data,
+                    workOrders = data.workOrders,
+                    selectedWorkOrder = selectedWorkOrderId?.let { id -> data.workOrders.firstOrNull { it.id == id } } ?: state.selectedWorkOrder,
+                    selectedRecord = nextSelectedRecord,
+                    isLoading = false,
+                    error = "",
+                    notice = notice,
+                )
+            }
+            .onFailure { error ->
+                state = state.copy(isLoading = false, error = error.message ?: "ToDo je spremljen, ali osvježavanje nije uspjelo.")
+            }
+    }
+
+    fun createTodoTask(
+        title: String,
+        message: String,
+        status: String,
+        priority: String,
+        dueDate: String,
+        assignedToUserId: String,
+        invitedUserIds: List<String>,
+        workOrderId: String,
+        companyId: String,
+        locationId: String,
+    ) {
+        if (title.trim().isBlank()) {
+            state = state.copy(error = "Upiši naslov ToDo teme.")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createTodoTask(
+                title = title,
+                message = message,
+                status = status,
+                priority = priority,
+                dueDate = dueDate,
+                assignedToUserId = assignedToUserId,
+                invitedUserIds = invitedUserIds,
+                workOrderId = workOrderId,
+                companyId = companyId,
+                locationId = locationId,
+            )
+                .onSuccess {
+                    reloadAfterTodoMutation(selectedTodoId = null, notice = "ToDo tema je dodana.")
+                }
+                .onFailure { error ->
+                    state = state.copy(isLoading = false, error = error.message ?: "Ne mogu dodati ToDo temu.")
+                }
+        }
+    }
+
+    fun updateTodoTask(
+        taskId: String,
+        status: String? = null,
+        priority: String? = null,
+        dueDate: String? = null,
+        assignedToUserId: String? = null,
+        invitedUserIds: List<String>? = null,
+    ) {
+        if (taskId.isBlank()) return
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.updateTodoTask(
+                taskId = taskId,
+                status = status,
+                priority = priority,
+                dueDate = dueDate,
+                assignedToUserId = assignedToUserId,
+                invitedUserIds = invitedUserIds,
+            )
+                .onSuccess {
+                    reloadAfterTodoMutation(selectedTodoId = taskId, notice = "ToDo tema je spremljena.")
+                }
+                .onFailure { error ->
+                    state = state.copy(isLoading = false, error = error.message ?: "Ne mogu spremiti ToDo temu.")
+                }
+        }
+    }
+
+    fun addTodoTaskComment(taskId: String, message: String) {
+        if (taskId.isBlank() || message.trim().isBlank()) return
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.addTodoTaskComment(taskId, message)
+                .onSuccess {
+                    reloadAfterTodoMutation(selectedTodoId = taskId, notice = "Komentar je dodan.")
+                }
+                .onFailure { error ->
+                    state = state.copy(isLoading = false, error = error.message ?: "Ne mogu dodati komentar.")
                 }
         }
     }
@@ -2842,7 +2970,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     }
     val openMobileRecord: (MobileRecord) -> Unit = { record ->
         val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
-            record.kind in setOf("work_order", "work_order_execution", "work_order_due", "todo_task") && (
+            record.kind in setOf("work_order", "work_order_execution", "work_order_due") && (
                 workOrder.id == record.relatedId ||
                     workOrder.id == record.id.removePrefix("work-order:")
                     || workOrder.id == record.id.removePrefix("work-order-due:")
@@ -2926,6 +3054,22 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onDownloadTrainingDocument = { record, document ->
                             viewModel.downloadPeopleTrainingDocument(context.applicationContext, record, document)
                         },
+                        onCreateTodoTask = viewModel::createTodoTask,
+                        onUpdateTodoTask = viewModel::updateTodoTask,
+                        onAddTodoTaskComment = viewModel::addTodoTaskComment,
+                    )
+                } else if (selectedRecord.kind == "todo_task") {
+                    TodoTaskDetailScreen(
+                        record = selectedRecord,
+                        statusOptions = state.data.todoTaskStatuses.ifEmpty { fallbackTodoTaskStatusOptions },
+                        priorityOptions = state.data.priorities,
+                        users = state.data.workOrderUsers,
+                        workOrders = state.workOrders,
+                        isLoading = state.isLoading,
+                        onBack = { viewModel.navigateBack() },
+                        onOpenWorkOrder = viewModel::selectWorkOrder,
+                        onUpdateTodoTask = viewModel::updateTodoTask,
+                        onAddTodoTaskComment = viewModel::addTodoTaskComment,
                     )
                 } else {
                     MobileRecordDetailScreen(
@@ -5313,6 +5457,562 @@ private fun fieldInquiryStatusLabel(status: String): String {
 
 private fun fieldInquiryId(record: MobileRecord): String =
     record.id.removePrefix("field-inquiry:").ifBlank { record.id }
+
+private fun todoTaskStatusValue(record: MobileRecord): String =
+    record.meta["statusValue"].orEmpty().ifBlank { record.status }.trim().lowercase(Locale.getDefault()).ifBlank { "open" }
+
+private fun todoTaskStatusLabel(status: String, options: List<OptionItem>): String =
+    options.firstOrNull { it.value == status }?.label ?: fallbackTodoTaskStatusOptions.firstOrNull { it.value == status }?.label ?: status
+
+private fun todoTaskStatusAccent(status: String): Color = when (status) {
+    "done" -> Color(0xFF16A34A)
+    "in_progress" -> Color(0xFF2563EB)
+    "waiting" -> Color(0xFFB45309)
+    else -> Color(0xFF64748B)
+}
+
+private fun todoTaskPriorityAccent(priority: String): Color = when (priority.trim().lowercase(Locale.getDefault())) {
+    "urgent" -> Color(0xFFDC2626)
+    "high" -> Color(0xFFEA580C)
+    "niski prioritet" -> Color(0xFF0891B2)
+    "bez prioriteta" -> Color(0xFF64748B)
+    else -> Color(0xFF2563EB)
+}
+
+private fun todoTaskParticipantText(record: MobileRecord): String =
+    listOf(
+        record.meta["assignedToLabel"].orEmpty().takeIf { it.isNotBlank() }?.let { "Nositelj: $it" }.orEmpty(),
+        record.meta["invitedUserLabels"].orEmpty().takeIf { it.isNotBlank() }?.let { "Pozvani: $it" }.orEmpty(),
+    ).filter { it.isNotBlank() }.joinToString(" · ")
+
+private fun todoTaskMatchesCurrentUser(record: MobileRecord, user: SafeNexusUser?): Boolean {
+    val haystack = listOf(
+        record.meta["assignedToLabel"].orEmpty(),
+        record.meta["createdByLabel"].orEmpty(),
+        record.meta["invitedUserLabels"].orEmpty(),
+        record.meta["assignedToUserId"].orEmpty(),
+        record.meta["createdByUserId"].orEmpty(),
+        record.meta["invitedUserIds"].orEmpty(),
+    ).joinToString(" ").normalizedPickerText()
+    val userTokens = listOf(user?.displayName.orEmpty(), user?.email.orEmpty())
+        .map { it.normalizedPickerText() }
+        .filter { it.isNotBlank() }
+    return userTokens.any { token -> haystack.contains(token) }
+}
+
+private fun filteredTodoTasks(
+    records: List<MobileRecord>,
+    scope: TodoTaskScope,
+    user: SafeNexusUser?,
+): List<MobileRecord> {
+    val today = LocalDate.now()
+    return records.filter { record ->
+        val status = todoTaskStatusValue(record)
+        when (scope) {
+            TodoTaskScope.Mine -> todoTaskMatchesCurrentUser(record, user)
+            TodoTaskScope.Invited -> {
+                val invited = record.meta["invitedUserLabels"].orEmpty() + " " + record.meta["invitedUserIds"].orEmpty()
+                val userTokens = listOf(user?.displayName.orEmpty(), user?.email.orEmpty())
+                    .map { it.normalizedPickerText() }
+                    .filter { it.isNotBlank() }
+                userTokens.any { invited.normalizedPickerText().contains(it) }
+            }
+            TodoTaskScope.WorkOrders -> record.relatedId.isNotBlank() || record.meta["workOrderNumber"].orEmpty().isNotBlank()
+            TodoTaskScope.Overdue -> status != "done" && record.parsedDate?.isBefore(today) == true
+            TodoTaskScope.All -> true
+        }
+    }.sortedWith(
+        compareBy<MobileRecord> { if (todoTaskStatusValue(it) == "done") 1 else 0 }
+            .thenBy { it.parsedDate ?: LocalDate.MAX }
+            .thenByDescending { it.meta["updatedAt"].orEmpty() },
+    )
+}
+
+@Composable
+private fun TodoTasksContent(
+    records: List<MobileRecord>,
+    statusOptions: List<OptionItem>,
+    priorityOptions: List<OptionItem>,
+    users: List<WorkOrderUserOption>,
+    workOrders: List<WorkOrder>,
+    currentUser: SafeNexusUser?,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+    onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
+) {
+    var scope by remember { mutableStateOf(TodoTaskScope.Mine) }
+    var createOpen by remember { mutableStateOf(false) }
+    val options = statusOptions.ifEmpty { fallbackTodoTaskStatusOptions }
+    val visible = remember(records, scope, currentUser) { filteredTodoTasks(records, scope, currentUser) }
+    val openCount = remember(records) { records.count { todoTaskStatusValue(it) != "done" } }
+    val overdueCount = remember(records) {
+        records.count { todoTaskStatusValue(it) != "done" && it.parsedDate?.isBefore(LocalDate.now()) == true }
+    }
+
+    if (createOpen) {
+        TodoTaskEditorDialog(
+            statusOptions = options,
+            priorityOptions = priorityOptions,
+            users = users,
+            workOrders = workOrders,
+            onDismiss = { createOpen = false },
+            onSave = { title, message, status, priority, dueDate, assignedTo, invited, workOrder ->
+                val linked = workOrders.firstOrNull { it.id == workOrder }
+                onCreateTodoTask(
+                    title,
+                    message,
+                    status,
+                    priority,
+                    dueDate,
+                    assignedTo,
+                    invited,
+                    workOrder,
+                    linked?.companyId.orEmpty(),
+                    linked?.locationId.orEmpty(),
+                )
+                createOpen = false
+            },
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                title = "ToDo",
+                subtitle = "$openCount otvoreno · $overdueCount kasni · ${records.size} ukupno",
+                icon = Icons.Rounded.ListAlt,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                TodoStatTile("Otvoreno", openCount, Color(0xFF2563EB), Modifier.weight(1f))
+                TodoStatTile("Kasni", overdueCount, Color(0xFFDC2626), Modifier.weight(1f))
+                TodoStatTile("Moje", filteredTodoTasks(records, TodoTaskScope.Mine, currentUser).size, Color(0xFF7C3AED), Modifier.weight(1f))
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TodoTaskScope.entries.forEach { item ->
+                    FilterChip(
+                        selected = scope == item,
+                        onClick = { scope = item },
+                        label = { Text("${item.label} ${filteredTodoTasks(records, item, currentUser).size}") },
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = { createOpen = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Novi ToDo")
+            }
+            if (visible.isEmpty()) {
+                Text("Nema ToDo tema za ovaj filter.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f))
+            } else {
+                visible.forEach { record ->
+                    TodoTaskCard(
+                        record = record,
+                        statusOptions = options,
+                        onClick = { onOpenRecord(record) },
+                        onOpenWorkOrder = {
+                            val linked = workOrders.firstOrNull { it.id == record.relatedId }
+                            if (linked != null) onOpenWorkOrder(linked)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoStatTile(label: String, value: Int, color: Color, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = color.copy(alpha = 0.11f),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(value.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = color)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f))
+        }
+    }
+}
+
+@Composable
+private fun TodoTaskCard(
+    record: MobileRecord,
+    statusOptions: List<OptionItem>,
+    onClick: () -> Unit,
+    onOpenWorkOrder: () -> Unit,
+) {
+    val status = todoTaskStatusValue(record)
+    val accent = todoTaskStatusAccent(status)
+    val priority = record.meta["priority"].orEmpty().ifBlank { "Normal" }
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = accent.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(shape = CircleShape, color = accent.copy(alpha = 0.14f)) {
+                    Icon(Icons.Rounded.ListAlt, contentDescription = null, tint = accent, modifier = Modifier.padding(9.dp).size(22.dp))
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(record.title.ifBlank { "ToDo" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    if (record.subtitle.isNotBlank()) {
+                        Text(record.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.14f)) {
+                    Text(
+                        todoTaskStatusLabel(status, statusOptions),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        color = accent,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            val note = record.meta["note"].orEmpty()
+            if (note.isNotBlank()) {
+                Text(note, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                TodoMiniPill(priority, todoTaskPriorityAccent(priority))
+                record.date.takeIf { it.isNotBlank() }?.let { TodoMiniPill(formatDateLabel(it).ifBlank { it.take(10) }, Color(0xFF475569)) }
+                record.meta["workOrderNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { TodoMiniPill("RN $it", Color(0xFF2563EB)) }
+                val commentCount = record.meta["commentCount"].orEmpty().toIntOrNull() ?: 0
+                if (commentCount > 0) TodoMiniPill("$commentCount komentara", Color(0xFF7C3AED))
+            }
+            val participants = todoTaskParticipantText(record)
+            if (participants.isNotBlank()) {
+                Text(participants, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            if (record.relatedId.isNotBlank()) {
+                OutlinedButton(onClick = onOpenWorkOrder, shape = RoundedCornerShape(14.dp)) {
+                    Icon(Icons.Rounded.Work, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Otvori RN")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoMiniPill(label: String, color: Color) {
+    Surface(shape = RoundedCornerShape(999.dp), color = color.copy(alpha = 0.11f)) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun TodoTaskEditorDialog(
+    statusOptions: List<OptionItem>,
+    priorityOptions: List<OptionItem>,
+    users: List<WorkOrderUserOption>,
+    workOrders: List<WorkOrder>,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, String, String, String, List<String>, String) -> Unit,
+) {
+    var title by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf(statusOptions.firstOrNull()?.value ?: "open") }
+    var priority by remember { mutableStateOf(priorityOptions.firstOrNull { it.value == "Normal" }?.value ?: "Normal") }
+    var dueDate by remember { mutableStateOf("") }
+    var assignedToUserId by remember { mutableStateOf("") }
+    var invitedUserIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var workOrderId by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = { onSave(title, message, status, priority, dueDate, assignedToUserId, invitedUserIds, workOrderId) },
+                enabled = title.trim().isNotBlank(),
+            ) { Text("Spremi") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Odustani") }
+        },
+        title = { Text("Novi ToDo", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Naslov") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                OutlinedTextField(
+                    value = message,
+                    onValueChange = { message = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Poruka") },
+                    minLines = 3,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                WorkOrderDatePickerField("Rok", dueDate, { dueDate = it }, true)
+                TodoOptionFlow("Status", statusOptions, status) { status = it }
+                TodoOptionFlow("Prioritet", priorityOptions.ifEmpty { listOf(OptionItem("Normal", "Normal")) }, priority) { priority = it }
+                TodoSingleUserPicker("Nositelj", users, assignedToUserId) { assignedToUserId = it }
+                TodoMultiUserPicker("Pozvani", users, invitedUserIds) { invitedUserIds = it }
+                TodoWorkOrderPicker(workOrders, workOrderId) { workOrderId = it }
+            }
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(14.dp),
+    )
+}
+
+@Composable
+private fun TodoTaskDetailScreen(
+    record: MobileRecord,
+    statusOptions: List<OptionItem>,
+    priorityOptions: List<OptionItem>,
+    users: List<WorkOrderUserOption>,
+    workOrders: List<WorkOrder>,
+    isLoading: Boolean,
+    onBack: () -> Unit,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+    onUpdateTodoTask: (String, String?, String?, String?, String?, List<String>?) -> Unit,
+    onAddTodoTaskComment: (String, String) -> Unit,
+) {
+    var comment by remember(record.id) { mutableStateOf("") }
+    val status = todoTaskStatusValue(record)
+    val priority = record.meta["priority"].orEmpty().ifBlank { "Normal" }
+    val linkedWorkOrder = workOrders.firstOrNull { it.id == record.relatedId }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("ToDo", fontWeight = FontWeight.Black)
+                        Text(record.title.ifBlank { "Tema" }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Natrag")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.padding(padding).fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(26.dp),
+                    colors = CardDefaults.cardColors(containerColor = todoTaskStatusAccent(status).copy(alpha = 0.08f)),
+                    border = BorderStroke(1.dp, todoTaskStatusAccent(status).copy(alpha = 0.18f)),
+                ) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                        Text(record.title.ifBlank { "ToDo tema" }, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                        if (record.meta["note"].orEmpty().isNotBlank()) {
+                            Text(record.meta["note"].orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TodoMiniPill(todoTaskStatusLabel(status, statusOptions), todoTaskStatusAccent(status))
+                            TodoMiniPill(priority, todoTaskPriorityAccent(priority))
+                            record.date.takeIf { it.isNotBlank() }?.let { TodoMiniPill(formatDateLabel(it).ifBlank { it.take(10) }, Color(0xFF475569)) }
+                            record.meta["workOrderNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { TodoMiniPill("RN $it", Color(0xFF2563EB)) }
+                        }
+                        linkedWorkOrder?.let {
+                            OutlinedButton(onClick = { onOpenWorkOrder(it) }, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Rounded.Work, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Otvori povezani RN")
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Upravljanje", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        TodoOptionFlow("Status", statusOptions, status) { next ->
+                            onUpdateTodoTask(record.id, next, null, null, null, null)
+                        }
+                        TodoOptionFlow("Prioritet", priorityOptions.ifEmpty { listOf(OptionItem("Normal", "Normal")) }, priority) { next ->
+                            onUpdateTodoTask(record.id, null, next, null, null, null)
+                        }
+                        WorkOrderDatePickerField("Rok", record.date, { next ->
+                            onUpdateTodoTask(record.id, null, null, next, null, null)
+                        }, !isLoading)
+                        TodoSingleUserPicker("Nositelj", users, record.meta["assignedToUserId"].orEmpty()) { next ->
+                            onUpdateTodoTask(record.id, null, null, null, next, null)
+                        }
+                    }
+                }
+            }
+            item {
+                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Sudionici", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        DetailRow(Icons.Rounded.Person, "Nositelj", record.meta["assignedToLabel"].orEmpty().ifBlank { "Nije dodijeljeno" })
+                        DetailRow(Icons.Rounded.Groups, "Pozvani", record.meta["invitedUserLabels"].orEmpty().ifBlank { "Nema pozvanih" })
+                        DetailRow(Icons.Rounded.Person, "Otvorio", record.meta["createdByLabel"].orEmpty().ifBlank { "Nije upisano" })
+                    }
+                }
+            }
+            item {
+                Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Komentari", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        val preview = record.meta["commentsPreview"].orEmpty()
+                        if (preview.isBlank()) {
+                            Text("Nema komentara.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                        } else {
+                            preview.lines().filter { it.isNotBlank() }.forEach { line ->
+                                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)) {
+                                    Text(line, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = comment,
+                            onValueChange = { comment = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Dodaj komentar") },
+                            minLines = 2,
+                            maxLines = 4,
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        Button(
+                            onClick = {
+                                onAddTodoTaskComment(record.id, comment)
+                                comment = ""
+                            },
+                            enabled = comment.trim().isNotBlank() && !isLoading,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Text("Pošalji komentar")
+                        }
+                    }
+                }
+            }
+            item {
+                AnimatedVisibility(isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoOptionFlow(
+    title: String,
+    options: List<OptionItem>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { option ->
+                FilterChip(
+                    selected = selected == option.value,
+                    onClick = { onSelect(option.value) },
+                    label = { Text(option.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoSingleUserPicker(
+    title: String,
+    users: List<WorkOrderUserOption>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = selected.isBlank(),
+                onClick = { onSelect("") },
+                label = { Text("Bez nositelja") },
+            )
+            users.take(16).forEach { user ->
+                FilterChip(
+                    selected = selected == user.id,
+                    onClick = { onSelect(user.id) },
+                    label = { Text(user.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoMultiUserPicker(
+    title: String,
+    users: List<WorkOrderUserOption>,
+    selected: List<String>,
+    onSelect: (List<String>) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            users.take(18).forEach { user ->
+                FilterChip(
+                    selected = user.id in selected,
+                    onClick = { onSelect(selected.toggleValue(user.id)) },
+                    label = { Text(user.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoWorkOrderPicker(
+    workOrders: List<WorkOrder>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Povezani RN", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = selected.isBlank(), onClick = { onSelect("") }, label = { Text("Bez RN") })
+            workOrders.take(20).forEach { workOrder ->
+                FilterChip(
+                    selected = selected == workOrder.id,
+                    onClick = { onSelect(workOrder.id) },
+                    label = { Text(workOrder.displayNumber, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun FieldInquiriesContent(
@@ -9623,6 +10323,9 @@ private fun WorkOrdersScreen(
     onLoadMoreCompanyLocations: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
     onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
+    onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
+    onUpdateTodoTask: (String, String?, String?, String?, String?, List<String>?) -> Unit,
+    onAddTodoTaskComment: (String, String) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
     val filtered = remember(state.workOrders, normalizedQuery, state.filter, state.user?.displayName, state.user?.email) {
@@ -9873,12 +10576,16 @@ private fun WorkOrdersScreen(
                             MoreOverviewHero(state.data)
                         }
                         item {
-                            RecordsContent(
-                                title = "ToDo",
+                            TodoTasksContent(
                                 records = filteredTodoTasks,
-                                emptyText = "Nema ToDo zadataka za prikaz.",
-                                icon = Icons.Rounded.ListAlt,
+                                statusOptions = state.data.todoTaskStatuses.ifEmpty { fallbackTodoTaskStatusOptions },
+                                priorityOptions = state.data.priorities,
+                                users = state.data.workOrderUsers,
+                                workOrders = state.workOrders,
+                                currentUser = state.user,
                                 onOpenRecord = onOpenRecord,
+                                onOpenWorkOrder = onOpenWorkOrder,
+                                onCreateTodoTask = onCreateTodoTask,
                             )
                         }
                         item {
@@ -9989,12 +10696,16 @@ private fun WorkOrdersScreen(
                         }
                     }
                     MoreSectionFocus.Todo -> item {
-                        RecordsContent(
-                            title = "ToDo",
+                        TodoTasksContent(
                             records = filteredTodoTasks,
-                            emptyText = "Nema ToDo zadataka za prikaz.",
-                            icon = Icons.Rounded.ListAlt,
+                            statusOptions = state.data.todoTaskStatuses.ifEmpty { fallbackTodoTaskStatusOptions },
+                            priorityOptions = state.data.priorities,
+                            users = state.data.workOrderUsers,
+                            workOrders = state.workOrders,
+                            currentUser = state.user,
                             onOpenRecord = onOpenRecord,
+                            onOpenWorkOrder = onOpenWorkOrder,
+                            onCreateTodoTask = onCreateTodoTask,
                         )
                     }
                     MoreSectionFocus.FieldInquiries -> item {

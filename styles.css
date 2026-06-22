@@ -14334,12 +14334,6 @@ body.is-reminder-editor-open {
   color: #566074;
 }
 
-.todo-task-status-select[data-status="next-week-job"] {
-  border-color: rgba(96, 165, 250, 0.72);
-  background: rgba(219, 234, 254, 0.98);
-  color: #1d4ed8;
-}
-
 .todo-task-status-select[data-status="in-progress"] {
   border-color: rgba(156, 189, 240, 0.72);
   background: rgba(231, 241, 255, 0.98);
@@ -14864,12 +14858,6 @@ body.is-todo-editor-open {
   background: rgba(236, 240, 247, 0.96);
   border-color: rgba(186, 197, 219, 0.56);
   color: #566074;
-}
-
-.todo-task-status-badge.is-next_week_job {
-  background: rgba(219, 234, 254, 0.96);
-  border-color: rgba(96, 165, 250, 0.52);
-  color: #1d4ed8;
 }
 
 .todo-task-status-badge.is-in_progress {

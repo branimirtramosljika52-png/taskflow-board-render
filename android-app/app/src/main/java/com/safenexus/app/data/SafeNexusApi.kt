@@ -77,6 +77,7 @@ class SafeNexusApi(
                 locations = json.optJSONArray("locations").toRecords(),
                 workOrderStatuses = json.optJSONObject("options")?.optJSONArray("workOrderStatuses").toOptions(),
                 priorities = json.optJSONObject("options")?.optJSONArray("priorities").toOptions(),
+                todoTaskStatuses = json.optJSONObject("options")?.optJSONArray("todoTaskStatuses").toOptions(),
                 workOrderCompanies = json.optJSONObject("options")?.optJSONArray("workOrderCompanies").toWorkOrderCompanies(),
                 workOrderLocations = json.optJSONObject("options")?.optJSONArray("workOrderLocations").toWorkOrderLocations(),
                 workOrderUsers = json.optJSONObject("options")?.optJSONArray("workOrderUsers").toWorkOrderUsers(),
@@ -357,6 +358,68 @@ class SafeNexusApi(
                 .toString()
             val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
             (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
+        }
+    }
+
+    suspend fun createTodoTask(
+        title: String,
+        message: String,
+        status: String,
+        priority: String,
+        dueDate: String,
+        assignedToUserId: String,
+        invitedUserIds: List<String>,
+        workOrderId: String,
+        companyId: String,
+        locationId: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("title", title.trim())
+                .put("message", message.trim())
+                .put("status", status.trim().ifBlank { "open" })
+                .put("priority", priority.trim().ifBlank { "Normal" })
+                .put("dueDate", dueDate.trim())
+                .put("assignedToUserId", assignedToUserId.trim())
+                .put("invitedUserIds", JSONArray(invitedUserIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()))
+                .put("workOrderId", workOrderId.trim())
+                .put("companyId", companyId.trim())
+                .put("locationId", locationId.trim())
+                .toString()
+            request("/api/todo-tasks", method = "POST", body = payload)
+            Unit
+        }
+    }
+
+    suspend fun updateTodoTask(
+        taskId: String,
+        status: String? = null,
+        priority: String? = null,
+        dueDate: String? = null,
+        assignedToUserId: String? = null,
+        invitedUserIds: List<String>? = null,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+            status?.let { payload.put("status", it.trim()) }
+            priority?.let { payload.put("priority", it.trim()) }
+            dueDate?.let { payload.put("dueDate", it.trim()) }
+            assignedToUserId?.let { payload.put("assignedToUserId", it.trim()) }
+            invitedUserIds?.let { values ->
+                payload.put("invitedUserIds", JSONArray(values.map { it.trim() }.filter { it.isNotBlank() }.distinct()))
+            }
+            request("/api/todo-tasks/${taskId.pathSegment()}", method = "PATCH", body = payload.toString())
+            Unit
+        }
+    }
+
+    suspend fun addTodoTaskComment(taskId: String, message: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("message", message.trim())
+                .toString()
+            request("/api/todo-tasks/${taskId.pathSegment()}/comments", method = "POST", body = payload)
+            Unit
         }
     }
 
