@@ -90,6 +90,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -202,6 +203,7 @@ import com.safenexus.app.data.BootstrapData
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
 import com.safenexus.app.data.DownloadedDocument
+import com.safenexus.app.data.FieldInquiryDocumentDraft
 import com.safenexus.app.data.FieldInquiryDraft
 import com.safenexus.app.data.IsznrFcMeasurementDraft
 import com.safenexus.app.data.IsznrFcSpaceDraft
@@ -392,6 +394,8 @@ enum class WorkOrderDocumentCategory(val value: String, val label: String) {
 private const val WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12L * 1024L * 1024L
 private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
 private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES = 5
+private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
+private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILES = 8
 private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
 private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES = 12
 
@@ -453,6 +457,7 @@ private val workOrderStatusOptions = listOf(
 
 private val fieldInquiryStatusOptions = listOf(
     "inquiry" to "Upit",
+    "next_week" to "Idući tjedan",
     "tentative" to "Tentativno",
     "confirmed" to "Potvrđeno",
     "rejected" to "Odbijeno",
@@ -3911,7 +3916,7 @@ private fun WorkOrderCreateScreen(
     val tagSuggestions = remember(data.workOrders) {
         (
             data.workOrders.flatMap { it.tags } +
-                listOf("Teren", "Papir", "Hitno", "Next Week Job")
+                listOf("Teren", "Papir", "Hitno")
             )
             .map { it.trim().trim('#') }
             .filter { it.isNotBlank() }
@@ -5164,8 +5169,10 @@ private fun WorkOrderMultiSelectChips(
     }
 }
 
-private fun fieldInquiryStatusLabel(status: String): String =
-    fieldInquiryStatusOptions.firstOrNull { it.first == status }?.second ?: status.ifBlank { "Upit" }
+private fun fieldInquiryStatusLabel(status: String): String {
+    val normalized = if (status == "next_week_job") "next_week" else status
+    return fieldInquiryStatusOptions.firstOrNull { it.first == normalized }?.second ?: normalized.ifBlank { "Upit" }
+}
 
 private fun fieldInquiryId(record: MobileRecord): String =
     record.id.removePrefix("field-inquiry:").ifBlank { record.id }
@@ -5185,8 +5192,44 @@ private fun FieldInquiriesContent(
             date != null && !date.isBefore(today) && !date.isAfter(today.plusDays(7))
         }
     }
+    val linkedCount = remember(records) {
+        records.count { it.meta["workOrderNumber"].orEmpty().isNotBlank() }
+    }
     val sortedRecords = remember(records) {
         records.sortedWith(compareBy<MobileRecord> { it.parsedDate ?: LocalDate.MAX }.thenBy { it.title })
+    }
+    val groups = remember(sortedRecords, today) {
+        val closedStatuses = setOf("rejected", "converted")
+        val nextWeekStatuses = setOf("next_week", "next_week_job")
+        val openRecords = sortedRecords.filter { it.status !in closedStatuses }
+        listOf(
+            Triple(
+                "Bez datuma",
+                "Dogovori koje treba smjestiti u plan.",
+                openRecords.filter { it.parsedDate == null },
+            ),
+            Triple(
+                "Idući tjedan",
+                "Najbliži upiti i dogovori za teren.",
+                openRecords.filter { record ->
+                    record.status in nextWeekStatuses ||
+                        record.parsedDate?.let { !it.isBefore(today) && !it.isAfter(today.plusDays(7)) } == true
+                },
+            ),
+            Triple(
+                "Zakazano",
+                "Termini koji već imaju kasniji datum.",
+                openRecords.filter { record ->
+                    record.status !in nextWeekStatuses &&
+                        record.parsedDate?.isAfter(today.plusDays(7)) == true
+                },
+            ),
+            Triple(
+                "Zatvoreno",
+                "Pretvoreno u RN ili odbijeno.",
+                sortedRecords.filter { it.status in closedStatuses },
+            ),
+        ).filter { it.third.isNotEmpty() }
     }
 
     Card(
@@ -5203,7 +5246,7 @@ private fun FieldInquiriesContent(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Plan terena", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                     Text(
-                        "${records.size} upita · $upcoming u idućih 7 dana",
+                        "${records.size} upita · $upcoming u idućih 7 dana · $linkedCount povezano s RN",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -5221,15 +5264,62 @@ private fun FieldInquiriesContent(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             } else {
-                sortedRecords.forEach { record ->
-                    FieldInquiryCard(
-                        record = record,
-                        onOpenRecord = { onOpenRecord(record) },
-                        onEdit = { onEditInquiry(record) },
-                        onConvert = { onConvertInquiry(record) },
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = {}, label = { Text("Bez datuma ${sortedRecords.count { it.parsedDate == null }}") })
+                    AssistChip(onClick = {}, label = { Text("Idući tjedan $upcoming") })
+                    AssistChip(onClick = {}, label = { Text("RN $linkedCount") })
+                }
+                groups.forEach { (title, description, groupRecords) ->
+                    FieldInquiryGroupSection(
+                        title = title,
+                        description = description,
+                        records = groupRecords,
+                        onOpenRecord = onOpenRecord,
+                        onEditInquiry = onEditInquiry,
+                        onConvertInquiry = onConvertInquiry,
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FieldInquiryGroupSection(
+    title: String,
+    description: String,
+    records: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onEditInquiry: (MobileRecord) -> Unit,
+    onConvertInquiry: (MobileRecord) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text(description, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
+            }
+            Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
+                Text(
+                    records.size.toString(),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        records.forEach { record ->
+            FieldInquiryCard(
+                record = record,
+                onOpenRecord = { onOpenRecord(record) },
+                onEdit = { onEditInquiry(record) },
+                onConvert = { onConvertInquiry(record) },
+            )
         }
     }
 }
@@ -5292,6 +5382,9 @@ private fun FieldInquiryCard(
                 "Vozilo" to record.meta["vehicleLabel"].orEmpty(),
                 "Kontakt" to listOf(record.meta["contactName"].orEmpty(), record.meta["contactPhone"].orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
                 "Usluga" to record.meta["serviceLine"].orEmpty(),
+                "Dokumenti" to record.meta["documentNames"].orEmpty().ifBlank {
+                    record.meta["documentCount"].orEmpty().takeIf { it.isNotBlank() && it != "0" }?.let { "$it priloga" }.orEmpty()
+                },
             ).filter { it.second.isNotBlank() }
 
             if (details.isNotEmpty()) {
@@ -5336,6 +5429,28 @@ private fun FieldInquiryEditorDialog(
     onDismiss: () -> Unit,
     onSave: (FieldInquiryDraft) -> Unit,
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var documentDraft by remember(record?.id) { mutableStateOf<List<FieldInquiryDocumentDraft>>(emptyList()) }
+    var documentDraftChanged by remember(record?.id) { mutableStateOf(false) }
+    var documentError by remember(record?.id) { mutableStateOf("") }
+    var documentsLoading by remember(record?.id) { mutableStateOf(false) }
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            documentsLoading = true
+            documentError = ""
+            runCatching {
+                buildFieldInquiryAttachmentFiles(context, uris, documentDraft.size)
+            }.onSuccess { next ->
+                documentDraft = documentDraft + next
+                documentDraftChanged = true
+            }.onFailure { error ->
+                documentError = error.message ?: "Ne mogu učitati dokumente."
+            }
+            documentsLoading = false
+        }
+    }
     val initialAssigneeLabels = remember(record?.id) {
         record?.meta?.get("assignedUserLabels").orEmpty()
             .split(',')
@@ -5366,7 +5481,14 @@ private fun FieldInquiryEditorDialog(
     }
 
     var title by remember(record?.id) { mutableStateOf(record?.title.orEmpty()) }
-    var status by remember(record?.id) { mutableStateOf(record?.status?.ifBlank { "inquiry" } ?: "inquiry") }
+    var status by remember(record?.id) {
+        mutableStateOf(
+            record?.status
+                ?.ifBlank { "inquiry" }
+                ?.let { if (it == "next_week_job") "next_week" else it }
+                ?: "inquiry",
+        )
+    }
     var plannedDate by remember(record?.id) { mutableStateOf(record?.date?.take(10).orEmpty().ifBlank { LocalDate.now().toString() }) }
     var timeFrom by remember(record?.id) { mutableStateOf(record?.meta?.get("timeFrom").orEmpty()) }
     var timeTo by remember(record?.id) { mutableStateOf(record?.meta?.get("timeTo").orEmpty()) }
@@ -5529,7 +5651,99 @@ private fun FieldInquiryEditorDialog(
                 OutlinedTextField(contactName, { contactName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Kontakt") }, singleLine = true, shape = RoundedCornerShape(16.dp))
                 OutlinedTextField(contactPhone, { contactPhone = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Telefon") }, singleLine = true, shape = RoundedCornerShape(16.dp))
                 OutlinedTextField(serviceLine, { serviceLine = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Usluga / tema") }, singleLine = true, shape = RoundedCornerShape(16.dp))
-                OutlinedTextField(note, { note = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 3, maxLines = 5, shape = RoundedCornerShape(16.dp))
+                VoiceTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = "Opis / napomena",
+                    placeholder = "Unesi ili izdiktiraj dogovor, napomenu, što treba pripremiti...",
+                    enabled = !isLoading,
+                    minLines = 3,
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Dokumenti", fontWeight = FontWeight.Black)
+                                Text(
+                                    "PDF, slike, mailovi ili drugi prilozi uz plan.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { documentPicker.launch(arrayOf("*/*")) },
+                                enabled = !isLoading && !documentsLoading && documentDraft.size < FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILES,
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Dodaj")
+                            }
+                        }
+
+                        val existingCount = record?.meta?.get("documentCount").orEmpty()
+                        val existingNames = record?.meta?.get("documentNames").orEmpty()
+                        if (!documentDraftChanged && existingCount.isNotBlank() && existingCount != "0") {
+                            Text(
+                                listOf("$existingCount spremljeno", existingNames).filter { it.isNotBlank() }.joinToString(" · "),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        if (documentDraft.isEmpty()) {
+                            Text(
+                                if (record == null) "Nema dodanih dokumenata." else "Dodaj novi dokument ili ostavi postojeće bez promjene.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            )
+                        } else {
+                            documentDraft.forEach { document ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(document.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "${document.fileType.ifBlank { "datoteka" }} · ${formatFileSizeLabel(document.fileSize)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            documentDraft = documentDraft.filterNot { it.id == document.id }
+                                            documentDraftChanged = true
+                                        },
+                                        enabled = !isLoading,
+                                    ) {
+                                        Icon(Icons.Rounded.Delete, contentDescription = "Ukloni dokument", tint = Color(0xFFDC2626))
+                                    }
+                                }
+                            }
+                        }
+                        if (documentsLoading) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                        if (documentError.isNotBlank()) {
+                            Text(documentError, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -5555,6 +5769,11 @@ private fun FieldInquiryEditorDialog(
                             assignedUserIds = selectedAssigneeIds,
                             assignedUserLabels = selectedAssigneeIds.mapNotNull { labelById[it] },
                             syncWorkOrderExecutionDate = true,
+                            documents = when {
+                                record == null -> documentDraft
+                                documentDraftChanged -> documentDraft
+                                else -> null
+                            },
                         ),
                     )
                 },
@@ -10036,7 +10255,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Home", "Istekli rokovi i nadolazeći teren", AppSection.Operations, Icons.Rounded.Home),
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
-            MainMenuShortcut("ToDo", "Zadaci, teme i Next Week Job status", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Todo),
+            MainMenuShortcut("ToDo", "Zadaci i teme", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Todo),
             MainMenuShortcut("Plan terena", "Upiti i dogovori prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
             MainMenuShortcut("Ponude", "Pregled poslanih i primljenih ponuda", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Offers),
             MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business, MoreSectionFocus.Companies),
@@ -27457,6 +27676,35 @@ private suspend fun buildWorkOrderDocumentationAiFiles(
             type = mimeType,
             size = bytes.size.toLong(),
             contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
+        )
+    }
+}
+
+private suspend fun buildFieldInquiryAttachmentFiles(
+    context: Context,
+    uris: List<Uri>,
+    existingCount: Int,
+): List<FieldInquiryDocumentDraft> = withContext(Dispatchers.IO) {
+    val availableSlots = (FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
+    if (availableSlots <= 0) {
+        error("Možeš dodati najviše $FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILES dokumenata u plan terena.")
+    }
+    uris.take(availableSlots).mapIndexed { index, uri ->
+        val bytes = readUriBytes(context, uri)
+        val name = resolveUriDisplayName(context, uri, existingCount + index, WorkOrderDocumentInputMode.File)
+        if (bytes.size.toLong() > FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILE_BYTES) {
+            error("Datoteka $name mora biti manja od 8 MB.")
+        }
+        val mimeType = resolveUriMimeType(context, uri, name).ifBlank { "application/octet-stream" }
+        val fileName = name.withFallbackExtension(mimeType)
+        FieldInquiryDocumentDraft(
+            id = "mobile-field-inquiry-${System.currentTimeMillis()}-${existingCount + index}-${fileName.hashCode()}",
+            fileName = fileName,
+            fileType = mimeType,
+            fileSize = bytes.size.toLong(),
+            documentCategory = "field_plan",
+            description = "Plan terena",
+            dataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
         )
     }
 }

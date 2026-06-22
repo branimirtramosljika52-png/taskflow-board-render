@@ -5863,6 +5863,10 @@ const fieldInquiryContactNameInput = document.querySelector("#field-inquiry-cont
 const fieldInquiryContactPhoneInput = document.querySelector("#field-inquiry-contact-phone");
 const fieldInquiryServiceLineInput = document.querySelector("#field-inquiry-service-line");
 const fieldInquiryNoteInput = document.querySelector("#field-inquiry-note");
+const fieldInquiryNoteMicButton = document.querySelector("#field-inquiry-note-mic");
+const fieldInquiryDocumentFileInput = document.querySelector("#field-inquiry-document-file");
+const fieldInquiryDocumentAddButton = document.querySelector("#field-inquiry-document-add");
+const fieldInquiryDocumentList = document.querySelector("#field-inquiry-document-list");
 const fieldInquirySyncWorkOrderDateInput = document.querySelector("#field-inquiry-sync-rn-date");
 const fieldInquiryResetButton = document.querySelector("#field-inquiry-reset");
 const fieldInquiryConvertButton = document.querySelector("#field-inquiry-convert");
@@ -5870,6 +5874,7 @@ const fieldInquiryFeedback = document.querySelector("#field-inquiry-feedback");
 const fieldInquiryCount = document.querySelector("#field-inquiry-count");
 const fieldInquiryList = document.querySelector("#field-inquiry-list");
 const fieldInquiryEmpty = document.querySelector("#field-inquiry-empty");
+let fieldInquiryDocumentDraft = [];
 
 const companyForm = document.querySelector("#company-form");
 const companyError = document.querySelector("#company-error");
@@ -110399,62 +110404,38 @@ async function applyWorkOrderCalendarDropPayload(dragPayload, targetDate, laneTa
 function renderWorkOrderCalendarSidePanels({
   unscheduled = [],
   unassigned = [],
-  todoTasks = [],
   unscheduledMessage = "Povuci karticu na dan kako bi se upisao datum izvršenja.",
   unassignedMessage = "Dodijeli izvršitelje pa će se RN pojaviti u rasporedu.",
 } = {}) {
-  const hasTodoTasks = todoTasks.length > 0;
   const hasUnscheduled = unscheduled.length > 0;
   const hasUnassigned = unassigned.length > 0;
 
   if (workOrderCalendarSidepanels) {
-    workOrderCalendarSidepanels.hidden = !state.workOrderCalendar.showUnscheduled || (!hasTodoTasks && !hasUnscheduled && !hasUnassigned);
+    workOrderCalendarSidepanels.hidden = !state.workOrderCalendar.showUnscheduled || (!hasUnscheduled && !hasUnassigned);
   }
 
   if (workOrderCalendarUnscheduled) {
-    workOrderCalendarUnscheduled.hidden = (!hasTodoTasks && !hasUnscheduled) || !state.workOrderCalendar.showUnscheduled;
+    workOrderCalendarUnscheduled.hidden = !hasUnscheduled || !state.workOrderCalendar.showUnscheduled;
     workOrderCalendarUnscheduled.replaceChildren();
 
-    if ((hasTodoTasks || hasUnscheduled) && state.workOrderCalendar.showUnscheduled) {
-      if (hasTodoTasks) {
-        const todoHead = document.createElement("div");
-        todoHead.className = "work-order-calendar-unscheduled-head";
+    if (hasUnscheduled && state.workOrderCalendar.showUnscheduled) {
+      const head = document.createElement("div");
+      head.className = "work-order-calendar-unscheduled-head";
 
-        const todoLabel = document.createElement("strong");
-        todoLabel.textContent = "Upiti iz ToDo bez datuma";
+      const label = document.createElement("strong");
+      label.textContent = "Bez izvršenja";
 
-        const todoMeta = document.createElement("span");
-        todoMeta.textContent = "Otvori ToDo, dodaj datum i povezi RN kada postoji.";
-        todoHead.append(todoLabel, todoMeta);
+      const meta = document.createElement("span");
+      meta.textContent = unscheduledMessage;
+      head.append(label, meta);
 
-        const todoList = document.createElement("div");
-        todoList.className = "work-order-calendar-unscheduled-list";
-        todoTasks.forEach((task) => {
-          todoList.append(createTodoCalendarCard(task, { compact: true }));
-        });
+      const list = document.createElement("div");
+      list.className = "work-order-calendar-unscheduled-list";
+      unscheduled.forEach((workOrder) => {
+        list.append(createWorkOrderCalendarCard(workOrder));
+      });
 
-        workOrderCalendarUnscheduled.append(todoHead, todoList);
-      }
-
-      if (hasUnscheduled) {
-        const head = document.createElement("div");
-        head.className = "work-order-calendar-unscheduled-head";
-
-        const label = document.createElement("strong");
-        label.textContent = "Bez izvršenja";
-
-        const meta = document.createElement("span");
-        meta.textContent = unscheduledMessage;
-        head.append(label, meta);
-
-        const list = document.createElement("div");
-        list.className = "work-order-calendar-unscheduled-list";
-        unscheduled.forEach((workOrder) => {
-          list.append(createWorkOrderCalendarCard(workOrder));
-        });
-
-        workOrderCalendarUnscheduled.append(head, list);
-      }
+      workOrderCalendarUnscheduled.append(head, list);
     }
   }
 
@@ -110614,7 +110595,7 @@ function createWorkOrderCalendarPeriodicsStrip(items = []) {
   return wrap;
 }
 
-function createWorkOrderCalendarDayCell(day, todoTasks = [], periodicsItems = []) {
+function createWorkOrderCalendarDayCell(day, periodicsItems = []) {
   const cell = document.createElement("div");
   cell.className = "work-order-calendar-month-day";
   cell.classList.toggle("is-today", Boolean(day.isToday));
@@ -110644,7 +110625,6 @@ function createWorkOrderCalendarDayCell(day, todoTasks = [], periodicsItems = []
   const dayAbsenceEntries = getAbsenceEntriesForDate(day.key);
   dayMeta.textContent = [
     day.items.length === 0 ? "Bez RN" : `${day.items.length} RN`,
-    todoTasks.length > 0 ? `${todoTasks.length} ToDo` : "",
     periodicsItems.length > 0 ? `${periodicsItems.length} periodika` : "",
     dayAbsenceEntries.length > 0 ? `${dayAbsenceEntries.length} odsut.` : "",
   ].filter(Boolean).join(" · ");
@@ -110668,7 +110648,7 @@ function createWorkOrderCalendarDayCell(day, todoTasks = [], periodicsItems = []
     body.append(periodicsStrip);
   }
 
-  if (day.items.length === 0 && todoTasks.length === 0 && periodicsItems.length === 0) {
+  if (day.items.length === 0 && periodicsItems.length === 0) {
     const placeholder = document.createElement("span");
     placeholder.className = "work-order-calendar-cell-placeholder";
     placeholder.textContent = "Povuci ovdje";
@@ -110678,9 +110658,6 @@ function createWorkOrderCalendarDayCell(day, todoTasks = [], periodicsItems = []
       body.append(createWorkOrderCalendarExecutorGroup(day.items, { targetDate: day.key }));
     }
 
-    todoTasks.forEach((task) => {
-      body.append(createTodoCalendarCard(task, { compact: true }));
-    });
   }
 
   cell.append(top, body);
@@ -110690,9 +110667,6 @@ function createWorkOrderCalendarDayCell(day, todoTasks = [], periodicsItems = []
 function renderWorkOrderCalendarWeekMode(filtered) {
   const calendar = buildWorkOrderCalendarWeekColumns(filtered, state.workOrderCalendar.weekStart);
   const periodicsCalendarData = buildWorkOrderUnifiedPeriodicsCalendarData();
-  const nextWeekJobTasks = getNextWeekJobTodoTasks();
-  const nextWeekJobsByDate = getTodoTaskCalendarItemsByDate(nextWeekJobTasks);
-  const undatedNextWeekJobs = getUndatedTodoTaskCalendarItems(nextWeekJobTasks);
   const visibleDays = getVisibleCalendarWeekDays(
     calendar.days.map((day) => ({
       ...day,
@@ -110702,7 +110676,6 @@ function renderWorkOrderCalendarWeekMode(filtered) {
     state.workOrderCalendar.showWeekends,
   );
   const scheduledCount = visibleDays.reduce((sum, day) => sum + day.items.length, 0);
-  const scheduledTodoCount = visibleDays.reduce((sum, day) => sum + (nextWeekJobsByDate.get(day.key)?.length ?? 0), 0);
   const firstVisibleDay = visibleDays[0]?.key ?? calendar.weekStart;
   const lastVisibleDay = visibleDays[visibleDays.length - 1]?.key ?? firstVisibleDay;
   const periodicsByDate = buildWorkOrderUnifiedPeriodicsByDate(periodicsCalendarData, firstVisibleDay, lastVisibleDay);
@@ -110716,19 +110689,16 @@ function renderWorkOrderCalendarWeekMode(filtered) {
     workOrderCalendarMeta.textContent = [
       formatCalendarMonthLabel(firstVisibleDay),
       `${scheduledCount} raspoređenih`,
-      scheduledTodoCount > 0 ? `${scheduledTodoCount} Next Week Job upita` : "",
       periodicsCount > 0 ? `${periodicsCount} periodika` : "",
       `${calendar.unscheduled.length} bez izvršenja`,
-      undatedNextWeekJobs.length > 0 ? `${undatedNextWeekJobs.length} ToDo bez datuma` : "",
       `${calendar.unassigned.length} bez izvršitelja`,
     ].filter(Boolean).join(" · ");
   }
 
-  syncWorkOrderCalendarToolbar(calendar.unscheduled.length + undatedNextWeekJobs.length);
+  syncWorkOrderCalendarToolbar(calendar.unscheduled.length);
   renderWorkOrderCalendarSidePanels({
     unscheduled: calendar.unscheduled,
     unassigned: calendar.unassigned,
-    todoTasks: undatedNextWeekJobs,
   });
 
   const fragment = document.createDocumentFragment();
@@ -110745,7 +110715,6 @@ function renderWorkOrderCalendarWeekMode(filtered) {
   weekMeta.textContent = [
     formatCalendarMonthLabel(firstVisibleDay),
     scheduledCount === 1 ? "1 RN" : `${scheduledCount} RN`,
-    scheduledTodoCount > 0 ? `${scheduledTodoCount} Next Week Job upita` : "",
     periodicsCount > 0 ? `${periodicsCount} periodika` : "",
   ].filter(Boolean).join(" · ");
 
@@ -110759,7 +110728,6 @@ function renderWorkOrderCalendarWeekMode(filtered) {
   visibleDays.forEach((day) => {
     weekGrid.append(createWorkOrderCalendarDayCell(
       day,
-      nextWeekJobsByDate.get(day.key) ?? [],
       periodicsByDate.get(day.key) ?? [],
     ));
   });
@@ -110778,14 +110746,7 @@ function renderWorkOrderCalendarMonthMode(filtered) {
     calendar.monthStart,
     calendar.monthEnd,
   );
-  const nextWeekJobTasks = getNextWeekJobTodoTasks();
-  const nextWeekJobsByDate = getTodoTaskCalendarItemsByDate(nextWeekJobTasks);
-  const undatedNextWeekJobs = getUndatedTodoTaskCalendarItems(nextWeekJobTasks);
   const scheduledCount = calendar.weeks.reduce((sum, week) => sum + week.totalCount, 0);
-  const scheduledTodoCount = calendar.weeks.reduce(
-    (sum, week) => sum + week.days.reduce((daySum, day) => daySum + (nextWeekJobsByDate.get(day.key)?.length ?? 0), 0),
-    0,
-  );
   const periodicsCount = calendar.weeks.reduce(
     (sum, week) => sum + week.days.reduce((daySum, day) => daySum + (periodicsByDate.get(day.key)?.length ?? 0), 0),
     0,
@@ -110808,18 +110769,15 @@ function renderWorkOrderCalendarMonthMode(filtered) {
     workOrderCalendarMeta.textContent = [
       weekNumberLabel,
       `${scheduledCount} raspoređenih`,
-      scheduledTodoCount > 0 ? `${scheduledTodoCount} Next Week Job upita` : "",
       periodicsCount > 0 ? `${periodicsCount} periodika` : "",
       `${calendar.unscheduled.length} bez izvršenja`,
-      undatedNextWeekJobs.length > 0 ? `${undatedNextWeekJobs.length} ToDo bez datuma` : "",
       `${unassignedCount} bez izvršitelja`,
     ].filter(Boolean).join(" · ");
   }
 
-  syncWorkOrderCalendarToolbar(calendar.unscheduled.length + undatedNextWeekJobs.length);
+  syncWorkOrderCalendarToolbar(calendar.unscheduled.length);
   renderWorkOrderCalendarSidePanels({
     unscheduled: calendar.unscheduled,
-    todoTasks: undatedNextWeekJobs,
     unassigned: [],
   });
 
@@ -110837,14 +110795,12 @@ function renderWorkOrderCalendarMonthMode(filtered) {
     weekTitle.textContent = `Tjedan ${getCalendarIsoWeekNumber(week.weekStart)}`;
 
     const weekMeta = document.createElement("span");
-    const weekTodoCount = visibleDays.reduce((sum, day) => sum + (nextWeekJobsByDate.get(day.key)?.length ?? 0), 0);
     const weekPeriodicsCount = visibleDays.reduce((sum, day) => sum + (periodicsByDate.get(day.key)?.length ?? 0), 0);
     weekMeta.textContent = [
       `${formatCompactDate(visibleDays[0]?.key || week.weekStart)} - ${formatCompactDate(
         visibleDays[visibleDays.length - 1]?.key || week.weekStart,
       )}`,
       week.totalCount === 1 ? "1 RN" : `${week.totalCount} RN`,
-      weekTodoCount > 0 ? `${weekTodoCount} Next Week Job upita` : "",
       weekPeriodicsCount > 0 ? `${weekPeriodicsCount} periodika` : "",
     ].filter(Boolean).join(" · ");
 
@@ -110859,7 +110815,6 @@ function renderWorkOrderCalendarMonthMode(filtered) {
     visibleDays.forEach((day) => {
       weekGrid.append(createWorkOrderCalendarDayCell(
         day,
-        nextWeekJobsByDate.get(day.key) ?? [],
         periodicsByDate.get(day.key) ?? [],
       ));
     });
@@ -111531,137 +111486,6 @@ function createWorkOrderCalendarSchedulerCard(workOrder) {
     state.workOrderCalendar.draggingGroupIds = [];
     card.classList.remove("is-dragging");
     workOrderCalendarGrid?.querySelectorAll(".is-drop-target").forEach((node) => node.classList.remove("is-drop-target"));
-  });
-
-  return card;
-}
-
-function getNextWeekJobTodoTasks() {
-  return sortTodoTasks((state.todoTasks ?? []).filter((task) => String(task?.status || "").trim().toLowerCase() === "next_week_job"));
-}
-
-function getTodoTaskCalendarDate(task = {}) {
-  return getWorkOrderDateKey(task.dueDate);
-}
-
-function getTodoTaskCalendarItemsByDate(tasks = []) {
-  const map = new Map();
-  tasks.forEach((task) => {
-    const dateKey = getTodoTaskCalendarDate(task);
-    if (!dateKey) {
-      return;
-    }
-
-    if (!map.has(dateKey)) {
-      map.set(dateKey, []);
-    }
-    map.get(dateKey).push(task);
-  });
-
-  return map;
-}
-
-function getUndatedTodoTaskCalendarItems(tasks = []) {
-  return tasks.filter((task) => !getTodoTaskCalendarDate(task));
-}
-
-function openTodoCalendarItem(task = {}) {
-  if (!task?.id) {
-    return;
-  }
-
-  const currentTask = getTodoTaskById(task.id) ?? task;
-  hydrateTodoTaskForm(currentTask);
-}
-
-function openTodoCalendarLinkedWorkOrder(task = {}) {
-  const linkedWorkOrder = getLinkedTodoWorkOrder(task);
-  if (linkedWorkOrder) {
-    hydrateWorkOrderForm(linkedWorkOrder);
-    return;
-  }
-
-  openTodoCalendarItem(task);
-}
-
-function createTodoCalendarCard(task = {}, { compact = false } = {}) {
-  const card = document.createElement("article");
-  card.className = "work-order-calendar-card todo-calendar-card";
-  card.classList.toggle("is-compact", Boolean(compact));
-  card.tabIndex = 0;
-  card.setAttribute("role", "button");
-  card.dataset.todoTaskId = task.id || "";
-  card.style.setProperty("--calendar-card-accent", "#8b5cf6");
-  card.style.setProperty("--calendar-card-soft", "#f6f1ff");
-  card.style.setProperty("--calendar-card-border", "#eadcff");
-
-  const top = document.createElement("div");
-  top.className = "work-order-calendar-card-top";
-
-  const title = document.createElement("strong");
-  title.className = "work-order-calendar-card-number";
-  title.textContent = task.title || "Next Week Job";
-
-  const status = createTodoTaskStatusBadge(task);
-  status.classList.add("work-order-calendar-card-status");
-  top.append(title, status);
-
-  const linkedWorkOrder = getLinkedTodoWorkOrder(task);
-  const context = document.createElement("span");
-  context.className = "work-order-calendar-card-title";
-  context.textContent = [
-    task.workOrderNumber ? `RN ${task.workOrderNumber}` : "",
-    task.companyName || "",
-  ].filter(Boolean).join(" · ") || "Upit / plan terena";
-
-  const meta = document.createElement("span");
-  meta.className = "work-order-calendar-card-meta";
-  meta.textContent = [
-    task.locationName || "Bez lokacije",
-    task.assignedToLabel ? `Nositelj: ${task.assignedToLabel}` : "",
-  ].filter(Boolean).join(" · ");
-
-  const footer = document.createElement("div");
-  footer.className = "work-order-calendar-card-footer";
-
-  const due = document.createElement("span");
-  due.className = "work-order-calendar-card-due";
-  due.textContent = task.dueDate ? `Plan ${formatCompactDate(task.dueDate)}` : "Bez datuma";
-  footer.append(due);
-
-  const actions = document.createElement("div");
-  actions.className = "todo-calendar-card-actions";
-  actions.dataset.preventRowOpen = "true";
-  if (linkedWorkOrder) {
-    actions.append(createActionButton("Otvori RN", "ghost-button todo-calendar-card-action", (event) => {
-      event.stopPropagation();
-      hydrateWorkOrderForm(linkedWorkOrder);
-    }));
-  }
-  actions.append(createActionButton("ToDo", "ghost-button todo-calendar-card-action", (event) => {
-    event.stopPropagation();
-    openTodoCalendarItem(task);
-  }));
-  footer.append(actions);
-
-  card.append(top, context, meta, footer);
-
-  card.addEventListener("click", (event) => {
-    if (isInteractiveWorkOrderTarget(event.target)) {
-      return;
-    }
-    openTodoCalendarLinkedWorkOrder(task);
-  });
-
-  card.addEventListener("keydown", (event) => {
-    if (isInteractiveWorkOrderTarget(event.target)) {
-      return;
-    }
-
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openTodoCalendarLinkedWorkOrder(task);
-    }
   });
 
   return card;
@@ -112865,6 +112689,134 @@ function rebuildFieldInquiryOptions({
   }
 }
 
+function normalizeFieldInquiryDocuments(documents = []) {
+  return (Array.isArray(documents) ? documents : [])
+    .map((document) => ({
+      id: String(document?.id || crypto.randomUUID()),
+      fileName: String(document?.fileName || document?.name || "").trim(),
+      fileType: String(document?.fileType || document?.type || document?.mimeType || "").trim(),
+      fileSize: Number(document?.fileSize || document?.size || 0) || 0,
+      documentCategory: String(document?.documentCategory || "field_inquiry").trim(),
+      dataUrl: String(document?.dataUrl || document?.storageUrl || document?.url || "").trim(),
+      storageUrl: String(document?.storageUrl || document?.url || document?.dataUrl || "").trim(),
+      createdAt: document?.createdAt || new Date().toISOString(),
+      updatedAt: document?.updatedAt || document?.createdAt || new Date().toISOString(),
+    }))
+    .filter((document) => document.fileName && (document.dataUrl || document.storageUrl));
+}
+
+function renderFieldInquiryDocumentDraft() {
+  if (!fieldInquiryDocumentList) {
+    return;
+  }
+  if (fieldInquiryDocumentDraft.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "field-inquiry-document-empty";
+    empty.textContent = "Nema dodanih dokumenata za ovaj dogovor.";
+    fieldInquiryDocumentList.replaceChildren(empty);
+    return;
+  }
+
+  fieldInquiryDocumentList.replaceChildren(...fieldInquiryDocumentDraft.map((documentItem) => {
+    const row = document.createElement("div");
+    row.className = "field-inquiry-document-item";
+
+    const copy = document.createElement("div");
+    copy.className = "field-inquiry-document-copy";
+    const name = document.createElement("strong");
+    name.textContent = documentItem.fileName;
+    const meta = document.createElement("span");
+    meta.textContent = [documentItem.fileType, documentItem.fileSize ? formatFileSize(documentItem.fileSize) : ""].filter(Boolean).join(" · ");
+    copy.append(name, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "field-inquiry-document-actions";
+    const href = documentItem.storageUrl || documentItem.dataUrl;
+    if (href) {
+      const openLink = document.createElement("a");
+      openLink.className = "ghost-button";
+      openLink.href = href;
+      openLink.target = "_blank";
+      openLink.rel = "noopener";
+      openLink.textContent = "Otvori";
+      actions.append(openLink);
+    }
+    actions.append(createActionButton("Makni", "ghost-button card-danger", (event) => {
+      event.stopPropagation();
+      fieldInquiryDocumentDraft = fieldInquiryDocumentDraft.filter((entry) => entry.id !== documentItem.id);
+      renderFieldInquiryDocumentDraft();
+    }));
+
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function addFieldInquiryDocuments(files = []) {
+  const selectedFiles = Array.from(files || []).filter(Boolean);
+  if (selectedFiles.length === 0) {
+    return;
+  }
+  try {
+    const nextDocuments = await Promise.all(selectedFiles.map(async (file) => ({
+      id: crypto.randomUUID(),
+      fileName: file.name || "dokument",
+      fileType: file.type || "application/octet-stream",
+      fileSize: file.size || 0,
+      documentCategory: "field_inquiry",
+      dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })));
+    fieldInquiryDocumentDraft = normalizeFieldInquiryDocuments([...fieldInquiryDocumentDraft, ...nextDocuments]);
+    renderFieldInquiryDocumentDraft();
+  } catch (error) {
+    setInlineMessage(fieldInquiryFeedback, error.message || "Dokument nije učitan.");
+  } finally {
+    if (fieldInquiryDocumentFileInput) {
+      fieldInquiryDocumentFileInput.value = "";
+    }
+  }
+}
+
+function appendFieldInquiryNote(text = "") {
+  const value = String(text || "").trim();
+  if (!fieldInquiryNoteInput || !value) {
+    return;
+  }
+  const current = String(fieldInquiryNoteInput.value || "");
+  const separator = !current || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
+  fieldInquiryNoteInput.value = `${current}${separator}${value}`;
+  fieldInquiryNoteInput.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function startFieldInquiryNoteDictation() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    setInlineMessage(fieldInquiryFeedback, "Govorni unos nije dostupan u ovom pregledniku.");
+    return;
+  }
+  const recognition = new Recognition();
+  recognition.lang = "hr-HR";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  fieldInquiryNoteMicButton?.setAttribute("aria-busy", "true");
+  recognition.addEventListener("result", (event) => {
+    const transcript = Array.from(event.results || [])
+      .map((result) => result?.[0]?.transcript || "")
+      .join(" ")
+      .trim();
+    appendFieldInquiryNote(transcript);
+  });
+  recognition.addEventListener("error", () => {
+    setInlineMessage(fieldInquiryFeedback, "Ne mogu pokrenuti mikrofon za opis.");
+  });
+  recognition.addEventListener("end", () => {
+    fieldInquiryNoteMicButton?.removeAttribute("aria-busy");
+  });
+  recognition.start();
+}
+
 function resetFieldInquiryForm() {
   state.activeFieldInquiryId = "";
   if (fieldInquiryFormTitle) {
@@ -112880,6 +112832,8 @@ function resetFieldInquiryForm() {
   if (fieldInquiryContactPhoneInput) fieldInquiryContactPhoneInput.value = "";
   if (fieldInquiryServiceLineInput) fieldInquiryServiceLineInput.value = "";
   if (fieldInquiryNoteInput) fieldInquiryNoteInput.value = "";
+  fieldInquiryDocumentDraft = [];
+  renderFieldInquiryDocumentDraft();
   if (fieldInquirySyncWorkOrderDateInput) fieldInquirySyncWorkOrderDateInput.checked = true;
   const currentUserId = state.user?.id ? [String(state.user.id)] : [];
   rebuildFieldInquiryOptions({
@@ -112910,6 +112864,8 @@ function hydrateFieldInquiryForm(item = {}) {
   if (fieldInquiryContactPhoneInput) fieldInquiryContactPhoneInput.value = item.contactPhone || "";
   if (fieldInquiryServiceLineInput) fieldInquiryServiceLineInput.value = item.serviceLine || "";
   if (fieldInquiryNoteInput) fieldInquiryNoteInput.value = item.note || "";
+  fieldInquiryDocumentDraft = normalizeFieldInquiryDocuments(item.documents ?? []);
+  renderFieldInquiryDocumentDraft();
   if (fieldInquirySyncWorkOrderDateInput) fieldInquirySyncWorkOrderDateInput.checked = true;
   rebuildFieldInquiryOptions({
     selectedCompanyId: item.companyId || "",
@@ -113000,6 +112956,7 @@ function buildFieldInquiryPayload() {
     contactPhone: fieldInquiryContactPhoneInput?.value || "",
     serviceLine: fieldInquiryServiceLineInput?.value || "",
     note: fieldInquiryNoteInput?.value || "",
+    documents: fieldInquiryDocumentDraft,
     assignedUserIds: selectedAssigneeIds,
     assignedUserLabels: selectedAssigneeLabels,
     syncWorkOrderExecutionDate: Boolean(fieldInquirySyncWorkOrderDateInput?.checked),
@@ -113039,6 +112996,9 @@ function renderFieldInquiryCard(item = {}) {
     ["Vozilo", getFieldInquiryVehicleLabel(item)],
     ["Kontakt", joinParts([item.contactName, item.contactPhone])],
     ["Usluga", item.serviceLine || ""],
+    ["Dokumenti", normalizeFieldInquiryDocuments(item.documents ?? []).length > 0
+      ? normalizeFieldInquiryDocuments(item.documents ?? []).map((document) => document.fileName).join(", ")
+      : ""],
   ].filter(([, value]) => String(value || "").trim()).forEach(([label, value]) => {
     const row = document.createElement("span");
     row.innerHTML = `<small>${escapeHtml(label)}</small>${escapeHtml(value)}`;
@@ -113080,6 +113040,69 @@ function renderFieldInquiryCard(item = {}) {
   return card;
 }
 
+function getFieldInquiryPlanGroups(items = []) {
+  const today = getTodayDateKey();
+  const nextSeven = shiftDateKey(today, 7);
+  const groups = [
+    { key: "undated", title: "Bez datuma", description: "Upiti koje treba rasporediti.", items: [] },
+    { key: "next_week", title: "Iduci tjedan", description: "Dogovori za planiranje terena.", items: [] },
+    { key: "scheduled", title: "Zakazano", description: "Imaju datum ili termin.", items: [] },
+    { key: "linked", title: "Povezano s RN", description: "Upiti koji vec imaju radni nalog.", items: [] },
+    { key: "closed", title: "Zatvoreno", description: "Pretvoreno u RN ili odbijeno.", items: [] },
+  ];
+  const byKey = new Map(groups.map((group) => [group.key, group]));
+
+  items.forEach((item) => {
+    const status = getFieldInquiryStatusOption(item.status).value;
+    if (status === "converted" || status === "rejected") {
+      byKey.get("closed").items.push(item);
+      return;
+    }
+    if (item.workOrderId || item.workOrderNumber) {
+      byKey.get("linked").items.push(item);
+      return;
+    }
+    const dateKey = normalizeDateInputValue(item.plannedDate || "");
+    if (!dateKey) {
+      byKey.get("undated").items.push(item);
+      return;
+    }
+    if (status === "next_week" || (dateKey >= today && dateKey <= nextSeven)) {
+      byKey.get("next_week").items.push(item);
+      return;
+    }
+    byKey.get("scheduled").items.push(item);
+  });
+
+  return groups.filter((group) => group.items.length > 0);
+}
+
+function renderFieldInquiryPlanGroup(group = {}) {
+  const section = document.createElement("section");
+  section.className = `field-inquiry-group is-${group.key || "default"}`;
+
+  const head = document.createElement("div");
+  head.className = "field-inquiry-group-head";
+  const copy = document.createElement("div");
+  copy.className = "field-inquiry-group-copy";
+  const title = document.createElement("strong");
+  title.textContent = group.title || "Plan";
+  const description = document.createElement("span");
+  description.textContent = group.description || "";
+  copy.append(title, description);
+  const count = document.createElement("span");
+  count.className = "field-inquiry-group-count";
+  count.textContent = String(group.items?.length ?? 0);
+  head.append(copy, count);
+
+  const body = document.createElement("div");
+  body.className = "field-inquiry-group-body";
+  body.append(...(group.items ?? []).map(renderFieldInquiryCard));
+
+  section.append(head, body);
+  return section;
+}
+
 function renderFieldInquiriesView() {
   if (!fieldInquiriesView) {
     return;
@@ -113107,7 +113130,7 @@ function renderFieldInquiriesView() {
     fieldInquiryCount.textContent = `${items.length} ukupno · ${weekCount} u idućih 7 dana`;
   }
   if (fieldInquiryList) {
-    fieldInquiryList.replaceChildren(...items.map(renderFieldInquiryCard));
+    fieldInquiryList.replaceChildren(...getFieldInquiryPlanGroups(items).map(renderFieldInquiryPlanGroup));
   }
   if (fieldInquiryEmpty) {
     fieldInquiryEmpty.hidden = items.length > 0;
@@ -130272,6 +130295,18 @@ fieldInquiryLocationInput?.addEventListener("change", () => {
 
 fieldInquiryWorkOrderInput?.addEventListener("change", () => {
   syncFieldInquiryContextFromWorkOrder();
+});
+
+fieldInquiryDocumentAddButton?.addEventListener("click", () => {
+  fieldInquiryDocumentFileInput?.click();
+});
+
+fieldInquiryDocumentFileInput?.addEventListener("change", () => {
+  void addFieldInquiryDocuments(fieldInquiryDocumentFileInput.files);
+});
+
+fieldInquiryNoteMicButton?.addEventListener("click", () => {
+  startFieldInquiryNoteDictation();
 });
 
 workOrderListDensityButtons.forEach((button) => {

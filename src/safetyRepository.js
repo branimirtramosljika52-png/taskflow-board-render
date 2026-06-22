@@ -3849,10 +3849,9 @@ async function fetchSnapshotFromConnection(connection) {
     ORDER BY
       CASE status
         WHEN 'open' THEN 0
-        WHEN 'next_week_job' THEN 1
-        WHEN 'in_progress' THEN 2
-        WHEN 'waiting' THEN 3
-        WHEN 'done' THEN 4
+        WHEN 'in_progress' THEN 1
+        WHEN 'waiting' THEN 2
+        WHEN 'done' THEN 3
         ELSE 9
       END ASC,
       due_date ASC,
@@ -3928,16 +3927,17 @@ async function fetchSnapshotFromConnection(connection) {
   const [fieldInquiryRows] = await connection.query(`
     SELECT id, organization_id, title, status, company_id, location_id, work_order_id,
            planned_date, time_from, time_to, contact_name, contact_phone, service_line, note,
-           assigned_user_ids_json, assigned_user_labels_json, vehicle_id, vehicle_label,
+           documents_json, assigned_user_ids_json, assigned_user_labels_json, vehicle_id, vehicle_label,
            created_by_user_id, created_by_label, converted_work_order_id, created_at, updated_at
     FROM web_field_inquiries
     ORDER BY
       CASE status
         WHEN 'inquiry' THEN 0
-        WHEN 'tentative' THEN 1
-        WHEN 'confirmed' THEN 2
-        WHEN 'converted' THEN 3
-        WHEN 'rejected' THEN 4
+        WHEN 'next_week' THEN 1
+        WHEN 'tentative' THEN 2
+        WHEN 'confirmed' THEN 3
+        WHEN 'converted' THEN 4
+        WHEN 'rejected' THEN 5
         ELSE 9
       END ASC,
       planned_date ASC,
@@ -3968,6 +3968,9 @@ async function fetchSnapshotFromConnection(connection) {
       contactPhone: row.contact_phone ?? "",
       serviceLine: row.service_line ?? "",
       note: row.note ?? "",
+      documents: parseJsonArray(row.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
       assignedUserIds: parseJsonArray(row.assigned_user_ids_json).map((value) => dbString(value)).filter(Boolean),
       assignedUserLabels: parseJsonArray(row.assigned_user_labels_json).map((value) => dbString(value)).filter(Boolean),
       vehicleId: dbString(row.vehicle_id),
@@ -5303,6 +5306,7 @@ export class InMemorySafetyRepository {
       workOrders: [...this.snapshot.workOrders],
       fieldInquiries: (this.snapshot.fieldInquiries ?? []).map((item) => ({
         ...item,
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
         assignedUserIds: [...(item.assignedUserIds ?? [])],
         assignedUserLabels: [...(item.assignedUserLabels ?? [])],
       })),
@@ -8004,6 +8008,7 @@ export class MySqlSafetyRepository {
         contact_phone VARCHAR(80) NOT NULL DEFAULT '',
         service_line VARCHAR(500) NOT NULL DEFAULT '',
         note TEXT NULL,
+        documents_json LONGTEXT NULL,
         assigned_user_ids_json LONGTEXT NULL,
         assigned_user_labels_json LONGTEXT NULL,
         vehicle_id INT NULL,
@@ -8857,6 +8862,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_vehicles", "vin_number", "VARCHAR(64) NOT NULL DEFAULT '' AFTER plate_number");
     await ensureColumnExists(this.pool, "web_vehicles", "documents_json", "LONGTEXT NULL AFTER reservations_json");
     await ensureColumnExists(this.pool, "web_vehicles", "activity_items_json", "LONGTEXT NULL AFTER documents_json");
+    await ensureColumnExists(this.pool, "web_field_inquiries", "documents_json", "LONGTEXT NULL AFTER note");
     await ensureColumnExists(this.pool, "web_legal_frameworks", "documents_json", "LONGTEXT NULL AFTER note");
     await ensureColumnExists(this.pool, "web_legal_frameworks", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER documents_json");
     await ensureColumnExists(this.pool, "web_measurement_equipment", "device_code", "VARCHAR(120) NOT NULL DEFAULT '' AFTER device_type");
@@ -10029,9 +10035,9 @@ export class MySqlSafetyRepository {
           INSERT INTO web_field_inquiries
             (organization_id, title, status, company_id, location_id, work_order_id,
              planned_date, time_from, time_to, contact_name, contact_phone, service_line, note,
-             assigned_user_ids_json, assigned_user_labels_json, vehicle_id, vehicle_label,
+             documents_json, assigned_user_ids_json, assigned_user_labels_json, vehicle_id, vehicle_label,
              created_by_user_id, created_by_label, converted_work_order_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -10047,6 +10053,7 @@ export class MySqlSafetyRepository {
           draft.contactPhone,
           draft.serviceLine,
           draft.note,
+          JSON.stringify(draft.documents ?? []),
           JSON.stringify(draft.assignedUserIds ?? []),
           JSON.stringify(draft.assignedUserLabels ?? []),
           parseNullableInteger(draft.vehicleId),
@@ -10090,7 +10097,7 @@ export class MySqlSafetyRepository {
           UPDATE web_field_inquiries
           SET title = ?, status = ?, company_id = ?, location_id = ?, work_order_id = ?,
               planned_date = ?, time_from = ?, time_to = ?, contact_name = ?, contact_phone = ?,
-              service_line = ?, note = ?, assigned_user_ids_json = ?, assigned_user_labels_json = ?,
+              service_line = ?, note = ?, documents_json = ?, assigned_user_ids_json = ?, assigned_user_labels_json = ?,
               vehicle_id = ?, vehicle_label = ?, converted_work_order_id = ?
           WHERE id = ?
         `,
@@ -10107,6 +10114,7 @@ export class MySqlSafetyRepository {
           next.contactPhone,
           next.serviceLine,
           next.note,
+          JSON.stringify(next.documents ?? []),
           JSON.stringify(next.assignedUserIds ?? []),
           JSON.stringify(next.assignedUserLabels ?? []),
           parseNullableInteger(next.vehicleId),

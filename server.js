@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.196.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.197.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25023,6 +25023,7 @@ function buildMobileVehicleRecord(item = {}) {
 }
 
 function buildMobileFieldInquiryRecord(item = {}) {
+  const documents = Array.isArray(item.documents) ? item.documents.filter(hasMobileDocumentFile) : [];
   return {
     id: normalizeInputValue(item.id),
     title: normalizeInputValue(item.title || item.companyName || item.locationName || "Upit za teren"),
@@ -25050,6 +25051,8 @@ function buildMobileFieldInquiryRecord(item = {}) {
       contactPhone: normalizeInputValue(item.contactPhone),
       serviceLine: normalizeInputValue(item.serviceLine),
       note: normalizeInputValue(item.note),
+      documentCount: String(documents.length),
+      documentNames: documents.map((document, index) => getMobileDocumentFileName(document, `Prilog ${index + 1}`)).filter(Boolean).join(", "),
       assignedUserIds: Array.isArray(item.assignedUserIds) ? item.assignedUserIds.map(normalizeInputValue).filter(Boolean).join(",") : "",
       assignedUserLabels: Array.isArray(item.assignedUserLabels) ? item.assignedUserLabels.join(", ") : "",
       vehicleId: normalizeInputValue(item.vehicleId),
@@ -31765,6 +31768,21 @@ async function handleApiRequest(request, response, url) {
         linkReference: `Terenski upit ${inquiry.id}`,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
+
+      if (Array.isArray(inquiry.documents) && inquiry.documents.length > 0) {
+        await domainRepository.addWorkOrderDocuments(
+          createdWorkOrder.id,
+          inquiry.documents.map((document) => ({
+            ...document,
+            sourceType: "editor",
+            documentCategory: document.documentCategory && document.documentCategory !== "field_plan"
+              ? document.documentCategory
+              : "Radni listovi",
+            description: document.description || "Prilog iz plana terena",
+          })),
+          user,
+        );
+      }
 
       const updatedInquiry = await domainRepository.updateFieldInquiry(inquiry.id, {
         status: "converted",

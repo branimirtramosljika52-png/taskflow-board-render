@@ -27,6 +27,7 @@ export const REMINDER_STATUS_OPTIONS = [
 
 export const FIELD_INQUIRY_STATUS_OPTIONS = [
   { value: "inquiry", label: "Upit" },
+  { value: "next_week", label: "Iduci tjedan" },
   { value: "tentative", label: "Tentativno" },
   { value: "confirmed", label: "Potvrdeno" },
   { value: "rejected", label: "Odbijeno" },
@@ -35,7 +36,6 @@ export const FIELD_INQUIRY_STATUS_OPTIONS = [
 
 export const TODO_TASK_STATUS_OPTIONS = [
   { value: "open", label: "Novo" },
-  { value: "next_week_job", label: "Next Week Job" },
   { value: "in_progress", label: "U radu" },
   { value: "waiting", label: "Ceka odgovor" },
   { value: "done", label: "Zavrseno" },
@@ -590,10 +590,9 @@ const REMINDER_STATUS_RANK = {
 };
 const TODO_TASK_STATUS_RANK = {
   open: 0,
-  next_week_job: 1,
-  in_progress: 2,
-  waiting: 3,
-  done: 4,
+  in_progress: 1,
+  waiting: 2,
+  done: 3,
 };
 const OFFER_STATUS_RANK = {
   draft: 0,
@@ -9583,6 +9582,9 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
 
 function normalizeFieldInquiryStatus(value) {
   const normalized = normalizeText(value).toLowerCase();
+  if (normalized === "next_week_job") {
+    return "next_week";
+  }
   const match = FIELD_INQUIRY_STATUS_OPTIONS.find((option) => option.value === normalized);
   return match?.value ?? "inquiry";
 }
@@ -9704,6 +9706,9 @@ function hydrateFieldInquiryCore({
     contactPhone: hasOwn(input, "contactPhone") ? normalizeText(input.contactPhone) : normalizeText(current.contactPhone),
     serviceLine: hasOwn(input, "serviceLine") ? normalizeText(input.serviceLine) : normalizeText(current.serviceLine),
     note: hasOwn(input, "note") ? normalizeText(input.note) : normalizeText(current.note),
+    documents: hasOwn(input, "documents")
+      ? normalizeAttachmentDocuments(input.documents)
+      : normalizeAttachmentDocuments(current.documents ?? []),
     assignedUserIds: userSnapshot.assignedUserIds,
     assignedUserLabels: userSnapshot.assignedUserLabels,
     vehicleId: vehicle?.id ?? "",
@@ -9756,6 +9761,11 @@ export function filterFieldInquiries(items, { query = "", status = "all" } = {})
       item.contactPhone,
       item.serviceLine,
       item.note,
+      ...(item.documents ?? []).flatMap((document) => [
+        document.fileName,
+        document.description,
+        document.documentCategory,
+      ]),
       ...(item.assignedUserLabels ?? []),
       item.vehicleLabel,
     ].join(" ").toLowerCase();

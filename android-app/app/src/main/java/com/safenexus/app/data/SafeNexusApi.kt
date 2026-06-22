@@ -1644,7 +1644,22 @@ private fun FieldInquiryDraft.toJsonPayload(): String =
         .put("assignedUserIds", JSONArray(assignedUserIds))
         .put("assignedUserLabels", JSONArray(assignedUserLabels))
         .put("syncWorkOrderExecutionDate", syncWorkOrderExecutionDate)
+        .also { json ->
+            documents?.let { docs ->
+                json.put("documents", JSONArray(docs.map { it.toJsonObject() }))
+            }
+        }
         .toString()
+
+private fun FieldInquiryDocumentDraft.toJsonObject(): JSONObject =
+    JSONObject()
+        .put("id", id)
+        .put("fileName", fileName)
+        .put("fileType", fileType)
+        .put("fileSize", fileSize)
+        .put("documentCategory", documentCategory)
+        .put("description", description)
+        .put("dataUrl", dataUrl)
 
 private fun JobCreateDraft.toJsonPayload(): String =
     JSONObject()

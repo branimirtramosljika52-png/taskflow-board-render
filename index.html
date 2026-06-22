@@ -2255,8 +2255,26 @@
                     </label>
                     <label class="field field-inquiry-wide-field">
                       <span>Napomena</span>
-                      <textarea id="field-inquiry-note" rows="3" placeholder="Sto je dogovoreno, tko je zvao, sto jos nedostaje..."></textarea>
+                      <div class="field-inquiry-note-shell">
+                        <textarea id="field-inquiry-note" rows="3" placeholder="Sto je dogovoreno, tko je zvao, sto jos nedostaje..."></textarea>
+                        <button id="field-inquiry-note-mic" type="button" class="ghost-button field-inquiry-mic-button">Mikrofon</button>
+                      </div>
                     </label>
+                    <div class="field field-inquiry-wide-field field-inquiry-documents-field">
+                      <span>Dokumenti upita</span>
+                      <input
+                        id="field-inquiry-document-file"
+                        type="file"
+                        multiple
+                        hidden
+                        accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.txt,.zip,.rar,.7z,application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain"
+                      />
+                      <div class="field-inquiry-document-drop">
+                        <button id="field-inquiry-document-add" type="button" class="ghost-button">Dodaj dokument</button>
+                        <small>PDF, slike, Word, Excel ili drugi prilog vezan uz dogovor.</small>
+                      </div>
+                      <div id="field-inquiry-document-list" class="field-inquiry-document-list"></div>
+                    </div>
                   </div>
                   <label class="field-inquiry-sync-row">
                     <input id="field-inquiry-sync-rn-date" type="checkbox" checked />

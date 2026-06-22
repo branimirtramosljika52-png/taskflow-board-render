@@ -165,6 +165,17 @@ data class FieldInquiryDraft(
     val assignedUserIds: List<String>,
     val assignedUserLabels: List<String>,
     val syncWorkOrderExecutionDate: Boolean,
+    val documents: List<FieldInquiryDocumentDraft>? = null,
+)
+
+data class FieldInquiryDocumentDraft(
+    val id: String,
+    val fileName: String,
+    val fileType: String,
+    val fileSize: Long,
+    val documentCategory: String,
+    val description: String,
+    val dataUrl: String,
 )
 
 data class JobCreateDraft(
