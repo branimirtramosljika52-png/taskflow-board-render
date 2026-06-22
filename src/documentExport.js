@@ -9824,12 +9824,17 @@ function buildVehicleEvidenceRows(vehicle = {}) {
         activity?.departureCondition,
         compactVehicleEvidenceNote(activity?.note),
       ]).join("\n");
+      const departureAt = clean(activity?.departureAt)
+        || clean(activity?.createdAt)
+        || clean(activity?.performedOn);
+      const returnAt = clean(activity?.returnAt)
+        || clean(activity?.completedAt);
       return {
-        sortKey: getVehicleEvidenceTimestamp(activity?.departureAt || activity?.createdAt || activity?.performedOn),
-        departureDate: formatVehicleEvidenceDatePart(activity?.departureAt || activity?.performedOn),
-        departureTime: formatVehicleEvidenceTimePart(activity?.departureAt),
-        returnDate: formatVehicleEvidenceDatePart(activity?.returnAt),
-        returnTime: formatVehicleEvidenceTimePart(activity?.returnAt),
+        sortKey: getVehicleEvidenceTimestamp(departureAt),
+        departureDate: formatVehicleEvidenceDatePart(departureAt),
+        departureTime: formatVehicleEvidenceTimePart(departureAt),
+        returnDate: formatVehicleEvidenceDatePart(returnAt),
+        returnTime: formatVehicleEvidenceTimePart(returnAt),
         destination: clean(activity?.destination),
         drivers,
         startKm: clean(activity?.startKm) ? `${clean(activity?.startKm)} km` : "",

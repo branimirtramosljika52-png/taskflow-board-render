@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.182.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.183.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25654,6 +25654,11 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
   if (!odometerKm) {
     throw new Error("Upisi kilometrazu vozila.");
   }
+  const requestedActionAt = normalizeInputValue(
+    body.actionAt || body.performedAt || (mode === "return" ? body.returnAt : body.departureAt),
+  );
+  const parsedActionAt = requestedActionAt ? Date.parse(requestedActionAt) : Number.NaN;
+  const actionTimestamp = Number.isFinite(parsedActionAt) ? new Date(parsedActionAt).toISOString() : nowValue;
 
   const targetReservation = findVehicleUsageReservation(vehicle, body, mode, nowValue);
   const openTrip = mode === "return" ? findOpenVehicleTrip(vehicle, body, targetReservation) : null;
@@ -25682,14 +25687,14 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
         ? {
           ...item,
           activityType: "vehicle_trip",
-          performedOn: item.performedOn || (item.departureAt || nowValue).slice(0, 10),
+          performedOn: item.performedOn || (item.departureAt || actionTimestamp).slice(0, 10),
           performedBy: driverLabels.join(", ") || performer,
           odometerKm,
           workSummary: "Putovanje vozila",
           reservationId: normalizeInputValue(item.reservationId || targetReservation?.id),
           tripStatus: "completed",
           departureAt: normalizeInputValue(item.departureAt || targetReservation?.startAt || nowValue),
-          returnAt: nowValue,
+          returnAt: actionTimestamp,
           destination,
           driverLabels,
           startKm: normalizeInputValue(item.startKm || item.odometerKm || ""),
@@ -25710,14 +25715,14 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
     const activityItem = {
       id: randomUUID(),
       activityType: "vehicle_trip",
-      performedOn: nowValue.slice(0, 10),
+      performedOn: actionTimestamp.slice(0, 10),
       performedBy: driverLabels.join(", ") || performer,
       odometerKm,
       workSummary: "Putovanje vozila",
       reservationId: normalizeInputValue(targetReservation?.id),
       tripStatus: isReturnFallback ? "completed" : "open",
-      departureAt: isReturnFallback ? normalizeInputValue(targetReservation?.startAt || "") : nowValue,
-      returnAt: isReturnFallback ? nowValue : "",
+      departureAt: isReturnFallback ? normalizeInputValue(targetReservation?.startAt || body.departureAt || "") : actionTimestamp,
+      returnAt: isReturnFallback ? actionTimestamp : "",
       destination,
       driverLabels,
       startKm: isReturnFallback ? "" : odometerKm,
@@ -26052,6 +26057,16 @@ async function writeMobileBootstrap(response, user, request) {
     fallbackTitle: "Pravilnik",
   })));
 
+  const legalFrameworks = limitMobileRecords((scopedSnapshot.legalFrameworks ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "legal_framework",
+    titleKeys: ["title", "referenceCode"],
+    subtitleKeys: ["referenceCode", "category", "authority", "note"],
+    statusKeys: ["status"],
+    dateKeys: ["reviewDate", "effectiveFrom", "publishedOn", "updatedAt", "createdAt"],
+    metaKeys: ["category", "authority", "referenceCode", "versionLabel", "publishedOn", "effectiveFrom", "reviewDate", "sourceUrl"],
+    fallbackTitle: "Zakonska regulativa",
+  })));
+
   const riskAssessmentRecords = limitMobileRecords((scopedSnapshot.riskAssessments ?? []).map((item) => buildMobileRecordItem(item, {
     kind: "risk_assessment",
     titleKeys: ["assessmentNumber", "title", "companyName"],
@@ -26089,6 +26104,7 @@ async function writeMobileBootstrap(response, user, request) {
     peopleTrainingRecords,
     clientPortalRecords,
     rulebooks,
+    legalFrameworks,
     riskAssessmentRecords,
     calendarEvents: buildMobileCalendarEvents(scopedSnapshot, workOrders),
     total: workOrders.length,

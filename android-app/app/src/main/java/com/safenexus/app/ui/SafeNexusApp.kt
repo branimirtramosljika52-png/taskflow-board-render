@@ -315,6 +315,7 @@ enum class MoreSectionFocus(val title: String) {
     Periodics("Periodika"),
     Documents("Dokumenti"),
     Services("Service liste"),
+    LegalFrameworks("Zakonska regulativa"),
     People("People"),
     MeasurementEquipment("Mjerna oprema"),
     RiskAssessments("Procjene rizika"),
@@ -1546,6 +1547,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     fun recordVehicleUsage(
         vehicle: MobileRecord,
         mode: String,
+        actionAt: String,
         odometerKm: String,
         destination: String,
         reservationId: String,
@@ -1573,6 +1575,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             api.recordVehicleUsage(
                 vehicleId = vehicle.id,
                 mode = mode,
+                actionAt = actionAt,
                 odometerKm = odometerKm,
                 destination = destination,
                 reservationId = reservationId,
@@ -4269,6 +4272,9 @@ private fun defaultReservationStartTime(): String {
     return LocalTime.of(normalizedTotalMinutes / 60, normalizedTotalMinutes % 60)
         .format(reservationTimeFormatter)
 }
+
+private fun defaultVehicleUsageTime(): String =
+    LocalTime.now().format(reservationTimeFormatter)
 
 private fun parseReservationDateTime(date: String, time: String): LocalDateTime? =
     runCatching { LocalDateTime.parse("${date}T${time}:00") }.getOrNull()
@@ -8711,6 +8717,9 @@ private fun WorkOrdersScreen(
     val filteredRulebooks = remember(state.data.rulebooks, normalizedQuery) {
         state.data.rulebooks.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    val filteredLegalFrameworks = remember(state.data.legalFrameworks, normalizedQuery) {
+        state.data.legalFrameworks.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
     val filteredAssessments = remember(state.data.riskAssessmentRecords, normalizedQuery) {
         state.data.riskAssessmentRecords.filter { record -> record.matchesSearch(normalizedQuery) }
     }
@@ -8909,6 +8918,7 @@ private fun WorkOrdersScreen(
                             MoreSectionFocus.Periodics -> "Pretraga periodike i rokova"
                             MoreSectionFocus.Documents -> "Pretraga dokumenata"
                             MoreSectionFocus.Services -> "Pretraga service lista"
+                            MoreSectionFocus.LegalFrameworks -> "Pretraga zakonske regulative, propisa i normi"
                             MoreSectionFocus.People -> "Pretraga People korisnika, OIB-a ili IS ZNR statusa"
                             MoreSectionFocus.MeasurementEquipment -> "Pretraga mjerne opreme, ISZNR ID-a, serijskog ili inv. broja"
                             MoreSectionFocus.RiskAssessments -> "Pretraga procjena rizika, Jobs kataloga, tvrtke ili radnog mjesta"
@@ -8982,9 +8992,12 @@ private fun WorkOrdersScreen(
                             )
                         }
                         item {
-                            ServicesCatalogPreview(
-                                services = state.data.workOrderServices,
-                                query = normalizedQuery,
+                            RecordsContent(
+                                title = "Zakonska regulativa",
+                                records = filteredLegalFrameworks,
+                                emptyText = "Nema zakonske regulative za prikaz.",
+                                icon = Icons.Rounded.Description,
+                                onOpenRecord = onOpenRecord,
                             )
                         }
                         item {
@@ -9022,14 +9035,6 @@ private fun WorkOrdersScreen(
                                 onOpenRecord = onOpenRecord,
                                 onNewRiskAssessment = { riskAssessmentDialogOpen = true },
                                 onNewJob = { jobDialogOpen = true },
-                            )
-                        }
-                        item {
-                            FoundationDocumentationPreview(
-                                rulebooks = filteredRulebooks,
-                                assessments = filteredAssessments,
-                                documents = filteredDocuments,
-                                onOpenRecord = onOpenRecord,
                             )
                         }
                         item {
@@ -9104,6 +9109,15 @@ private fun WorkOrdersScreen(
                         ServicesCatalogPreview(
                             services = state.data.workOrderServices,
                             query = normalizedQuery,
+                        )
+                    }
+                    MoreSectionFocus.LegalFrameworks -> item {
+                        RecordsContent(
+                            title = "Zakonska regulativa",
+                            records = filteredLegalFrameworks,
+                            emptyText = "Nema zakonske regulative za prikaz.",
+                            icon = Icons.Rounded.Description,
+                            onOpenRecord = onOpenRecord,
                         )
                     }
                     MoreSectionFocus.People -> item {
@@ -9453,11 +9467,10 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn, MoreSectionFocus.Locations),
             MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
             MainMenuShortcut("Periodika", "Rokovi, pregledi i isteci", AppSection.More, Icons.Rounded.CalendarMonth, MoreSectionFocus.Periodics),
-            MainMenuShortcut("Service liste", "Pravilnici, mjerna oprema i autorizacije", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Services),
+            MainMenuShortcut("Zakonska regulativa", "Legal Framework propisi i povezani dokumenti", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.LegalFrameworks),
             MainMenuShortcut("People", "Korisnici, OIB i IS ZNR status", AppSection.More, Icons.Rounded.Person, MoreSectionFocus.People),
             MainMenuShortcut("Mjerna oprema", "Popis opreme i ISZNR oznake", AppSection.More, Icons.Rounded.Work, MoreSectionFocus.MeasurementEquipment),
             MainMenuShortcut("Procjene rizika", "Jobs, radna mjesta i mobilni unos", AppSection.More, Icons.Rounded.Badge, MoreSectionFocus.RiskAssessments),
-            MainMenuShortcut("Pravilnici", "Temeljna dokumentacija i procjene", AppSection.More, Icons.Rounded.Lock, MoreSectionFocus.Foundation),
             MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint, MoreSectionFocus.Training),
         )
     }
@@ -10882,6 +10895,7 @@ private fun calendarRecordColor(kind: String): Color = when (kind) {
     "document" -> Color(0xFF7C3AED)
     "training" -> Color(0xFFDC2626)
     "rulebook" -> Color(0xFFB45309)
+    "legal_framework" -> Color(0xFF0F766E)
     else -> Color(0xFF475569)
 }
 
@@ -11071,8 +11085,11 @@ private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
                 add(
                     MobileVehicleTrip(
                         id = item.optString("id").trim(),
-                        departureAt = item.optString("departureAt").trim().ifBlank { item.optString("performedOn").trim() },
-                        returnAt = item.optString("returnAt").trim(),
+                        departureAt = item.optString("departureAt").trim()
+                            .ifBlank { item.optString("createdAt").trim() }
+                            .ifBlank { item.optString("performedOn").trim() },
+                        returnAt = item.optString("returnAt").trim()
+                            .ifBlank { item.optString("completedAt").trim() },
                         destination = item.optString("destination").trim(),
                         drivers = drivers,
                         startKm = item.optString("startKm").trim(),
@@ -11337,7 +11354,7 @@ private fun MoreOverviewHero(data: BootstrapData) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Pregled evidencija", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
-                        "Tvrtke, lokacije, ponude, dokumenti, rokovi i temeljna dokumentacija.",
+                        "Tvrtke, lokacije, ponude, dokumenti, rokovi i zakonska regulativa.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -11349,6 +11366,7 @@ private fun MoreOverviewHero(data: BootstrapData) {
                 StatusCountPill("Ponude", data.offers.size, Color(0xFF1D4ED8))
                 StatusCountPill("Oprema", data.measurementEquipmentRecords.size, Color(0xFF0F766E))
                 StatusCountPill("Dokumenti", data.documentRecords.size, Color(0xFF7C3AED))
+                StatusCountPill("Propisi", data.legalFrameworks.size, Color(0xFF0F766E))
                 StatusCountPill("Procjene", data.riskAssessmentRecords.size, Color(0xFFB45309))
             }
         }
@@ -11535,6 +11553,7 @@ private fun buildPeriodicEntries(
     data.clientPortalRecords.forEach { addRecord(it, "client_portal", Icons.Rounded.Map) }
     data.peopleTrainingRecords.forEach { addRecord(it, "training", Icons.Rounded.Fingerprint) }
     data.rulebooks.forEach { addRecord(it, "rulebook", Icons.Rounded.Lock) }
+    data.legalFrameworks.forEach { addRecord(it, "legal_framework", Icons.Rounded.Description) }
     data.vehicles.forEach { addRecord(it, "vehicle", Icons.Rounded.Business) }
     workOrders.forEach { workOrder ->
         if (workOrder.dueDate.isBlank()) return@forEach
@@ -13540,6 +13559,7 @@ private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Round
     "location" -> Icons.Rounded.LocationOn
     "job" -> Icons.Rounded.Work
     "rulebook" -> Icons.Rounded.Lock
+    "legal_framework" -> Icons.Rounded.Description
     "risk_assessment" -> Icons.Rounded.Description
     "client_portal" -> Icons.Rounded.Map
     else -> fallback
@@ -13558,6 +13578,7 @@ private fun recordKindLabel(kind: String): String = when (kind) {
     "location" -> "Lokacija"
     "job" -> "Job"
     "rulebook" -> "Pravilnik"
+    "legal_framework" -> "Zakonska regulativa"
     "risk_assessment" -> "Procjena rizika"
     "client_portal" -> "Klijentski portal"
     else -> "Zapis"
@@ -13577,6 +13598,20 @@ private val offerDetailMetaKeys = setOf(
     "amountWithoutVat",
     "totalWithVat",
     "currency",
+)
+
+private val vehicleDetailMetaKeys = setOf(
+    "activityItemsJson",
+    "reservationsJson",
+    "nextReservationId",
+    "nextReservationStatus",
+    "nextReservationPurpose",
+    "nextReservationStartAt",
+    "nextReservationEndAt",
+    "nextReservationUser",
+    "availabilityStatus",
+    "availabilityLabel",
+    "baseStatus",
 )
 
 private val trainingDetailMetaKeys = setOf(
@@ -14517,7 +14552,7 @@ private fun MobileRecordDetailScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
-    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
@@ -14547,11 +14582,12 @@ private fun MobileRecordDetailScreen(
             currentUserLabel = currentUserLabel,
             isLoading = isLoading,
             onDismiss = { usageDialogMode = null },
-            onConfirm = { selectedMode, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
+            onConfirm = { selectedMode, actionAt, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
                 usageDialogMode = null
                 onRecordVehicleUsage(
                     record,
                     selectedMode,
+                    actionAt,
                     odometerKm,
                     destination,
                     reservationId,
@@ -14812,10 +14848,10 @@ private fun MobileRecordDetailScreen(
                     }
                 }
 
-                val visibleMeta = if (record.kind == "offer") {
-                    record.meta.filterKeys { key -> key !in offerDetailMetaKeys }
-                } else {
-                    record.meta
+                val visibleMeta = when (record.kind) {
+                    "offer" -> record.meta.filterKeys { key -> key !in offerDetailMetaKeys }
+                    "vehicle" -> record.meta.filterKeys { key -> key !in vehicleDetailMetaKeys }
+                    else -> record.meta
                 }
                 if (visibleMeta.isNotEmpty()) {
                     DetailSection("Podaci") {
@@ -15146,7 +15182,7 @@ private fun VehicleUsageDialog(
     currentUserLabel: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onConfirm: (String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
 ) {
     val reservations = remember(vehicle.meta["reservationsJson"], mode) { parseVehicleReservations(vehicle) }
     val trips = remember(vehicle.meta["activityItemsJson"], mode) { parseVehicleTrips(vehicle) }
@@ -15191,6 +15227,8 @@ private fun VehicleUsageDialog(
             .take(5)
     }
     var odometerKm by remember(vehicle.id, mode) { mutableStateOf(vehicle.meta["odometerKm"].orEmpty()) }
+    var actionDate by remember(vehicle.id, mode) { mutableStateOf(LocalDate.now().toString()) }
+    var actionTime by remember(vehicle.id, mode) { mutableStateOf(defaultVehicleUsageTime()) }
     var destination by remember(vehicle.id, mode, defaultReservation?.destination, openTrip?.destination) {
         mutableStateOf(defaultReservation?.destination.orEmpty().ifBlank { openTrip?.destination.orEmpty() })
     }
@@ -15261,6 +15299,29 @@ private fun VehicleUsageDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                Text(
+                    if (mode == "return") "Vrijeme povratka" else "Vrijeme polaska",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WorkOrderDatePickerField(
+                        label = if (mode == "return") "Datum povratka" else "Datum polaska",
+                        value = actionDate,
+                        onChange = { actionDate = it },
+                        enabled = !isLoading,
+                        modifier = Modifier.weight(1.28f),
+                    )
+                    WorkOrderSelectField(
+                        label = "Vrijeme",
+                        value = actionTime,
+                        valueLabel = actionTime,
+                        options = reservationTimeOptions,
+                        enabled = !isLoading,
+                        onSelect = { nextTime -> actionTime = nextTime },
+                        modifier = Modifier.weight(0.88f),
+                    )
+                }
                 OutlinedTextField(
                     value = odometerKm,
                     onValueChange = { odometerKm = it.filter(Char::isDigit).take(8) },
@@ -15356,6 +15417,7 @@ private fun VehicleUsageDialog(
                         ?: openTrip?.linkedWorkOrderNumber.orEmpty()
                     onConfirm(
                         mode,
+                        formatReservationDateTime(actionDate, actionTime),
                         odometerKm.trim(),
                         destination.trim(),
                         reservationId.trim(),

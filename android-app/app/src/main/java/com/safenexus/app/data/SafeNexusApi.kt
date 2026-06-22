@@ -88,6 +88,7 @@ class SafeNexusApi(
                 peopleTrainingRecords = json.optJSONArray("peopleTrainingRecords").toRecords(),
                 clientPortalRecords = json.optJSONArray("clientPortalRecords").toRecords(),
                 rulebooks = json.optJSONArray("rulebooks").toRecords(),
+                legalFrameworks = json.optJSONArray("legalFrameworks").toRecords(),
                 riskAssessmentRecords = json.optJSONArray("riskAssessmentRecords").toRecords(),
                 jobs = json.optJSONArray("jobs").toRecords(),
                 offers = json.optJSONArray("offers").toRecords(),
@@ -325,6 +326,7 @@ class SafeNexusApi(
     suspend fun recordVehicleUsage(
         vehicleId: String,
         mode: String,
+        actionAt: String,
         odometerKm: String,
         destination: String,
         reservationId: String,
@@ -341,6 +343,8 @@ class SafeNexusApi(
         runCatching {
             val payload = JSONObject()
                 .put("mode", mode)
+                .put("actionAt", actionAt)
+                .put(if (mode == "return") "returnAt" else "departureAt", actionAt)
                 .put("odometerKm", odometerKm)
                 .put("destination", destination)
                 .put("reservationId", reservationId)
