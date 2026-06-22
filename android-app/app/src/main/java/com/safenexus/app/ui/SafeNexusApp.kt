@@ -2731,11 +2731,21 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
             if (state.isCreatingWorkOrder) {
                 WorkOrderCreateScreen(
                     data = state.data,
+                    directoryCompanies = state.companyDirectoryRecords,
+                    directoryCompanyTotal = state.companyDirectoryTotal,
+                    directoryCompanyLoading = state.companyDirectoryLoading,
+                    directoryCompanyHasMore = state.companyDirectoryHasMore,
+                    directoryLocationsByCompany = state.companyDirectoryLocations,
+                    directoryLocationLoading = state.companyDirectoryLocationLoading,
+                    directoryLocationHasMoreByCompany = state.companyDirectoryLocationHasMore,
                     isLoading = state.isLoading,
                     error = state.error,
                     onBack = { viewModel.navigateBack() },
                     onSave = viewModel::createWorkOrder,
                     onCreateLocation = viewModel::createWorkOrderLocation,
+                    onLoadMoreCompanies = { viewModel.loadCompanyDirectory(reset = false) },
+                    onLoadCompanyLocations = { company -> viewModel.loadCompanyLocations(company) },
+                    onLoadMoreCompanyLocations = { company -> viewModel.loadCompanyLocations(company, reset = false) },
                 )
             } else {
             val selected = state.selectedWorkOrder
@@ -3825,11 +3835,21 @@ private fun RememberedSessionCard(
 @Composable
 private fun WorkOrderCreateScreen(
     data: BootstrapData,
+    directoryCompanies: List<MobileRecord>,
+    directoryCompanyTotal: Int,
+    directoryCompanyLoading: Boolean,
+    directoryCompanyHasMore: Boolean,
+    directoryLocationsByCompany: Map<String, List<MobileRecord>>,
+    directoryLocationLoading: Set<String>,
+    directoryLocationHasMoreByCompany: Map<String, Boolean>,
     isLoading: Boolean,
     error: String,
     onBack: () -> Unit,
     onSave: (WorkOrderCreateDraft) -> Unit,
     onCreateLocation: (WorkOrderLocationCreateDraft, (WorkOrderLocationOption) -> Unit) -> Unit,
+    onLoadMoreCompanies: () -> Unit,
+    onLoadCompanyLocations: (MobileRecord) -> Unit,
+    onLoadMoreCompanyLocations: (MobileRecord) -> Unit,
 ) {
     var companyId by remember { mutableStateOf("") }
     var locationId by remember { mutableStateOf("") }
@@ -3859,11 +3879,25 @@ private fun WorkOrderCreateScreen(
     var newLocationContactPhone by remember { mutableStateOf("") }
     var newLocationContactEmail by remember { mutableStateOf("") }
     var newLocationNote by remember { mutableStateOf("") }
-    val company = data.workOrderCompanies.firstOrNull { it.id == companyId }
-    val availableLocations = remember(companyId, data.workOrderLocations) {
-        data.workOrderLocations.filter { location -> companyId.isBlank() || location.companyId == companyId }
+    val companyRecordsById = remember(directoryCompanies) {
+        directoryCompanies.associateBy { record -> record.id }
+    }
+    val companyOptionsForCreate = remember(directoryCompanies, data.workOrderCompanies) {
+        (directoryCompanies.map { record -> record.toWorkOrderCompanyOption() } + data.workOrderCompanies.take(20))
+            .distinctBy { it.id }
+            .sortedBy { it.name.lowercase(Locale.getDefault()) }
+    }
+    val company = companyOptionsForCreate.firstOrNull { it.id == companyId }
+    val selectedCompanyRecord = companyRecordsById[companyId]
+    val availableLocations = remember(companyId, directoryLocationsByCompany, data.workOrderLocations) {
+        val remoteLocations = directoryLocationsByCompany[companyId].orEmpty().map { record -> record.toWorkOrderLocationOption(companyId) }
+        (remoteLocations + data.workOrderLocations.filter { location -> location.companyId == companyId }.take(20))
+            .distinctBy { it.id }
+            .sortedBy { it.name.lowercase(Locale.getDefault()) }
     }
     val selectedLocation = availableLocations.firstOrNull { it.id == locationId }
+    val locationLoading = companyId in directoryLocationLoading
+    val locationHasMore = directoryLocationHasMoreByCompany[companyId] ?: false
     val serviceTabs = remember {
         listOf(
             WorkOrderServiceFilterTab("ispitivanja", "Ispitivanja", Icons.Rounded.Tune),
@@ -3923,6 +3957,11 @@ private fun WorkOrderCreateScreen(
 
     LaunchedEffect(companyId, availableLocations) {
         if (companyId.isBlank()) return@LaunchedEffect
+        selectedCompanyRecord?.let { companyRecord ->
+            if (!directoryLocationsByCompany.containsKey(companyId) && companyId !in directoryLocationLoading) {
+                onLoadCompanyLocations(companyRecord)
+            }
+        }
         if (locationId.isNotBlank() && availableLocations.none { it.id == locationId }) {
             applyLocationSelection(null)
         }
@@ -3972,7 +4011,7 @@ private fun WorkOrderCreateScreen(
                             label = "Naručitelj",
                             value = companyId,
                             valueLabel = company?.name.orEmpty(),
-                            options = data.workOrderCompanies.map { companyOption ->
+                            options = companyOptionsForCreate.map { companyOption ->
                                 WorkOrderPickerOption(
                                     value = companyOption.id,
                                     label = companyOption.name,
@@ -3989,12 +4028,28 @@ private fun WorkOrderCreateScreen(
                             icon = Icons.Rounded.Business,
                             searchPlaceholder = "Traži tvrtku, sjedište ili OIB",
                             emptyText = "Nema tvrtki za taj pojam.",
+                            isLoadingMore = directoryCompanyLoading,
+                            hasMore = directoryCompanyHasMore,
+                            loadMoreLabel = if (directoryCompanyTotal > 0) {
+                                "Učitaj još tvrtki (${companyOptionsForCreate.size}/$directoryCompanyTotal)"
+                            } else {
+                                "Učitaj još tvrtki"
+                            },
+                            onLoadMore = onLoadMoreCompanies,
                             onSelect = { next ->
-                                val nextLocations = data.workOrderLocations.filter { location -> location.companyId == next }
+                                val nextLocations = (
+                                    directoryLocationsByCompany[next].orEmpty().map { record -> record.toWorkOrderLocationOption(next) } +
+                                        data.workOrderLocations.filter { location -> location.companyId == next }.take(20)
+                                    ).distinctBy { it.id }
                                 companyId = next
                                 clearNewLocationDraft()
-                                showNewLocationForm = next.isNotBlank() && nextLocations.isEmpty()
+                                showNewLocationForm = next.isNotBlank() && nextLocations.isEmpty() && next !in directoryLocationLoading
                                 applyLocationSelection(nextLocations.singleOrNull())
+                                companyRecordsById[next]?.let { companyRecord ->
+                                    if (!directoryLocationsByCompany.containsKey(next)) {
+                                        onLoadCompanyLocations(companyRecord)
+                                    }
+                                }
                             },
                         )
                         WorkOrderSearchSelectField(
@@ -4019,7 +4074,13 @@ private fun WorkOrderCreateScreen(
                             enabled = !isLoading && companyId.isNotBlank(),
                             icon = Icons.Rounded.LocationOn,
                             searchPlaceholder = "Traži lokaciju, regiju ili koordinate",
-                            emptyText = if (companyId.isBlank()) "Prvo odaberi naručitelja." else "Nema lokacija za taj pojam.",
+                            emptyText = if (companyId.isBlank()) "Prvo odaberi naručitelja." else if (locationLoading) "Učitavam lokacije..." else "Nema lokacija za taj pojam.",
+                            isLoadingMore = locationLoading,
+                            hasMore = locationHasMore,
+                            loadMoreLabel = "Učitaj još lokacija",
+                            onLoadMore = {
+                                selectedCompanyRecord?.let(onLoadMoreCompanyLocations)
+                            },
                             onSelect = { next ->
                                 applyLocationSelection(availableLocations.firstOrNull { it.id == next })
                                 showNewLocationForm = false
@@ -4658,6 +4719,35 @@ private data class WorkOrderPickerOption(
     val searchText: String = "",
 )
 
+private fun MobileRecord.toWorkOrderCompanyOption(): WorkOrderCompanyOption =
+    WorkOrderCompanyOption(
+        id = id,
+        name = title,
+        oib = meta["oib"].orEmpty(),
+        headquarters = meta["headquarters"].orEmpty().ifBlank { subtitle },
+        contractType = "",
+        contactPhone = meta["contactPhone"].orEmpty(),
+        contactEmail = meta["contactEmail"].orEmpty(),
+    )
+
+private fun MobileRecord.toWorkOrderLocationOption(fallbackCompanyId: String = ""): WorkOrderLocationOption =
+    WorkOrderLocationOption(
+        id = id,
+        companyId = meta["companyId"].orEmpty().ifBlank { fallbackCompanyId },
+        name = title,
+        coordinates = coordinates,
+        region = meta["region"].orEmpty(),
+        contactName1 = meta["contactName1"].orEmpty(),
+        contactPhone1 = meta["contactPhone1"].orEmpty(),
+        contactEmail1 = meta["contactEmail1"].orEmpty(),
+        contactName2 = "",
+        contactPhone2 = "",
+        contactEmail2 = "",
+        contactName3 = "",
+        contactPhone3 = "",
+        contactEmail3 = "",
+    )
+
 private val workOrderRegionOptions = listOf(
     "Zagreb - Centar",
     "Zagreb - Zapad",
@@ -4688,6 +4778,10 @@ private fun WorkOrderSearchSelectField(
     icon: ImageVector = Icons.Rounded.Search,
     searchPlaceholder: String = "Traži",
     emptyText: String = "Nema rezultata.",
+    isLoadingMore: Boolean = false,
+    hasMore: Boolean = false,
+    loadMoreLabel: String = "Učitaj još",
+    onLoadMore: (() -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -4742,7 +4836,23 @@ private fun WorkOrderSearchSelectField(
                         shape = RoundedCornerShape(16.dp),
                     )
                     if (visibleOptions.isEmpty()) {
-                        Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                            if (onLoadMore != null && (hasMore || isLoadingMore)) {
+                                OutlinedButton(
+                                    onClick = onLoadMore,
+                                    enabled = !isLoadingMore && hasMore,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    if (isLoadingMore) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    Text(if (isLoadingMore) "Učitavam..." else loadMoreLabel)
+                                }
+                            }
+                        }
                     } else {
                         LazyColumn(
                             modifier = Modifier
@@ -4801,6 +4911,22 @@ private fun WorkOrderSearchSelectField(
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                                     )
+                                }
+                            }
+                            if (onLoadMore != null && (hasMore || isLoadingMore)) {
+                                item {
+                                    OutlinedButton(
+                                        onClick = onLoadMore,
+                                        enabled = !isLoadingMore && hasMore,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                    ) {
+                                        if (isLoadingMore) {
+                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                            Spacer(Modifier.width(8.dp))
+                                        }
+                                        Text(if (isLoadingMore) "Učitavam..." else loadMoreLabel)
+                                    }
                                 }
                             }
                         }
