@@ -109,6 +109,7 @@ import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.InsertDriveFile
@@ -299,7 +300,7 @@ enum class WorkOrderViewMode(val label: String) {
 }
 
 enum class AppSection(val label: String) {
-    Operations("Operativa"),
+    Operations("Home"),
     WorkOrders("RN"),
     Calendar("Kalendar"),
     Vehicles("Vozila"),
@@ -10018,7 +10019,7 @@ private fun MainMenuDropdown(
 ) {
     val shortcuts = remember {
         listOf(
-            MainMenuShortcut("Operativa", "Pregled terena, rokova i prioriteta", AppSection.Operations, Icons.Rounded.Work),
+            MainMenuShortcut("Home", "Istekli rokovi i nadolazeći teren", AppSection.Operations, Icons.Rounded.Home),
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
@@ -10366,7 +10367,7 @@ private fun MainBottomBar(
 }
 
 private fun AppSection.icon(): ImageVector = when (this) {
-    AppSection.Operations -> Icons.Rounded.Work
+    AppSection.Operations -> Icons.Rounded.Home
     AppSection.WorkOrders -> Icons.Rounded.CheckCircle
     AppSection.Calendar -> Icons.Rounded.CalendarMonth
     AppSection.Vehicles -> Icons.Rounded.Business
@@ -10380,32 +10381,328 @@ private fun OperationsContent(
     workOrders: List<WorkOrder>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
 ) {
-    val myWorkOrders = remember(workOrders, user?.displayName, user?.email) {
-        workOrders.filter { workOrder -> workOrder.isAssignedToUser(user) }
+    HomeContent(
+        user = user,
+        workOrders = workOrders,
+        onOpenWorkOrder = onOpenWorkOrder,
+    )
+}
+
+private enum class HomeWorkOrderScope(val label: String) {
+    Mine("Moji"),
+    All("Svi"),
+}
+
+private data class HomeWorkOrderDateItem(
+    val workOrder: WorkOrder,
+    val date: LocalDate,
+)
+
+private fun buildExpiredDueHomeItems(
+    workOrders: List<WorkOrder>,
+    today: LocalDate,
+): List<HomeWorkOrderDateItem> =
+    workOrders
+        .asSequence()
+        .filter { workOrder -> !workOrder.isClosed }
+        .mapNotNull { workOrder -> workOrder.parsedDueDate?.let { date -> workOrder to date } }
+        .filter { (_, date) -> date.isBefore(today) }
+        .sortedWith(compareBy<Pair<WorkOrder, LocalDate>> { it.second }.thenBy { it.first.displayNumber })
+        .map { (workOrder, date) -> HomeWorkOrderDateItem(workOrder, date) }
+        .take(12)
+        .toList()
+
+private fun buildUpcomingExecutionHomeItems(
+    workOrders: List<WorkOrder>,
+    today: LocalDate,
+): List<HomeWorkOrderDateItem> =
+    workOrders
+        .asSequence()
+        .filter { workOrder -> !workOrder.isClosed }
+        .mapNotNull { workOrder -> workOrder.parsedExecutionDate?.let { date -> workOrder to date } }
+        .filter { (_, date) -> !date.isBefore(today) }
+        .sortedWith(compareBy<Pair<WorkOrder, LocalDate>> { it.second }.thenBy { it.first.displayNumber })
+        .map { (workOrder, date) -> HomeWorkOrderDateItem(workOrder, date) }
+        .take(12)
+        .toList()
+
+@Composable
+private fun HomeContent(
+    user: SafeNexusUser?,
+    workOrders: List<WorkOrder>,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+) {
+    var scope by remember { mutableStateOf(HomeWorkOrderScope.Mine) }
+    val today = remember { LocalDate.now() }
+    val scopedWorkOrders = remember(workOrders, user?.displayName, user?.email, scope) {
+        when (scope) {
+            HomeWorkOrderScope.Mine -> workOrders.filter { workOrder -> workOrder.isAssignedToUser(user) }
+            HomeWorkOrderScope.All -> workOrders
+        }
     }
-    val statusLabels = remember(data.workOrderStatuses, workOrders) {
-        buildWorkOrderStatusLabels(data.workOrderStatuses.map { option -> option.value.ifBlank { option.label } }, workOrders)
+    val expiredDueItems = remember(scopedWorkOrders, today) { buildExpiredDueHomeItems(scopedWorkOrders, today) }
+    val upcomingExecutionItems = remember(scopedWorkOrders, today) { buildUpcomingExecutionHomeItems(scopedWorkOrders, today) }
+    val expiredDueCount = remember(scopedWorkOrders, today) {
+        scopedWorkOrders.count { workOrder -> !workOrder.isClosed && workOrder.parsedDueDate?.isBefore(today) == true }
     }
-    val organizationSummary = remember(workOrders, statusLabels) { workOrders.toStatusDashboard(statusLabels) }
-    val personalSummary = remember(myWorkOrders, statusLabels) { myWorkOrders.toStatusDashboard(statusLabels) }
+    val upcomingExecutionCount = remember(scopedWorkOrders, today) {
+        scopedWorkOrders.count { workOrder -> !workOrder.isClosed && workOrder.parsedExecutionDate?.let { !it.isBefore(today) } == true }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        MyPlanSection(
-            workOrders = myWorkOrders,
+        HomeScopePicker(
+            scope = scope,
+            onScopeChange = { scope = it },
+            mineCount = workOrders.count { workOrder -> workOrder.isAssignedToUser(user) },
+            allCount = workOrders.size,
+        )
+        HomeWorkOrderDateSection(
+            title = "Istekli radni nalozi",
+            subtitle = "Po roku",
+            count = expiredDueCount,
+            emptyText = if (scope == HomeWorkOrderScope.Mine) "Nema mojih RN-ova kojima je rok istekao." else "Nema RN-ova kojima je rok istekao.",
+            dateLabel = "Rok",
+            icon = Icons.Rounded.ErrorOutline,
+            accent = Color(0xFFDC2626),
+            items = expiredDueItems,
             onOpenWorkOrder = onOpenWorkOrder,
         )
-        OperationsStatusCockpit(
-            user = user,
-            personal = personalSummary,
-            organization = organizationSummary,
+        HomeWorkOrderDateSection(
+            title = "Nadolazeći",
+            subtitle = "Po datumu izvršenja",
+            count = upcomingExecutionCount,
+            emptyText = if (scope == HomeWorkOrderScope.Mine) "Nema mojih RN-ova s nadolazećim izvršenjem." else "Nema RN-ova s nadolazećim izvršenjem.",
+            dateLabel = "Izvršenje",
+            icon = Icons.Rounded.CalendarMonth,
+            accent = Color(0xFF2563EB),
+            items = upcomingExecutionItems,
+            onOpenWorkOrder = onOpenWorkOrder,
         )
-        OperationsScopeComparison(
-            personal = personalSummary,
-            organization = organizationSummary,
-        )
-        DashboardMetricGrid(data.dashboard)
-        OperationsRegisterStrip(data)
-        PriorityWorkOrders(workOrders)
+    }
+}
+
+@Composable
+private fun HomeScopePicker(
+    scope: HomeWorkOrderScope,
+    onScopeChange: (HomeWorkOrderScope) -> Unit,
+    mineCount: Int,
+    allCount: Int,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(
+                        Icons.Rounded.Home,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Home", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        "Rokovi i plan terena",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HomeScopeChip(
+                    label = "Moji",
+                    count = mineCount,
+                    selected = scope == HomeWorkOrderScope.Mine,
+                    onClick = { onScopeChange(HomeWorkOrderScope.Mine) },
+                )
+                HomeScopeChip(
+                    label = "Svi",
+                    count = allCount,
+                    selected = scope == HomeWorkOrderScope.All,
+                    onClick = { onScopeChange(HomeWorkOrderScope.All) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeScopeChip(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(999.dp),
+        color = if (selected) Color(0xFFEDE9FE) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, if (selected) Color(0xFF7C3AED).copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Text(label, fontWeight = FontWeight.Black, color = if (selected) Color(0xFF5B21B6) else MaterialTheme.colorScheme.onSurface)
+            Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+        }
+    }
+}
+
+@Composable
+private fun HomeWorkOrderDateSection(
+    title: String,
+    subtitle: String,
+    count: Int,
+    emptyText: String,
+    dateLabel: String,
+    icon: ImageVector,
+    accent: Color,
+    items: List<HomeWorkOrderDateItem>,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = accent.copy(alpha = 0.12f)) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .padding(10.dp),
+                        tint = accent,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                StatusCountPill("RN", count, accent)
+            }
+
+            if (items.isEmpty()) {
+                Text(
+                    emptyText,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                items.forEach { item ->
+                    HomeWorkOrderDateRow(
+                        item = item,
+                        dateLabel = dateLabel,
+                        accent = accent,
+                        onClick = { onOpenWorkOrder(item.workOrder) },
+                    )
+                }
+                if (count > items.size) {
+                    Text(
+                        "Prikazano prvih ${items.size} od $count po datumu.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeWorkOrderDateRow(
+    item: HomeWorkOrderDateItem,
+    dateLabel: String,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    val workOrder = item.workOrder
+    val statusStyle = rnStatusStyle(workOrder)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = accent.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        workOrder.displayNumber,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Surface(shape = RoundedCornerShape(999.dp), color = statusStyle.background) {
+                        Text(
+                            statusStyle.label,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusStyle.accent,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
+                Text(
+                    workOrder.companyName.ifBlank { "Bez tvrtke" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    workOrder.locationName.ifBlank { workOrder.displayService },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(dateLabel, style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
+                Text(
+                    formatDateLabel(item.date.toString()),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
     }
 }
 
