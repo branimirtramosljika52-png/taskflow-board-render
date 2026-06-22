@@ -4566,6 +4566,7 @@ private fun WorkOrderCreateTagSelector(
     onChange: (List<String>) -> Unit,
 ) {
     var draftTag by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
     val normalizedSelected = remember(selectedTags) {
         selectedTags
             .map { it.trim().trim('#') }
@@ -4591,51 +4592,106 @@ private fun WorkOrderCreateTagSelector(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Tagovi", fontWeight = FontWeight.Black)
-        if (normalizedSelected.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                normalizedSelected.forEach { tag ->
-                    WorkOrderEditableTagChip(
-                        tag = tag,
-                        icon = Icons.Rounded.Close,
-                        enabled = enabled,
-                        onClick = { setTags(normalizedSelected.filterNot { it.equals(tag, ignoreCase = true) }) },
-                    )
-                }
-            }
-        }
-        if (visibleSuggestions.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                visibleSuggestions.forEach { suggestion ->
-                    WorkOrderEditableTagChip(
-                        tag = suggestion,
-                        icon = Icons.Rounded.Add,
-                        enabled = enabled,
-                        onClick = { setTags(normalizedSelected + suggestion) },
-                    )
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = draftTag,
-                onValueChange = { draftTag = it },
-                modifier = Modifier.weight(1f),
-                enabled = enabled,
-                label = { Text("Dodaj tag") },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-            )
-            OutlinedButton(
-                onClick = {
-                    setTags(normalizedSelected + draftTag)
-                    draftTag = ""
-                },
-                enabled = enabled && draftTag.trim().trim('#').isNotBlank(),
-                shape = RoundedCornerShape(16.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { expanded = !expanded },
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.38f)),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.FilterList, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Tagovi", fontWeight = FontWeight.Black)
+                    if (normalizedSelected.isEmpty()) {
+                        Text(
+                            "Odaberi postojece ili dodaj novi tag",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            normalizedSelected.take(4).forEach { tag ->
+                                WorkOrderHeaderMetaChip(
+                                    label = tag,
+                                    style = workOrderTagStyle(tag),
+                                )
+                            }
+                            if (normalizedSelected.size > 4) {
+                                WorkOrderHeaderMetaChip(
+                                    label = "+${normalizedSelected.size - 4}",
+                                    style = WorkOrderMetaChipStyle(
+                                        background = Color(0xFFF8FAFC),
+                                        border = Color(0xFFCBD5E1),
+                                        content = Color(0xFF475569),
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                )
+            }
+        }
+        AnimatedVisibility(expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (normalizedSelected.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        normalizedSelected.forEach { tag ->
+                            WorkOrderEditableTagChip(
+                                tag = tag,
+                                icon = Icons.Rounded.Close,
+                                enabled = enabled,
+                                onClick = { setTags(normalizedSelected.filterNot { it.equals(tag, ignoreCase = true) }) },
+                            )
+                        }
+                    }
+                }
+                if (visibleSuggestions.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        visibleSuggestions.forEach { suggestion ->
+                            WorkOrderEditableTagChip(
+                                tag = suggestion,
+                                icon = Icons.Rounded.Add,
+                                enabled = enabled,
+                                onClick = { setTags(normalizedSelected + suggestion) },
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = draftTag,
+                        onValueChange = { draftTag = it },
+                        modifier = Modifier.weight(1f),
+                        enabled = enabled,
+                        label = { Text("Dodaj tag") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            setTags(normalizedSelected + draftTag)
+                            draftTag = ""
+                        },
+                        enabled = enabled && draftTag.trim().trim('#').isNotBlank(),
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                }
             }
         }
     }
@@ -14706,18 +14762,29 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOpt
             .sn-popup {
               display: grid;
               gap: 8px;
-              min-width: 245px;
+              width: 232px;
+              max-width: 232px;
               color: #111827;
             }
             .sn-popup strong {
+              display: block;
               color: #0f172a;
               font-size: 16px;
               font-weight: 800;
+              max-width: 100%;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
             }
             .sn-popup span {
+              display: block;
               color: #475569;
               font-size: 13px;
               line-height: 1.35;
+              max-width: 100%;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
             }
             .sn-meta {
               display: grid;
@@ -14726,6 +14793,9 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOpt
               border-radius: 12px;
               background: #f8fafc;
               border: 1px solid #e2e8f0;
+            }
+            .sn-meta span {
+              font-size: 12px;
             }
             .sn-status {
               display: inline-flex;
@@ -14748,10 +14818,12 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOpt
               outline: none;
             }
             .sn-open {
+              border: 0;
               display: inline-flex;
               align-items: center;
               justify-content: center;
               margin-top: 4px;
+              width: 100%;
               padding: 8px 10px;
               border-radius: 10px;
               background: #2563eb;
@@ -14759,6 +14831,7 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOpt
               font-size: 13px;
               font-weight: 800;
               text-decoration: none;
+              font-family: inherit;
             }
             .sn-pin {
               width: 28px;
@@ -14852,7 +14925,7 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOpt
               const safeId = encodeURIComponent(marker.id);
               leafletMarker.bindPopup([
                 "<div class='sn-popup'>",
-                "<strong>" + escapeHtml(marker.number) + "</strong>",
+                "<strong>RN " + escapeHtml(marker.number) + "</strong>",
                 "<span>" + escapeHtml(marker.company) + "</span>",
                 "<span class='sn-status' style='--sn-status-bg:" + escapeHtml(marker.statusBackground) + ";--sn-status-color:" + escapeHtml(marker.statusAccent) + ";'>" + escapeHtml(marker.status) + "</span>",
                 "<div class='sn-meta'>",
@@ -14862,9 +14935,16 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOpt
                 "<span>" + escapeHtml(marker.dueDate) + " · " + escapeHtml(marker.executionDate) + "</span>",
                 "</div>",
                 statusSelect(marker),
-                "<a class='sn-open' href='safenexus://work-order/" + safeId + "' onclick='window.SafeNexus.openWorkOrder(" + JSON.stringify(marker.id) + "); return false;'>Otvori radni nalog</a>",
+                "<button class='sn-open' type='button' onclick='window.SafeNexus.openWorkOrder(" + JSON.stringify(marker.id) + "); return false;'>Otvori RN</button>",
                 "</div>"
-              ].join(""));
+              ].join(""), {
+                maxWidth: 248,
+                minWidth: 232,
+                autoPan: true,
+                autoPanPadding: [18, 18],
+                keepInView: true,
+                closeOnClick: false
+              });
               clusterLayer.addLayer(leafletMarker);
             });
 
