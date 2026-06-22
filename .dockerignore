@@ -6,3 +6,4 @@ dist
 .do
 assets/mobile/SafeNexus-0.1.*.apk
 !assets/mobile/SafeNexus-0.1.196.apk
+!assets/mobile/SafeNexus-0.1.197.apk
