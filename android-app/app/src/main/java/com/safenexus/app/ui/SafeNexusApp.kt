@@ -186,6 +186,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
@@ -9783,20 +9784,11 @@ private fun WorkOrdersScreen(
                                 points = mapPoints,
                                 totalWorkOrders = filtered.size,
                                 statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
+                                mapHeight = 560.dp,
                                 onOpenWorkOrder = onOpenWorkOrder,
                                 onStatusChange = onStatusChange,
                             )
                         }
-                    }
-                    items(filtered, key = { "map-list-${it.id}" }) { workOrder ->
-                        WorkOrderCard(
-                            workOrder = workOrder,
-                            isLoading = state.isLoading,
-                            statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
-                            onClick = { onOpenWorkOrder(workOrder) },
-                            onStatusChange = { status -> onStatusChange(workOrder, status) },
-                            onAddDocumentation = { onAddDocumentation(workOrder) },
-                        )
                     }
                 }
             } else if (filtered.isEmpty() && !state.isLoading) {
@@ -14567,6 +14559,7 @@ private fun WorkOrderMapPanel(
     points: List<WorkOrderMapPoint>,
     totalWorkOrders: Int,
     statusOptions: List<String>,
+    mapHeight: Dp = 280.dp,
     onOpenWorkOrder: (WorkOrder) -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
 ) {
@@ -14588,6 +14581,7 @@ private fun WorkOrderMapPanel(
             WorkOrderLeafletMap(
                 points = points,
                 statusOptions = statusOptions,
+                mapHeight = mapHeight,
                 onOpenWorkOrder = onOpenWorkOrder,
                 onStatusChange = onStatusChange,
             )
@@ -14632,6 +14626,7 @@ private class WorkOrderMapBridge(
 private fun WorkOrderLeafletMap(
     points: List<WorkOrderMapPoint>,
     statusOptions: List<String>,
+    mapHeight: Dp = 280.dp,
     onOpenWorkOrder: (WorkOrder) -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
 ) {
@@ -14643,7 +14638,7 @@ private fun WorkOrderLeafletMap(
     AndroidView(
         modifier = Modifier
             .fillMaxWidth()
-            .height(280.dp)
+            .height(mapHeight)
             .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)),
         factory = { context ->
             WebView(context).apply {
@@ -14759,11 +14754,20 @@ private fun buildWorkOrderLeafletHtml(points: List<WorkOrderMapPoint>, statusOpt
               background: #e6eef8;
               font: inherit;
             }
+            .leaflet-popup-content-wrapper {
+              border-radius: 18px;
+            }
+            .leaflet-popup-content {
+              margin: 10px 12px;
+            }
             .sn-popup {
               display: grid;
               gap: 8px;
               width: 232px;
               max-width: 232px;
+              max-height: 360px;
+              overflow-y: auto;
+              padding-right: 2px;
               color: #111827;
             }
             .sn-popup strong {
