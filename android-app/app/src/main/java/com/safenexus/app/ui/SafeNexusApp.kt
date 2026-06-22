@@ -331,6 +331,11 @@ enum class CalendarViewMode(val label: String) {
     Month("Mjesec"),
 }
 
+private enum class PeriodicsViewMode(val label: String) {
+    List("Lista"),
+    Calendar("Kalendar"),
+}
+
 private data class MainMenuShortcut(
     val label: String,
     val description: String,
@@ -795,11 +800,15 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         state = state.copy(viewMode = value)
     }
 
-    private fun normalizedDestination(section: AppSection, focus: MoreSectionFocus? = null): AppNavigationDestination =
-        AppNavigationDestination(
+    private fun normalizedDestination(section: AppSection, focus: MoreSectionFocus? = null): AppNavigationDestination {
+        if (section == AppSection.Calendar) {
+            return AppNavigationDestination(AppSection.More, MoreSectionFocus.Periodics)
+        }
+        return AppNavigationDestination(
             section = section,
             moreFocus = if (section == AppSection.More) focus ?: MoreSectionFocus.Overview else MoreSectionFocus.Overview,
         )
+    }
 
     private fun currentDestination(): AppNavigationDestination =
         normalizedDestination(state.section, state.moreFocus)
@@ -2702,9 +2711,11 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     }
     val openMobileRecord: (MobileRecord) -> Unit = { record ->
         val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
-            record.kind in setOf("work_order", "todo_task") && (
+            record.kind in setOf("work_order", "work_order_execution", "work_order_due", "todo_task") && (
                 workOrder.id == record.relatedId ||
                     workOrder.id == record.id.removePrefix("work-order:")
+                    || workOrder.id == record.id.removePrefix("work-order-due:")
+                    || workOrder.id == record.id.removePrefix("work-order-execution:")
                 )
         }
         if (linkedWorkOrder != null) {
@@ -9668,7 +9679,10 @@ private fun WorkOrdersScreen(
                         )
                     }
                     MoreSectionFocus.Periodics -> item {
-                        PeriodicsPreview(entries = periodicEntries)
+                        PeriodicsContent(
+                            entries = periodicEntries,
+                            onOpenRecord = onOpenRecord,
+                        )
                     }
                     MoreSectionFocus.Documents -> item {
                         DocumentRegisterPreview(
@@ -10021,7 +10035,6 @@ private fun MainMenuDropdown(
         listOf(
             MainMenuShortcut("Home", "Istekli rokovi i nadolazeći teren", AppSection.Operations, Icons.Rounded.Home),
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
-            MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
             MainMenuShortcut("ToDo", "Zadaci, teme i Next Week Job status", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Todo),
             MainMenuShortcut("Plan terena", "Upiti i dogovori prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
@@ -10350,7 +10363,7 @@ private fun MainBottomBar(
     onSectionChange: (AppSection) -> Unit,
 ) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-        AppSection.entries.filter { section -> section != AppSection.More }.forEach { section ->
+        AppSection.entries.filter { section -> section != AppSection.More && section != AppSection.Calendar }.forEach { section ->
             NavigationBarItem(
                 selected = selected == section,
                 onClick = { onSectionChange(section) },
@@ -12875,6 +12888,7 @@ private data class PeriodicEntry(
     val date: String,
     val kind: String,
     val icon: ImageVector,
+    val record: MobileRecord,
 ) {
     val parsedDate: LocalDate? = parseDateOrNull(date)
 }
@@ -12888,13 +12902,15 @@ private fun buildPeriodicEntries(
     fun addRecord(record: MobileRecord, fallbackKind: String, icon: ImageVector) {
         if (record.date.isBlank()) return
         if (query.isNotBlank() && !record.matchesSearch(query)) return
+        val normalizedKind = record.kind.ifBlank { fallbackKind }
         entries += PeriodicEntry(
             title = record.title,
-            subtitle = record.subtitle.ifBlank { recordKindLabel(record.kind.ifBlank { fallbackKind }) },
+            subtitle = record.subtitle.ifBlank { recordKindLabel(normalizedKind) },
             status = record.status,
             date = record.date,
-            kind = record.kind.ifBlank { fallbackKind },
+            kind = normalizedKind,
             icon = icon,
+            record = record.copy(kind = normalizedKind),
         )
     }
 
@@ -12904,8 +12920,37 @@ private fun buildPeriodicEntries(
     data.rulebooks.forEach { addRecord(it, "rulebook", Icons.Rounded.Lock) }
     data.legalFrameworks.forEach { addRecord(it, "legal_framework", Icons.Rounded.Description) }
     data.vehicles.forEach { addRecord(it, "vehicle", Icons.Rounded.Business) }
+    fun addWorkOrderDate(workOrder: WorkOrder, date: String, kind: String, label: String) {
+        if (date.isBlank()) return
+        val subtitle = listOf(workOrder.companyName, workOrder.locationName, workOrder.displayService)
+            .filter { it.isNotBlank() }
+            .joinToString(" - ")
+        entries += PeriodicEntry(
+            title = workOrder.displayNumber,
+            subtitle = subtitle,
+            status = workOrder.status,
+            date = date,
+            kind = kind,
+            icon = Icons.Rounded.Work,
+            record = MobileRecord(
+                id = "${kind.replace('_', '-')}:${workOrder.id}",
+                title = workOrder.displayNumber,
+                subtitle = subtitle,
+                status = workOrder.status,
+                kind = kind,
+                date = date,
+                relatedId = workOrder.id,
+                coordinates = workOrder.coordinates,
+                meta = mapOf(
+                    "companyName" to workOrder.companyName,
+                    "locationName" to workOrder.locationName,
+                    "service" to workOrder.displayService,
+                    "calendarLabel" to label,
+                ),
+            ),
+        )
+    }
     workOrders.forEach { workOrder ->
-        if (workOrder.dueDate.isBlank()) return@forEach
         val searchText = listOf(
             workOrder.displayNumber,
             workOrder.companyName,
@@ -12914,16 +12959,8 @@ private fun buildPeriodicEntries(
             workOrder.displayService,
         ).joinToString(" ")
         if (query.isNotBlank() && !searchText.contains(query, ignoreCase = true)) return@forEach
-        entries += PeriodicEntry(
-            title = workOrder.displayNumber,
-            subtitle = listOf(workOrder.companyName, workOrder.locationName, workOrder.displayService)
-                .filter { it.isNotBlank() }
-                .joinToString(" - "),
-            status = workOrder.status,
-            date = workOrder.dueDate,
-            kind = "work_order",
-            icon = Icons.Rounded.Work,
-        )
+        addWorkOrderDate(workOrder, workOrder.dueDate, "work_order_due", "Rok")
+        addWorkOrderDate(workOrder, workOrder.executionDate, "work_order_execution", "Izvršenje")
     }
 
     return entries
@@ -12972,6 +13009,226 @@ private fun PeriodicsPreview(entries: List<PeriodicEntry>) {
     }
 }
 
+private data class PeriodicCategoryOption(
+    val id: String,
+    val label: String,
+    val count: Int,
+    val icon: ImageVector,
+    val accent: Color,
+)
+
+private fun periodicCategoryId(kind: String): String = when (kind) {
+    "work_order", "work_order_due", "work_order_execution", "todo_task" -> "work_orders"
+    "training", "people_training" -> "people"
+    "vehicle", "periodic_vehicle" -> "vehicles"
+    "measurement_equipment", "periodic_equipment" -> "equipment"
+    "document", "periodic_document" -> "documents"
+    "rulebook", "periodic_rulebook", "risk_assessment", "periodic_risk_assessment", "client_portal" -> "foundation"
+    "legal_framework", "periodic_legal_framework" -> "legal"
+    else -> "other"
+}
+
+private fun periodicCategoryLabel(id: String): String = when (id) {
+    "all" -> "Sve"
+    "work_orders" -> "RN"
+    "people" -> "Osposobljavanja"
+    "vehicles" -> "Vozila"
+    "equipment" -> "Oprema"
+    "documents" -> "Dokumenti"
+    "foundation" -> "Temeljna"
+    "legal" -> "Zakonska"
+    else -> "Ostalo"
+}
+
+private fun periodicCategoryIcon(id: String): ImageVector = when (id) {
+    "work_orders" -> Icons.Rounded.Work
+    "people" -> Icons.Rounded.Fingerprint
+    "vehicles" -> Icons.Rounded.Business
+    "equipment" -> Icons.Rounded.Work
+    "documents" -> Icons.Rounded.Description
+    "foundation" -> Icons.Rounded.Lock
+    "legal" -> Icons.Rounded.Description
+    else -> Icons.Rounded.CalendarMonth
+}
+
+private fun periodicCategoryAccent(id: String): Color = when (id) {
+    "work_orders" -> Color(0xFF2563EB)
+    "people" -> Color(0xFF7C3AED)
+    "vehicles" -> Color(0xFF0891B2)
+    "equipment" -> Color(0xFF0F766E)
+    "documents" -> Color(0xFF4F46E5)
+    "foundation" -> Color(0xFFB45309)
+    "legal" -> Color(0xFF334155)
+    else -> Color(0xFF64748B)
+}
+
+private fun buildPeriodicCategoryOptions(entries: List<PeriodicEntry>): List<PeriodicCategoryOption> {
+    val groupedCounts = entries.groupingBy { periodicCategoryId(it.kind) }.eachCount()
+    val order = listOf("work_orders", "people", "documents", "foundation", "legal", "equipment", "vehicles", "other")
+    return buildList {
+        add(
+            PeriodicCategoryOption(
+                id = "all",
+                label = periodicCategoryLabel("all"),
+                count = entries.size,
+                icon = Icons.Rounded.CalendarMonth,
+                accent = Color(0xFF2563EB),
+            ),
+        )
+        order.forEach { id ->
+            val count = groupedCounts[id] ?: return@forEach
+            add(
+                PeriodicCategoryOption(
+                    id = id,
+                    label = periodicCategoryLabel(id),
+                    count = count,
+                    icon = periodicCategoryIcon(id),
+                    accent = periodicCategoryAccent(id),
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeriodicsContent(
+    entries: List<PeriodicEntry>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val today = remember { LocalDate.now() }
+    var viewMode by remember { mutableStateOf(PeriodicsViewMode.List) }
+    var selectedCategory by remember { mutableStateOf("all") }
+    val overdue = remember(entries, today) { entries.count { entry -> entry.parsedDate?.isBefore(today) == true } }
+    val next30 = remember(entries, today) {
+        entries.count { entry ->
+            val date = entry.parsedDate ?: return@count false
+            !date.isBefore(today) && !date.isAfter(today.plusDays(30))
+        }
+    }
+    val categories = remember(entries) { buildPeriodicCategoryOptions(entries) }
+    LaunchedEffect(categories) {
+        if (categories.none { it.id == selectedCategory }) selectedCategory = "all"
+    }
+    val visibleEntries = remember(entries, selectedCategory) {
+        if (selectedCategory == "all") {
+            entries
+        } else {
+            entries.filter { periodicCategoryId(it.kind) == selectedCategory }
+        }
+    }
+    val calendarRecords = remember(visibleEntries) { visibleEntries.map { it.record } }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SectionHeader(
+                title = "Periodika",
+                subtitle = "Lista i kalendar rokova iz RN-ova, dokumenata, opreme, vozila i osposobljavanja",
+                icon = Icons.Rounded.CalendarMonth,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PeriodicStatTile("Ukupno", entries.size, Color(0xFF2563EB), Modifier.weight(1f))
+                PeriodicStatTile("Kasni", overdue, Color(0xFFDC2626), Modifier.weight(1f))
+                PeriodicStatTile("30 dana", next30, Color(0xFFB45309), Modifier.weight(1f))
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PeriodicsViewMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = viewMode == mode,
+                        onClick = { viewMode = mode },
+                        label = { Text(mode.label, fontWeight = FontWeight.Bold) },
+                        leadingIcon = {
+                            Icon(
+                                if (mode == PeriodicsViewMode.Calendar) Icons.Rounded.CalendarMonth else Icons.Rounded.ListAlt,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        },
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                categories.forEach { category ->
+                    val selected = selectedCategory == category.id
+                    FilterChip(
+                        selected = selected,
+                        onClick = { selectedCategory = category.id },
+                        label = { Text("${category.label} ${category.count}", fontWeight = FontWeight.Bold) },
+                        leadingIcon = {
+                            Icon(
+                                category.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (selected) category.accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            )
+                        },
+                    )
+                }
+            }
+            if (entries.isEmpty()) {
+                Text("Nema periodičkih rokova za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            } else if (viewMode == PeriodicsViewMode.Calendar) {
+                CalendarContent(records = calendarRecords, onOpenRecord = onOpenRecord)
+            } else {
+                PeriodicsListView(entries = visibleEntries, today = today, onOpenRecord = onOpenRecord)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodicsListView(
+    entries: List<PeriodicEntry>,
+    today: LocalDate,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    val groups = remember(entries, today) {
+        listOf(
+            "Kasni" to entries.filter { it.parsedDate?.isBefore(today) == true },
+            "Sljedećih 30 dana" to entries.filter { entry ->
+                val date = entry.parsedDate ?: return@filter false
+                !date.isBefore(today) && !date.isAfter(today.plusDays(30))
+            },
+            "Kasnije" to entries.filter { entry ->
+                val date = entry.parsedDate ?: return@filter false
+                date.isAfter(today.plusDays(30))
+            },
+            "Bez datuma" to entries.filter { it.parsedDate == null },
+        ).filter { it.second.isNotEmpty() }
+    }
+    if (entries.isEmpty()) {
+        Text("Nema rokova za odabrani filter.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        groups.forEach { (label, groupEntries) ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+                Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)) {
+                    Text(
+                        groupEntries.size.toString(),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            groupEntries.forEach { entry ->
+                PeriodicLine(entry = entry, today = today, onClick = { onOpenRecord(entry.record) })
+            }
+        }
+    }
+}
+
 @Composable
 private fun PeriodicStatTile(
     label: String,
@@ -12988,7 +13245,11 @@ private fun PeriodicStatTile(
 }
 
 @Composable
-private fun PeriodicLine(entry: PeriodicEntry, today: LocalDate) {
+private fun PeriodicLine(
+    entry: PeriodicEntry,
+    today: LocalDate,
+    onClick: (() -> Unit)? = null,
+) {
     val parsedDate = entry.parsedDate
     val accent = when {
         parsedDate == null -> Color(0xFF475569)
@@ -13004,7 +13265,9 @@ private fun PeriodicLine(entry: PeriodicEntry, today: LocalDate) {
     }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
         shape = RoundedCornerShape(18.dp),
         color = accent.copy(alpha = 0.08f),
     ) {
