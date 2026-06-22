@@ -91,6 +91,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AttachFile
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -472,6 +473,7 @@ data class AppState(
     val selectedWorkOrder: WorkOrder? = null,
     val selectedRecord: MobileRecord? = null,
     val isCreatingWorkOrder: Boolean = false,
+    val workOrderCreatePrefill: WorkOrderCreateDraft? = null,
     val section: AppSection = AppSection.Operations,
     val moreFocus: MoreSectionFocus = MoreSectionFocus.Overview,
     val navigationDepth: Int = 0,
@@ -832,12 +834,13 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             navigationDepth = navigationBackStack.size,
             selectedRecord = null,
             isCreatingWorkOrder = false,
+            workOrderCreatePrefill = null,
         )
     }
 
     fun navigateBack(): Boolean {
         if (state.isCreatingWorkOrder) {
-            state = state.copy(isCreatingWorkOrder = false, error = "", notice = "")
+            state = state.copy(isCreatingWorkOrder = false, workOrderCreatePrefill = null, error = "", notice = "")
             return true
         }
         if (state.selectedWorkOrder != null) {
@@ -864,17 +867,18 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 selectedWorkOrder = null,
                 selectedRecord = null,
                 isCreatingWorkOrder = false,
+                workOrderCreatePrefill = null,
                 error = "",
                 notice = "",
             )
             return true
         }
         if (state.section == AppSection.More && state.moreFocus != MoreSectionFocus.Overview) {
-            state = state.copy(moreFocus = MoreSectionFocus.Overview, error = "", notice = "")
+            state = state.copy(moreFocus = MoreSectionFocus.Overview, workOrderCreatePrefill = null, error = "", notice = "")
             return true
         }
         if (state.section != AppSection.Operations) {
-            state = state.copy(section = AppSection.Operations, moreFocus = MoreSectionFocus.Overview, error = "", notice = "")
+            state = state.copy(section = AppSection.Operations, moreFocus = MoreSectionFocus.Overview, workOrderCreatePrefill = null, error = "", notice = "")
             return true
         }
         return false
@@ -885,6 +889,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             selectedWorkOrder = value,
             selectedRecord = null,
             isCreatingWorkOrder = false,
+            workOrderCreatePrefill = null,
             workOrderDocumentsWorkOrderId = value?.id.orEmpty(),
             workOrderDocuments = emptyList(),
             workOrderDocumentsLoading = value != null,
@@ -898,22 +903,23 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun selectRecord(value: MobileRecord?) {
-        state = state.copy(selectedRecord = value, selectedWorkOrder = null, isCreatingWorkOrder = false)
+        state = state.copy(selectedRecord = value, selectedWorkOrder = null, isCreatingWorkOrder = false, workOrderCreatePrefill = null)
     }
 
-    fun openWorkOrderCreate() {
+    fun openWorkOrderCreate(prefill: WorkOrderCreateDraft? = null) {
         state = state.copy(
             section = AppSection.WorkOrders,
             selectedWorkOrder = null,
             selectedRecord = null,
             isCreatingWorkOrder = true,
+            workOrderCreatePrefill = prefill,
             error = "",
             notice = "",
         )
     }
 
     fun closeWorkOrderCreate() {
-        state = state.copy(isCreatingWorkOrder = false, error = "", notice = "")
+        state = state.copy(isCreatingWorkOrder = false, workOrderCreatePrefill = null, error = "", notice = "")
     }
 
     fun createWorkOrder(draft: WorkOrderCreateDraft) {
@@ -933,6 +939,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         isCreatingWorkOrder = false,
+                        workOrderCreatePrefill = null,
                         section = AppSection.WorkOrders,
                         notice = "Novi radni nalog je otvoren.",
                     )
@@ -1081,22 +1088,141 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             state = state.copy(error = "Ne mogu pronaći ID upita.")
             return
         }
+        val companyId = inquiry.meta["companyId"].orEmpty()
+        if (companyId.isBlank()) {
+            state = state.copy(error = "Za otvaranje RN-a prvo odaberi tvrtku u planu terena.")
+            return
+        }
+        val serviceLine = inquiry.meta["serviceLine"].orEmpty().ifBlank { inquiry.title }
+        val serviceSearch = listOf(serviceLine, inquiry.title, inquiry.subtitle)
+            .joinToString(" ")
+            .lowercase(Locale.getDefault())
+        val matchedServiceIds = state.data.workOrderServices
+            .filter { service ->
+                val name = service.name.lowercase(Locale.getDefault())
+                val code = service.serviceCode.lowercase(Locale.getDefault())
+                (name.isNotBlank() && serviceSearch.contains(name)) ||
+                    (code.isNotBlank() && serviceSearch.contains(code))
+            }
+            .map { it.id }
+            .distinct()
+            .take(6)
+        val executorLabels = inquiry.meta["assignedUserLabels"].orEmpty()
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        val plannedDate = inquiry.date
+        openWorkOrderCreate(
+            WorkOrderCreateDraft(
+                companyId = companyId,
+                locationId = inquiry.meta["locationId"].orEmpty(),
+                status = state.data.workOrderStatuses.firstOrNull { it.value == "Otvoreni RN" }?.value
+                    ?: state.data.workOrderStatuses.firstOrNull()?.value
+                    ?: "Otvoreni RN",
+                openedDate = LocalDate.now().toString(),
+                dueDate = plannedDate,
+                executionDate = plannedDate,
+                priority = state.data.priorities.firstOrNull { it.value == "Normal" }?.value ?: "Normal",
+                serviceLine = serviceLine,
+                serviceIds = matchedServiceIds,
+                description = listOf(inquiry.title, inquiry.meta["note"].orEmpty())
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n\n"),
+                executors = executorLabels,
+                completedBy = "",
+                teamLabel = "",
+                contactName = inquiry.meta["contactName"].orEmpty(),
+                contactPhone = inquiry.meta["contactPhone"].orEmpty(),
+                contactEmail = "",
+                tagText = "Plan terena",
+                invoiceNote = "",
+                linkReference = "Plan terena",
+                department = "",
+                sourceFieldInquiryId = inquiryId,
+            ),
+        )
+    }
+
+    fun polishFieldInquiryNote(
+        transcript: String,
+        currentNote: String,
+        title: String,
+        companyName: String,
+        locationName: String,
+        serviceLine: String,
+        onDone: (String) -> Unit,
+    ) {
+        val spoken = transcript.trim()
+        if (spoken.isBlank()) {
+            state = state.copy(error = "Prvo unesi ili izdiktiraj opis plana terena.")
+            return
+        }
 
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
-            api.convertFieldInquiryToWorkOrder(inquiryId)
-                .onSuccess {
+            api.polishFieldInquiryNote(
+                transcript = spoken,
+                currentNote = currentNote,
+                title = title,
+                companyName = companyName,
+                locationName = locationName,
+                serviceLine = serviceLine,
+            )
+                .onSuccess { polished ->
+                    onDone(polished.ifBlank { spoken })
+                    state = state.copy(isLoading = false, notice = "Opis plana terena je sređen.", error = "")
+                }
+                .onFailure { error ->
+                    onDone(spoken)
                     state = state.copy(
                         isLoading = false,
-                        section = AppSection.WorkOrders,
-                        notice = "Iz upita je otvoren radni nalog.",
+                        error = error.message ?: "NexAI trenutno ne može srediti opis.",
                     )
-                    refresh()
+                }
+        }
+    }
+
+    fun downloadFieldInquiryDocument(context: Context, record: MobileRecord, document: FieldInquiryDocument) {
+        val inquiryId = record.id.removePrefix("field-inquiry:").ifBlank { record.relatedId }
+        if (inquiryId.isBlank() || document.id.isBlank()) {
+            state = state.copy(error = "Dokument plana terena nije moguće preuzeti.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadFieldInquiryDocument(
+                inquiryId = inquiryId,
+                documentId = document.id,
+                fallbackFileName = document.fileName,
+                fallbackFileType = document.fileType,
+            )
+                .onSuccess { downloaded ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
+                            state = state.copy(
+                                isLoading = false,
+                                notice = if (opened) {
+                                    "Dokument plana terena je spremljen u Preuzimanja / SafeNexus i otvoren."
+                                } else {
+                                    "Dokument plana terena je spremljen u Preuzimanja / SafeNexus."
+                                },
+                                error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje ove vrste dokumenta.",
+                            )
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti dokument plana terena.",
+                            )
+                        }
                 }
                 .onFailure { error ->
                     state = state.copy(
                         isLoading = false,
-                        error = error.message ?: "Ne mogu napraviti RN iz upita.",
+                        error = error.message ?: "Ne mogu preuzeti dokument plana terena.",
                     )
                 }
         }
@@ -2756,6 +2882,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     directoryLocationsByCompany = state.companyDirectoryLocations,
                     directoryLocationLoading = state.companyDirectoryLocationLoading,
                     directoryLocationHasMoreByCompany = state.companyDirectoryLocationHasMore,
+                    initialDraft = state.workOrderCreatePrefill,
                     isLoading = state.isLoading,
                     error = state.error,
                     onBack = { viewModel.navigateBack() },
@@ -2784,6 +2911,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onStatusChange = viewModel::updateWorkOrderStatus,
                         onAddDocumentation = openDocumentationActions,
                         onSaveFieldInquiry = viewModel::saveFieldInquiry,
+                        onPolishFieldInquiryNote = viewModel::polishFieldInquiryNote,
                         onConvertFieldInquiry = viewModel::convertFieldInquiryToWorkOrder,
                         onCreateJob = viewModel::createJob,
                         onCreateRiskAssessment = viewModel::createRiskAssessment,
@@ -2812,6 +2940,10 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onDownloadVehicleEvidencePdf = { vehicle -> viewModel.downloadVehicleEvidencePdf(context.applicationContext, vehicle) },
                         onDownloadOfferPdf = { offer -> viewModel.downloadOfferPdf(context.applicationContext, offer) },
                         onDownloadDocument = { record -> viewModel.downloadMobileDocument(context.applicationContext, record) },
+                        onConvertFieldInquiry = viewModel::convertFieldInquiryToWorkOrder,
+                        onDownloadFieldInquiryDocument = { record, document ->
+                            viewModel.downloadFieldInquiryDocument(context.applicationContext, record, document)
+                        },
                         onDownloadTrainingDocument = { record, document ->
                             viewModel.downloadPeopleTrainingDocument(context.applicationContext, record, document)
                         },
@@ -3861,6 +3993,7 @@ private fun WorkOrderCreateScreen(
     directoryLocationsByCompany: Map<String, List<MobileRecord>>,
     directoryLocationLoading: Set<String>,
     directoryLocationHasMoreByCompany: Map<String, Boolean>,
+    initialDraft: WorkOrderCreateDraft?,
     isLoading: Boolean,
     error: String,
     onBack: () -> Unit,
@@ -3870,22 +4003,25 @@ private fun WorkOrderCreateScreen(
     onLoadCompanyLocations: (MobileRecord) -> Unit,
     onLoadMoreCompanyLocations: (MobileRecord) -> Unit,
 ) {
-    var companyId by remember { mutableStateOf("") }
-    var locationId by remember { mutableStateOf("") }
-    var status by remember(data.workOrderStatuses) { mutableStateOf(data.workOrderStatuses.firstOrNull()?.value ?: "Otvoreni RN") }
-    var openedDate by remember { mutableStateOf(LocalDate.now().toString()) }
-    var dueDate by remember { mutableStateOf("") }
-    var executionDate by remember { mutableStateOf("") }
-    var priority by remember(data.priorities) { mutableStateOf(data.priorities.firstOrNull { it.value == "Normal" }?.value ?: "Normal") }
-    var serviceLine by remember { mutableStateOf("") }
-    var selectedServiceIds by remember { mutableStateOf(emptyList<String>()) }
-    var selectedExecutors by remember { mutableStateOf(emptyList<String>()) }
-    var contactName by remember { mutableStateOf("") }
-    var contactPhone by remember { mutableStateOf("") }
-    var contactEmail by remember { mutableStateOf("") }
-    var selectedTags by remember { mutableStateOf(emptyList<String>()) }
-    var invoiceNote by remember { mutableStateOf("") }
-    var linkReference by remember { mutableStateOf("") }
+    var companyId by remember(initialDraft) { mutableStateOf(initialDraft?.companyId.orEmpty()) }
+    var locationId by remember(initialDraft) { mutableStateOf(initialDraft?.locationId.orEmpty()) }
+    var status by remember(data.workOrderStatuses, initialDraft) { mutableStateOf(initialDraft?.status?.ifBlank { null } ?: data.workOrderStatuses.firstOrNull()?.value ?: "Otvoreni RN") }
+    var openedDate by remember(initialDraft) { mutableStateOf(initialDraft?.openedDate?.ifBlank { null } ?: LocalDate.now().toString()) }
+    var dueDate by remember(initialDraft) { mutableStateOf(initialDraft?.dueDate.orEmpty()) }
+    var executionDate by remember(initialDraft) { mutableStateOf(initialDraft?.executionDate.orEmpty()) }
+    var priority by remember(data.priorities, initialDraft) { mutableStateOf(initialDraft?.priority?.ifBlank { null } ?: data.priorities.firstOrNull { it.value == "Normal" }?.value ?: "Normal") }
+    var serviceLine by remember(initialDraft) { mutableStateOf(initialDraft?.serviceLine.orEmpty()) }
+    var description by remember(initialDraft) { mutableStateOf(initialDraft?.description.orEmpty()) }
+    var selectedServiceIds by remember(initialDraft) { mutableStateOf(initialDraft?.serviceIds.orEmpty()) }
+    var selectedExecutors by remember(initialDraft) { mutableStateOf(initialDraft?.executors.orEmpty()) }
+    var contactName by remember(initialDraft) { mutableStateOf(initialDraft?.contactName.orEmpty()) }
+    var contactPhone by remember(initialDraft) { mutableStateOf(initialDraft?.contactPhone.orEmpty()) }
+    var contactEmail by remember(initialDraft) { mutableStateOf(initialDraft?.contactEmail.orEmpty()) }
+    var selectedTags by remember(initialDraft) {
+        mutableStateOf(initialDraft?.tagText.orEmpty().split(",", ";").map { it.trim().trim('#') }.filter { it.isNotBlank() })
+    }
+    var invoiceNote by remember(initialDraft) { mutableStateOf(initialDraft?.invoiceNote.orEmpty()) }
+    var linkReference by remember(initialDraft) { mutableStateOf(initialDraft?.linkReference.orEmpty()) }
     var showNewLocationForm by remember { mutableStateOf(false) }
     var newLocationName by remember { mutableStateOf("") }
     var newLocationRegion by remember { mutableStateOf("") }
@@ -4500,7 +4636,7 @@ private fun WorkOrderCreateScreen(
                                 priority = priority,
                                 serviceLine = serviceLine,
                                 serviceIds = selectedServiceIds,
-                                description = "",
+                                description = description,
                                 executors = selectedExecutors,
                                 completedBy = "",
                                 teamLabel = "",
@@ -4511,6 +4647,7 @@ private fun WorkOrderCreateScreen(
                                 invoiceNote = invoiceNote,
                                 linkReference = linkReference,
                                 department = "",
+                                sourceFieldInquiryId = initialDraft?.sourceFieldInquiryId.orEmpty(),
                             ),
                         )
                     },
@@ -5426,6 +5563,7 @@ private fun FieldInquiryEditorDialog(
     data: BootstrapData,
     currentUserLabel: String,
     isLoading: Boolean,
+    onPolishNote: (String, String, String, String, String, String, (String) -> Unit) -> Unit,
     onDismiss: () -> Unit,
     onSave: (FieldInquiryDraft) -> Unit,
 ) {
@@ -5659,6 +5797,25 @@ private fun FieldInquiryEditorDialog(
                     enabled = !isLoading,
                     minLines = 3,
                 )
+                OutlinedButton(
+                    onClick = {
+                        onPolishNote(
+                            note,
+                            note,
+                            title,
+                            selectedCompanyLabel,
+                            selectedLocationLabel,
+                            serviceLine,
+                        ) { polished -> note = polished }
+                    },
+                    enabled = !isLoading && note.trim().isNotBlank(),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("NexAI sredi opis")
+                }
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
@@ -9455,6 +9612,7 @@ private fun WorkOrdersScreen(
     onStatusChange: (WorkOrder, String) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
     onSaveFieldInquiry: (FieldInquiryDraft) -> Unit,
+    onPolishFieldInquiryNote: (String, String, String, String, String, String, (String) -> Unit) -> Unit,
     onConvertFieldInquiry: (MobileRecord) -> Unit,
     onCreateJob: (JobCreateDraft) -> Unit,
     onCreateRiskAssessment: (RiskAssessmentCreateDraft) -> Unit,
@@ -10052,6 +10210,7 @@ private fun WorkOrdersScreen(
             data = state.data,
             currentUserLabel = state.user?.displayName.orEmpty(),
             isLoading = state.isLoading,
+            onPolishNote = onPolishFieldInquiryNote,
             onDismiss = {
                 fieldInquiryDialogOpen = false
                 fieldInquiryDialogRecord = null
@@ -14197,6 +14356,15 @@ data class MobileTrainingDocument(
     val isCertificate: Boolean,
 )
 
+data class FieldInquiryDocument(
+    val id: String,
+    val fileName: String,
+    val fileType: String,
+    val fileSize: Long,
+    val category: String,
+    val description: String,
+)
+
 private data class MobileTrainingItem(
     val id: String,
     val label: String,
@@ -14270,6 +14438,32 @@ private fun parseTrainingDocuments(record: MobileRecord): List<MobileTrainingDoc
                         category = item.optString("documentCategory").trim(),
                         createdAt = item.optString("createdAt").trim(),
                         isCertificate = item.optBoolean("isCertificate", false) || item.optString("isCertificate").equals("true", ignoreCase = true),
+                    ),
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun parseFieldInquiryDocuments(record: MobileRecord): List<FieldInquiryDocument> {
+    val raw = record.meta["documentsJson"].orEmpty()
+    if (raw.isBlank()) return emptyList()
+    return runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("id").trim().ifBlank { index.toString() }
+                val fileName = item.optString("fileName").trim()
+                if (fileName.isBlank()) continue
+                add(
+                    FieldInquiryDocument(
+                        id = id,
+                        fileName = fileName,
+                        fileType = item.optString("fileType").trim().ifBlank { "application/octet-stream" },
+                        fileSize = item.optLong("fileSize", 0L),
+                        category = item.optString("category").trim(),
+                        description = item.optString("description").trim(),
                     ),
                 )
             }
@@ -16452,6 +16646,172 @@ private fun WorkOrderCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun FieldInquiryMobileDetailScreen(
+    record: MobileRecord,
+    isLoading: Boolean,
+    onBack: () -> Unit,
+    onConvert: () -> Unit,
+    onDownloadDocument: (FieldInquiryDocument) -> Unit,
+) {
+    BackHandler(onBack = onBack)
+    val documents = remember(record.meta["documentsJson"]) { parseFieldInquiryDocuments(record) }
+    val statusColor = calendarRecordColor("field_inquiry")
+    val timeLabel = listOf(record.meta["timeFrom"].orEmpty(), record.meta["timeTo"].orEmpty())
+        .filter { it.isNotBlank() }
+        .joinToString(" - ")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Natrag")
+                    }
+                },
+                title = {
+                    Column {
+                        Text("Plan terena", fontWeight = FontWeight.Bold)
+                        Text(
+                            fieldInquiryStatusLabel(record.status),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)),
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Surface(shape = RoundedCornerShape(16.dp), color = statusColor.copy(alpha = 0.14f)) {
+                            Icon(
+                                Icons.Rounded.EventNote,
+                                contentDescription = null,
+                                tint = statusColor,
+                                modifier = Modifier.size(48.dp).padding(12.dp),
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(record.title.ifBlank { "Upit za teren" }, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                            Text(
+                                listOf(
+                                    formatDateLabel(record.date).ifBlank { record.date },
+                                    timeLabel,
+                                ).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Bez datuma" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                            )
+                        }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(onClick = {}, label = { Text(fieldInquiryStatusLabel(record.status)) })
+                        record.meta["serviceLine"].orEmpty().takeIf { it.isNotBlank() }?.let { service ->
+                            AssistChip(onClick = {}, label = { Text(service, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                        }
+                        record.meta["assignedUserLabels"].orEmpty().takeIf { it.isNotBlank() }?.let { team ->
+                            AssistChip(
+                                onClick = {},
+                                leadingIcon = { Icon(Icons.Rounded.Groups, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text(team, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                    Button(
+                        onClick = onConvert,
+                        enabled = !isLoading && record.meta["companyId"].orEmpty().isNotBlank() && record.status != "converted",
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Work, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Popuni RN iz plana", fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+
+            DetailSection("Dogovor") {
+                DetailRow(Icons.Rounded.Business, "Tvrtka", record.meta["companyName"].orEmpty().ifBlank { "Bez tvrtke" })
+                DetailRow(Icons.Rounded.LocationOn, "Lokacija", record.meta["locationName"].orEmpty().ifBlank { "Bez lokacije" })
+                record.meta["workOrderNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { number ->
+                    DetailRow(Icons.Rounded.Work, "Povezani RN", number)
+                }
+                record.meta["vehicleLabel"].orEmpty().takeIf { it.isNotBlank() }?.let { vehicle ->
+                    DetailRow(Icons.Rounded.Business, "Vozilo", vehicle)
+                }
+            }
+
+            val contactLines = listOf(
+                record.meta["contactName"].orEmpty(),
+                record.meta["contactPhone"].orEmpty(),
+            ).filter { it.isNotBlank() }
+            if (contactLines.isNotEmpty()) {
+                DetailSection("Kontakt") {
+                    DetailRow(Icons.Rounded.Person, "Kontakt", contactLines.joinToString("\n"))
+                }
+            }
+
+            record.meta["note"].orEmpty().takeIf { it.isNotBlank() }?.let { note ->
+                DetailSection("Opis") {
+                    Text(note, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f))
+                }
+            }
+
+            DetailSection("Dokumenti") {
+                if (documents.isEmpty()) {
+                    DetailRow(Icons.Rounded.AttachFile, "Prilozi", "Nema dodanih dokumenata.")
+                } else {
+                    documents.forEach { document ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    if (document.fileType.contains("pdf", ignoreCase = true)) Icons.Rounded.PictureAsPdf else Icons.Rounded.InsertDriveFile,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(document.fileName, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        listOf(document.category, formatFileSizeLabel(document.fileSize)).filter { it.isNotBlank() }.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                    )
+                                }
+                                IconButton(onClick = { onDownloadDocument(document) }, enabled = !isLoading) {
+                                    Icon(Icons.Rounded.Download, contentDescription = "Preuzmi dokument")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun MobileRecordDetailScreen(
     record: MobileRecord,
     users: List<WorkOrderUserOption>,
@@ -16464,6 +16824,8 @@ private fun MobileRecordDetailScreen(
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
+    onConvertFieldInquiry: (MobileRecord) -> Unit,
+    onDownloadFieldInquiryDocument: (MobileRecord, FieldInquiryDocument) -> Unit,
     onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -16512,6 +16874,16 @@ private fun MobileRecordDetailScreen(
                 )
             },
         )
+    }
+    if (record.kind == "field_inquiry") {
+        FieldInquiryMobileDetailScreen(
+            record = record,
+            isLoading = isLoading,
+            onBack = onBack,
+            onConvert = { onConvertFieldInquiry(record) },
+            onDownloadDocument = { document -> onDownloadFieldInquiryDocument(record, document) },
+        )
+        return
     }
     Scaffold(
         topBar = {

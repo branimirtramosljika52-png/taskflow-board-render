@@ -2191,6 +2191,7 @@ const state = {
   },
   activeTodoTaskId: "",
   activeFieldInquiryId: "",
+  pendingFieldInquiryWorkOrderSourceId: "",
   todoExpandedTaskIds: new Set(),
   activeDashboardWidgetId: "",
   activeVehicleId: "",
@@ -28273,6 +28274,7 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
 
     if (created) {
       workOrderIdInput.value = created.id;
+      state.pendingFieldInquiryWorkOrderSourceId = "";
       renderWorkOrderEditorSummary();
       renderWorkOrderWorkspace();
       void loadWorkOrderActivity(created.id);
@@ -87377,6 +87379,32 @@ function focusWorkOrderComposer(prefill = {}) {
     writeWorkOrderServiceSelection(prefill.serviceItems);
   }
 
+  if (Object.prototype.hasOwnProperty.call(prefill, "serviceLine")) {
+    workOrderServiceLineInput.value = prefill.serviceLine || "";
+    renderWorkOrderServiceSelection();
+    renderWorkOrderServicePicker();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "contactName")) {
+    rebuildWorkOrderContactOptions("", prefill.contactName || "");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "contactPhone")) {
+    workOrderContactPhoneInput.value = prefill.contactPhone || "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "contactEmail")) {
+    workOrderContactEmailInput.value = prefill.contactEmail || "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "description")) {
+    workOrderDescriptionInput.value = prefill.description || "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "sourceFieldInquiryId")) {
+    state.pendingFieldInquiryWorkOrderSourceId = prefill.sourceFieldInquiryId || "";
+  }
+
   if (Object.prototype.hasOwnProperty.call(prefill, "linkReference")) {
     workOrderLinkReferenceInput.value = prefill.linkReference || "";
   }
@@ -88429,8 +88457,9 @@ function buildWorkOrderPayload() {
     completedBy: workOrderCompletedByInput.value,
     invoiceDate: getNormalizedWorkOrderDateInputValue(workOrderInvoiceDateInput),
     tagText: workOrderTagTextInput.value,
-    description: "",
+    description: workOrderDescriptionInput.value || "",
     invoiceNote: workOrderInvoiceNoteInput.value,
+    sourceFieldInquiryId: state.pendingFieldInquiryWorkOrderSourceId || "",
   };
 }
 
@@ -95248,6 +95277,7 @@ function buildLoginContentPayload() {
 
 function resetWorkOrderForm() {
   resetWorkOrderAutoSaveState();
+  state.pendingFieldInquiryWorkOrderSourceId = "";
   workOrderForm.reset();
   workOrderIdInput.value = "";
   workOrderError.textContent = "";
@@ -112790,6 +112820,42 @@ function appendFieldInquiryNote(text = "") {
   fieldInquiryNoteInput.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+function getFieldInquiryPolishContext() {
+  const selectedCompany = getFieldInquiryCompany({
+    companyId: fieldInquiryCompanyInput?.value || "",
+  });
+  const selectedLocation = getFieldInquiryLocation({
+    locationId: fieldInquiryLocationInput?.value || "",
+  });
+  return {
+    title: fieldInquiryTitleInput?.value || "",
+    currentNote: fieldInquiryNoteInput?.value || "",
+    companyName: selectedCompany?.name || "",
+    locationName: selectedLocation?.name || "",
+    serviceLine: fieldInquiryServiceLineInput?.value || "",
+  };
+}
+
+async function polishFieldInquiryNoteTranscript(transcript = "") {
+  const text = String(transcript || "").trim();
+  if (!text) {
+    return "";
+  }
+  try {
+    const payload = await apiRequest("/field-inquiries/polish-note", {
+      method: "POST",
+      body: {
+        ...getFieldInquiryPolishContext(),
+        transcript: text,
+      },
+    });
+    return String(payload?.note || "").trim() || text;
+  } catch (error) {
+    setInlineMessage(fieldInquiryFeedback, error.message || "NexAI nije sredio opis, koristim diktirani tekst.");
+    return text;
+  }
+}
+
 function startFieldInquiryNoteDictation() {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) {
@@ -112806,7 +112872,15 @@ function startFieldInquiryNoteDictation() {
       .map((result) => result?.[0]?.transcript || "")
       .join(" ")
       .trim();
-    appendFieldInquiryNote(transcript);
+    void polishFieldInquiryNoteTranscript(transcript).then((note) => {
+      if (!note) {
+        return;
+      }
+      if (fieldInquiryNoteInput) {
+        fieldInquiryNoteInput.value = note;
+        fieldInquiryNoteInput.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
   });
   recognition.addEventListener("error", () => {
     setInlineMessage(fieldInquiryFeedback, "Ne mogu pokrenuti mikrofon za opis.");
@@ -112963,6 +113037,151 @@ function buildFieldInquiryPayload() {
   };
 }
 
+function buildFieldInquiryMatchedServiceItems(item = {}) {
+  const source = String([item.serviceLine, item.title].filter(Boolean).join(" ")).toLowerCase();
+  if (!source) {
+    return [];
+  }
+  return (state.serviceCatalog ?? [])
+    .filter((service) => {
+      const name = String(service.name || "").toLowerCase();
+      const code = String(service.serviceCode || service.code || service.shortCode || "").toLowerCase();
+      return (name && source.includes(name)) || (code && source.includes(code));
+    })
+    .slice(0, 6)
+    .map((service) => ({
+      serviceId: service.id,
+      name: service.name || "",
+      serviceCode: service.serviceCode || service.code || service.shortCode || "",
+      quantity: "1",
+    }));
+}
+
+function openFieldInquiryDetail(item = {}) {
+  document.querySelectorAll(".field-inquiry-detail-backdrop").forEach((node) => node.remove());
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "field-inquiry-detail-backdrop";
+  backdrop.setAttribute("role", "dialog");
+  backdrop.setAttribute("aria-modal", "true");
+
+  const dialog = document.createElement("article");
+  dialog.className = "field-inquiry-detail-dialog";
+
+  const closeDetail = () => {
+    backdrop.remove();
+  };
+
+  const head = document.createElement("header");
+  head.className = "field-inquiry-detail-head";
+  const headCopy = document.createElement("div");
+  const kicker = document.createElement("span");
+  kicker.textContent = "Plan terena";
+  const title = document.createElement("h3");
+  title.textContent = item.title || "Terenski upit";
+  const meta = document.createElement("p");
+  meta.textContent = [
+    item.plannedDate ? formatCompactDate(item.plannedDate) : "Bez datuma",
+    [item.timeFrom, item.timeTo].filter(Boolean).join("-"),
+    getFieldInquiryStatusLabel(item.status),
+  ].filter(Boolean).join(" · ");
+  headCopy.append(kicker, title, meta);
+  const closeButton = createActionButton("Zatvori", "ghost-button", closeDetail);
+  head.append(headCopy, closeButton);
+
+  const facts = document.createElement("div");
+  facts.className = "field-inquiry-detail-facts";
+  [
+    ["Tvrtka", getFieldInquiryCompanyLabel(item) || "Bez tvrtke"],
+    ["Lokacija", getFieldInquiryLocationLabel(item) || "Bez lokacije"],
+    ["Usluga", item.serviceLine || ""],
+    ["Ekipa", getFieldInquiryAssigneeLabels(item).join(", ")],
+    ["Vozilo", getFieldInquiryVehicleLabel(item)],
+    ["Kontakt", joinParts([item.contactName, item.contactPhone])],
+    ["RN", getFieldInquiryWorkOrderLabel(item)],
+  ].filter(([, value]) => String(value || "").trim()).forEach(([label, value]) => {
+    const row = document.createElement("div");
+    row.className = "field-inquiry-detail-fact";
+    row.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+    facts.append(row);
+  });
+
+  const body = document.createElement("div");
+  body.className = "field-inquiry-detail-body";
+  if (item.note) {
+    const note = document.createElement("section");
+    note.className = "field-inquiry-detail-section";
+    note.innerHTML = `<h4>Opis dogovora</h4><p>${escapeHtml(item.note)}</p>`;
+    body.append(note);
+  }
+
+  const documents = normalizeFieldInquiryDocuments(item.documents ?? []);
+  const docs = document.createElement("section");
+  docs.className = "field-inquiry-detail-section";
+  const docsTitle = document.createElement("h4");
+  docsTitle.textContent = "Dokumenti";
+  const docsList = document.createElement("div");
+  docsList.className = "field-inquiry-detail-documents";
+  if (documents.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "field-inquiry-detail-empty";
+    empty.textContent = "Nema dodanih dokumenata.";
+    docsList.append(empty);
+  } else {
+    documents.forEach((documentItem) => {
+      const row = document.createElement("div");
+      row.className = "field-inquiry-detail-document";
+      const copy = document.createElement("div");
+      copy.innerHTML = `<strong>${escapeHtml(documentItem.fileName)}</strong><span>${escapeHtml([documentItem.fileType, documentItem.fileSize ? formatFileSize(documentItem.fileSize) : ""].filter(Boolean).join(" · "))}</span>`;
+      const actions = document.createElement("div");
+      const href = documentItem.storageUrl || documentItem.dataUrl;
+      if (href) {
+        const open = document.createElement("a");
+        open.className = "ghost-button";
+        open.href = href;
+        open.target = "_blank";
+        open.rel = "noopener";
+        open.textContent = "Otvori";
+        const download = document.createElement("a");
+        download.className = "ghost-button";
+        download.href = href;
+        download.download = documentItem.fileName;
+        download.textContent = "Preuzmi";
+        actions.append(open, download);
+      }
+      row.append(copy, actions);
+      docsList.append(row);
+    });
+  }
+  docs.append(docsTitle, docsList);
+  body.append(docs);
+
+  const actions = document.createElement("footer");
+  actions.className = "field-inquiry-detail-actions";
+  actions.append(
+    createActionButton("Uredi", "ghost-button", () => {
+      closeDetail();
+      hydrateFieldInquiryForm(item);
+    }),
+  );
+  const convertButton = createActionButton("Otvori RN", "primary-button", () => {
+    closeDetail();
+    void convertFieldInquiryToWorkOrder(item.id);
+  });
+  convertButton.disabled = !item.companyId || String(item.status || "") === "converted";
+  convertButton.title = item.companyId ? "" : "Za RN prvo odaberi tvrtku.";
+  actions.append(convertButton);
+
+  dialog.append(head, facts, body, actions);
+  backdrop.append(dialog);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closeDetail();
+    }
+  });
+  document.body.append(backdrop);
+}
+
 function renderFieldInquiryCard(item = {}) {
   const card = document.createElement("article");
   card.className = "field-inquiry-card";
@@ -113014,8 +113233,9 @@ function renderFieldInquiryCard(item = {}) {
 
   const actions = document.createElement("div");
   actions.className = "field-inquiry-card-actions";
+  actions.append(createActionButton("Detalji", "ghost-button", () => openFieldInquiryDetail(item)));
   actions.append(createActionButton("Uredi", "ghost-button", () => hydrateFieldInquiryForm(item)));
-  const convertButton = createActionButton("Napravi RN", "ghost-button", () => {
+  const convertButton = createActionButton("Otvori RN", "ghost-button", () => {
     void convertFieldInquiryToWorkOrder(item.id);
   });
   convertButton.disabled = !item.companyId || String(item.status || "") === "converted";
@@ -113035,7 +113255,7 @@ function renderFieldInquiryCard(item = {}) {
     if (isInteractiveWorkOrderTarget(event.target)) {
       return;
     }
-    hydrateFieldInquiryForm(item);
+    openFieldInquiryDetail(item);
   });
   return card;
 }
@@ -113164,16 +113384,32 @@ async function convertFieldInquiryToWorkOrder(id = fieldInquiryIdInput?.value ||
     setInlineMessage(fieldInquiryFeedback, "Odaberi upit koji želiš pretvoriti u RN.");
     return;
   }
-  const success = await runMutation(() => apiRequest(`/field-inquiries/${encodeURIComponent(String(inquiry.id))}/convert-to-work-order`, {
-    method: "POST",
-    body: {
-      syncWorkOrderExecutionDate: true,
-    },
-  }), fieldInquiryFeedback);
-  if (success) {
-    resetFieldInquiryForm();
-    renderWorkOrderWorkspace();
+  if (!inquiry.companyId) {
+    setInlineMessage(fieldInquiryFeedback, "Za otvaranje RN-a prvo odaberi tvrtku u planu terena.");
+    return;
   }
+
+  const assigneeLabels = getFieldInquiryAssigneeLabels(inquiry);
+  focusWorkOrderComposer({
+    sourceFieldInquiryId: String(inquiry.id || ""),
+    status: "Otvoreni RN",
+    priority: "Normal",
+    openedDate: getTodayDateKey(),
+    dueDate: inquiry.plannedDate || "",
+    executionDate: inquiry.plannedDate || "",
+    companyId: inquiry.companyId || "",
+    locationId: inquiry.locationId || "",
+    serviceLine: inquiry.serviceLine || inquiry.title || "",
+    serviceItems: buildFieldInquiryMatchedServiceItems(inquiry),
+    executors: assigneeLabels,
+    contactName: inquiry.contactName || "",
+    contactPhone: inquiry.contactPhone || "",
+    contactEmail: "",
+    description: [inquiry.title, inquiry.note].filter(Boolean).join("\n\n"),
+    linkReference: "Plan terena",
+    tagText: "Plan terena",
+  });
+  setInlineMessage(workOrderError, "RN je popunjen iz plana terena. Provjeri podatke i stisni spremanje/otvaranje kada je sve u redu.");
 }
 
 async function deleteFieldInquiry(id = "") {

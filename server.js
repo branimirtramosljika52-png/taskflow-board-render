@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.197.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.198.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -15417,6 +15417,69 @@ function resolveFieldInquiryExecutorsForWorkOrder(scopedSnapshot = {}, inquiry =
   });
 }
 
+function buildFieldInquiryWorkOrderLinkReference(inquiry = {}) {
+  const title = normalizeInputValue(inquiry.title);
+  return title ? `Plan terena - ${title}` : "Plan terena";
+}
+
+async function attachFieldInquiryToWorkOrder(scopedSnapshot = {}, inquiry = {}, workOrder = {}, user = null) {
+  if (!inquiry?.id || !workOrder?.id) {
+    return null;
+  }
+
+  const executorLabels = resolveFieldInquiryExecutorsForWorkOrder(scopedSnapshot, inquiry);
+  if (Array.isArray(inquiry.documents) && inquiry.documents.length > 0) {
+    await domainRepository.addWorkOrderDocuments(
+      workOrder.id,
+      inquiry.documents.map((document) => ({
+        ...document,
+        sourceType: "editor",
+        documentCategory: document.documentCategory && document.documentCategory !== "field_plan"
+          ? document.documentCategory
+          : "Radni listovi",
+        description: document.description || "Prilog iz plana terena",
+      })),
+      user,
+    );
+  }
+
+  return domainRepository.updateFieldInquiry(inquiry.id, {
+    status: "converted",
+    workOrderId: workOrder.id,
+    convertedWorkOrderId: workOrder.id,
+    assignedUserLabels: executorLabels.length > 0 ? executorLabels : inquiry.assignedUserLabels,
+  }, user);
+}
+
+function buildLocalFieldInquiryPolishedNote(body = {}) {
+  const transcript = normalizeInputValue(body.transcript || body.note || body.text);
+  const currentNote = normalizeInputValue(body.currentNote);
+  const title = normalizeInputValue(body.title);
+  const companyName = normalizeInputValue(body.companyName);
+  const locationName = normalizeInputValue(body.locationName);
+  const serviceLine = normalizeInputValue(body.serviceLine);
+  const raw = transcript.replace(/\s+/g, " ").trim();
+  if (!raw && currentNote) {
+    return currentNote;
+  }
+  if (!raw) {
+    return "";
+  }
+
+  const cleanSentence = /[.!?]$/.test(raw) ? raw : `${raw}.`;
+  const context = [
+    serviceLine ? `Tema: ${serviceLine}.` : "",
+    locationName ? `Lokacija: ${locationName}.` : "",
+    companyName ? `Tvrtka: ${companyName}.` : "",
+    title ? `Dogovor: ${title}.` : "",
+  ].filter(Boolean);
+  const next = [...context, `Napomena: ${cleanSentence}`].join(" ");
+  if (!currentNote) {
+    return next;
+  }
+  return `${currentNote}\n${next}`;
+}
+
 function hasWorkOrderExecutorInput(input = {}) {
   return bodyHasOwnField(input, "executors")
     || bodyHasOwnField(input, "executor1")
@@ -25053,6 +25116,14 @@ function buildMobileFieldInquiryRecord(item = {}) {
       note: normalizeInputValue(item.note),
       documentCount: String(documents.length),
       documentNames: documents.map((document, index) => getMobileDocumentFileName(document, `Prilog ${index + 1}`)).filter(Boolean).join(", "),
+      documentsJson: JSON.stringify(documents.map((document, index) => ({
+        id: normalizeInputValue(document?.id),
+        fileName: getMobileDocumentFileName(document, `Prilog ${index + 1}`),
+        fileType: normalizeInputValue(document?.fileType || document?.type || document?.mimeType),
+        fileSize: Number(document?.fileSize || document?.size || 0) || 0,
+        category: normalizeInputValue(document?.documentCategory),
+        description: normalizeInputValue(document?.description),
+      }))),
       assignedUserIds: Array.isArray(item.assignedUserIds) ? item.assignedUserIds.map(normalizeInputValue).filter(Boolean).join(",") : "",
       assignedUserLabels: Array.isArray(item.assignedUserLabels) ? item.assignedUserLabels.join(", ") : "",
       vehicleId: normalizeInputValue(item.vehicleId),
@@ -27761,6 +27832,58 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && (url.pathname === "/api/field-inquiries/polish-note" || url.pathname === "/api/mobile/field-inquiries/polish-note")) {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati terenskim upitima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      const fallbackNote = buildLocalFieldInquiryPolishedNote(body);
+      const config = getOpenAiRuntimeConfig();
+      const canCallOpenAi = canUseOpenAiIntegration(user) && config.liveCallsEnabled && !config.dryRun;
+      if (!canCallOpenAi) {
+        sendJson(response, 200, { ok: true, note: fallbackNote, provider: "local" });
+        return true;
+      }
+
+      try {
+        const plan = await buildOpenAiLivePlan({
+          purpose: "field_inquiry_note_polish",
+          title: "Plan terena - sredi opis iz govornog unosa",
+          rawText: normalizeInputValue(body.transcript || body.note || body.text),
+          currentNote: normalizeInputValue(body.currentNote),
+          context: {
+            title: normalizeInputValue(body.title),
+            companyName: normalizeInputValue(body.companyName),
+            locationName: normalizeInputValue(body.locationName),
+            serviceLine: normalizeInputValue(body.serviceLine),
+          },
+          fields: [
+            {
+              id: "note",
+              label: "Opis plana terena",
+              type: "longtext",
+              instructions: "Vrati kratak, poslovan hrvatski opis dogovora za plan terena. Ne izmisljaj podatke i ne navodi tehnicke ID-jeve.",
+            },
+          ],
+          expectedJsonShape: {
+            note: "ureden opis",
+          },
+        }, user);
+        const aiNote = normalizeInputValue(
+          plan?.result?.note
+          || plan?.note
+          || plan?.fieldSuggestions?.find((entry) => entry?.id === "note")?.value
+          || plan?.fieldSuggestions?.[0]?.value,
+        );
+        sendJson(response, 200, { ok: true, note: aiNote || fallbackNote, provider: aiNote ? "openai" : "local" });
+      } catch (error) {
+        sendJson(response, 200, { ok: true, note: fallbackNote, provider: "local", warning: buildOpenAiSafeErrorMessage(error) });
+      }
+      return true;
+    }
+
     if (request.method === "PATCH" && url.pathname === "/api/auth/profile/avatar") {
       const body = await readJsonBody(request);
       const updatedUser = await tenantRepository.updateOwnAvatar(user, body.avatarDataUrl);
@@ -27785,6 +27908,7 @@ async function handleApiRequest(request, response, url) {
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const fieldInquiryConvertMatch = url.pathname.match(/^\/api\/field-inquiries\/([^/]+)\/convert-to-work-order$/);
     const mobileFieldInquiryConvertMatch = url.pathname.match(/^\/api\/mobile\/field-inquiries\/([^/]+)\/convert-to-work-order$/);
+    const mobileFieldInquiryDocumentDownloadMatch = url.pathname.match(/^\/api\/mobile\/field-inquiries\/([^/]+)\/documents\/([^/]+)\/download$/);
     const fieldInquiryMatch = url.pathname.match(/^\/api\/field-inquiries\/([^/]+)$/);
     const mobileFieldInquiryMatch = url.pathname.match(/^\/api\/mobile\/field-inquiries\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
@@ -28505,10 +28629,17 @@ async function handleApiRequest(request, response, url) {
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
+      const sourceFieldInquiryId = normalizeInputValue(body.sourceFieldInquiryId);
+      const sourceFieldInquiry = sourceFieldInquiryId
+        ? assertInScope(scopedSnapshot.fieldInquiries ?? [], sourceFieldInquiryId, "Plan terena nije dostupan za odabranu organizaciju.")
+        : null;
       const createdWorkOrder = await domainRepository.createWorkOrder({
         ...withResolvedWorkOrderExecutors(scopedSnapshot, body),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
+      if (sourceFieldInquiry) {
+        await attachFieldInquiryToWorkOrder(scopedSnapshot, sourceFieldInquiry, createdWorkOrder, user);
+      }
       queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
       sendJson(response, 201, { ok: true, item: createdWorkOrder });
       return true;
@@ -31696,6 +31827,27 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (mobileFieldInquiryDocumentDownloadMatch && request.method === "GET") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const inquiry = assertInScope(scopedSnapshot.fieldInquiries ?? [], mobileFieldInquiryDocumentDownloadMatch[1], "Terenski upit nije pronađen.");
+      const documents = Array.isArray(inquiry.documents) ? inquiry.documents : [];
+      const document = documents.find((item, index) => (
+        String(normalizeInputValue(item?.id || item?.documentId || index)) === String(mobileFieldInquiryDocumentDownloadMatch[2])
+      ));
+
+      if (!document) {
+        sendError(response, 404, "Dokument plana terena nije pronađen.");
+        return true;
+      }
+
+      const stored = await readStoredDocumentBuffer(document);
+      sendBinary(response, 200, stored.buffer, {
+        contentType: stored.mimeType || document.fileType || document.type || "application/octet-stream",
+        fileName: getMobileDocumentFileName(document, "plan-terena-dokument"),
+      });
+      return true;
+    }
+
     if ((fieldInquiryMatch || mobileFieldInquiryMatch) && request.method === "PATCH") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati terenskim upitima.");
@@ -31765,31 +31917,11 @@ async function handleApiRequest(request, response, url) {
         executor2: executorLabels[1] || "",
         contactName: inquiry.contactName,
         contactPhone: inquiry.contactPhone,
-        linkReference: `Terenski upit ${inquiry.id}`,
+        linkReference: buildFieldInquiryWorkOrderLinkReference(inquiry),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 
-      if (Array.isArray(inquiry.documents) && inquiry.documents.length > 0) {
-        await domainRepository.addWorkOrderDocuments(
-          createdWorkOrder.id,
-          inquiry.documents.map((document) => ({
-            ...document,
-            sourceType: "editor",
-            documentCategory: document.documentCategory && document.documentCategory !== "field_plan"
-              ? document.documentCategory
-              : "Radni listovi",
-            description: document.description || "Prilog iz plana terena",
-          })),
-          user,
-        );
-      }
-
-      const updatedInquiry = await domainRepository.updateFieldInquiry(inquiry.id, {
-        status: "converted",
-        workOrderId: createdWorkOrder.id,
-        convertedWorkOrderId: createdWorkOrder.id,
-        assignedUserLabels: executorLabels.length > 0 ? executorLabels : inquiry.assignedUserLabels,
-      }, user);
+      const updatedInquiry = await attachFieldInquiryToWorkOrder(scopedSnapshot, inquiry, createdWorkOrder, user);
       queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
 
       if (mobileFieldInquiryConvertMatch) {

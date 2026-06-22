@@ -160,9 +160,32 @@ class SafeNexusApi(
                 .put("invoiceNote", draft.invoiceNote)
                 .put("linkReference", draft.linkReference)
                 .put("department", draft.department)
+                .put("sourceFieldInquiryId", draft.sourceFieldInquiryId)
                 .toString()
             request("/api/work-orders", method = "POST", body = payload)
             Unit
+        }
+    }
+
+    suspend fun polishFieldInquiryNote(
+        transcript: String,
+        currentNote: String,
+        title: String,
+        companyName: String,
+        locationName: String,
+        serviceLine: String,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("transcript", transcript)
+                .put("currentNote", currentNote)
+                .put("title", title)
+                .put("companyName", companyName)
+                .put("locationName", locationName)
+                .put("serviceLine", serviceLine)
+                .toString()
+            val json = JSONObject(request("/api/mobile/field-inquiries/polish-note", method = "POST", body = payload))
+            json.optString("note", transcript).ifBlank { transcript }
         }
     }
 
@@ -1016,6 +1039,35 @@ class SafeNexusApi(
             DownloadedDocument(
                 fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
                     .ifBlank { fallbackFileName },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { fallbackFileType }
+                    ?: fallbackFileType.ifBlank { "application/octet-stream" },
+                bytes = bytes,
+            )
+        }
+    }
+
+    suspend fun downloadFieldInquiryDocument(
+        inquiryId: String,
+        documentId: String,
+        fallbackFileName: String,
+        fallbackFileType: String,
+    ): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = "/api/mobile/field-inquiries/${inquiryId.pathSegment()}/documents/${documentId.pathSegment()}/download"
+            val connection = openBinaryDownloadConnection(path)
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti dokument plana terena (${connection.responseCode})."
+                })
+            }
+
+            DownloadedDocument(
+                fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
+                    .ifBlank { fallbackFileName.ifBlank { "plan-terena-dokument" } },
                 fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
                     ?.ifBlank { fallbackFileType }
                     ?: fallbackFileType.ifBlank { "application/octet-stream" },

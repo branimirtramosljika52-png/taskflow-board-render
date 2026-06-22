@@ -145,6 +145,7 @@ data class WorkOrderCreateDraft(
     val invoiceNote: String,
     val linkReference: String,
     val department: String,
+    val sourceFieldInquiryId: String = "",
 )
 
 data class FieldInquiryDraft(
