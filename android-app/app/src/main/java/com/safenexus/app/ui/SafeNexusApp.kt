@@ -8914,8 +8914,8 @@ private fun WorkOrdersScreen(
                             MoreSectionFocus.Todo -> "Pretraga ToDo zadataka, statusa, tvrtke ili RN-a"
                             MoreSectionFocus.FieldInquiries -> "Pretraga upita, termina, tvrtke ili RN-a"
                             MoreSectionFocus.Offers -> "Pretraga ponuda, broja, tvrtke ili statusa"
-                            MoreSectionFocus.Companies -> "Pretraga tvrtki, OIB-a i kontakata"
-                            MoreSectionFocus.Locations -> "Pretraga lokacija, regija i adresa"
+                            MoreSectionFocus.Companies -> "Pretraga tvrtki, lokacija, OIB-a i kontakata"
+                            MoreSectionFocus.Locations -> "Pretraga tvrtki, lokacija, regija i adresa"
                             MoreSectionFocus.Periodics -> "Pretraga periodike i rokova"
                             MoreSectionFocus.Documents -> "Pretraga dokumenata"
                             MoreSectionFocus.Services -> "Pretraga service lista"
@@ -8970,13 +8970,6 @@ private fun WorkOrdersScreen(
                         item {
                             CompanyDirectory(
                                 companies = state.data.companies,
-                                locations = state.data.locations,
-                                query = normalizedQuery,
-                                onOpenRecord = onOpenRecord,
-                            )
-                        }
-                        item {
-                            LocationDirectory(
                                 locations = state.data.locations,
                                 query = normalizedQuery,
                                 onOpenRecord = onOpenRecord,
@@ -9090,7 +9083,8 @@ private fun WorkOrdersScreen(
                         )
                     }
                     MoreSectionFocus.Locations -> item {
-                        LocationDirectory(
+                        CompanyDirectory(
+                            companies = state.data.companies,
                             locations = state.data.locations,
                             query = normalizedQuery,
                             onOpenRecord = onOpenRecord,
@@ -9465,8 +9459,7 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Plan terena", "Upiti i dogovori prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
             MainMenuShortcut("Ponude", "Pregled poslanih i primljenih ponuda", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Offers),
             MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business, MoreSectionFocus.Companies),
-            MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn, MoreSectionFocus.Locations),
-            MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Documents),
+            MainMenuShortcut("Dokumenti", "Explorer po tvrtki, lokaciji i RN-u", AppSection.More, Icons.Rounded.Folder, MoreSectionFocus.Documents),
             MainMenuShortcut("Periodika", "Rokovi, pregledi i isteci", AppSection.More, Icons.Rounded.CalendarMonth, MoreSectionFocus.Periodics),
             MainMenuShortcut("Zakonska regulativa", "Legal Framework propisi i povezani dokumenti", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.LegalFrameworks),
             MainMenuShortcut("People", "Korisnici, OIB i IS ZNR status", AppSection.More, Icons.Rounded.Person, MoreSectionFocus.People),
@@ -11446,11 +11439,34 @@ private fun CompanyDirectory(
     query: String,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
-    val filteredCompanies = remember(companies, query) { companies.filter { it.matchesSearch(query) } }
-    val locationCountByCompany = remember(locations) {
-        locations.groupingBy { record ->
-            record.meta["companyName"].orEmpty().ifBlank { record.subtitle.substringBefore(" - ").trim() }
-        }.eachCount()
+    val bundles = remember(companies, locations, query) {
+        companies
+            .map { company ->
+                val companyLocations = locations.filter { location -> locationBelongsToCompany(location, company) }
+                val visibleLocations = if (query.isBlank() || company.matchesSearch(query)) {
+                    companyLocations
+                } else {
+                    companyLocations.filter { it.matchesSearch(query) }
+                }
+                CompanyDirectoryBundle(company, visibleLocations, companyLocations.size)
+            }
+            .filter { bundle ->
+                query.isBlank() ||
+                    bundle.company.matchesSearch(query) ||
+                    bundle.locations.isNotEmpty()
+            }
+            .sortedBy { it.company.title.lowercase(Locale.getDefault()) }
+    }
+    var visibleCount by remember(companies, locations, query) { mutableStateOf(32) }
+    var expandedCompanyKey by remember(companies, query) { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val visibleBundles = bundles.take(visibleCount)
+    val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+
+    LaunchedEffect(lastVisibleIndex, visibleCount, bundles.size) {
+        if (visibleBundles.isNotEmpty() && lastVisibleIndex >= visibleBundles.lastIndex - 4 && visibleCount < bundles.size) {
+            visibleCount = kotlin.math.min(visibleCount + 32, bundles.size)
+        }
     }
 
     Surface(
@@ -11466,76 +11482,56 @@ private fun CompanyDirectory(
         ) {
             SectionHeader(
                 title = "Tvrtke",
-                subtitle = "${filteredCompanies.size} zapisa",
+                subtitle = "${bundles.size} tvrtki - ${locations.size} lokacija",
                 icon = Icons.Rounded.Business,
             )
 
-            if (filteredCompanies.isEmpty()) {
+            if (bundles.isEmpty()) {
                 Text("Nema tvrtki za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
             } else {
-                filteredCompanies.take(14).forEach { company ->
-                    DirectoryCompanyLine(
-                        company = company,
-                        locationCount = locationCountByCompany[company.title].orZero(),
-                        onClick = { onOpenRecord(company) },
-                    )
-                }
-                if (filteredCompanies.size > 14) {
-                    Text(
-                        "Prikazano je prvih 14 tvrtki. Koristi pretragu za sužavanje.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocationDirectory(
-    locations: List<MobileRecord>,
-    query: String,
-    onOpenRecord: (MobileRecord) -> Unit,
-) {
-    val filteredLocations = remember(locations, query) { locations.filter { it.matchesSearch(query) } }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            SectionHeader(
-                title = "Lokacije",
-                subtitle = "${filteredLocations.size} zapisa",
-                icon = Icons.Rounded.LocationOn,
-            )
-
-            if (filteredLocations.isEmpty()) {
-                Text("Nema lokacija za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
-            } else {
-                filteredLocations.take(16).forEach { location ->
-                    RecordLine(
-                        title = location.title,
-                        subtitle = location.subtitle.ifBlank { location.meta["region"].orEmpty() },
-                        status = location.status,
-                        date = "",
-                        icon = Icons.Rounded.LocationOn,
-                        onClick = { onOpenRecord(location) },
-                    )
-                }
-                if (filteredLocations.size > 16) {
-                    Text(
-                        "Prikazano je prvih 16 lokacija. Koristi pretragu za sužavanje.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 690.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(
+                        items = visibleBundles,
+                        key = { bundle -> companyDirectoryKey(bundle.company) },
+                    ) { bundle ->
+                        val key = companyDirectoryKey(bundle.company)
+                        DirectoryCompanyLine(
+                            company = bundle.company,
+                            locations = bundle.locations,
+                            totalLocationCount = bundle.totalLocationCount,
+                            expanded = expandedCompanyKey == key,
+                            onToggle = {
+                                expandedCompanyKey = if (expandedCompanyKey == key) "" else key
+                            },
+                            onOpenCompany = { onOpenRecord(bundle.company) },
+                            onOpenLocation = onOpenRecord,
+                        )
+                    }
+                    if (visibleCount < bundles.size) {
+                        item(key = "company-directory-loading") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    "Učitavam još tvrtki...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -11545,45 +11541,171 @@ private fun LocationDirectory(
 @Composable
 private fun DirectoryCompanyLine(
     company: MobileRecord,
-    locationCount: Int,
+    locations: List<MobileRecord>,
+    totalLocationCount: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onOpenCompany: () -> Unit,
+    onOpenLocation: (MobileRecord) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle),
+        shape = RoundedCornerShape(18.dp),
+        color = if (expanded) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f) else Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, if (expanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFEAF2FF)) {
+                    Icon(
+                        Icons.Rounded.Business,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(9.dp),
+                        tint = Color(0xFF2563EB),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(company.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        companyDirectorySummary(company),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                StatusCountPill("Lokacije", totalLocationCount, Color(0xFF0F766E))
+                IconButton(onClick = onToggle) {
+                    Icon(
+                        if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = if (expanded) "Sakrij lokacije" else "Prikaži lokacije",
+                    )
+                }
+            }
+            AnimatedVisibility(expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(
+                            onClick = onOpenCompany,
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Detalji tvrtke", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (locations.isEmpty()) {
+                        Text(
+                            "Nema lokacija za odabrani prikaz.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    } else {
+                        locations.forEach { location ->
+                            DirectoryLocationLine(
+                                location = location,
+                                onClick = { onOpenLocation(location) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectoryLocationLine(
+    location: MobileRecord,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        color = Color(0xFFF8FAFC),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFEAF2FF)) {
+            Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFFE0F2FE)) {
                 Icon(
-                    Icons.Rounded.Business,
+                    Icons.Rounded.LocationOn,
                     contentDescription = null,
                     modifier = Modifier
-                        .size(38.dp)
-                        .padding(9.dp),
-                    tint = Color(0xFF2563EB),
+                        .size(34.dp)
+                        .padding(8.dp),
+                    tint = Color(0xFF0369A1),
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(company.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    company.subtitle.ifBlank { company.meta["headquarters"].orEmpty() },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    location.title.ifBlank { "Lokacija" },
+                    fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Text(
+                    companyDirectoryLocationSummary(location),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            StatusCountPill("Lok.", locationCount, Color(0xFF0F766E))
+            Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
+
+private data class CompanyDirectoryBundle(
+    val company: MobileRecord,
+    val locations: List<MobileRecord>,
+    val totalLocationCount: Int,
+)
+
+private fun companyDirectoryKey(company: MobileRecord): String =
+    company.id.ifBlank { normalizeMobileDocumentFolderKey(company.title) }.ifBlank { "company" }
+
+private fun locationBelongsToCompany(location: MobileRecord, company: MobileRecord): Boolean {
+    val companyId = company.id.trim()
+    val locationCompanyId = location.relatedId.ifBlank { location.meta["companyId"].orEmpty() }.trim()
+    if (companyId.isNotBlank() && locationCompanyId.isNotBlank() && companyId == locationCompanyId) {
+        return true
+    }
+    val companyName = company.title.trim()
+    val locationCompanyName = location.meta["companyName"].orEmpty()
+        .ifBlank { location.subtitle.substringBefore(" - ").trim() }
+    return companyName.isNotBlank() && locationCompanyName.equals(companyName, ignoreCase = true)
+}
+
+private fun companyDirectorySummary(company: MobileRecord): String =
+    listOf(
+        company.meta["headquarters"].orEmpty().ifBlank { company.subtitle },
+        company.meta["oib"].orEmpty().takeIf { it.isNotBlank() }?.let { "OIB $it" }.orEmpty(),
+        company.meta["contactPhone"].orEmpty(),
+        company.meta["contactEmail"].orEmpty(),
+    ).filter { it.isNotBlank() && !isRawMobileMetaValue(it) }.distinct().joinToString(" - ").ifBlank { "Bez dodatnih podataka" }
+
+private fun companyDirectoryLocationSummary(location: MobileRecord): String =
+    listOf(
+        location.meta["region"].orEmpty(),
+        location.meta["contactName1"].orEmpty(),
+        location.meta["contactPhone1"].orEmpty(),
+        location.meta["contactEmail1"].orEmpty(),
+    ).filter { it.isNotBlank() && !isRawMobileMetaValue(it) }.distinct().joinToString(" - ").ifBlank {
+        location.subtitle.takeIf { !isRawMobileMetaValue(it) }.orEmpty().ifBlank { "Otvori detalje lokacije" }
+    }
 
 private data class PeriodicEntry(
     val title: String,
@@ -13527,6 +13649,16 @@ private fun SectionHeader(
 
 private fun Int?.orZero(): Int = this ?: 0
 
+private fun isRawMobileMetaValue(value: String): Boolean {
+    val normalized = value.trim()
+    return normalized.isBlank() ||
+        normalized.equals("null", ignoreCase = true) ||
+        normalized.equals("true", ignoreCase = true) ||
+        normalized.equals("false", ignoreCase = true) ||
+        normalized.startsWith("{") ||
+        normalized.startsWith("[")
+}
+
 @Composable
 private fun ModuleGroup(
     title: String,
@@ -13556,6 +13688,7 @@ private fun RecordLine(
     onClick: (() -> Unit)? = null,
 ) {
     val clickableModifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+    val displayStatus = cleanMobileRecordStatusLabel(status)
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -13593,14 +13726,14 @@ private fun RecordLine(
                     )
                 }
             }
-            if (status.isNotBlank()) {
+            if (displayStatus.isNotBlank()) {
                 Spacer(Modifier.width(8.dp))
                 Surface(
                     shape = RoundedCornerShape(999.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                 ) {
                     Text(
-                        status,
+                        displayStatus,
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
@@ -13648,6 +13781,27 @@ private fun recordKindLabel(kind: String): String = when (kind) {
     "risk_assessment" -> "Procjena rizika"
     "client_portal" -> "Klijentski portal"
     else -> "Zapis"
+}
+
+private fun cleanMobileRecordStatusLabel(status: String): String {
+    val normalized = status.trim()
+    return when {
+        normalized.equals("true", ignoreCase = true) -> "Aktivno"
+        normalized.equals("false", ignoreCase = true) -> "Neaktivno"
+        normalized.equals("null", ignoreCase = true) -> ""
+        normalized.startsWith("{") || normalized.startsWith("[") -> ""
+        else -> normalized
+    }
+}
+
+private fun mobileRecordStatusLabel(record: MobileRecord): String = cleanMobileRecordStatusLabel(record.status)
+
+private fun shouldShowMobileRecordMeta(key: String, value: String): Boolean {
+    val normalizedKey = key.trim().lowercase(Locale.getDefault())
+    if (normalizedKey.isBlank()) return false
+    if (normalizedKey == "isactive" || normalizedKey.endsWith("json") || normalizedKey.contains("json")) return false
+    if (isRawMobileMetaValue(value)) return false
+    return true
 }
 
 private val offerDetailMetaKeys = setOf(
@@ -14627,6 +14781,7 @@ private fun MobileRecordDetailScreen(
     BackHandler(onBack = onBack)
     var reservationDialogOpen by remember(record.id) { mutableStateOf(false) }
     var usageDialogMode by remember(record.id) { mutableStateOf<String?>(null) }
+    val displayStatus = mobileRecordStatusLabel(record)
     if (reservationDialogOpen) {
         VehicleReservationDialog(
             vehicle = record,
@@ -14682,7 +14837,7 @@ private fun MobileRecordDetailScreen(
                     Column {
                         Text(recordKindLabel(record.kind), fontWeight = FontWeight.Bold)
                         Text(
-                            record.status.ifBlank { "Mobilni zapis" },
+                            displayStatus.ifBlank { "Mobilni zapis" },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         )
@@ -14729,8 +14884,8 @@ private fun MobileRecordDetailScreen(
                         Text(record.subtitle, style = MaterialTheme.typography.bodyLarge)
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (record.status.isNotBlank()) {
-                            AssistChip(onClick = {}, label = { Text(record.status) })
+                        if (displayStatus.isNotBlank()) {
+                            AssistChip(onClick = {}, label = { Text(displayStatus) })
                         }
                         if (record.date.isNotBlank()) {
                             AssistChip(
@@ -14904,7 +15059,7 @@ private fun MobileRecordDetailScreen(
             if (record.kind != "training") {
                 DetailSection("Osnovno") {
                     DetailRow(recordIcon(record), "Vrsta", recordKindLabel(record.kind))
-                    DetailRow(Icons.Rounded.CheckCircle, "Status", record.status.ifBlank { "Nije upisano" })
+                    DetailRow(Icons.Rounded.CheckCircle, "Status", displayStatus.ifBlank { "Nije upisano" })
                     DetailRow(Icons.Rounded.CalendarMonth, "Datum", formatDateLabel(record.date).ifBlank { record.date.ifBlank { "Nije upisano" } })
                     if (record.relatedId.isNotBlank()) {
                         DetailRow(Icons.Rounded.Work, "Povezani zapis", record.relatedId)
@@ -14918,7 +15073,7 @@ private fun MobileRecordDetailScreen(
                     "offer" -> record.meta.filterKeys { key -> key !in offerDetailMetaKeys }
                     "vehicle" -> record.meta.filterKeys { key -> key !in vehicleDetailMetaKeys }
                     else -> record.meta
-                }
+                }.filter { entry -> shouldShowMobileRecordMeta(entry.key, entry.value) }
                 if (visibleMeta.isNotEmpty()) {
                     DetailSection("Podaci") {
                         visibleMeta.entries
