@@ -3860,17 +3860,13 @@ private fun WorkOrderCreateScreen(
     var priority by remember(data.priorities) { mutableStateOf(data.priorities.firstOrNull { it.value == "Normal" }?.value ?: "Normal") }
     var serviceLine by remember { mutableStateOf("") }
     var selectedServiceIds by remember { mutableStateOf(emptyList<String>()) }
-    var description by remember { mutableStateOf("") }
     var selectedExecutors by remember { mutableStateOf(emptyList<String>()) }
-    var completedBy by remember { mutableStateOf("") }
-    var teamLabel by remember { mutableStateOf("") }
     var contactName by remember { mutableStateOf("") }
     var contactPhone by remember { mutableStateOf("") }
     var contactEmail by remember { mutableStateOf("") }
-    var tagText by remember { mutableStateOf("") }
+    var selectedTags by remember { mutableStateOf(emptyList<String>()) }
     var invoiceNote by remember { mutableStateOf("") }
     var linkReference by remember { mutableStateOf("") }
-    var department by remember { mutableStateOf("") }
     var showNewLocationForm by remember { mutableStateOf(false) }
     var newLocationName by remember { mutableStateOf("") }
     var newLocationRegion by remember { mutableStateOf("") }
@@ -3898,6 +3894,39 @@ private fun WorkOrderCreateScreen(
     val selectedLocation = availableLocations.firstOrNull { it.id == locationId }
     val locationLoading = companyId in directoryLocationLoading
     val locationHasMore = directoryLocationHasMoreByCompany[companyId] ?: false
+    val tagSuggestions = remember(data.workOrders) {
+        (
+            data.workOrders.flatMap { it.tags } +
+                listOf("Teren", "Papir", "Hitno", "Next Week Job")
+            )
+            .map { it.trim().trim('#') }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .sortedBy { it.lowercase(Locale.getDefault()) }
+            .take(24)
+    }
+    val relatedWorkOrderOptions = remember(data.workOrders, companyId) {
+        data.workOrders
+            .filter { it.id.isNotBlank() || it.number.isNotBlank() }
+            .sortedWith(
+                compareByDescending<WorkOrder> { companyId.isNotBlank() && it.companyId == companyId }
+                    .thenByDescending { it.parsedOpenedDate ?: it.parsedDueDate ?: LocalDate.MIN },
+            )
+            .take(80)
+            .map { workOrder ->
+                val numberLabel = workOrder.displayNumber
+                WorkOrderPickerOption(
+                    value = "RN $numberLabel",
+                    label = "RN $numberLabel",
+                    meta = listOf(workOrder.companyName, workOrder.locationName, workOrder.status)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · "),
+                    searchText = listOf(numberLabel, workOrder.companyName, workOrder.locationName, workOrder.status)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" "),
+                )
+            }
+    }
     val serviceTabs = remember {
         listOf(
             WorkOrderServiceFilterTab("ispitivanja", "Ispitivanja", Icons.Rounded.Tune),
@@ -4223,7 +4252,7 @@ private fun WorkOrderCreateScreen(
                                     modifier = Modifier.padding(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Text("Detalji lokacije", fontWeight = FontWeight.Black)
+                                    Text("Lokacija i kontakt", fontWeight = FontWeight.Black)
                                     if (selectedLocation.region.isNotBlank()) {
                                         CompactInfoLine(Icons.Rounded.Map, "Regija", selectedLocation.region)
                                     }
@@ -4258,7 +4287,12 @@ private fun WorkOrderCreateScreen(
                             enabled = !isLoading,
                             onSelect = { priority = it },
                         )
-                        WorkOrderTextField("Tagovi", tagText, { tagText = it }, enabled = !isLoading)
+                        WorkOrderCreateTagSelector(
+                            selectedTags = selectedTags,
+                            suggestions = tagSuggestions,
+                            enabled = !isLoading,
+                            onChange = { selectedTags = it },
+                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             WorkOrderDatePickerField(
                                 label = "Otvaranje",
@@ -4315,8 +4349,6 @@ private fun WorkOrderCreateScreen(
                             selectedExecutors = selectedExecutors.toggleValue(value)
                         },
                     )
-                    WorkOrderTextField("Odgovorna osoba", completedBy, { completedBy = it }, enabled = !isLoading)
-                    WorkOrderTextField("Tim / grupa", teamLabel, { teamLabel = it }, enabled = !isLoading)
                 }
             }
 
@@ -4396,31 +4428,26 @@ private fun WorkOrderCreateScreen(
                             }
                         }
                     }
-                    WorkOrderTextField("Naziv / usluga", serviceLine, { serviceLine = it }, enabled = !isLoading)
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(118.dp),
-                        label = { Text("Opis radova") },
-                        enabled = !isLoading,
-                        shape = RoundedCornerShape(16.dp),
-                    )
                 }
             }
 
             item {
                 ExpandableFormSection(
-                    title = "Kontakt i dodatni podaci",
-                    summary = listOf(contactName, department, linkReference).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Opcionalno" },
+                    title = "Veza RN i napomena",
+                    summary = listOf(linkReference, invoiceNote).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Opcionalno" },
                     initiallyExpanded = false,
                 ) {
-                    WorkOrderTextField("Kontakt osoba", contactName, { contactName = it }, enabled = !isLoading)
-                    WorkOrderTextField("Kontakt telefon", contactPhone, { contactPhone = it }, enabled = !isLoading)
-                    WorkOrderTextField("Kontakt email", contactEmail, { contactEmail = it }, enabled = !isLoading)
-                    WorkOrderTextField("Odjel", department, { department = it }, enabled = !isLoading)
-                    WorkOrderTextField("Veza RN", linkReference, { linkReference = it }, enabled = !isLoading)
+                    WorkOrderSearchSelectField(
+                        label = "Veza RN",
+                        value = linkReference,
+                        valueLabel = linkReference,
+                        options = relatedWorkOrderOptions,
+                        enabled = !isLoading && relatedWorkOrderOptions.isNotEmpty(),
+                        icon = Icons.Rounded.Description,
+                        searchPlaceholder = "Traži RN, tvrtku ili lokaciju",
+                        emptyText = "Nema RN-a za povezivanje.",
+                        onSelect = { linkReference = it },
+                    )
                     WorkOrderTextField("Interna napomena / faktura", invoiceNote, { invoiceNote = it }, enabled = !isLoading)
                 }
             }
@@ -4454,17 +4481,17 @@ private fun WorkOrderCreateScreen(
                                 priority = priority,
                                 serviceLine = serviceLine,
                                 serviceIds = selectedServiceIds,
-                                description = description,
+                                description = "",
                                 executors = selectedExecutors,
-                                completedBy = completedBy,
-                                teamLabel = teamLabel,
+                                completedBy = "",
+                                teamLabel = "",
                                 contactName = contactName,
                                 contactPhone = contactPhone,
                                 contactEmail = contactEmail,
-                                tagText = tagText,
+                                tagText = selectedTags.joinToString(", "),
                                 invoiceNote = invoiceNote,
                                 linkReference = linkReference,
-                                department = department,
+                                department = "",
                             ),
                         )
                     },
@@ -4526,6 +4553,89 @@ private fun ExpandableFormSection(
             }
             AnimatedVisibility(expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(11.dp), content = content)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderCreateTagSelector(
+    selectedTags: List<String>,
+    suggestions: List<String>,
+    enabled: Boolean,
+    onChange: (List<String>) -> Unit,
+) {
+    var draftTag by remember { mutableStateOf("") }
+    val normalizedSelected = remember(selectedTags) {
+        selectedTags
+            .map { it.trim().trim('#') }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+    }
+    val visibleSuggestions = remember(suggestions, normalizedSelected) {
+        suggestions
+            .map { it.trim().trim('#') }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .filterNot { suggestion -> normalizedSelected.any { it.equals(suggestion, ignoreCase = true) } }
+            .take(14)
+    }
+
+    fun setTags(tags: List<String>) {
+        onChange(
+            tags
+                .map { it.trim().trim('#') }
+                .filter { it.isNotBlank() }
+                .distinctBy { it.lowercase(Locale.getDefault()) },
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Tagovi", fontWeight = FontWeight.Black)
+        if (normalizedSelected.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                normalizedSelected.forEach { tag ->
+                    WorkOrderEditableTagChip(
+                        tag = tag,
+                        icon = Icons.Rounded.Close,
+                        enabled = enabled,
+                        onClick = { setTags(normalizedSelected.filterNot { it.equals(tag, ignoreCase = true) }) },
+                    )
+                }
+            }
+        }
+        if (visibleSuggestions.isNotEmpty()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                visibleSuggestions.forEach { suggestion ->
+                    WorkOrderEditableTagChip(
+                        tag = suggestion,
+                        icon = Icons.Rounded.Add,
+                        enabled = enabled,
+                        onClick = { setTags(normalizedSelected + suggestion) },
+                    )
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = draftTag,
+                onValueChange = { draftTag = it },
+                modifier = Modifier.weight(1f),
+                enabled = enabled,
+                label = { Text("Dodaj tag") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+            )
+            OutlinedButton(
+                onClick = {
+                    setTags(normalizedSelected + draftTag)
+                    draftTag = ""
+                },
+                enabled = enabled && draftTag.trim().trim('#').isNotBlank(),
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             }
         }
     }
