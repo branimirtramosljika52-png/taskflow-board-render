@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.186.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.187.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -15444,6 +15444,22 @@ function withResolvedWorkOrderExecutors(scopedSnapshot = {}, input = {}, current
   };
 }
 
+function withResolvedWorkOrderWatchers(scopedSnapshot = {}, input = {}) {
+  if (!bodyHasOwnField(input, "watcherIds") && !bodyHasOwnField(input, "watchers") && !bodyHasOwnField(input, "watcherUserIds")) {
+    return input;
+  }
+  const activeUserIds = new Set((scopedSnapshot.users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .map((user) => normalizeInputValue(user.id))
+    .filter(Boolean));
+  const watcherIds = normalizeMobileDocumentWizardArray(input.watcherIds || input.watchers || input.watcherUserIds)
+    .filter((id) => activeUserIds.has(id));
+  return {
+    ...input,
+    watcherIds,
+  };
+}
+
 function assertFieldInquiryPayloadInScope(scopedSnapshot, body = {}) {
   assertCompanyPayloadInScope(scopedSnapshot, body);
   assertLocationPayloadInScope(scopedSnapshot, body);
@@ -17627,6 +17643,7 @@ function buildMobileWorkOrderItem(item = {}) {
     executors: Array.isArray(item.executors)
       ? item.executors.map(normalizeInputValue).filter(Boolean)
       : [item.executor1, item.executor2].map(normalizeInputValue).filter(Boolean),
+    watcherIds: normalizeMobileDocumentWizardArray(item.watcherIds || item.watchers || item.watcherUserIds),
     executor1: normalizeInputValue(item.executor1),
     executor2: normalizeInputValue(item.executor2),
     completedBy: normalizeInputValue(item.completedBy || item.completedByLabel || item.createdByLabel),
@@ -23675,6 +23692,16 @@ function buildPushUserLookup(scopedSnapshot = {}) {
 function resolveWorkOrderPushUserIds(workOrder = {}, scopedSnapshot = {}) {
   const lookup = buildPushUserLookup(scopedSnapshot);
   const ids = new Set();
+  const activeUserIds = new Set((scopedSnapshot.users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .map((user) => normalizeInputValue(user.id))
+    .filter(Boolean));
+  normalizeMobileDocumentWizardArray(workOrder.watcherIds || workOrder.watchers || workOrder.watcherUserIds)
+    .forEach((watcherId) => {
+      if (activeUserIds.has(watcherId)) {
+        ids.add(watcherId);
+      }
+    });
   getWorkOrderPushExecutorLabels(workOrder).forEach((executorLabel) => {
     const matchingIds = lookup.get(normalizePushLookupKey(executorLabel));
     if (matchingIds instanceof Set) {
@@ -23684,6 +23711,16 @@ function resolveWorkOrderPushUserIds(workOrder = {}, scopedSnapshot = {}) {
     }
   });
   return [...ids];
+}
+
+function resolveAddedWatcherPushUserIds(currentWorkOrder = {}, nextWorkOrder = {}, scopedSnapshot = {}) {
+  const activeUserIds = new Set((scopedSnapshot.users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .map((user) => normalizeInputValue(user.id))
+    .filter(Boolean));
+  const currentIds = new Set(normalizeMobileDocumentWizardArray(currentWorkOrder.watcherIds || currentWorkOrder.watchers || currentWorkOrder.watcherUserIds));
+  return normalizeMobileDocumentWizardArray(nextWorkOrder.watcherIds || nextWorkOrder.watchers || nextWorkOrder.watcherUserIds)
+    .filter((id) => activeUserIds.has(id) && !currentIds.has(id));
 }
 
 function resolveAdminPushUserIds(scopedSnapshot = {}) {
@@ -23908,6 +23945,20 @@ function queueWorkOrderUpdatedPush(currentWorkOrder = {}, nextWorkOrder = {}, sc
     });
   }
 
+  const addedWatcherIds = resolveAddedWatcherPushUserIds(currentWorkOrder, nextWorkOrder, scopedSnapshot);
+  if (addedWatcherIds.length > 0) {
+    queuePushToUserIds(addedWatcherIds, {
+      title: "Pratite radni nalog",
+      body: `Dodani ste kao watcher na radni nalog ${workOrderNumber}`,
+      data: {
+        type: "work_order_status_changed",
+        workOrderId: normalizeInputValue(nextWorkOrder.id),
+        workOrderNumber,
+        status: normalizeInputValue(nextWorkOrder.status),
+      },
+    });
+  }
+
   const currentStatus = normalizeInputValue(currentWorkOrder.status);
   const nextStatus = normalizeInputValue(nextWorkOrder.status);
   if (!nextStatus || normalizePushLookupKey(currentStatus) === normalizePushLookupKey(nextStatus)) {
@@ -23996,6 +24047,77 @@ function limitMobileRecords(records = [], limit = MOBILE_BOOTSTRAP_RECORD_LIMIT)
   return records
     .filter((item) => item && (item.id || item.title))
     .slice(0, limit);
+}
+
+function normalizeMobilePageNumber(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function mobileRecordMatchesDirectoryQuery(record = {}, query = "") {
+  const normalizedQuery = normalizeInputValue(query).toLowerCase();
+  if (!normalizedQuery) return true;
+  const values = [
+    record.id,
+    record.title,
+    record.subtitle,
+    record.status,
+    record.kind,
+    record.date,
+    record.relatedId,
+    record.coordinates,
+    ...Object.values(record.meta || {}),
+  ];
+  return values.some((value) => normalizeInputValue(value).toLowerCase().includes(normalizedQuery));
+}
+
+function paginateMobileRecords(records = [], searchParams = new URLSearchParams()) {
+  const offset = normalizeMobilePageNumber(searchParams.get("offset"), 0, 0, 1_000_000);
+  const limit = normalizeMobilePageNumber(searchParams.get("limit"), 60, 20, 160);
+  const total = records.length;
+  const page = records.slice(offset, offset + limit);
+  const nextOffset = offset + page.length;
+  return {
+    records: page,
+    total,
+    offset,
+    nextOffset,
+    hasMore: nextOffset < total,
+  };
+}
+
+function buildMobileCompanyDirectoryRecord(company = {}, locations = []) {
+  const record = buildMobileRecordItem(company, {
+    kind: "company",
+    titleKeys: ["name"],
+    subtitleKeys: ["headquarters", "oib", "contactEmail", "contactPhone"],
+    statusKeys: ["isActive"],
+    dateKeys: ["updatedAt", "createdAt"],
+    metaKeys: ["oib", "headquarters", "contactPhone", "contactEmail"],
+    fallbackTitle: "Tvrtka",
+  });
+  const companyId = normalizeInputValue(company.id);
+  const locationCount = (locations ?? []).filter((location) => normalizeInputValue(location.companyId) === companyId).length;
+  return {
+    ...record,
+    meta: {
+      ...record.meta,
+      locationCount: String(locationCount),
+    },
+  };
+}
+
+function buildMobileLocationDirectoryRecord(location = {}) {
+  return buildMobileRecordItem(location, {
+    kind: "location",
+    titleKeys: ["name", "locationName"],
+    subtitleKeys: ["companyName", "region", "contactName1", "contactPhone1"],
+    statusKeys: ["isActive"],
+    dateKeys: ["updatedAt", "createdAt"],
+    metaKeys: ["companyName", "companyId", "region", "contactName1", "contactPhone1", "contactEmail1"],
+    fallbackTitle: "Lokacija",
+  });
 }
 
 function buildMobileMeasurementEquipmentRecord(item = {}) {
@@ -26003,25 +26125,11 @@ async function writeMobileBootstrap(response, user, request) {
     .map(buildMobileWorkOrderItem)
     .filter((item) => item.id));
 
-  const companies = limitMobileRecords((scopedSnapshot.companies ?? []).map((item) => buildMobileRecordItem(item, {
-    kind: "company",
-    titleKeys: ["name"],
-    subtitleKeys: ["headquarters", "oib", "contactEmail", "contactPhone"],
-    statusKeys: ["isActive"],
-    dateKeys: ["updatedAt", "createdAt"],
-    metaKeys: ["oib", "headquarters", "contactPhone", "contactEmail"],
-    fallbackTitle: "Tvrtka",
-  })), 2500);
+  const companies = limitMobileRecords((scopedSnapshot.companies ?? [])
+    .map((item) => buildMobileCompanyDirectoryRecord(item, scopedSnapshot.locations ?? []))
+    .sort((left, right) => left.title.localeCompare(right.title, "hr", { numeric: true, sensitivity: "base" })), 80);
 
-  const locations = limitMobileRecords((scopedSnapshot.locations ?? []).map((item) => buildMobileRecordItem(item, {
-    kind: "location",
-    titleKeys: ["name", "locationName"],
-    subtitleKeys: ["companyName", "region", "contactName1", "contactPhone1"],
-    statusKeys: ["isActive"],
-    dateKeys: ["updatedAt", "createdAt"],
-    metaKeys: ["companyName", "region", "contactName1", "contactPhone1", "contactEmail1"],
-    fallbackTitle: "Lokacija",
-  })), 2500);
+  const locations = [];
 
   const vehicles = limitMobileRecords((scopedSnapshot.vehicles ?? []).map(buildMobileVehicleRecord));
   const measurementEquipmentRecords = limitMobileRecords((scopedSnapshot.measurementEquipment ?? []).map(buildMobileMeasurementEquipmentRecord));
@@ -26473,6 +26581,44 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/mobile/work-orders") {
       await writeMobileWorkOrders(response, user, request);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/mobile/directory/companies") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const query = url.searchParams.get("q") || "";
+      const records = (scopedSnapshot.companies ?? [])
+        .map((company) => buildMobileCompanyDirectoryRecord(company, scopedSnapshot.locations ?? []))
+        .filter((record) => record.id && record.title)
+        .filter((record) => mobileRecordMatchesDirectoryQuery(record, query))
+        .sort((left, right) => left.title.localeCompare(right.title, "hr", { numeric: true, sensitivity: "base" }));
+      sendJson(response, 200, {
+        ok: true,
+        ...paginateMobileRecords(records, url.searchParams),
+      });
+      return true;
+    }
+
+    const mobileCompanyLocationsMatch = url.pathname.match(/^\/api\/mobile\/directory\/companies\/([^/]+)\/locations$/);
+    if (request.method === "GET" && mobileCompanyLocationsMatch) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const companyId = normalizeInputValue(decodeURIComponent(mobileCompanyLocationsMatch[1]));
+      const company = (scopedSnapshot.companies ?? []).find((entry) => normalizeInputValue(entry.id) === companyId);
+      if (!company) {
+        sendError(response, 404, "Tvrtka nije pronađena.");
+        return true;
+      }
+      const query = url.searchParams.get("q") || "";
+      const records = (scopedSnapshot.locations ?? [])
+        .filter((location) => normalizeInputValue(location.companyId) === companyId)
+        .map(buildMobileLocationDirectoryRecord)
+        .filter((record) => record.id && record.title)
+        .filter((record) => mobileRecordMatchesDirectoryQuery(record, query))
+        .sort((left, right) => left.title.localeCompare(right.title, "hr", { numeric: true, sensitivity: "base" }));
+      sendJson(response, 200, {
+        ok: true,
+        ...paginateMobileRecords(records, url.searchParams),
+      });
       return true;
     }
 
@@ -31281,7 +31427,7 @@ async function handleApiRequest(request, response, url) {
         assertLocationPayloadInScope(scopedSnapshot, patch);
         assertServiceCatalogIdsPayloadInScope(scopedSnapshot, patch);
         const updatedWorkOrder = await domainRepository.updateWorkOrder(workOrderId, {
-          ...withResolvedWorkOrderExecutors(scopedSnapshot, patch, currentWorkOrder),
+          ...withResolvedWorkOrderWatchers(scopedSnapshot, withResolvedWorkOrderExecutors(scopedSnapshot, patch, currentWorkOrder)),
           organizationId: scopedSnapshot.activeOrganizationId,
         }, user);
         if (updatedWorkOrder) {
@@ -31317,7 +31463,7 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateWorkOrder(mobileWorkOrderMatch[1], {
-        ...withResolvedWorkOrderExecutors(scopedSnapshot, body, currentWorkOrder),
+        ...withResolvedWorkOrderWatchers(scopedSnapshot, withResolvedWorkOrderExecutors(scopedSnapshot, body, currentWorkOrder)),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 
@@ -31356,7 +31502,7 @@ async function handleApiRequest(request, response, url) {
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateWorkOrder(workOrderMatch[1], {
-        ...withResolvedWorkOrderExecutors(scopedSnapshot, body, currentWorkOrder),
+        ...withResolvedWorkOrderWatchers(scopedSnapshot, withResolvedWorkOrderExecutors(scopedSnapshot, body, currentWorkOrder)),
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
 

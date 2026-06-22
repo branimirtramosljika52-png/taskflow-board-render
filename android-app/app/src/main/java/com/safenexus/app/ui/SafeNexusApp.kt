@@ -481,6 +481,18 @@ data class AppState(
     val isznrPeopleLoading: Boolean = false,
     val isznrPeopleLoaded: Boolean = false,
     val isznrPeopleError: String = "",
+    val companyDirectoryRecords: List<MobileRecord> = emptyList(),
+    val companyDirectoryTotal: Int = 0,
+    val companyDirectoryOffset: Int = 0,
+    val companyDirectoryHasMore: Boolean = true,
+    val companyDirectoryLoading: Boolean = false,
+    val companyDirectoryQuery: String = "",
+    val companyDirectoryError: String = "",
+    val companyDirectoryLocations: Map<String, List<MobileRecord>> = emptyMap(),
+    val companyDirectoryLocationTotals: Map<String, Int> = emptyMap(),
+    val companyDirectoryLocationOffsets: Map<String, Int> = emptyMap(),
+    val companyDirectoryLocationHasMore: Map<String, Boolean> = emptyMap(),
+    val companyDirectoryLocationLoading: Set<String> = emptySet(),
     val workEquipmentSubmitResults: Map<String, IsznrWorkEquipmentSubmitResult> = emptyMap(),
     val physicalFactorsSubmitResults: Map<String, IsznrWorkEquipmentSubmitResult> = emptyMap(),
     val isLoading: Boolean = false,
@@ -595,6 +607,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         isLoading = false,
                         error = "",
                     )
+                    loadCompanyDirectory(reset = true)
                 }
                 .onFailure { error ->
                     val message = error.message ?: "Ne mogu učitati mobilne podatke."
@@ -613,6 +626,91 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     } else {
                         state = state.copy(isLoading = false, error = message)
                     }
+                }
+        }
+    }
+
+    fun loadCompanyDirectory(reset: Boolean = false, query: String = state.companyDirectoryQuery) {
+        if (state.companyDirectoryLoading) return
+        if (!reset && !state.companyDirectoryHasMore) return
+        val normalizedQuery = query.trim()
+        val offset = if (reset || normalizedQuery != state.companyDirectoryQuery) 0 else state.companyDirectoryOffset
+        state = state.copy(
+            companyDirectoryLoading = true,
+            companyDirectoryError = "",
+            companyDirectoryQuery = normalizedQuery,
+            companyDirectoryRecords = if (offset == 0) emptyList() else state.companyDirectoryRecords,
+            companyDirectoryOffset = offset,
+            companyDirectoryHasMore = if (offset == 0) true else state.companyDirectoryHasMore,
+            companyDirectoryLocations = if (offset == 0) emptyMap() else state.companyDirectoryLocations,
+            companyDirectoryLocationTotals = if (offset == 0) emptyMap() else state.companyDirectoryLocationTotals,
+            companyDirectoryLocationOffsets = if (offset == 0) emptyMap() else state.companyDirectoryLocationOffsets,
+            companyDirectoryLocationHasMore = if (offset == 0) emptyMap() else state.companyDirectoryLocationHasMore,
+            companyDirectoryLocationLoading = if (offset == 0) emptySet() else state.companyDirectoryLocationLoading,
+        )
+        viewModelScope.launch {
+            api.listMobileCompanies(query = normalizedQuery, offset = offset)
+                .onSuccess { page ->
+                    val merged = if (offset == 0) {
+                        page.records
+                    } else {
+                        (state.companyDirectoryRecords + page.records)
+                            .distinctBy { it.id.ifBlank { it.title.lowercase(Locale.getDefault()) } }
+                    }
+                    state = state.copy(
+                        companyDirectoryRecords = merged,
+                        companyDirectoryTotal = page.total,
+                        companyDirectoryOffset = page.nextOffset,
+                        companyDirectoryHasMore = page.hasMore,
+                        companyDirectoryLoading = false,
+                        companyDirectoryError = "",
+                    )
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        companyDirectoryLoading = false,
+                        companyDirectoryError = error.message ?: "Ne mogu učitati tvrtke.",
+                    )
+                }
+        }
+    }
+
+    fun loadCompanyLocations(company: MobileRecord, reset: Boolean = false) {
+        val companyId = company.id.trim()
+        if (companyId.isBlank()) return
+        if (companyId in state.companyDirectoryLocationLoading) return
+        val hasExisting = state.companyDirectoryLocations.containsKey(companyId)
+        val hasMore = state.companyDirectoryLocationHasMore[companyId] ?: true
+        if (!reset && hasExisting && !hasMore) return
+        val offset = if (reset || !hasExisting) 0 else state.companyDirectoryLocationOffsets[companyId] ?: 0
+        state = state.copy(
+            companyDirectoryLocationLoading = state.companyDirectoryLocationLoading + companyId,
+            companyDirectoryLocations = if (offset == 0) {
+                state.companyDirectoryLocations - companyId
+            } else {
+                state.companyDirectoryLocations
+            },
+        )
+        viewModelScope.launch {
+            api.listMobileCompanyLocations(companyId = companyId, query = state.companyDirectoryQuery, offset = offset)
+                .onSuccess { page ->
+                    val current = if (offset == 0) emptyList() else state.companyDirectoryLocations[companyId].orEmpty()
+                    val merged = (current + page.records)
+                        .distinctBy { it.id.ifBlank { it.title.lowercase(Locale.getDefault()) } }
+                    state = state.copy(
+                        companyDirectoryLocations = state.companyDirectoryLocations + (companyId to merged),
+                        companyDirectoryLocationTotals = state.companyDirectoryLocationTotals + (companyId to page.total),
+                        companyDirectoryLocationOffsets = state.companyDirectoryLocationOffsets + (companyId to page.nextOffset),
+                        companyDirectoryLocationHasMore = state.companyDirectoryLocationHasMore + (companyId to page.hasMore),
+                        companyDirectoryLocationLoading = state.companyDirectoryLocationLoading - companyId,
+                        companyDirectoryError = "",
+                    )
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        companyDirectoryLocationLoading = state.companyDirectoryLocationLoading - companyId,
+                        companyDirectoryError = error.message ?: "Ne mogu učitati lokacije tvrtke.",
+                    )
                 }
         }
     }
@@ -682,6 +780,9 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun updateQuery(value: String) {
         state = state.copy(query = value)
+        if (state.section == AppSection.More && state.moreFocus in setOf(MoreSectionFocus.Companies, MoreSectionFocus.Locations)) {
+            loadCompanyDirectory(reset = true, query = value)
+        }
     }
 
     fun updateFilter(value: WorkOrderFilter) {
@@ -1458,6 +1559,31 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
                         replaceWorkOrderInState(previousWorkOrder)
                         state = state.copy(error = error.message ?: "Ne mogu spremiti izvršitelje RN-a.", notice = "")
+                    }
+                }
+        }
+    }
+
+    fun updateWorkOrderWatchers(workOrder: WorkOrder, watcherIds: List<String>) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za spremanje watcher-a.")
+            return
+        }
+        val normalized = watcherIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(workOrder.copy(watcherIds = normalized))
+        viewModelScope.launch {
+            api.updateWorkOrderWatchers(workOrder.id, normalized)
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, "Watcher-i RN-a su spremljeni.")
+                    }
+                }
+                .onFailure { error ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(error = error.message ?: "Ne mogu spremiti watcher-e RN-a.", notice = "")
                     }
                 }
         }
@@ -2635,6 +2761,9 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onCreateRiskAssessment = viewModel::createRiskAssessment,
                         onLoadIsznrMeasurementEquipment = viewModel::loadIsznrMeasurementEquipment,
                         onLoadIsznrPeople = viewModel::loadIsznrPeople,
+                        onLoadMoreCompanies = { viewModel.loadCompanyDirectory(reset = false) },
+                        onLoadCompanyLocations = { company -> viewModel.loadCompanyLocations(company) },
+                        onLoadMoreCompanyLocations = { company -> viewModel.loadCompanyLocations(company, reset = false) },
                         onDownloadDocument = { record ->
                             viewModel.downloadMobileDocument(context.applicationContext, record)
                         },
@@ -2680,6 +2809,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onMetaChange = viewModel::updateWorkOrderMeta,
                     onDatesChange = viewModel::updateWorkOrderDates,
                     onExecutorsChange = viewModel::updateWorkOrderExecutors,
+                    onWatchersChange = viewModel::updateWorkOrderWatchers,
                     onManageServices = { workOrder -> serviceManagementTarget = workOrder },
                     onGenerateDocumentation = { workOrder ->
                         documentationWizardTarget = workOrder
@@ -3734,6 +3864,47 @@ private fun WorkOrderCreateScreen(
         data.workOrderLocations.filter { location -> companyId.isBlank() || location.companyId == companyId }
     }
     val selectedLocation = availableLocations.firstOrNull { it.id == locationId }
+    val serviceTabs = remember {
+        listOf(
+            WorkOrderServiceFilterTab("ispitivanja", "Ispitivanja", Icons.Rounded.Tune),
+            WorkOrderServiceFilterTab("znr", "ZNR", Icons.Rounded.Work),
+            WorkOrderServiceFilterTab("ostalo", "Ostalo", Icons.Rounded.FilterList),
+        )
+    }
+    val serviceFilterById = remember(data.workOrderServices) {
+        data.workOrderServices.associate { service -> service.id to service.workOrderServiceFilterKey() }
+    }
+    val serviceCounts = remember(data.workOrderServices) {
+        serviceTabs.associate { tab ->
+            tab.key to data.workOrderServices.count { service -> service.workOrderServiceFilterKey() == tab.key }
+        }
+    }
+    var selectedServiceFilter by remember(data.workOrderServices) {
+        mutableStateOf(serviceTabs.firstOrNull { tab -> (serviceCounts[tab.key] ?: 0) > 0 }?.key ?: "ispitivanja")
+    }
+    val filteredServices = remember(data.workOrderServices, selectedServiceFilter) {
+        data.workOrderServices
+            .filter { service -> service.workOrderServiceFilterKey() == selectedServiceFilter }
+            .sortedBy { service -> service.name.lowercase(Locale.getDefault()) }
+    }
+    fun syncServiceLine(ids: List<String>) {
+        val selectedNames = data.workOrderServices
+            .filter { service -> service.id in ids }
+            .map { service -> service.name.ifBlank { service.serviceCode } }
+            .filter { it.isNotBlank() }
+        serviceLine = selectedNames.joinToString(" · ")
+    }
+    fun setCreateServiceChecked(service: WorkOrderServiceOption, checked: Boolean) {
+        val category = serviceFilterById[service.id] ?: service.workOrderServiceFilterKey()
+        selectedServiceFilter = category
+        val nextIds = if (checked) {
+            selectedServiceIds.filter { serviceFilterById[it] == category } + service.id
+        } else {
+            selectedServiceIds - service.id
+        }.distinct()
+        selectedServiceIds = nextIds
+        syncServiceLine(nextIds)
+    }
     fun applyLocationSelection(location: WorkOrderLocationOption?) {
         locationId = location?.id.orEmpty()
         contactName = location?.contactName1.orEmpty()
@@ -3980,6 +4151,53 @@ private fun WorkOrderCreateScreen(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                             )
                         }
+                        if (selectedLocation != null) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text("Detalji lokacije", fontWeight = FontWeight.Black)
+                                    if (selectedLocation.region.isNotBlank()) {
+                                        CompactInfoLine(Icons.Rounded.Map, "Regija", selectedLocation.region)
+                                    }
+                                    if (selectedLocation.coordinates.isNotBlank()) {
+                                        CompactInfoLine(Icons.Rounded.LocationOn, "Koordinate", selectedLocation.coordinates)
+                                    }
+                                    if (selectedLocation.contactName1.isNotBlank()) {
+                                        CompactInfoLine(Icons.Rounded.Person, "Kontakt", selectedLocation.contactName1)
+                                    }
+                                    if (selectedLocation.contactPhone1.isNotBlank()) {
+                                        CompactInfoLine(Icons.Rounded.Call, "Telefon", selectedLocation.contactPhone1)
+                                    }
+                                    if (selectedLocation.contactEmail1.isNotBlank()) {
+                                        CompactInfoLine(Icons.Rounded.Mail, "Email", selectedLocation.contactEmail1)
+                                    }
+                                }
+                            }
+                        }
+                        WorkOrderSelectField(
+                            label = "Prioritet",
+                            value = priority,
+                            valueLabel = data.priorities.firstOrNull { it.value == priority }?.label ?: priority,
+                            options = (data.priorities.ifEmpty {
+                                listOf(
+                                    com.safenexus.app.data.OptionItem("Urgent", "Urgent"),
+                                    com.safenexus.app.data.OptionItem("High", "High"),
+                                    com.safenexus.app.data.OptionItem("Normal", "Normal"),
+                                    com.safenexus.app.data.OptionItem("Niski prioritet", "Niski prioritet"),
+                                    com.safenexus.app.data.OptionItem("Bez prioriteta", "Bez prioriteta"),
+                                )
+                            }).map { it.value to it.label },
+                            enabled = !isLoading,
+                            onSelect = { priority = it },
+                        )
+                        WorkOrderTextField("Tagovi", tagText, { tagText = it }, enabled = !isLoading)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             WorkOrderDatePickerField(
                                 label = "Otvaranje",
@@ -4043,29 +4261,81 @@ private fun WorkOrderCreateScreen(
 
             item {
                 ExpandableFormSection(
-                    title = "Radovi",
-                    summary = serviceLine.ifBlank { "${selectedServiceIds.size} usluga" },
+                    title = "Usluge RN-a",
+                    summary = serviceLine.ifBlank { "${selectedServiceIds.size} odabrano" },
                     initiallyExpanded = true,
                 ) {
-                    WorkOrderTextField("Naziv / usluga", serviceLine, { serviceLine = it }, enabled = !isLoading)
-                    WorkOrderMultiSelectChips(
-                        options = data.workOrderServices.map { service ->
-                            service.id to listOf(service.serviceCode, service.name).filter { it.isNotBlank() }.joinToString(" · ")
-                        },
-                        selected = selectedServiceIds,
-                        enabled = !isLoading,
-                        emptyText = "Katalog usluga nije dostupan.",
-                        onToggle = { value ->
-                            selectedServiceIds = selectedServiceIds.toggleValue(value)
-                            val selectedNames = data.workOrderServices
-                                .filter { service -> service.id in selectedServiceIds }
-                                .map { service -> service.name.ifBlank { service.serviceCode } }
-                                .filter { it.isNotBlank() }
-                            if (selectedNames.isNotEmpty()) {
-                                serviceLine = selectedNames.joinToString(" · ")
-                            }
-                        },
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        serviceTabs.forEach { tab ->
+                            val count = serviceCounts[tab.key] ?: 0
+                            FilterChip(
+                                selected = selectedServiceFilter == tab.key,
+                                enabled = !isLoading && count > 0,
+                                onClick = { selectedServiceFilter = tab.key },
+                                leadingIcon = { Icon(tab.icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("${tab.label} $count", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                    Text(
+                        "Odabir je ograničen na jednu skupinu usluga.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                     )
+                    if (filteredServices.isEmpty()) {
+                        Text("Nema usluga u ovoj skupini.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            filteredServices.forEach { service ->
+                                val selected = service.id in selectedServiceIds
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = !isLoading) {
+                                            setCreateServiceChecked(service, !selected)
+                                        },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Checkbox(
+                                            checked = selected,
+                                            onCheckedChange = { checked -> setCreateServiceChecked(service, checked) },
+                                            enabled = !isLoading,
+                                            modifier = Modifier.size(32.dp),
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                service.name.ifBlank { service.serviceCode.ifBlank { "Usluga" } },
+                                                fontWeight = FontWeight.Black,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                listOf(service.serviceCode, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." })
+                                                    .filterNotNull()
+                                                    .filter { it.isNotBlank() }
+                                                    .joinToString(" · "),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    WorkOrderTextField("Naziv / usluga", serviceLine, { serviceLine = it }, enabled = !isLoading)
                     OutlinedTextField(
                         value = description,
                         onValueChange = { description = it },
@@ -4082,30 +4352,13 @@ private fun WorkOrderCreateScreen(
             item {
                 ExpandableFormSection(
                     title = "Kontakt i dodatni podaci",
-                    summary = listOf(contactName, priority, tagText).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Opcionalno" },
+                    summary = listOf(contactName, department, linkReference).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Opcionalno" },
                     initiallyExpanded = false,
                 ) {
-                    WorkOrderSelectField(
-                        label = "Prioritet",
-                        value = priority,
-                        valueLabel = data.priorities.firstOrNull { it.value == priority }?.label ?: priority,
-                        options = (data.priorities.ifEmpty {
-                            listOf(
-                                com.safenexus.app.data.OptionItem("Urgent", "Urgent"),
-                                com.safenexus.app.data.OptionItem("High", "High"),
-                                com.safenexus.app.data.OptionItem("Normal", "Normal"),
-                                com.safenexus.app.data.OptionItem("Niski prioritet", "Niski prioritet"),
-                                com.safenexus.app.data.OptionItem("Bez prioriteta", "Bez prioriteta"),
-                            )
-                        }).map { it.value to it.label },
-                        enabled = !isLoading,
-                        onSelect = { priority = it },
-                    )
                     WorkOrderTextField("Kontakt osoba", contactName, { contactName = it }, enabled = !isLoading)
                     WorkOrderTextField("Kontakt telefon", contactPhone, { contactPhone = it }, enabled = !isLoading)
                     WorkOrderTextField("Kontakt email", contactEmail, { contactEmail = it }, enabled = !isLoading)
                     WorkOrderTextField("Odjel", department, { department = it }, enabled = !isLoading)
-                    WorkOrderTextField("Tagovi", tagText, { tagText = it }, enabled = !isLoading)
                     WorkOrderTextField("Veza RN", linkReference, { linkReference = it }, enabled = !isLoading)
                     WorkOrderTextField("Interna napomena / faktura", invoiceNote, { invoiceNote = it }, enabled = !isLoading)
                 }
@@ -8682,6 +8935,9 @@ private fun WorkOrdersScreen(
     onCreateRiskAssessment: (RiskAssessmentCreateDraft) -> Unit,
     onLoadIsznrMeasurementEquipment: (Boolean) -> Unit,
     onLoadIsznrPeople: (Boolean) -> Unit,
+    onLoadMoreCompanies: () -> Unit,
+    onLoadCompanyLocations: (MobileRecord) -> Unit,
+    onLoadMoreCompanyLocations: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
     onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
 ) {
@@ -8828,7 +9084,6 @@ private fun WorkOrdersScreen(
                         onRefresh()
                     },
                     onViewModeChange = { value ->
-                        quickActionsExpanded = false
                         onViewModeChange(value)
                     },
                     onFilterChange = { value ->
@@ -8969,10 +9224,19 @@ private fun WorkOrdersScreen(
                         }
                         item {
                             CompanyDirectory(
-                                companies = state.data.companies,
-                                locations = state.data.locations,
-                                query = normalizedQuery,
+                                companies = state.companyDirectoryRecords,
+                                totalCompanies = state.companyDirectoryTotal,
+                                locationsByCompany = state.companyDirectoryLocations,
+                                locationTotalsByCompany = state.companyDirectoryLocationTotals,
+                                loadingCompanies = state.companyDirectoryLoading,
+                                companyHasMore = state.companyDirectoryHasMore,
+                                loadingLocationCompanyIds = state.companyDirectoryLocationLoading,
+                                locationHasMoreByCompany = state.companyDirectoryLocationHasMore,
+                                error = state.companyDirectoryError,
                                 onOpenRecord = onOpenRecord,
+                                onLoadMoreCompanies = onLoadMoreCompanies,
+                                onLoadCompanyLocations = onLoadCompanyLocations,
+                                onLoadMoreCompanyLocations = onLoadMoreCompanyLocations,
                             )
                         }
                         item {
@@ -9076,18 +9340,36 @@ private fun WorkOrdersScreen(
                     }
                     MoreSectionFocus.Companies -> item {
                         CompanyDirectory(
-                            companies = state.data.companies,
-                            locations = state.data.locations,
-                            query = normalizedQuery,
+                            companies = state.companyDirectoryRecords,
+                            totalCompanies = state.companyDirectoryTotal,
+                            locationsByCompany = state.companyDirectoryLocations,
+                            locationTotalsByCompany = state.companyDirectoryLocationTotals,
+                            loadingCompanies = state.companyDirectoryLoading,
+                            companyHasMore = state.companyDirectoryHasMore,
+                            loadingLocationCompanyIds = state.companyDirectoryLocationLoading,
+                            locationHasMoreByCompany = state.companyDirectoryLocationHasMore,
+                            error = state.companyDirectoryError,
                             onOpenRecord = onOpenRecord,
+                            onLoadMoreCompanies = onLoadMoreCompanies,
+                            onLoadCompanyLocations = onLoadCompanyLocations,
+                            onLoadMoreCompanyLocations = onLoadMoreCompanyLocations,
                         )
                     }
                     MoreSectionFocus.Locations -> item {
                         CompanyDirectory(
-                            companies = state.data.companies,
-                            locations = state.data.locations,
-                            query = normalizedQuery,
+                            companies = state.companyDirectoryRecords,
+                            totalCompanies = state.companyDirectoryTotal,
+                            locationsByCompany = state.companyDirectoryLocations,
+                            locationTotalsByCompany = state.companyDirectoryLocationTotals,
+                            loadingCompanies = state.companyDirectoryLoading,
+                            companyHasMore = state.companyDirectoryHasMore,
+                            loadingLocationCompanyIds = state.companyDirectoryLocationLoading,
+                            locationHasMoreByCompany = state.companyDirectoryLocationHasMore,
+                            error = state.companyDirectoryError,
                             onOpenRecord = onOpenRecord,
+                            onLoadMoreCompanies = onLoadMoreCompanies,
+                            onLoadCompanyLocations = onLoadCompanyLocations,
+                            onLoadMoreCompanyLocations = onLoadMoreCompanyLocations,
                         )
                     }
                     MoreSectionFocus.Periodics -> item {
@@ -9200,28 +9482,28 @@ private fun WorkOrdersScreen(
                     item {
                         EmptyWorkOrders()
                     }
-                } else if (mapPoints.isEmpty() && !state.isLoading) {
-                    item {
-                        NoCoordinateWorkOrders()
-                    }
                 } else {
                     item {
-                        WorkOrderMapPanel(
-                            points = mapPoints,
-                            totalWorkOrders = filtered.size,
-                            statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
-                            onOpenWorkOrder = onOpenWorkOrder,
-                            onStatusChange = onStatusChange,
-                        )
+                        if (mapPoints.isEmpty() && !state.isLoading) {
+                            NoCoordinateWorkOrders()
+                        } else {
+                            WorkOrderMapPanel(
+                                points = mapPoints,
+                                totalWorkOrders = filtered.size,
+                                statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
+                                onOpenWorkOrder = onOpenWorkOrder,
+                                onStatusChange = onStatusChange,
+                            )
+                        }
                     }
-                    items(mapPoints, key = { "map-${it.workOrder.id}" }) { entry ->
-                    WorkOrderCard(
-                        workOrder = entry.workOrder,
-                        isLoading = state.isLoading,
-                        statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
-                        onClick = { onOpenWorkOrder(entry.workOrder) },
-                            onStatusChange = { status -> onStatusChange(entry.workOrder, status) },
-                            onAddDocumentation = { onAddDocumentation(entry.workOrder) },
+                    items(filtered, key = { "map-list-${it.id}" }) { workOrder ->
+                        WorkOrderCard(
+                            workOrder = workOrder,
+                            isLoading = state.isLoading,
+                            statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
+                            onClick = { onOpenWorkOrder(workOrder) },
+                            onStatusChange = { status -> onStatusChange(workOrder, status) },
+                            onAddDocumentation = { onAddDocumentation(workOrder) },
                         )
                     }
                 }
@@ -9396,7 +9678,7 @@ private fun WorkOrdersTopBar(
                 },
             ) {
                 Icon(
-                    Icons.Rounded.FilterList,
+                    if (viewMode == WorkOrderViewMode.Map) Icons.Rounded.ListAlt else Icons.Rounded.Map,
                     contentDescription = if (viewMode == WorkOrderViewMode.Map) "Prikaži listu" else "Prikaži kartu",
                 )
             }
@@ -9671,7 +9953,7 @@ private fun WorkOrderQuickActionsFab(
                     )
                     QuickActionButton(
                         label = if (viewMode == WorkOrderViewMode.Map) "Prikaži listu" else "Prikaži kartu",
-                        icon = if (viewMode == WorkOrderViewMode.Map) Icons.Rounded.Work else Icons.Rounded.Map,
+                        icon = if (viewMode == WorkOrderViewMode.Map) Icons.Rounded.ListAlt else Icons.Rounded.Map,
                         onClick = {
                             onViewModeChange(
                                 if (viewMode == WorkOrderViewMode.Map) WorkOrderViewMode.List else WorkOrderViewMode.Map,
@@ -11435,37 +11717,36 @@ private fun MoreOverviewHero(data: BootstrapData) {
 @Composable
 private fun CompanyDirectory(
     companies: List<MobileRecord>,
-    locations: List<MobileRecord>,
-    query: String,
+    totalCompanies: Int,
+    locationsByCompany: Map<String, List<MobileRecord>>,
+    locationTotalsByCompany: Map<String, Int>,
+    loadingCompanies: Boolean,
+    companyHasMore: Boolean,
+    loadingLocationCompanyIds: Set<String>,
+    locationHasMoreByCompany: Map<String, Boolean>,
+    error: String,
     onOpenRecord: (MobileRecord) -> Unit,
+    onLoadMoreCompanies: () -> Unit,
+    onLoadCompanyLocations: (MobileRecord) -> Unit,
+    onLoadMoreCompanyLocations: (MobileRecord) -> Unit,
 ) {
-    val bundles = remember(companies, locations, query) {
-        companies
-            .map { company ->
-                val companyLocations = locations.filter { location -> locationBelongsToCompany(location, company) }
-                val visibleLocations = if (query.isBlank() || company.matchesSearch(query)) {
-                    companyLocations
-                } else {
-                    companyLocations.filter { it.matchesSearch(query) }
-                }
-                CompanyDirectoryBundle(company, visibleLocations, companyLocations.size)
-            }
-            .filter { bundle ->
-                query.isBlank() ||
-                    bundle.company.matchesSearch(query) ||
-                    bundle.locations.isNotEmpty()
-            }
-            .sortedBy { it.company.title.lowercase(Locale.getDefault()) }
+    val bundles = remember(companies, locationsByCompany, locationTotalsByCompany) {
+        companies.map { company ->
+            val key = companyDirectoryKey(company)
+            val loadedLocations = locationsByCompany[key].orEmpty()
+            val totalLocations = locationTotalsByCompany[key]
+                ?: company.meta["locationCount"]?.toIntOrNull()
+                ?: loadedLocations.size
+            CompanyDirectoryBundle(company, loadedLocations, totalLocations)
+        }
     }
-    var visibleCount by remember(companies, locations, query) { mutableStateOf(32) }
-    var expandedCompanyKey by remember(companies, query) { mutableStateOf("") }
+    var expandedCompanyKey by remember(companies) { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val visibleBundles = bundles.take(visibleCount)
     val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
 
-    LaunchedEffect(lastVisibleIndex, visibleCount, bundles.size) {
-        if (visibleBundles.isNotEmpty() && lastVisibleIndex >= visibleBundles.lastIndex - 4 && visibleCount < bundles.size) {
-            visibleCount = kotlin.math.min(visibleCount + 32, bundles.size)
+    LaunchedEffect(lastVisibleIndex, bundles.size, companyHasMore, loadingCompanies) {
+        if (bundles.isNotEmpty() && lastVisibleIndex >= bundles.lastIndex - 4 && companyHasMore && !loadingCompanies) {
+            onLoadMoreCompanies()
         }
     }
 
@@ -11482,11 +11763,14 @@ private fun CompanyDirectory(
         ) {
             SectionHeader(
                 title = "Tvrtke",
-                subtitle = "${bundles.size} tvrtki - ${locations.size} lokacija",
+                subtitle = "${companies.size} prikazano od ${totalCompanies.takeIf { it > 0 } ?: companies.size}",
                 icon = Icons.Rounded.Business,
             )
+            AnimatedVisibility(error.isNotBlank()) {
+                MessageCard(text = error, isError = true)
+            }
 
-            if (bundles.isEmpty()) {
+            if (bundles.isEmpty() && !loadingCompanies) {
                 Text("Nema tvrtki za prikaz.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
             } else {
                 LazyColumn(
@@ -11497,23 +11781,31 @@ private fun CompanyDirectory(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(
-                        items = visibleBundles,
+                        items = bundles,
                         key = { bundle -> companyDirectoryKey(bundle.company) },
                     ) { bundle ->
                         val key = companyDirectoryKey(bundle.company)
+                        val isLoadingLocations = key in loadingLocationCompanyIds
                         DirectoryCompanyLine(
                             company = bundle.company,
                             locations = bundle.locations,
                             totalLocationCount = bundle.totalLocationCount,
+                            isLoadingLocations = isLoadingLocations,
+                            hasMoreLocations = locationHasMoreByCompany[key] == true,
                             expanded = expandedCompanyKey == key,
                             onToggle = {
-                                expandedCompanyKey = if (expandedCompanyKey == key) "" else key
+                                val nextExpanded = expandedCompanyKey != key
+                                expandedCompanyKey = if (nextExpanded) key else ""
+                                if (nextExpanded && bundle.locations.isEmpty() && !isLoadingLocations) {
+                                    onLoadCompanyLocations(bundle.company)
+                                }
                             },
                             onOpenCompany = { onOpenRecord(bundle.company) },
                             onOpenLocation = onOpenRecord,
+                            onLoadMoreLocations = { onLoadMoreCompanyLocations(bundle.company) },
                         )
                     }
-                    if (visibleCount < bundles.size) {
+                    if (loadingCompanies || companyHasMore) {
                         item(key = "company-directory-loading") {
                             Row(
                                 modifier = Modifier
@@ -11522,13 +11814,15 @@ private fun CompanyDirectory(
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                if (loadingCompanies) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                }
                                 Spacer(Modifier.width(10.dp))
-                                Text(
-                                    "Učitavam još tvrtki...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                )
+                                TextButton(onClick = onLoadMoreCompanies, enabled = !loadingCompanies && companyHasMore) {
+                                    Text(if (loadingCompanies) "Učitavam još tvrtki..." else "Učitaj još tvrtki")
+                                }
                             }
                         }
                     }
@@ -11543,10 +11837,13 @@ private fun DirectoryCompanyLine(
     company: MobileRecord,
     locations: List<MobileRecord>,
     totalLocationCount: Int,
+    isLoadingLocations: Boolean,
+    hasMoreLocations: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
     onOpenCompany: () -> Unit,
     onOpenLocation: (MobileRecord) -> Unit,
+    onLoadMoreLocations: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -11601,17 +11898,46 @@ private fun DirectoryCompanyLine(
                         }
                     }
                     if (locations.isEmpty()) {
-                        Text(
-                            "Nema lokacija za odabrani prikaz.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isLoadingLocations) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Učitavam lokacije...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                )
+                            } else {
+                                Text(
+                                    "Nema lokacija za odabrani prikaz.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                )
+                            }
+                        }
                     } else {
                         locations.forEach { location ->
                             DirectoryLocationLine(
                                 location = location,
                                 onClick = { onOpenLocation(location) },
                             )
+                        }
+                        if (isLoadingLocations || hasMoreLocations) {
+                            OutlinedButton(
+                                onClick = onLoadMoreLocations,
+                                enabled = !isLoadingLocations && hasMoreLocations,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                if (isLoadingLocations) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(8.dp))
+                                } else {
+                                    Icon(Icons.Rounded.ExpandMore, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(if (isLoadingLocations) "Učitavam lokacije..." else "Učitaj još lokacija")
+                            }
                         }
                     }
                 }
@@ -14025,7 +14351,7 @@ private fun WorkOrderLeafletMap(
     AndroidView(
         modifier = Modifier
             .fillMaxWidth()
-            .height(400.dp)
+            .height(280.dp)
             .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)),
         factory = { context ->
             WebView(context).apply {
@@ -15721,6 +16047,7 @@ private fun WorkOrderDetailScreen(
     onMetaChange: (WorkOrder, String, List<String>) -> Unit,
     onDatesChange: (WorkOrder, String?, String?) -> Unit,
     onExecutorsChange: (WorkOrder, List<String>) -> Unit,
+    onWatchersChange: (WorkOrder, List<String>) -> Unit,
     onManageServices: (WorkOrder) -> Unit,
     onGenerateDocumentation: (WorkOrder) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
@@ -15743,6 +16070,14 @@ private fun WorkOrderDetailScreen(
             .distinctBy { it.lowercase(Locale.getDefault()) }
             .map { it to it }
     }
+    val watcherOptions = remember(users) {
+        users
+            .map { user ->
+                user.id to listOf(user.label, user.fullName, user.email).firstOrNull { it.isNotBlank() }.orEmpty()
+            }
+            .filter { (id, label) -> id.isNotBlank() && label.isNotBlank() }
+            .distinctBy { (id, _) -> id }
+    }
     val statusStyle = rnStatusStyle(workOrder)
     val heroLocation = remember(workOrder.locationName, workOrder.objectName) {
         listOf(
@@ -15762,6 +16097,7 @@ private fun WorkOrderDetailScreen(
         hasContactData
     var showLocationDetails by remember(workOrder.id) { mutableStateOf(false) }
     var showExecutorsEditor by remember(workOrder.id) { mutableStateOf(false) }
+    var showWatchersEditor by remember(workOrder.id) { mutableStateOf(false) }
     var showMetaEditor by remember(workOrder.id) { mutableStateOf(false) }
     if (showMetaEditor) {
         AlertDialog(
@@ -15819,6 +16155,34 @@ private fun WorkOrderDetailScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showExecutorsEditor = false }) {
+                    Text("Zatvori", fontWeight = FontWeight.Bold)
+                }
+            },
+        )
+    }
+    if (showWatchersEditor) {
+        AlertDialog(
+            onDismissRequest = { showWatchersEditor = false },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Watcheri RN-a", fontWeight = FontWeight.Black)
+                    Text(
+                        "Dobivaju obavijesti za promjene na ${workOrder.displayNumber}.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            },
+            text = {
+                DocumentationExecutorsEditor(
+                    executorOptions = watcherOptions,
+                    selectedExecutors = workOrder.watcherIds,
+                    enabled = !isLoading,
+                    onChange = { next -> onWatchersChange(workOrder, next) },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showWatchersEditor = false }) {
                     Text("Zatvori", fontWeight = FontWeight.Bold)
                 }
             },
@@ -15961,6 +16325,24 @@ private fun WorkOrderDetailScreen(
                                 }
                             }
                         }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        AssistChip(
+                            onClick = { showWatchersEditor = true },
+                            leadingIcon = {
+                                Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                            label = {
+                                Text(
+                                    if (workOrder.watcherIds.isEmpty()) "Dodaj watcher-a" else "Watcheri ${workOrder.watcherIds.size}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
                     }
                     Column(
                         modifier = Modifier.fillMaxWidth(),

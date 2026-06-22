@@ -35,6 +35,14 @@ data class BootstrapData(
     val dashboard: DashboardStats = DashboardStats(),
 )
 
+data class PagedMobileRecords(
+    val records: List<MobileRecord> = emptyList(),
+    val total: Int = 0,
+    val offset: Int = 0,
+    val nextOffset: Int = 0,
+    val hasMore: Boolean = false,
+)
+
 data class OptionItem(
     val value: String,
     val label: String,
@@ -845,6 +853,7 @@ data class WorkOrder(
     val executors: List<String>,
     val completedBy: String = "",
     val tags: List<String> = emptyList(),
+    val watcherIds: List<String> = emptyList(),
 ) {
     val parsedDueDate: LocalDate? = parseDateOrNull(dueDate)
 

@@ -100,6 +100,37 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun listMobileCompanies(
+        query: String = "",
+        offset: Int = 0,
+        limit: Int = 60,
+    ): Result<PagedMobileRecords> = withContext(Dispatchers.IO) {
+        runCatching {
+            val params = listOf(
+                "offset=${offset.coerceAtLeast(0)}",
+                "limit=${limit.coerceIn(20, 120)}",
+            ) + query.trim().takeIf { it.isNotBlank() }?.let { listOf("q=${it.pathSegment()}") }.orEmpty()
+            val json = JSONObject(request("/api/mobile/directory/companies?${params.joinToString("&")}"))
+            json.toPagedMobileRecords()
+        }
+    }
+
+    suspend fun listMobileCompanyLocations(
+        companyId: String,
+        query: String = "",
+        offset: Int = 0,
+        limit: Int = 80,
+    ): Result<PagedMobileRecords> = withContext(Dispatchers.IO) {
+        runCatching {
+            val params = listOf(
+                "offset=${offset.coerceAtLeast(0)}",
+                "limit=${limit.coerceIn(20, 160)}",
+            ) + query.trim().takeIf { it.isNotBlank() }?.let { listOf("q=${it.pathSegment()}") }.orEmpty()
+            val json = JSONObject(request("/api/mobile/directory/companies/${companyId.pathSegment()}/locations?${params.joinToString("&")}"))
+            json.toPagedMobileRecords()
+        }
+    }
+
     suspend fun createWorkOrder(draft: WorkOrderCreateDraft): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val serviceItems = JSONArray()
@@ -289,6 +320,17 @@ class SafeNexusApi(
             val payload = JSONObject()
                 .put("priority", priority.trim())
                 .put("tagText", tagText.trim())
+                .toString()
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
+        }
+    }
+
+    suspend fun updateWorkOrderWatchers(workOrderId: String, watcherIds: List<String>): Result<WorkOrder> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalized = watcherIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            val payload = JSONObject()
+                .put("watcherIds", JSONArray(normalized))
                 .toString()
             val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
             (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
@@ -2882,8 +2924,18 @@ private fun JSONObject.toWorkOrder(): WorkOrder {
         executors = optJSONArray("executors").toStringList("fullName", "name", "label", "email"),
         completedBy = firstClean("completedBy", "completedByLabel", "createdByLabel"),
         tags = toWorkOrderTags(),
+        watcherIds = optJSONArray("watcherIds").toStringList("userId", "id", "value", "email"),
     )
 }
+
+private fun JSONObject.toPagedMobileRecords(): PagedMobileRecords =
+    PagedMobileRecords(
+        records = optJSONArray("records").toRecords(),
+        total = firstInt(0, "total"),
+        offset = firstInt(0, "offset"),
+        nextOffset = firstInt(0, "nextOffset"),
+        hasMore = optBoolean("hasMore", false),
+    )
 
 private fun JSONObject.toWorkOrderTags(): List<String> {
     val arrayTags = optJSONArray("tags").toStringList("name", "label", "value", "title")
