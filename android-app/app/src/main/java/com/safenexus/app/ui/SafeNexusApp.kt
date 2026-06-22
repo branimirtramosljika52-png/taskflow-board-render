@@ -11255,14 +11255,23 @@ private fun CalendarContent(
 ) {
     var mode by remember { mutableStateOf(CalendarViewMode.Month) }
     var showWeekends by remember { mutableStateOf(true) }
+    var disabledSources by remember { mutableStateOf(emptySet<String>()) }
     val today = remember { LocalDate.now() }
     var selectedDate by remember { mutableStateOf(today) }
-    val recordsByDate = remember(records) {
-        records
+    val sourceOptions = remember(records) { buildCalendarSourceOptions(records) }
+    val visibleRecords = remember(records, disabledSources) {
+        records.filter { record -> calendarSourceId(record.kind) !in disabledSources }
+    }
+    val recordsByDate = remember(visibleRecords) {
+        visibleRecords
             .mapNotNull { record -> record.parsedDate?.let { date -> date to record } }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, entries) ->
-                entries.sortedWith(compareBy<MobileRecord> { recordKindLabel(it.kind) }.thenBy { it.title })
+                entries.sortedWith(
+                    compareBy<MobileRecord> { calendarSourceSortIndex(calendarSourceId(it.kind)) }
+                        .thenBy { recordKindLabel(it.kind) }
+                        .thenBy { it.title },
+                )
             }
     }
     val selectedRecords = remember(recordsByDate, selectedDate) { recordsByDate[selectedDate].orEmpty() }
@@ -11309,7 +11318,7 @@ private fun CalendarContent(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Kalendar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
-                        "$datedRecordsCount događaja iz RN-ova, vozila, periodike i osposobljavanja",
+                        "$datedRecordsCount prikazano od ${records.size} događaja",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -11324,6 +11333,18 @@ private fun CalendarContent(
             CalendarWeekendToggle(
                 showWeekends = showWeekends,
                 onToggle = { showWeekends = !showWeekends },
+            )
+
+            CalendarSourcePicker(
+                options = sourceOptions,
+                disabledSources = disabledSources,
+                onToggle = { sourceId ->
+                    disabledSources = if (sourceId in disabledSources) {
+                        disabledSources - sourceId
+                    } else {
+                        disabledSources + sourceId
+                    }
+                },
             )
 
             CalendarNavigation(
@@ -11368,6 +11389,89 @@ private fun CalendarContent(
                     onOpenRecord = onOpenRecord,
                 )
             }
+        }
+    }
+}
+
+private data class CalendarSourceOption(
+    val id: String,
+    val label: String,
+    val count: Int,
+)
+
+private val calendarSourceOrder = listOf(
+    "work_orders",
+    "work_order_due",
+    "periodics",
+    "training",
+    "vehicles",
+    "field_inquiries",
+    "other",
+)
+
+private fun calendarSourceId(kind: String): String = when (kind) {
+    "work_order", "work_order_execution" -> "work_orders"
+    "work_order_due" -> "work_order_due"
+    "training" -> "training"
+    "vehicle", "vehicle_reservation" -> "vehicles"
+    "field_inquiry" -> "field_inquiries"
+    "periodic_document",
+    "periodic_vehicle",
+    "periodic_equipment",
+    "periodic_rulebook",
+    "periodic_risk_assessment",
+    "periodic_legal_framework",
+    "document",
+    "rulebook",
+    "legal_framework",
+    "risk_assessment" -> "periodics"
+    else -> "other"
+}
+
+private fun calendarSourceLabel(sourceId: String): String = when (sourceId) {
+    "work_orders" -> "RN izvršenja"
+    "work_order_due" -> "RN rokovi"
+    "periodics" -> "Periodika"
+    "training" -> "Osposobljavanja"
+    "vehicles" -> "Vozila"
+    "field_inquiries" -> "Upiti"
+    else -> "Ostalo"
+}
+
+private fun calendarSourceSortIndex(sourceId: String): Int {
+    val index = calendarSourceOrder.indexOf(sourceId)
+    return if (index >= 0) index else calendarSourceOrder.size
+}
+
+private fun buildCalendarSourceOptions(records: List<MobileRecord>): List<CalendarSourceOption> =
+    records
+        .groupingBy { record -> calendarSourceId(record.kind) }
+        .eachCount()
+        .map { (sourceId, count) -> CalendarSourceOption(sourceId, calendarSourceLabel(sourceId), count) }
+        .sortedBy { option -> calendarSourceSortIndex(option.id) }
+
+@Composable
+private fun CalendarSourcePicker(
+    options: List<CalendarSourceOption>,
+    disabledSources: Set<String>,
+    onToggle: (String) -> Unit,
+) {
+    if (options.isEmpty()) return
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { option ->
+            val selected = option.id !in disabledSources
+            FilterChip(
+                selected = selected,
+                onClick = { onToggle(option.id) },
+                label = { Text("${option.label} ${option.count}") },
+                leadingIcon = {
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .background(calendarSourceColor(option.id), CircleShape),
+                    )
+                },
+            )
         }
     }
 }
@@ -11881,14 +11985,28 @@ private fun calendarMonthName(month: Int): String = when (month) {
 }
 
 private fun calendarRecordColor(kind: String): Color = when (kind) {
-    "work_order" -> Color(0xFF2563EB)
+    "work_order", "work_order_execution" -> Color(0xFF2563EB)
+    "work_order_due" -> Color(0xFFD97706)
     "field_inquiry" -> Color(0xFFD97706)
     "todo_task" -> Color(0xFF2563EB)
     "vehicle", "vehicle_reservation" -> Color(0xFF059669)
-    "document" -> Color(0xFF7C3AED)
+    "document", "periodic_document" -> Color(0xFF7C3AED)
     "training" -> Color(0xFFDC2626)
-    "rulebook" -> Color(0xFFB45309)
-    "legal_framework" -> Color(0xFF0F766E)
+    "rulebook", "periodic_rulebook" -> Color(0xFFB45309)
+    "legal_framework", "periodic_legal_framework" -> Color(0xFF0F766E)
+    "periodic_vehicle" -> Color(0xFF047857)
+    "periodic_equipment" -> Color(0xFF0284C7)
+    "periodic_risk_assessment" -> Color(0xFF9333EA)
+    else -> Color(0xFF475569)
+}
+
+private fun calendarSourceColor(sourceId: String): Color = when (sourceId) {
+    "work_orders" -> Color(0xFF2563EB)
+    "work_order_due" -> Color(0xFFD97706)
+    "periodics" -> Color(0xFF7C3AED)
+    "training" -> Color(0xFFDC2626)
+    "vehicles" -> Color(0xFF059669)
+    "field_inquiries" -> Color(0xFFD97706)
     else -> Color(0xFF475569)
 }
 
@@ -14790,31 +14908,40 @@ private fun RecordLine(
 }
 
 private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Rounded.Work): ImageVector = when (record.kind) {
-    "work_order" -> Icons.Rounded.Work
+    "work_order", "work_order_execution", "work_order_due" -> Icons.Rounded.Work
     "field_inquiry" -> Icons.Rounded.EventNote
     "offer" -> Icons.Rounded.Description
     "todo_task" -> Icons.Rounded.ListAlt
-    "vehicle", "vehicle_reservation" -> Icons.Rounded.Business
-    "document" -> Icons.Rounded.Description
+    "vehicle", "vehicle_reservation", "periodic_vehicle" -> Icons.Rounded.Business
+    "document", "periodic_document" -> Icons.Rounded.Description
     "training" -> Icons.Rounded.Fingerprint
     "company" -> Icons.Rounded.Business
     "location" -> Icons.Rounded.LocationOn
     "job" -> Icons.Rounded.Work
-    "rulebook" -> Icons.Rounded.Lock
-    "legal_framework" -> Icons.Rounded.Description
-    "risk_assessment" -> Icons.Rounded.Description
+    "rulebook", "periodic_rulebook" -> Icons.Rounded.Lock
+    "legal_framework", "periodic_legal_framework" -> Icons.Rounded.Description
+    "risk_assessment", "periodic_risk_assessment" -> Icons.Rounded.Description
+    "periodic_equipment" -> Icons.Rounded.Work
     "client_portal" -> Icons.Rounded.Map
     else -> fallback
 }
 
 private fun recordKindLabel(kind: String): String = when (kind) {
     "work_order" -> "Radni nalog"
+    "work_order_execution" -> "RN izvršenje"
+    "work_order_due" -> "RN rok"
     "field_inquiry" -> "Plan terena"
     "offer" -> "Ponuda"
     "todo_task" -> "ToDo"
     "vehicle" -> "Vozilo"
     "vehicle_reservation" -> "Rezervacija vozila"
     "document" -> "Dokument"
+    "periodic_document" -> "Periodika dokumenata"
+    "periodic_vehicle" -> "Periodika vozila"
+    "periodic_equipment" -> "Periodika mjerne opreme"
+    "periodic_rulebook" -> "Periodika temeljne dokumentacije"
+    "periodic_risk_assessment" -> "Periodika procjene rizika"
+    "periodic_legal_framework" -> "Periodika zakonske regulative"
     "training" -> "Osposobljavanje"
     "company" -> "Tvrtka"
     "location" -> "Lokacija"

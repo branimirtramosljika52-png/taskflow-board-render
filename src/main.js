@@ -110484,7 +110484,137 @@ function renderWorkOrderCalendarSidePanels({
   }
 }
 
-function createWorkOrderCalendarDayCell(day, todoTasks = []) {
+function ensureWorkOrderCalendarPeriodicsFeedLoaded() {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const isSameOrganization = String(state.periodicsFeed?.organizationId || "").trim() === activeOrganizationId;
+  if (!activeOrganizationId || state.periodicsFeed?.loading || (state.periodicsFeed?.loaded && isSameOrganization)) {
+    return;
+  }
+
+  void loadPeriodicsFeed().then(() => {
+    if (state.activeWorkOrderViewMode === "calendar" && workOrderCalendarView && !workOrderCalendarView.hidden) {
+      renderWorkOrderCalendarView();
+    }
+  });
+}
+
+function buildWorkOrderUnifiedPeriodicsCalendarData() {
+  return buildPeriodicsCalendarData({
+    inspectionEntries: buildPeriodicsInspectionEntries(),
+    vehicleEntries: buildPeriodicsVehicleEntries(),
+    peopleEntries: buildPeriodicsPeopleEntries(),
+    equipmentEntries: buildPeriodicsMeasurementEquipmentEntries(),
+    query: state.workOrderFilters?.query || "",
+    visibility: normalizePeriodicsCalendarVisibility(state.periodicsCalendar?.visibility),
+  });
+}
+
+function buildWorkOrderUnifiedPeriodicsByDate(calendarData = {}, rangeStart = "", rangeEnd = "") {
+  const safeRangeStart = String(rangeStart || "").trim();
+  const safeRangeEnd = String(rangeEnd || safeRangeStart).trim();
+  const byDate = new Map();
+
+  if (!safeRangeStart || !safeRangeEnd) {
+    return byDate;
+  }
+
+  (Array.isArray(calendarData.dueItems) ? calendarData.dueItems : []).forEach((item) => {
+    const dateKey = String(item?.startDate || item?.dueDate || "").trim();
+    if (!dateKey || dateKey < safeRangeStart || dateKey > safeRangeEnd) {
+      return;
+    }
+    if (!byDate.has(dateKey)) {
+      byDate.set(dateKey, []);
+    }
+    byDate.get(dateKey).push(item);
+  });
+
+  (Array.isArray(calendarData.absenceItems) ? calendarData.absenceItems : []).forEach((item) => {
+    const startDate = String(item?.startDate || "").trim();
+    const endDate = String(item?.endDate || startDate).trim() || startDate;
+    if (!startDate) {
+      return;
+    }
+    let cursor = startDate < safeRangeStart ? safeRangeStart : startDate;
+    const lastDate = endDate > safeRangeEnd ? safeRangeEnd : endDate;
+    while (cursor && cursor <= lastDate) {
+      if (!byDate.has(cursor)) {
+        byDate.set(cursor, []);
+      }
+      byDate.get(cursor).push({
+        ...item,
+        categoryLabel: item.subtitle || "Odsutnost",
+        categoryClassName: item.toneClass || "is-other",
+      });
+      cursor = shiftDateKey(cursor, 1);
+    }
+  });
+
+  byDate.forEach((items, dateKey) => {
+    byDate.set(dateKey, items.sort((left, right) => (
+      String(left.categoryLabel || "").localeCompare(String(right.categoryLabel || ""), "hr")
+      || String(left.title || "").localeCompare(String(right.title || ""), "hr")
+    )));
+  });
+
+  return byDate;
+}
+
+function createWorkOrderCalendarPeriodicsStrip(items = []) {
+  const visibleItems = (Array.isArray(items) ? items : []).filter(Boolean);
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "work-order-calendar-periodics-strip";
+
+  const head = document.createElement("div");
+  head.className = "work-order-calendar-periodics-head";
+  const label = document.createElement("strong");
+  label.textContent = "Periodika";
+  const meta = document.createElement("span");
+  meta.textContent = `${visibleItems.length} rok${visibleItems.length === 1 ? "" : "ova"}`;
+  head.append(label, meta);
+
+  const list = document.createElement("div");
+  list.className = "work-order-calendar-periodics-list";
+
+  visibleItems.slice(0, 4).forEach((item) => {
+    const block = document.createElement("button");
+    block.type = "button";
+    block.className = [
+      "periodics-calendar-block",
+      "work-order-calendar-periodic-block",
+      item.categoryClassName || item.toneClass || "is-other",
+      item.dueState?.toneClass || "",
+    ].filter(Boolean).join(" ");
+    block.title = [item.categoryLabel, item.title, item.subtitle, item.detail].filter(Boolean).join(" · ");
+
+    const itemLabel = document.createElement("span");
+    itemLabel.className = "periodics-calendar-block-label";
+    itemLabel.textContent = item.title || item.categoryLabel || "Periodika";
+
+    const itemMeta = document.createElement("span");
+    itemMeta.className = "periodics-calendar-block-meta";
+    itemMeta.textContent = item.categoryLabel || "";
+
+    block.append(itemLabel, itemMeta);
+    list.append(block);
+  });
+
+  if (visibleItems.length > 4) {
+    const more = document.createElement("span");
+    more.className = "work-order-calendar-periodics-more";
+    more.textContent = `+${visibleItems.length - 4} još`;
+    list.append(more);
+  }
+
+  wrap.append(head, list);
+  return wrap;
+}
+
+function createWorkOrderCalendarDayCell(day, todoTasks = [], periodicsItems = []) {
   const cell = document.createElement("div");
   cell.className = "work-order-calendar-month-day";
   cell.classList.toggle("is-today", Boolean(day.isToday));
@@ -110515,6 +110645,7 @@ function createWorkOrderCalendarDayCell(day, todoTasks = []) {
   dayMeta.textContent = [
     day.items.length === 0 ? "Bez RN" : `${day.items.length} RN`,
     todoTasks.length > 0 ? `${todoTasks.length} ToDo` : "",
+    periodicsItems.length > 0 ? `${periodicsItems.length} periodika` : "",
     dayAbsenceEntries.length > 0 ? `${dayAbsenceEntries.length} odsut.` : "",
   ].filter(Boolean).join(" · ");
 
@@ -110532,7 +110663,12 @@ function createWorkOrderCalendarDayCell(day, todoTasks = []) {
     body.append(absenceStrip);
   }
 
-  if (day.items.length === 0 && todoTasks.length === 0) {
+  const periodicsStrip = createWorkOrderCalendarPeriodicsStrip(periodicsItems);
+  if (periodicsStrip) {
+    body.append(periodicsStrip);
+  }
+
+  if (day.items.length === 0 && todoTasks.length === 0 && periodicsItems.length === 0) {
     const placeholder = document.createElement("span");
     placeholder.className = "work-order-calendar-cell-placeholder";
     placeholder.textContent = "Povuci ovdje";
@@ -110553,6 +110689,7 @@ function createWorkOrderCalendarDayCell(day, todoTasks = []) {
 
 function renderWorkOrderCalendarWeekMode(filtered) {
   const calendar = buildWorkOrderCalendarWeekColumns(filtered, state.workOrderCalendar.weekStart);
+  const periodicsCalendarData = buildWorkOrderUnifiedPeriodicsCalendarData();
   const nextWeekJobTasks = getNextWeekJobTodoTasks();
   const nextWeekJobsByDate = getTodoTaskCalendarItemsByDate(nextWeekJobTasks);
   const undatedNextWeekJobs = getUndatedTodoTaskCalendarItems(nextWeekJobTasks);
@@ -110568,6 +110705,8 @@ function renderWorkOrderCalendarWeekMode(filtered) {
   const scheduledTodoCount = visibleDays.reduce((sum, day) => sum + (nextWeekJobsByDate.get(day.key)?.length ?? 0), 0);
   const firstVisibleDay = visibleDays[0]?.key ?? calendar.weekStart;
   const lastVisibleDay = visibleDays[visibleDays.length - 1]?.key ?? firstVisibleDay;
+  const periodicsByDate = buildWorkOrderUnifiedPeriodicsByDate(periodicsCalendarData, firstVisibleDay, lastVisibleDay);
+  const periodicsCount = visibleDays.reduce((sum, day) => sum + (periodicsByDate.get(day.key)?.length ?? 0), 0);
 
   if (workOrderCalendarRange) {
     workOrderCalendarRange.textContent = formatCalendarWeekRangeLabel(firstVisibleDay, lastVisibleDay);
@@ -110578,6 +110717,7 @@ function renderWorkOrderCalendarWeekMode(filtered) {
       formatCalendarMonthLabel(firstVisibleDay),
       `${scheduledCount} raspoređenih`,
       scheduledTodoCount > 0 ? `${scheduledTodoCount} Next Week Job upita` : "",
+      periodicsCount > 0 ? `${periodicsCount} periodika` : "",
       `${calendar.unscheduled.length} bez izvršenja`,
       undatedNextWeekJobs.length > 0 ? `${undatedNextWeekJobs.length} ToDo bez datuma` : "",
       `${calendar.unassigned.length} bez izvršitelja`,
@@ -110606,6 +110746,7 @@ function renderWorkOrderCalendarWeekMode(filtered) {
     formatCalendarMonthLabel(firstVisibleDay),
     scheduledCount === 1 ? "1 RN" : `${scheduledCount} RN`,
     scheduledTodoCount > 0 ? `${scheduledTodoCount} Next Week Job upita` : "",
+    periodicsCount > 0 ? `${periodicsCount} periodika` : "",
   ].filter(Boolean).join(" · ");
 
   weekHead.append(weekTitle, weekMeta);
@@ -110616,7 +110757,11 @@ function renderWorkOrderCalendarWeekMode(filtered) {
   weekGrid.style.minWidth = "0";
   weekGrid.style.width = "100%";
   visibleDays.forEach((day) => {
-    weekGrid.append(createWorkOrderCalendarDayCell(day, nextWeekJobsByDate.get(day.key) ?? []));
+    weekGrid.append(createWorkOrderCalendarDayCell(
+      day,
+      nextWeekJobsByDate.get(day.key) ?? [],
+      periodicsByDate.get(day.key) ?? [],
+    ));
   });
 
   weekSection.append(weekHead, weekGrid);
@@ -110627,12 +110772,22 @@ function renderWorkOrderCalendarWeekMode(filtered) {
 
 function renderWorkOrderCalendarMonthMode(filtered) {
   const calendar = buildWorkOrderCalendarMonthWeeks(filtered, state.workOrderCalendar.weekStart);
+  const periodicsCalendarData = buildWorkOrderUnifiedPeriodicsCalendarData();
+  const periodicsByDate = buildWorkOrderUnifiedPeriodicsByDate(
+    periodicsCalendarData,
+    calendar.monthStart,
+    calendar.monthEnd,
+  );
   const nextWeekJobTasks = getNextWeekJobTodoTasks();
   const nextWeekJobsByDate = getTodoTaskCalendarItemsByDate(nextWeekJobTasks);
   const undatedNextWeekJobs = getUndatedTodoTaskCalendarItems(nextWeekJobTasks);
   const scheduledCount = calendar.weeks.reduce((sum, week) => sum + week.totalCount, 0);
   const scheduledTodoCount = calendar.weeks.reduce(
     (sum, week) => sum + week.days.reduce((daySum, day) => daySum + (nextWeekJobsByDate.get(day.key)?.length ?? 0), 0),
+    0,
+  );
+  const periodicsCount = calendar.weeks.reduce(
+    (sum, week) => sum + week.days.reduce((daySum, day) => daySum + (periodicsByDate.get(day.key)?.length ?? 0), 0),
     0,
   );
   const visibleMonthItems = filtered.filter((item) => {
@@ -110654,6 +110809,7 @@ function renderWorkOrderCalendarMonthMode(filtered) {
       weekNumberLabel,
       `${scheduledCount} raspoređenih`,
       scheduledTodoCount > 0 ? `${scheduledTodoCount} Next Week Job upita` : "",
+      periodicsCount > 0 ? `${periodicsCount} periodika` : "",
       `${calendar.unscheduled.length} bez izvršenja`,
       undatedNextWeekJobs.length > 0 ? `${undatedNextWeekJobs.length} ToDo bez datuma` : "",
       `${unassignedCount} bez izvršitelja`,
@@ -110682,12 +110838,14 @@ function renderWorkOrderCalendarMonthMode(filtered) {
 
     const weekMeta = document.createElement("span");
     const weekTodoCount = visibleDays.reduce((sum, day) => sum + (nextWeekJobsByDate.get(day.key)?.length ?? 0), 0);
+    const weekPeriodicsCount = visibleDays.reduce((sum, day) => sum + (periodicsByDate.get(day.key)?.length ?? 0), 0);
     weekMeta.textContent = [
       `${formatCompactDate(visibleDays[0]?.key || week.weekStart)} - ${formatCompactDate(
         visibleDays[visibleDays.length - 1]?.key || week.weekStart,
       )}`,
       week.totalCount === 1 ? "1 RN" : `${week.totalCount} RN`,
       weekTodoCount > 0 ? `${weekTodoCount} Next Week Job upita` : "",
+      weekPeriodicsCount > 0 ? `${weekPeriodicsCount} periodika` : "",
     ].filter(Boolean).join(" · ");
 
     weekHead.append(weekTitle, weekMeta);
@@ -110699,7 +110857,11 @@ function renderWorkOrderCalendarMonthMode(filtered) {
     weekGrid.style.width = "100%";
 
     visibleDays.forEach((day) => {
-      weekGrid.append(createWorkOrderCalendarDayCell(day, nextWeekJobsByDate.get(day.key) ?? []));
+      weekGrid.append(createWorkOrderCalendarDayCell(
+        day,
+        nextWeekJobsByDate.get(day.key) ?? [],
+        periodicsByDate.get(day.key) ?? [],
+      ));
     });
 
     weekSection.append(weekHead, weekGrid);
@@ -110715,6 +110877,7 @@ function renderWorkOrderCalendarView() {
     return;
   }
 
+  ensureWorkOrderCalendarPeriodicsFeedLoaded();
   bindWorkOrderCalendarGrabScroll();
 
   const filtered = getFilteredWorkOrders();

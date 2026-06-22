@@ -24927,6 +24927,61 @@ body.is-document-template-editor-open .chat-dock {
   min-height: clamp(94px, 12vw, 118px);
 }
 
+.work-order-calendar-periodics-strip {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px;
+  border-radius: 13px;
+  border: 1px solid rgba(124, 58, 237, 0.13);
+  background:
+    linear-gradient(180deg, rgba(250, 247, 255, 0.98), rgba(244, 240, 255, 0.92)),
+    radial-gradient(circle at 8% 0%, rgba(124, 58, 237, 0.12), transparent 38%);
+}
+
+.work-order-calendar-periodics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.work-order-calendar-periodics-head strong {
+  min-width: 0;
+  color: #4c1d95;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.work-order-calendar-periodics-head span,
+.work-order-calendar-periodics-more {
+  color: #6d5a9c;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.work-order-calendar-periodics-list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.work-order-calendar-periodic-block {
+  width: 100%;
+  min-height: 26px;
+  padding: 4px 8px;
+  text-align: left;
+  cursor: default;
+}
+
+.work-order-calendar-periodic-block:focus-visible {
+  outline: 2px solid rgba(124, 58, 237, 0.28);
+  outline-offset: 2px;
+}
+
 .work-order-calendar-day-add {
   display: inline-flex;
   align-items: center;

@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.194.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.195.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -23997,6 +23997,7 @@ async function writeMobileWorkOrders(response, user, request) {
 }
 
 const MOBILE_BOOTSTRAP_RECORD_LIMIT = 350;
+const MOBILE_CALENDAR_EVENT_LIMIT = 2500;
 const MOBILE_BOOTSTRAP_DOCUMENT_LIMIT = 5000;
 
 function firstMobileRecordValue(item = {}, keys = []) {
@@ -25893,22 +25894,62 @@ function getVehicleEvidencePdfFileName(vehicle = {}) {
 
 function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
   const events = [];
+  const pushEvent = (event = {}) => {
+    const date = normalizeInputValue(event.date).slice(0, 10);
+    const id = normalizeInputValue(event.id);
+    const title = normalizeInputValue(event.title);
+    if (!date || (!id && !title)) {
+      return;
+    }
+    events.push({
+      id: id || `${event.kind || "event"}:${date}:${events.length}`,
+      title: title || "Događaj",
+      subtitle: normalizeInputValue(event.subtitle),
+      status: normalizeInputValue(event.status),
+      kind: normalizeInputValue(event.kind) || "calendar_event",
+      date,
+      relatedId: normalizeInputValue(event.relatedId),
+      coordinates: normalizeInputValue(event.coordinates),
+      meta: event.meta && typeof event.meta === "object" ? event.meta : {},
+    });
+  };
 
   workOrders.forEach((workOrder) => {
-    const date = firstMobileRecordValue(workOrder, ["executionDate"]);
-    if (!date) return;
-    events.push({
-      id: `work-order:${workOrder.id}`,
+    const baseSubtitle = [workOrder.companyName, workOrder.locationName].filter(Boolean).join(" - ");
+    const executionDate = firstMobileRecordValue(workOrder, ["executionDate"]);
+    if (executionDate) {
+      pushEvent({
+        id: `work-order-execution:${workOrder.id}`,
+        title: workOrder.workOrderNumber || workOrder.number || "Radni nalog",
+        subtitle: baseSubtitle,
+        status: workOrder.status,
+        kind: "work_order_execution",
+        date: executionDate,
+        relatedId: workOrder.id,
+        coordinates: workOrder.coordinates,
+        meta: {
+          companyName: workOrder.companyName,
+          locationName: workOrder.locationName,
+          calendarLabel: "Izvršenje",
+        },
+      });
+    }
+
+    const dueDate = firstMobileRecordValue(workOrder, ["dueDate"]);
+    if (!dueDate) return;
+    pushEvent({
+      id: `work-order-due:${workOrder.id}`,
       title: workOrder.workOrderNumber || workOrder.number || "Radni nalog",
-      subtitle: [workOrder.companyName, workOrder.locationName].filter(Boolean).join(" - "),
+      subtitle: baseSubtitle,
       status: workOrder.status,
-      kind: "work_order",
-      date,
+      kind: "work_order_due",
+      date: dueDate,
       relatedId: workOrder.id,
       coordinates: workOrder.coordinates,
       meta: {
         companyName: workOrder.companyName,
         locationName: workOrder.locationName,
+        calendarLabel: "Rok",
       },
     });
   });
@@ -25917,7 +25958,7 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
     const date = firstMobileRecordValue(inquiry, ["plannedDate"]);
     if (!date) return;
     const record = buildMobileFieldInquiryRecord(inquiry);
-    events.push({
+    pushEvent({
       ...record,
       id: `field-inquiry:${inquiry.id}`,
       kind: "field_inquiry",
@@ -25928,7 +25969,7 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
     (vehicle.reservations ?? []).forEach((reservation) => {
       const date = firstMobileRecordValue(reservation, ["startAt", "createdAt"]);
       if (!date) return;
-      events.push({
+      pushEvent({
         id: `vehicle-reservation:${vehicle.id}:${reservation.id || date}`,
         title: vehicle.plateNumber || vehicle.name || "Rezervacija vozila",
         subtitle: [reservation.reservedForLabel, reservation.destination, reservation.purpose].filter(Boolean).join(" - "),
@@ -25943,21 +25984,139 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
         },
       });
     });
+
+    [
+      {
+        date: firstMobileRecordValue(vehicle, ["registrationExpiresOn"]),
+        label: "Registracija",
+        detail: "Istek prometne dozvole",
+      },
+      {
+        date: firstMobileRecordValue(vehicle, ["serviceDueDate"]),
+        label: "Servis",
+        detail: "Planirani servisni rok",
+      },
+    ].forEach((entry) => {
+      if (!entry.date) return;
+      pushEvent({
+        id: `periodic-vehicle:${vehicle.id}:${entry.label}:${entry.date}`,
+        title: vehicle.plateNumber || vehicle.name || "Vozilo",
+        subtitle: [entry.label, vehicle.name, vehicle.make, vehicle.model].filter(Boolean).join(" - "),
+        status: entry.detail,
+        kind: "periodic_vehicle",
+        date: entry.date,
+        relatedId: vehicle.id,
+        meta: {
+          calendarLabel: entry.label,
+          plateNumber: vehicle.plateNumber || "",
+        },
+      });
+    });
+
+    (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : []).forEach((activity, index) => {
+      const date = firstMobileRecordValue(activity, ["validUntil", "nextDate"]);
+      if (!date) return;
+      pushEvent({
+        id: `periodic-vehicle-activity:${vehicle.id}:${activity.id || index}:${date}`,
+        title: vehicle.plateNumber || vehicle.name || "Vozilo",
+        subtitle: [activity.workSummary, activity.performedBy].filter(Boolean).join(" - "),
+        status: "Rok aktivnosti vozila",
+        kind: "periodic_vehicle",
+        date,
+        relatedId: vehicle.id,
+        meta: {
+          calendarLabel: "Vozilo",
+          plateNumber: vehicle.plateNumber || "",
+        },
+      });
+    });
   });
 
   (scopedSnapshot.documentRecords ?? []).forEach((record) => {
-    const date = firstMobileRecordValue(record, ["expirationDate", "validUntil", "inspectionDate", "issuedDate", "updatedAt"]);
+    const date = firstMobileRecordValue(record, ["expirationDate", "validUntil", "inspectionDate", "issuedDate"]);
     if (!date) return;
-    events.push({
-      id: `document:${record.id}`,
+    pushEvent({
+      id: `periodic-document:${record.id}`,
       title: record.title || record.documentTitle || record.templateTitle || "Dokument",
       subtitle: [record.companyName, record.locationName].filter(Boolean).join(" - "),
       status: record.status || "",
-      kind: "document",
+      kind: "periodic_document",
       date,
       relatedId: normalizeInputValue(record.id),
       coordinates: "",
-      meta: {},
+      meta: {
+        calendarLabel: "Periodika",
+      },
+    });
+  });
+
+  (scopedSnapshot.measurementEquipment ?? []).forEach((item) => {
+    const equipmentTitle = item.name || item.deviceCode || item.inventoryNumber || "Mjerna oprema";
+    const pushEquipment = (date, label, detail, idSuffix) => {
+      if (!date) return;
+      pushEvent({
+        id: `periodic-equipment:${item.id}:${idSuffix}:${date}`,
+        title: equipmentTitle,
+        subtitle: [label, item.manufacturer, item.deviceType, item.serialNumber, item.inventoryNumber].filter(Boolean).join(" - "),
+        status: detail,
+        kind: "periodic_equipment",
+        date,
+        relatedId: normalizeInputValue(item.id),
+        meta: {
+          calendarLabel: label,
+          serialNumber: item.serialNumber || "",
+          inventoryNumber: item.inventoryNumber || "",
+        },
+      });
+    };
+    pushEquipment(firstMobileRecordValue(item, ["validUntil", "calibrationValidUntil", "inspectionValidUntil"]), "Mjerna oprema", "Rok opreme", "main");
+    (Array.isArray(item.activityItems) ? item.activityItems : []).forEach((activity, index) => {
+      pushEquipment(firstMobileRecordValue(activity, ["validUntil", "nextDate"]), activity.activityType || activity.type || "Aktivnost", activity.note || "Rok aktivnosti opreme", activity.id || index);
+    });
+  });
+
+  (scopedSnapshot.rulebooks ?? []).forEach((record) => {
+    const date = firstMobileRecordValue(record, ["expirationDate", "validUntil", "reviewDate", "dueDate"]);
+    if (!date) return;
+    pushEvent({
+      id: `periodic-rulebook:${record.id}`,
+      title: record.title || record.name || "Temeljna dokumentacija",
+      subtitle: [record.companyName, record.locationName].filter(Boolean).join(" - "),
+      status: record.status || "",
+      kind: "periodic_rulebook",
+      date,
+      relatedId: normalizeInputValue(record.id),
+      meta: { calendarLabel: "Temeljna dokumentacija" },
+    });
+  });
+
+  (scopedSnapshot.riskAssessments ?? []).forEach((record) => {
+    const date = firstMobileRecordValue(record, ["expirationDate", "validUntil", "reviewDate", "dueDate"]);
+    if (!date) return;
+    pushEvent({
+      id: `periodic-risk-assessment:${record.id}`,
+      title: record.title || record.name || "Procjena rizika",
+      subtitle: [record.companyName, record.locationName].filter(Boolean).join(" - "),
+      status: record.status || "",
+      kind: "periodic_risk_assessment",
+      date,
+      relatedId: normalizeInputValue(record.id),
+      meta: { calendarLabel: "Procjena rizika" },
+    });
+  });
+
+  (scopedSnapshot.legalFrameworks ?? []).forEach((record) => {
+    const date = firstMobileRecordValue(record, ["expirationDate", "validUntil", "reviewDate", "dueDate"]);
+    if (!date) return;
+    pushEvent({
+      id: `periodic-legal-framework:${record.id}`,
+      title: record.title || record.name || "Zakonska regulativa",
+      subtitle: [record.category, record.area].filter(Boolean).join(" - "),
+      status: record.status || "",
+      kind: "periodic_legal_framework",
+      date,
+      relatedId: normalizeInputValue(record.id),
+      meta: { calendarLabel: "Zakonska regulativa" },
     });
   });
 
@@ -25966,7 +26125,7 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
     if (trainingItems.length === 0) {
       const date = firstMobileRecordValue(record, ["arrivalDate", "updatedAt", "createdAt"]);
       if (!date) return;
-      events.push({
+      pushEvent({
         id: `training:${record.id}`,
         title: record.fullName || "Osposobljavanje",
         subtitle: [record.companyName, record.jobTitle || record.workPlace].filter(Boolean).join(" - "),
@@ -25983,7 +26142,7 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
     trainingItems.forEach((item, index) => {
       const date = firstMobileRecordValue(item, ["validUntil", "certificateValidUntil", "date", "trainingDate", "createdAt"]);
       if (!date) return;
-      events.push({
+      pushEvent({
         id: `training:${record.id}:${item.id || index}`,
         title: item.label || item.serviceName || item.shortLabel || "Osposobljavanje",
         subtitle: [record.fullName, record.companyName, record.jobTitle || record.workPlace].filter(Boolean).join(" - "),
@@ -25997,9 +26156,28 @@ function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
     });
   });
 
+  const seen = new Set();
   return events
-    .sort((left, right) => String(left.date || "").localeCompare(String(right.date || "")))
-    .slice(0, MOBILE_BOOTSTRAP_RECORD_LIMIT);
+    .filter((event) => {
+      const key = `${event.id}:${event.date}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const leftDate = String(left.date || "");
+      const rightDate = String(right.date || "");
+      const leftPast = leftDate < today;
+      const rightPast = rightDate < today;
+      if (leftPast !== rightPast) {
+        return leftPast ? 1 : -1;
+      }
+      return leftDate.localeCompare(rightDate) || String(left.title || "").localeCompare(String(right.title || ""), "hr");
+    })
+    .slice(0, MOBILE_CALENDAR_EVENT_LIMIT);
 }
 
 function buildMobileDashboard(scopedSnapshot = {}, workOrders = [], documentRecords = null) {
