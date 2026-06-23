@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import test from "node:test";
 import { inflateSync } from "node:zlib";
@@ -33,6 +34,30 @@ function hasLocalChromiumForHtmlPdf() {
     "/usr/bin/chromium-browser",
     "/usr/bin/google-chrome",
   ].filter(Boolean).some((candidate) => existsSync(candidate));
+}
+
+function canLaunchLocalChromiumForHtmlPdf() {
+  return [
+    process.env.CHROMIUM_PATH,
+    process.env.CHROME_PATH,
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+  ].filter(Boolean).some((candidate) => {
+    if (!existsSync(candidate) && /[\\/:]/.test(candidate)) {
+      return false;
+    }
+    const result = spawnSync(candidate, ["--version"], {
+      encoding: "utf8",
+      timeout: 10000,
+      windowsHide: true,
+    });
+    return result.status === 0;
+  });
 }
 
 function buildMinimalDocxBuffer(documentXml = "", {
@@ -530,7 +555,7 @@ test("docx export honors risk section page break metadata", async () => {
 });
 
 test("risk assessment Word HTML PDF keeps mixed page orientations", {
-  skip: hasLocalChromiumForHtmlPdf() ? false : "Chromium nije dostupan za lokalni HTML PDF test.",
+  skip: canLaunchLocalChromiumForHtmlPdf() ? false : "Chromium nije dostupan za lokalni HTML PDF test.",
 }, async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -1968,6 +1993,7 @@ test("vehicle evidence PDF keeps checkout location and RN when return has only c
     activityItems: [
       {
         activityType: "vehicle_trip",
+        reservationId: "trip-2",
         departureAt: "2026-06-22T08:15:00.000Z",
         destination: "Petrol Ogulin - Otok ostarski 8a",
         performedBy: "Branimir Tramosljika",
@@ -1976,6 +2002,7 @@ test("vehicle evidence PDF keeps checkout location and RN when return has only c
       },
       {
         activityType: "vehicle_trip",
+        reservationId: "trip-2",
         tripStatus: "completed",
         createdAt: "2026-06-22T16:45:00.000Z",
         performedBy: "Branimir Tramosljika",
@@ -1996,7 +2023,7 @@ test("vehicle evidence PDF keeps checkout location and RN when return has only c
   assert.equal((text.match(/26-652/g) || []).length, 1);
 });
 
-test("vehicle evidence PDF compacts legacy duplicate checkout rows into one trip row", async () => {
+test("vehicle evidence PDF does not infer return data from unrelated old rows", async () => {
   const outputBuffer = await buildVehicleEvidencePdfBuffer({
     plateNumber: "ZG1454HS",
     make: "Ford",
@@ -2025,5 +2052,70 @@ test("vehicle evidence PDF compacts legacy duplicate checkout rows into one trip
   assert.match(text, /26-652/);
   assert.match(text, /22412/);
   assert.match(text, /22480/);
-  assert.equal((text.match(/Branimir Tramosljika/g) || []).length, 1);
+  assert.equal((text.match(/Branimir Tramosljika/g) || []).length, 2);
+});
+
+test("vehicle evidence PDF reads My Trip location and linked work order objects", async () => {
+  const outputBuffer = await buildVehicleEvidencePdfBuffer({
+    plateNumber: "ZG1454HS",
+    make: "Ford",
+    model: "Transit",
+    activityItems: [
+      {
+        activityType: "vehicle_trip",
+        tripStatus: "completed",
+        departureAt: "2026-06-23T06:30:00.000Z",
+        returnAt: "2026-06-23T14:10:00.000Z",
+        locationName: "PM OGULIN; Otok ostarski 8a, 47300 Ogulin",
+        driverLabels: ["Branimir Tramosljika"],
+        startKm: "22222",
+        endKm: "22444",
+        linkedWorkOrders: [
+          { id: "wo-652", workOrderNumber: "26-652" },
+        ],
+        returnCondition: "Uredno",
+      },
+    ],
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  const text = (await extractPdfText(outputBuffer)).replace(/\s+/g, " ");
+  assert.match(text, /PM OGULIN; Otok ostarski 8a, 47300 Ogulin/);
+  assert.match(text, /26-652/);
+  assert.match(text, /22222/);
+  assert.match(text, /22444/);
+  assert.equal((text.match(/26-652/g) || []).length, 1);
+});
+
+test("vehicle evidence PDF ignores legacy vehicle usage rows", async () => {
+  const outputBuffer = await buildVehicleEvidencePdfBuffer({
+    plateNumber: "ZG1454HS",
+    activityItems: [
+      {
+        activityType: "usage",
+        workSummary: "Preuzimanje vozila",
+        departureAt: "2026-06-22T08:15:00.000Z",
+        destination: "Stari unos",
+        odometerKm: "210144",
+      },
+      {
+        activityType: "vehicle_trip",
+        workSummary: "Putovanje vozila",
+        departureAt: "2026-06-23T08:00:00.000Z",
+        returnAt: "2026-06-23T16:00:00.000Z",
+        destination: "Novi My Trip",
+        driverLabels: ["Branimir Tramosljika"],
+        startKm: "211000",
+        endKm: "211250",
+      },
+    ],
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  const text = (await extractPdfText(outputBuffer)).replace(/\s+/g, " ");
+  assert.match(text, /Novi My Trip/);
+  assert.match(text, /211000/);
+  assert.match(text, /211250/);
+  assert.equal(text.includes("Stari unos"), false);
+  assert.equal(text.includes("210144"), false);
 });

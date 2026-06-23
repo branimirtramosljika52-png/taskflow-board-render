@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.204.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.205.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25052,6 +25052,10 @@ function buildMobileVehicleRecord(item = {}) {
       reservedForLabels: Array.isArray(reservation?.reservedForLabels)
         ? reservation.reservedForLabels.map(normalizeInputValue).filter(Boolean)
         : [],
+      reservedForUserId: normalizeInputValue(reservation?.reservedForUserId),
+      reservedForUserIds: Array.isArray(reservation?.reservedForUserIds)
+        ? reservation.reservedForUserIds.map(normalizeInputValue).filter(Boolean)
+        : [],
     }));
   const mobileActivityItems = (Array.isArray(item?.activityItems) ? item.activityItems : [])
     .slice()
@@ -25694,6 +25698,8 @@ function resolveVehicleUsageMode(value = "") {
   return "usage";
 }
 
+const VEHICLE_MY_TRIP_WINDOW_TOLERANCE_MS = 60 * 60 * 1000;
+
 function getVehicleUsagePerformerLabel(user = {}, body = {}) {
   return normalizeInputValue(
     body.performedBy
@@ -25736,12 +25742,14 @@ function vehicleUsageLabelMatches(labels = [], user = {}) {
   return (Array.isArray(labels) ? labels : [labels])
     .map((value) => normalizeInputValue(value).toLowerCase())
     .filter(Boolean)
-    .some((label) => userLabels.includes(label));
+    .some((label) => userLabels.some((userLabel) => (
+      label === userLabel || label.includes(userLabel) || userLabel.includes(label)
+    )));
 }
 
 function vehicleUsageReservationBelongsToUser(reservation = null, user = {}) {
   if (!reservation) {
-    return true;
+    return false;
   }
   const userId = getVehicleUsageUserId(user);
   const reservationUserIds = [
@@ -25758,6 +25766,34 @@ function vehicleUsageReservationBelongsToUser(reservation = null, user = {}) {
     ...(Array.isArray(reservation?.reservedForLabels) ? reservation.reservedForLabels : []),
     reservation?.reservedForLabel,
   ], user);
+}
+
+function vehicleUsageReservationStatusAllowsTrip(reservation = {}) {
+  const status = normalizeInputValue(reservation?.status).toLowerCase();
+  return status === "reserved" || status === "checked_out";
+}
+
+function vehicleUsageTimestampInReservationWindow(reservation = null, timestampValue = "") {
+  if (!reservation) {
+    return false;
+  }
+  const startTimestamp = Date.parse(reservation.startAt ?? "");
+  const endTimestamp = Date.parse(reservation.endAt ?? "");
+  const actionTimestamp = Date.parse(timestampValue || new Date().toISOString());
+  if (![startTimestamp, endTimestamp, actionTimestamp].every(Number.isFinite)) {
+    return false;
+  }
+  return actionTimestamp >= startTimestamp - VEHICLE_MY_TRIP_WINDOW_TOLERANCE_MS
+    && actionTimestamp <= endTimestamp + VEHICLE_MY_TRIP_WINDOW_TOLERANCE_MS;
+}
+
+function vehicleUsageReservationAllowsTrip(reservation = null, user = {}, timestampValue = "") {
+  return Boolean(
+    reservation
+      && vehicleUsageReservationStatusAllowsTrip(reservation)
+      && vehicleUsageReservationBelongsToUser(reservation, user)
+      && vehicleUsageTimestampInReservationWindow(reservation, timestampValue),
+  );
 }
 
 function vehicleUsageTripBelongsToUser(trip = null, user = {}) {
@@ -26007,6 +26043,18 @@ function findVehicleUsageReservation(vehicle = {}, body = {}, mode = "usage", no
     || null;
 }
 
+function findVehicleMyTripReservation(vehicle = {}, body = {}, user = {}, timestampValue = new Date().toISOString()) {
+  const reservations = Array.isArray(vehicle?.reservations) ? vehicle.reservations : [];
+  const requestedId = normalizeInputValue(body.reservationId);
+  if (requestedId) {
+    return reservations.find((reservation) => String(reservation.id) === requestedId) || null;
+  }
+
+  return sortVehicleReservations(reservations, timestampValue)
+    .find((reservation) => vehicleUsageReservationAllowsTrip(reservation, user, timestampValue))
+    || null;
+}
+
 function buildVehicleUsagePatchLegacy(vehicle = {}, body = {}, user = {}) {
   const nowValue = new Date().toISOString();
   const mode = resolveVehicleUsageMode(body.mode || body.usageMode);
@@ -26078,16 +26126,16 @@ function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, option
   const activeOpenTrip = findOpenVehicleTrip(vehicle, {}, null);
   const openTrip = findOpenVehicleTrip(vehicle, body, null);
 
-  if (activeOpenTrip && requestedTripId && String(activeOpenTrip.id) !== requestedTripId && !canManageVehicles) {
+  if (activeOpenTrip && requestedTripId && String(activeOpenTrip.id) !== requestedTripId) {
     throw new Error("Vozilo ima aktivan put i ne moze se pokrenuti novi dok se postojeci ne zatvori.");
   }
-  if (activeOpenTrip && !requestedTripId && !vehicleUsageTripBelongsToUser(activeOpenTrip, user) && !canManageVehicles) {
+  if (activeOpenTrip && !requestedTripId && !vehicleUsageTripBelongsToUser(activeOpenTrip, user)) {
     throw new Error("Vozilo ima aktivan put kod drugog korisnika.");
   }
   if (activeOpenTrip && isTruthyVehicleUsageFlag(body.forceNewTrip || body.newTrip)) {
     throw new Error("Vozilo vec ima aktivan put. Prvo zatvori postojeci put.");
   }
-  if (openTrip && !canManageVehicles && !vehicleUsageTripBelongsToUser(openTrip, user)) {
+  if (openTrip && !vehicleUsageTripBelongsToUser(openTrip, user)) {
     throw new Error("Samo korisnik koji je pokrenuo put moze mijenjati ovaj put.");
   }
 
@@ -26104,15 +26152,42 @@ function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, option
     : explicitCompleted
       ? nowValue
       : normalizeInputValue(openTrip?.returnAt || "");
+  const requestedReservationId = normalizeInputValue(body.reservationId || openTrip?.reservationId);
+  const reservationLookupBody = {
+    ...body,
+    reservationId: requestedReservationId,
+  };
+  const targetReservation = findVehicleMyTripReservation(vehicle, reservationLookupBody, user, returnAt || departureAt || nowValue);
+  if (!targetReservation) {
+    throw new Error("My Trip mozes pokrenuti samo iz svoje rezervacije vozila.");
+  }
+  if (requestedReservationId && String(targetReservation.id) !== requestedReservationId) {
+    throw new Error("Odabrana rezervacija vozila nije dostupna za My Trip.");
+  }
+  if (openTrip?.reservationId && String(openTrip.reservationId) !== String(targetReservation.id)) {
+    throw new Error("Aktivan put nije vezan za odabranu rezervaciju.");
+  }
+  if (!vehicleUsageReservationStatusAllowsTrip(targetReservation) && !returnAt) {
+    throw new Error("Rezervacija nije aktivna za My Trip.");
+  }
+  if (!vehicleUsageReservationBelongsToUser(targetReservation, user)) {
+    throw new Error("Samo korisnik rezervacije moze pokrenuti My Trip.");
+  }
+  if (!vehicleUsageTimestampInReservationWindow(targetReservation, departureAt)) {
+    throw new Error("My Trip mozes pokrenuti najranije sat vremena prije rezervacije i najkasnije sat vremena nakon nje.");
+  }
+  if (returnAt && !vehicleUsageTimestampInReservationWindow(targetReservation, returnAt)) {
+    throw new Error("Povrat vozila mozes evidentirati najkasnije sat vremena nakon kraja rezervacije.");
+  }
   const performer = getVehicleUsagePerformerLabel(user, body);
   const actorUserId = getVehicleUsageUserId(user);
   const actorLabel = getVehicleUsageUserLabel(user) || performer;
   const existingDriverLabels = Array.isArray(openTrip?.driverLabels)
     ? openTrip.driverLabels.map((value) => normalizeInputValue(value)).filter(Boolean)
     : [];
-  const requestedDriverLabels = getVehicleUsageDriverLabels(user, body, null);
+  const requestedDriverLabels = getVehicleUsageDriverLabels(user, body, targetReservation);
   const driverLabels = requestedDriverLabels.length ? requestedDriverLabels : existingDriverLabels;
-  const destination = getVehicleUsageDestination(body, null, openTrip);
+  const destination = getVehicleUsageDestination(body, targetReservation, openTrip);
   const startKm = normalizeInputValue(body.startKm || (!openTrip ? body.odometerKm : "") || openTrip?.startKm || openTrip?.odometerKm);
   const endKm = normalizeInputValue(body.endKm || (returnAt ? body.odometerKm : "") || openTrip?.endKm);
   if (!startKm) {
@@ -26144,7 +26219,7 @@ function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, option
     performedBy: driverLabels.join(", ") || performer,
     odometerKm,
     workSummary: "Putovanje vozila",
-    reservationId: normalizeInputValue(openTrip?.reservationId || body.reservationId),
+    reservationId: normalizeInputValue(targetReservation.id),
     tripStatus: tripCompleted ? "completed" : "open",
     departureAt,
     returnAt,
@@ -26185,6 +26260,21 @@ function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, option
       ? activityItems.map((item) => (String(item.id) === String(openTrip.id) ? nextTrip : item))
       : [nextTrip, ...activityItems],
   };
+  patch.reservations = (Array.isArray(vehicle.reservations) ? vehicle.reservations : []).map((reservation) => (
+    String(reservation.id) === String(targetReservation.id)
+      ? {
+        ...reservation,
+        status: tripCompleted ? "completed" : "checked_out",
+        note: [
+          normalizeInputValue(reservation.note),
+          tripCompleted
+            ? `Povrat vozila: ${endKm} km`
+            : `Preuzimanje vozila: ${startKm} km`,
+        ].filter(Boolean).join("\n"),
+        updatedAt: nowValue,
+      }
+      : reservation
+  ));
 
   return {
     patch,
@@ -33019,7 +33109,14 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       });
 
-      if (updated && usageChange?.mode === "return" && usageChange.files?.length && usageChange.linkedWorkOrderIds?.length) {
+      const shouldAttachVehicleTripFiles = updated
+        && usageChange.files?.length
+        && usageChange.linkedWorkOrderIds?.length
+        && (
+          usageChange?.mode === "return"
+          || (usageChange?.mode === "trip" && normalizeInputValue(usageChange.tripSummary?.returnAt))
+        );
+      if (shouldAttachVehicleTripFiles) {
         const tripParts = [
           usageChange.tripSummary?.vehicleLabel,
           usageChange.tripSummary?.destination,

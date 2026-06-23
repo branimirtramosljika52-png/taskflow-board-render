@@ -4240,6 +4240,53 @@ test("vehicles keep vin, documents and activity history", () => {
   assert.equal(filterVehicles([updated], { query: "slika-vozila" }).length, 1);
 });
 
+test("vehicles keep My Trip evidence fields when updating activity history", () => {
+  const state = buildState();
+  const vehicle = createVehicle(
+    {
+      organizationId: "55",
+      name: "Servisni kombi",
+      plateNumber: "ZG 1454 HS",
+      activityItems: [
+        {
+          activityType: "vehicle_trip",
+          tripStatus: "completed",
+          departureAt: "2026-06-23T06:30:00.000Z",
+          returnAt: "2026-06-23T14:10:00.000Z",
+          locationName: "PM OGULIN; Otok ostarski 8a, 47300 Ogulin",
+          driverLabels: ["Branimir Tramosljika"],
+          startKm: "22222",
+          endKm: "22444",
+          linkedWorkOrders: [
+            { id: "work-order-652", workOrderNumber: "26-652" },
+          ],
+          signatureDataUrl: "data:image/png;base64,AAAA",
+          signatureLabel: "Branimir Tramosljika",
+        },
+      ],
+    },
+    state,
+    () => "vehicle-trip-fields",
+    () => "2026-06-23T06:20:00.000Z",
+  );
+
+  const updated = updateVehicle(
+    vehicle,
+    { notes: "Azurirano" },
+    {
+      ...state,
+      vehicles: [vehicle],
+    },
+    () => "2026-06-23T14:20:00.000Z",
+  );
+
+  assert.equal(updated.activityItems.length, 1);
+  assert.equal(updated.activityItems[0].destination, "PM OGULIN; Otok ostarski 8a, 47300 Ogulin");
+  assert.deepEqual(updated.activityItems[0].linkedWorkOrderIds, ["work-order-652"]);
+  assert.deepEqual(updated.activityItems[0].linkedWorkOrderNumbers, ["26-652"]);
+  assert.equal(updated.activityItems[0].signatureDataUrl, "data:image/png;base64,AAAA");
+});
+
 test("dashboard insights summarize workload, priorities and upcoming deadlines", () => {
   const state = buildState();
   const workOrders = [

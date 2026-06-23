@@ -13201,6 +13201,7 @@ private data class MobileVehicleReservation(
     val endAt: String,
     val destination: String,
     val userLabel: String,
+    val userIds: List<String> = emptyList(),
 )
 
 private data class MobileVehicleTrip(
@@ -13250,6 +13251,12 @@ private fun parseVehicleReservations(vehicle: MobileRecord): List<MobileVehicleR
                 } else {
                     item.optString("reservedForLabel").trim()
                 }
+                val userIdsArray = item.optJSONArray("reservedForUserIds")
+                val userIds = if (userIdsArray != null && userIdsArray.length() > 0) {
+                    (0 until userIdsArray.length()).mapNotNull { userIdsArray.optString(it).trim().takeIf(String::isNotBlank) }
+                } else {
+                    listOf(item.optString("reservedForUserId").trim()).filter(String::isNotBlank)
+                }
                 add(
                     MobileVehicleReservation(
                         id = item.optString("id").trim(),
@@ -13259,6 +13266,7 @@ private fun parseVehicleReservations(vehicle: MobileRecord): List<MobileVehicleR
                         endAt = item.optString("endAt").trim(),
                         destination = item.optString("destination").trim(),
                         userLabel = label,
+                        userIds = userIds,
                     ),
                 )
             }
@@ -13406,13 +13414,49 @@ private fun vehiclePersonMatchesCurrentUser(value: String, currentUserLabel: Str
     return person == current || person.contains(current) || current.contains(person)
 }
 
+private fun vehicleReservationBelongsToCurrentUser(reservation: MobileVehicleReservation, currentUserLabel: String): Boolean =
+    vehiclePersonMatchesCurrentUser(reservation.userLabel, currentUserLabel)
+
+private fun vehicleReservationAllowsMyTripNow(reservation: MobileVehicleReservation, now: LocalDateTime = LocalDateTime.now()): Boolean {
+    val start = parseVehicleDateTime(reservation.startAt) ?: return false
+    val end = parseVehicleDateTime(reservation.endAt) ?: return false
+    val status = reservation.status.trim().lowercase(Locale.getDefault())
+    if (status != "reserved" && status != "checked_out") return false
+    return !now.isBefore(start.minusHours(1)) && !now.isAfter(end.plusHours(1))
+}
+
+private fun vehicleTripIsOpen(trip: MobileVehicleTrip): Boolean =
+    trip.returnAt.isBlank() && !trip.status.equals("completed", ignoreCase = true)
+
+private fun vehicleOpenTripForCurrentUser(vehicle: MobileRecord, currentUserLabel: String): MobileVehicleTrip? =
+    parseVehicleTrips(vehicle).firstOrNull { trip ->
+        vehicleTripIsOpen(trip) && vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
+    }
+
+private fun vehicleHasOpenTripForOtherUser(vehicle: MobileRecord, currentUserLabel: String): Boolean =
+    parseVehicleTrips(vehicle).any { trip ->
+        vehicleTripIsOpen(trip) && !vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
+    }
+
+private fun vehicleEligibleReservationForCurrentUser(vehicle: MobileRecord, currentUserLabel: String): MobileVehicleReservation? =
+    parseVehicleReservations(vehicle).firstOrNull { reservation ->
+        vehicleReservationBelongsToCurrentUser(reservation, currentUserLabel) &&
+            vehicleReservationAllowsMyTripNow(reservation)
+    }
+
+private fun vehicleCanUseMyTrip(vehicle: MobileRecord, currentUserLabel: String): Boolean {
+    if (currentUserLabel.isBlank() || vehicleAvailabilityStatus(vehicle) == "service") return false
+    if (vehicleOpenTripForCurrentUser(vehicle, currentUserLabel) != null) return true
+    if (vehicleHasOpenTripForOtherUser(vehicle, currentUserLabel)) return false
+    return vehicleEligibleReservationForCurrentUser(vehicle, currentUserLabel) != null
+}
+
 private fun vehicleUserTripLabel(vehicle: MobileRecord, currentUserLabel: String): String {
     if (currentUserLabel.isBlank()) return ""
     val reservations = parseVehicleReservations(vehicle)
     val trips = parseVehicleTrips(vehicle)
     val hasOpenTrip = trips.any { trip ->
-        trip.returnAt.isBlank() &&
-            !trip.status.equals("completed", ignoreCase = true) &&
+        vehicleTripIsOpen(trip) &&
             vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
     }
     val hasCheckedOutReservation = reservations.any { reservation ->
@@ -17715,6 +17759,7 @@ private fun MobileRecordDetailScreen(
                         }
                     }
                     if (record.kind == "vehicle") {
+                        val canUseMyTrip = vehicleCanUseMyTrip(record, currentUserLabel)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = { reservationDialogOpen = true },
@@ -17728,7 +17773,7 @@ private fun MobileRecordDetailScreen(
                             }
                             OutlinedButton(
                                 onClick = { usageDialogMode = "trip" },
-                                enabled = !isLoading && vehicleAvailabilityStatus(record) != "service",
+                                enabled = !isLoading && canUseMyTrip,
                                 shape = RoundedCornerShape(14.dp),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             ) {
@@ -18304,21 +18349,30 @@ private fun VehicleUsageDialog(
     }
     val reservations = remember(vehicle.meta["reservationsJson"], mode) { parseVehicleReservations(vehicle) }
     val trips = remember(vehicle.meta["activityItemsJson"], mode) { parseVehicleTrips(vehicle) }
-    val defaultReservation = remember(reservations, mode, vehicle.meta["nextReservationId"]) {
-        val preferredStatus = if (mode == "return") "checked_out" else "reserved"
-        reservations.firstOrNull { it.status.equals(preferredStatus, ignoreCase = true) }
-            ?: reservations.firstOrNull { it.id == vehicle.meta["nextReservationId"] }
-            ?: reservations.firstOrNull()
-    }
-    val openTrip = remember(trips, defaultReservation?.id) {
+    val openTrip = remember(trips, currentUserLabel) {
         trips.firstOrNull { trip ->
-            trip.returnAt.isBlank() &&
-                !trip.status.equals("completed", ignoreCase = true) &&
-                defaultReservation?.id?.let { it.isNotBlank() && trip.reservationId == it } == true
+            vehicleTripIsOpen(trip) && vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
         } ?: trips.firstOrNull { trip ->
-            trip.returnAt.isBlank() && !trip.status.equals("completed", ignoreCase = true)
+            vehicleTripIsOpen(trip)
         }
     }
+    val hasBlockingOpenTrip = openTrip != null && !vehiclePersonMatchesCurrentUser(openTrip.drivers, currentUserLabel)
+    val eligibleReservations = remember(reservations, currentUserLabel) {
+        reservations.filter { reservation ->
+            vehicleReservationBelongsToCurrentUser(reservation, currentUserLabel) &&
+                vehicleReservationAllowsMyTripNow(reservation)
+        }
+    }
+    val defaultReservation = remember(reservations, eligibleReservations, openTrip?.reservationId, vehicle.meta["nextReservationId"]) {
+        val openReservation = openTrip?.reservationId
+            ?.takeIf(String::isNotBlank)
+            ?.let { openReservationId -> reservations.firstOrNull { it.id == openReservationId } }
+        openReservation
+            ?: eligibleReservations.firstOrNull { it.status.equals("checked_out", ignoreCase = true) }
+            ?: eligibleReservations.firstOrNull { it.id == vehicle.meta["nextReservationId"] }
+            ?: eligibleReservations.firstOrNull()
+    }
+    val reservationInWindow = defaultReservation?.let { vehicleReservationAllowsMyTripNow(it) } == true
     val destinationSuggestions = remember(vehicle.id, mode, trips, reservations, defaultReservation?.destination, openTrip?.destination) {
         val primaryDestinations = listOf(openTrip?.destination.orEmpty(), defaultReservation?.destination.orEmpty())
         (
@@ -18351,8 +18405,9 @@ private fun VehicleUsageDialog(
         if (parsed != null) return parsed.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
         return value.substringAfter('T', "").take(5).ifBlank { fallback }
     }
-    val initialDepartureAt = openTrip?.departureAt.orEmpty().ifBlank { defaultReservation?.startAt.orEmpty() }
-    val initialReturnAt = openTrip?.returnAt.orEmpty()
+    val nowVehicleUsageAt = remember(vehicle.id, mode, openTrip?.id) { LocalDateTime.now().toString() }
+    val initialDepartureAt = openTrip?.departureAt.orEmpty()
+    val initialReturnAt = openTrip?.returnAt.orEmpty().ifBlank { if (openTrip != null) nowVehicleUsageAt else "" }
     var departureDate by remember(vehicle.id, openTrip?.id) { mutableStateOf(dateInputValue(initialDepartureAt, LocalDate.now().toString())) }
     var departureTime by remember(vehicle.id, openTrip?.id) { mutableStateOf(timeInputValue(initialDepartureAt, defaultVehicleUsageTime())) }
     var returnDate by remember(vehicle.id, openTrip?.id) { mutableStateOf(dateInputValue(initialReturnAt)) }
@@ -18363,8 +18418,8 @@ private fun VehicleUsageDialog(
         val initialDestination = openTrip?.destination.orEmpty().ifBlank { defaultReservation?.destination.orEmpty() }
         mutableStateOf(initialDestination)
     }
-    var reservationId by remember(vehicle.id, openTrip?.reservationId) {
-        mutableStateOf(openTrip?.reservationId.orEmpty())
+    var reservationId by remember(vehicle.id, openTrip?.reservationId, defaultReservation?.id) {
+        mutableStateOf(openTrip?.reservationId.orEmpty().ifBlank { defaultReservation?.id.orEmpty() })
     }
     var linkedWorkOrderId by remember(vehicle.id, mode, openTrip?.linkedWorkOrderId) {
         mutableStateOf(openTrip?.linkedWorkOrderId.orEmpty())
@@ -18379,8 +18434,13 @@ private fun VehicleUsageDialog(
     var damageNoted by remember(vehicle.id, mode) { mutableStateOf(false) }
     var note by remember(vehicle.id, mode) { mutableStateOf("") }
     val title = "My Trip"
-    val reservationOptions = remember(reservations) {
-        listOf("" to "Bez vezane rezervacije") + reservations.map { reservation ->
+    val reservationOptions = remember(eligibleReservations, defaultReservation?.id) {
+        val options = if (defaultReservation != null && eligibleReservations.none { it.id == defaultReservation.id }) {
+            listOf(defaultReservation) + eligibleReservations
+        } else {
+            eligibleReservations
+        }
+        options.distinctBy { it.id }.map { reservation ->
             reservation.id to listOf(
                 reservation.purpose.ifBlank { "Rezervacija" },
                 formatDateTimeLabel(reservation.startAt),
@@ -18445,6 +18505,60 @@ private fun VehicleUsageDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("My Trip podaci", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                if (hasBlockingOpenTrip) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFEDD5),
+                    ) {
+                        Text(
+                            "Vozilo ima otvoren put kod drugog korisnika. Novi My Trip nije moguć dok se taj put ne zatvori.",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF9A3412),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                } else if (defaultReservation == null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFF7ED),
+                    ) {
+                        Text(
+                            "My Trip je dostupan samo za tvoju rezervaciju vozila, od sat vremena prije početka do sat vremena nakon završetka.",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF9A3412),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                } else if (!reservationInWindow) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFF7ED),
+                    ) {
+                        Text(
+                            "Rezervacija nije u dozvoljenom My Trip prozoru. Možeš raditi sat vremena prije i sat vremena nakon termina.",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF9A3412),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+                if (reservationOptions.isNotEmpty()) {
+                    WorkOrderSelectField(
+                        label = "Rezervacija",
+                        value = reservationId,
+                        valueLabel = reservationOptions.firstOrNull { it.first == reservationId }?.second
+                            ?: defaultReservation?.purpose.orEmpty().ifBlank { "Odaberi rezervaciju" },
+                        options = reservationOptions,
+                        enabled = !isLoading && openTrip == null,
+                        onSelect = { reservationId = it },
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     WorkOrderDatePickerField(
                         label = "Datum polaska",
@@ -18778,6 +18892,10 @@ private fun VehicleUsageDialog(
                     )
                 },
                 enabled = !isLoading &&
+                    !hasBlockingOpenTrip &&
+                    defaultReservation != null &&
+                    reservationInWindow &&
+                    reservationId.isNotBlank() &&
                     startKm.isNotBlank() &&
                     destination.isNotBlank() &&
                     (

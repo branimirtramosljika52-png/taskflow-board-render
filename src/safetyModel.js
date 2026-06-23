@@ -3000,6 +3000,65 @@ function compareVehicleActivityRecency(left = {}, right = {}) {
   return normalizeText(right.id).localeCompare(normalizeText(left.id));
 }
 
+function normalizeVehicleActivityArrayValues(values = []) {
+  return values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
+}
+
+function normalizeVehicleActivityLinkedItems(item = {}) {
+  return [
+    ...(Array.isArray(item?.linkedWorkOrders) ? item.linkedWorkOrders : []),
+    ...(Array.isArray(item?.workOrders) ? item.workOrders : []),
+  ].filter((value) => value && typeof value === "object");
+}
+
+function normalizeVehicleActivityWorkOrderIds(item = {}) {
+  const linkedItems = normalizeVehicleActivityLinkedItems(item);
+  return Array.from(new Set([
+    ...normalizeVehicleActivityArrayValues([
+      item?.linkedWorkOrderIds,
+      item?.workOrderIds,
+      item?.linkedWorkOrderId,
+      item?.workOrderId,
+    ]),
+    ...linkedItems.flatMap((linkedItem) => normalizeVehicleActivityArrayValues([
+      linkedItem?.id,
+      linkedItem?.workOrderId,
+      linkedItem?.linkedWorkOrderId,
+    ])),
+  ].map((value) => normalizeId(value)).filter(Boolean)));
+}
+
+function normalizeVehicleActivityWorkOrderNumbers(item = {}) {
+  const linkedItems = normalizeVehicleActivityLinkedItems(item);
+  return Array.from(new Set([
+    ...normalizeVehicleActivityArrayValues([
+      item?.linkedWorkOrderNumbers,
+      item?.workOrderNumbers,
+      item?.linkedWorkOrderNumber,
+      item?.workOrderNumber,
+      item?.displayNumber,
+      item?.number,
+    ]),
+    ...linkedItems.flatMap((linkedItem) => normalizeVehicleActivityArrayValues([
+      linkedItem?.workOrderNumber,
+      linkedItem?.displayNumber,
+      linkedItem?.number,
+      linkedItem?.label,
+    ])),
+  ].map((value) => value.slice(0, 80)).filter(Boolean)));
+}
+
+function normalizeVehicleActivitySignatureDataUrl(item = {}) {
+  const value = normalizeText(item?.signatureDataUrl ?? item?.returnSignatureDataUrl ?? item?.signature);
+  if (!value || !value.startsWith("data:image/")) {
+    return "";
+  }
+  return value.length <= 1_200_000 ? value : "";
+}
+
 function normalizeVehicleActivityItems(items = [], now = isoNow) {
   if (!Array.isArray(items)) {
     return [];
@@ -3019,7 +3078,17 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
     const reservationId = normalizeId(item?.reservationId);
     const departureAt = normalizeOptionalDateTime(item?.departureAt ?? item?.startedAt ?? item?.startAt);
     const returnAt = normalizeOptionalDateTime(item?.returnAt ?? item?.endedAt ?? item?.endAt);
-    const destination = normalizeText(item?.destination ?? item?.route ?? item?.location).slice(0, 180);
+    const destination = normalizeText(
+      item?.destination
+      ?? item?.destinationLabel
+      ?? item?.destinationName
+      ?? item?.tripDestination
+      ?? item?.tripLocation
+      ?? item?.route
+      ?? item?.location
+      ?? item?.locationName
+      ?? item?.locationAddress,
+    ).slice(0, 180);
     const driverLabels = Array.isArray(item?.driverLabels)
       ? item.driverLabels.map((value) => normalizeText(value).slice(0, 180)).filter(Boolean)
       : [normalizeText(item?.driverLabel ?? item?.driver ?? item?.performedBy).slice(0, 180)].filter(Boolean);
@@ -3028,9 +3097,18 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
     const vehicleCondition = normalizeText(item?.vehicleCondition ?? item?.condition).slice(0, 240);
     const departureCondition = normalizeText(item?.departureCondition).slice(0, 240);
     const returnCondition = normalizeText(item?.returnCondition).slice(0, 240);
-    const linkedWorkOrderId = normalizeId(item?.linkedWorkOrderId ?? item?.workOrderId);
-    const linkedWorkOrderNumber = normalizeText(item?.linkedWorkOrderNumber ?? item?.workOrderNumber).slice(0, 80);
+    const linkedWorkOrderIds = normalizeVehicleActivityWorkOrderIds(item);
+    const linkedWorkOrderNumbers = normalizeVehicleActivityWorkOrderNumbers(item);
+    const linkedWorkOrderId = linkedWorkOrderIds[0] ?? "";
+    const linkedWorkOrderNumber = linkedWorkOrderNumbers[0] ?? "";
     const documents = normalizeAttachmentDocuments(item?.documents ?? item?.attachments ?? []);
+    const signatureDataUrl = normalizeVehicleActivitySignatureDataUrl(item);
+    const signatureLabel = normalizeText(item?.signatureLabel ?? item?.returnedByLabel ?? item?.performedBy).slice(0, 180);
+    const signatureAt = normalizeOptionalDateTime(item?.signatureAt);
+    const checkedOutByUserId = normalizeId(item?.checkedOutByUserId ?? item?.userId);
+    const checkedOutByLabel = normalizeText(item?.checkedOutByLabel).slice(0, 180);
+    const returnedByUserId = normalizeId(item?.returnedByUserId);
+    const returnedByLabel = normalizeText(item?.returnedByLabel).slice(0, 180);
     const hasAnyData = Boolean(
       activityType
       || performedOn
@@ -3052,7 +3130,11 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
       || returnCondition
       || linkedWorkOrderId
       || linkedWorkOrderNumber
+      || linkedWorkOrderIds.length
+      || linkedWorkOrderNumbers.length
       || documents.length
+      || signatureDataUrl
+      || signatureLabel
     );
 
     if (!hasAnyData) {
@@ -3081,6 +3163,15 @@ function normalizeVehicleActivityItems(items = [], now = isoNow) {
       returnCondition,
       linkedWorkOrderId,
       linkedWorkOrderNumber,
+      linkedWorkOrderIds,
+      linkedWorkOrderNumbers,
+      checkedOutByUserId,
+      checkedOutByLabel,
+      returnedByUserId,
+      returnedByLabel,
+      signatureDataUrl,
+      signatureLabel,
+      signatureAt,
       documents,
       createdAt: normalizeOptionalDateTime(item?.createdAt) ?? timestamp,
       updatedAt: normalizeOptionalDateTime(item?.updatedAt ?? item?.createdAt) ?? timestamp,

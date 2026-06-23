@@ -9738,13 +9738,6 @@ function getVehicleEvidenceAssignees(reservation = {}) {
   return normalizePdfLines(labels).join(", ");
 }
 
-function getVehicleEvidenceNoteValue(note = "", prefix = "") {
-  const normalizedPrefix = clean(prefix).toLowerCase();
-  const lines = String(note ?? "").replace(/\r\n/g, "\n").split("\n");
-  const matched = lines.find((line) => clean(line).toLowerCase().startsWith(normalizedPrefix));
-  return matched ? clean(matched.slice(prefix.length)) : "";
-}
-
 function getVehicleEvidenceFirstValue(values = []) {
   return getReportArray(values)
     .map((value) => clean(value))
@@ -9758,6 +9751,15 @@ function compactVehicleEvidenceNote(note = "") {
     .map((line) => clean(line))
     .filter((line) => line && ![
       "destinacija:",
+      "lokacija:",
+      "odrediste:",
+      "lokacija gdje se ide:",
+      "rn:",
+      "radni nalog:",
+      "radni nalozi:",
+      "povezani rn:",
+      "povezani radni nalog:",
+      "povezani radni nalozi:",
       "vozilo cisto:",
       "dokumenti u vozilu:",
       "gorivo / baterija uredno:",
@@ -9768,26 +9770,44 @@ function compactVehicleEvidenceNote(note = "") {
 
 function isVehicleEvidenceTripActivity(activity = {}) {
   const type = clean(activity?.activityType ?? activity?.type).toLowerCase();
-  return type === "vehicle_trip"
-    || Boolean(
-      clean(activity?.departureAt)
-      || clean(activity?.returnAt)
-      || clean(activity?.startKm)
-      || clean(activity?.endKm)
-      || clean(activity?.tripStatus),
-    );
+  const summary = clean(activity?.workSummary).toLowerCase();
+  return type === "vehicle_trip" || summary === "putovanje vozila";
+}
+
+function getVehicleEvidenceLinkedWorkOrderItems(activity = {}) {
+  return [
+    ...(Array.isArray(activity?.linkedWorkOrders) ? activity.linkedWorkOrders : []),
+    ...(Array.isArray(activity?.workOrders) ? activity.workOrders : []),
+  ].filter((value) => value && typeof value === "object");
 }
 
 function getVehicleEvidenceWorkOrderLabels(activity = {}) {
+  const linkedItems = getVehicleEvidenceLinkedWorkOrderItems(activity);
   const labels = [
     ...(Array.isArray(activity?.linkedWorkOrderNumbers) ? activity.linkedWorkOrderNumbers : []),
+    ...(Array.isArray(activity?.workOrderNumbers) ? activity.workOrderNumbers : []),
     activity?.linkedWorkOrderNumber,
     activity?.workOrderNumber,
+    activity?.displayNumber,
+    activity?.number,
+    ...linkedItems.flatMap((item) => [
+      item?.linkedWorkOrderNumber,
+      item?.workOrderNumber,
+      item?.displayNumber,
+      item?.number,
+      item?.label,
+    ]),
   ];
   const ids = [
     ...(Array.isArray(activity?.linkedWorkOrderIds) ? activity.linkedWorkOrderIds : []),
+    ...(Array.isArray(activity?.workOrderIds) ? activity.workOrderIds : []),
     activity?.linkedWorkOrderId,
     activity?.workOrderId,
+    ...linkedItems.flatMap((item) => [
+      item?.linkedWorkOrderId,
+      item?.workOrderId,
+      item?.id,
+    ]),
   ];
   const seen = new Set();
   const cleanedLabels = labels.map((value) => clean(value)).filter(Boolean);
@@ -9838,10 +9858,16 @@ function normalizeVehicleEvidenceActivity(activity = {}) {
     || (!looksLikeReturnOnly ? clean(activity?.createdAt) || clean(activity?.performedOn) : "");
   const destination = getVehicleEvidenceFirstValue([
     activity?.destination,
+    activity?.destinationLabel,
+    activity?.destinationName,
+    activity?.tripDestination,
+    activity?.tripLocation,
     activity?.route,
     activity?.location,
-    getVehicleEvidenceNoteValue(activity?.note, "Destinacija:"),
-    getVehicleEvidenceNoteValue(activity?.note, "Lokacija:"),
+    activity?.locationName,
+    activity?.locationAddress,
+    activity?.workOrderLocationName,
+    activity?.workOrderLocation,
   ]);
   const startKm = getVehicleEvidenceFirstValue([
     activity?.startKm,
@@ -9937,95 +9963,6 @@ function mergeVehicleEvidenceTripRecords(openRecord = {}, returnRecord = {}) {
   };
 }
 
-function normalizeVehicleEvidenceTextKey(value = "") {
-  return clean(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function getVehicleEvidenceDayKey(value = "") {
-  const timestamp = getVehicleEvidenceTimestamp(value);
-  if (timestamp !== Number.MAX_SAFE_INTEGER) {
-    return new Date(timestamp).toISOString().slice(0, 10);
-  }
-  return clean(value).slice(0, 10);
-}
-
-function getVehicleEvidenceDriverParts(value = "") {
-  return normalizeVehicleEvidenceTextKey(value)
-    .split(/[,;\n]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function vehicleEvidenceDriversOverlap(left = "", right = "") {
-  const leftParts = getVehicleEvidenceDriverParts(left);
-  const rightParts = getVehicleEvidenceDriverParts(right);
-  if (!leftParts.length || !rightParts.length) {
-    return false;
-  }
-  return leftParts.some((leftPart) => rightParts.some((rightPart) => (
-    leftPart === rightPart || leftPart.includes(rightPart) || rightPart.includes(leftPart)
-  )));
-}
-
-function vehicleEvidenceValuesOverlap(left = [], right = []) {
-  const leftSet = new Set((left || []).map(normalizeVehicleEvidenceTextKey).filter(Boolean));
-  return (right || []).some((value) => leftSet.has(normalizeVehicleEvidenceTextKey(value)));
-}
-
-function shouldMergeLegacyVehicleEvidenceRowAsReturn(openRecord = {}, nextRecord = {}) {
-  if (!openRecord || !nextRecord || openRecord.returnAt || openRecord.endKm) {
-    return false;
-  }
-  if (nextRecord.returnAt || nextRecord.endKm || !nextRecord.departureAt) {
-    return false;
-  }
-
-  const openTime = getVehicleEvidenceMergeTimestamp(openRecord);
-  const nextTime = getVehicleEvidenceMergeTimestamp(nextRecord);
-  if (!openTime || !nextTime || nextTime < openTime) {
-    return false;
-  }
-  const sameDay = getVehicleEvidenceDayKey(openRecord.departureAt || openRecord.createdAt)
-    === getVehicleEvidenceDayKey(nextRecord.departureAt || nextRecord.createdAt);
-  if (!sameDay) {
-    return false;
-  }
-
-  const sameReservation = openRecord.reservationId
-    && nextRecord.reservationId
-    && openRecord.reservationId === nextRecord.reservationId;
-  const sameWorkOrder = vehicleEvidenceValuesOverlap(openRecord.workOrders, nextRecord.workOrders);
-  const sameDrivers = vehicleEvidenceDriversOverlap(openRecord.drivers, nextRecord.drivers);
-  const destinationCompatible = !openRecord.destination
-    || !nextRecord.destination
-    || normalizeVehicleEvidenceTextKey(openRecord.destination) === normalizeVehicleEvidenceTextKey(nextRecord.destination);
-
-  return destinationCompatible && (sameReservation || sameWorkOrder || sameDrivers);
-}
-
-function compactLegacyVehicleEvidenceRows(rows = []) {
-  const compactRows = [];
-  rows.forEach((record) => {
-    const previous = compactRows[compactRows.length - 1];
-    if (shouldMergeLegacyVehicleEvidenceRowAsReturn(previous, record)) {
-      compactRows[compactRows.length - 1] = mergeVehicleEvidenceTripRecords(previous, {
-        ...record,
-        departureAt: "",
-        returnAt: record.returnAt || record.departureAt || record.createdAt,
-        startKm: "",
-        endKm: record.endKm || record.startKm,
-        tripStatus: "completed",
-      });
-      return;
-    }
-    compactRows.push(record);
-  });
-  return compactRows;
-}
-
 function buildMergedVehicleEvidenceTrips(vehicle = {}) {
   const records = (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [])
     .filter(isVehicleEvidenceTripActivity)
@@ -10039,17 +9976,10 @@ function buildMergedVehicleEvidenceTrips(vehicle = {}) {
   sortedRecords.forEach((record) => {
     const hasDeparturePart = Boolean(record.departureAt || record.startKm);
     const hasReturnPart = Boolean(record.returnAt || record.endKm || record.tripStatus === "completed");
-    const completeSingleRecord = Boolean(record.departureAt && record.returnAt && record.startKm && record.endKm);
-
-    if (completeSingleRecord) {
-      rows.push(record);
-      return;
-    }
 
     if (hasReturnPart) {
       let bestIndex = -1;
       let bestScore = -1;
-      const eligibleIndexes = [];
       const returnTime = getVehicleEvidenceMergeTimestamp(record);
       rows.forEach((candidate, index) => {
         if (candidate.returnAt || candidate.endKm) {
@@ -10059,7 +9989,6 @@ function buildMergedVehicleEvidenceTrips(vehicle = {}) {
         if (candidateTime && returnTime && candidateTime > returnTime) {
           return;
         }
-        eligibleIndexes.push(index);
         const score = scoreVehicleEvidenceTripMerge(candidate, record);
         if (score > bestScore) {
           bestScore = score;
@@ -10067,7 +9996,7 @@ function buildMergedVehicleEvidenceTrips(vehicle = {}) {
         }
       });
 
-      if (bestIndex >= 0 && (bestScore > 0 || eligibleIndexes.length === 1)) {
+      if (bestIndex >= 0 && bestScore >= 100) {
         rows[bestIndex] = mergeVehicleEvidenceTripRecords(rows[bestIndex], record);
         return;
       }
@@ -10078,7 +10007,7 @@ function buildMergedVehicleEvidenceTrips(vehicle = {}) {
     }
   });
 
-  return compactLegacyVehicleEvidenceRows(rows);
+  return rows;
 }
 
 function formatVehicleEvidenceDatePart(value = "") {
