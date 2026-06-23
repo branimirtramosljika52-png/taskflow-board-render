@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.200.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.201.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25052,6 +25052,23 @@ function buildMobileVehicleRecord(item = {}) {
         ? reservation.reservedForLabels.map(normalizeInputValue).filter(Boolean)
         : [],
     }));
+  const mobileActivityItems = (Array.isArray(item?.activityItems) ? item.activityItems : [])
+    .slice()
+    .sort((left, right) => {
+      const isLeftOpenTrip = isVehicleTripActivity(left)
+        && normalizeInputValue(left?.tripStatus).toLowerCase() !== "completed"
+        && !normalizeInputValue(left?.returnAt);
+      const isRightOpenTrip = isVehicleTripActivity(right)
+        && normalizeInputValue(right?.tripStatus).toLowerCase() !== "completed"
+        && !normalizeInputValue(right?.returnAt);
+      if (isLeftOpenTrip !== isRightOpenTrip) {
+        return isLeftOpenTrip ? -1 : 1;
+      }
+      const leftTimestamp = Date.parse(left?.updatedAt || left?.returnAt || left?.departureAt || left?.createdAt || left?.performedOn || "") || 0;
+      const rightTimestamp = Date.parse(right?.updatedAt || right?.returnAt || right?.departureAt || right?.createdAt || right?.performedOn || "") || 0;
+      return rightTimestamp - leftTimestamp;
+    })
+    .slice(0, 30);
   const record = buildMobileRecordItem(item, {
     kind: "vehicle",
     titleKeys: ["plateNumber", "name", "vinNumber"],
@@ -25080,7 +25097,7 @@ function buildMobileVehicleRecord(item = {}) {
       nextReservationEndAt: normalizeInputValue(nextReservation?.endAt),
       nextReservationUser: normalizeInputValue(nextReservation?.reservedForLabel),
       reservationsJson: JSON.stringify(reservations),
-      activityItemsJson: JSON.stringify((Array.isArray(item?.activityItems) ? item.activityItems : []).slice(0, 30)),
+      activityItemsJson: JSON.stringify(mobileActivityItems),
     },
   };
 }
@@ -26024,7 +26041,16 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
   const driverLabels = mode === "return" && openTripDriverLabels.length
     ? openTripDriverLabels
     : getVehicleUsageDriverLabels(user, body, targetReservation);
-  const destination = getVehicleUsageDestination(body, targetReservation, openTrip);
+  const destination = mode === "return"
+    ? normalizeInputValue(
+      openTrip?.destination
+      || body.destination
+      || body.route
+      || body.location
+      || targetReservation?.destination
+      || targetReservation?.purpose,
+    )
+    : getVehicleUsageDestination(body, targetReservation, openTrip);
   const condition = buildVehicleUsageCondition(body, mode);
   const linkedWorkOrderId = normalizeInputValue(body.linkedWorkOrderId || body.workOrderId);
   const linkedWorkOrderNumber = normalizeInputValue(body.linkedWorkOrderNumber || body.workOrderNumber);

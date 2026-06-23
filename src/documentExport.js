@@ -9778,6 +9778,197 @@ function isVehicleEvidenceTripActivity(activity = {}) {
     );
 }
 
+function getVehicleEvidenceWorkOrderLabels(activity = {}) {
+  const labels = [
+    ...(Array.isArray(activity?.linkedWorkOrderNumbers) ? activity.linkedWorkOrderNumbers : []),
+    activity?.linkedWorkOrderNumber,
+    activity?.workOrderNumber,
+  ];
+  const ids = [
+    ...(Array.isArray(activity?.linkedWorkOrderIds) ? activity.linkedWorkOrderIds : []),
+    activity?.linkedWorkOrderId,
+    activity?.workOrderId,
+  ];
+  const seen = new Set();
+  const cleanedLabels = labels.map((value) => clean(value)).filter(Boolean);
+  const values = cleanedLabels.length
+    ? cleanedLabels
+    : ids.map((id) => (clean(id) ? `RN ${clean(id)}` : ""));
+  return values
+    .map((value) => clean(value))
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeVehicleEvidenceActivity(activity = {}) {
+  const drivers = Array.isArray(activity?.driverLabels)
+    ? normalizePdfLines(activity.driverLabels).join(", ")
+    : clean(activity?.performedBy);
+  const condition = normalizePdfLines([
+    activity?.returnCondition,
+    activity?.vehicleCondition,
+    activity?.departureCondition,
+    compactVehicleEvidenceNote(activity?.note),
+  ]).join("\n");
+  const explicitReturnAt = clean(activity?.returnAt) || clean(activity?.completedAt);
+  const explicitDepartureAt = clean(activity?.departureAt)
+    || clean(activity?.createdAt)
+    || clean(activity?.performedOn);
+  const destination = getVehicleEvidenceFirstValue([
+    activity?.destination,
+    activity?.route,
+    activity?.location,
+    getVehicleEvidenceNoteValue(activity?.note, "Destinacija:"),
+    getVehicleEvidenceNoteValue(activity?.note, "Lokacija:"),
+  ]);
+  const startKm = getVehicleEvidenceFirstValue([
+    activity?.startKm,
+    !explicitReturnAt ? activity?.odometerKm : "",
+  ]);
+  const endKm = getVehicleEvidenceFirstValue([
+    activity?.endKm,
+    explicitReturnAt ? activity?.odometerKm : "",
+  ]);
+  const signatureLabel = clean(activity?.signatureLabel)
+    || clean(activity?.returnedByLabel)
+    || clean(activity?.performedBy);
+  const hasSignature = clean(activity?.signatureDataUrl || activity?.returnSignatureDataUrl);
+
+  return {
+    id: clean(activity?.id),
+    reservationId: clean(activity?.reservationId),
+    tripStatus: clean(activity?.tripStatus).toLowerCase(),
+    departureAt: explicitDepartureAt,
+    returnAt: explicitReturnAt,
+    destination,
+    drivers,
+    startKm,
+    endKm,
+    condition,
+    workOrders: getVehicleEvidenceWorkOrderLabels(activity),
+    signature: hasSignature ? `Potpisano\n${signatureLabel}` : "",
+    hasSignature: Boolean(hasSignature),
+    note: clean(activity?.note),
+    createdAt: clean(activity?.createdAt),
+    updatedAt: clean(activity?.updatedAt),
+  };
+}
+
+function getVehicleEvidenceMergeTimestamp(record = {}) {
+  const timestamp = getVehicleEvidenceTimestamp(record.returnAt || record.departureAt || record.updatedAt || record.createdAt);
+  return timestamp === Number.MAX_SAFE_INTEGER ? 0 : timestamp;
+}
+
+function mergeUniqueVehicleEvidenceValues(left = [], right = []) {
+  const seen = new Set();
+  return [...left, ...right]
+    .map((value) => clean(value))
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function scoreVehicleEvidenceTripMerge(openRecord = {}, returnRecord = {}) {
+  let score = 0;
+  if (openRecord.reservationId && openRecord.reservationId === returnRecord.reservationId) {
+    score += 100;
+  }
+  const openWorkOrders = new Set((openRecord.workOrders || []).map((value) => clean(value).toLowerCase()).filter(Boolean));
+  if ((returnRecord.workOrders || []).some((value) => openWorkOrders.has(clean(value).toLowerCase()))) {
+    score += 40;
+  }
+  if (openRecord.destination && returnRecord.destination && openRecord.destination.toLowerCase() === returnRecord.destination.toLowerCase()) {
+    score += 20;
+  }
+  if (openRecord.drivers && returnRecord.drivers && openRecord.drivers.toLowerCase() === returnRecord.drivers.toLowerCase()) {
+    score += 10;
+  }
+  const openTime = getVehicleEvidenceMergeTimestamp(openRecord);
+  const returnTime = getVehicleEvidenceMergeTimestamp(returnRecord);
+  if (openTime && returnTime && openTime <= returnTime) {
+    score += 5;
+  }
+  return score;
+}
+
+function mergeVehicleEvidenceTripRecords(openRecord = {}, returnRecord = {}) {
+  return {
+    ...openRecord,
+    returnAt: returnRecord.returnAt || openRecord.returnAt,
+    endKm: returnRecord.endKm || openRecord.endKm,
+    destination: openRecord.destination || returnRecord.destination,
+    drivers: openRecord.drivers || returnRecord.drivers,
+    condition: normalizePdfLines([
+      returnRecord.condition,
+      openRecord.condition,
+    ]).join("\n"),
+    workOrders: mergeUniqueVehicleEvidenceValues(openRecord.workOrders, returnRecord.workOrders),
+    signature: returnRecord.signature || openRecord.signature,
+    hasSignature: returnRecord.hasSignature || openRecord.hasSignature,
+    tripStatus: returnRecord.tripStatus || openRecord.tripStatus,
+    updatedAt: returnRecord.updatedAt || openRecord.updatedAt,
+  };
+}
+
+function buildMergedVehicleEvidenceTrips(vehicle = {}) {
+  const records = (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [])
+    .filter(isVehicleEvidenceTripActivity)
+    .map(normalizeVehicleEvidenceActivity)
+    .filter((record) => record.departureAt || record.returnAt || record.startKm || record.endKm);
+  const sortedRecords = records.sort((left, right) => (
+    getVehicleEvidenceMergeTimestamp(left) - getVehicleEvidenceMergeTimestamp(right)
+  ));
+  const rows = [];
+
+  sortedRecords.forEach((record) => {
+    const hasDeparturePart = Boolean(record.departureAt || record.startKm);
+    const hasReturnPart = Boolean(record.returnAt || record.endKm || record.tripStatus === "completed");
+    const completeSingleRecord = Boolean(record.departureAt && record.returnAt && record.startKm && record.endKm);
+
+    if (completeSingleRecord) {
+      rows.push(record);
+      return;
+    }
+
+    if (hasReturnPart) {
+      let bestIndex = -1;
+      let bestScore = -1;
+      rows.forEach((candidate, index) => {
+        if (candidate.returnAt || candidate.endKm) {
+          return;
+        }
+        const score = scoreVehicleEvidenceTripMerge(candidate, record);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
+        }
+      });
+
+      if (bestIndex >= 0 && bestScore > 0) {
+        rows[bestIndex] = mergeVehicleEvidenceTripRecords(rows[bestIndex], record);
+        return;
+      }
+    }
+
+    if (hasDeparturePart || hasReturnPart) {
+      rows.push(record);
+    }
+  });
+
+  return rows;
+}
+
 function formatVehicleEvidenceDatePart(value = "") {
   const normalized = clean(value);
   if (!normalized) return "";
@@ -9818,56 +10009,21 @@ function formatVehicleEvidenceTimePart(value = "") {
 }
 
 function buildVehicleEvidenceRows(vehicle = {}) {
-  return (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [])
-    .filter(isVehicleEvidenceTripActivity)
-    .map((activity) => {
-      const drivers = Array.isArray(activity?.driverLabels)
-        ? normalizePdfLines(activity.driverLabels).join(", ")
-        : clean(activity?.performedBy);
-      const condition = normalizePdfLines([
-        activity?.returnCondition,
-        activity?.vehicleCondition,
-        activity?.departureCondition,
-        compactVehicleEvidenceNote(activity?.note),
-      ]).join("\n");
-      const departureAt = clean(activity?.departureAt)
-        || clean(activity?.createdAt)
-        || clean(activity?.performedOn);
-      const returnAt = clean(activity?.returnAt)
-        || clean(activity?.completedAt);
-      const destination = getVehicleEvidenceFirstValue([
-        activity?.destination,
-        activity?.route,
-        activity?.location,
-        getVehicleEvidenceNoteValue(activity?.note, "Destinacija:"),
-        getVehicleEvidenceNoteValue(activity?.note, "Lokacija:"),
-      ]);
-      const startKm = getVehicleEvidenceFirstValue([
-        activity?.startKm,
-        !returnAt ? activity?.odometerKm : "",
-      ]);
-      const endKm = getVehicleEvidenceFirstValue([
-        activity?.endKm,
-        returnAt ? activity?.odometerKm : "",
-      ]);
-      const signatureLabel = clean(activity?.signatureLabel)
-        || clean(activity?.returnedByLabel)
-        || clean(activity?.performedBy);
-      const hasSignature = clean(activity?.signatureDataUrl || activity?.returnSignatureDataUrl);
-      return {
-        sortKey: getVehicleEvidenceTimestamp(departureAt),
-        departureDate: formatVehicleEvidenceDatePart(departureAt),
-        departureTime: formatVehicleEvidenceTimePart(departureAt),
-        returnDate: formatVehicleEvidenceDatePart(returnAt),
-        returnTime: formatVehicleEvidenceTimePart(returnAt),
-        destination,
-        drivers,
-        startKm: startKm ? `${startKm} km` : "",
-        endKm: endKm ? `${endKm} km` : "",
-        vehicleCondition: condition,
-        signature: hasSignature ? `Potpisano\n${signatureLabel}` : "",
-      };
-    })
+  return buildMergedVehicleEvidenceTrips(vehicle)
+    .map((trip) => ({
+      sortKey: getVehicleEvidenceTimestamp(trip.departureAt || trip.returnAt),
+      departureDate: formatVehicleEvidenceDatePart(trip.departureAt),
+      departureTime: formatVehicleEvidenceTimePart(trip.departureAt),
+      returnDate: formatVehicleEvidenceDatePart(trip.returnAt),
+      returnTime: formatVehicleEvidenceTimePart(trip.returnAt),
+      destination: trip.destination,
+      workOrders: (trip.workOrders || []).join("\n"),
+      drivers: trip.drivers,
+      startKm: trip.startKm ? `${trip.startKm} km` : "",
+      endKm: trip.endKm ? `${trip.endKm} km` : "",
+      vehicleCondition: trip.condition,
+      signature: trip.signature,
+    }))
     .sort((left, right) => left.sortKey - right.sortKey)
     .map(({ sortKey, ...row }) => row);
 }
@@ -10036,12 +10192,13 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
       { key: "departureTime", label: "Vrijeme polaska", width: 52 },
       { key: "returnDate", label: "Datum povratka", width: 62 },
       { key: "returnTime", label: "Vrijeme povratka", width: 52 },
-      { key: "destination", label: "Lokacija gdje se ide", width: 128 },
-      { key: "drivers", label: "Vozaci", width: 106 },
+      { key: "destination", label: "Lokacija gdje se ide", width: 108 },
+      { key: "workOrders", label: "RN", width: 72 },
+      { key: "drivers", label: "Vozaci", width: 94 },
       { key: "startKm", label: "Pocetna km", width: 58 },
       { key: "endKm", label: "Krajnja km", width: 58 },
-      { key: "vehicleCondition", label: "Stanje vozila", width: 116 },
-      { key: "signature", label: "Potpis", width: 72 },
+      { key: "vehicleCondition", label: "Stanje vozila", width: 96 },
+      { key: "signature", label: "Potpis", width: 52 },
     ],
     evidenceRows,
     { emptyMessage: "Za ovo vozilo jos nema evidentiranih putovanja." },

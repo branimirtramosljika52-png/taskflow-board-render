@@ -13275,6 +13275,33 @@ private fun getVehicleTripDestination(item: JSONObject): String =
         .ifBlank { extractVehicleTripNoteValue(item.optString("note").trim(), "Destinacija:") }
         .ifBlank { extractVehicleTripNoteValue(item.optString("note").trim(), "Lokacija:") }
 
+private fun parseVehicleStringArray(item: JSONObject, key: String): List<String> {
+    val array = item.optJSONArray(key) ?: return emptyList()
+    return (0 until array.length())
+        .mapNotNull { index -> array.optString(index).trim().takeIf(String::isNotBlank) }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+}
+
+private fun getVehicleTripWorkOrderLabel(item: JSONObject): String {
+    val numbers = (
+        parseVehicleStringArray(item, "linkedWorkOrderNumbers") +
+            listOf(
+                item.optString("linkedWorkOrderNumber", item.optString("workOrderNumber")).trim(),
+            )
+        )
+        .filter { it.isNotBlank() }
+    if (numbers.isNotEmpty()) {
+        return numbers.distinctBy { it.lowercase(Locale.getDefault()) }.joinToString(", ")
+    }
+    return (
+        parseVehicleStringArray(item, "linkedWorkOrderIds") +
+            listOf(item.optString("linkedWorkOrderId", item.optString("workOrderId")).trim())
+        )
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+        .joinToString(", ") { id -> "RN $id" }
+}
+
 private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
     val raw = vehicle.meta["activityItemsJson"].orEmpty()
     if (raw.isBlank()) return emptyList()
@@ -13334,7 +13361,7 @@ private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
                         status = item.optString("tripStatus").trim(),
                         reservationId = item.optString("reservationId").trim(),
                         linkedWorkOrderId = item.optString("linkedWorkOrderId", item.optString("workOrderId")).trim(),
-                        linkedWorkOrderNumber = item.optString("linkedWorkOrderNumber", item.optString("workOrderNumber")).trim(),
+                        linkedWorkOrderNumber = getVehicleTripWorkOrderLabel(item),
                         documentCount = documents?.length() ?: 0,
                         documentLabels = documentLabels,
                     ),

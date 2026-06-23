@@ -17,6 +17,7 @@ import {
   buildPdfFromHtmlTemplateBuffer,
   buildPdfFromRenderModel,
   buildRiskAssessmentNativePdfBuffer,
+  buildVehicleEvidencePdfBuffer,
   collectPdfSignatureFieldSpecsFromEntry,
   convertWordBufferToHtmlTemplate,
   readStoredDocumentBuffer,
@@ -74,6 +75,22 @@ function inflatePdfContentStreams(pdfBuffer = Buffer.alloc(0)) {
         return [];
       }
     });
+}
+
+async function extractPdfText(pdfBuffer = Buffer.alloc(0)) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const document = await pdfjs.getDocument({
+    data: new Uint8Array(pdfBuffer),
+    disableFontFace: true,
+    useSystemFonts: true,
+  }).promise;
+  const pages = [];
+  for (let pageIndex = 1; pageIndex <= document.numPages; pageIndex += 1) {
+    const page = await document.getPage(pageIndex);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item) => item.str).join(" "));
+  }
+  return pages.join("\n");
 }
 
 test("docx export removes an empty optional media placeholder with its standalone page break", async () => {
@@ -1902,4 +1919,43 @@ test("offer export returns a direct PDF buffer", async () => {
 
   assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
   assert.ok(outputBuffer.length > 1000);
+});
+
+test("vehicle evidence PDF merges departure and return into one trip row", async () => {
+  const outputBuffer = await buildVehicleEvidencePdfBuffer({
+    plateNumber: "ZG1454HS",
+    make: "Ford",
+    model: "Transit",
+    activityItems: [
+      {
+        activityType: "vehicle_trip",
+        reservationId: "trip-1",
+        departureAt: "2026-06-22T08:15:00.000Z",
+        destination: "Petrol Ogulin - Otok ostarski 8a",
+        performedBy: "Branimir Tramosljika",
+        startKm: "210144",
+        linkedWorkOrderNumber: "26-652",
+      },
+      {
+        activityType: "vehicle_trip",
+        reservationId: "trip-1",
+        tripStatus: "completed",
+        returnAt: "2026-06-22T16:45:00.000Z",
+        performedBy: "Branimir Tramosljika",
+        endKm: "211122",
+        returnCondition: "Povrat: uredno",
+        signatureDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        linkedWorkOrderNumber: "26-652",
+      },
+    ],
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  const text = (await extractPdfText(outputBuffer)).replace(/\s+/g, " ");
+  assert.match(text, /Petrol Ogulin - Otok ostarski 8a/);
+  assert.match(text, /26-652/);
+  assert.match(text, /210144/);
+  assert.match(text, /211122/);
+  assert.match(text, /Povrat: uredno/);
+  assert.equal((text.match(/26-652/g) || []).length, 1);
 });
