@@ -18355,7 +18355,14 @@ private fun VehicleUsageDialog(
         }
         mutableStateOf(initialDestination)
     }
-    var reservationId by remember(vehicle.id, mode, defaultReservation?.id) { mutableStateOf(defaultReservation?.id.orEmpty()) }
+    var reservationId by remember(vehicle.id, mode, defaultReservation?.id, openTrip?.reservationId) {
+        val initialReservation = if (mode == "return") {
+            openTrip?.reservationId.orEmpty().ifBlank { defaultReservation?.id.orEmpty() }
+        } else {
+            defaultReservation?.id.orEmpty()
+        }
+        mutableStateOf(initialReservation)
+    }
     var linkedWorkOrderId by remember(vehicle.id, mode, openTrip?.linkedWorkOrderId) {
         mutableStateOf(openTrip?.linkedWorkOrderId.orEmpty())
     }
@@ -18688,7 +18695,16 @@ private fun VehicleUsageDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val linkedWorkOrderNumber = workOrders.firstOrNull { it.id == linkedWorkOrderId }?.displayNumber
+                    val finalDestination = destination.trim().ifBlank {
+                        openTrip?.destination.orEmpty().ifBlank { defaultReservation?.destination.orEmpty() }
+                    }
+                    val finalReservationId = reservationId.trim().ifBlank {
+                        openTrip?.reservationId.orEmpty().ifBlank { defaultReservation?.id.orEmpty() }
+                    }
+                    val finalLinkedWorkOrderId = linkedWorkOrderId.trim().ifBlank {
+                        openTrip?.linkedWorkOrderId.orEmpty()
+                    }
+                    val linkedWorkOrderNumber = workOrders.firstOrNull { it.id == finalLinkedWorkOrderId }?.displayNumber
                         ?: openTrip?.linkedWorkOrderNumber.orEmpty()
                     val signatureBytes = if (mode == "return" && signatureStrokes.isNotEmpty()) {
                         renderSignaturePng(
@@ -18703,9 +18719,9 @@ private fun VehicleUsageDialog(
                         mode,
                         formatReservationDateTime(actionDate, actionTime),
                         odometerKm.trim(),
-                        destination.trim(),
-                        reservationId.trim(),
-                        linkedWorkOrderId.trim(),
+                        finalDestination,
+                        finalReservationId,
+                        finalLinkedWorkOrderId,
                         linkedWorkOrderNumber.trim(),
                         performedBy.trim(),
                         vehicleCondition.trim(),

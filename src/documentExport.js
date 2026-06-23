@@ -9816,10 +9816,26 @@ function normalizeVehicleEvidenceActivity(activity = {}) {
     activity?.departureCondition,
     compactVehicleEvidenceNote(activity?.note),
   ]).join("\n");
-  const explicitReturnAt = clean(activity?.returnAt) || clean(activity?.completedAt);
+  const activityText = normalizePdfLines([
+    activity?.activityType,
+    activity?.type,
+    activity?.workSummary,
+    activity?.tripStatus,
+    activity?.note,
+  ]).join(" ").toLowerCase();
+  const hasExplicitReturnTimestamp = Boolean(clean(activity?.returnAt) || clean(activity?.completedAt));
+  const looksLikeReturnOnly = !hasExplicitReturnTimestamp
+    && !clean(activity?.departureAt)
+    && !clean(activity?.startKm)
+    && (
+      clean(activity?.tripStatus).toLowerCase() === "completed"
+      || /\b(return|povrat|vrac|vrać)\b/i.test(activityText)
+    );
+  const explicitReturnAt = clean(activity?.returnAt)
+    || clean(activity?.completedAt)
+    || (looksLikeReturnOnly ? clean(activity?.createdAt) || clean(activity?.performedOn) : "");
   const explicitDepartureAt = clean(activity?.departureAt)
-    || clean(activity?.createdAt)
-    || clean(activity?.performedOn);
+    || (!looksLikeReturnOnly ? clean(activity?.createdAt) || clean(activity?.performedOn) : "");
   const destination = getVehicleEvidenceFirstValue([
     activity?.destination,
     activity?.route,
@@ -9944,10 +9960,17 @@ function buildMergedVehicleEvidenceTrips(vehicle = {}) {
     if (hasReturnPart) {
       let bestIndex = -1;
       let bestScore = -1;
+      const eligibleIndexes = [];
+      const returnTime = getVehicleEvidenceMergeTimestamp(record);
       rows.forEach((candidate, index) => {
         if (candidate.returnAt || candidate.endKm) {
           return;
         }
+        const candidateTime = getVehicleEvidenceMergeTimestamp(candidate);
+        if (candidateTime && returnTime && candidateTime > returnTime) {
+          return;
+        }
+        eligibleIndexes.push(index);
         const score = scoreVehicleEvidenceTripMerge(candidate, record);
         if (score > bestScore) {
           bestScore = score;
@@ -9955,7 +9978,7 @@ function buildMergedVehicleEvidenceTrips(vehicle = {}) {
         }
       });
 
-      if (bestIndex >= 0 && bestScore > 0) {
+      if (bestIndex >= 0 && (bestScore > 0 || eligibleIndexes.length === 1)) {
         rows[bestIndex] = mergeVehicleEvidenceTripRecords(rows[bestIndex], record);
         return;
       }

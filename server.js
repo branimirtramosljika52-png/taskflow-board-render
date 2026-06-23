@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.201.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.202.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25885,6 +25885,19 @@ function getVehicleUsageLinkedWorkOrderIds(body = {}, trip = null) {
   return Array.from(new Set(values.map((value) => normalizeInputValue(value)).filter(Boolean)));
 }
 
+function getVehicleUsageLinkedWorkOrderNumbers(body = {}, trip = null) {
+  const values = [
+    ...(Array.isArray(body.linkedWorkOrderNumbers) ? body.linkedWorkOrderNumbers : []),
+    ...(Array.isArray(body.workOrderNumbers) ? body.workOrderNumbers : []),
+    body.linkedWorkOrderNumber,
+    body.workOrderNumber,
+    ...(Array.isArray(trip?.linkedWorkOrderNumbers) ? trip.linkedWorkOrderNumbers : []),
+    trip?.linkedWorkOrderNumber,
+    trip?.workOrderNumber,
+  ];
+  return Array.from(new Set(values.map((value) => normalizeInputValue(value)).filter(Boolean)));
+}
+
 function findOpenVehicleTrip(vehicle = {}, body = {}, reservation = null) {
   const requestedTripId = normalizeInputValue(body.tripId || body.activityItemId);
   const requestedReservationId = normalizeInputValue(body.reservationId || reservation?.id);
@@ -26055,6 +26068,7 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
   const linkedWorkOrderId = normalizeInputValue(body.linkedWorkOrderId || body.workOrderId);
   const linkedWorkOrderNumber = normalizeInputValue(body.linkedWorkOrderNumber || body.workOrderNumber);
   const linkedWorkOrderIds = getVehicleUsageLinkedWorkOrderIds(body, openTrip);
+  const linkedWorkOrderNumbers = getVehicleUsageLinkedWorkOrderNumbers(body, openTrip);
   const usageFiles = normalizeVehicleUsageDocumentFiles(body.files);
   const usageFileSummaries = usageFiles.map(stripVehicleUsageDocumentPayload);
   const signatureDataUrl = mode === "return"
@@ -26094,6 +26108,7 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
           linkedWorkOrderId: linkedWorkOrderId || normalizeInputValue(item.linkedWorkOrderId || item.workOrderId),
           linkedWorkOrderNumber: linkedWorkOrderNumber || normalizeInputValue(item.linkedWorkOrderNumber || item.workOrderNumber),
           linkedWorkOrderIds: linkedWorkOrderIds.length ? linkedWorkOrderIds : (Array.isArray(item.linkedWorkOrderIds) ? item.linkedWorkOrderIds : []),
+          linkedWorkOrderNumbers: linkedWorkOrderNumbers.length ? linkedWorkOrderNumbers : (Array.isArray(item.linkedWorkOrderNumbers) ? item.linkedWorkOrderNumbers : []),
           checkedOutByUserId: normalizeInputValue(item.checkedOutByUserId || item.userId),
           checkedOutByLabel: normalizeInputValue(item.checkedOutByLabel || item.performedBy),
           returnedByUserId: actorUserId,
@@ -26134,6 +26149,7 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
       linkedWorkOrderId,
       linkedWorkOrderNumber,
       linkedWorkOrderIds,
+      linkedWorkOrderNumbers,
       checkedOutByUserId: isReturnFallback ? "" : actorUserId,
       checkedOutByLabel: isReturnFallback ? "" : actorLabel,
       returnedByUserId: isReturnFallback ? actorUserId : "",
@@ -26170,6 +26186,7 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
     patch,
     mode,
     linkedWorkOrderIds,
+    linkedWorkOrderNumbers,
     files: usageFiles,
     tripSummary: {
       vehicleLabel: normalizeInputValue(vehicle.plateNumber || vehicle.name || "Vozilo"),
@@ -26179,6 +26196,7 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
         : actionTimestamp,
       returnAt: mode === "return" ? actionTimestamp : "",
       drivers: driverLabels.join(", ") || performer,
+      workOrders: linkedWorkOrderNumbers,
     },
   };
 }

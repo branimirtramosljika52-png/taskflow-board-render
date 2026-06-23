@@ -70471,6 +70471,72 @@ button.risk-assessment-armor-tree-row:focus-visible,
   line-height: 1.55;
 }
 
+#risk-assessment-block-findings .risk-assessment-section-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  max-width: 1120px;
+  margin-inline: auto;
+}
+
+#risk-assessment-block-findings .risk-assessment-worker-participation-field {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 820px);
+  justify-self: center;
+  padding: 16px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94)),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.11), transparent 34%);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.055);
+}
+
+.risk-assessment-worker-attachments {
+  display: grid;
+  gap: 8px;
+}
+
+.risk-assessment-worker-attachment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.risk-assessment-worker-attachment,
+.risk-assessment-worker-attachment-empty {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.74);
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.78);
+}
+
+.risk-assessment-worker-attachment > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.risk-assessment-worker-attachment strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.84rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-worker-attachment span,
+.risk-assessment-worker-attachment-empty {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
 #risk-assessment-block-chemicals,
 #risk-assessment-block-biological {
   justify-items: center;
@@ -70503,6 +70569,40 @@ button.risk-assessment-armor-tree-row:focus-visible,
   min-height: 210px;
   padding: 18px 20px;
   border-radius: 16px;
+}
+
+#risk-assessment-block-biological .risk-assessment-hazard-panel.is-text {
+  order: -1;
+}
+
+.risk-assessment-hazard-panel.is-text .risk-assessment-hazard-text-body {
+  padding-top: 2px;
+}
+
+.risk-assessment-chemical-register-table th,
+.risk-assessment-chemical-register-table td {
+  padding: 11px 10px;
+}
+
+.risk-assessment-chemical-editor-table input,
+.risk-assessment-chemical-editor-table textarea,
+.risk-assessment-chemical-editor-table select,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) input,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) textarea,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) select {
+  min-height: 34px;
+  line-height: 1.42;
+}
+
+.risk-assessment-chemical-editor-table textarea,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) textarea {
+  min-height: 76px;
+  padding-block: 4px;
+}
+
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) select[multiple],
+.risk-assessment-chemical-editor-table select[multiple] {
+  min-height: 96px;
 }
 
 /* 20260618-risk-assessment-places-alignment */

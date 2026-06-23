@@ -6880,6 +6880,9 @@ const riskAssessmentWorkplaceJobsList = document.querySelector("#risk-assessment
 const riskAssessmentAddWorkplaceJobButton = document.querySelector("#risk-assessment-add-workplace-job");
 const riskAssessmentAppendixChemicalRiskInput = document.querySelector("#risk-assessment-appendix-chemical-risk");
 const riskAssessmentAppendixWorkerParticipationInput = document.querySelector("#risk-assessment-appendix-worker-participation");
+const riskAssessmentWorkerParticipationFileInput = document.querySelector("#risk-assessment-worker-participation-file");
+const riskAssessmentWorkerParticipationUploadButton = document.querySelector("#risk-assessment-worker-participation-upload");
+const riskAssessmentWorkerParticipationFiles = document.querySelector("#risk-assessment-worker-participation-files");
 const riskAssessmentLinkedAppendix = document.querySelector("#risk-assessment-linked-appendix");
 const riskAssessmentWorkEquipmentSheet = document.querySelector("#risk-assessment-work-equipment-sheet");
 const riskAssessmentWorkEnvironmentSheet = document.querySelector("#risk-assessment-work-environment-sheet");
@@ -6983,6 +6986,7 @@ let riskAssessmentJobDrafts = [];
 let riskAssessmentRiskTemplateDrafts = [];
 let riskAssessmentManualHandlingScopeDraft = { unitIds: [], jobIds: [] };
 let riskAssessmentManualHandlingDrafts = [];
+let riskAssessmentAttachmentDrafts = [];
 let riskAssessmentChemicalDrafts = [];
 let riskAssessmentBiologicalRiskDrafts = [];
 let riskAssessmentChemicalSearchResultsDraft = [];
@@ -7024,7 +7028,8 @@ let riskAssessmentOverviewRenderTimer = null;
 let riskAssessmentJobTreeQuickAddState = null;
 const riskAssessmentJobDocumentPreviewTimers = new Map();
 const riskAssessmentCatalogPickerRefreshTimers = new Map();
-const RISK_ASSESSMENT_AUTOSAVE_DELAY_MS = 10 * 60 * 1000;
+const RISK_ASSESSMENT_WORKER_PARTICIPATION_ATTACHMENT_CATEGORY = "Sudjelovanje radnika";
+const RISK_ASSESSMENT_AUTOSAVE_DELAY_MS = 60 * 1000;
 const RISK_ASSESSMENT_RICH_FIELD_KEYS = Object.freeze([
   "intro",
   "process",
@@ -7035,6 +7040,7 @@ const RISK_ASSESSMENT_RICH_FIELD_KEYS = Object.freeze([
   "omissionsBasic",
   "omissionsSpecial",
   "conclusion",
+  "chemicalRisk",
   "biologicalHazards",
 ]);
 const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
@@ -7139,6 +7145,7 @@ const RISK_ASSESSMENT_RICH_PRESETS = Object.freeze({
   testingAndSpecialConditions: `<p>Popis ispitivanja i poslova s posebnim uvjetima rada utvrđuje se prema poslovima, radnoj opremi, instalacijama, radnom okolišu i posebnim propisima. U procjeni se navode obvezna ispitivanja, rokovi, posebni uvjeti rada i povezana osposobljavanja ili zdravstveni pregledi.</p>`,
   basicRules: `<p>Osnovna pravila zaštite na radu primjenjuju se radi uklanjanja ili smanjivanja rizika na izvoru. Uključuju ispravno projektiranje i uređenje mjesta rada, sigurne radne površine i putove kretanja, zaštitu od mehaničkih opasnosti, električne struje, požara i eksplozije te osiguravanje stabilnosti i sigurnosti radne opreme.</p>`,
   specialRules: `<p>Posebna pravila zaštite na radu primjenjuju se kada opasnosti, štetnosti i napore nije moguće u potpunosti ukloniti osnovnim pravilima. Obuhvaćaju osposobljavanje radnika, upute za rad na siguran način, uporabu osobne zaštitne opreme, zdravstvene preglede, posebne uvjete rada i organizacijske mjere.</p>`,
+  chemicalRisk: `<p>Kemijske štetnosti procjenjuju se prema sigurnosno-tehničkim listovima, načinu uporabe kemikalija, količinama, trajanju i učestalosti izloženosti te postojećim tehničkim, organizacijskim i osobnim mjerama zaštite. Ako je izloženost kemikalijama povremena ili ograničena, u procjeni se navode uvjeti pod kojima se rizik smatra prihvatljivim i mjere koje se moraju održavati.</p>`,
   biologicalHazards: `<p>Biološke štetnosti procjenjuju se prema mogućim izvorima izloženosti, načinu prijenosa, skupinama radnika, trajanju i učestalosti izloženosti te postojećim higijenskim, tehničkim i organizacijskim mjerama. Ako biološki agensi nisu utvrđeni u redovnom procesu rada, navodi se da se ne očekuje značajna izloženost uz primjenu osnovnih higijenskih mjera.</p>`,
 });
 const RISK_ASSESSMENT_RICH_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-rich-templates-v1";
@@ -7177,6 +7184,12 @@ const RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS = Object.freeze({
     label: "Posebna pravila ZNR",
     defaultTemplates: [
       { id: "specialRules", label: "Posebna pravila ZNR", html: RISK_ASSESSMENT_RICH_PRESETS.specialRules },
+    ],
+  },
+  chemicalRisk: {
+    label: "Kemijske štetnosti",
+    defaultTemplates: [
+      { id: "chemicalRisk", label: "Standardna procjena kemijskih štetnosti", html: RISK_ASSESSMENT_RICH_PRESETS.chemicalRisk },
     ],
   },
   biologicalHazards: {
@@ -134051,6 +134064,31 @@ riskAssessmentForm?.addEventListener("keyup", handleRiskAssessmentRichEditorSele
 riskAssessmentForm?.addEventListener("mouseup", handleRiskAssessmentRichEditorSelectionChange);
 riskAssessmentForm?.addEventListener("focusin", handleRiskAssessmentRichEditorSelectionChange);
 
+riskAssessmentWorkerParticipationUploadButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  riskAssessmentWorkerParticipationFileInput?.click();
+});
+
+riskAssessmentWorkerParticipationFileInput?.addEventListener("change", (event) => {
+  void addRiskAssessmentWorkerParticipationFiles(event.target?.files).finally(() => {
+    if (event.target) {
+      event.target.value = "";
+    }
+  });
+});
+
+riskAssessmentWorkerParticipationFiles?.addEventListener("click", (event) => {
+  const button = event.target?.closest?.("[data-risk-worker-attachment-remove]");
+  if (!button) {
+    return;
+  }
+  event.preventDefault();
+  const attachmentId = String(button.dataset.riskWorkerAttachmentRemove || "");
+  riskAssessmentAttachmentDrafts = riskAssessmentAttachmentDrafts.filter((item) => String(item.id || "") !== attachmentId);
+  renderRiskAssessmentWorkerParticipationAttachments();
+  scheduleRiskAssessmentDraftAutosave();
+});
+
 riskAssessmentResetButton?.addEventListener("click", () => {
   resetRiskAssessmentForm();
 });
@@ -138329,6 +138367,110 @@ function normalizeRiskAssessmentAuthorizationDocument(value = null) {
   };
 }
 
+function normalizeRiskAssessmentAttachmentDraft(source = {}) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const fileName = String(source.fileName || source.name || "").trim();
+  const dataUrl = String(source.dataUrl || source.storageUrl || source.url || "").trim();
+  if (!fileName || !dataUrl) {
+    return null;
+  }
+  return {
+    id: String(source.id || crypto.randomUUID()),
+    fileName,
+    fileType: String(source.fileType || source.mimeType || "application/octet-stream").trim() || "application/octet-stream",
+    fileSize: Number.isFinite(Number(source.fileSize ?? source.size)) ? Number(source.fileSize ?? source.size) : 0,
+    documentCategory: String(source.documentCategory || source.category || "Prilog").trim() || "Prilog",
+    description: String(source.description || "").trim(),
+    dataUrl,
+    storageUrl: String(source.storageUrl || "").trim(),
+    createdAt: String(source.createdAt || new Date().toISOString()).trim(),
+    updatedAt: String(source.updatedAt || source.createdAt || new Date().toISOString()).trim(),
+  };
+}
+
+function normalizeRiskAssessmentAttachmentDrafts(items = []) {
+  const seen = new Set();
+  return (Array.isArray(items) ? items : [])
+    .map((item) => normalizeRiskAssessmentAttachmentDraft(item))
+    .filter((item) => {
+      if (!item) return false;
+      const key = `${item.documentCategory.toLowerCase()}::${item.fileName.toLowerCase()}::${item.dataUrl || item.storageUrl}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function isRiskAssessmentWorkerParticipationAttachment(item = {}) {
+  return String(item?.documentCategory || "").trim().toLowerCase() === RISK_ASSESSMENT_WORKER_PARTICIPATION_ATTACHMENT_CATEGORY.toLowerCase();
+}
+
+function renderRiskAssessmentWorkerParticipationAttachments() {
+  if (!riskAssessmentWorkerParticipationFiles) {
+    return;
+  }
+  const attachments = riskAssessmentAttachmentDrafts.filter(isRiskAssessmentWorkerParticipationAttachment);
+  riskAssessmentWorkerParticipationFiles.innerHTML = "";
+  if (attachments.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "risk-assessment-worker-attachment-empty";
+    empty.textContent = "Nema priloga za sudjelovanje radnika.";
+    riskAssessmentWorkerParticipationFiles.append(empty);
+    return;
+  }
+  attachments.forEach((attachment) => {
+    const row = document.createElement("article");
+    row.className = "risk-assessment-worker-attachment";
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = attachment.fileName;
+    const meta = document.createElement("span");
+    meta.textContent = [formatFileSize(attachment.fileSize), attachment.fileType].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost-button card-danger";
+    removeButton.textContent = "Ukloni";
+    removeButton.dataset.riskWorkerAttachmentRemove = attachment.id;
+    row.append(copy, removeButton);
+    riskAssessmentWorkerParticipationFiles.append(row);
+  });
+}
+
+function setRiskAssessmentAttachmentDrafts(items = []) {
+  riskAssessmentAttachmentDrafts = normalizeRiskAssessmentAttachmentDrafts(items);
+  renderRiskAssessmentWorkerParticipationAttachments();
+}
+
+async function addRiskAssessmentWorkerParticipationFiles(files = []) {
+  const incomingFiles = Array.from(files || []).filter(Boolean);
+  if (incomingFiles.length === 0) {
+    return;
+  }
+  const uploads = [];
+  for (const file of incomingFiles) {
+    uploads.push(normalizeRiskAssessmentAttachmentDraft({
+      id: crypto.randomUUID(),
+      fileName: file.name || "prilog-sudjelovanja",
+      fileType: file.type || "application/octet-stream",
+      fileSize: file.size || 0,
+      documentCategory: RISK_ASSESSMENT_WORKER_PARTICIPATION_ATTACHMENT_CATEGORY,
+      description: "Prilog sudjelovanja radnika u izradi procjene rizika.",
+      dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati prilog ${file.name}.`),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+  riskAssessmentAttachmentDrafts = normalizeRiskAssessmentAttachmentDrafts([
+    ...riskAssessmentAttachmentDrafts,
+    ...uploads.filter(Boolean),
+  ]);
+  renderRiskAssessmentWorkerParticipationAttachments();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
 function getRiskAssessmentSafetyAuthorizationSource() {
   const today = new Date(new Date().setHours(0, 0, 0, 0));
   const matches = (state.safetyAuthorizations ?? [])
@@ -139136,10 +139278,12 @@ function setRiskAssessmentEmployerData(data = {}) {
   renderRiskAssessmentCompanyCollaborators();
   renderRiskAssessmentWorkplaceJobs();
   renderRiskAssessmentBasicTextTemplateControls();
+  setRiskAssessmentRichValue("chemicalRisk", data.appendixChemicalRisk || "");
   autoGrowRiskAssessmentTextareas();
 }
 
 function readRiskAssessmentEmployerData() {
+  syncRiskAssessmentRichValue("chemicalRisk");
   const inputs = getRiskAssessmentEmployerDataInputs();
   const data = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [
     key,
@@ -140717,6 +140861,7 @@ function resetRiskAssessmentForm() {
   riskAssessmentRiskTemplateDrafts = [];
   riskAssessmentManualHandlingScopeDraft = { unitIds: [], jobIds: [] };
   riskAssessmentManualHandlingDrafts = [];
+  setRiskAssessmentAttachmentDrafts([]);
   riskAssessmentChemicalDrafts = [];
   riskAssessmentBiologicalRiskDrafts = [];
   riskAssessmentChemicalSearchResultsDraft = [];
@@ -140824,6 +140969,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   setRiskAssessmentRichValue("omissionsSpecial", item.omissionsSpecial || "");
   setRiskAssessmentRichValue("conclusion", item.conclusion || "");
   setRiskAssessmentRichValue("biologicalHazards", item.biologicalHazards || "");
+  setRiskAssessmentRichValue("chemicalRisk", item?.employerData?.appendixChemicalRisk || "");
   renderRiskAssessmentRichTemplateControls();
   riskAssessmentClientNoteInput.value = item.clientNote || "";
   if (riskAssessmentClientJobInputEnabledInput) {
@@ -140840,6 +140986,7 @@ function hydrateRiskAssessmentForm(item = {}) {
     ppeItems: (entry.ppeItems ?? []).map((ppe) => createRiskAssessmentPpeDraft(ppe)),
   }));
   riskAssessmentChemicalDrafts = (item.chemicals ?? []).map((entry) => createRiskAssessmentChemicalDraft(entry));
+  setRiskAssessmentAttachmentDrafts(item.attachments ?? []);
   riskAssessmentBiologicalRiskDrafts = (item.biologicalRisks ?? []).map((entry) => createRiskAssessmentBiologicalRiskDraft(entry));
   riskAssessmentManualHandlingScopeDraft = createRiskAssessmentManualScopeDraft(item.manualHandlingScope);
   riskAssessmentManualHandlingDrafts = (item.manualHandling ?? item.manualHandlingItems ?? []).map((entry) => createRiskAssessmentManualHandlingDraft(entry));
@@ -150690,6 +150837,7 @@ function getRiskAssessmentFinalReadinessTone(percent = 0) {
 
 function renderRiskAssessmentTemplateOverviewContent() {
   const summary = getRiskAssessmentFinalSummaryData();
+  const attachmentList = renderRiskAssessmentTemplateAttachmentsContent();
   return `
     <div class="risk-assessment-template-metrics">
       <span><strong>${escapeHtml(String(summary.workplaceCount))}</strong> mjesta rada</span>
@@ -150709,6 +150857,28 @@ function renderRiskAssessmentTemplateOverviewContent() {
           <span>${escapeHtml(item.label)}</span>
           <span>${escapeHtml(item.ok ? "Spremno" : "Za dopunu")}</span>
           <span>${escapeHtml(item.detail)}</span>
+        </div>
+      `).join("")}
+    </div>
+    ${attachmentList}
+  `;
+}
+
+function renderRiskAssessmentTemplateAttachmentsContent() {
+  const attachments = normalizeRiskAssessmentAttachmentDrafts(riskAssessmentAttachmentDrafts)
+    .filter((attachment) => String(attachment.fileName || "").trim());
+  if (!attachments.length) {
+    return "";
+  }
+  return `
+    <h4>Prilozi procjene</h4>
+    <div class="risk-assessment-template-table">
+      <div class="is-head"><span>Prilog</span><span>Kategorija</span><span>Opis</span></div>
+      ${attachments.map((attachment) => `
+        <div>
+          <span>${escapeHtml(attachment.fileName || "-")}</span>
+          <span>${escapeHtml(attachment.documentCategory || "Prilog")}</span>
+          <span>${escapeHtml(attachment.description || formatFileSize(attachment.fileSize || 0) || "-")}</span>
         </div>
       `).join("")}
     </div>
@@ -150900,7 +151070,7 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
         <h4>Podaci o fizikalnim, biološkim i kemijskim štetnostima</h4>
         ${renderRiskAssessmentTemplateRichHtml(riskAssessmentOmissionsBasicInput?.value || "")}
         <h4>Procjena rizika od kemijskih štetnosti</h4>
-        ${renderRiskAssessmentDocumentParagraphs(employer.appendixChemicalRisk, "Nije uneseno.")}
+        ${renderRiskAssessmentTemplateRichHtml(employer.appendixChemicalRisk, "Nije uneseno.")}
         <h4>Sudjelovanje radnika</h4>
         ${renderRiskAssessmentDocumentParagraphs(employer.appendixWorkerParticipation, "Nije uneseno.")}
       `;
@@ -152869,7 +153039,7 @@ function setRiskAssessmentAutosaveStatus(message = "", tone = "idle") {
   if (!riskAssessmentAutosaveStatus) {
     return;
   }
-  riskAssessmentAutosaveStatus.textContent = message || "Automatsko spremanje svakih 10 min.";
+  riskAssessmentAutosaveStatus.textContent = message || "Automatsko spremanje svaku minutu.";
   riskAssessmentAutosaveStatus.dataset.tone = tone || "idle";
 }
 
@@ -153090,7 +153260,7 @@ function scheduleRiskAssessmentDraftAutosave() {
     return;
   }
   riskAssessmentServerAutosaveDirty = true;
-  setRiskAssessmentAutosaveStatus("Nespremljene promjene. Automatski za 10 min ili klikni Spremi.", "warning");
+  setRiskAssessmentAutosaveStatus("Nespremljene promjene. Automatski za 1 min ili klikni Spremi.", "warning");
   if (riskAssessmentDraftAutosaveTimer) {
     scheduleRiskAssessmentServerAutosave();
     return;
@@ -153130,7 +153300,7 @@ function clearRiskAssessmentDraftAutosave({ preserveStatus = false, clearServer 
   if (!preserveStatus) {
     riskAssessmentServerAutosaveSignature = "";
     clearRiskAssessmentServerAutosaveRetry();
-    setRiskAssessmentAutosaveStatus("Automatsko spremanje svakih 10 min.", "idle");
+    setRiskAssessmentAutosaveStatus("Automatsko spremanje svaku minutu.", "idle");
   }
 }
 
@@ -160121,6 +160291,7 @@ function buildRiskAssessmentPayload() {
     chemicals: riskAssessmentChemicalDrafts.map((chemical) => sanitizeRiskAssessmentTransientChemical(chemical)),
     biologicalRisks: riskAssessmentBiologicalRiskDrafts.map((entry) => sanitizeRiskAssessmentTransientBiologicalRisk(entry)),
     reportTemplate: sanitizeRiskAssessmentReportTemplateDraft(riskAssessmentReportTemplateDraft || {}),
+    attachments: normalizeRiskAssessmentAttachmentDrafts(riskAssessmentAttachmentDrafts),
   };
 }
 
