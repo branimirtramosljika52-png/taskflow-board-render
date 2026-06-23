@@ -4051,6 +4051,8 @@ test("vehicles create reservations, block overlaps and derive availability", () 
     () => "2026-03-29T09:00:00.000Z",
   );
 
+  assert.equal(getVehicleAvailabilityStatus(reservedVehicle, "2026-03-29T09:30:00.000Z"), "available");
+  assert.equal(getVehicleAvailabilityStatus(reservedVehicle, "2026-03-30T05:59:00.000Z"), "available");
   assert.equal(getVehicleAvailabilityStatus(reservedVehicle, "2026-03-30T08:00:00.000Z"), "reserved");
   assert.equal(getVehicleNextReservation(reservedVehicle, "2026-03-30T06:00:00.000Z")?.id, "reservation-1");
   assert.deepEqual(reservedVehicle.reservations[0].reservedForUserIds, ["user-1", "user-2"]);
@@ -4109,6 +4111,30 @@ test("vehicles create reservations, block overlaps and derive availability", () 
   );
 
   assert.equal(getVehicleAvailabilityStatus(completedVehicle, "2026-03-30T16:05:00.000Z"), "available");
+});
+
+test("vehicles ignore legacy trip-looking rows when deriving availability", () => {
+  const state = buildState();
+  const vehicle = createVehicle(
+    {
+      organizationId: "55",
+      name: "Servisni kombi",
+      plateNumber: "ZG 1454 HS",
+      status: "available",
+      activityItems: [
+        {
+          workSummary: "Putovanje vozila",
+          departureAt: "2026-06-22T08:15:00.000Z",
+          startKm: "210144",
+        },
+      ],
+    },
+    state,
+    () => "vehicle-legacy-trip",
+    () => "2026-06-22T08:00:00.000Z",
+  );
+
+  assert.equal(getVehicleAvailabilityStatus(vehicle, "2026-06-22T09:00:00.000Z"), "available");
 });
 
 test("vehicles filter and sort by availability and search context", () => {

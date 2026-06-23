@@ -560,6 +560,7 @@ const DOCUMENT_TEMPLATE_TYPE_SET = new Set(DOCUMENT_TEMPLATE_TYPE_OPTIONS.map((o
 const DOCUMENT_TEMPLATE_SECTION_TYPE_SET = new Set(DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS.map((option) => option.value));
 const DOCUMENT_TEMPLATE_FIELD_TYPE_SET = new Set(DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS.map((option) => option.value));
 const ACTIVE_VEHICLE_RESERVATION_STATUSES = new Set(["reserved", "checked_out"]);
+const VEHICLE_TRIP_RESERVATION_WINDOW_TOLERANCE_MS = 60 * 60 * 1000;
 const OFFER_LOCATION_SCOPE_SET = new Set(["single", "selection", "all", "none"]);
 const PURCHASE_ORDER_DIRECTION_SET = new Set(["incoming", "outgoing"]);
 const DASHBOARD_WIDGET_SOURCE_SET = new Set(DASHBOARD_WIDGET_SOURCE_OPTIONS.map((option) => option.value));
@@ -3243,10 +3244,16 @@ function isVehicleReservationActive(reservation, nowValue = isoNow()) {
     return false;
   }
 
+  const startAt = Date.parse(reservation.startAt ?? "");
   const endAt = Date.parse(reservation.endAt ?? "");
   const nowTimestamp = Date.parse(nowValue);
 
-  return Number.isFinite(endAt) && Number.isFinite(nowTimestamp) ? endAt > nowTimestamp : false;
+  if (![startAt, endAt, nowTimestamp].every(Number.isFinite)) {
+    return false;
+  }
+
+  return startAt - VEHICLE_TRIP_RESERVATION_WINDOW_TOLERANCE_MS <= nowTimestamp
+    && endAt + VEHICLE_TRIP_RESERVATION_WINDOW_TOLERANCE_MS >= nowTimestamp;
 }
 
 function reservationsOverlap(left, right) {
@@ -11137,17 +11144,15 @@ export function getVehicleNextReservation(vehicle, nowValue = isoNow()) {
   }) ?? null;
 }
 
+export function getVehicleActiveReservation(vehicle, nowValue = isoNow()) {
+  return sortVehicleReservations(vehicle?.reservations ?? [], nowValue)
+    .find((reservation) => isVehicleReservationActive(reservation, nowValue)) ?? null;
+}
+
 export function getVehicleOpenTrip(vehicle) {
   return (Array.isArray(vehicle?.activityItems) ? vehicle.activityItems : []).find((item) => {
     const activityType = String(item?.activityType ?? item?.type ?? "").trim().toLowerCase();
-    const hasTripFields = Boolean(
-      String(item?.departureAt ?? "").trim()
-      || String(item?.returnAt ?? "").trim()
-      || String(item?.startKm ?? "").trim()
-      || String(item?.endKm ?? "").trim()
-      || String(item?.tripStatus ?? "").trim(),
-    );
-    if (activityType !== "vehicle_trip" && !hasTripFields) {
+    if (activityType !== "vehicle_trip") {
       return false;
     }
     return String(item?.tripStatus ?? "").trim().toLowerCase() !== "completed"
@@ -11166,7 +11171,7 @@ export function getVehicleAvailabilityStatus(vehicle, nowValue = isoNow()) {
     return "reserved";
   }
 
-  return getVehicleNextReservation(vehicle, nowValue) ? "reserved" : "available";
+  return getVehicleActiveReservation(vehicle, nowValue) ? "reserved" : "available";
 }
 
 export function createClientPortalRecord(

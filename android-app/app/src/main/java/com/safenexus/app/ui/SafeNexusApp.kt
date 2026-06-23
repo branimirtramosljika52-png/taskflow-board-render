@@ -13221,8 +13221,16 @@ private data class MobileVehicleTrip(
     val documentLabels: String,
 )
 
-private fun vehicleAvailabilityStatus(vehicle: MobileRecord): String =
-    vehicle.meta["availabilityStatus"].orEmpty().ifBlank { vehicle.status.ifBlank { "available" } }.lowercase()
+private fun vehicleBaseStatus(vehicle: MobileRecord): String =
+    vehicle.meta["baseStatus"].orEmpty().ifBlank { vehicle.status.ifBlank { "available" } }.lowercase()
+
+private fun vehicleAvailabilityStatus(vehicle: MobileRecord): String {
+    val baseStatus = vehicleBaseStatus(vehicle)
+    if (baseStatus == "service" || baseStatus == "inactive") return baseStatus
+    if (parseVehicleTrips(vehicle).any { vehicleTripIsOpen(it) }) return "reserved"
+    if (parseVehicleReservations(vehicle).any { vehicleReservationAllowsMyTripNow(it) }) return "reserved"
+    return "available"
+}
 
 private fun vehicleStatusLabel(status: String): String = when (status.lowercase()) {
     "reserved" -> "Zauzeto"
@@ -13329,9 +13337,7 @@ private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
                 val activityType = item.optString("activityType").trim().lowercase(Locale.getDefault())
-                val hasTripFields = listOf("departureAt", "returnAt", "startKm", "endKm", "tripStatus")
-                    .any { key -> item.optString(key).trim().isNotBlank() }
-                if (activityType != "vehicle_trip" && !hasTripFields) continue
+                if (activityType != "vehicle_trip") continue
 
                 val driverLabels = item.optJSONArray("driverLabels")
                 val drivers = if (driverLabels != null && driverLabels.length() > 0) {
@@ -13445,7 +13451,8 @@ private fun vehicleEligibleReservationForCurrentUser(vehicle: MobileRecord, curr
     }
 
 private fun vehicleCanUseMyTrip(vehicle: MobileRecord, currentUserLabel: String): Boolean {
-    if (currentUserLabel.isBlank() || vehicleAvailabilityStatus(vehicle) == "service") return false
+    val baseStatus = vehicleBaseStatus(vehicle)
+    if (currentUserLabel.isBlank() || baseStatus == "service" || baseStatus == "inactive") return false
     if (vehicleOpenTripForCurrentUser(vehicle, currentUserLabel) != null) return true
     if (vehicleHasOpenTripForOtherUser(vehicle, currentUserLabel)) return false
     return vehicleEligibleReservationForCurrentUser(vehicle, currentUserLabel) != null
@@ -13453,23 +13460,8 @@ private fun vehicleCanUseMyTrip(vehicle: MobileRecord, currentUserLabel: String)
 
 private fun vehicleUserTripLabel(vehicle: MobileRecord, currentUserLabel: String): String {
     if (currentUserLabel.isBlank()) return ""
-    val reservations = parseVehicleReservations(vehicle)
-    val trips = parseVehicleTrips(vehicle)
-    val hasOpenTrip = trips.any { trip ->
-        vehicleTripIsOpen(trip) &&
-            vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
-    }
-    val hasCheckedOutReservation = reservations.any { reservation ->
-        reservation.status.equals("checked_out", ignoreCase = true) &&
-            vehiclePersonMatchesCurrentUser(reservation.userLabel, currentUserLabel)
-    }
-    if (hasOpenTrip || hasCheckedOutReservation) return "Moj put"
-
-    val hasReservedReservation = reservations.any { reservation ->
-        reservation.status.equals("reserved", ignoreCase = true) &&
-            vehiclePersonMatchesCurrentUser(reservation.userLabel, currentUserLabel)
-    }
-    return if (hasReservedReservation) "Moja rezervacija" else ""
+    if (vehicleOpenTripForCurrentUser(vehicle, currentUserLabel) != null) return "Moj put"
+    return if (vehicleEligibleReservationForCurrentUser(vehicle, currentUserLabel) != null) "Moja rezervacija" else ""
 }
 
 private fun vehicleReservationOverlapsHour(reservation: MobileVehicleReservation, date: LocalDate, hour: Int): Boolean {

@@ -2099,6 +2099,12 @@ test("vehicle evidence PDF ignores legacy vehicle usage rows", async () => {
         odometerKm: "210144",
       },
       {
+        workSummary: "Putovanje vozila",
+        departureAt: "2026-06-22T09:00:00.000Z",
+        destination: "Stari MyTrip tekst bez tipa",
+        startKm: "210222",
+      },
+      {
         activityType: "vehicle_trip",
         workSummary: "Putovanje vozila",
         departureAt: "2026-06-23T08:00:00.000Z",
@@ -2117,5 +2123,7 @@ test("vehicle evidence PDF ignores legacy vehicle usage rows", async () => {
   assert.match(text, /211000/);
   assert.match(text, /211250/);
   assert.equal(text.includes("Stari unos"), false);
+  assert.equal(text.includes("Stari MyTrip tekst bez tipa"), false);
   assert.equal(text.includes("210144"), false);
+  assert.equal(text.includes("210222"), false);
 });

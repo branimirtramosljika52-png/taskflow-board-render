@@ -9770,8 +9770,7 @@ function compactVehicleEvidenceNote(note = "") {
 
 function isVehicleEvidenceTripActivity(activity = {}) {
   const type = clean(activity?.activityType ?? activity?.type).toLowerCase();
-  const summary = clean(activity?.workSummary).toLowerCase();
-  return type === "vehicle_trip" || summary === "putovanje vozila";
+  return type === "vehicle_trip";
 }
 
 function getVehicleEvidenceLinkedWorkOrderItems(activity = {}) {
