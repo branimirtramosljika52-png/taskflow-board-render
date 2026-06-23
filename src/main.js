@@ -147934,6 +147934,25 @@ function getRiskAssessmentTemplatePlaceholder(key = "") {
     || RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS[0];
 }
 
+function getRiskAssessmentContentsTitle(section = {}) {
+  const key = String(section?.key || "").trim();
+  const placeholder = getRiskAssessmentTemplatePlaceholder(key);
+  const defaultTitle = String(placeholder.defaultTitle || placeholder.label || "").trim();
+  const sectionTitle = String(section?.title || "").trim();
+  const hasCustomTitle = sectionTitle && sectionTitle !== defaultTitle;
+  const titleOverrides = {
+    work_equipment: "Ispitivanje radne opreme",
+    work_environment: "Ispitivanje fizikalnih čimbenika radnog okoliša",
+    chemicals: "Ispitivanje kemijskih čimbenika",
+    biological: "Ispitivanje bioloških čimbenika",
+    inspections: "Popis ispitivanja",
+  };
+  if (hasCustomTitle) {
+    return sectionTitle;
+  }
+  return titleOverrides[key] || sectionTitle || defaultTitle || placeholder.label || "Odjeljak";
+}
+
 function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
   const placeholder = getRiskAssessmentTemplatePlaceholder(initial.key || initial.placeholderKey || "intro");
   const isAlwaysIncludedIntro = placeholder.key === "intro";
@@ -148679,7 +148698,7 @@ function buildRiskAssessmentContentsExportBlocks() {
     ))
     .map((section) => ({
       id: section.key,
-      title: section.title || getRiskAssessmentTemplatePlaceholder(section.key).defaultTitle,
+      title: getRiskAssessmentContentsTitle(section),
       level: 1,
     }));
   return [createRiskAssessmentExportToc(sections, { title: "Sadržaj" })];
@@ -150788,20 +150807,14 @@ function renderRiskAssessmentTemplateContentsContent() {
     return `<p class="is-muted">Uključi odjeljke koje želiš prikazati u sadržaju.</p>`;
   }
   return `
-    <div class="risk-assessment-template-table">
-      <div class="is-head"><span>Br.</span><span>Naslov</span><span>Odjeljak</span><span>Placeholder</span></div>
-      ${sections.map((section, index) => {
-        const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
-        return `
-          <div>
-            <span>${escapeHtml(String(index + 1))}</span>
-            <span>${escapeHtml(section.title || placeholder.defaultTitle || placeholder.label)}</span>
-            <span>${escapeHtml(placeholder.label)}</span>
-            <span>${escapeHtml(section.placeholder || placeholder.token)}</span>
-          </div>
-        `;
-      }).join("")}
-    </div>
+    <nav class="risk-assessment-template-toc is-clean-list" aria-label="Sadržaj procjene rizika">
+      ${sections.map((section, index) => `
+        <span>
+          <strong>${escapeHtml(String(index + 1).padStart(2, "0"))}</strong>
+          ${escapeHtml(getRiskAssessmentContentsTitle(section))}
+        </span>
+      `).join("")}
+    </nav>
   `;
 }
 
@@ -151301,8 +151314,13 @@ function renderRiskAssessmentTemplatePreview() {
         <p>${escapeHtml(template.description || "Dokument se slaže iz placeholder odjeljaka.")}</p>
       </header>
       ${toc.length ? `
-        <nav class="risk-assessment-template-toc">
-          ${toc.map((section, index) => `<span>${String(index + 1).padStart(2, "0")} ${escapeHtml(section.title || getRiskAssessmentTemplatePlaceholder(section.key).defaultTitle)}</span>`).join("")}
+        <nav class="risk-assessment-template-toc is-clean-list">
+          ${toc.map((section, index) => `
+            <span>
+              <strong>${String(index + 1).padStart(2, "0")}</strong>
+              ${escapeHtml(getRiskAssessmentContentsTitle(section))}
+            </span>
+          `).join("")}
         </nav>
       ` : ""}
       ${enabledSections.map((section, index) => `
