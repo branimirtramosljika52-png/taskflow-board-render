@@ -1946,6 +1946,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         tripId: String,
         actionAt: String,
         odometerKm: String,
+        departureAt: String,
+        returnAt: String,
+        startKm: String,
+        endKm: String,
         destination: String,
         reservationId: String,
         linkedWorkOrderId: String,
@@ -1977,6 +1981,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 tripId = tripId,
                 actionAt = actionAt,
                 odometerKm = odometerKm,
+                departureAt = departureAt,
+                returnAt = returnAt,
+                startKm = startKm,
+                endKm = endKm,
                 destination = destination,
                 reservationId = reservationId,
                 linkedWorkOrderId = linkedWorkOrderId,
@@ -1995,7 +2003,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         selectedRecord = null,
-                        notice = if (mode == "return") "Povrat vozila je evidentiran." else "Preuzimanje vozila je evidentirano.",
+                        notice = "My Trip je spremljen.",
                     )
                     refresh()
                 }
@@ -17564,7 +17572,7 @@ private fun MobileRecordDetailScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
-    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
@@ -17597,7 +17605,7 @@ private fun MobileRecordDetailScreen(
             currentUserLabel = currentUserLabel,
             isLoading = isLoading,
             onDismiss = { usageDialogMode = null },
-            onConfirm = { selectedMode, tripId, actionAt, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note, files, signaturePngBytes ->
+            onConfirm = { selectedMode, tripId, actionAt, odometerKm, departureAt, returnAt, startKm, endKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note, files, signaturePngBytes ->
                 usageDialogMode = null
                 onRecordVehicleUsage(
                     record,
@@ -17605,6 +17613,10 @@ private fun MobileRecordDetailScreen(
                     tripId,
                     actionAt,
                     odometerKm,
+                    departureAt,
+                    returnAt,
+                    startKm,
+                    endKm,
                     destination,
                     reservationId,
                     linkedWorkOrderId,
@@ -17715,24 +17727,14 @@ private fun MobileRecordDetailScreen(
                                 Text("Rezerviraj", fontWeight = FontWeight.Black)
                             }
                             OutlinedButton(
-                                onClick = { usageDialogMode = "checkout" },
+                                onClick = { usageDialogMode = "trip" },
                                 enabled = !isLoading && vehicleAvailabilityStatus(record) != "service",
                                 shape = RoundedCornerShape(14.dp),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             ) {
                                 Icon(Icons.Rounded.Work, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Preuzmi", fontWeight = FontWeight.Black)
-                            }
-                            OutlinedButton(
-                                onClick = { usageDialogMode = "return" },
-                                enabled = !isLoading && vehicleAvailabilityStatus(record) != "service",
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                            ) {
-                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Vrati", fontWeight = FontWeight.Black)
+                                Text("My Trip", fontWeight = FontWeight.Black)
                             }
                             OutlinedButton(
                                 onClick = { onDownloadVehicleEvidencePdf(record) },
@@ -18210,7 +18212,7 @@ private fun VehicleUsageDialog(
     currentUserLabel: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
+    onConfirm: (String, String, String, String, String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -18308,25 +18310,17 @@ private fun VehicleUsageDialog(
             ?: reservations.firstOrNull { it.id == vehicle.meta["nextReservationId"] }
             ?: reservations.firstOrNull()
     }
-    val openTrip = remember(trips, defaultReservation?.id, mode) {
-        if (mode != "return") {
-            null
-        } else {
-            trips.firstOrNull { trip ->
-                trip.returnAt.isBlank() &&
-                    !trip.status.equals("completed", ignoreCase = true) &&
-                    defaultReservation?.id?.let { it.isNotBlank() && trip.reservationId == it } == true
-            } ?: trips.firstOrNull { trip ->
-                trip.returnAt.isBlank() && !trip.status.equals("completed", ignoreCase = true)
-            }
+    val openTrip = remember(trips, defaultReservation?.id) {
+        trips.firstOrNull { trip ->
+            trip.returnAt.isBlank() &&
+                !trip.status.equals("completed", ignoreCase = true) &&
+                defaultReservation?.id?.let { it.isNotBlank() && trip.reservationId == it } == true
+        } ?: trips.firstOrNull { trip ->
+            trip.returnAt.isBlank() && !trip.status.equals("completed", ignoreCase = true)
         }
     }
     val destinationSuggestions = remember(vehicle.id, mode, trips, reservations, defaultReservation?.destination, openTrip?.destination) {
-        val primaryDestinations = if (mode == "return") {
-            listOf(openTrip?.destination.orEmpty(), defaultReservation?.destination.orEmpty())
-        } else {
-            listOf(defaultReservation?.destination.orEmpty(), openTrip?.destination.orEmpty())
-        }
+        val primaryDestinations = listOf(openTrip?.destination.orEmpty(), defaultReservation?.destination.orEmpty())
         (
             primaryDestinations +
                 reservations.map { it.destination } +
@@ -18347,24 +18341,30 @@ private fun VehicleUsageDialog(
             .distinctBy { it.lowercase(Locale.getDefault()) }
             .take(5)
     }
-    var odometerKm by remember(vehicle.id, mode) { mutableStateOf(vehicle.meta["odometerKm"].orEmpty()) }
-    var actionDate by remember(vehicle.id, mode) { mutableStateOf(LocalDate.now().toString()) }
-    var actionTime by remember(vehicle.id, mode) { mutableStateOf(defaultVehicleUsageTime()) }
+    fun dateInputValue(value: String, fallback: String = ""): String {
+        val parsed = parseVehicleDateTime(value)
+        if (parsed != null) return parsed.toLocalDate().toString()
+        return value.take(10).ifBlank { fallback }
+    }
+    fun timeInputValue(value: String, fallback: String = ""): String {
+        val parsed = parseVehicleDateTime(value)
+        if (parsed != null) return parsed.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
+        return value.substringAfter('T', "").take(5).ifBlank { fallback }
+    }
+    val initialDepartureAt = openTrip?.departureAt.orEmpty().ifBlank { defaultReservation?.startAt.orEmpty() }
+    val initialReturnAt = openTrip?.returnAt.orEmpty()
+    var departureDate by remember(vehicle.id, openTrip?.id) { mutableStateOf(dateInputValue(initialDepartureAt, LocalDate.now().toString())) }
+    var departureTime by remember(vehicle.id, openTrip?.id) { mutableStateOf(timeInputValue(initialDepartureAt, defaultVehicleUsageTime())) }
+    var returnDate by remember(vehicle.id, openTrip?.id) { mutableStateOf(dateInputValue(initialReturnAt)) }
+    var returnTime by remember(vehicle.id, openTrip?.id) { mutableStateOf(timeInputValue(initialReturnAt)) }
+    var startKm by remember(vehicle.id, openTrip?.id) { mutableStateOf(openTrip?.startKm.orEmpty().ifBlank { vehicle.meta["odometerKm"].orEmpty() }) }
+    var endKm by remember(vehicle.id, openTrip?.id) { mutableStateOf(openTrip?.endKm.orEmpty()) }
     var destination by remember(vehicle.id, mode, defaultReservation?.destination, openTrip?.destination) {
-        val initialDestination = if (mode == "return") {
-            openTrip?.destination.orEmpty().ifBlank { defaultReservation?.destination.orEmpty() }
-        } else {
-            defaultReservation?.destination.orEmpty().ifBlank { openTrip?.destination.orEmpty() }
-        }
+        val initialDestination = openTrip?.destination.orEmpty().ifBlank { defaultReservation?.destination.orEmpty() }
         mutableStateOf(initialDestination)
     }
-    var reservationId by remember(vehicle.id, mode, defaultReservation?.id, openTrip?.reservationId) {
-        val initialReservation = if (mode == "return") {
-            openTrip?.reservationId.orEmpty().ifBlank { defaultReservation?.id.orEmpty() }
-        } else {
-            defaultReservation?.id.orEmpty()
-        }
-        mutableStateOf(initialReservation)
+    var reservationId by remember(vehicle.id, openTrip?.reservationId) {
+        mutableStateOf(openTrip?.reservationId.orEmpty())
     }
     var linkedWorkOrderId by remember(vehicle.id, mode, openTrip?.linkedWorkOrderId) {
         mutableStateOf(openTrip?.linkedWorkOrderId.orEmpty())
@@ -18372,13 +18372,13 @@ private fun VehicleUsageDialog(
     var performedBy by remember(vehicle.id, mode, currentUserLabel, defaultReservation?.userLabel, openTrip?.drivers) {
         mutableStateOf(defaultReservation?.userLabel.orEmpty().ifBlank { openTrip?.drivers.orEmpty().ifBlank { currentUserLabel } })
     }
-    var vehicleCondition by remember(vehicle.id, mode) { mutableStateOf("Uredno") }
+    var vehicleCondition by remember(vehicle.id, openTrip?.id) { mutableStateOf(openTrip?.condition.orEmpty().ifBlank { "Uredno" }) }
     var vehicleClean by remember(vehicle.id, mode) { mutableStateOf(true) }
     var documentsPresent by remember(vehicle.id, mode) { mutableStateOf(true) }
     var fuelOk by remember(vehicle.id, mode) { mutableStateOf(true) }
     var damageNoted by remember(vehicle.id, mode) { mutableStateOf(false) }
     var note by remember(vehicle.id, mode) { mutableStateOf("") }
-    val title = if (mode == "return") "Povrat vozila" else "Preuzimanje vozila"
+    val title = "My Trip"
     val reservationOptions = remember(reservations) {
         listOf("" to "Bez vezane rezervacije") + reservations.map { reservation ->
             reservation.id to listOf(
@@ -18388,8 +18388,20 @@ private fun VehicleUsageDialog(
             ).filter { it.isNotBlank() }.joinToString(" - ")
         }
     }
-    val workOrderOptions = remember(workOrders, openTrip?.linkedWorkOrderId, openTrip?.linkedWorkOrderNumber) {
+    val workOrderOptions = remember(workOrders, openTrip?.linkedWorkOrderId, openTrip?.linkedWorkOrderNumber, departureDate, currentUserLabel) {
+        val currentUserKey = currentUserLabel.trim().lowercase(Locale.getDefault())
+        val preferredDate = departureDate.trim()
         val baseOptions = workOrders
+            .sortedWith(
+                compareByDescending<WorkOrder> { workOrder -> workOrder.executionDate.trim() == preferredDate }
+                    .thenByDescending { workOrder ->
+                        currentUserKey.isNotBlank() && workOrder.executors.any { executor ->
+                            val normalized = executor.trim().lowercase(Locale.getDefault())
+                            normalized == currentUserKey || normalized.contains(currentUserKey) || currentUserKey.contains(normalized)
+                        }
+                    }
+                    .thenBy { workOrder -> workOrder.displayNumber },
+            )
             .take(250)
             .map { workOrder ->
                 workOrder.id to listOf(
@@ -18432,34 +18444,58 @@ private fun VehicleUsageDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    if (mode == "return") "Vrijeme povratka" else "Vrijeme polaska",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Black,
-                )
+                Text("My Trip podaci", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     WorkOrderDatePickerField(
-                        label = if (mode == "return") "Datum povratka" else "Datum polaska",
-                        value = actionDate,
-                        onChange = { actionDate = it },
+                        label = "Datum polaska",
+                        value = departureDate,
+                        onChange = { departureDate = it },
                         enabled = !isLoading,
                         modifier = Modifier.weight(1.28f),
                     )
                     WorkOrderSelectField(
-                        label = "Vrijeme",
-                        value = actionTime,
-                        valueLabel = actionTime,
+                        label = "Vrijeme polaska",
+                        value = departureTime,
+                        valueLabel = departureTime.ifBlank { "Odaberi" },
                         options = reservationTimeOptions,
                         enabled = !isLoading,
-                        onSelect = { nextTime -> actionTime = nextTime },
+                        onSelect = { nextTime -> departureTime = nextTime },
                         modifier = Modifier.weight(0.88f),
                     )
                 }
                 OutlinedTextField(
-                    value = odometerKm,
-                    onValueChange = { odometerKm = it.filter(Char::isDigit).take(8) },
+                    value = startKm,
+                    onValueChange = { startKm = it.filter(Char::isDigit).take(8) },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(if (mode == "return") "Krajnja KM" else "Početna KM") },
+                    label = { Text("Početna KM") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    shape = RoundedCornerShape(16.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WorkOrderDatePickerField(
+                        label = "Datum dolaska",
+                        value = returnDate,
+                        onChange = { returnDate = it },
+                        enabled = !isLoading,
+                        modifier = Modifier.weight(1.28f),
+                    )
+                    WorkOrderSelectField(
+                        label = "Vrijeme dolaska",
+                        value = returnTime,
+                        valueLabel = returnTime.ifBlank { "Otvoreno" },
+                        options = listOf("" to "Otvoreno") + reservationTimeOptions,
+                        enabled = !isLoading,
+                        onSelect = { nextTime -> returnTime = nextTime },
+                        modifier = Modifier.weight(0.88f),
+                    )
+                }
+                OutlinedTextField(
+                    value = endKm,
+                    onValueChange = { endKm = it.filter(Char::isDigit).take(8) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Krajnja KM") },
                     singleLine = true,
                     enabled = !isLoading,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -18478,14 +18514,6 @@ private fun VehicleUsageDialog(
                         }
                     }
                 }
-                WorkOrderSelectField(
-                    label = "Vezana rezervacija",
-                    value = reservationId,
-                    valueLabel = reservationOptions.firstOrNull { it.first == reservationId }?.second ?: "Bez vezane rezervacije",
-                    options = reservationOptions,
-                    enabled = !isLoading,
-                    onSelect = { reservationId = it },
-                )
                 WorkOrderSelectField(
                     label = "Povezani RN",
                     value = linkedWorkOrderId,
@@ -18509,7 +18537,7 @@ private fun VehicleUsageDialog(
                     }
                 }
                 WorkOrderTextField(
-                    if (mode == "return") "Stanje vozila pri povratku" else "Stanje vozila pri polasku",
+                    "Stanje vozila / napomena",
                     vehicleCondition,
                     { vehicleCondition = it },
                     !isLoading,
@@ -18541,8 +18569,7 @@ private fun VehicleUsageDialog(
                 VehicleChecklistRow("Gorivo / baterija uredno", fuelOk, !isLoading) { fuelOk = it }
                 VehicleChecklistRow("Oštećenje evidentirano", damageNoted, !isLoading) { damageNoted = it }
                 WorkOrderTextField("Napomena", note, { note = it }, !isLoading)
-                if (mode == "return") {
-                    Text("Dokumenti povrata", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                Text("Dokumenti i potpis", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = startReturnScan,
@@ -18692,7 +18719,6 @@ private fun VehicleUsageDialog(
                             }
                         }
                     }
-                }
             }
         },
         confirmButton = {
@@ -18709,7 +18735,16 @@ private fun VehicleUsageDialog(
                     }
                     val linkedWorkOrderNumber = workOrders.firstOrNull { it.id == finalLinkedWorkOrderId }?.displayNumber
                         ?: openTrip?.linkedWorkOrderNumber.orEmpty()
-                    val signatureBytes = if (mode == "return" && signatureStrokes.isNotEmpty()) {
+                    val finalDepartureAt = formatReservationDateTime(departureDate, departureTime)
+                    val finalReturnAt = if (returnDate.isNotBlank() && returnTime.isNotBlank()) {
+                        formatReservationDateTime(returnDate, returnTime)
+                    } else {
+                        ""
+                    }
+                    val finalStartKm = startKm.trim()
+                    val finalEndKm = endKm.trim()
+                    val finalOdometerKm = finalEndKm.ifBlank { finalStartKm }
+                    val signatureBytes = if (signatureStrokes.isNotEmpty()) {
                         renderSignaturePng(
                             signatureStrokes,
                             signaturePadSize.width.toInt().coerceAtLeast(480),
@@ -18719,10 +18754,14 @@ private fun VehicleUsageDialog(
                         null
                     }
                     onConfirm(
-                        mode,
-                        if (mode == "return") openTrip?.id.orEmpty() else "",
-                        formatReservationDateTime(actionDate, actionTime),
-                        odometerKm.trim(),
+                        "trip",
+                        openTrip?.id.orEmpty(),
+                        finalReturnAt.ifBlank { finalDepartureAt },
+                        finalOdometerKm,
+                        finalDepartureAt,
+                        finalReturnAt,
+                        finalStartKm,
+                        finalEndKm,
                         finalDestination,
                         finalReservationId,
                         finalLinkedWorkOrderId,
@@ -18738,10 +18777,16 @@ private fun VehicleUsageDialog(
                         signatureBytes,
                     )
                 },
-                enabled = !isLoading && odometerKm.isNotBlank() && (mode == "return" || destination.isNotBlank()),
+                enabled = !isLoading &&
+                    startKm.isNotBlank() &&
+                    destination.isNotBlank() &&
+                    (
+                        (returnDate.isBlank() && returnTime.isBlank() && endKm.isBlank()) ||
+                            (returnDate.isNotBlank() && returnTime.isNotBlank() && endKm.isNotBlank())
+                        ),
                 shape = RoundedCornerShape(16.dp),
             ) {
-                Text(if (mode == "return") "Spremi povrat" else "Spremi preuzimanje", fontWeight = FontWeight.Black)
+                Text("Spremi My Trip", fontWeight = FontWeight.Black)
             }
         },
         dismissButton = {

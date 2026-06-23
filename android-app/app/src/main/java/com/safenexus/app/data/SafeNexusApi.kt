@@ -457,6 +457,10 @@ class SafeNexusApi(
         tripId: String,
         actionAt: String,
         odometerKm: String,
+        departureAt: String,
+        returnAt: String,
+        startKm: String,
+        endKm: String,
         destination: String,
         reservationId: String,
         linkedWorkOrderId: String,
@@ -494,7 +498,10 @@ class SafeNexusApi(
                 .put("tripId", tripId)
                 .put("activityItemId", tripId)
                 .put("actionAt", actionAt)
-                .put(if (mode == "return") "returnAt" else "departureAt", actionAt)
+                .put("departureAt", departureAt.ifBlank { actionAt })
+                .put("returnAt", returnAt)
+                .put("startKm", startKm.ifBlank { odometerKm })
+                .put("endKm", endKm)
                 .put("odometerKm", odometerKm)
                 .put("destination", destination)
                 .put("reservationId", reservationId)

@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.203.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.204.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25034,6 +25034,7 @@ function buildMobileVehicleRecord(item = {}) {
   const nowValue = new Date().toISOString();
   const availabilityStatus = getVehicleAvailabilityStatus(item, nowValue);
   const nextReservation = getVehicleNextReservation(item, nowValue);
+  const openTrip = findOpenVehicleTrip(item, {}, null);
   const reservations = sortVehicleReservations(item?.reservations ?? [], nowValue)
     .filter((reservation) => {
       const endTimestamp = Date.parse(reservation?.endAt ?? "");
@@ -25085,11 +25086,18 @@ function buildMobileVehicleRecord(item = {}) {
       ...record.meta,
       baseStatus: normalizeInputValue(item?.status),
       availabilityStatus,
-      availabilityLabel: availabilityStatus === "reserved"
-        ? "Rezervirano"
-        : availabilityStatus === "service"
+      availabilityLabel: openTrip
+        ? "Aktivan put"
+        : availabilityStatus === "reserved"
+          ? "Rezervirano"
+          : availabilityStatus === "service"
           ? "Servis"
           : "Dostupno",
+      openTripId: normalizeInputValue(openTrip?.id),
+      openTripDestination: normalizeInputValue(openTrip?.destination),
+      openTripDrivers: Array.isArray(openTrip?.driverLabels)
+        ? openTrip.driverLabels.map(normalizeInputValue).filter(Boolean).join(", ")
+        : normalizeInputValue(openTrip?.performedBy),
       nextReservationId: normalizeInputValue(nextReservation?.id),
       nextReservationStatus: normalizeInputValue(nextReservation?.status),
       nextReservationPurpose: normalizeInputValue(nextReservation?.purpose),
@@ -25674,6 +25682,9 @@ async function buildMobileDocumentRecords(scopedSnapshot = {}) {
 
 function resolveVehicleUsageMode(value = "") {
   const normalized = normalizeInputValue(value).toLowerCase();
+  if (["trip", "my_trip", "mytrip", "vehicle_trip", "put", "putovanje"].includes(normalized)) {
+    return "trip";
+  }
   if (["return", "checkin", "check_in", "vracanje", "povrat"].includes(normalized)) {
     return "return";
   }
@@ -26059,9 +26070,145 @@ function buildVehicleUsagePatchLegacy(vehicle = {}, body = {}, user = {}) {
   return patch;
 }
 
+function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, options = {}) {
+  const nowValue = new Date().toISOString();
+  const canManageVehicles = Boolean(options?.canManageVehicles);
+  const requestedTripId = normalizeInputValue(body.tripId || body.activityItemId);
+  const activityItems = Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [];
+  const activeOpenTrip = findOpenVehicleTrip(vehicle, {}, null);
+  const openTrip = findOpenVehicleTrip(vehicle, body, null);
+
+  if (activeOpenTrip && requestedTripId && String(activeOpenTrip.id) !== requestedTripId && !canManageVehicles) {
+    throw new Error("Vozilo ima aktivan put i ne moze se pokrenuti novi dok se postojeci ne zatvori.");
+  }
+  if (activeOpenTrip && !requestedTripId && !vehicleUsageTripBelongsToUser(activeOpenTrip, user) && !canManageVehicles) {
+    throw new Error("Vozilo ima aktivan put kod drugog korisnika.");
+  }
+  if (activeOpenTrip && isTruthyVehicleUsageFlag(body.forceNewTrip || body.newTrip)) {
+    throw new Error("Vozilo vec ima aktivan put. Prvo zatvori postojeci put.");
+  }
+  if (openTrip && !canManageVehicles && !vehicleUsageTripBelongsToUser(openTrip, user)) {
+    throw new Error("Samo korisnik koji je pokrenuo put moze mijenjati ovaj put.");
+  }
+
+  const requestedDepartureAt = normalizeInputValue(body.departureAt || body.actionAt || body.performedAt);
+  const parsedDepartureAt = requestedDepartureAt ? Date.parse(requestedDepartureAt) : Number.NaN;
+  const departureAt = Number.isFinite(parsedDepartureAt)
+    ? new Date(parsedDepartureAt).toISOString()
+    : normalizeInputValue(openTrip?.departureAt || openTrip?.createdAt || nowValue);
+  const requestedReturnAt = normalizeInputValue(body.returnAt || body.completedAt);
+  const parsedReturnAt = requestedReturnAt ? Date.parse(requestedReturnAt) : Number.NaN;
+  const explicitCompleted = normalizeInputValue(body.tripStatus).toLowerCase() === "completed";
+  const returnAt = Number.isFinite(parsedReturnAt)
+    ? new Date(parsedReturnAt).toISOString()
+    : explicitCompleted
+      ? nowValue
+      : normalizeInputValue(openTrip?.returnAt || "");
+  const performer = getVehicleUsagePerformerLabel(user, body);
+  const actorUserId = getVehicleUsageUserId(user);
+  const actorLabel = getVehicleUsageUserLabel(user) || performer;
+  const existingDriverLabels = Array.isArray(openTrip?.driverLabels)
+    ? openTrip.driverLabels.map((value) => normalizeInputValue(value)).filter(Boolean)
+    : [];
+  const requestedDriverLabels = getVehicleUsageDriverLabels(user, body, null);
+  const driverLabels = requestedDriverLabels.length ? requestedDriverLabels : existingDriverLabels;
+  const destination = getVehicleUsageDestination(body, null, openTrip);
+  const startKm = normalizeInputValue(body.startKm || (!openTrip ? body.odometerKm : "") || openTrip?.startKm || openTrip?.odometerKm);
+  const endKm = normalizeInputValue(body.endKm || (returnAt ? body.odometerKm : "") || openTrip?.endKm);
+  if (!startKm) {
+    throw new Error("Upisi pocetnu kilometrazu vozila.");
+  }
+  if (returnAt && !endKm) {
+    throw new Error("Za zatvaranje puta upisi krajnju kilometrazu vozila.");
+  }
+  if (endKm && !returnAt) {
+    throw new Error("Za krajnju kilometrazu upisi datum i vrijeme dolaska.");
+  }
+  const odometerKm = endKm || startKm;
+  const tripCompleted = Boolean(returnAt && endKm);
+  const conditionMode = tripCompleted ? "return" : "checkout";
+  const condition = buildVehicleUsageCondition(body, conditionMode);
+  const linkedWorkOrderId = normalizeInputValue(body.linkedWorkOrderId || body.workOrderId || openTrip?.linkedWorkOrderId || openTrip?.workOrderId);
+  const linkedWorkOrderNumber = normalizeInputValue(body.linkedWorkOrderNumber || body.workOrderNumber || openTrip?.linkedWorkOrderNumber || openTrip?.workOrderNumber);
+  const linkedWorkOrderIds = getVehicleUsageLinkedWorkOrderIds(body, openTrip);
+  const linkedWorkOrderNumbers = getVehicleUsageLinkedWorkOrderNumbers(body, openTrip);
+  const usageFiles = normalizeVehicleUsageDocumentFiles(body.files);
+  const usageFileSummaries = usageFiles.map(stripVehicleUsageDocumentPayload);
+  const signatureDataUrl = normalizeVehicleUsageSignatureDataUrl(body.signatureDataUrl || body.signature || body.returnSignatureDataUrl);
+
+  const nextTrip = {
+    ...(openTrip || {}),
+    id: normalizeInputValue(openTrip?.id || requestedTripId) || randomUUID(),
+    activityType: "vehicle_trip",
+    performedOn: departureAt.slice(0, 10),
+    performedBy: driverLabels.join(", ") || performer,
+    odometerKm,
+    workSummary: "Putovanje vozila",
+    reservationId: normalizeInputValue(openTrip?.reservationId || body.reservationId),
+    tripStatus: tripCompleted ? "completed" : "open",
+    departureAt,
+    returnAt,
+    destination,
+    driverLabels,
+    startKm,
+    endKm,
+    vehicleCondition: condition || normalizeInputValue(openTrip?.vehicleCondition),
+    departureCondition: normalizeInputValue(body.departureCondition)
+      || (!tripCompleted ? condition : "")
+      || normalizeInputValue(openTrip?.departureCondition || openTrip?.vehicleCondition),
+    returnCondition: normalizeInputValue(body.returnCondition)
+      || (tripCompleted ? condition : "")
+      || normalizeInputValue(openTrip?.returnCondition),
+    linkedWorkOrderId,
+    linkedWorkOrderNumber,
+    linkedWorkOrderIds,
+    linkedWorkOrderNumbers,
+    checkedOutByUserId: normalizeInputValue(openTrip?.checkedOutByUserId || openTrip?.userId || actorUserId),
+    checkedOutByLabel: normalizeInputValue(openTrip?.checkedOutByLabel || openTrip?.performedBy || actorLabel),
+    returnedByUserId: tripCompleted ? actorUserId : normalizeInputValue(openTrip?.returnedByUserId),
+    returnedByLabel: tripCompleted ? actorLabel : normalizeInputValue(openTrip?.returnedByLabel),
+    signatureDataUrl: signatureDataUrl || normalizeInputValue(openTrip?.signatureDataUrl || openTrip?.returnSignatureDataUrl),
+    signatureLabel: signatureDataUrl ? actorLabel : normalizeInputValue(openTrip?.signatureLabel),
+    signatureAt: signatureDataUrl ? nowValue : normalizeInputValue(openTrip?.signatureAt),
+    documents: [
+      ...(Array.isArray(openTrip?.documents) ? openTrip.documents : []),
+      ...usageFileSummaries,
+    ],
+    note: normalizeInputValue(body.note || openTrip?.note),
+    createdAt: normalizeInputValue(openTrip?.createdAt || nowValue),
+    updatedAt: nowValue,
+  };
+
+  const patch = {
+    odometerKm,
+    activityItems: openTrip
+      ? activityItems.map((item) => (String(item.id) === String(openTrip.id) ? nextTrip : item))
+      : [nextTrip, ...activityItems],
+  };
+
+  return {
+    patch,
+    mode: "trip",
+    linkedWorkOrderIds,
+    linkedWorkOrderNumbers,
+    files: usageFiles,
+    tripSummary: {
+      vehicleLabel: normalizeInputValue(vehicle.plateNumber || vehicle.name || "Vozilo"),
+      destination,
+      departureAt,
+      returnAt,
+      drivers: driverLabels.join(", ") || performer,
+      workOrders: linkedWorkOrderNumbers,
+    },
+  };
+}
+
 function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}) {
   const nowValue = new Date().toISOString();
   let mode = resolveVehicleUsageMode(body.mode || body.usageMode);
+  if (mode === "trip") {
+    return buildVehicleUnifiedTripPatch(vehicle, body, user, options);
+  }
   const odometerKm = normalizeInputValue(body.odometerKm || body.endKm || body.startKm);
   if (!odometerKm) {
     throw new Error("Upisi kilometrazu vozila.");

@@ -4111,6 +4111,10 @@ const vehicleUsageModeInput = document.querySelector("#vehicle-usage-mode");
 const vehicleUsageVehicleLabelInput = document.querySelector("#vehicle-usage-vehicle-label");
 const vehicleUsageOdometerKmInput = document.querySelector("#vehicle-usage-odometer-km");
 const vehicleUsageOdometerLabel = document.querySelector("#vehicle-usage-odometer-label");
+const vehicleUsageDepartureAtInput = document.querySelector("#vehicle-usage-departure-at");
+const vehicleUsageStartKmInput = document.querySelector("#vehicle-usage-start-km");
+const vehicleUsageReturnAtInput = document.querySelector("#vehicle-usage-return-at");
+const vehicleUsageEndKmInput = document.querySelector("#vehicle-usage-end-km");
 const vehicleUsageReservationIdInput = document.querySelector("#vehicle-usage-reservation-id");
 const vehicleUsageWorkOrderIdInput = document.querySelector("#vehicle-usage-work-order-id");
 const vehicleUsagePerformedByInput = document.querySelector("#vehicle-usage-performed-by");
@@ -106550,11 +106554,49 @@ function getVehicleTripLinkedWorkOrder(trip = {}) {
   return (state.workOrders ?? []).find((item) => String(item.id) === linkedId) ?? null;
 }
 
-function buildVehicleTripWorkOrderOptions(selectedValue = "") {
+function buildVehicleTripWorkOrderOptions(selectedValue = "", preferredDate = "") {
   const selectedId = String(selectedValue || "").trim();
+  const dayKey = String(preferredDate || "").trim().slice(0, 10);
+  const currentUserLabels = [
+    state.user?.fullName,
+    state.user?.displayName,
+    state.user?.username,
+    state.user?.email,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  const isAssignedToCurrentUser = (workOrder = {}) => {
+    const labels = [
+      ...(Array.isArray(workOrder.executors) ? workOrder.executors : []),
+      workOrder.executor,
+      workOrder.executor1,
+      workOrder.executor2,
+      workOrder.assignedTo,
+    ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+    return labels.some((label) => currentUserLabels.some((userLabel) => label === userLabel || label.includes(userLabel) || userLabel.includes(label)));
+  };
+  const getWorkOrderExecutionDay = (workOrder = {}) => String(
+    workOrder.executionDate
+      || workOrder.execution_date
+      || workOrder.executionAt
+      || workOrder.plannedExecutionDate
+      || "",
+  ).slice(0, 10);
+  const ranked = sortWorkOrders(state.workOrders ?? [])
+    .map((workOrder) => {
+      const executionDay = getWorkOrderExecutionDay(workOrder);
+      const rank = [
+        dayKey && executionDay === dayKey ? 0 : 1,
+        isAssignedToCurrentUser(workOrder) ? 0 : 1,
+      ];
+      return { workOrder, rank };
+    })
+    .sort((left, right) => (
+      left.rank[0] - right.rank[0]
+      || left.rank[1] - right.rank[1]
+      || String(left.workOrder.workOrderNumber || left.workOrder.displayNumber || "").localeCompare(String(right.workOrder.workOrderNumber || right.workOrder.displayNumber || ""))
+    ));
   return [
     { value: "", label: "Bez povezanog RN-a" },
-    ...sortWorkOrders(state.workOrders ?? []).slice(0, 250).map((workOrder) => ({
+    ...ranked.slice(0, 250).map(({ workOrder }) => ({
       value: String(workOrder.id || ""),
       label: getVehicleTripWorkOrderLabel(workOrder),
     })),
@@ -106969,7 +107011,7 @@ function buildVehicleReservationPayload() {
 }
 
 function getVehicleUsageModeLabel(mode = "") {
-  return String(mode || "").trim().toLowerCase() === "return" ? "Povrat vozila" : "Preuzimanje vozila";
+  return "My Trip";
 }
 
 function findVehicleUsageDefaultReservation(vehicle = {}, mode = "checkout") {
@@ -107001,6 +107043,24 @@ function findVehicleOpenTripDraft(vehicle = {}, reservationId = "") {
   return trips[0] || null;
 }
 
+function vehicleTripDraftBelongsToCurrentUser(trip = {}) {
+  const labels = [
+    ...(Array.isArray(trip.driverLabels) ? trip.driverLabels : []),
+    trip.performedBy,
+    trip.checkedOutByLabel,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  const currentLabels = [
+    state.user?.fullName,
+    state.user?.displayName,
+    state.user?.username,
+    state.user?.email,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  if (!labels.length || !currentLabels.length) {
+    return false;
+  }
+  return labels.some((label) => currentLabels.some((current) => label === current || label.includes(current) || current.includes(label)));
+}
+
 function getVehicleUsageRecentDestinations(vehicle = {}, defaultReservation = null, openTrip = null) {
   return [
     defaultReservation?.destination,
@@ -107028,15 +107088,15 @@ function getVehicleUsageRecentDrivers(vehicle = {}, defaultReservation = null, o
     .slice(0, 5);
 }
 
-function buildVehicleUsageWorkOrderOptions(selectedValue = "") {
-  return buildVehicleTripWorkOrderOptions(selectedValue);
+function buildVehicleUsageWorkOrderOptions(selectedValue = "", preferredDate = "") {
+  return buildVehicleTripWorkOrderOptions(selectedValue, preferredDate);
 }
 
-function rebuildVehicleUsageWorkOrderOptions(selectedValue = "") {
+function rebuildVehicleUsageWorkOrderOptions(selectedValue = "", preferredDate = "") {
   if (!vehicleUsageWorkOrderIdInput) {
     return;
   }
-  replaceSelectOptions(vehicleUsageWorkOrderIdInput, buildVehicleUsageWorkOrderOptions(selectedValue), selectedValue);
+  replaceSelectOptions(vehicleUsageWorkOrderIdInput, buildVehicleUsageWorkOrderOptions(selectedValue, preferredDate), selectedValue);
 }
 
 function renderVehicleUsageQuickActions(vehicle = {}, safeMode = "checkout", defaultReservation = null, openTrip = null) {
@@ -107216,12 +107276,16 @@ function getVehicleUsageSignatureDataUrl() {
 function resetVehicleUsageForm() {
   vehicleUsageForm?.reset();
   if (vehicleUsageVehicleIdInput) vehicleUsageVehicleIdInput.value = "";
-  if (vehicleUsageModeInput) vehicleUsageModeInput.value = "checkout";
+  if (vehicleUsageModeInput) vehicleUsageModeInput.value = "trip";
   if (vehicleUsageVehicleLabelInput) vehicleUsageVehicleLabelInput.value = "";
   if (vehicleUsageOdometerKmInput) vehicleUsageOdometerKmInput.value = "";
+  if (vehicleUsageDepartureAtInput) vehicleUsageDepartureAtInput.value = "";
+  if (vehicleUsageStartKmInput) vehicleUsageStartKmInput.value = "";
+  if (vehicleUsageReturnAtInput) vehicleUsageReturnAtInput.value = "";
+  if (vehicleUsageEndKmInput) vehicleUsageEndKmInput.value = "";
   if (vehicleUsageOdometerLabel) vehicleUsageOdometerLabel.textContent = "Početna KM";
   if (vehicleUsageDestinationLabel) vehicleUsageDestinationLabel.textContent = "Lokacija gdje se ide";
-  if (vehicleUsageConditionLabel) vehicleUsageConditionLabel.textContent = "Stanje vozila pri polasku";
+  if (vehicleUsageConditionLabel) vehicleUsageConditionLabel.textContent = "Stanje vozila / napomena";
   if (vehicleUsageConditionInput) vehicleUsageConditionInput.value = "";
   if (vehicleUsagePerformedByInput) {
     vehicleUsagePerformedByInput.value = state.user?.fullName || state.user?.email || state.user?.username || "";
@@ -107234,38 +107298,44 @@ function resetVehicleUsageForm() {
   vehicleUsageReturnFiles = [];
   renderVehicleUsageReturnFiles();
   clearVehicleUsageSignatureCanvas();
-  if (vehicleUsageReturnDocumentsPanel) vehicleUsageReturnDocumentsPanel.hidden = true;
-  if (vehicleUsageSignaturePanel) vehicleUsageSignaturePanel.hidden = true;
+  if (vehicleUsageReturnDocumentsPanel) vehicleUsageReturnDocumentsPanel.hidden = false;
+  if (vehicleUsageSignaturePanel) vehicleUsageSignaturePanel.hidden = false;
   rebuildVehicleUsageReservationOptions({}, "");
   rebuildVehicleUsageWorkOrderOptions("");
   vehicleUsageQuickActions?.replaceChildren();
 }
 
 function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationId = "" } = {}) {
-  const safeMode = String(mode || "").trim().toLowerCase() === "return" ? "return" : "checkout";
+  const safeMode = "trip";
   const defaultReservation = reservationId
     ? (vehicle.reservations ?? []).find((reservation) => String(reservation.id) === String(reservationId))
-    : findVehicleUsageDefaultReservation(vehicle, safeMode);
+    : findVehicleUsageDefaultReservation(vehicle, "checkout");
   const openTrip = findVehicleOpenTripDraft(vehicle, defaultReservation?.id || reservationId || "");
   const selectedWorkOrderId = openTrip?.linkedWorkOrderId || "";
+  const nowLocal = toDateTimeLocalInputValue(new Date().toISOString());
+  const departureAt = toDateTimeLocalInputValue(openTrip?.departureAt || defaultReservation?.startAt || new Date().toISOString());
+  const returnAt = toDateTimeLocalInputValue(openTrip?.returnAt || "");
+  const preferredWorkOrderDate = (departureAt || nowLocal).slice(0, 10);
 
   if (vehicleUsageVehicleIdInput) vehicleUsageVehicleIdInput.value = vehicle.id || "";
   if (vehicleUsageModeInput) vehicleUsageModeInput.value = safeMode;
   if (vehicleUsageTitle) vehicleUsageTitle.textContent = getVehicleUsageModeLabel(safeMode);
-  if (vehicleUsageSubmitButton) vehicleUsageSubmitButton.textContent = safeMode === "return" ? "Spremi povrat" : "Spremi preuzimanje";
-  if (vehicleUsageOdometerLabel) vehicleUsageOdometerLabel.textContent = safeMode === "return" ? "Krajnja KM" : "Početna KM";
+  if (vehicleUsageSubmitButton) vehicleUsageSubmitButton.textContent = openTrip ? "Spremi My Trip" : "Pokreni My Trip";
+  if (vehicleUsageOdometerLabel) vehicleUsageOdometerLabel.textContent = "Kilometraža";
   if (vehicleUsageDestinationLabel) vehicleUsageDestinationLabel.textContent = "Lokacija gdje se ide";
   if (vehicleUsageConditionLabel) {
-    vehicleUsageConditionLabel.textContent = safeMode === "return" ? "Stanje vozila pri povratku" : "Stanje vozila pri polasku";
+    vehicleUsageConditionLabel.textContent = "Stanje vozila / napomena";
   }
   if (vehicleUsageVehicleLabelInput) {
     vehicleUsageVehicleLabelInput.value = [vehicle.plateNumber, vehicle.name].filter(Boolean).join(" | ") || "Vozilo";
   }
-  if (vehicleUsageOdometerKmInput) vehicleUsageOdometerKmInput.value = String(vehicle.odometerKm ?? "");
+  if (vehicleUsageDepartureAtInput) vehicleUsageDepartureAtInput.value = departureAt;
+  if (vehicleUsageReturnAtInput) vehicleUsageReturnAtInput.value = returnAt;
+  if (vehicleUsageStartKmInput) vehicleUsageStartKmInput.value = String(openTrip?.startKm || openTrip?.odometerKm || vehicle.odometerKm || "");
+  if (vehicleUsageEndKmInput) vehicleUsageEndKmInput.value = String(openTrip?.endKm || "");
+  if (vehicleUsageOdometerKmInput) vehicleUsageOdometerKmInput.value = String(openTrip?.endKm || openTrip?.startKm || vehicle.odometerKm || "");
   if (vehicleUsageDestinationInput) {
-    vehicleUsageDestinationInput.value = safeMode === "return"
-      ? openTrip?.destination || defaultReservation?.destination || ""
-      : defaultReservation?.destination || openTrip?.destination || "";
+    vehicleUsageDestinationInput.value = openTrip?.destination || defaultReservation?.destination || "";
   }
   if (vehicleUsagePerformedByInput) {
     vehicleUsagePerformedByInput.value = defaultReservation?.reservedForLabel
@@ -107280,38 +107350,41 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   if (vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
   if (vehicleUsageDamageInput) vehicleUsageDamageInput.checked = false;
   if (vehicleUsageConditionInput) {
-    vehicleUsageConditionInput.value = "Uredno";
-    vehicleUsageConditionInput.placeholder = safeMode === "return"
-      ? "Stanje pri povratku, oštećenje, oprema..."
-      : "Stanje pri polasku, oprema, napomena...";
+    vehicleUsageConditionInput.value = getVehicleTripCondition(openTrip || {}) || "Uredno";
+    vehicleUsageConditionInput.placeholder = "Stanje vozila, oprema, oštećenje ili napomena...";
   }
   if (vehicleUsageNoteInput) vehicleUsageNoteInput.value = "";
   if (vehicleUsageError) vehicleUsageError.textContent = "";
   vehicleUsageReturnFiles = [];
   renderVehicleUsageReturnFiles();
   clearVehicleUsageSignatureCanvas();
-  if (vehicleUsageReturnDocumentsPanel) vehicleUsageReturnDocumentsPanel.hidden = safeMode !== "return";
-  if (vehicleUsageSignaturePanel) vehicleUsageSignaturePanel.hidden = safeMode !== "return";
-  rebuildVehicleUsageReservationOptions(vehicle, defaultReservation?.id || reservationId || "");
-  rebuildVehicleUsageWorkOrderOptions(selectedWorkOrderId);
+  if (vehicleUsageReturnDocumentsPanel) vehicleUsageReturnDocumentsPanel.hidden = false;
+  if (vehicleUsageSignaturePanel) vehicleUsageSignaturePanel.hidden = false;
+  rebuildVehicleUsageReservationOptions(vehicle, openTrip?.reservationId || "");
+  rebuildVehicleUsageWorkOrderOptions(selectedWorkOrderId, preferredWorkOrderDate);
   renderVehicleUsageQuickActions(vehicle, safeMode, defaultReservation, openTrip);
 }
 
 function buildVehicleUsagePayload() {
-  const mode = vehicleUsageModeInput?.value || "checkout";
+  const mode = "trip";
   const reservationId = vehicleUsageReservationIdInput?.value || "";
   const activeVehicle = getActiveVehicle();
-  const openTrip = mode === "return" && activeVehicle
-    ? findVehicleOpenTripDraft(activeVehicle, reservationId)
-    : null;
+  const openTrip = activeVehicle ? findVehicleOpenTripDraft(activeVehicle, reservationId) : null;
   const linkedWorkOrderId = vehicleUsageWorkOrderIdInput?.value || "";
   const linkedWorkOrder = (state.workOrders ?? []).find((item) => String(item.id) === String(linkedWorkOrderId)) ?? null;
   const finalLinkedWorkOrderId = linkedWorkOrderId || openTrip?.linkedWorkOrderId || "";
+  const endKm = String(vehicleUsageEndKmInput?.value || "").trim();
+  const startKm = String(vehicleUsageStartKmInput?.value || "").trim();
+  const odometerKm = endKm || startKm || vehicleUsageOdometerKmInput?.value || "";
   return {
     mode,
     tripId: openTrip?.id || "",
     activityItemId: openTrip?.id || "",
-    odometerKm: vehicleUsageOdometerKmInput?.value || "",
+    departureAt: vehicleUsageDepartureAtInput?.value || openTrip?.departureAt || "",
+    returnAt: vehicleUsageReturnAtInput?.value || "",
+    startKm,
+    endKm,
+    odometerKm,
     reservationId: reservationId || openTrip?.reservationId || "",
     linkedWorkOrderId: finalLinkedWorkOrderId,
     linkedWorkOrderNumber: linkedWorkOrder
@@ -107338,7 +107411,7 @@ function openVehicleUsageComposer(vehicle, options = {}) {
   hydrateVehicleUsageForm(vehicle, options);
   openVehicleUsageEditor();
   requestAnimationFrame(() => {
-    vehicleUsageOdometerKmInput?.focus({ preventScroll: true });
+    vehicleUsageStartKmInput?.focus({ preventScroll: true });
   });
 }
 
@@ -108102,27 +108175,20 @@ function renderVehiclesModule() {
       });
     });
     actions.append(reserveButton);
-    const checkoutButton = document.createElement("button");
-    checkoutButton.type = "button";
-    checkoutButton.className = "ghost-button";
-    checkoutButton.textContent = "Preuzmi";
-    checkoutButton.hidden = !canReserveVehicles;
-    checkoutButton.disabled = !canReserveVehicles || isServiceVehicle;
-    checkoutButton.addEventListener("click", (event) => {
+    const openTrip = findVehicleOpenTripDraft(vehicle);
+    const myTripAllowed = !openTrip || vehicleTripDraftBelongsToCurrentUser(openTrip) || getCanManageVehicles();
+    const myTripButton = document.createElement("button");
+    myTripButton.type = "button";
+    myTripButton.className = "ghost-button";
+    myTripButton.textContent = openTrip ? "My Trip" : "Pokreni put";
+    myTripButton.hidden = !canReserveVehicles;
+    myTripButton.disabled = !canReserveVehicles || isServiceVehicle || !myTripAllowed;
+    myTripButton.title = !myTripAllowed ? "Vozilo ima aktivan put kod drugog korisnika." : "";
+    myTripButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      openVehicleUsageComposer(vehicle, { mode: "checkout" });
+      openVehicleUsageComposer(vehicle, { mode: "trip" });
     });
-    const returnButton = document.createElement("button");
-    returnButton.type = "button";
-    returnButton.className = "ghost-button";
-    returnButton.textContent = "Vrati";
-    returnButton.hidden = !canReserveVehicles;
-    returnButton.disabled = !canReserveVehicles || isServiceVehicle;
-    returnButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openVehicleUsageComposer(vehicle, { mode: "return" });
-    });
-    actions.append(checkoutButton, returnButton);
+    actions.append(myTripButton);
     const evidenceButton = document.createElement("button");
     evidenceButton.type = "button";
     evidenceButton.className = "ghost-button";
@@ -108226,10 +108292,10 @@ function renderVehiclesModule() {
       const usageButton = document.createElement("button");
       usageButton.type = "button";
       usageButton.className = "ghost-button";
-      usageButton.textContent = String(reservation.status || "").toLowerCase() === "checked_out" ? "Vrati" : "Preuzmi";
+      usageButton.textContent = "My Trip";
       usageButton.addEventListener("click", () => {
         openVehicleUsageComposer(reservationVehicle, {
-          mode: String(reservation.status || "").toLowerCase() === "checked_out" ? "return" : "checkout",
+          mode: "trip",
           reservationId: reservation.id,
         });
       });
@@ -131046,10 +131112,15 @@ vehicleUsageAddFilesButton?.addEventListener("click", () => vehicleUsageFileInpu
     }
     void queueVehicleUsageReturnFiles(selected).catch((error) => {
       if (vehicleUsageError) {
-        vehicleUsageError.textContent = error?.message || "Ne mogu dodati dokumente povrata.";
+        vehicleUsageError.textContent = error?.message || "Ne mogu dodati dokumente putovanja.";
       }
     });
   });
+});
+
+vehicleUsageDepartureAtInput?.addEventListener("change", () => {
+  const selectedValue = vehicleUsageWorkOrderIdInput?.value || "";
+  rebuildVehicleUsageWorkOrderOptions(selectedValue, vehicleUsageDepartureAtInput.value.slice(0, 10));
 });
 
 vehicleUsageSignatureClearButton?.addEventListener("click", clearVehicleUsageSignatureCanvas);
@@ -131106,14 +131177,28 @@ vehicleUsageForm?.addEventListener("submit", (event) => {
   }
 
   const payload = buildVehicleUsagePayload();
-  if (!String(payload.odometerKm || "").trim()) {
+  if (!String(payload.startKm || "").trim()) {
     if (vehicleUsageError) {
-      vehicleUsageError.textContent = "Upiši kilometražu vozila.";
+      vehicleUsageError.textContent = "Upiši početnu kilometražu vozila.";
     }
     return;
   }
 
-  if (String(payload.mode || "").trim().toLowerCase() !== "return" && !String(payload.destination || "").trim()) {
+  if (String(payload.returnAt || "").trim() && !String(payload.endKm || "").trim()) {
+    if (vehicleUsageError) {
+      vehicleUsageError.textContent = "Za zatvaranje puta upiši krajnju kilometražu.";
+    }
+    return;
+  }
+
+  if (String(payload.endKm || "").trim() && !String(payload.returnAt || "").trim()) {
+    if (vehicleUsageError) {
+      vehicleUsageError.textContent = "Za krajnju kilometražu upiši datum i vrijeme dolaska.";
+    }
+    return;
+  }
+
+  if (!String(payload.destination || "").trim()) {
     if (vehicleUsageError) {
       vehicleUsageError.textContent = "Upiši lokaciju gdje se ide.";
     }

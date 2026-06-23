@@ -7372,25 +7372,35 @@
                         <input id="vehicle-usage-vehicle-label" type="text" readonly />
                       </label>
                       <label class="field">
-                        <span id="vehicle-usage-odometer-label">Kilometraža</span>
-                        <input id="vehicle-usage-odometer-km" type="number" min="0" step="1" inputmode="numeric" required />
-                      </label>
-                      <label class="field field-span-full">
-                        <span>Vezana rezervacija</span>
-                        <select id="vehicle-usage-reservation-id"></select>
-                      </label>
-                      <label class="field field-span-full">
-                        <span>Povezani RN</span>
-                        <select id="vehicle-usage-work-order-id"></select>
+                        <span>Korisnici vozila</span>
+                        <input id="vehicle-usage-performed-by" type="text" maxlength="180" />
                       </label>
                       <label class="field">
-                        <span>Korisnik vozila</span>
-                        <input id="vehicle-usage-performed-by" type="text" maxlength="180" />
+                        <span>Datum i vrijeme polaska</span>
+                        <input id="vehicle-usage-departure-at" type="datetime-local" required />
+                      </label>
+                      <label class="field">
+                        <span>Početna KM</span>
+                        <input id="vehicle-usage-start-km" type="number" min="0" step="1" inputmode="numeric" required />
+                      </label>
+                      <label class="field">
+                        <span>Datum i vrijeme povratka</span>
+                        <input id="vehicle-usage-return-at" type="datetime-local" />
+                      </label>
+                      <label class="field">
+                        <span>Krajnja KM</span>
+                        <input id="vehicle-usage-end-km" type="number" min="0" step="1" inputmode="numeric" />
                       </label>
                       <label class="field">
                         <span id="vehicle-usage-destination-label">Lokacija gdje se ide</span>
                         <input id="vehicle-usage-destination" type="text" maxlength="180" />
                       </label>
+                      <label class="field">
+                        <span>Povezani RN</span>
+                        <select id="vehicle-usage-work-order-id"></select>
+                      </label>
+                      <input id="vehicle-usage-odometer-km" type="hidden" />
+                      <select id="vehicle-usage-reservation-id" hidden></select>
                       <label class="field field-span-full">
                         <span id="vehicle-usage-condition-label">Stanje vozila</span>
                         <input id="vehicle-usage-condition" type="text" maxlength="240" placeholder="Uredno, oštećenje, oprema..." />
@@ -7414,7 +7424,7 @@
                     <section id="vehicle-usage-return-documents" class="vehicle-usage-return-panel field-span-full" hidden>
                       <div class="vehicle-usage-return-head">
                         <div>
-                          <p class="section-kicker">Povrat</p>
+                          <p class="section-kicker">My Trip</p>
                           <h4>Dokumenti putovanja</h4>
                         </div>
                         <span>sprema se i na povezani RN pod Ostalo</span>

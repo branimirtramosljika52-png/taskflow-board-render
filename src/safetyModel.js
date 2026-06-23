@@ -11042,7 +11042,25 @@ export function getVehicleNextReservation(vehicle, nowValue = isoNow()) {
       return false;
     }
 
-    return ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(reservation?.status));
+  return ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(reservation?.status));
+  }) ?? null;
+}
+
+export function getVehicleOpenTrip(vehicle) {
+  return (Array.isArray(vehicle?.activityItems) ? vehicle.activityItems : []).find((item) => {
+    const activityType = String(item?.activityType ?? item?.type ?? "").trim().toLowerCase();
+    const hasTripFields = Boolean(
+      String(item?.departureAt ?? "").trim()
+      || String(item?.returnAt ?? "").trim()
+      || String(item?.startKm ?? "").trim()
+      || String(item?.endKm ?? "").trim()
+      || String(item?.tripStatus ?? "").trim(),
+    );
+    if (activityType !== "vehicle_trip" && !hasTripFields) {
+      return false;
+    }
+    return String(item?.tripStatus ?? "").trim().toLowerCase() !== "completed"
+      && !String(item?.returnAt ?? "").trim();
   }) ?? null;
 }
 
@@ -11051,6 +11069,10 @@ export function getVehicleAvailabilityStatus(vehicle, nowValue = isoNow()) {
 
   if (baseStatus === "service" || baseStatus === "inactive") {
     return baseStatus;
+  }
+
+  if (getVehicleOpenTrip(vehicle)) {
+    return "reserved";
   }
 
   return getVehicleNextReservation(vehicle, nowValue) ? "reserved" : "available";
