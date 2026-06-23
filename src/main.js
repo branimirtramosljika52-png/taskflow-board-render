@@ -149822,7 +149822,7 @@ function buildRiskAssessmentManualMethodTables() {
     createRiskAssessmentExportTable(t2Columns, t2Rows),
     createRiskAssessmentExportTable(t3Columns, t3Rows),
     createRiskAssessmentExportTable(t4Columns, t4Rows),
-    createRiskAssessmentManualResultScaleTable(),
+    buildRiskAssessmentManualResultScaleTable(),
     createRiskAssessmentExportHeading("Povlačenje i guranje", 5),
     createRiskAssessmentExportTable(
       [
@@ -149859,7 +149859,7 @@ function buildRiskAssessmentManualMethodTables() {
         ]),
       ],
     ),
-    createRiskAssessmentManualResultScaleTable("push_pull"),
+    buildRiskAssessmentManualResultScaleTable("push_pull"),
     createRiskAssessmentExportHeading("Ponavljajući zadaci", 5),
     createRiskAssessmentExportTable(
       [
@@ -149891,7 +149891,7 @@ function buildRiskAssessmentManualMethodTables() {
         ]),
       ],
     ),
-    createRiskAssessmentManualResultScaleTable("repetitive"),
+    buildRiskAssessmentManualResultScaleTable("repetitive"),
   ];
 }
 
