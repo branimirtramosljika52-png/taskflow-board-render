@@ -7388,6 +7388,37 @@
                       <textarea id="vehicle-usage-note" rows="2" placeholder="Kratka napomena kod preuzimanja ili povrata..."></textarea>
                     </label>
 
+                    <section id="vehicle-usage-return-documents" class="vehicle-usage-return-panel field-span-full" hidden>
+                      <div class="vehicle-usage-return-head">
+                        <div>
+                          <p class="section-kicker">Povrat</p>
+                          <h4>Dokumenti putovanja</h4>
+                        </div>
+                        <span>sprema se i na povezani RN pod Ostalo</span>
+                      </div>
+                      <div class="vehicle-usage-upload-actions">
+                        <button id="vehicle-usage-add-photos" type="button" class="ghost-button">Fotografije</button>
+                        <button id="vehicle-usage-add-pdf" type="button" class="ghost-button">PDF</button>
+                        <button id="vehicle-usage-add-files" type="button" class="ghost-button">Datoteke</button>
+                      </div>
+                      <input id="vehicle-usage-photo-input" type="file" accept="image/*" multiple hidden />
+                      <input id="vehicle-usage-pdf-input" type="file" accept="application/pdf" multiple hidden />
+                      <input id="vehicle-usage-file-input" type="file" multiple hidden />
+                      <div id="vehicle-usage-files-list" class="vehicle-usage-files-list"></div>
+                    </section>
+
+                    <section id="vehicle-usage-signature-panel" class="vehicle-usage-signature-panel field-span-full" hidden>
+                      <div class="vehicle-usage-return-head">
+                        <div>
+                          <p class="section-kicker">Potpis</p>
+                          <h4>Potpis korisnika vozila</h4>
+                        </div>
+                        <button id="vehicle-usage-signature-clear" type="button" class="ghost-button">Očisti</button>
+                      </div>
+                      <canvas id="vehicle-usage-signature-canvas" width="760" height="220" aria-label="Potpis korisnika vozila"></canvas>
+                      <p class="helper-copy">Potpis ulazi u evidenciju putovanja vozila.</p>
+                    </section>
+
                     <p id="vehicle-usage-error" class="form-error" aria-live="polite"></p>
 
                     <div class="form-actions">

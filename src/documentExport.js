@@ -9850,6 +9850,10 @@ function buildVehicleEvidenceRows(vehicle = {}) {
         activity?.endKm,
         returnAt ? activity?.odometerKm : "",
       ]);
+      const signatureLabel = clean(activity?.signatureLabel)
+        || clean(activity?.returnedByLabel)
+        || clean(activity?.performedBy);
+      const hasSignature = clean(activity?.signatureDataUrl || activity?.returnSignatureDataUrl);
       return {
         sortKey: getVehicleEvidenceTimestamp(departureAt),
         departureDate: formatVehicleEvidenceDatePart(departureAt),
@@ -9861,6 +9865,7 @@ function buildVehicleEvidenceRows(vehicle = {}) {
         startKm: startKm ? `${startKm} km` : "",
         endKm: endKm ? `${endKm} km` : "",
         vehicleCondition: condition,
+        signature: hasSignature ? `Potpisano\n${signatureLabel}` : "",
       };
     })
     .sort((left, right) => left.sortKey - right.sortKey)
@@ -10035,7 +10040,8 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
       { key: "drivers", label: "Vozaci", width: 106 },
       { key: "startKm", label: "Pocetna km", width: 58 },
       { key: "endKm", label: "Krajnja km", width: 58 },
-      { key: "vehicleCondition", label: "Stanje vozila", width: 142 },
+      { key: "vehicleCondition", label: "Stanje vozila", width: 116 },
+      { key: "signature", label: "Potpis", width: 72 },
     ],
     evidenceRows,
     { emptyMessage: "Za ovo vozilo jos nema evidentiranih putovanja." },

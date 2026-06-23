@@ -467,8 +467,27 @@ class SafeNexusApi(
         fuelOk: Boolean,
         damageNoted: Boolean,
         note: String,
+        files: List<WorkOrderUploadFile> = emptyList(),
+        signaturePngBytes: ByteArray? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val fileArray = JSONArray()
+            files.forEach { upload ->
+                val dataUrl = "data:${upload.fileType};base64,${Base64.getEncoder().encodeToString(upload.bytes)}"
+                fileArray.put(
+                    JSONObject()
+                        .put("fileName", upload.fileName)
+                        .put("fileType", upload.fileType)
+                        .put("fileSize", upload.fileSize)
+                        .put("documentCategory", upload.documentCategory)
+                        .put("description", upload.description)
+                        .put("dataUrl", dataUrl),
+                )
+            }
+            val signatureDataUrl = signaturePngBytes
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { "data:image/png;base64,${Base64.getEncoder().encodeToString(it)}" }
+                .orEmpty()
             val payload = JSONObject()
                 .put("mode", mode)
                 .put("actionAt", actionAt)
@@ -485,6 +504,8 @@ class SafeNexusApi(
                 .put("fuelOk", fuelOk)
                 .put("damageNoted", damageNoted)
                 .put("note", note)
+                .put("files", fileArray)
+                .put("signatureDataUrl", signatureDataUrl)
                 .toString()
             request("/api/vehicles/${vehicleId.pathSegment()}/usage", method = "POST", body = payload)
             Unit

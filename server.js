@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.199.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.200.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25678,6 +25678,76 @@ function getVehicleUsagePerformerLabel(user = {}, body = {}) {
   );
 }
 
+function getVehicleUsageUserId(user = {}) {
+  return normalizeInputValue(user?.id || user?.userId || user?.sub);
+}
+
+function getVehicleUsageUserLabel(user = {}) {
+  return normalizeInputValue(
+    user?.fullName
+    || user?.displayName
+    || user?.username
+    || user?.email
+    || user?.name,
+  );
+}
+
+function vehicleUsageLabelMatches(labels = [], user = {}) {
+  const userLabels = [
+    getVehicleUsageUserLabel(user),
+    user?.email,
+    user?.username,
+    user?.fullName,
+    user?.displayName,
+  ]
+    .map((value) => normalizeInputValue(value).toLowerCase())
+    .filter(Boolean);
+  if (userLabels.length === 0) {
+    return false;
+  }
+  return (Array.isArray(labels) ? labels : [labels])
+    .map((value) => normalizeInputValue(value).toLowerCase())
+    .filter(Boolean)
+    .some((label) => userLabels.includes(label));
+}
+
+function vehicleUsageReservationBelongsToUser(reservation = null, user = {}) {
+  if (!reservation) {
+    return true;
+  }
+  const userId = getVehicleUsageUserId(user);
+  const reservationUserIds = [
+    ...(Array.isArray(reservation?.reservedForUserIds) ? reservation.reservedForUserIds : []),
+    reservation?.reservedForUserId,
+    reservation?.userId,
+  ]
+    .map((value) => normalizeInputValue(value))
+    .filter(Boolean);
+  if (reservationUserIds.length > 0) {
+    return userId ? reservationUserIds.includes(userId) : false;
+  }
+  return vehicleUsageLabelMatches([
+    ...(Array.isArray(reservation?.reservedForLabels) ? reservation.reservedForLabels : []),
+    reservation?.reservedForLabel,
+  ], user);
+}
+
+function vehicleUsageTripBelongsToUser(trip = null, user = {}) {
+  if (!trip) {
+    return false;
+  }
+  const userId = getVehicleUsageUserId(user);
+  const tripUserId = normalizeInputValue(trip?.checkedOutByUserId || trip?.userId || trip?.createdByUserId);
+  if (tripUserId) {
+    return userId ? tripUserId === userId : false;
+  }
+  return vehicleUsageLabelMatches([
+    ...(Array.isArray(trip?.driverLabels) ? trip.driverLabels : []),
+    trip?.performedBy,
+    trip?.checkedOutByLabel,
+  ], user);
+}
+
 function getVehicleUsageDriverLabels(user = {}, body = {}, reservation = null) {
   const explicitLabels = Array.isArray(body.driverLabels)
     ? body.driverLabels
@@ -25736,6 +25806,66 @@ function buildVehicleUsageCondition(body = {}, mode = "checkout") {
     explicitCondition,
     checklist.length ? `${fallbackPrefix}: ${checklist.join("; ")}` : "",
   ].filter(Boolean).join("\n");
+}
+
+function normalizeVehicleUsageSignatureDataUrl(value = "") {
+  const normalized = normalizeInputValue(value);
+  if (!normalized || !normalized.startsWith("data:image/")) {
+    return "";
+  }
+  return normalized.length <= 1_200_000 ? normalized : "";
+}
+
+function normalizeVehicleUsageDocumentFiles(files = []) {
+  if (!Array.isArray(files)) {
+    return [];
+  }
+  return files
+    .slice(0, 12)
+    .map((file) => {
+      const fileName = normalizeInputValue(file?.fileName || file?.name);
+      const dataUrl = normalizeInputValue(file?.dataUrl || file?.contentDataUrl || file?.content);
+      if (!fileName || !dataUrl.startsWith("data:")) {
+        return null;
+      }
+      const fileType = normalizeInputValue(file?.fileType || file?.type) || dataUrl.slice(5, dataUrl.indexOf(";base64,"));
+      const fileSize = Number(file?.fileSize || file?.size || 0) || 0;
+      return {
+        fileName,
+        fileType: fileType || "application/octet-stream",
+        fileSize,
+        documentCategory: normalizeInputValue(file?.documentCategory || file?.category) || "Ostalo",
+        description: normalizeInputValue(file?.description) || "Prilog putovanja vozila",
+        dataUrl,
+      };
+    })
+    .filter(Boolean);
+}
+
+function stripVehicleUsageDocumentPayload(file = {}) {
+  return {
+    id: normalizeInputValue(file?.id) || randomUUID(),
+    fileName: normalizeInputValue(file?.fileName),
+    fileType: normalizeInputValue(file?.fileType),
+    fileSize: Number(file?.fileSize || 0) || 0,
+    documentCategory: normalizeInputValue(file?.documentCategory || "Ostalo"),
+    description: normalizeInputValue(file?.description || "Prilog putovanja vozila"),
+    sourceType: "vehicle_trip",
+    createdAt: normalizeInputValue(file?.createdAt) || new Date().toISOString(),
+  };
+}
+
+function getVehicleUsageLinkedWorkOrderIds(body = {}, trip = null) {
+  const values = [
+    ...(Array.isArray(body.linkedWorkOrderIds) ? body.linkedWorkOrderIds : []),
+    ...(Array.isArray(body.workOrderIds) ? body.workOrderIds : []),
+    body.linkedWorkOrderId,
+    body.workOrderId,
+    ...(Array.isArray(trip?.linkedWorkOrderIds) ? trip.linkedWorkOrderIds : []),
+    trip?.linkedWorkOrderId,
+    trip?.workOrderId,
+  ];
+  return Array.from(new Set(values.map((value) => normalizeInputValue(value)).filter(Boolean)));
 }
 
 function findOpenVehicleTrip(vehicle = {}, body = {}, reservation = null) {
@@ -25862,7 +25992,7 @@ function buildVehicleUsagePatchLegacy(vehicle = {}, body = {}, user = {}) {
   return patch;
 }
 
-function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
+function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}) {
   const nowValue = new Date().toISOString();
   const mode = resolveVehicleUsageMode(body.mode || body.usageMode);
   const odometerKm = normalizeInputValue(body.odometerKm || body.endKm || body.startKm);
@@ -25877,6 +26007,16 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
 
   const targetReservation = findVehicleUsageReservation(vehicle, body, mode, nowValue);
   const openTrip = mode === "return" ? findOpenVehicleTrip(vehicle, body, targetReservation) : null;
+  const canManageVehicles = Boolean(options?.canManageVehicles);
+  if (mode === "checkout" && targetReservation && !canManageVehicles && !vehicleUsageReservationBelongsToUser(targetReservation, user)) {
+    throw new Error("Samo korisnik rezervacije moze preuzeti ovo vozilo.");
+  }
+  if (mode === "return" && !openTrip) {
+    throw new Error("Vozilo nema aktivan put za povrat.");
+  }
+  if (mode === "return" && openTrip && !canManageVehicles && !vehicleUsageTripBelongsToUser(openTrip, user)) {
+    throw new Error("Samo korisnik koji je preuzeo vozilo moze evidentirati povrat.");
+  }
   const performer = getVehicleUsagePerformerLabel(user, body);
   const openTripDriverLabels = Array.isArray(openTrip?.driverLabels)
     ? openTrip.driverLabels.map((value) => normalizeInputValue(value)).filter(Boolean)
@@ -25888,6 +26028,14 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
   const condition = buildVehicleUsageCondition(body, mode);
   const linkedWorkOrderId = normalizeInputValue(body.linkedWorkOrderId || body.workOrderId);
   const linkedWorkOrderNumber = normalizeInputValue(body.linkedWorkOrderNumber || body.workOrderNumber);
+  const linkedWorkOrderIds = getVehicleUsageLinkedWorkOrderIds(body, openTrip);
+  const usageFiles = normalizeVehicleUsageDocumentFiles(body.files);
+  const usageFileSummaries = usageFiles.map(stripVehicleUsageDocumentPayload);
+  const signatureDataUrl = mode === "return"
+    ? normalizeVehicleUsageSignatureDataUrl(body.signatureDataUrl || body.signature || body.returnSignatureDataUrl)
+    : "";
+  const actorUserId = getVehicleUsageUserId(user);
+  const actorLabel = getVehicleUsageUserLabel(user) || performer;
   const actionLabel = mode === "return"
     ? "Povrat vozila"
     : mode === "checkout"
@@ -25919,6 +26067,18 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
           returnCondition: condition,
           linkedWorkOrderId: linkedWorkOrderId || normalizeInputValue(item.linkedWorkOrderId || item.workOrderId),
           linkedWorkOrderNumber: linkedWorkOrderNumber || normalizeInputValue(item.linkedWorkOrderNumber || item.workOrderNumber),
+          linkedWorkOrderIds: linkedWorkOrderIds.length ? linkedWorkOrderIds : (Array.isArray(item.linkedWorkOrderIds) ? item.linkedWorkOrderIds : []),
+          checkedOutByUserId: normalizeInputValue(item.checkedOutByUserId || item.userId),
+          checkedOutByLabel: normalizeInputValue(item.checkedOutByLabel || item.performedBy),
+          returnedByUserId: actorUserId,
+          returnedByLabel: actorLabel,
+          signatureDataUrl: signatureDataUrl || normalizeInputValue(item.signatureDataUrl || item.returnSignatureDataUrl),
+          signatureLabel: signatureDataUrl ? actorLabel : normalizeInputValue(item.signatureLabel),
+          signatureAt: signatureDataUrl ? nowValue : normalizeInputValue(item.signatureAt),
+          documents: [
+            ...(Array.isArray(item.documents) ? item.documents : []),
+            ...usageFileSummaries,
+          ],
           note: normalizeInputValue(item.note),
           createdAt: normalizeInputValue(item.createdAt || nowValue),
           updatedAt: nowValue,
@@ -25947,6 +26107,15 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
       returnCondition: isReturnFallback ? condition : "",
       linkedWorkOrderId,
       linkedWorkOrderNumber,
+      linkedWorkOrderIds,
+      checkedOutByUserId: isReturnFallback ? "" : actorUserId,
+      checkedOutByLabel: isReturnFallback ? "" : actorLabel,
+      returnedByUserId: isReturnFallback ? actorUserId : "",
+      returnedByLabel: isReturnFallback ? actorLabel : "",
+      signatureDataUrl,
+      signatureLabel: signatureDataUrl ? actorLabel : "",
+      signatureAt: signatureDataUrl ? nowValue : "",
+      documents: usageFileSummaries,
       note: normalizeInputValue(body.note),
       createdAt: nowValue,
       updatedAt: nowValue,
@@ -25971,7 +26140,21 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}) {
     ));
   }
 
-  return patch;
+  return {
+    patch,
+    mode,
+    linkedWorkOrderIds,
+    files: usageFiles,
+    tripSummary: {
+      vehicleLabel: normalizeInputValue(vehicle.plateNumber || vehicle.name || "Vozilo"),
+      destination,
+      departureAt: mode === "return"
+        ? normalizeInputValue(openTrip?.departureAt || targetReservation?.startAt || "")
+        : actionTimestamp,
+      returnAt: mode === "return" ? actionTimestamp : "",
+      drivers: driverLabels.join(", ") || performer,
+    },
+  };
 }
 
 function getVehicleEvidencePdfFileName(vehicle = {}) {
@@ -29185,6 +29368,7 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
         aiInstructions: body?.aiInstructions ?? {},
       });
+
       await writeSnapshot(response, user, request);
       return true;
     }
@@ -32584,8 +32768,12 @@ async function handleApiRequest(request, response, url) {
 
       const vehicle = assertInScope(scopedSnapshot.vehicles, vehicleUsageMatch[1], "Vozilo nije pronađeno.");
       let patch = null;
+      let usageChange = null;
       try {
-        patch = buildVehicleUsagePatch(vehicle, body, user);
+        usageChange = buildVehicleUsagePatch(vehicle, body, user, {
+          canManageVehicles: canUseScopedSnapshotAppPermission(user, scopedSnapshot, "vehicles.create"),
+        });
+        patch = usageChange.patch;
       } catch (error) {
         sendError(response, 400, error?.message || "Ne mogu evidentirati korištenje vozila.");
         return true;
@@ -32595,6 +32783,32 @@ async function handleApiRequest(request, response, url) {
         ...patch,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
+
+      if (updated && usageChange?.mode === "return" && usageChange.files?.length && usageChange.linkedWorkOrderIds?.length) {
+        const tripParts = [
+          usageChange.tripSummary?.vehicleLabel,
+          usageChange.tripSummary?.destination,
+          usageChange.tripSummary?.departureAt ? `polazak ${usageChange.tripSummary.departureAt}` : "",
+          usageChange.tripSummary?.returnAt ? `povrat ${usageChange.tripSummary.returnAt}` : "",
+        ].map(normalizeInputValue).filter(Boolean);
+        for (const workOrderId of usageChange.linkedWorkOrderIds.map(normalizeInputValue).filter(Boolean)) {
+          assertInScope(scopedSnapshot.workOrders ?? [], workOrderId, "Povezani radni nalog nije pronaden.");
+          await domainRepository.addWorkOrderDocuments(
+            workOrderId,
+            usageChange.files.map((file) => ({
+              ...file,
+              documentCategory: "Ostalo",
+              description: [
+                "Prilog putovanja vozila",
+                ...tripParts,
+                normalizeInputValue(file.description),
+              ].filter(Boolean).join(" | "),
+            })),
+            user,
+            { sourceType: "vehicle_trip" },
+          );
+        }
+      }
 
       if (!updated) {
         sendError(response, 404, "Vozilo nije pronađeno.");

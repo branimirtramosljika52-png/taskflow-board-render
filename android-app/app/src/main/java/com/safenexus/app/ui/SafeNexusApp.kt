@@ -1956,6 +1956,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         fuelOk: Boolean,
         damageNoted: Boolean,
         note: String,
+        files: List<WorkOrderUploadFile> = emptyList(),
+        signaturePngBytes: ByteArray? = null,
     ) {
         if (vehicle.id.isBlank()) {
             state = state.copy(error = "Vozilo nema ispravan ID.")
@@ -1984,6 +1986,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 fuelOk = fuelOk,
                 damageNoted = damageNoted,
                 note = note,
+                files = files,
+                signaturePngBytes = signaturePngBytes,
             )
                 .onSuccess {
                     state = state.copy(
@@ -17531,7 +17535,7 @@ private fun MobileRecordDetailScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
-    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
@@ -17564,7 +17568,7 @@ private fun MobileRecordDetailScreen(
             currentUserLabel = currentUserLabel,
             isLoading = isLoading,
             onDismiss = { usageDialogMode = null },
-            onConfirm = { selectedMode, actionAt, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note ->
+            onConfirm = { selectedMode, actionAt, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note, files, signaturePngBytes ->
                 usageDialogMode = null
                 onRecordVehicleUsage(
                     record,
@@ -17582,6 +17586,8 @@ private fun MobileRecordDetailScreen(
                     fuelOk,
                     damageNoted,
                     note,
+                    files,
+                    signaturePngBytes,
                 )
             },
         )
@@ -18174,8 +18180,96 @@ private fun VehicleUsageDialog(
     currentUserLabel: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String) -> Unit,
+    onConfirm: (String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var uploadError by remember(vehicle.id, mode) { mutableStateOf("") }
+    val returnFiles = remember(vehicle.id, mode) { mutableStateListOf<WorkOrderUploadFile>() }
+    var signatureStrokes by remember(vehicle.id, mode) { mutableStateOf<List<List<Offset>>>(emptyList()) }
+    var activeSignatureStroke by remember(vehicle.id, mode) { mutableStateOf<List<Offset>>(emptyList()) }
+    var signaturePadSize by remember(vehicle.id, mode) { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+    val returnDocumentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                buildVehicleUsageAttachmentUploadFiles(context, uris, returnFiles.size)
+            }.onSuccess { uploads ->
+                returnFiles.addAll(uploads)
+                uploadError = ""
+            }.onFailure { error ->
+                uploadError = error.message ?: "Ne mogu dodati dokumente povrata."
+            }
+        }
+    }
+    val returnPhotoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                buildVehicleUsageAttachmentUploadFiles(context, uris, returnFiles.size)
+            }.onSuccess { uploads ->
+                returnFiles.addAll(uploads)
+                uploadError = ""
+            }.onFailure { error ->
+                uploadError = error.message ?: "Ne mogu dodati fotografije povrata."
+            }
+        }
+    }
+    var pendingReturnCameraUri by remember(vehicle.id, mode) { mutableStateOf<Uri?>(null) }
+    val returnCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val uri = pendingReturnCameraUri
+        pendingReturnCameraUri = null
+        if (!success || uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                buildVehicleUsageAttachmentUploadFiles(context, listOf(uri), returnFiles.size)
+            }.onSuccess { uploads ->
+                returnFiles.addAll(uploads)
+                uploadError = ""
+            }.onFailure { error ->
+                uploadError = error.message ?: "Ne mogu dodati fotografiju povrata."
+            }
+        }
+    }
+    val returnScannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+        val pdfUri = scanResult?.pdf?.uri ?: run {
+            uploadError = "Sken nije vratio PDF dokument."
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            runCatching {
+                buildVehicleUsageAttachmentUploadFiles(context, listOf(pdfUri), returnFiles.size)
+            }.onSuccess { uploads ->
+                returnFiles.addAll(uploads)
+                uploadError = ""
+            }.onFailure { error ->
+                uploadError = error.message ?: "Ne mogu dodati sken povrata."
+            }
+        }
+    }
+    val startReturnScan: () -> Unit = {
+        val activity = context.findFragmentActivity()
+        if (activity == null) {
+            uploadError = "Skeniranje dokumenta nije dostupno u ovom prikazu."
+        } else {
+            val options = GmsDocumentScannerOptions.Builder()
+                .setGalleryImportAllowed(true)
+                .setPageLimit(30)
+                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+                .build()
+            GmsDocumentScanning.getClient(options)
+                .getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    returnScannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+                }
+                .addOnFailureListener { error ->
+                    uploadError = error.message ?: "Ne mogu pokrenuti skeniranje dokumenta."
+                }
+        }
+    }
     val reservations = remember(vehicle.meta["reservationsJson"], mode) { parseVehicleReservations(vehicle) }
     val trips = remember(vehicle.meta["activityItemsJson"], mode) { parseVehicleTrips(vehicle) }
     val defaultReservation = remember(reservations, mode, vehicle.meta["nextReservationId"]) {
@@ -18410,6 +18504,158 @@ private fun VehicleUsageDialog(
                 VehicleChecklistRow("Gorivo / baterija uredno", fuelOk, !isLoading) { fuelOk = it }
                 VehicleChecklistRow("Oštećenje evidentirano", damageNoted, !isLoading) { damageNoted = it }
                 WorkOrderTextField("Napomena", note, { note = it }, !isLoading)
+                if (mode == "return") {
+                    Text("Dokumenti povrata", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = startReturnScan,
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Sken")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val outputUri = createWorkOrderCameraCaptureUri(context.applicationContext)
+                                if (outputUri == null) {
+                                    uploadError = "Ne mogu pripremiti fotografiju za spremanje."
+                                } else {
+                                    pendingReturnCameraUri = outputUri
+                                    returnCameraLauncher.launch(outputUri)
+                                }
+                            },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Kamera")
+                        }
+                        OutlinedButton(
+                            onClick = { returnDocumentLauncher.launch(arrayOf("application/pdf")) },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("PDF")
+                        }
+                        OutlinedButton(
+                            onClick = { returnPhotoLauncher.launch("image/*") },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Slike")
+                        }
+                        OutlinedButton(
+                            onClick = { returnDocumentLauncher.launch(workOrderDocumentAllowedMimeTypes) },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Datoteka")
+                        }
+                    }
+                    if (uploadError.isNotBlank()) {
+                        Text(uploadError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (returnFiles.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            returnFiles.forEachIndexed { index, upload ->
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        Icon(
+                                            if (upload.fileType.startsWith("image/", ignoreCase = true)) Icons.Rounded.Image else Icons.Rounded.InsertDriveFile,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(upload.fileName, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(formatFileSizeLabel(upload.fileSize), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                                        }
+                                        IconButton(onClick = { returnFiles.removeAt(index) }, enabled = !isLoading) {
+                                            Icon(Icons.Rounded.Delete, contentDescription = "Makni dokument")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Text("Potpis korisnika vozila", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)),
+                        color = MaterialTheme.colorScheme.surface,
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f))
+                                    .onSizeChanged { signaturePadSize = androidx.compose.ui.geometry.Size(it.width.toFloat(), it.height.toFloat()) }
+                                    .pointerInput(isLoading) {
+                                        if (!isLoading) {
+                                            detectDragGestures(
+                                                onDragStart = { offset -> activeSignatureStroke = listOf(offset) },
+                                                onDrag = { change, _ ->
+                                                    activeSignatureStroke = activeSignatureStroke + change.position
+                                                    change.consume()
+                                                },
+                                                onDragEnd = {
+                                                    if (activeSignatureStroke.isNotEmpty()) {
+                                                        signatureStrokes = signatureStrokes + listOf(activeSignatureStroke)
+                                                    }
+                                                    activeSignatureStroke = emptyList()
+                                                },
+                                                onDragCancel = { activeSignatureStroke = emptyList() },
+                                            )
+                                        }
+                                    },
+                            ) {
+                                val allStrokes = signatureStrokes + listOf(activeSignatureStroke).filter { it.isNotEmpty() }
+                                allStrokes.forEach { strokePoints ->
+                                    if (strokePoints.size == 1) {
+                                        drawCircle(Color(0xFF111827), radius = 3f, center = strokePoints.first())
+                                    } else if (strokePoints.size > 1) {
+                                        val path = Path().apply {
+                                            moveTo(strokePoints.first().x, strokePoints.first().y)
+                                            strokePoints.drop(1).forEach { point -> lineTo(point.x, point.y) }
+                                        }
+                                        drawPath(path, Color(0xFF111827), style = Stroke(width = 4f))
+                                    }
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(
+                                    onClick = {
+                                        signatureStrokes = emptyList()
+                                        activeSignatureStroke = emptyList()
+                                    },
+                                    enabled = !isLoading && (signatureStrokes.isNotEmpty() || activeSignatureStroke.isNotEmpty()),
+                                ) {
+                                    Text("Očisti")
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -18417,6 +18663,15 @@ private fun VehicleUsageDialog(
                 onClick = {
                     val linkedWorkOrderNumber = workOrders.firstOrNull { it.id == linkedWorkOrderId }?.displayNumber
                         ?: openTrip?.linkedWorkOrderNumber.orEmpty()
+                    val signatureBytes = if (mode == "return" && signatureStrokes.isNotEmpty()) {
+                        renderSignaturePng(
+                            signatureStrokes,
+                            signaturePadSize.width.toInt().coerceAtLeast(480),
+                            signaturePadSize.height.toInt().coerceAtLeast(220),
+                        )
+                    } else {
+                        null
+                    }
                     onConfirm(
                         mode,
                         formatReservationDateTime(actionDate, actionTime),
@@ -18432,6 +18687,8 @@ private fun VehicleUsageDialog(
                         fuelOk,
                         damageNoted,
                         note.trim(),
+                        returnFiles.toList(),
+                        signatureBytes,
                     )
                 },
                 enabled = !isLoading && odometerKm.isNotBlank() && (mode == "return" || destination.isNotBlank()),
@@ -28732,6 +28989,30 @@ private suspend fun buildWorkOrderDocumentUploadFiles(
             fileSize = bytes.size.toLong(),
             documentCategory = category.value,
             description = buildWorkOrderDocumentDescription(mode, category, projectDocumentName),
+            bytes = bytes,
+        )
+    }
+}
+
+private suspend fun buildVehicleUsageAttachmentUploadFiles(
+    context: Context,
+    uris: List<Uri>,
+    existingCount: Int,
+): List<WorkOrderUploadFile> = withContext(Dispatchers.IO) {
+    uris.mapIndexed { index, uri ->
+        val bytes = readUriBytes(context, uri)
+        val fallbackMode = WorkOrderDocumentInputMode.File
+        val displayName = resolveUriDisplayName(context, uri, existingCount + index, fallbackMode)
+        if (bytes.size.toLong() > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+            error("Datoteka $displayName mora biti manja od 12 MB.")
+        }
+        val mimeType = resolveUriMimeType(context, uri, displayName).ifBlank { "application/octet-stream" }
+        WorkOrderUploadFile(
+            fileName = displayName.withFallbackExtension(mimeType),
+            fileType = mimeType,
+            fileSize = bytes.size.toLong(),
+            documentCategory = "Ostalo",
+            description = "Prilog putovanja vozila",
             bytes = bytes,
         )
     }

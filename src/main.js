@@ -4124,6 +4124,17 @@ const vehicleUsageDocumentsInput = document.querySelector("#vehicle-usage-docume
 const vehicleUsageFuelInput = document.querySelector("#vehicle-usage-fuel");
 const vehicleUsageDamageInput = document.querySelector("#vehicle-usage-damage");
 const vehicleUsageNoteInput = document.querySelector("#vehicle-usage-note");
+const vehicleUsageReturnDocumentsPanel = document.querySelector("#vehicle-usage-return-documents");
+const vehicleUsageAddPhotosButton = document.querySelector("#vehicle-usage-add-photos");
+const vehicleUsageAddPdfButton = document.querySelector("#vehicle-usage-add-pdf");
+const vehicleUsageAddFilesButton = document.querySelector("#vehicle-usage-add-files");
+const vehicleUsagePhotoInput = document.querySelector("#vehicle-usage-photo-input");
+const vehicleUsagePdfInput = document.querySelector("#vehicle-usage-pdf-input");
+const vehicleUsageFileInput = document.querySelector("#vehicle-usage-file-input");
+const vehicleUsageFilesList = document.querySelector("#vehicle-usage-files-list");
+const vehicleUsageSignaturePanel = document.querySelector("#vehicle-usage-signature-panel");
+const vehicleUsageSignatureCanvas = document.querySelector("#vehicle-usage-signature-canvas");
+const vehicleUsageSignatureClearButton = document.querySelector("#vehicle-usage-signature-clear");
 const vehicleUsageError = document.querySelector("#vehicle-usage-error");
 const offersModule = document.querySelector("#offers-module");
 const publicProcurementModule = document.querySelector("#public-procurement-module");
@@ -5024,6 +5035,9 @@ let absenceDocumentDrafts = [];
 let absenceBalanceDrafts = [];
 let vehicleDocumentDrafts = [];
 let vehicleActivityDrafts = [];
+let vehicleUsageReturnFiles = [];
+let vehicleUsageSignatureDirty = false;
+let vehicleUsageSignatureDrawing = false;
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
 let measurementEquipmentBulkExporting = false;
@@ -107103,6 +107117,89 @@ function rebuildVehicleUsageReservationOptions(vehicle = {}, selectedValue = "")
   replaceSelectOptions(vehicleUsageReservationIdInput, options, selectedValue);
 }
 
+function renderVehicleUsageReturnFiles() {
+  if (!vehicleUsageFilesList) {
+    return;
+  }
+  if (!vehicleUsageReturnFiles.length) {
+    vehicleUsageFilesList.innerHTML = '<p class="helper-copy">Nema dodanih dokumenata za povrat.</p>';
+    return;
+  }
+  vehicleUsageFilesList.replaceChildren(...vehicleUsageReturnFiles.map((file, index) => {
+    const row = document.createElement("div");
+    row.className = "vehicle-usage-file-row";
+    row.innerHTML = `
+      <span class="vehicle-usage-file-icon">${file.fileType?.startsWith("image/") ? "IMG" : "DOC"}</span>
+      <span class="vehicle-usage-file-name">${escapeHtml(file.fileName || "Dokument")}</span>
+      <span class="vehicle-usage-file-size">${formatFileSize(file.fileSize || 0)}</span>
+    `;
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost-button";
+    removeButton.textContent = "Makni";
+    removeButton.addEventListener("click", () => {
+      vehicleUsageReturnFiles = vehicleUsageReturnFiles.filter((_, fileIndex) => fileIndex !== index);
+      renderVehicleUsageReturnFiles();
+    });
+    row.append(removeButton);
+    return row;
+  }));
+}
+
+async function queueVehicleUsageReturnFiles(files) {
+  const selectedFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+  if (!selectedFiles.length) {
+    return;
+  }
+  for (const file of selectedFiles) {
+    if (!isWorkOrderDocumentFileAllowed(file)) {
+      throw new Error(`Format ${file.name} nije podrzan. Dozvoljeno: ${WORK_ORDER_DOCUMENT_ACCEPT_LABEL}`);
+    }
+    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+    }
+  }
+  const uploads = await Promise.all(selectedFiles.map(async (file) => ({
+    fileName: file.name,
+    fileType: file.type || "application/octet-stream",
+    fileSize: file.size,
+    documentCategory: "Ostalo",
+    description: "Prilog putovanja vozila",
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+  })));
+  vehicleUsageReturnFiles = [...vehicleUsageReturnFiles, ...uploads];
+  renderVehicleUsageReturnFiles();
+}
+
+function clearVehicleUsageSignatureCanvas() {
+  if (!vehicleUsageSignatureCanvas) {
+    return;
+  }
+  const context = vehicleUsageSignatureCanvas.getContext("2d");
+  context?.clearRect(0, 0, vehicleUsageSignatureCanvas.width, vehicleUsageSignatureCanvas.height);
+  vehicleUsageSignatureDirty = false;
+}
+
+function getVehicleUsageSignaturePointer(event) {
+  const rect = vehicleUsageSignatureCanvas?.getBoundingClientRect();
+  if (!rect || !vehicleUsageSignatureCanvas) {
+    return null;
+  }
+  const scaleX = vehicleUsageSignatureCanvas.width / Math.max(1, rect.width);
+  const scaleY = vehicleUsageSignatureCanvas.height / Math.max(1, rect.height);
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY,
+  };
+}
+
+function getVehicleUsageSignatureDataUrl() {
+  if (!vehicleUsageSignatureCanvas || !vehicleUsageSignatureDirty) {
+    return "";
+  }
+  return vehicleUsageSignatureCanvas.toDataURL("image/png");
+}
+
 function resetVehicleUsageForm() {
   vehicleUsageForm?.reset();
   if (vehicleUsageVehicleIdInput) vehicleUsageVehicleIdInput.value = "";
@@ -107121,6 +107218,11 @@ function resetVehicleUsageForm() {
   if (vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
   if (vehicleUsageDamageInput) vehicleUsageDamageInput.checked = false;
   if (vehicleUsageError) vehicleUsageError.textContent = "";
+  vehicleUsageReturnFiles = [];
+  renderVehicleUsageReturnFiles();
+  clearVehicleUsageSignatureCanvas();
+  if (vehicleUsageReturnDocumentsPanel) vehicleUsageReturnDocumentsPanel.hidden = true;
+  if (vehicleUsageSignaturePanel) vehicleUsageSignaturePanel.hidden = true;
   rebuildVehicleUsageReservationOptions({}, "");
   rebuildVehicleUsageWorkOrderOptions("");
   vehicleUsageQuickActions?.replaceChildren();
@@ -107170,6 +107272,11 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   }
   if (vehicleUsageNoteInput) vehicleUsageNoteInput.value = "";
   if (vehicleUsageError) vehicleUsageError.textContent = "";
+  vehicleUsageReturnFiles = [];
+  renderVehicleUsageReturnFiles();
+  clearVehicleUsageSignatureCanvas();
+  if (vehicleUsageReturnDocumentsPanel) vehicleUsageReturnDocumentsPanel.hidden = safeMode !== "return";
+  if (vehicleUsageSignaturePanel) vehicleUsageSignaturePanel.hidden = safeMode !== "return";
   rebuildVehicleUsageReservationOptions(vehicle, defaultReservation?.id || reservationId || "");
   rebuildVehicleUsageWorkOrderOptions(selectedWorkOrderId);
   renderVehicleUsageQuickActions(vehicle, safeMode, defaultReservation, openTrip);
@@ -107194,6 +107301,8 @@ function buildVehicleUsagePayload() {
     fuelOk: Boolean(vehicleUsageFuelInput?.checked),
     damageNoted: Boolean(vehicleUsageDamageInput?.checked),
     note: vehicleUsageNoteInput?.value || "",
+    files: vehicleUsageReturnFiles,
+    signatureDataUrl: getVehicleUsageSignatureDataUrl(),
   };
 }
 
@@ -130899,6 +131008,64 @@ vehicleUsageCloseButton?.addEventListener("click", () => {
 vehicleUsageBackdrop?.addEventListener("click", () => {
   dismissVehicleUsageEditor();
 });
+
+vehicleUsageAddPhotosButton?.addEventListener("click", () => vehicleUsagePhotoInput?.click());
+vehicleUsageAddPdfButton?.addEventListener("click", () => vehicleUsagePdfInput?.click());
+vehicleUsageAddFilesButton?.addEventListener("click", () => vehicleUsageFileInput?.click());
+
+[vehicleUsagePhotoInput, vehicleUsagePdfInput, vehicleUsageFileInput].forEach((input) => {
+  input?.addEventListener("change", () => {
+    const selected = Array.from(input.files ?? []);
+    input.value = "";
+    if (!selected.length) {
+      return;
+    }
+    void queueVehicleUsageReturnFiles(selected).catch((error) => {
+      if (vehicleUsageError) {
+        vehicleUsageError.textContent = error?.message || "Ne mogu dodati dokumente povrata.";
+      }
+    });
+  });
+});
+
+vehicleUsageSignatureClearButton?.addEventListener("click", clearVehicleUsageSignatureCanvas);
+
+if (vehicleUsageSignatureCanvas) {
+  const signatureContext = vehicleUsageSignatureCanvas.getContext("2d");
+  if (signatureContext) {
+    signatureContext.lineWidth = 4;
+    signatureContext.lineCap = "round";
+    signatureContext.lineJoin = "round";
+    signatureContext.strokeStyle = "#111827";
+  }
+  vehicleUsageSignatureCanvas.addEventListener("pointerdown", (event) => {
+    const point = getVehicleUsageSignaturePointer(event);
+    if (!point || !signatureContext) return;
+    vehicleUsageSignatureDrawing = true;
+    vehicleUsageSignatureCanvas.setPointerCapture?.(event.pointerId);
+    signatureContext.beginPath();
+    signatureContext.moveTo(point.x, point.y);
+    event.preventDefault();
+  });
+  vehicleUsageSignatureCanvas.addEventListener("pointermove", (event) => {
+    if (!vehicleUsageSignatureDrawing) return;
+    const point = getVehicleUsageSignaturePointer(event);
+    if (!point || !signatureContext) return;
+    signatureContext.lineTo(point.x, point.y);
+    signatureContext.stroke();
+    vehicleUsageSignatureDirty = true;
+    event.preventDefault();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
+    vehicleUsageSignatureCanvas.addEventListener(eventName, (event) => {
+      if (vehicleUsageSignatureDrawing) {
+        signatureContext?.closePath();
+      }
+      vehicleUsageSignatureDrawing = false;
+      vehicleUsageSignatureCanvas.releasePointerCapture?.(event.pointerId);
+    });
+  });
+}
 
 vehicleUsageForm?.addEventListener("submit", (event) => {
   event.preventDefault();
