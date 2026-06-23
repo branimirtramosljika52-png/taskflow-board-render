@@ -149209,7 +149209,11 @@ function buildRiskAssessmentChemicalExportTable() {
     { rowId: "h2", columnId: "consequence", rowSpan: 2 },
     { rowId: "h2", columnId: "risk", rowSpan: 2 },
   ];
-  return createRiskAssessmentExportTable(columns, rows, { merges });
+  return createRiskAssessmentExportTable(columns, rows, {
+    merges,
+    pageOrientation: "landscape",
+    keepRowsTogether: true,
+  });
 }
 
 function getRiskAssessmentChemicalLinkedJobs(chemical = {}) {
@@ -149311,6 +149315,9 @@ function buildRiskAssessmentChemicalsExportBlocks() {
   }
   return [
     createRiskAssessmentExportParagraph("GVI/KGVI se upisuje iz Priloga I kada postoji. Ako službene vrijednosti nema, Prilog II služi za GVI smjernicu, a Prilog III za procjenu veličine posljedica - štetnosti."),
+    createRiskAssessmentExportHeading("Tablica kemikalija u procjeni", 3),
+    buildRiskAssessmentChemicalExportTable(),
+    createRiskAssessmentExportHeading("Matrica procjene rizika", 3),
     buildRiskAssessmentChemicalRiskExportTable(),
   ];
 }
@@ -149407,6 +149414,67 @@ function getRiskAssessmentBiologicalRiskExportRows() {
   return rows;
 }
 
+function buildRiskAssessmentBiologicalDetailExportTable(rows = []) {
+  const columns = [
+    { id: "ordinal", label: "Red. br.", width: 42 },
+    { id: "agent", label: "Biološki agens / štetnost", width: 155 },
+    { id: "appendix", label: "Prilog III", width: 88 },
+    { id: "jobs", label: "Radna mjesta", width: 125 },
+    { id: "source", label: "Izvor izloženosti", width: 145 },
+    { id: "consequences", label: "Posljedice / napomena", width: 155 },
+    { id: "measures", label: "Mjere", width: 170 },
+    { id: "probability", label: "Vjerojatnost", width: 70 },
+    { id: "consequence", label: "Posljedice", width: 70 },
+    { id: "risk", label: "Rizik", width: 78 },
+  ];
+  const detailRows = riskAssessmentBiologicalRiskDrafts.length
+    ? riskAssessmentBiologicalRiskDrafts.map((entry, index) => {
+      const risk = getRiskAssessmentBiologicalRiskDisplay(entry);
+      const linkedJobs = getRiskAssessmentBiologicalRiskLinkedJobs(entry)
+        .map((job) => job.jobTitle)
+        .filter(Boolean);
+      const notes = formatRiskAssessmentBiologicalAgentNotes({
+        limitedAirborneRisk: entry.limitedAirborneRisk,
+        noteCodes: entry.noteCodes,
+      });
+      return createRiskAssessmentExportRow(`biological-detail-${entry.id || index + 1}`, [
+        createRiskAssessmentExportCell(`${index + 1}.`, { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(entry.agentName || "Biološki agens / izvor izloženosti", { fontSize: 7, bold: true }),
+        createRiskAssessmentExportCell([
+          entry.category,
+          entry.classification ? `Skupina ${entry.classification}` : "",
+          notes !== "-" ? notes : "",
+        ], { fontSize: 7 }),
+        createRiskAssessmentExportCell(linkedJobs.length ? linkedJobs : "-", { fontSize: 7 }),
+        createRiskAssessmentExportCell(entry.source, { fontSize: 7 }),
+        createRiskAssessmentExportCell([entry.possibleConsequences, entry.note], { fontSize: 7 }),
+        createRiskAssessmentExportCell(entry.existingMeasures || getRiskAssessmentBiologicalFallbackMeasures(), { fontSize: 7 }),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, entry.probability, "-"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, entry.consequence, "-"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(`${risk.score || "-"}\n${risk.riskLevel || "-"}`, { fontSize: 7, align: "center", bold: true }),
+      ]);
+    })
+    : rows.map((row, index) => createRiskAssessmentExportRow(`biological-detail-${row.id || index + 1}`, [
+      createRiskAssessmentExportCell(`${index + 1}.`, { fontSize: 7, align: "center" }),
+      createRiskAssessmentExportCell(row.subject, { fontSize: 7, bold: true }),
+      createRiskAssessmentExportCell("-", { fontSize: 7, align: "center" }),
+      createRiskAssessmentExportCell("-", { fontSize: 7, align: "center" }),
+      createRiskAssessmentExportCell(row.note, { fontSize: 7 }),
+      createRiskAssessmentExportCell(row.note, { fontSize: 7 }),
+      createRiskAssessmentExportCell(row.measures, { fontSize: 7 }),
+      createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, row.probability, "-"), { fontSize: 7, align: "center" }),
+      createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, row.consequence, "-"), { fontSize: 7, align: "center" }),
+      createRiskAssessmentExportCell(row.riskLevel || "-", { fontSize: 7, align: "center", bold: true }),
+    ]));
+  return createRiskAssessmentExportTable(columns, [
+    createRiskAssessmentExportRow("biological-detail-head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 7 })), true),
+    ...detailRows,
+  ], {
+    pageOrientation: "landscape",
+    keepRowsTogether: true,
+  });
+}
+
 function buildRiskAssessmentBiologicalExportBlocks() {
   const rows = getRiskAssessmentBiologicalRiskExportRows();
   if (!rows.length) {
@@ -149414,6 +149482,9 @@ function buildRiskAssessmentBiologicalExportBlocks() {
   }
   return [
     createRiskAssessmentExportParagraph("Procjena bioloških štetnosti povezuje izvore izloženosti, radno mjesto, vjerojatnost, posljedice i mjere zaštite."),
+    createRiskAssessmentExportHeading("Tablica bioloških štetnosti u procjeni", 3),
+    buildRiskAssessmentBiologicalDetailExportTable(rows),
+    createRiskAssessmentExportHeading("Matrica procjene rizika", 3),
     buildRiskAssessmentRiskMatrixExportTable({
       title: "Biološke štetnosti - procjena rizika",
       firstHeader: "Biološke štetnosti",

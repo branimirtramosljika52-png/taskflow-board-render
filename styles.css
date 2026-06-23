@@ -70544,12 +70544,54 @@ button.risk-assessment-armor-tree-row:focus-visible,
 
 #risk-assessment-block-chemicals > *,
 #risk-assessment-block-biological > * {
-  width: min(100%, 1120px);
+  width: min(100%, calc(100vw - 96px), 1560px);
 }
 
 #risk-assessment-block-chemicals .risk-assessment-editor-section-head,
 #risk-assessment-block-biological .risk-assessment-editor-section-head {
-  width: min(100%, 980px);
+  width: min(100%, calc(100vw - 160px), 1180px);
+}
+
+#risk-assessment-block-chemicals .risk-assessment-hazard-stack,
+#risk-assessment-block-biological .risk-assessment-hazard-stack,
+#risk-assessment-block-chemicals .risk-assessment-hazard-panel.is-register,
+#risk-assessment-block-biological .risk-assessment-hazard-panel.is-register {
+  width: min(100%, calc(100vw - 96px), 1560px);
+}
+
+#risk-assessment-block-chemicals .risk-assessment-chemical-register,
+#risk-assessment-block-biological .risk-assessment-chemical-register {
+  padding: 16px;
+}
+
+#risk-assessment-block-chemicals .risk-assessment-chemical-register-scroll,
+#risk-assessment-block-biological .risk-assessment-chemical-register-scroll {
+  max-height: min(68vh, 820px);
+  overflow: auto;
+}
+
+#risk-assessment-block-chemicals .risk-assessment-chemical-register-table,
+#risk-assessment-block-biological .risk-assessment-chemical-register-table {
+  min-width: 1540px;
+}
+
+#risk-assessment-block-chemicals .risk-assessment-chemical-register-table th,
+#risk-assessment-block-biological .risk-assessment-chemical-register-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+#risk-assessment-block-biological .risk-assessment-biological-risk-table {
+  min-width: 1480px;
+}
+
+#risk-assessment-block-biological .risk-assessment-hazard-panel.is-register {
+  order: 1;
+}
+
+#risk-assessment-block-biological .risk-assessment-hazard-panel.is-text {
+  order: 2;
 }
 
 .risk-assessment-hazard-text-body .risk-assessment-rich-field {
@@ -70569,10 +70611,6 @@ button.risk-assessment-armor-tree-row:focus-visible,
   min-height: 210px;
   padding: 18px 20px;
   border-radius: 16px;
-}
-
-#risk-assessment-block-biological .risk-assessment-hazard-panel.is-text {
-  order: -1;
 }
 
 .risk-assessment-hazard-panel.is-text .risk-assessment-hazard-text-body {
