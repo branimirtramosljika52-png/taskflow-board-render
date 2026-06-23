@@ -101,7 +101,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.202.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.203.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -25926,6 +25926,43 @@ function findOpenVehicleTrip(vehicle = {}, body = {}, reservation = null) {
     ))[0] || null;
 }
 
+function isTruthyVehicleUsageFlag(value) {
+  const normalized = normalizeInputValue(value).toLowerCase();
+  return ["1", "true", "yes", "da", "new", "novo"].includes(normalized);
+}
+
+function vehicleUsageBodyHasReturnIntent(body = {}) {
+  return Boolean(
+    normalizeInputValue(body.returnAt)
+    || normalizeInputValue(body.completedAt)
+    || normalizeInputValue(body.endKm)
+    || normalizeInputValue(body.returnSignatureDataUrl)
+    || normalizeInputValue(body.signatureDataUrl)
+    || normalizeInputValue(body.signature)
+    || (Array.isArray(body.files) && body.files.length > 0)
+    || normalizeInputValue(body.tripStatus).toLowerCase() === "completed",
+  );
+}
+
+function shouldAutoCloseVehicleTrip(mode = "usage", body = {}, openTrip = null, reservation = null, user = {}) {
+  if (!openTrip || mode === "return" || isTruthyVehicleUsageFlag(body.forceNewTrip || body.newTrip)) {
+    return false;
+  }
+
+  const reservationStatus = normalizeInputValue(reservation?.status).toLowerCase();
+  const requestedReservationId = normalizeInputValue(body.reservationId);
+  const tripReservationId = normalizeInputValue(openTrip?.reservationId);
+  const sameReservation = requestedReservationId && tripReservationId && requestedReservationId === tripReservationId;
+  const sameUser = vehicleUsageTripBelongsToUser(openTrip, user);
+  const explicitReturn = vehicleUsageBodyHasReturnIntent(body);
+
+  if (mode === "usage" || mode === "checkout") {
+    return explicitReturn || sameReservation || sameUser || reservationStatus === "checked_out";
+  }
+
+  return false;
+}
+
 function findVehicleUsageReservation(vehicle = {}, body = {}, mode = "usage", nowValue = new Date().toISOString()) {
   const reservations = Array.isArray(vehicle?.reservations) ? vehicle.reservations : [];
   const requestedId = normalizeInputValue(body.reservationId);
@@ -26024,18 +26061,25 @@ function buildVehicleUsagePatchLegacy(vehicle = {}, body = {}, user = {}) {
 
 function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}) {
   const nowValue = new Date().toISOString();
-  const mode = resolveVehicleUsageMode(body.mode || body.usageMode);
+  let mode = resolveVehicleUsageMode(body.mode || body.usageMode);
   const odometerKm = normalizeInputValue(body.odometerKm || body.endKm || body.startKm);
   if (!odometerKm) {
     throw new Error("Upisi kilometrazu vozila.");
   }
+  let targetReservation = findVehicleUsageReservation(vehicle, body, mode, nowValue);
+  const autoCloseTrip = findOpenVehicleTrip(vehicle, body, targetReservation);
+  if (shouldAutoCloseVehicleTrip(mode, body, autoCloseTrip, targetReservation, user)) {
+    mode = "return";
+    targetReservation = findVehicleUsageReservation(vehicle, body, mode, nowValue);
+  }
   const requestedActionAt = normalizeInputValue(
-    body.actionAt || body.performedAt || (mode === "return" ? body.returnAt : body.departureAt),
+    body.actionAt
+      || body.performedAt
+      || (mode === "return" ? (body.returnAt || body.departureAt) : (body.departureAt || body.returnAt)),
   );
   const parsedActionAt = requestedActionAt ? Date.parse(requestedActionAt) : Number.NaN;
   const actionTimestamp = Number.isFinite(parsedActionAt) ? new Date(parsedActionAt).toISOString() : nowValue;
 
-  const targetReservation = findVehicleUsageReservation(vehicle, body, mode, nowValue);
   const openTrip = mode === "return" ? findOpenVehicleTrip(vehicle, body, targetReservation) : null;
   const canManageVehicles = Boolean(options?.canManageVehicles);
   if (mode === "checkout" && targetReservation && !canManageVehicles && !vehicleUsageReservationBelongsToUser(targetReservation, user)) {

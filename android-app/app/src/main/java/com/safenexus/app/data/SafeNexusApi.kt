@@ -454,6 +454,7 @@ class SafeNexusApi(
     suspend fun recordVehicleUsage(
         vehicleId: String,
         mode: String,
+        tripId: String,
         actionAt: String,
         odometerKm: String,
         destination: String,
@@ -490,6 +491,8 @@ class SafeNexusApi(
                 .orEmpty()
             val payload = JSONObject()
                 .put("mode", mode)
+                .put("tripId", tripId)
+                .put("activityItemId", tripId)
                 .put("actionAt", actionAt)
                 .put(if (mode == "return") "returnAt" else "departureAt", actionAt)
                 .put("odometerKm", odometerKm)

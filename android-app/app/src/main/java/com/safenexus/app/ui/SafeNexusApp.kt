@@ -1943,6 +1943,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     fun recordVehicleUsage(
         vehicle: MobileRecord,
         mode: String,
+        tripId: String,
         actionAt: String,
         odometerKm: String,
         destination: String,
@@ -1973,6 +1974,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             api.recordVehicleUsage(
                 vehicleId = vehicle.id,
                 mode = mode,
+                tripId = tripId,
                 actionAt = actionAt,
                 odometerKm = odometerKm,
                 destination = destination,
@@ -17562,7 +17564,7 @@ private fun MobileRecordDetailScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
-    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
@@ -17595,11 +17597,12 @@ private fun MobileRecordDetailScreen(
             currentUserLabel = currentUserLabel,
             isLoading = isLoading,
             onDismiss = { usageDialogMode = null },
-            onConfirm = { selectedMode, actionAt, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note, files, signaturePngBytes ->
+            onConfirm = { selectedMode, tripId, actionAt, odometerKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note, files, signaturePngBytes ->
                 usageDialogMode = null
                 onRecordVehicleUsage(
                     record,
                     selectedMode,
+                    tripId,
                     actionAt,
                     odometerKm,
                     destination,
@@ -18207,7 +18210,7 @@ private fun VehicleUsageDialog(
     currentUserLabel: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
+    onConfirm: (String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -18717,6 +18720,7 @@ private fun VehicleUsageDialog(
                     }
                     onConfirm(
                         mode,
+                        if (mode == "return") openTrip?.id.orEmpty() else "",
                         formatReservationDateTime(actionDate, actionTime),
                         odometerKm.trim(),
                         finalDestination,

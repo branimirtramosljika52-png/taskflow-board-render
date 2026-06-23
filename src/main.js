@@ -107263,7 +107263,9 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   }
   if (vehicleUsageOdometerKmInput) vehicleUsageOdometerKmInput.value = String(vehicle.odometerKm ?? "");
   if (vehicleUsageDestinationInput) {
-    vehicleUsageDestinationInput.value = defaultReservation?.destination || openTrip?.destination || "";
+    vehicleUsageDestinationInput.value = safeMode === "return"
+      ? openTrip?.destination || defaultReservation?.destination || ""
+      : defaultReservation?.destination || openTrip?.destination || "";
   }
   if (vehicleUsagePerformedByInput) {
     vehicleUsagePerformedByInput.value = defaultReservation?.reservedForLabel
@@ -107296,18 +107298,27 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
 }
 
 function buildVehicleUsagePayload() {
+  const mode = vehicleUsageModeInput?.value || "checkout";
+  const reservationId = vehicleUsageReservationIdInput?.value || "";
+  const activeVehicle = getActiveVehicle();
+  const openTrip = mode === "return" && activeVehicle
+    ? findVehicleOpenTripDraft(activeVehicle, reservationId)
+    : null;
   const linkedWorkOrderId = vehicleUsageWorkOrderIdInput?.value || "";
   const linkedWorkOrder = (state.workOrders ?? []).find((item) => String(item.id) === String(linkedWorkOrderId)) ?? null;
+  const finalLinkedWorkOrderId = linkedWorkOrderId || openTrip?.linkedWorkOrderId || "";
   return {
-    mode: vehicleUsageModeInput?.value || "checkout",
+    mode,
+    tripId: openTrip?.id || "",
+    activityItemId: openTrip?.id || "",
     odometerKm: vehicleUsageOdometerKmInput?.value || "",
-    reservationId: vehicleUsageReservationIdInput?.value || "",
-    linkedWorkOrderId,
+    reservationId: reservationId || openTrip?.reservationId || "",
+    linkedWorkOrderId: finalLinkedWorkOrderId,
     linkedWorkOrderNumber: linkedWorkOrder
       ? String(linkedWorkOrder.workOrderNumber || linkedWorkOrder.displayNumber || linkedWorkOrder.number || "").trim()
-      : "",
+      : openTrip?.linkedWorkOrderNumber || "",
     performedBy: vehicleUsagePerformedByInput?.value || "",
-    destination: vehicleUsageDestinationInput?.value || "",
+    destination: vehicleUsageDestinationInput?.value || openTrip?.destination || "",
     vehicleCondition: vehicleUsageConditionInput?.value || "",
     vehicleClean: Boolean(vehicleUsageCleanInput?.checked),
     documentsPresent: Boolean(vehicleUsageDocumentsInput?.checked),

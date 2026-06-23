@@ -1995,3 +1995,35 @@ test("vehicle evidence PDF keeps checkout location and RN when return has only c
   assert.equal((text.match(/Petrol Ogulin - Otok ostarski 8a/g) || []).length, 1);
   assert.equal((text.match(/26-652/g) || []).length, 1);
 });
+
+test("vehicle evidence PDF compacts legacy duplicate checkout rows into one trip row", async () => {
+  const outputBuffer = await buildVehicleEvidencePdfBuffer({
+    plateNumber: "ZG1454HS",
+    make: "Ford",
+    model: "Transit",
+    activityItems: [
+      {
+        activityType: "vehicle_trip",
+        departureAt: "2026-06-23T06:26:00.000Z",
+        destination: "Vodovodna 17, Rijeka",
+        performedBy: "Branimir Tramosljika",
+        startKm: "22412",
+        linkedWorkOrderNumber: "26-652",
+      },
+      {
+        activityType: "vehicle_trip",
+        departureAt: "2026-06-23T08:43:00.000Z",
+        performedBy: "Branimir Tramosljika",
+        startKm: "22480",
+      },
+    ],
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  const text = (await extractPdfText(outputBuffer)).replace(/\s+/g, " ");
+  assert.match(text, /Vodovodna 17, Rijeka/);
+  assert.match(text, /26-652/);
+  assert.match(text, /22412/);
+  assert.match(text, /22480/);
+  assert.equal((text.match(/Branimir Tramosljika/g) || []).length, 1);
+});

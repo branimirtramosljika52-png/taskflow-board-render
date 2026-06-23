@@ -9937,6 +9937,95 @@ function mergeVehicleEvidenceTripRecords(openRecord = {}, returnRecord = {}) {
   };
 }
 
+function normalizeVehicleEvidenceTextKey(value = "") {
+  return clean(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function getVehicleEvidenceDayKey(value = "") {
+  const timestamp = getVehicleEvidenceTimestamp(value);
+  if (timestamp !== Number.MAX_SAFE_INTEGER) {
+    return new Date(timestamp).toISOString().slice(0, 10);
+  }
+  return clean(value).slice(0, 10);
+}
+
+function getVehicleEvidenceDriverParts(value = "") {
+  return normalizeVehicleEvidenceTextKey(value)
+    .split(/[,;\n]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function vehicleEvidenceDriversOverlap(left = "", right = "") {
+  const leftParts = getVehicleEvidenceDriverParts(left);
+  const rightParts = getVehicleEvidenceDriverParts(right);
+  if (!leftParts.length || !rightParts.length) {
+    return false;
+  }
+  return leftParts.some((leftPart) => rightParts.some((rightPart) => (
+    leftPart === rightPart || leftPart.includes(rightPart) || rightPart.includes(leftPart)
+  )));
+}
+
+function vehicleEvidenceValuesOverlap(left = [], right = []) {
+  const leftSet = new Set((left || []).map(normalizeVehicleEvidenceTextKey).filter(Boolean));
+  return (right || []).some((value) => leftSet.has(normalizeVehicleEvidenceTextKey(value)));
+}
+
+function shouldMergeLegacyVehicleEvidenceRowAsReturn(openRecord = {}, nextRecord = {}) {
+  if (!openRecord || !nextRecord || openRecord.returnAt || openRecord.endKm) {
+    return false;
+  }
+  if (nextRecord.returnAt || nextRecord.endKm || !nextRecord.departureAt) {
+    return false;
+  }
+
+  const openTime = getVehicleEvidenceMergeTimestamp(openRecord);
+  const nextTime = getVehicleEvidenceMergeTimestamp(nextRecord);
+  if (!openTime || !nextTime || nextTime < openTime) {
+    return false;
+  }
+  const sameDay = getVehicleEvidenceDayKey(openRecord.departureAt || openRecord.createdAt)
+    === getVehicleEvidenceDayKey(nextRecord.departureAt || nextRecord.createdAt);
+  if (!sameDay) {
+    return false;
+  }
+
+  const sameReservation = openRecord.reservationId
+    && nextRecord.reservationId
+    && openRecord.reservationId === nextRecord.reservationId;
+  const sameWorkOrder = vehicleEvidenceValuesOverlap(openRecord.workOrders, nextRecord.workOrders);
+  const sameDrivers = vehicleEvidenceDriversOverlap(openRecord.drivers, nextRecord.drivers);
+  const destinationCompatible = !openRecord.destination
+    || !nextRecord.destination
+    || normalizeVehicleEvidenceTextKey(openRecord.destination) === normalizeVehicleEvidenceTextKey(nextRecord.destination);
+
+  return destinationCompatible && (sameReservation || sameWorkOrder || sameDrivers);
+}
+
+function compactLegacyVehicleEvidenceRows(rows = []) {
+  const compactRows = [];
+  rows.forEach((record) => {
+    const previous = compactRows[compactRows.length - 1];
+    if (shouldMergeLegacyVehicleEvidenceRowAsReturn(previous, record)) {
+      compactRows[compactRows.length - 1] = mergeVehicleEvidenceTripRecords(previous, {
+        ...record,
+        departureAt: "",
+        returnAt: record.returnAt || record.departureAt || record.createdAt,
+        startKm: "",
+        endKm: record.endKm || record.startKm,
+        tripStatus: "completed",
+      });
+      return;
+    }
+    compactRows.push(record);
+  });
+  return compactRows;
+}
+
 function buildMergedVehicleEvidenceTrips(vehicle = {}) {
   const records = (Array.isArray(vehicle.activityItems) ? vehicle.activityItems : [])
     .filter(isVehicleEvidenceTripActivity)
@@ -9989,7 +10078,7 @@ function buildMergedVehicleEvidenceTrips(vehicle = {}) {
     }
   });
 
-  return rows;
+  return compactLegacyVehicleEvidenceRows(rows);
 }
 
 function formatVehicleEvidenceDatePart(value = "") {
