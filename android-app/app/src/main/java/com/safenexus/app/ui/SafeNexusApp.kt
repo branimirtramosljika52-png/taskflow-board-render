@@ -2154,6 +2154,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         linkedWorkOrderId: String,
         linkedWorkOrderNumber: String,
         performedBy: String,
+        driverUserIds: List<String>,
+        driverLabels: List<String>,
         vehicleCondition: String,
         vehicleClean: Boolean,
         documentsPresent: Boolean,
@@ -2189,6 +2191,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 linkedWorkOrderId = linkedWorkOrderId,
                 linkedWorkOrderNumber = linkedWorkOrderNumber,
                 performedBy = performedBy,
+                driverUserIds = driverUserIds,
+                driverLabels = driverLabels,
                 vehicleCondition = vehicleCondition,
                 vehicleClean = vehicleClean,
                 documentsPresent = documentsPresent,
@@ -15014,6 +15018,7 @@ private data class MobileVehicleTrip(
     val returnAt: String,
     val destination: String,
     val drivers: String,
+    val driverUserIds: List<String>,
     val startKm: String,
     val endKm: String,
     val condition: String,
@@ -15031,8 +15036,10 @@ private fun vehicleBaseStatus(vehicle: MobileRecord): String =
 private fun vehicleAvailabilityStatus(vehicle: MobileRecord): String {
     val baseStatus = vehicleBaseStatus(vehicle)
     if (baseStatus == "service" || baseStatus == "inactive") return baseStatus
-    if (parseVehicleReservations(vehicle).any { vehicleReservationAllowsMyTripNow(it) }) return "reserved"
-    if (parseVehicleTrips(vehicle).any { vehicleTripIsOpen(it) }) return "checked_out"
+    val activeReservation = parseVehicleReservations(vehicle).firstOrNull { vehicleReservationIsActiveNow(it) }
+    if (activeReservation != null) {
+        return if (activeReservation.status.equals("checked_out", ignoreCase = true)) "checked_out" else "reserved"
+    }
     return "available"
 }
 
@@ -15183,12 +15190,14 @@ private fun parseVehicleTrips(vehicle: MobileRecord): List<MobileVehicleTrip> {
                             .ifBlank { item.optString("completedAt").trim() },
                         destination = getVehicleTripDestination(item),
                         drivers = drivers,
+                        driverUserIds = parseVehicleStringArray(item, "driverUserIds"),
                         startKm = item.optString("startKm").trim(),
                         endKm = item.optString("endKm").trim(),
                         condition = condition,
                         status = item.optString("tripStatus").trim(),
                         reservationId = item.optString("reservationId").trim(),
-                        linkedWorkOrderId = item.optString("linkedWorkOrderId", item.optString("workOrderId")).trim(),
+                        linkedWorkOrderId = parseVehicleStringArray(item, "linkedWorkOrderIds").firstOrNull()
+                            ?: item.optString("linkedWorkOrderId", item.optString("workOrderId")).trim(),
                         linkedWorkOrderNumber = getVehicleTripWorkOrderLabel(item),
                         documentCount = documents?.length() ?: 0,
                         documentLabels = documentLabels,
@@ -15224,8 +15233,55 @@ private fun vehiclePersonMatchesCurrentUser(value: String, currentUserLabel: Str
     return person == current || person.contains(current) || current.contains(person)
 }
 
+private fun vehicleUserOptionLabel(user: WorkOrderUserOption): String =
+    user.label.ifBlank { user.fullName.ifBlank { user.email } }
+
+private fun vehicleCurrentUserOption(users: List<WorkOrderUserOption>, currentUserLabel: String): WorkOrderUserOption? {
+    val current = currentUserLabel.trim().lowercase(Locale.getDefault())
+    if (current.isBlank()) return null
+    return users.firstOrNull { user ->
+        listOf(user.id, user.label, user.fullName, user.email)
+            .map { it.trim().lowercase(Locale.getDefault()) }
+            .filter { it.isNotBlank() }
+            .any { value -> value == current || value.contains(current) || current.contains(value) }
+    }
+}
+
+private fun vehicleReservationBelongsToCurrentUser(
+    reservation: MobileVehicleReservation,
+    currentUserLabel: String,
+    currentUserId: String,
+): Boolean {
+    if (currentUserId.isNotBlank() && reservation.userIds.any { it == currentUserId }) return true
+    return vehiclePersonMatchesCurrentUser(reservation.userLabel, currentUserLabel)
+}
+
 private fun vehicleReservationBelongsToCurrentUser(reservation: MobileVehicleReservation, currentUserLabel: String): Boolean =
     vehiclePersonMatchesCurrentUser(reservation.userLabel, currentUserLabel)
+
+private fun vehicleTripBelongsToCurrentUser(
+    trip: MobileVehicleTrip,
+    currentUserLabel: String,
+    currentUserId: String,
+): Boolean {
+    if (currentUserId.isNotBlank() && trip.driverUserIds.any { it == currentUserId }) return true
+    return vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
+}
+
+private fun vehicleUserLabelsForIds(users: List<WorkOrderUserOption>, selectedIds: List<String>): List<String> {
+    val labelsById = users.associate { user -> user.id to vehicleUserOptionLabel(user) }
+    return selectedIds
+        .mapNotNull { id -> labelsById[id]?.trim()?.takeIf(String::isNotBlank) }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+}
+
+private fun vehicleReservationIsActiveNow(reservation: MobileVehicleReservation, now: LocalDateTime = LocalDateTime.now()): Boolean {
+    val start = parseVehicleDateTime(reservation.startAt) ?: return false
+    val end = parseVehicleDateTime(reservation.endAt) ?: return false
+    val status = reservation.status.trim().lowercase(Locale.getDefault())
+    if (status != "reserved" && status != "checked_out") return false
+    return !now.isBefore(start) && !now.isAfter(end)
+}
 
 private fun vehicleReservationAllowsMyTripNow(reservation: MobileVehicleReservation, now: LocalDateTime = LocalDateTime.now()): Boolean {
     val start = parseVehicleDateTime(reservation.startAt) ?: return false
@@ -19419,7 +19475,7 @@ private fun MobileRecordDetailScreen(
     isLoading: Boolean,
     onBack: () -> Unit,
     onReserveVehicle: (MobileRecord, String, String, String, String, String, String, String) -> Unit,
-    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
+    onRecordVehicleUsage: (MobileRecord, String, String, String, String, String, String, String, String, String, String, String, String, String, List<String>, List<String>, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
     onDownloadVehicleEvidencePdf: (MobileRecord) -> Unit,
     onDownloadOfferPdf: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
@@ -19449,10 +19505,11 @@ private fun MobileRecordDetailScreen(
             vehicle = record,
             mode = mode,
             workOrders = workOrders,
+            users = users,
             currentUserLabel = currentUserLabel,
             isLoading = isLoading,
             onDismiss = { usageDialogMode = null },
-            onConfirm = { selectedMode, tripId, actionAt, odometerKm, departureAt, returnAt, startKm, endKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note, files, signaturePngBytes ->
+            onConfirm = { selectedMode, tripId, actionAt, odometerKm, departureAt, returnAt, startKm, endKm, destination, reservationId, linkedWorkOrderId, linkedWorkOrderNumber, performedBy, driverUserIds, driverLabels, vehicleCondition, vehicleClean, documentsPresent, fuelOk, damageNoted, note, files, signaturePngBytes ->
                 usageDialogMode = null
                 onRecordVehicleUsage(
                     record,
@@ -19469,6 +19526,8 @@ private fun MobileRecordDetailScreen(
                     linkedWorkOrderId,
                     linkedWorkOrderNumber,
                     performedBy,
+                    driverUserIds,
+                    driverLabels,
                     vehicleCondition,
                     vehicleClean,
                     documentsPresent,
@@ -20057,10 +20116,11 @@ private fun VehicleUsageDialog(
     vehicle: MobileRecord,
     mode: String,
     workOrders: List<WorkOrder>,
+    users: List<WorkOrderUserOption>,
     currentUserLabel: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String, String, String, String, String, String, String, String, String, String, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
+    onConfirm: (String, String, String, String, String, String, String, String, String, String, String, String, String, List<String>, List<String>, String, Boolean, Boolean, Boolean, Boolean, String, List<WorkOrderUploadFile>, ByteArray?) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -20152,17 +20212,29 @@ private fun VehicleUsageDialog(
     }
     val reservations = remember(vehicle.meta["reservationsJson"], mode) { parseVehicleReservations(vehicle) }
     val trips = remember(vehicle.meta["activityItemsJson"], mode) { parseVehicleTrips(vehicle) }
-    val openTrip = remember(trips, currentUserLabel) {
+    val userOptions = remember(users) {
+        users
+            .filter { user -> user.id.isNotBlank() && vehicleUserOptionLabel(user).isNotBlank() }
+            .distinctBy { user -> user.id }
+    }
+    val userOptionIds = remember(userOptions) {
+        userOptions.map { it.id }.filter(String::isNotBlank).toSet()
+    }
+    val currentUserOption = remember(userOptions, currentUserLabel) {
+        vehicleCurrentUserOption(userOptions, currentUserLabel)
+    }
+    val currentUserId = currentUserOption?.id.orEmpty()
+    val openTrip = remember(trips, currentUserLabel, currentUserId) {
         trips.firstOrNull { trip ->
-            vehicleTripIsOpen(trip) && vehiclePersonMatchesCurrentUser(trip.drivers, currentUserLabel)
+            vehicleTripIsOpen(trip) && vehicleTripBelongsToCurrentUser(trip, currentUserLabel, currentUserId)
         } ?: trips.firstOrNull { trip ->
             vehicleTripIsOpen(trip)
         }
     }
-    val hasBlockingOpenTrip = openTrip != null && !vehiclePersonMatchesCurrentUser(openTrip.drivers, currentUserLabel)
-    val eligibleReservations = remember(reservations, currentUserLabel) {
+    val hasBlockingOpenTrip = openTrip != null && !vehicleTripBelongsToCurrentUser(openTrip, currentUserLabel, currentUserId)
+    val eligibleReservations = remember(reservations, currentUserLabel, currentUserId) {
         reservations.filter { reservation ->
-            vehicleReservationBelongsToCurrentUser(reservation, currentUserLabel) &&
+            vehicleReservationBelongsToCurrentUser(reservation, currentUserLabel, currentUserId) &&
                 vehicleReservationAllowsMyTripNow(reservation)
         }
     }
@@ -20175,23 +20247,12 @@ private fun VehicleUsageDialog(
             ?: eligibleReservations.firstOrNull { it.id == vehicle.meta["nextReservationId"] }
             ?: eligibleReservations.firstOrNull()
     }
-    val reservationInWindow = defaultReservation?.let { vehicleReservationAllowsMyTripNow(it) } == true
     val destinationSuggestions = remember(vehicle.id, mode, trips, reservations, defaultReservation?.destination, openTrip?.destination) {
         val primaryDestinations = listOf(openTrip?.destination.orEmpty(), defaultReservation?.destination.orEmpty())
         (
             primaryDestinations +
                 reservations.map { it.destination } +
                 trips.map { it.destination }
-            )
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase(Locale.getDefault()) }
-            .take(5)
-    }
-    val driverSuggestions = remember(vehicle.id, currentUserLabel, trips, defaultReservation?.userLabel, openTrip?.drivers) {
-        (
-            listOf(defaultReservation?.userLabel.orEmpty(), openTrip?.drivers.orEmpty(), currentUserLabel) +
-                trips.map { it.drivers }
             )
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -20227,9 +20288,50 @@ private fun VehicleUsageDialog(
     var linkedWorkOrderId by remember(vehicle.id, mode, openTrip?.linkedWorkOrderId) {
         mutableStateOf(openTrip?.linkedWorkOrderId.orEmpty())
     }
-    var performedBy by remember(vehicle.id, mode, currentUserLabel, defaultReservation?.userLabel, openTrip?.drivers) {
+    val selectedReservation = remember(reservations, reservationId, defaultReservation?.id) {
+        reservations.firstOrNull { it.id == reservationId } ?: defaultReservation
+    }
+    val reservationInWindow = selectedReservation?.let { vehicleReservationAllowsMyTripNow(it) } == true
+    val initialDriverIds = remember(vehicle.id, openTrip?.id, defaultReservation?.id, currentUserId, userOptionIds) {
+        val seedIds = openTrip?.driverUserIds.orEmpty() + defaultReservation?.userIds.orEmpty() + listOf(currentUserId)
+        seedIds
+            .map { it.trim() }
+            .filter { it.isNotBlank() && it in userOptionIds }
+            .distinct()
+    }
+    var selectedDriverIds by remember(vehicle.id, mode, openTrip?.id, defaultReservation?.id, currentUserId, userOptionIds) {
+        mutableStateOf(initialDriverIds)
+    }
+    LaunchedEffect(reservationId, selectedReservation?.id, openTrip?.id, userOptionIds) {
+        if (openTrip == null) {
+            val reservationUserIds = selectedReservation?.userIds.orEmpty()
+                .map { it.trim() }
+                .filter { it.isNotBlank() && it in userOptionIds }
+                .distinct()
+            if (reservationUserIds.isNotEmpty()) {
+                selectedDriverIds = reservationUserIds
+            }
+        }
+    }
+    var manualPerformedBy by remember(vehicle.id, mode, currentUserLabel, defaultReservation?.userLabel, openTrip?.drivers) {
         mutableStateOf(defaultReservation?.userLabel.orEmpty().ifBlank { openTrip?.drivers.orEmpty().ifBlank { currentUserLabel } })
     }
+    val selectedDriverLabels = remember(userOptions, selectedDriverIds) {
+        vehicleUserLabelsForIds(userOptions, selectedDriverIds)
+    }
+    val fallbackDriverLabels = remember(currentUserLabel, defaultReservation?.userLabel, openTrip?.drivers) {
+        listOf(openTrip?.drivers.orEmpty(), defaultReservation?.userLabel.orEmpty(), currentUserLabel)
+            .flatMap { value -> value.split(",") }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+    }
+    val finalDriverLabels = if (userOptions.isNotEmpty()) {
+        selectedDriverLabels.ifEmpty { fallbackDriverLabels }
+    } else {
+        listOf(manualPerformedBy.trim()).filter(String::isNotBlank).ifEmpty { fallbackDriverLabels }
+    }
+    val performedBy = finalDriverLabels.joinToString(", ")
     var vehicleCondition by remember(vehicle.id, openTrip?.id) { mutableStateOf(openTrip?.condition.orEmpty().ifBlank { "Uredno" }) }
     var vehicleClean by remember(vehicle.id, mode) { mutableStateOf(true) }
     var documentsPresent by remember(vehicle.id, mode) { mutableStateOf(true) }
@@ -20251,16 +20353,44 @@ private fun VehicleUsageDialog(
             ).filter { it.isNotBlank() }.joinToString(" - ")
         }
     }
-    val workOrderOptions = remember(workOrders, openTrip?.linkedWorkOrderId, openTrip?.linkedWorkOrderNumber, departureDate, currentUserLabel) {
-        val currentUserKey = currentUserLabel.trim().lowercase(Locale.getDefault())
-        val preferredDate = departureDate.trim()
+    fun parseUsageLocalDate(value: String): LocalDate? =
+        runCatching { LocalDate.parse(value.take(10)) }.getOrNull()
+
+    val workOrderOptions = remember(
+        workOrders,
+        openTrip?.linkedWorkOrderId,
+        openTrip?.linkedWorkOrderNumber,
+        departureDate,
+        returnDate,
+        selectedReservation?.endAt,
+        finalDriverLabels,
+    ) {
+        val rangeStart = parseUsageLocalDate(departureDate)
+        val rangeEnd = parseUsageLocalDate(returnDate)
+            ?: selectedReservation?.endAt?.let { parseVehicleDateTime(it)?.toLocalDate() }
+            ?: rangeStart
+        val driverFilters = finalDriverLabels
+            .map { it.trim() }
+            .filter(String::isNotBlank)
+            .distinctBy { it.lowercase(Locale.getDefault()) }
         val baseOptions = workOrders
+            .filter { workOrder ->
+                val executionDate = workOrder.parsedExecutionDate
+                val dateMatches = if (rangeStart != null && rangeEnd != null) {
+                    executionDate != null && !executionDate.isBefore(rangeStart) && !executionDate.isAfter(rangeEnd)
+                } else {
+                    true
+                }
+                val executorMatches = driverFilters.isEmpty() || workOrder.executors.any { executor ->
+                    driverFilters.any { driver -> vehiclePersonMatchesCurrentUser(executor, driver) }
+                }
+                dateMatches && executorMatches
+            }
             .sortedWith(
-                compareByDescending<WorkOrder> { workOrder -> workOrder.executionDate.trim() == preferredDate }
+                compareByDescending<WorkOrder> { workOrder -> workOrder.parsedExecutionDate == rangeStart }
                     .thenByDescending { workOrder ->
-                        currentUserKey.isNotBlank() && workOrder.executors.any { executor ->
-                            val normalized = executor.trim().lowercase(Locale.getDefault())
-                            normalized == currentUserKey || normalized.contains(currentUserKey) || currentUserKey.contains(normalized)
+                        driverFilters.isNotEmpty() && workOrder.executors.any { executor ->
+                            driverFilters.any { driver -> vehiclePersonMatchesCurrentUser(executor, driver) }
                         }
                     }
                     .thenBy { workOrder -> workOrder.displayNumber },
@@ -20440,18 +20570,15 @@ private fun VehicleUsageDialog(
                     enabled = !isLoading,
                     onSelect = { linkedWorkOrderId = it },
                 )
-                WorkOrderTextField("Korisnik vozila", performedBy, { performedBy = it }, !isLoading)
-                if (driverSuggestions.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        driverSuggestions.forEach { suggestion ->
-                            FilterChip(
-                                selected = performedBy.equals(suggestion, ignoreCase = true),
-                                enabled = !isLoading,
-                                onClick = { performedBy = suggestion },
-                                label = { Text(suggestion, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            )
-                        }
-                    }
+                if (userOptions.isNotEmpty()) {
+                    VehicleUsageUserPicker(
+                        users = userOptions,
+                        selectedUserIds = selectedDriverIds,
+                        enabled = !isLoading,
+                        onChange = { selectedDriverIds = it },
+                    )
+                } else {
+                    WorkOrderTextField("Korisnik vozila", manualPerformedBy, { manualPerformedBy = it }, !isLoading)
                 }
                 WorkOrderTextField(
                     "Stanje vozila / napomena",
@@ -20459,27 +20586,6 @@ private fun VehicleUsageDialog(
                     { vehicleCondition = it },
                     !isLoading,
                 )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Uredno", "Gorivo OK", "Dokumenti OK", "Oštećenje").forEach { suggestion ->
-                        FilterChip(
-                            selected = vehicleCondition.equals(suggestion, ignoreCase = true),
-                            enabled = !isLoading,
-                            onClick = {
-                                vehicleCondition = suggestion
-                                if (suggestion == "Oštećenje") {
-                                    damageNoted = true
-                                }
-                                if (suggestion == "Gorivo OK") {
-                                    fuelOk = true
-                                }
-                                if (suggestion == "Dokumenti OK") {
-                                    documentsPresent = true
-                                }
-                            },
-                            label = { Text(suggestion, fontWeight = FontWeight.Bold) },
-                        )
-                    }
-                }
                 Text("Kontrola vozila", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
                 VehicleChecklistRow("Vozilo čisto", vehicleClean, !isLoading) { vehicleClean = it }
                 VehicleChecklistRow("Dokumenti u vozilu", documentsPresent, !isLoading) { documentsPresent = it }
@@ -20684,6 +20790,8 @@ private fun VehicleUsageDialog(
                         finalLinkedWorkOrderId,
                         linkedWorkOrderNumber.trim(),
                         performedBy.trim(),
+                        selectedDriverIds,
+                        finalDriverLabels,
                         vehicleCondition.trim(),
                         vehicleClean,
                         documentsPresent,
@@ -20699,6 +20807,7 @@ private fun VehicleUsageDialog(
                     defaultReservation != null &&
                     reservationInWindow &&
                     reservationId.isNotBlank() &&
+                    finalDriverLabels.isNotEmpty() &&
                     startKm.isNotBlank() &&
                     destination.isNotBlank() &&
                     (
@@ -20716,6 +20825,81 @@ private fun VehicleUsageDialog(
             }
         },
     )
+}
+
+@Composable
+private fun VehicleUsageUserPicker(
+    users: List<WorkOrderUserOption>,
+    selectedUserIds: List<String>,
+    enabled: Boolean,
+    onChange: (List<String>) -> Unit,
+) {
+    var query by remember(users) { mutableStateOf("") }
+    val normalizedQuery = query.normalizedPickerText()
+    val selectedLabels = remember(users, selectedUserIds) {
+        vehicleUserLabelsForIds(users, selectedUserIds)
+    }
+    val visibleOptions = remember(users, selectedUserIds, normalizedQuery) {
+        users
+            .filter { user ->
+                val label = vehicleUserOptionLabel(user)
+                val searchText = listOf(label, user.fullName, user.email).joinToString(" ").normalizedPickerText()
+                normalizedQuery.isBlank() || searchText.contains(normalizedQuery)
+            }
+            .sortedWith(
+                compareByDescending<WorkOrderUserOption> { it.id in selectedUserIds }
+                    .thenBy { vehicleUserOptionLabel(it).lowercase(Locale.getDefault()) },
+            )
+            .take(36)
+            .map { user -> user.id to vehicleUserOptionLabel(user) }
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Korisnici vozila", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+            if (selectedLabels.isEmpty()) {
+                Text(
+                    "Odaberi barem jednog korisnika vozila.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            } else {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    selectedUserIds.forEach { userId ->
+                        val label = users.firstOrNull { it.id == userId }?.let(::vehicleUserOptionLabel).orEmpty()
+                        if (label.isNotBlank()) {
+                            FilterChip(
+                                selected = true,
+                                enabled = enabled,
+                                onClick = { onChange(selectedUserIds.filterNot { it == userId }) },
+                                label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Traži korisnika") },
+                singleLine = true,
+                enabled = enabled,
+                shape = RoundedCornerShape(16.dp),
+            )
+            WorkOrderMultiSelectChips(
+                options = visibleOptions,
+                selected = selectedUserIds,
+                enabled = enabled,
+                emptyText = "Nema korisnika za odabir.",
+                onToggle = { value -> onChange(selectedUserIds.toggleValue(value)) },
+            )
+        }
+    }
 }
 
 @Composable

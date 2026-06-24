@@ -518,6 +518,8 @@ class SafeNexusApi(
         linkedWorkOrderId: String,
         linkedWorkOrderNumber: String,
         performedBy: String,
+        driverUserIds: List<String>,
+        driverLabels: List<String>,
         vehicleCondition: String,
         vehicleClean: Boolean,
         documentsPresent: Boolean,
@@ -558,8 +560,12 @@ class SafeNexusApi(
                 .put("destination", destination)
                 .put("reservationId", reservationId)
                 .put("linkedWorkOrderId", linkedWorkOrderId)
+                .put("linkedWorkOrderIds", JSONArray(listOf(linkedWorkOrderId.trim()).filter { it.isNotBlank() }.distinct()))
                 .put("linkedWorkOrderNumber", linkedWorkOrderNumber)
                 .put("performedBy", performedBy)
+                .put("driverUserIds", JSONArray(driverUserIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()))
+                .put("driverLabels", JSONArray(driverLabels.map { it.trim() }.filter { it.isNotBlank() }.distinct()))
+                .put("drivers", JSONArray(driverLabels.map { it.trim() }.filter { it.isNotBlank() }.distinct()))
                 .put("vehicleCondition", vehicleCondition)
                 .put("vehicleClean", vehicleClean)
                 .put("documentsPresent", documentsPresent)
