@@ -3597,6 +3597,7 @@ async function fetchIsznrWorkEnvironmentList({
   const searchParams = buildIsznrWorkEnvironmentSearchParams(filters);
   const safeMaxRecords = Math.max(1, Number(maxRecords) || ISZNR_MOBILE_WORK_ENVIRONMENT_MAX_RECORDS);
   const sources = [
+    { path: "kc_records", sourceKind: "kc_records", label: "Kemijski čimbenici" },
     { path: "fc_records", sourceKind: "fc_records", label: "Fizikalni čimbenici" },
   ];
   const results = await Promise.all(sources.map(async (source) => {
@@ -4583,7 +4584,7 @@ async function fetchIsznrWorkEnvironmentForWorkOrder({
       fetchedAt: new Date().toISOString(),
       pagesFetched: 0,
       recordsLimited: false,
-      message: "RN nema OIB tvrtke pa IS ZNR fizikalni čimbenici nisu dohvaćeni.",
+      message: "RN nema OIB tvrtke pa IS ZNR radni okoliš (FC/KC) nije dohvaćen.",
       sources: {},
       warnings: [],
     };

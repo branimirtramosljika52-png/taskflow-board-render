@@ -117487,7 +117487,7 @@ function isWorkOrderDocumentWorkEquipmentService(service = {}) {
 
 function isWorkOrderDocumentPhysicalFactorsText(value = "") {
   const normalized = normalizeWorkOrderDocumentWorkEquipmentText(value);
-  if (!normalized || isWorkOrderDocumentWorkEquipmentText(value)) {
+  if (!normalized || isWorkOrderDocumentWorkEquipmentText(value) || isWorkOrderDocumentChemicalFactorsText(value)) {
     return false;
   }
   return normalized === "fc"
@@ -117508,6 +117508,31 @@ function isWorkOrderDocumentPhysicalFactorsService(service = {}) {
     service?.shortCode,
     service?.serviceGroup,
   ].some((value) => isWorkOrderDocumentPhysicalFactorsText(value));
+}
+
+function isWorkOrderDocumentChemicalFactorsText(value = "") {
+  const normalized = normalizeWorkOrderDocumentWorkEquipmentText(value);
+  if (!normalized || isWorkOrderDocumentWorkEquipmentText(value)) {
+    return false;
+  }
+  return normalized === "kc"
+    || normalized.startsWith("kc ")
+    || normalized.includes("kemijski cimbenici")
+    || normalized.includes("kemijskih cimbenika")
+    || normalized.includes("radni okolis kemij")
+    || normalized.includes("radnog okolisa kemij");
+}
+
+function isWorkOrderDocumentChemicalFactorsService(service = {}) {
+  return [
+    service?.name,
+    service?.serviceName,
+    service?.title,
+    service?.serviceCode,
+    service?.code,
+    service?.shortCode,
+    service?.serviceGroup,
+  ].some((value) => isWorkOrderDocumentChemicalFactorsText(value));
 }
 
 function shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder = {}, serviceItems = []) {
@@ -117969,8 +117994,12 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       model: String(item.equipment?.model || ""),
       serialNumber: String(item.equipment?.serialNumber || ""),
       inventoryNumber: String(item.equipment?.inventoryNumber || ""),
+      location: String(item.location || ""),
+      startDate: String(item.startDate || ""),
+      endDate: String(item.endDate || ""),
       deadlineForNextExamination: String(item.deadlineForNextExamination || ""),
       finalGrade: String(item.finalGrade?.label || item.finalGrade || ""),
+      sourceLabel: String(item.sourceLabel || ""),
     })),
     localHistory: getWorkOrderDocumentRoLocalHistory(workOrder),
     expectedJsonShape: buildWorkOrderDocumentRoAiExpectedJsonShape(),
@@ -118372,6 +118401,306 @@ function getWorkOrderDocumentWorkEquipmentFilterCounts(items = [], today = getWo
   }, {});
 }
 
+function createWorkOrderDocumentWorkEquipmentKpiCard({
+  label = "",
+  value = 0,
+  tone = "neutral",
+  filterKey = "",
+  activeFilter = "all",
+  onClick = null,
+} = {}) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = [
+    "work-order-document-work-equipment-kpi",
+    `is-${tone || "neutral"}`,
+    filterKey && activeFilter === filterKey ? "is-active" : "",
+  ].filter(Boolean).join(" ");
+  card.disabled = typeof onClick !== "function";
+  card.setAttribute("aria-pressed", filterKey && activeFilter === filterKey ? "true" : "false");
+
+  const dot = document.createElement("span");
+  dot.className = "work-order-document-work-equipment-kpi-dot";
+  dot.setAttribute("aria-hidden", "true");
+  const copy = document.createElement("span");
+  copy.className = "work-order-document-work-equipment-kpi-copy";
+  const title = document.createElement("strong");
+  title.textContent = label;
+  const number = document.createElement("em");
+  number.textContent = String(value ?? 0);
+  copy.append(title, number);
+  card.append(dot, copy);
+
+  if (typeof onClick === "function") {
+    card.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+  }
+  return card;
+}
+
+function appendWorkOrderDocumentWorkEquipmentOverview(bodyNode, {
+  items = [],
+  scopedItems = [],
+  selectedIds = new Set(),
+  manualCount = 0,
+  activeFilter = "all",
+  stateEntry = null,
+  today = getWorkOrderDocumentWorkEquipmentToday(),
+} = {}) {
+  const counts = getWorkOrderDocumentWorkEquipmentFilterCounts(scopedItems, today);
+  const overview = document.createElement("div");
+  overview.className = "work-order-document-work-equipment-kpis";
+  const updateFilter = (filterKey) => {
+    if (!stateEntry) return;
+    stateEntry.filter = filterKey;
+    renderWorkOrderDocumentWizard();
+  };
+  [
+    { label: "Sva oprema", value: scopedItems.length || items.length, tone: "all", filterKey: "all" },
+    { label: "Isteklo", value: counts.overdue || 0, tone: "danger", filterKey: "overdue" },
+    { label: "Uskoro", value: counts.upcoming || 0, tone: "warning", filterKey: "upcoming" },
+    { label: "Odabrano", value: selectedIds.size, tone: "selected" },
+    { label: "Nije ispitano", value: counts["no-deadline"] || 0, tone: "neutral", filterKey: "no-deadline" },
+    { label: "Novo", value: manualCount, tone: "success" },
+  ].forEach((item) => {
+    overview.append(createWorkOrderDocumentWorkEquipmentKpiCard({
+      ...item,
+      activeFilter,
+      onClick: item.filterKey ? () => updateFilter(item.filterKey) : null,
+    }));
+  });
+  bodyNode.append(overview);
+}
+
+function getWorkOrderDocumentRoMatrixRows(item = {}, today = getWorkOrderDocumentWorkEquipmentToday()) {
+  const equipment = item.equipment || {};
+  const grade = getWorkOrderDocumentWorkEquipmentGrade(item);
+  const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
+  const basics = [
+    item.recordNumber,
+    item.location,
+    item.startDate,
+    item.endDate,
+    item.deadlineForNextExamination,
+    grade,
+  ].filter(Boolean).length;
+  const equipmentData = [
+    equipment.name,
+    equipment.manufacturer,
+    equipment.model,
+    equipment.serialNumber,
+    equipment.inventoryNumber,
+    equipment.note,
+    item.equipmentsTechnicalData,
+    item.equipmentsPurposeDescription,
+    item.equipmentsWorkspacePosition,
+    item.workingSubstancesAndRawMaterials,
+    item.useAndMaintenance,
+  ].filter(Boolean).length;
+  const regulations = [
+    ...(Array.isArray(item.roObligationRegister) ? item.roObligationRegister : []),
+    ...(Array.isArray(item.roHealthRequirementRegister) ? item.roHealthRequirementRegister : []),
+    item.roHealthRequirementOther,
+  ].filter(Boolean).length;
+  const mechanical = [
+    item.equipmentsTechnicalData,
+    item.methodsProceduresAndNorms,
+    item.deficiencies,
+    item.measuresToEliminateDeficiencies,
+  ].filter(Boolean).length;
+  const electrical = [
+    item.methodsProceduresAndNorms,
+    item.useAndMaintenance,
+  ].filter(Boolean).length;
+  const risks = [
+    item.deficiencies,
+    item.measuresToEliminateDeficiencies,
+    ...(Array.isArray(item.hazardRegisterIris) ? item.hazardRegisterIris : []),
+    ...(Array.isArray(item.harmfulnessRegisterIris) ? item.harmfulnessRegisterIris : []),
+    ...(Array.isArray(item.strainRegisterIris) ? item.strainRegisterIris : []),
+  ].filter(Boolean).length;
+  const attachments = Number(item.attachmentCount || item.attachmentsCount || 0) || 0;
+  return [
+    {
+      key: "basic",
+      value: `${Math.min(basics, 6)} / 6`,
+      detail: "popunjeno",
+      ok: basics >= 5,
+    },
+    {
+      key: "equipment",
+      value: `${Math.min(equipmentData, 11)} / 11`,
+      detail: "podaci",
+      ok: equipmentData >= 6,
+    },
+    {
+      key: "inspection",
+      value: item.endDate ? formatCompactDate(item.endDate) : "Nije ispitano",
+      detail: item.deadlineForNextExamination ? `Vrijedi do: ${formatCompactDate(item.deadlineForNextExamination)}` : "Vrijedi do: -",
+      ok: Boolean(item.endDate && !kind.isOverdue),
+      warning: kind.isUpcoming,
+      alert: kind.isOverdue,
+    },
+    {
+      key: "regulations",
+      value: `${regulations || 0}`,
+      detail: regulations ? "potvrdeno" : "nije potvrdeno",
+      ok: regulations > 0,
+    },
+    {
+      key: "mechanical",
+      value: mechanical ? "Zadovoljava" : "Provjeri",
+      detail: `${mechanical || 0} stavki`,
+      ok: mechanical > 0 && !normalizeWorkOrderDocumentWorkEquipmentGrade(grade).includes("ne zadovoljava"),
+      warning: mechanical === 0,
+    },
+    {
+      key: "electrical",
+      value: electrical ? "Zadovoljava" : "Nije posebno",
+      detail: `${electrical || 0} stavki`,
+      ok: electrical > 0,
+    },
+    {
+      key: "risks",
+      value: risks ? `${risks} identificirano` : "0 identificirano",
+      detail: item.deficiencies ? "ima nedostataka" : "bez istaknutih nedostataka",
+      ok: risks === 0,
+      warning: risks > 0,
+    },
+    {
+      key: "attachments",
+      value: `${attachments} priloga`,
+      detail: item.sourceLabel || "IS ZNR",
+      ok: attachments > 0,
+    },
+  ];
+}
+
+function appendWorkOrderDocumentRoMatrix(bodyNode, {
+  items = [],
+  selectedIds = new Set(),
+  stateEntry = {},
+  today = getWorkOrderDocumentWorkEquipmentToday(),
+} = {}) {
+  const matrixItems = (Array.isArray(items) ? items : []).filter(Boolean);
+  if (!matrixItems.length) {
+    return;
+  }
+  const rows = [
+    { key: "basic", title: "Osnovni podaci", subtitle: "Temeljni podaci" },
+    { key: "equipment", title: "Podaci o radnoj opremi", subtitle: "Tehnički podaci i specifikacije" },
+    { key: "inspection", title: "Podaci o ispitivanju", subtitle: "Datumi, ocjene i rokovi" },
+    { key: "regulations", title: "Propisi", subtitle: "Obveze i zahtjevi" },
+    { key: "mechanical", title: "Strojarski dio", subtitle: "Mehanički pregledi i stanje" },
+    { key: "electrical", title: "Elektro dio", subtitle: "Električni pregledi i stanje" },
+    { key: "risks", title: "Opasnosti / štetnosti / napori", subtitle: "Identificirani rizici i napori" },
+    { key: "attachments", title: "Prilozi", subtitle: "Dokumenti i fotografije" },
+  ];
+  const shell = document.createElement("div");
+  shell.className = "work-order-document-ro-matrix-shell";
+  const grid = document.createElement("div");
+  grid.className = "work-order-document-ro-matrix";
+  grid.style.gridTemplateColumns = `minmax(230px, 0.8fr) repeat(${matrixItems.length}, minmax(240px, 1fr))`;
+
+  const sectionHead = document.createElement("div");
+  sectionHead.className = "work-order-document-ro-matrix-section is-header";
+  sectionHead.textContent = "Sekcija";
+  grid.append(sectionHead);
+
+  matrixItems.forEach((item) => {
+    const equipment = item.equipment || {};
+    const itemId = String(item?.id || "").trim();
+    const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = [
+      "work-order-document-ro-matrix-equipment",
+      selectedIds.has(itemId) ? "is-selected" : "",
+      kind.isOverdue || kind.isUnsatisfactory ? "is-alert" : "",
+      kind.isUpcoming ? "is-upcoming" : "",
+      kind.isSatisfactory ? "is-ok" : "",
+    ].filter(Boolean).join(" ");
+    head.disabled = !itemId || stateEntry.submitting;
+    head.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!itemId || stateEntry.submitting) return;
+      const next = new Set(selectedIds);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      stateEntry.selectedItemIds = [...next];
+      renderWorkOrderDocumentWizard();
+    });
+
+    const title = document.createElement("strong");
+    title.textContent = item.equipmentType || equipment.name || item.recordNumber || "Radna oprema";
+    const meta = document.createElement("span");
+    meta.textContent = [
+      equipment.serialNumber ? `Ser. ${equipment.serialNumber}` : "",
+      equipment.inventoryNumber ? `Inv. ${equipment.inventoryNumber}` : "",
+      item.location || "",
+    ].filter(Boolean).join(" · ") || item.recordNumber || "IS ZNR RO";
+    const badge = createBadge(getWorkOrderDocumentWorkEquipmentGrade(item) || (selectedIds.has(itemId) ? "Odabrano" : "RO"), "document-template-meta-badge");
+    head.append(title, meta, badge);
+    grid.append(head);
+  });
+
+  rows.forEach((row) => {
+    const section = document.createElement("div");
+    section.className = "work-order-document-ro-matrix-section";
+    const title = document.createElement("strong");
+    title.textContent = row.title;
+    const subtitle = document.createElement("span");
+    subtitle.textContent = row.subtitle;
+    section.append(title, subtitle);
+    grid.append(section);
+
+    matrixItems.forEach((item) => {
+      const itemId = String(item?.id || "").trim();
+      const matrixRows = getWorkOrderDocumentRoMatrixRows(item, today);
+      const cellData = matrixRows.find((entry) => entry.key === row.key) || {};
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = [
+        "work-order-document-ro-matrix-cell",
+        selectedIds.has(itemId) ? "is-selected" : "",
+        cellData.alert ? "is-alert" : "",
+        cellData.warning ? "is-warning" : "",
+        cellData.ok ? "is-ok" : "",
+      ].filter(Boolean).join(" ");
+      cell.disabled = !itemId || stateEntry.submitting;
+      cell.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (!itemId || stateEntry.submitting) return;
+        const next = new Set(selectedIds);
+        if (next.has(itemId)) {
+          next.delete(itemId);
+        } else {
+          next.add(itemId);
+        }
+        stateEntry.selectedItemIds = [...next];
+        renderWorkOrderDocumentWizard();
+      });
+      const value = document.createElement("strong");
+      value.textContent = cellData.value || "-";
+      const detail = document.createElement("span");
+      detail.textContent = cellData.detail || "";
+      cell.append(value, detail);
+      grid.append(cell);
+    });
+  });
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-document-ro-matrix-footer";
+  footer.textContent = `Prikazano ${matrixItems.length} opreme · klik na stupac ili ćeliju označava opremu za RO zapisnik.`;
+  shell.append(grid, footer);
+  bodyNode.append(shell);
+}
+
 function getWorkOrderDocumentWorkEquipmentLocationLabel(item = {}) {
   const equipment = item.equipment || {};
   return [
@@ -118705,7 +119034,7 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
   const readyManual = getReadyWorkOrderDocumentRoManualEquipments(stateEntry);
   subtitle.textContent = readyManual.length
     ? `${readyManual.length} nova oprema spremna za zapisnik`
-    : "Dodaj natpisne pločice, slike stroja ili stari PDF pa NexAI popuni opremu.";
+    : "Dodaj slike, natpisne pločice ili PDF. NexAI uspoređuje s IS ZNR i lokalnom povijesti.";
   copy.append(title, subtitle);
   const badge = createBadge(`${(stateEntry.aiFiles || []).length} dat.`, "document-template-meta-badge");
   header.append(copy, badge);
@@ -118726,7 +119055,7 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
   const addButton = document.createElement("button");
   addButton.type = "button";
   addButton.className = "ghost-button";
-  addButton.textContent = "+ Slike/PDF";
+  addButton.textContent = "Dodaj slike/PDF";
   addButton.disabled = Boolean(stateEntry.aiLoading);
   addButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -118748,7 +119077,7 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
   const runButton = document.createElement("button");
   runButton.type = "button";
   runButton.className = "primary-action-button";
-  runButton.textContent = stateEntry.aiLoading ? "Čitam..." : "NexAI popuni";
+  runButton.textContent = stateEntry.aiLoading ? "Čitam..." : "AI prepoznaj opremu";
   runButton.disabled = Boolean(stateEntry.aiLoading) || !(Array.isArray(stateEntry.aiFiles) && stateEntry.aiFiles.length);
   runButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -119025,10 +119354,23 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     ? items.filter((item) => matchesWorkOrderDocumentWorkEquipmentLocationKey(item, stateEntry.locationKey))
     : items;
   const today = getWorkOrderDocumentWorkEquipmentToday();
+  const selectedIds = new Set((Array.isArray(stateEntry.selectedItemIds) ? stateEntry.selectedItemIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean));
+  const manualEquipments = readyManualEquipments;
   const counts = getWorkOrderDocumentWorkEquipmentFilterCounts(scopedItems, today);
   const activeFilter = WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.some((filter) => filter.key === stateEntry.filter)
     ? stateEntry.filter
     : "all";
+  appendWorkOrderDocumentWorkEquipmentOverview(bodyNode, {
+    items,
+    scopedItems,
+    selectedIds,
+    manualCount: manualEquipments.length,
+    activeFilter,
+    stateEntry,
+    today,
+  });
   const filterRow = document.createElement("div");
   filterRow.className = "work-order-document-work-equipment-filters";
   WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.forEach((filter) => {
@@ -119066,10 +119408,6 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     return;
   }
 
-  const selectedIds = new Set((Array.isArray(stateEntry.selectedItemIds) ? stateEntry.selectedItemIds : [])
-    .map((value) => String(value || "").trim())
-    .filter(Boolean));
-  const manualEquipments = readyManualEquipments;
   const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft);
   const selectionBar = document.createElement("div");
   selectionBar.className = "work-order-document-work-equipment-selection";
@@ -119123,69 +119461,12 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   columnHead.append(columnTitle, columnHint);
   bodyNode.append(columnHead);
 
-  const list = document.createElement("div");
-  list.className = "work-order-document-work-equipment-list";
-  filteredItems.forEach((item) => {
-    const equipment = item.equipment || {};
-    const itemId = String(item?.id || "").trim();
-    const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
-    const card = document.createElement("article");
-    card.className = [
-      "work-order-document-work-equipment-card",
-      kind.isOverdue || kind.isUnsatisfactory ? "is-alert" : "",
-      kind.isUpcoming ? "is-upcoming" : "",
-      kind.isSatisfactory ? "is-ok" : "",
-      selectedIds.has(itemId) ? "is-selected" : "",
-    ].filter(Boolean).join(" ");
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = selectedIds.has(itemId);
-    checkbox.disabled = !itemId || stateEntry.submitting;
-    checkbox.setAttribute("aria-label", "Odaberi radnu opremu za IS ZNR POST");
-    checkbox.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
-    checkbox.addEventListener("change", (event) => {
-      event.stopPropagation();
-      const next = new Set(selectedIds);
-      if (checkbox.checked) {
-        next.add(itemId);
-      } else {
-        next.delete(itemId);
-      }
-      stateEntry.selectedItemIds = [...next];
-      renderWorkOrderDocumentWizard();
-    });
-
-    const title = document.createElement("strong");
-    title.textContent = item.equipmentType || equipment.name || item.recordNumber || "Radna oprema";
-
-    const meta = document.createElement("span");
-    meta.textContent = [
-      item.recordNumber ? `Zapisnik ${item.recordNumber}` : "",
-      equipment.serialNumber ? `Ser. ${equipment.serialNumber}` : "",
-      equipment.inventoryNumber ? `Inv. ${equipment.inventoryNumber}` : "",
-      item.deadlineForNextExamination ? `Rok ${formatCompactDate(item.deadlineForNextExamination)}` : "",
-      item.location || "",
-    ].filter(Boolean).join(" · ") || "IS ZNR RO zapis";
-
-    const badge = createBadge(getWorkOrderDocumentWorkEquipmentGrade(item) || "IS ZNR", "document-template-meta-badge");
-    card.addEventListener("click", () => {
-      if (!itemId || stateEntry.submitting) return;
-      const next = new Set(selectedIds);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      stateEntry.selectedItemIds = [...next];
-      renderWorkOrderDocumentWizard();
-    });
-    card.append(checkbox, title, meta, badge);
-    list.append(card);
+  appendWorkOrderDocumentRoMatrix(bodyNode, {
+    items: filteredItems,
+    selectedIds,
+    stateEntry,
+    today,
   });
-  bodyNode.append(list);
 
   if (stateEntry.recordsLimited) {
     const limited = document.createElement("p");
@@ -119262,6 +119543,14 @@ function shouldShowWorkOrderDocumentPhysicalFactorsSection(workOrder = {}, servi
   );
 }
 
+function shouldShowWorkOrderDocumentChemicalFactorsSection(workOrder = {}, serviceItems = []) {
+  return Boolean(
+    isWorkOrderDocumentChemicalFactorsText(workOrder?.serviceLine)
+    || isWorkOrderDocumentChemicalFactorsText(workOrder?.displayService)
+    || (Array.isArray(serviceItems) && serviceItems.some((service) => isWorkOrderDocumentChemicalFactorsService(service)))
+  );
+}
+
 function getWorkOrderDocumentIsznrWorkEnvironmentState(workOrderId = "") {
   const normalizedId = String(workOrderId || "").trim();
   if (!state.workOrderDocumentWizard.isznrWorkEnvironment || typeof state.workOrderDocumentWizard.isznrWorkEnvironment !== "object") {
@@ -119281,8 +119570,11 @@ function getWorkOrderDocumentIsznrWorkEnvironmentState(workOrderId = "") {
       totalItems: null,
       recordsLimited: false,
       filter: "all",
+      chemicalFilter: "all",
       postDraft: null,
       selectedItemIds: [],
+      selectedPhysicalItemIds: [],
+      selectedChemicalItemIds: [],
       submitting: false,
       postResult: null,
     };
@@ -119315,11 +119607,26 @@ async function loadWorkOrderDocumentIsznrWorkEnvironment(workOrder = {}, { force
     entry.message = String(payload?.message || "").trim();
     entry.postDraft = payload?.postDraft && typeof payload.postDraft === "object" ? payload.postDraft : null;
     const itemIds = new Set(entry.items.map((item) => String(item?.id || "").trim()).filter(Boolean));
+    const physicalItemIds = new Set(entry.items
+      .filter((item) => String(item?.environmentKind || "physical") !== "chemical")
+      .map((item) => String(item?.id || "").trim())
+      .filter(Boolean));
+    const chemicalItemIds = new Set(entry.items
+      .filter((item) => String(item?.environmentKind || "") === "chemical")
+      .map((item) => String(item?.id || "").trim())
+      .filter(Boolean));
     entry.selectedItemIds = (Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
       .filter((id) => itemIds.has(String(id || "").trim()));
+    const legacyPhysicalSelection = entry.selectedPhysicalItemIds?.length
+      ? entry.selectedPhysicalItemIds
+      : entry.selectedItemIds;
+    entry.selectedPhysicalItemIds = (Array.isArray(legacyPhysicalSelection) ? legacyPhysicalSelection : [])
+      .filter((id) => physicalItemIds.has(String(id || "").trim()));
+    entry.selectedChemicalItemIds = (Array.isArray(entry.selectedChemicalItemIds) ? entry.selectedChemicalItemIds : [])
+      .filter((id) => chemicalItemIds.has(String(id || "").trim()));
     entry.loaded = true;
   } catch (error) {
-    entry.error = error?.message || "IS ZNR fizikalni čimbenici nisu dohvaćeni.";
+    entry.error = error?.message || "IS ZNR radni okoliš (FC/KC) nije dohvaćen.";
     entry.loaded = true;
   } finally {
     entry.loading = false;
@@ -119350,7 +119657,9 @@ async function submitWorkOrderDocumentIsznrPhysicalFactors(workOrder = {}) {
     return;
   }
   const entry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrderId);
-  const selectedItemIds = (Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
+  const selectedItemIds = (Array.isArray(entry.selectedPhysicalItemIds) && entry.selectedPhysicalItemIds.length
+    ? entry.selectedPhysicalItemIds
+    : entry.selectedItemIds)
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(entry.postDraft, ["sourceRecord"]);
@@ -119390,6 +119699,7 @@ async function submitWorkOrderDocumentIsznrPhysicalFactors(workOrder = {}) {
     await loadWorkOrderDocumentIsznrWorkEnvironment(workOrder, { force: true });
     const refreshedEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrderId);
     refreshedEntry.postResult = payload;
+    refreshedEntry.selectedPhysicalItemIds = selectedItemIds;
     refreshedEntry.selectedItemIds = selectedItemIds;
     refreshedEntry.message = postMessage || payload?.message || refreshedEntry.message || "FC zapisnik je poslan u IS ZNR.";
   } catch (error) {
@@ -119451,22 +119761,36 @@ function getWorkOrderDocumentPhysicalFactorsFilterCounts(items = [], today = get
   }, {});
 }
 
-function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {}, stateEntry = {}) {
+function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {}, stateEntry = {}, { environmentKind = "physical" } = {}) {
+  const isChemical = String(environmentKind || "").trim() === "chemical";
+  const shortLabel = isChemical ? "KC" : "FC";
+  const longLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
+  const sourceLabel = isChemical ? "kc_records" : "fc_records";
+  const filterField = isChemical ? "chemicalFilter" : "filter";
+  const selectionField = isChemical ? "selectedChemicalItemIds" : "selectedPhysicalItemIds";
+
+  const allItems = Array.isArray(stateEntry.items) ? stateEntry.items : [];
+  const items = allItems.filter((item) =>
+    isChemical
+      ? String(item?.environmentKind || "") === "chemical"
+      : String(item?.environmentKind || "physical") !== "chemical",
+  );
+
   const toolbar = document.createElement("div");
   toolbar.className = "work-order-document-work-equipment-toolbar";
 
   const summary = document.createElement("span");
   summary.className = "work-order-document-selection-helper";
   summary.textContent = stateEntry.loading
-    ? "Dohvaćam FC zapisnike iz IS ZNR-a..."
+    ? `Dohvaćam ${shortLabel} zapisnike iz IS ZNR-a...`
     : stateEntry.loaded
-      ? `${stateEntry.items.length} FC zapisnika${stateEntry.companyOib ? ` · OIB ${stateEntry.companyOib}` : ""}`
-      : "Dohvat ide iz IS ZNR fc_records za tvrtku na ovom RN-u.";
+      ? `${items.length} ${shortLabel} zapisnika${stateEntry.companyOib ? ` · OIB ${stateEntry.companyOib}` : ""}`
+      : `Dohvat ide iz IS ZNR ${sourceLabel} za tvrtku na ovom RN-u.`;
 
   const refreshButton = document.createElement("button");
   refreshButton.type = "button";
   refreshButton.className = "ghost-button";
-  refreshButton.textContent = stateEntry.loading ? "Dohvaćam..." : (stateEntry.loaded ? "Osvježi" : "Dohvati FC");
+  refreshButton.textContent = stateEntry.loading ? "Dohvaćam..." : (stateEntry.loaded ? "Osvježi" : `Dohvati ${shortLabel}`);
   refreshButton.disabled = Boolean(stateEntry.loading);
   refreshButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -119490,11 +119814,10 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
     bodyNode.append(message);
   }
 
-  const items = Array.isArray(stateEntry.items) ? stateEntry.items : [];
   if (stateEntry.loading && !items.length) {
     const loading = document.createElement("p");
     loading.className = "helper-copy module-copy";
-    loading.textContent = "Čitam fizikalne čimbenike iz IS ZNR-a...";
+    loading.textContent = `Čitam ${longLabel.toLowerCase()} iz IS ZNR-a...`;
     bodyNode.append(loading);
     return;
   }
@@ -119502,16 +119825,16 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = stateEntry.loaded
-      ? "Za ovaj RN trenutno nema dohvaćenih FC zapisnika iz IS ZNR-a."
-      : "FC zapisnici će se ponuditi ovdje prije izrade dokumentacije.";
+      ? `Za ovaj RN trenutno nema dohvaćenih ${shortLabel} zapisnika iz IS ZNR-a.`
+      : `${shortLabel} zapisnici će se ponuditi ovdje prije izrade dokumentacije.`;
     bodyNode.append(empty);
     return;
   }
 
   const today = getWorkOrderDocumentWorkEquipmentToday();
   const counts = getWorkOrderDocumentPhysicalFactorsFilterCounts(items, today);
-  const activeFilter = WORK_ORDER_DOCUMENT_FC_FILTERS.some((filter) => filter.key === stateEntry.filter)
-    ? stateEntry.filter
+  const activeFilter = WORK_ORDER_DOCUMENT_FC_FILTERS.some((filter) => filter.key === stateEntry[filterField])
+    ? stateEntry[filterField]
     : "all";
   const filterRow = document.createElement("div");
   filterRow.className = "work-order-document-work-equipment-filters";
@@ -119521,10 +119844,10 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
     button.type = "button";
     button.className = `work-order-document-work-equipment-filter${activeFilter === filter.key ? " is-active" : ""}`;
     button.disabled = count === 0 && filter.key !== "all";
-    button.textContent = `${filter.label} (${count})`;
+    button.textContent = `${filter.key === "all" ? `Svi ${shortLabel}` : filter.label} (${count})`;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      stateEntry.filter = filter.key;
+      stateEntry[filterField] = filter.key;
       renderWorkOrderDocumentWizard();
     });
     filterRow.append(button);
@@ -119539,17 +119862,26 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
       if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
       return String(left.recordNumber || left.location || "").localeCompare(String(right.recordNumber || right.location || ""), "hr", { numeric: true, sensitivity: "base" });
     });
-  const selectedIds = new Set((Array.isArray(stateEntry.selectedItemIds) ? stateEntry.selectedItemIds : [])
+  const selectedIds = new Set((Array.isArray(stateEntry[selectionField]) && stateEntry[selectionField].length
+    ? stateEntry[selectionField]
+    : (!isChemical ? stateEntry.selectedItemIds : []))
     .map((value) => String(value || "").trim())
     .filter(Boolean));
   const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft, ["sourceRecord"]);
+  const updateSelection = (next) => {
+    stateEntry[selectionField] = [...next];
+    if (!isChemical) {
+      stateEntry.selectedItemIds = [...next];
+    }
+    renderWorkOrderDocumentWizard();
+  };
 
   const selectionBar = document.createElement("div");
   selectionBar.className = "work-order-document-work-equipment-selection";
   const selectionCopy = document.createElement("span");
   selectionCopy.textContent = selectedIds.size > 0
-    ? `${selectedIds.size} FC odabrano za dokumentaciju`
-    : "Odaberi FC zapisnike koji ulaze u primopredaju.";
+    ? `${selectedIds.size} ${shortLabel} odabrano za dokumentaciju`
+    : `Odaberi ${shortLabel} zapisnike koji ulaze u dokumentaciju.`;
   const selectVisibleButton = document.createElement("button");
   selectVisibleButton.type = "button";
   selectVisibleButton.className = "ghost-button";
@@ -119561,8 +119893,7 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
       const itemId = String(item?.id || "").trim();
       if (itemId) next.add(itemId);
     });
-    stateEntry.selectedItemIds = [...next];
-    renderWorkOrderDocumentWizard();
+    updateSelection(next);
   });
   const clearSelectionButton = document.createElement("button");
   clearSelectionButton.type = "button";
@@ -119571,18 +119902,21 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
   clearSelectionButton.disabled = selectedIds.size === 0;
   clearSelectionButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    stateEntry.selectedItemIds = [];
-    renderWorkOrderDocumentWizard();
+    updateSelection(new Set());
   });
   const submitButton = document.createElement("button");
   submitButton.type = "button";
   submitButton.className = "primary-action-button";
-  submitButton.textContent = stateEntry.submitting ? "Šaljem..." : "Pošalji FC u IS ZNR";
-  submitButton.disabled = stateEntry.submitting || selectedIds.size === 0 || blockingLabels.length > 0;
-  submitButton.title = blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "";
+  submitButton.textContent = isChemical ? "KC POST uskoro" : (stateEntry.submitting ? "Šaljem..." : "Pošalji FC u IS ZNR");
+  submitButton.disabled = isChemical || stateEntry.submitting || selectedIds.size === 0 || blockingLabels.length > 0;
+  submitButton.title = isChemical
+    ? "KC dohvat i odabir su uključeni. Slanje KC zapisnika treba zaseban POST builder."
+    : (blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "");
   submitButton.addEventListener("click", (event) => {
     event.stopPropagation();
-    void submitWorkOrderDocumentIsznrPhysicalFactors(workOrder);
+    if (!isChemical) {
+      void submitWorkOrderDocumentIsznrPhysicalFactors(workOrder);
+    }
   });
   selectionBar.append(selectionCopy, selectVisibleButton, clearSelectionButton, submitButton);
   bodyNode.append(selectionBar);
@@ -119592,18 +119926,21 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
   filteredItems.slice(0, 24).forEach((item) => {
     const itemId = String(item?.id || "").trim();
     const grade = getWorkOrderDocumentPhysicalFactorsGrade(item);
+    const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
     const card = document.createElement("article");
     card.className = [
       "work-order-document-work-equipment-card",
       selectedIds.has(itemId) ? "is-selected" : "",
-      normalizeWorkOrderDocumentWorkEquipmentGrade(grade).includes("ne zadovoljava") ? "is-alert" : "",
+      kind.isOverdue || kind.isUnsatisfactory ? "is-alert" : "",
+      kind.isUpcoming ? "is-upcoming" : "",
+      kind.isSatisfactory ? "is-ok" : "",
     ].filter(Boolean).join(" ");
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = selectedIds.has(itemId);
     checkbox.disabled = !itemId;
-    checkbox.setAttribute("aria-label", "Odaberi FC zapisnik za dokumentaciju");
+    checkbox.setAttribute("aria-label", `Odaberi ${shortLabel} zapisnik za dokumentaciju`);
     checkbox.addEventListener("click", (event) => event.stopPropagation());
     checkbox.addEventListener("change", (event) => {
       event.stopPropagation();
@@ -119613,25 +119950,25 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
       } else {
         next.delete(itemId);
       }
-      stateEntry.selectedItemIds = [...next];
-      renderWorkOrderDocumentWizard();
+      updateSelection(next);
     });
 
     const title = document.createElement("strong");
-    title.textContent = item.recordNumber || item.location || "FC zapisnik";
+    title.textContent = item.recordNumber || item.location || `${shortLabel} zapisnik`;
 
     const meta = document.createElement("span");
     const spacesCount = Array.isArray(item.spaces) ? item.spaces.length : 0;
     const measurementsCount = Array.isArray(item.measurements) ? item.measurements.length : 0;
     meta.textContent = [
-      "Fizikalni čimbenici",
+      longLabel,
       item.location || "",
+      Array.isArray(item.types) && item.types.length ? item.types.slice(0, 3).join(", ") : "",
       spacesCount ? `${spacesCount} prostora` : "",
       measurementsCount ? `${measurementsCount} mjerenja` : "",
       item.deadlineForNextExamination ? `Rok ${formatCompactDate(item.deadlineForNextExamination)}` : "",
-    ].filter(Boolean).join(" · ") || "IS ZNR fc_records";
+    ].filter(Boolean).join(" · ") || `IS ZNR ${sourceLabel}`;
 
-    const badge = createBadge(grade || "FC", "document-template-meta-badge");
+    const badge = createBadge(grade || shortLabel, "document-template-meta-badge");
     card.addEventListener("click", () => {
       if (!itemId) return;
       const next = new Set(selectedIds);
@@ -119640,8 +119977,7 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
       } else {
         next.add(itemId);
       }
-      stateEntry.selectedItemIds = [...next];
-      renderWorkOrderDocumentWizard();
+      updateSelection(next);
     });
     card.append(checkbox, title, meta, badge);
     list.append(card);
@@ -119652,8 +119988,8 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
     const limited = document.createElement("p");
     limited.className = "helper-copy module-copy";
     limited.textContent = stateEntry.recordsLimited
-      ? "Dohvat FC zapisnika je ograničen. Prikazujem prvi skup iz IS ZNR-a."
-      : `Prikazano prvih 24 od ${filteredItems.length} FC zapisnika za odabrani filter.`;
+      ? `Dohvat ${shortLabel} zapisnika je ograničen. Prikazujem prvi skup iz IS ZNR-a.`
+      : `Prikazano prvih 24 od ${filteredItems.length} ${shortLabel} zapisnika za odabrani filter.`;
     bodyNode.append(limited);
   }
 }
@@ -119666,13 +120002,28 @@ function getWorkOrderDocumentWizardPhysicalFactorsCandidates(workOrders = []) {
   });
 }
 
-function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {}) {
+function getWorkOrderDocumentWizardChemicalFactorsCandidates(workOrders = []) {
+  const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
+  return selectedWorkOrders.filter((workOrder) => {
+    const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
+    return shouldShowWorkOrderDocumentChemicalFactorsSection(workOrder, serviceItems);
+  });
+}
+
+function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {}, { environmentKind = "physical" } = {}) {
+  const isChemical = String(environmentKind || "").trim() === "chemical";
+  const shortLabel = isChemical ? "KC" : "FC";
+  const longLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
   const stateEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrder?.id);
   queueWorkOrderDocumentIsznrWorkEnvironmentLoad(workOrder);
 
   const card = document.createElement("article");
   card.className = "work-order-document-template-card work-order-document-ro-template-card";
-  card.dataset.workOrderDocumentFcCard = String(workOrder?.id || workOrder?.workOrderNumber || "");
+  if (isChemical) {
+    card.dataset.workOrderDocumentKcCard = String(workOrder?.id || workOrder?.workOrderNumber || "");
+  } else {
+    card.dataset.workOrderDocumentFcCard = String(workOrder?.id || workOrder?.workOrderNumber || "");
+  }
 
   const head = document.createElement("div");
   head.className = "work-order-document-template-card-head";
@@ -119681,19 +120032,21 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {})
   copy.className = "work-order-document-template-card-copy";
 
   const title = document.createElement("strong");
-  title.textContent = "FC - Fizikalni čimbenici";
+  title.textContent = `${shortLabel} - ${longLabel}`;
 
   const meta = document.createElement("span");
+  const kindCount = (Array.isArray(stateEntry.items) ? stateEntry.items : [])
+    .filter((item) => (isChemical ? item.environmentKind === "chemical" : item.environmentKind !== "chemical")).length;
   meta.textContent = stateEntry.loaded
-    ? `${stateEntry.items.length} IS ZNR FC zapisnika${stateEntry.companyOib ? ` | OIB ${stateEntry.companyOib}` : ""}`
-    : "Live dohvat fizikalnih čimbenika iz IS ZNR-a";
+    ? `${kindCount} IS ZNR ${shortLabel} zapisnika${stateEntry.companyOib ? ` | OIB ${stateEntry.companyOib}` : ""}`
+    : `Live dohvat ${longLabel.toLowerCase()} iz IS ZNR-a`;
 
   copy.append(title, meta);
 
   const badges = document.createElement("div");
   badges.className = "work-order-document-template-card-badges";
   badges.append(
-    createBadge("FC", "document-template-meta-badge"),
+    createBadge(shortLabel, "document-template-meta-badge"),
     createBadge("IS ZNR", "document-template-meta-badge"),
   );
   head.append(copy, badges);
@@ -119710,7 +120063,7 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {})
 
   const body = document.createElement("div");
   body.className = "work-order-document-ro-template-body";
-  appendWorkOrderDocumentIsznrWorkEnvironmentBody(body, workOrder, stateEntry);
+  appendWorkOrderDocumentIsznrWorkEnvironmentBody(body, workOrder, stateEntry, { environmentKind: isChemical ? "chemical" : "physical" });
 
   card.append(head, workOrderList, body);
   return card;
@@ -124496,7 +124849,7 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
   return opened;
 }
 
-function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEquipmentWorkOrders = [], physicalFactorsWorkOrders = []) {
+function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEquipmentWorkOrders = [], physicalFactorsWorkOrders = [], chemicalFactorsWorkOrders = []) {
   if (!workOrderDocumentWizardTemplateDock) {
     return;
   }
@@ -124515,6 +124868,11 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEqu
     })),
     (Array.isArray(physicalFactorsWorkOrders) ? physicalFactorsWorkOrders : []).map((workOrder) => ({
       kind: "physicalFactors",
+      template: null,
+      workOrder,
+    })),
+    (Array.isArray(chemicalFactorsWorkOrders) ? chemicalFactorsWorkOrders : []).map((workOrder) => ({
+      kind: "chemicalFactors",
       template: null,
       workOrder,
     })),
@@ -124543,7 +124901,9 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEqu
       ? `Otvori ${template.title || "zapisnik"} za RN ${workOrder.workOrderNumber || "bez broja"}`
       : kind === "physicalFactors"
         ? `Prikaži FC za RN ${workOrder.workOrderNumber || "bez broja"}`
-        : `Prikaži RO za RN ${workOrder.workOrderNumber || "bez broja"}`;
+        : kind === "chemicalFactors"
+          ? `Prikaži KC za RN ${workOrder.workOrderNumber || "bez broja"}`
+          : `Prikaži RO za RN ${workOrder.workOrderNumber || "bez broja"}`;
     button.setAttribute("aria-label", button.title);
     button.addEventListener("click", () => {
       if (template) {
@@ -124556,7 +124916,9 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEqu
         : key.replace(/"/g, "\\\"");
       const selector = kind === "physicalFactors"
         ? `[data-work-order-document-fc-card="${escapedKey}"]`
-        : `[data-work-order-document-ro-card="${escapedKey}"]`;
+        : kind === "chemicalFactors"
+          ? `[data-work-order-document-kc-card="${escapedKey}"]`
+          : `[data-work-order-document-ro-card="${escapedKey}"]`;
       const target = workOrderDocumentWizardTemplateList?.querySelector(selector);
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
@@ -124565,7 +124927,7 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEqu
     templateLabel.className = "work-order-document-template-dock-type";
     templateLabel.textContent = template
       ? String(template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik").trim()
-      : kind === "physicalFactors" ? "FC" : "RO";
+      : kind === "physicalFactors" ? "FC" : kind === "chemicalFactors" ? "KC" : "RO";
 
     const workOrderLabel = document.createElement("strong");
     workOrderLabel.className = "work-order-document-template-dock-number";
@@ -124675,7 +125037,11 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   );
   const physicalFactorsWorkOrders = getWorkOrderDocumentWizardPhysicalFactorsCandidates(workOrders);
   const physicalFactorsCards = physicalFactorsWorkOrders.map((workOrder) =>
-    createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder),
+    createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder, { environmentKind: "physical" }),
+  );
+  const chemicalFactorsWorkOrders = getWorkOrderDocumentWizardChemicalFactorsCandidates(workOrders);
+  const chemicalFactorsCards = chemicalFactorsWorkOrders.map((workOrder) =>
+    createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder, { environmentKind: "chemical" }),
   );
   const selectedTemplateCount = recommendations.length;
 
@@ -124683,8 +125049,8 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   const summary = document.createElement("div");
   summary.className = "work-order-document-template-summary-card";
   summary.innerHTML = `
-    <strong>${selectedTemplateCount} templatea${workEquipmentCards.length ? ` + ${workEquipmentCards.length} RO` : ""}${physicalFactorsCards.length ? ` + ${physicalFactorsCards.length} FC` : ""}</strong>
-    <span>${selectedTemplateCount > 0 || workEquipmentCards.length > 0 || physicalFactorsCards.length > 0 ? "Pronađeni su iz usluga i IS ZNR konteksta na odabranim RN-ovima." : "Na odabranim RN-ovima još nema povezanih templatea."}</span>
+    <strong>${selectedTemplateCount} templatea${workEquipmentCards.length ? ` + ${workEquipmentCards.length} RO` : ""}${physicalFactorsCards.length ? ` + ${physicalFactorsCards.length} FC` : ""}${chemicalFactorsCards.length ? ` + ${chemicalFactorsCards.length} KC` : ""}</strong>
+    <span>${selectedTemplateCount > 0 || workEquipmentCards.length > 0 || physicalFactorsCards.length > 0 || chemicalFactorsCards.length > 0 ? "Pronađeni su iz usluga i IS ZNR konteksta na odabranim RN-ovima." : "Na odabranim RN-ovima još nema povezanih templatea."}</span>
   `;
   workOrderDocumentWizardTemplateSummary.append(summary);
 
@@ -124698,7 +125064,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     workOrderDocumentWizardTemplateSummary.append(warning);
   }
 
-  if (recommendations.length === 0 && workEquipmentCards.length === 0 && physicalFactorsCards.length === 0) {
+  if (recommendations.length === 0 && workEquipmentCards.length === 0 && physicalFactorsCards.length === 0 && chemicalFactorsCards.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (SPR, TZIN, RO...).";
@@ -124781,8 +125147,8 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     return card;
   });
 
-  workOrderDocumentWizardTemplateList.replaceChildren(...workEquipmentCards, ...physicalFactorsCards, ...templateCards);
-  renderWorkOrderDocumentWizardTemplateDock(recommendations, workEquipmentWorkOrders, physicalFactorsWorkOrders);
+  workOrderDocumentWizardTemplateList.replaceChildren(...workEquipmentCards, ...physicalFactorsCards, ...chemicalFactorsCards, ...templateCards);
+  renderWorkOrderDocumentWizardTemplateDock(recommendations, workEquipmentWorkOrders, physicalFactorsWorkOrders, chemicalFactorsWorkOrders);
 }
 
 function renderWorkOrderDocumentWizard() {
