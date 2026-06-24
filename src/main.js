@@ -91032,12 +91032,18 @@ function renderClientPortalPreview() {
     companyId,
     selectedLocationIds,
   ));
+  const scopedClientPortalRecords = sortClientPortalRecords(filterClientPortalRecordsByScope(
+    state.clientPortalRecords ?? [],
+    companyId,
+    selectedLocationIds,
+  ));
 
   const workOrderRows = scopedWorkOrders.map(createClientPortalWorkOrderPreviewRow);
   const foundationRows = getClientPortalFoundationalDocumentItems().map(createClientPortalFoundationPreviewRow);
   const documentRows = scopedDocumentRecords.map(createClientPortalDocumentPreviewRow);
   const trainingRows = scopedTrainingRecords.map(createClientPortalTrainingPreviewRow);
   const riskAssessmentRows = scopedRiskAssessments.map(createClientPortalRiskAssessmentPreviewRow);
+  const clientRecordRows = companyId ? createClientPortalRecordTypePreviewRows(scopedClientPortalRecords) : [];
   const documentsLoading = Boolean(companyId && state.documentsExplorer.loading);
   const recordsCopy = documentsLoading
     ? "Ucitavam spremljene zapisnike za odabrani opseg."
@@ -91078,8 +91084,67 @@ function renderClientPortalPreview() {
     rows: riskAssessmentRows,
     emptyMessage: companyId ? "Nema procjena rizika za odabrani opseg." : "Odaberi tvrtku za preview procjena rizika.",
   });
+  const clientRecordsSection = createClientPortalPreviewSection({
+    key: "clientPortalRecords",
+    title: "Evidencije klijenta",
+    subtitle: "Radnici, OZO, vatrogasni aparati, vozila, nadzori, nedostaci i ostali rokovi.",
+    rows: clientRecordRows,
+    emptyMessage: companyId ? "Nema evidencija za odabrani opseg." : "Odaberi tvrtku za preview evidencija.",
+  });
 
-  clientPortalPreviewList.replaceChildren(workOrdersSection, foundationSection, documentsSection, trainingsSection, riskAssessmentSection);
+  clientPortalPreviewList.replaceChildren(
+    workOrdersSection,
+    foundationSection,
+    clientRecordsSection,
+    documentsSection,
+    trainingsSection,
+    riskAssessmentSection,
+  );
+}
+
+function createClientPortalRecordTypePreviewRows(records = []) {
+  return CLIENT_PORTAL_RECORD_TYPE_OPTIONS.map((option) => {
+    const typeMeta = getClientPortalRecordTypeMeta(option.value);
+    const typeRecords = records.filter((record) => String(record.type || "") === option.value);
+    const openCount = typeRecords.filter(isClientPortalRecordOpen).length;
+    const attentionCount = typeRecords.filter((record) => isClientPortalRecordOpen(record) && isClientPortalRecordAttention(record)).length;
+    const latestRecord = typeRecords[0] ?? null;
+    const row = document.createElement("article");
+    row.className = `client-portal-preview-row is-client-record is-${typeMeta.accent}`;
+
+    const main = document.createElement("div");
+    main.className = "client-portal-preview-row-main";
+    const title = document.createElement("strong");
+    title.textContent = option.label;
+    const count = document.createElement("span");
+    count.textContent = `${typeRecords.length} zapisa`;
+    main.append(title, count);
+
+    const copy = document.createElement("div");
+    copy.className = "client-portal-preview-row-copy";
+    const eyebrow = document.createElement("strong");
+    eyebrow.textContent = typeMeta.eyebrow;
+    const latest = document.createElement("span");
+    latest.textContent = latestRecord
+      ? [latestRecord.title || typeMeta.title, latestRecord.dueDate ? `rok ${formatCompactDate(latestRecord.dueDate)}` : ""].filter(Boolean).join(" · ")
+      : "Još nema zapisa za ovaj blok.";
+    copy.append(eyebrow, latest);
+
+    const meta = document.createElement("div");
+    meta.className = "client-portal-preview-row-meta";
+    const open = document.createElement("span");
+    open.textContent = `${openCount} otvoreno`;
+    const attention = document.createElement("span");
+    attention.textContent = attentionCount ? `${attentionCount} za pažnju` : "bez upozorenja";
+    meta.append(open, attention);
+
+    const badge = document.createElement("span");
+    badge.className = `client-portal-preview-row-badge is-client-record is-${typeMeta.accent}`;
+    badge.textContent = typeMeta.title;
+
+    row.append(main, copy, meta, badge);
+    return row;
+  });
 }
 
 function getClientPortalRecordTypeLabel(type = "") {

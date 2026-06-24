@@ -11592,6 +11592,7 @@ private fun OperationsContent(
     if (user?.isClientPortalUser == true) {
         ClientPortalHomeContent(
             summary = data.clientHome,
+            portalRecords = data.clientPortalRecords,
             fallbackWorkOrders = workOrders,
             onOpenWorkOrder = onOpenWorkOrder,
         )
@@ -11607,6 +11608,7 @@ private fun OperationsContent(
 @Composable
 private fun ClientPortalHomeContent(
     summary: ClientHomeSummary,
+    portalRecords: List<MobileRecord>,
     fallbackWorkOrders: List<WorkOrder>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
 ) {
@@ -11665,6 +11667,8 @@ private fun ClientPortalHomeContent(
             }
         }
 
+        ClientPortalRecordBlocksSection(records = portalRecords)
+
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -11713,6 +11717,159 @@ private fun ClientPortalHomeContent(
                     }
                 }
             }
+        }
+    }
+}
+
+private data class ClientPortalRecordBlockDefinition(
+    val type: String,
+    val label: String,
+    val icon: ImageVector,
+    val accent: Color,
+)
+
+private val clientPortalRecordBlockDefinitions = listOf(
+    ClientPortalRecordBlockDefinition("worker", "Radnici", Icons.Rounded.Groups, Color(0xFF059669)),
+    ClientPortalRecordBlockDefinition("ppe_assignment", "OZO zaduženja", Icons.Rounded.Badge, Color(0xFFD97706)),
+    ClientPortalRecordBlockDefinition("fire_extinguisher", "Vatrogasni aparati", Icons.Rounded.ErrorOutline, Color(0xFFDC2626)),
+    ClientPortalRecordBlockDefinition("defect_report", "Nedostaci", Icons.Rounded.ErrorOutline, Color(0xFFE11D48)),
+    ClientPortalRecordBlockDefinition("internal_inspection", "Unutarnji nadzori", Icons.Rounded.CheckCircle, Color(0xFF4F46E5)),
+    ClientPortalRecordBlockDefinition("alcohol_test", "Alkotest", Icons.Rounded.Info, Color(0xFF0891B2)),
+    ClientPortalRecordBlockDefinition("document", "Dokumenti", Icons.Rounded.Description, Color(0xFF16A34A)),
+    ClientPortalRecordBlockDefinition("training_import", "Import ospos.", Icons.Rounded.InsertDriveFile, Color(0xFF0F766E)),
+    ClientPortalRecordBlockDefinition("vehicle", "Vozni park", Icons.Rounded.Business, Color(0xFF2563EB)),
+    ClientPortalRecordBlockDefinition("deadline", "Ostali rokovi", Icons.Rounded.CalendarMonth, Color(0xFF7C3AED)),
+)
+
+private fun MobileRecord.clientPortalRecordType(): String =
+    meta["type"].orEmpty().ifBlank { kind }.ifBlank { "deadline" }
+
+private fun MobileRecord.isOpenClientPortalRecord(): Boolean =
+    status.lowercase() !in setOf("done", "inactive", "gotovo", "neaktivno")
+
+private fun MobileRecord.isAttentionClientPortalRecord(today: LocalDate = LocalDate.now()): Boolean {
+    if (!isOpenClientPortalRecord()) return false
+    val normalizedStatus = status.lowercase()
+    if (normalizedStatus in setOf("attention", "paznja", "pažnja")) return true
+    val dueDate = parsedDate ?: parseDateOrNull(meta["dueDate"].orEmpty()) ?: return false
+    return dueDate.isBefore(today) || (!dueDate.isBefore(today.plusDays(-10)) && !dueDate.isAfter(today.plusDays(30)))
+}
+
+@Composable
+private fun ClientPortalRecordBlocksSection(records: List<MobileRecord>) {
+    val today = remember { LocalDate.now() }
+    val recordsByType = remember(records) {
+        records.groupBy { it.clientPortalRecordType() }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFE0F2FE)) {
+                    Icon(
+                        Icons.Rounded.ListAlt,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .padding(10.dp),
+                        tint = Color(0xFF0369A1),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Evidencije klijenta", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        "Vatrogasni aparati, OZO, nadzori, rokovi i ostale evidencije",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+
+            clientPortalRecordBlockDefinitions.chunked(2).forEach { rowItems ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    rowItems.forEach { definition ->
+                        val typedRecords = recordsByType[definition.type].orEmpty()
+                        val attentionCount = typedRecords.count { it.isAttentionClientPortalRecord(today) }
+                        ClientPortalRecordBlockCard(
+                            definition = definition,
+                            count = typedRecords.size,
+                            attentionCount = attentionCount,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (rowItems.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalRecordBlockCard(
+    definition: ClientPortalRecordBlockDefinition,
+    count: Int,
+    attentionCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    val detail = when {
+        attentionCount > 0 -> "$attentionCount za pažnju"
+        count > 0 -> "uredno"
+        else -> "nema zapisa"
+    }
+    Surface(
+        modifier = modifier.heightIn(min = 104.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = definition.accent.copy(alpha = if (count > 0) 0.12f else 0.06f),
+        border = BorderStroke(1.dp, definition.accent.copy(alpha = if (attentionCount > 0) 0.36f else 0.14f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(shape = RoundedCornerShape(12.dp), color = Color.White.copy(alpha = 0.78f)) {
+                    Icon(
+                        definition.icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .padding(8.dp),
+                        tint = definition.accent,
+                    )
+                }
+                Text(
+                    count.toString(),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    color = definition.accent,
+                )
+            }
+            Text(
+                definition.label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Black,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                detail,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (attentionCount > 0) Color(0xFFB45309) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
