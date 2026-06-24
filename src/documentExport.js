@@ -9744,6 +9744,23 @@ function getVehicleEvidenceFirstValue(values = []) {
     .find(Boolean) || "";
 }
 
+function getVehicleEvidenceSignatureImageBuffer(dataUrl = "") {
+  const source = clean(dataUrl);
+  if (!source) {
+    return null;
+  }
+
+  try {
+    const { mimeType, buffer } = parseDataUrl(source);
+    if (!/^image\/(?:png|jpe?g)$/i.test(mimeType) || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+      return null;
+    }
+    return buffer;
+  } catch {
+    return null;
+  }
+}
+
 function compactVehicleEvidenceNote(note = "") {
   return String(note ?? "")
     .replace(/\r\n/g, "\n")
@@ -9874,12 +9891,20 @@ function normalizeVehicleEvidenceActivity(activity = {}) {
   ]);
   const endKm = getVehicleEvidenceFirstValue([
     activity?.endKm,
+    activity?.returnKm,
+    activity?.returnOdometerKm,
+    activity?.finalKm,
+    activity?.finalOdometerKm,
     explicitReturnAt ? activity?.odometerKm : "",
   ]);
   const signatureLabel = clean(activity?.signatureLabel)
     || clean(activity?.returnedByLabel)
     || clean(activity?.performedBy);
-  const hasSignature = clean(activity?.signatureDataUrl || activity?.returnSignatureDataUrl);
+  const signatureDataUrl = clean(activity?.signatureDataUrl || activity?.returnSignatureDataUrl || activity?.signature);
+  const hasSignature = Boolean(signatureDataUrl);
+  const documentNames = Array.isArray(activity?.documents)
+    ? normalizePdfLines(activity.documents.map((documentItem) => documentItem?.fileName || documentItem?.name)).join(", ")
+    : "";
 
   return {
     id: clean(activity?.id),
@@ -9891,9 +9916,13 @@ function normalizeVehicleEvidenceActivity(activity = {}) {
     drivers,
     startKm,
     endKm,
-    condition,
+    condition: normalizePdfLines([
+      condition,
+      documentNames ? `Dokumenti: ${documentNames}` : "",
+    ]).join("\n"),
     workOrders: getVehicleEvidenceWorkOrderLabels(activity),
     signature: hasSignature ? `Potpisano\n${signatureLabel}` : "",
+    signatureDataUrl: hasSignature ? signatureDataUrl : "",
     hasSignature: Boolean(hasSignature),
     note: clean(activity?.note),
     createdAt: clean(activity?.createdAt),
@@ -9956,6 +9985,7 @@ function mergeVehicleEvidenceTripRecords(openRecord = {}, returnRecord = {}) {
     ]).join("\n"),
     workOrders: mergeUniqueVehicleEvidenceValues(openRecord.workOrders, returnRecord.workOrders),
     signature: returnRecord.signature || openRecord.signature,
+    signatureDataUrl: returnRecord.signatureDataUrl || openRecord.signatureDataUrl,
     hasSignature: returnRecord.hasSignature || openRecord.hasSignature,
     tripStatus: returnRecord.tripStatus || openRecord.tripStatus,
     updatedAt: returnRecord.updatedAt || openRecord.updatedAt,
@@ -10063,9 +10093,115 @@ function buildVehicleEvidenceRows(vehicle = {}) {
       endKm: trip.endKm ? `${trip.endKm} km` : "",
       vehicleCondition: trip.condition,
       signature: trip.signature,
+      signatureDataUrl: trip.signatureDataUrl,
     }))
     .sort((left, right) => left.sortKey - right.sortKey)
     .map(({ sortKey, ...row }) => row);
+}
+
+function renderVehicleEvidenceTripsTable(doc, helpers, rows = []) {
+  const columns = [
+    { key: "departureDate", label: "Dat. od", width: 62 },
+    { key: "departureTime", label: "Sat od", width: 52 },
+    { key: "returnDate", label: "Dat. do", width: 62 },
+    { key: "returnTime", label: "Sat do", width: 52 },
+    { key: "destination", label: "Lokacija", width: 104 },
+    { key: "workOrders", label: "RN", width: 66 },
+    { key: "drivers", label: "Vozaci", width: 88 },
+    { key: "startKm", label: "Od km", width: 56 },
+    { key: "endKm", label: "Do km", width: 56 },
+    { key: "vehicleCondition", label: "Stanje vozila", width: 92 },
+    { key: "signature", label: "Potpis", width: 76 },
+  ];
+  const safeRows = getReportArray(rows);
+
+  renderReportSectionTitle(doc, helpers, "Evidencija putovanja");
+
+  if (safeRows.length === 0) {
+    renderPdfFieldCard(doc, helpers, "Evidencija putovanja", "Za ovo vozilo jos nema evidentiranih putovanja.");
+    return;
+  }
+
+  const totalExplicitWidth = columns.reduce((sum, column) => sum + (Number(column.width) || 0), 0);
+  const scale = helpers.availableWidth / totalExplicitWidth;
+  const widths = columns.map((column) => Number(column.width) * scale);
+  const rowPaddingY = 7;
+
+  helpers.ensureSpace(30, { layout: "landscape" });
+  let x = doc.page.margins.left;
+  const headerY = doc.y;
+  doc.roundedRect(doc.page.margins.left, headerY, helpers.availableWidth, 25, 8).fill("#eef5ff");
+  columns.forEach((column, index) => {
+    doc.font("dejavu-bold").fontSize(8.5).fillColor("#315174").text(clean(column.label).toUpperCase(), x + 7, headerY + 8, {
+      width: widths[index] - 14,
+    });
+    x += widths[index];
+  });
+  doc.y = headerY + 27;
+
+  safeRows.forEach((row, rowIndex) => {
+    const values = columns.map((column) => normalizePdfText(row?.[column.key] ?? ""));
+    const textHeights = values.map((value, index) => doc.heightOfString(value, {
+      width: widths[index] - 14,
+      lineGap: 1,
+    }));
+    const signatureBuffer = getVehicleEvidenceSignatureImageBuffer(row?.signatureDataUrl);
+    const rowHeight = Math.max(
+      signatureBuffer ? 66 : 30,
+      Math.max(...textHeights) + rowPaddingY * 2,
+    );
+    helpers.ensureSpace(rowHeight + 4, { layout: "landscape" });
+    const y = doc.y;
+    doc.roundedRect(doc.page.margins.left, y, helpers.availableWidth, rowHeight, 7)
+      .fill(rowIndex % 2 === 0 ? "#fbfdff" : "#f6f9fd");
+
+    x = doc.page.margins.left;
+    values.forEach((value, index) => {
+      const column = columns[index];
+      const cellX = x + 7;
+      const cellY = y + rowPaddingY;
+      const cellWidth = widths[index] - 14;
+
+      if (column.key === "signature" && signatureBuffer) {
+        const label = value.split("\n")[0] || "Potpisano";
+        const signer = value.split("\n").slice(1).join(" ");
+        doc.font("dejavu-bold").fontSize(7.6).fillColor("#0f172a").text(label, cellX, cellY, {
+          width: cellWidth,
+          align: "center",
+          lineGap: 0,
+        });
+        try {
+          doc.image(signatureBuffer, cellX, cellY + 12, {
+            fit: [cellWidth, Math.max(24, rowHeight - 34)],
+            align: "center",
+            valign: "center",
+          });
+        } catch {
+          doc.font("dejavu").fontSize(7.8).fillColor("#334155").text(value, cellX, cellY + 12, {
+            width: cellWidth,
+            align: "center",
+            lineGap: 1,
+          });
+        }
+        if (signer) {
+          doc.font("dejavu").fontSize(6.6).fillColor("#64748b").text(signer, cellX, y + rowHeight - 13, {
+            width: cellWidth,
+            align: "center",
+            lineGap: 0,
+          });
+        }
+      } else {
+        doc.font(index === 0 ? "dejavu-bold" : "dejavu").fontSize(8.8).fillColor(index === 0 ? "#0f172a" : "#334155").text(value, cellX, cellY, {
+          width: cellWidth,
+          lineGap: 1,
+        });
+      }
+      x += widths[index];
+    });
+    doc.y = y + rowHeight + 4;
+  });
+
+  doc.moveDown(0.4);
 }
 
 function getUniqueVehicleEvidenceParts(parts = []) {
@@ -10223,26 +10359,7 @@ export async function buildVehicleEvidencePdfBuffer(vehicle = {}, {
       right: 24,
     },
   });
-  renderReportTable(
-    doc,
-    helpers,
-    "Evidencija putovanja",
-    [
-      { key: "departureDate", label: "Datum polaska", width: 62 },
-      { key: "departureTime", label: "Vrijeme polaska", width: 52 },
-      { key: "returnDate", label: "Datum povratka", width: 62 },
-      { key: "returnTime", label: "Vrijeme povratka", width: 52 },
-      { key: "destination", label: "Lokacija gdje se ide", width: 108 },
-      { key: "workOrders", label: "RN", width: 72 },
-      { key: "drivers", label: "Vozaci", width: 94 },
-      { key: "startKm", label: "Pocetna km", width: 58 },
-      { key: "endKm", label: "Krajnja km", width: 58 },
-      { key: "vehicleCondition", label: "Stanje vozila", width: 96 },
-      { key: "signature", label: "Potpis", width: 52 },
-    ],
-    evidenceRows,
-    { emptyMessage: "Za ovo vozilo jos nema evidentiranih putovanja." },
-  );
+  renderVehicleEvidenceTripsTable(doc, helpers, evidenceRows);
 
   const range = doc.bufferedPageRange();
   for (let index = range.start; index < range.start + range.count; index += 1) {

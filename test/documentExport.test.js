@@ -1982,7 +1982,43 @@ test("vehicle evidence PDF merges departure and return into one trip row", async
   assert.match(text, /210144/);
   assert.match(text, /211122/);
   assert.match(text, /Povrat: uredno/);
+  assert.match(text, /Potpisano/);
   assert.equal((text.match(/26-652/g) || []).length, 1);
+});
+
+test("vehicle evidence PDF includes My Trip return details, documents and signature", async () => {
+  const outputBuffer = await buildVehicleEvidencePdfBuffer({
+    plateNumber: "ZG8661JS",
+    make: "OPEL",
+    model: "COMBO",
+    activityItems: [
+      {
+        activityType: "vehicle_trip",
+        tripStatus: "completed",
+        departureAt: "2026-06-23T19:15:00.000Z",
+        returnAt: "2026-06-24T08:20:00.000Z",
+        destination: "Dalmacija",
+        driverLabels: ["Branimir Tramosljika"],
+        startKm: "62388",
+        returnOdometerKm: "62620",
+        vehicleCondition: "Uredno",
+        documents: [
+          { fileName: "racun-cestarina.pdf" },
+        ],
+        signatureDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        signatureLabel: "Branimir Tramosljika",
+      },
+    ],
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  const text = (await extractPdfText(outputBuffer)).replace(/\s+/g, " ");
+  assert.match(text, /Dalmacija/);
+  assert.match(text, /62388/);
+  assert.match(text, /62620/);
+  assert.match(text, /Uredno/);
+  assert.match(text, /racun-\s*cestarina\.pdf/);
+  assert.match(text, /Potpisano/);
 });
 
 test("vehicle evidence PDF keeps checkout location and RN when return has only closing data", async () => {

@@ -26377,9 +26377,6 @@ function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, option
   if (!vehicleUsageTimestampInReservationWindow(targetReservation, departureAt)) {
     throw new Error("My Trip mozes pokrenuti najranije sat vremena prije rezervacije i najkasnije sat vremena nakon nje.");
   }
-  if (returnAt && !vehicleUsageTimestampInReservationWindow(targetReservation, returnAt)) {
-    throw new Error("Povrat vozila mozes evidentirati najkasnije sat vremena nakon kraja rezervacije.");
-  }
   const performer = getVehicleUsagePerformerLabel(user, body);
   const actorUserId = getVehicleUsageUserId(user);
   const actorLabel = getVehicleUsageUserLabel(user) || performer;
