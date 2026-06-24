@@ -7523,6 +7523,14 @@ function navigateToBreadcrumb(target) {
 }
 
 function buildTopbarBreadcrumbs() {
+  if (isClientPortalShellActive()) {
+    return [{
+      label: getSidebarItemLabel("client-portal") || "Client Portal",
+      kind: "item",
+      item: "client-portal",
+    }];
+  }
+
   const groupName = state.activeSidebarGroup || getSidebarGroupForView();
   const itemName = state.activeSidebarItem || SIDEBAR_GROUP_DEFAULT_ITEM[groupName];
   const crumbs = [];
@@ -9199,7 +9207,42 @@ function getUserRoleSummary(user = {}) {
 }
 
 function isClientPortalUser(user = state.user) {
-  return normalizeUserProfileRoleValue(user?.profileRole ?? user?.profile_role) === "client_user";
+  if (normalizeUserProfileRoleValue(user?.profileRole ?? user?.profile_role) === "client_user") {
+    return true;
+  }
+
+  const rawCompanyIds = user?.clientCompanyIds ?? user?.client_company_ids_json;
+  if (!rawCompanyIds) {
+    return false;
+  }
+
+  if (Array.isArray(rawCompanyIds)) {
+    return rawCompanyIds.some((value) => String(value ?? "").trim());
+  }
+
+  if (typeof rawCompanyIds === "object") {
+    return Object.values(rawCompanyIds).some((value) => String(value ?? "").trim());
+  }
+
+  if (typeof rawCompanyIds === "string") {
+    const trimmed = rawCompanyIds.trim();
+    if (!trimmed) {
+      return false;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.some((value) => String(value ?? "").trim());
+      }
+      if (parsed && typeof parsed === "object") {
+        return Object.values(parsed).some((value) => String(value ?? "").trim());
+      }
+    } catch {
+      return trimmed.split(",").some((value) => String(value ?? "").trim());
+    }
+  }
+
+  return false;
 }
 
 function normalizeClientScopeIdsClient(values = []) {
@@ -9209,6 +9252,38 @@ function normalizeClientScopeIdsClient(values = []) {
       .map((value) => String(value ?? "").trim())
       .filter(Boolean),
   ));
+}
+
+function isClientPortalShellActive() {
+  return Boolean(state.user && isClientPortalUser(state.user));
+}
+
+function ensureClientPortalShellState() {
+  if (!isClientPortalShellActive()) {
+    return false;
+  }
+
+  state.activeView = "module";
+  state.activeModuleItem = "client-portal";
+  state.activeSidebarGroup = "company";
+  state.activeSidebarItem = "client-portal";
+  state.workOrderEditorOpen = false;
+  state.companyEditorOpen = false;
+  state.locationEditorOpen = false;
+  state.userEditorOpen = false;
+  state.offerEditorOpen = false;
+  state.publicProcurementEditorOpen = false;
+  state.vehicleEditorOpen = false;
+  state.vehicleReservationEditorOpen = false;
+  state.vehicleUsageEditorOpen = false;
+  state.legalFrameworkEditorOpen = false;
+  state.rulebookEditorOpen = false;
+  state.learningTestEditorOpen = false;
+  state.serviceCatalogEditorOpen = false;
+  state.measurementEquipmentEditorOpen = false;
+  state.safetyAuthorizationEditorOpen = false;
+  state.documentTemplateEditorOpen = false;
+  return true;
 }
 
 function getClientPortalLocationLabel(user = {}) {
@@ -24649,6 +24724,10 @@ function applySelectedDrawingInspectorField(fieldName, rawValue) {
 }
 
 function isSidebarGroupAccessible(groupName) {
+  if (isClientPortalShellActive()) {
+    return groupName === "company";
+  }
+
   if (groupName === "organisations") {
     return !managementTab?.hidden;
   }
@@ -24665,6 +24744,11 @@ function isSidebarGroupAccessible(groupName) {
 }
 
 function renderSidebarState() {
+  const clientPortalShell = isClientPortalShellActive();
+  if (clientPortalShell) {
+    ensureClientPortalShellState();
+  }
+
   let activeGroup = state.activeSidebarGroup || getSidebarGroupForView();
 
   if (!isSidebarGroupAccessible(activeGroup)) {
@@ -24679,6 +24763,7 @@ function renderSidebarState() {
 
   appFrame?.classList.toggle("is-sidebar-collapsed", state.sidebarCollapsed);
   appFrame?.classList.toggle("is-rail-hidden", state.railHidden);
+  appFrame?.classList.toggle("is-client-portal-shell", clientPortalShell);
   appSidebar?.classList.toggle("is-collapsed", state.sidebarCollapsed);
 
   if (sidebarCollapseToggle) {
@@ -24688,6 +24773,12 @@ function renderSidebarState() {
   }
 
   railButtons.forEach((button) => {
+    if (clientPortalShell) {
+      button.hidden = true;
+      button.classList.remove("is-active");
+      return;
+    }
+
     const groupName = button.dataset.sidebarGroup;
     const isAccessible = isSidebarGroupAccessible(groupName);
     button.hidden = !isAccessible;
@@ -24695,17 +24786,20 @@ function renderSidebarState() {
   });
 
   sidebarNavItems.forEach((button) => {
+    if (clientPortalShell) {
+      button.hidden = button.dataset.sidebarItem !== "client-portal";
+    }
     button.classList.toggle("is-active", button.dataset.sidebarItem === state.activeSidebarItem);
   });
 
   if (appRailToggle) {
-    appRailToggle.hidden = state.railHidden;
+    appRailToggle.hidden = clientPortalShell || state.railHidden;
     appRailToggle.setAttribute("aria-label", "Sakrij lijevu traku");
     appRailToggle.innerHTML = `<span aria-hidden="true">&larr;</span>`;
   }
 
   if (appRailRestore) {
-    appRailRestore.hidden = !state.railHidden;
+    appRailRestore.hidden = clientPortalShell || !state.railHidden;
     appRailRestore.setAttribute("aria-label", "Prikazi lijevu traku");
     appRailRestore.innerHTML = `<span aria-hidden="true">&rarr;</span>`;
   }
@@ -24717,7 +24811,11 @@ function renderSidebarState() {
     panel.hidden = !isActive;
     panel.classList.toggle("is-open", isActive);
     panel.querySelector(".sidebar-group-items")?.toggleAttribute("hidden", state.sidebarCollapsed || !isActive);
-    panel.querySelector(".sidebar-group-toggle")?.setAttribute("aria-expanded", isActive && !state.sidebarCollapsed ? "true" : "false");
+    const groupToggle = panel.querySelector(".sidebar-group-toggle");
+    if (groupToggle) {
+      groupToggle.hidden = clientPortalShell && groupName === "company";
+      groupToggle.setAttribute("aria-expanded", isActive && !state.sidebarCollapsed ? "true" : "false");
+    }
   });
 }
 
@@ -24815,6 +24913,12 @@ function activateSidebarItem(itemName, options = {}) {
   const itemConfig = SIDEBAR_ITEM_CONFIG[itemName];
 
   if (!itemConfig) {
+    return;
+  }
+
+  if (isClientPortalShellActive() && itemName !== "client-portal") {
+    ensureClientPortalShellState();
+    renderActiveView();
     return;
   }
 
@@ -24930,6 +25034,15 @@ function activateSidebarGroup(groupName, options = {}) {
     navigate = false,
     expandSidebar = false,
   } = options;
+
+  if (isClientPortalShellActive()) {
+    ensureClientPortalShellState();
+    ensureSidebarExpanded(expandSidebar);
+    if (navigate) {
+      renderActiveView();
+    }
+    return;
+  }
 
   if (!isSidebarGroupAccessible(groupName)) {
     return;
@@ -87549,6 +87662,10 @@ function renderAuthState() {
     const canManageMasterData = getCanManageMasterData();
     const canViewCompanies = getCanViewCompanies();
     const canCreateCompany = getCanCreateCompany();
+    const isClientPortalOnly = isClientPortalShellActive();
+    if (isClientPortalOnly) {
+      ensureClientPortalShellState();
+    }
     const organization = state.organizations.find((item) => item.id === state.activeOrganizationId)
       ?? state.organizations[0]
       ?? null;
@@ -87602,57 +87719,61 @@ function renderAuthState() {
     }
     setUserMenuError("");
     renderTopbarBreadcrumbs();
-    organizationSwitcherWrap.hidden = state.organizations.length <= 1;
-    managementTab.hidden = !(isSuperAdmin || isAdmin);
+    organizationSwitcherWrap.hidden = isClientPortalOnly || state.organizations.length <= 1;
+    managementTab.hidden = isClientPortalOnly || !(isSuperAdmin || isAdmin);
     if (controlPanelNavItem) {
-      controlPanelNavItem.hidden = !canManageMasterData;
+      controlPanelNavItem.hidden = isClientPortalOnly || !canManageMasterData;
     }
     if (companyListNavItem) {
-      companyListNavItem.hidden = !canViewCompanies;
+      companyListNavItem.hidden = isClientPortalOnly || !canViewCompanies;
     }
     if (companyAddNavItem) {
-      companyAddNavItem.hidden = !canCreateCompany;
+      companyAddNavItem.hidden = isClientPortalOnly || !canCreateCompany;
     }
     if (companyClientPortalNavItem) {
       companyClientPortalNavItem.hidden = !getCanUseClientPortalRecords();
     }
     if (companyContractNavItem) {
-      companyContractNavItem.hidden = !getCanViewContracts();
+      companyContractNavItem.hidden = isClientPortalOnly || !getCanViewContracts();
     }
     if (locationListNavItem) {
-      locationListNavItem.hidden = !getCanViewLocations();
+      locationListNavItem.hidden = isClientPortalOnly || !getCanViewLocations();
     }
     if (locationAddNavItem) {
-      locationAddNavItem.hidden = !getCanCreateLocations();
+      locationAddNavItem.hidden = isClientPortalOnly || !getCanCreateLocations();
     }
     if (workOrderOpenFormButton) {
-      workOrderOpenFormButton.hidden = !getCanCreateWorkOrders();
+      workOrderOpenFormButton.hidden = isClientPortalOnly || !getCanCreateWorkOrders();
     }
     syncWorkOrderEditorAccess();
-    if (!canManageMasterData && isDashboardControlPanelItem()) {
-      state.activeSidebarItem = "dashboard";
-    }
-    if (!canViewCompanies && (state.activeView === "companies" || isCompanySidebarItem())) {
-      state.activeView = "selfdash";
-      state.activeSidebarItem = "dashboard";
-      state.activeSidebarGroup = "home";
-    }
-    if (state.activeView === "locations") {
-      state.activeView = canViewCompanies ? "companies" : "selfdash";
-      state.activeSidebarItem = canViewCompanies ? "list-company" : "dashboard";
-      state.activeSidebarGroup = canViewCompanies ? "company" : "home";
-    }
-    if (!getCanUseClientPortalRecords() && state.activeView === "module" && state.activeModuleItem === "client-portal") {
-      state.activeView = "selfdash";
-      state.activeModuleItem = "";
-      state.activeSidebarItem = "dashboard";
-      state.activeSidebarGroup = "home";
-    }
-    if (!getCanViewContracts() && state.activeView === "module" && state.activeModuleItem === "contract") {
-      state.activeView = "selfdash";
-      state.activeModuleItem = "";
-      state.activeSidebarItem = "dashboard";
-      state.activeSidebarGroup = "home";
+    if (isClientPortalOnly) {
+      ensureClientPortalShellState();
+    } else {
+      if (!canManageMasterData && isDashboardControlPanelItem()) {
+        state.activeSidebarItem = "dashboard";
+      }
+      if (!canViewCompanies && (state.activeView === "companies" || isCompanySidebarItem())) {
+        state.activeView = "selfdash";
+        state.activeSidebarItem = "dashboard";
+        state.activeSidebarGroup = "home";
+      }
+      if (state.activeView === "locations") {
+        state.activeView = canViewCompanies ? "companies" : "selfdash";
+        state.activeSidebarItem = canViewCompanies ? "list-company" : "dashboard";
+        state.activeSidebarGroup = canViewCompanies ? "company" : "home";
+      }
+      if (!getCanUseClientPortalRecords() && state.activeView === "module" && state.activeModuleItem === "client-portal") {
+        state.activeView = "selfdash";
+        state.activeModuleItem = "";
+        state.activeSidebarItem = "dashboard";
+        state.activeSidebarGroup = "home";
+      }
+      if (!getCanViewContracts() && state.activeView === "module" && state.activeModuleItem === "contract") {
+        state.activeView = "selfdash";
+        state.activeModuleItem = "";
+        state.activeSidebarItem = "dashboard";
+        state.activeSidebarGroup = "home";
+      }
     }
 
     if (sidebarActiveOrganization) {
@@ -129033,13 +129154,13 @@ sidebarGroupButtons.forEach((button) => {
 });
 
 appHomeButton?.addEventListener("click", () => {
-  activateSidebarItem(getCanManageMasterData() ? "control-panel" : "dashboard", {
+  activateSidebarItem(isClientPortalShellActive() ? "client-portal" : getCanManageMasterData() ? "control-panel" : "dashboard", {
     expandSidebar: state.sidebarCollapsed,
   });
 });
 
 sidebarHomeButton?.addEventListener("click", () => {
-  activateSidebarItem(getCanManageMasterData() ? "control-panel" : "dashboard", {
+  activateSidebarItem(isClientPortalShellActive() ? "client-portal" : getCanManageMasterData() ? "control-panel" : "dashboard", {
     expandSidebar: state.sidebarCollapsed,
   });
 });

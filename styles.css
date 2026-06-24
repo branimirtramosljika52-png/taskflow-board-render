@@ -118,6 +118,10 @@ fieldset {
   grid-template-columns: 0 0 minmax(0, 1fr);
 }
 
+.app-frame.is-client-portal-shell {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
 .app-frame {
   position: relative;
 }
@@ -153,6 +157,15 @@ fieldset {
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
+}
+
+.app-frame.is-client-portal-shell .app-rail,
+.app-frame.is-client-portal-shell .rail-restore-button {
+  display: none;
+}
+
+.app-frame.is-client-portal-shell .sidebar-group-toggle[hidden] + .sidebar-group-items {
+  margin-top: 0;
 }
 
 .app-rail-logo {
