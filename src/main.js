@@ -206,6 +206,7 @@ import {
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
 const LOCATION_LIST_BATCH_SIZE = 120;
+const COMPANY_LIST_BATCH_SIZE = 80;
 const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
 const DOCUMENT_TEMPLATE_RUNTIME_AUTOSAVE_DELAY_MS = 1400;
 const DOCUMENT_TEMPLATE_RUNTIME_DRAFT_STORAGE_PREFIX = "safenexus.document-template-runtime-draft.v1";
@@ -1102,8 +1103,9 @@ const CONTRACT_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   { key: "OFFER_LIST", label: "Povezane ponude", description: "Popis povezanih ponuda." },
   { key: "ANNEX_LIST", label: "Aneksi", description: "Popis aneksa ugovora." },
 ]);
-const VEHICLE_SCHEDULE_START_HOUR = 6;
-const VEHICLE_SCHEDULE_END_HOUR = 22;
+const VEHICLE_SCHEDULE_START_HOUR = 0;
+const VEHICLE_SCHEDULE_END_HOUR = 24;
+const VEHICLE_SCHEDULE_DEFAULT_SCROLL_HOUR = 6;
 const VEHICLE_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
   { value: "", label: "Vrsta dokumenta" },
   { value: "prometna", label: "Prometna" },
@@ -2285,6 +2287,7 @@ const state = {
     query: "",
   },
   locationRenderLimit: LOCATION_LIST_BATCH_SIZE,
+  companyRenderLimit: COMPANY_LIST_BATCH_SIZE,
   contractFilters: {
     query: "",
     status: "all",
@@ -6153,8 +6156,10 @@ const companiesSearchInput = document.querySelector("#companies-search");
 const companiesPeriodFilterInput = document.querySelector("#companies-filter-period");
 const companiesActivityFilterInput = document.querySelector("#companies-filter-activity");
 const companiesKpiRow = document.querySelector("#companies-kpi-row");
+const companiesTableWrap = document.querySelector(".companies-table-wrap");
 const companiesTable = document.querySelector(".companies-table");
 const companiesBody = document.querySelector("#companies-body");
+const companiesLoadState = document.querySelector("#companies-load-state");
 const companiesEmpty = document.querySelector("#companies-empty");
 const companiesLegacyIntroCopy = document.querySelector("#companies-view .masterdata-launch-panel .helper-copy");
 
@@ -106169,6 +106174,15 @@ function buildDefaultVehicleReservationWindow() {
   };
 }
 
+function createVehicleScheduleDate(dateKey, hour = 0) {
+  const [year, month, day] = String(dateKey || "").split("-").map((value) => Number(value));
+  const date = Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)
+    ? new Date(year, month - 1, day, 0, 0, 0, 0)
+    : new Date();
+  date.setHours(Number(hour) || 0, 0, 0, 0);
+  return date;
+}
+
 function getVehicleScheduleHours() {
   return Array.from(
     { length: VEHICLE_SCHEDULE_END_HOUR - VEHICLE_SCHEDULE_START_HOUR },
@@ -107747,7 +107761,9 @@ function rebuildVehicleUsageReservationOptions(vehicle = {}, selectedValue = "")
   const normalizedSelectedValue = String(selectedValue || "").trim();
   const selectedExists = normalizedSelectedValue
     && reservations.some((reservation) => String(reservation.id) === normalizedSelectedValue);
-  const timestampValue = vehicleUsageReturnAtInput?.value || vehicleUsageDepartureAtInput?.value || new Date().toISOString();
+  const timestampValue = localDateTimeInputToIso(
+    vehicleUsageReturnAtInput?.value || vehicleUsageDepartureAtInput?.value || "",
+  ) || new Date().toISOString();
   const fallbackReservation = selectedExists
     ? null
     : findVehicleUsageDefaultReservation(vehicle, "checkout", { timestamp: timestampValue });
@@ -107911,8 +107927,7 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   });
   const openTrip = findVehicleOpenTripDraft(vehicle, defaultReservation?.id || requestedReservationId || "");
   const selectedWorkOrderId = openTrip?.linkedWorkOrderId || "";
-  const nowLocal = toDateTimeLocalInputValue(new Date().toISOString());
-  const departureAt = toDateTimeLocalInputValue(openTrip?.departureAt || new Date().toISOString());
+  const departureAt = toDateTimeLocalInputValue(openTrip?.departureAt || defaultReservation?.startAt || new Date().toISOString());
   const returnAt = toDateTimeLocalInputValue(openTrip?.returnAt || (openTrip ? new Date().toISOString() : ""));
   const selectedUserIds = Array.from(new Set([
     ...(Array.isArray(openTrip?.driverUserIds) ? openTrip.driverUserIds : []),
@@ -108315,7 +108330,7 @@ function createVehicleReservationInlineStatusSelect(vehicle, reservation) {
 }
 
 function resolveVehicleScheduleSlotWindow(dateKey, hour) {
-  const startDate = new Date(`${dateKey}T${String(hour).padStart(2, "0")}:00:00`);
+  const startDate = createVehicleScheduleDate(dateKey, hour);
   const endDate = new Date(startDate);
   endDate.setHours(endDate.getHours() + 1);
 
@@ -108326,8 +108341,8 @@ function resolveVehicleScheduleSlotWindow(dateKey, hour) {
 }
 
 function resolveVehicleScheduleSelectionWindow(dateKey, startHour, endHour) {
-  const startDate = new Date(`${dateKey}T${String(startHour).padStart(2, "0")}:00:00`);
-  const endDate = new Date(`${dateKey}T${String(endHour + 1).padStart(2, "0")}:00:00`);
+  const startDate = createVehicleScheduleDate(dateKey, startHour);
+  const endDate = createVehicleScheduleDate(dateKey, endHour + 1);
 
   return {
     startAt: toDateTimeLocalInputValue(startDate.toISOString()),
@@ -108468,8 +108483,8 @@ async function finalizeVehicleScheduleSelection() {
 }
 
 function resolveVehicleScheduleReservationPlacement(reservation, dateKey) {
-  const scheduleStart = new Date(`${dateKey}T${String(VEHICLE_SCHEDULE_START_HOUR).padStart(2, "0")}:00:00`);
-  const scheduleEnd = new Date(`${dateKey}T${String(VEHICLE_SCHEDULE_END_HOUR).padStart(2, "0")}:00:00`);
+  const scheduleStart = createVehicleScheduleDate(dateKey, VEHICLE_SCHEDULE_START_HOUR);
+  const scheduleEnd = createVehicleScheduleDate(dateKey, VEHICLE_SCHEDULE_END_HOUR);
   const reservationStart = parseDateValue(reservation.startAt);
   const reservationEnd = parseDateValue(reservation.endAt);
 
@@ -108499,8 +108514,8 @@ function getVehicleScheduleNowMarker(dateKey, nowValue = new Date().toISOString(
     return null;
   }
 
-  const scheduleStart = new Date(`${dateKey}T${String(VEHICLE_SCHEDULE_START_HOUR).padStart(2, "0")}:00:00`);
-  const scheduleEnd = new Date(`${dateKey}T${String(VEHICLE_SCHEDULE_END_HOUR).padStart(2, "0")}:00:00`);
+  const scheduleStart = createVehicleScheduleDate(dateKey, VEHICLE_SCHEDULE_START_HOUR);
+  const scheduleEnd = createVehicleScheduleDate(dateKey, VEHICLE_SCHEDULE_END_HOUR);
 
   if (nowDate < scheduleStart || nowDate > scheduleEnd) {
     return null;
@@ -108515,6 +108530,33 @@ function getVehicleScheduleNowMarker(dateKey, nowValue = new Date().toISOString(
     positionPercent,
     label: formatCompactTime(nowDate),
   };
+}
+
+function syncVehicleScheduleDefaultScroll(dateKey) {
+  if (!vehicleScheduleGridShell || !vehicleScheduleGrid) {
+    return;
+  }
+
+  const scrollKey = `${dateKey || ""}:${VEHICLE_SCHEDULE_START_HOUR}:${VEHICLE_SCHEDULE_END_HOUR}`;
+  if (vehicleScheduleGridShell.dataset.defaultScrollKey === scrollKey) {
+    return;
+  }
+
+  vehicleScheduleGridShell.dataset.defaultScrollKey = scrollKey;
+  requestAnimationFrame(() => {
+    const targetHour = Math.max(
+      VEHICLE_SCHEDULE_START_HOUR,
+      Math.min(VEHICLE_SCHEDULE_END_HOUR - 1, VEHICLE_SCHEDULE_DEFAULT_SCROLL_HOUR),
+    );
+    const target = vehicleScheduleGrid.querySelector(`.vehicle-schedule-hour-head[data-hour="${targetHour}"]`);
+    const lead = vehicleScheduleGrid.querySelector(".vehicle-schedule-vehicle-head");
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const stickyWidth = lead instanceof HTMLElement ? lead.offsetWidth : 0;
+    vehicleScheduleGridShell.scrollLeft = Math.max(0, target.offsetLeft - stickyWidth - 8);
+  });
 }
 
 function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
@@ -108552,6 +108594,7 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
   hours.forEach((hour) => {
     const hourLabel = document.createElement("div");
     hourLabel.className = "vehicle-schedule-hour-head";
+    hourLabel.dataset.hour = String(hour);
     if (nowMarker && nowMarker.hour === hour) {
       hourLabel.classList.add("is-current");
     }
@@ -108673,7 +108716,10 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
       title.textContent = reservation.purpose || "Rezervacija";
       const meta = document.createElement("span");
       meta.textContent = getVehicleReservationStatusLabel(reservation.status);
-      block.append(title, meta, createVehicleReservationExecutorList(getVehicleReservationAssigneeLabels(reservation), { compact: true }));
+      const timeRange = document.createElement("span");
+      timeRange.className = "vehicle-schedule-reservation-time";
+      timeRange.textContent = `${formatCompactTime(reservation.startAt)} - ${formatCompactTime(reservation.endAt)}`;
+      block.append(title, meta, timeRange, createVehicleReservationExecutorList(getVehicleReservationAssigneeLabels(reservation), { compact: true }));
       block.addEventListener("click", () => {
         selectVehicle(vehicle.id);
         hydrateVehicleReservationForm(vehicle, reservation);
@@ -108686,6 +108732,7 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
   });
 
   vehicleScheduleGrid.replaceChildren(fragment);
+  syncVehicleScheduleDefaultScroll(dateKey);
 }
 
 function renderVehiclesModule() {
@@ -108814,8 +108861,8 @@ function renderVehiclesModule() {
     myTripButton.className = "ghost-button";
     myTripButton.textContent = "My Trip";
     myTripButton.hidden = !canReserveVehicles;
-    myTripButton.disabled = !canReserveVehicles || isServiceVehicle || !myTripAllowed;
-    myTripButton.title = !myTripAllowed ? "My Trip je dostupan samo za tvoju aktivnu rezervaciju vozila." : "";
+    myTripButton.disabled = !canReserveVehicles || isServiceVehicle;
+    myTripButton.title = !myTripAllowed ? "My Trip će se otvoriti samo ako u ovom terminu imaš svoju aktivnu rezervaciju." : "";
     myTripButton.addEventListener("click", (event) => {
       event.stopPropagation();
       openVehicleUsageComposer(vehicle, { mode: "trip", reservationId: defaultMyTripReservation?.id || openTrip?.reservationId || "" });
@@ -110326,9 +110373,31 @@ function resetLocationListWindow({ scroll = true } = {}) {
   }
 }
 
+function resetCompanyListWindow({ scroll = true } = {}) {
+  state.companyRenderLimit = COMPANY_LIST_BATCH_SIZE;
+
+  if (scroll) {
+    companiesTableWrap?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }
+}
+
 function loadMoreLocations() {
   state.locationRenderLimit += LOCATION_LIST_BATCH_SIZE;
   renderLocations();
+}
+
+function loadMoreCompanies() {
+  const total = Number(companiesTableWrap?.dataset.companyFilteredCount || 0);
+  const currentLimit = Math.max(COMPANY_LIST_BATCH_SIZE, Number(state.companyRenderLimit) || COMPANY_LIST_BATCH_SIZE);
+
+  if (total > 0 && currentLimit >= total) {
+    return;
+  }
+
+  state.companyRenderLimit = total > 0
+    ? Math.min(currentLimit + COMPANY_LIST_BATCH_SIZE, total)
+    : currentLimit + COMPANY_LIST_BATCH_SIZE;
+  renderCompanies();
 }
 
 function loadMoreWorkOrders() {
@@ -127668,6 +127737,10 @@ function renderCompanies() {
     companiesListRenderSignature = "";
     companiesKpiRow?.replaceChildren();
     companiesBody.replaceChildren();
+    if (companiesLoadState) {
+      companiesLoadState.textContent = "";
+      companiesLoadState.hidden = true;
+    }
     companiesEmpty.hidden = false;
     companiesEmpty.textContent = "Nemaš ovlaštenje za pregled tvrtki.";
     closeCompanyEditor({ reset: false });
@@ -127715,6 +127788,9 @@ function renderCompanies() {
     ));
   });
 
+  const renderLimit = Math.max(COMPANY_LIST_BATCH_SIZE, Number(state.companyRenderLimit) || COMPANY_LIST_BATCH_SIZE);
+  const visibleRowSnapshots = rowSnapshots.slice(0, Math.min(renderLimit, rowSnapshots.length));
+
   if (companiesSearchInput && companiesSearchInput.value !== state.companyFilters.query) {
     companiesSearchInput.value = state.companyFilters.query;
   }
@@ -127729,13 +127805,15 @@ function renderCompanies() {
 
   const bodySignature = [
     canEditCompany ? "edit" : "view",
-    ...rowSnapshots.map((rowSnapshot) => rowSnapshot.signature),
+    String(renderLimit),
+    String(filteredCompanies.length),
+    ...visibleRowSnapshots.map((rowSnapshot) => rowSnapshot.signature),
   ].join("||");
 
   if (bodySignature !== companiesListRenderSignature) {
     const fragment = document.createDocumentFragment();
 
-    rowSnapshots.forEach((rowSnapshot) => {
+    visibleRowSnapshots.forEach((rowSnapshot) => {
       const row = document.createElement("tr");
       row.className = "list-row company-list-row";
       row.classList.toggle("is-expanded", rowSnapshot.isExpanded);
@@ -127769,6 +127847,17 @@ function renderCompanies() {
 
     companiesBody.replaceChildren(fragment);
     companiesListRenderSignature = bodySignature;
+  }
+
+  if (companiesTableWrap) {
+    companiesTableWrap.dataset.companyFilteredCount = String(filteredCompanies.length);
+  }
+  if (companiesLoadState) {
+    const visibleCount = visibleRowSnapshots.length;
+    companiesLoadState.hidden = filteredCompanies.length === 0;
+    companiesLoadState.textContent = visibleCount < filteredCompanies.length
+      ? `Prikazano ${visibleCount} od ${filteredCompanies.length} tvrtki. Skrolaj dalje za još.`
+      : `Prikazano svih ${filteredCompanies.length} tvrtki.`;
   }
 
   const hasFilters = Boolean(queryNeedle) || periodFilter !== "all" || activityFilter !== "all";
@@ -137302,6 +137391,7 @@ companyContractPriceListAddButton?.addEventListener("click", () => {
 
 companiesSearchInput?.addEventListener("input", () => {
   state.companyFilters.query = companiesSearchInput.value || "";
+  resetCompanyListWindow({ scroll: false });
   if (companiesSearchDebounceId) {
     window.clearTimeout(companiesSearchDebounceId);
   }
@@ -137335,6 +137425,7 @@ locationsLoadMoreButton?.addEventListener("click", () => {
 companiesPeriodFilterInput?.addEventListener("change", () => {
   const nextValue = String(companiesPeriodFilterInput.value || "all").trim().toLowerCase();
   state.companyFilters.periodStatus = ["all", "active", "inactive"].includes(nextValue) ? nextValue : "all";
+  resetCompanyListWindow();
   if (companiesSearchDebounceId) {
     window.clearTimeout(companiesSearchDebounceId);
     companiesSearchDebounceId = 0;
@@ -137345,11 +137436,22 @@ companiesPeriodFilterInput?.addEventListener("change", () => {
 companiesActivityFilterInput?.addEventListener("change", () => {
   const nextValue = String(companiesActivityFilterInput.value || "all").trim().toLowerCase();
   state.companyFilters.activityStatus = ["all", "active", "inactive"].includes(nextValue) ? nextValue : "all";
+  resetCompanyListWindow();
   if (companiesSearchDebounceId) {
     window.clearTimeout(companiesSearchDebounceId);
     companiesSearchDebounceId = 0;
   }
   renderCompanies();
+});
+
+companiesTableWrap?.addEventListener("scroll", () => {
+  if (state.activeView !== "companies") {
+    return;
+  }
+  const distanceToBottom = companiesTableWrap.scrollHeight - companiesTableWrap.scrollTop - companiesTableWrap.clientHeight;
+  if (distanceToBottom <= 180) {
+    loadMoreCompanies();
+  }
 });
 
 companiesBody?.addEventListener("click", (event) => {
@@ -161823,7 +161925,9 @@ function resetAuthenticatedWorkspaceState() {
   state.peopleTrainingSelectedRecordIds = new Set();
   state.activePeopleTrainingRecordId = "";
   state.companies = [];
+  state.companyRenderLimit = COMPANY_LIST_BATCH_SIZE;
   state.locations = [];
+  state.locationRenderLimit = LOCATION_LIST_BATCH_SIZE;
   state.documentsExplorer = {
     organizationId: "",
     query: "",
