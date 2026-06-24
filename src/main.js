@@ -63824,6 +63824,30 @@ function formatWorkOrderWeatherHintRange(minValue, maxValue, unit = "", decimals
     : `${minText}-${maxText}${suffix}`;
 }
 
+function expandWorkOrderWeatherCurrentRange(value, { delta = 0, min = null, max = null } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return [value, value];
+  }
+
+  const lowerBound = Number.isFinite(Number(min)) ? Number(min) : null;
+  const upperBound = Number.isFinite(Number(max)) ? Number(max) : null;
+  const safeDelta = Math.abs(Number(delta) || 0);
+  let low = number - safeDelta;
+  let high = number + safeDelta;
+
+  if (lowerBound !== null) {
+    low = Math.max(lowerBound, low);
+    high = Math.max(lowerBound, high);
+  }
+  if (upperBound !== null) {
+    low = Math.min(upperBound, low);
+    high = Math.min(upperBound, high);
+  }
+
+  return [low, high];
+}
+
 function getWorkOrderDocumentWeatherPrecipitation(entry = {}) {
   const value = entry?.precipitationMm ?? (Number(entry?.rainMm || 0) + Number(entry?.snowMm || 0));
   return Number(value || 0);
@@ -63861,12 +63885,17 @@ function buildWorkOrderDocumentWeatherHintSummary(weatherItem = {}, dateKey = ""
     dateLabel,
     formatWeatherCityLabel(locationLabel || weatherItem.name || weatherItem.query || ""),
   ].filter(Boolean).join(" ");
-  const tempMin = selected.source === "current" ? entry.temp : (entry.tempMin ?? entry.morningTemp ?? entry.temp);
-  const tempMax = selected.source === "current" ? entry.temp : (entry.tempMax ?? entry.afternoonTemp ?? entry.temp);
-  const humidityMin = selected.source === "current" ? entry.humidity : (entry.humidityMin ?? entry.humidity);
-  const humidityMax = selected.source === "current" ? entry.humidity : (entry.humidityMax ?? entry.humidity);
-  const windMin = selected.source === "current" ? entry.windSpeed : (entry.windSpeedMin ?? entry.windSpeed);
-  const windMax = selected.source === "current" ? (entry.windGust || entry.windSpeed) : (entry.windGust || entry.windSpeedMax || entry.windSpeed);
+  const [currentTempMin, currentTempMax] = expandWorkOrderWeatherCurrentRange(entry.temp, { delta: 0.5 });
+  const [currentHumidityMin, currentHumidityMax] = expandWorkOrderWeatherCurrentRange(entry.humidity, { delta: 5, min: 0, max: 100 });
+  const [currentWindMin, currentWindMax] = expandWorkOrderWeatherCurrentRange(entry.windSpeed, { delta: 0.2, min: 0 });
+  const tempMin = selected.source === "current" ? currentTempMin : (entry.tempMin ?? entry.morningTemp ?? entry.temp);
+  const tempMax = selected.source === "current" ? currentTempMax : (entry.tempMax ?? entry.afternoonTemp ?? entry.temp);
+  const humidityMin = selected.source === "current" ? currentHumidityMin : (entry.humidityMin ?? entry.humidity);
+  const humidityMax = selected.source === "current" ? currentHumidityMax : (entry.humidityMax ?? entry.humidity);
+  const windMin = selected.source === "current" ? currentWindMin : (entry.windSpeedMin ?? entry.windSpeed);
+  const windMax = selected.source === "current"
+    ? (entry.windGust || currentWindMax)
+    : (entry.windGust || entry.windSpeedMax || entry.windSpeed);
   const precipitationMm = getWorkOrderDocumentWeatherPrecipitation(entry);
   const groundCondition = getWorkOrderDocumentGroundConditionHint(entry);
 
@@ -63874,7 +63903,7 @@ function buildWorkOrderDocumentWeatherHintSummary(weatherItem = {}, dateKey = ""
     scope,
     exact: selected.exact,
     dateKey: selected.dateKey,
-    tempRange: formatWorkOrderWeatherHintRange(tempMin, tempMax, "stupnjeva", 1),
+    tempRange: formatWorkOrderWeatherHintRange(tempMin, tempMax, "°C", 1),
     humidityRange: formatWorkOrderWeatherHintRange(humidityMin, humidityMax, "%", 0),
     windRange: formatWorkOrderWeatherHintRange(windMin, windMax, "m/s", 1),
     windKmhRange: formatWorkOrderWeatherHintRange(Number(windMin) * 3.6, Number(windMax) * 3.6, "km/h", 0),
@@ -67929,6 +67958,8 @@ function normalizeDocumentTemplateHandoverProtocol(value = {}) {
       || ""
     ).trim(),
     contractType: String(source.contractType || source.contract || "").trim(),
+    preparedBy: String(source.preparedBy || source.createdByLabel || source.createdBy || "").trim(),
+    executorVerifierName: String(source.executorVerifierName || source.verifierName || source.preparedBy || "").trim(),
     issuedDate: normalizeDateInputValue(source.issuedDate || source.issueDate || source.dateIssued || source.documentDate || ""),
     issuedPlace: String(source.issuedPlace || source.issuePlace || source.placeIssued || source.documentPlace || "").trim(),
     rows: (Array.isArray(source.rows) ? source.rows : [])
@@ -67936,6 +67967,69 @@ function normalizeDocumentTemplateHandoverProtocol(value = {}) {
       .filter(Boolean),
     customerSignatureLabel: String(source.customerSignatureLabel || "Ovjerio naručitelj:").trim(),
     executorSignatureLabel: String(source.executorSignatureLabel || "Ovjerio izvršitelj:").trim(),
+  };
+}
+
+function getDocumentTemplateRuntimeHandoverSignerUser() {
+  const currentUserId = String(state.user?.id || "").trim();
+  return (currentUserId
+    ? (state.users ?? []).find((user) => String(user?.id || "") === currentUserId)
+    : null) || state.user || null;
+}
+
+function buildDocumentTemplateRuntimeHandoverSignatureGroup(context = {}) {
+  const signatureMode = getDocumentTemplateContextSignatureMethod(context);
+  if (signatureMode === "none" || signatureMode === "manual") {
+    return "";
+  }
+
+  const user = getDocumentTemplateRuntimeHandoverSignerUser();
+  if (!user) {
+    return "";
+  }
+
+  const signerOib = String(user?.oib || "").replace(/\D/g, "");
+  const signatureImageUrl = signatureMode === "scan" ? getUserSignatureScanDataUrl(user) : "";
+  if (signatureMode === "digital" && !signerOib) {
+    return "";
+  }
+  if (signatureMode === "scan" && !signatureImageUrl) {
+    return "";
+  }
+
+  const name = getUserDocumentDisplayName(user) || getUserDisplayLabel(user) || "Izradio zapisnik";
+  const signatureFieldRole = "IZVRSITELJ";
+  const item = {
+    role: "Ovjerio izvršitelj",
+    roleLabel: "Ovjerio izvršitelj",
+    name,
+    metaLines: [
+      getUserDocumentTitle(user),
+      getUserDocumentOrganizationName(user),
+    ].filter(Boolean),
+    signatureImageUrl,
+    signatureMode,
+    signerUserId: String(user?.id || "").trim(),
+    signerEmail: String(user?.email || "").trim(),
+    signerOib,
+    signerTitle: getUserDocumentTitle(user),
+    signerOrganization: getUserDocumentOrganizationName(user),
+    signatureFieldRole,
+    signatureFieldOib: signerOib,
+    anchorText: "Ovjerio izvršitelj",
+    positioning: {
+      anchor: "bottom",
+      offsetY: -10,
+      width: 180,
+      height: 52,
+    },
+  };
+
+  return {
+    type: "signature_group",
+    __docxBlockType: "signature_group",
+    title: "Ovjerio izvršitelj",
+    items: [item],
   };
 }
 
@@ -67997,7 +68091,9 @@ function buildDocumentTemplateRuntimeHandoverPlaceholderPayload(protocol = {}, c
   const specificationPlaceholder = buildDocumentTemplateHandoverSpecificationPlaceholder(normalizedProtocol);
   const issuedDate = formatCompactDate(normalizedProtocol.issuedDate) || normalizedProtocol.issuedDate || "";
   const issuedPlace = normalizedProtocol.issuedPlace || "";
-  const userLabel = getUserDisplayLabel(state.user || {});
+  const userLabel = normalizedProtocol.preparedBy || getUserDisplayLabel(state.user || {});
+  const executorVerifierName = normalizedProtocol.executorVerifierName || userLabel;
+  const signatureGroup = buildDocumentTemplateRuntimeHandoverSignatureGroup(context);
   const servicesTableText = rows
     .map((row) => [
       row.USLUGA_S_OBJEKTOM || row.USLUGA,
@@ -68042,7 +68138,14 @@ function buildDocumentTemplateRuntimeHandoverPlaceholderPayload(protocol = {}, c
     OVJERIO_NARUCITELJ: normalizedProtocol.customerSignatureLabel || "Ovjerio naručitelj:",
     OVJERIO_IZVRSITELJ: normalizedProtocol.executorSignatureLabel || "Ovjerio izvršitelj:",
     IZRADIO_IME: userLabel,
+    IZRADIO_ZAPISNIK: userLabel,
+    PRIMOPREDAJU_IZRADIO: userLabel,
+    OVJERIO_IZVRSITELJ_IME: executorVerifierName,
     MJESTO_DATUM: `${issuedPlace ? `U ${issuedPlace}, ` : "U Zagrebu, "}${issuedDate}`.trim(),
+    SIGNATURES: signatureGroup,
+    POTPISI: signatureGroup,
+    DIGITAL_SIGNATURES: signatureGroup,
+    DIGITALNI_POTPISI: signatureGroup,
     COMPANY_NAME: normalizedProtocol.customerName || context.company?.name || "",
     COMPANY_HEADQUARTERS: normalizedProtocol.customerAddress || context.company?.headquarters || "",
     COMPANY_OIB: normalizedProtocol.customerOib || context.company?.oib || "",
@@ -68403,6 +68506,7 @@ function buildDocumentTemplateRuntimeHandoverProtocolModel(
     ? normalizeDocumentTemplateHandoverProtocol(getDocumentTemplateRuntimeOverrideRecord(workOrder.id)?.handoverProtocol)
     : null;
   const defaultRows = buildDocumentTemplateRuntimeHandoverDefaultRows(template, workOrder);
+  const handoverPreparedBy = getUserDisplayLabel(state.user || {});
   const defaultLocation = [
     workOrder?.locationName || location.name || "",
     workOrder?.locationAddressSnapshot && workOrder.locationAddressSnapshot !== workOrder.locationName
@@ -68427,6 +68531,8 @@ function buildDocumentTemplateRuntimeHandoverProtocolModel(
     location: uniqueDefaultLocation.join(", "),
     objectName: workOrder?.objectName || locationObject?.name || "",
     contractType: workOrder?.contractType || company.contractType || "",
+    preparedBy: handoverPreparedBy,
+    executorVerifierName: handoverPreparedBy,
     issuedDate: workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "",
     issuedPlace: workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedPlace") : "",
     rows: defaultRows,
@@ -68548,6 +68654,9 @@ function buildDocumentTemplateRuntimeHandoverExportEntry(
     ...(documentRecord.fieldValues ?? {}),
     ...placeholders,
   };
+  const signatureGroup = placeholders.SIGNATURES && typeof placeholders.SIGNATURES === "object"
+    ? placeholders.SIGNATURES
+    : "";
 
   return {
     templateId: runtimeTemplateId,
@@ -68556,6 +68665,7 @@ function buildDocumentTemplateRuntimeHandoverExportEntry(
     forceRenderModel: false,
     baseFileName,
     templateReferenceKind: "word",
+    signatureGroup,
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: `${baseFileName}.pdf`,
     placeholders,
@@ -70991,31 +71101,6 @@ function getWorkOrderDocumentSignatureAreaGroupsForAreas(areas = []) {
   ));
 }
 
-function findPreferredWorkOrderDocumentWizardPerson(
-  workOrder = {},
-  capability = "inspect",
-  signatureArea = "elektro",
-  fallbackIds = [],
-  { allowFirstQualifiedFallback = true } = {},
-) {
-  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
-  const executorMatch = resolveQualifiedWorkOrderUsers(workOrder, capability, normalizedArea)[0] || null;
-  if (executorMatch) {
-    return executorMatch;
-  }
-
-  const fallbackMatch = normalizeQualifiedUserIdList(fallbackIds)
-    .map((userId) => findQualifiedUserById(userId, capability, normalizedArea))
-    .find(Boolean);
-  if (fallbackMatch) {
-    return fallbackMatch;
-  }
-
-  return allowFirstQualifiedFallback
-    ? getQualifiedUsersForSignatureArea(capability, normalizedArea)[0] || null
-    : null;
-}
-
 function buildWorkOrderDocumentWizardPersonDefaults(workOrder = {}, signatureArea = "elektro") {
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
   const inspectorFieldName = getWorkOrderDocumentSignaturePersonFieldName("inspect", normalizedArea);
@@ -71046,7 +71131,68 @@ function buildWorkOrderDocumentWizardPersonDefaults(workOrder = {}, signatureAre
   return patch;
 }
 
-function ensureWorkOrderDocumentWizardPersonDefaults(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+function pickStableWorkOrderDocumentUser(users = [], seedKey = "") {
+  const uniqueUsers = [];
+  const seen = new Set();
+  (Array.isArray(users) ? users : []).forEach((user) => {
+    const key = String(user?.id || user?.email || user?.oib || "").trim();
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    uniqueUsers.push(user);
+  });
+
+  if (uniqueUsers.length <= 1) {
+    return uniqueUsers[0] || null;
+  }
+
+  const seed = getStableStringHash([
+    seedKey,
+    uniqueUsers.map((user) => String(user?.id || user?.email || user?.oib || "").trim()).join("|"),
+  ].join("::"));
+  return uniqueUsers[seed % uniqueUsers.length] || uniqueUsers[0] || null;
+}
+
+function findPreferredWorkOrderDocumentWizardPerson(
+  workOrder = {},
+  capability = "inspect",
+  signatureArea = "elektro",
+  fallbackIds = [],
+  { allowFirstQualifiedFallback = true } = {},
+) {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const executorMatch = pickStableWorkOrderDocumentUser(
+    resolveQualifiedWorkOrderUsers(workOrder, capability, normalizedArea),
+    `${workOrder?.id || workOrder?.workOrderNumber || ""}:${capability}:${normalizedArea}:executor`,
+  );
+  if (executorMatch) {
+    return executorMatch;
+  }
+
+  const fallbackMatches = normalizeQualifiedUserIdList(fallbackIds)
+    .map((userId) => findQualifiedUserById(userId, capability, normalizedArea))
+    .filter(Boolean);
+  const fallbackMatch = pickStableWorkOrderDocumentUser(
+    fallbackMatches,
+    `${workOrder?.id || workOrder?.workOrderNumber || ""}:${capability}:${normalizedArea}:fallback`,
+  );
+  if (fallbackMatch) {
+    return fallbackMatch;
+  }
+
+  return allowFirstQualifiedFallback
+    ? pickStableWorkOrderDocumentUser(
+      getQualifiedUsersForSignatureArea(capability, normalizedArea),
+      `${workOrder?.id || workOrder?.workOrderNumber || ""}:${capability}:${normalizedArea}:qualified`,
+    )
+    : null;
+}
+
+function ensureWorkOrderDocumentWizardPersonDefaults(
+  workOrders = getAllSelectedWorkOrdersForDocumentWizard(),
+  { refreshFromExecutors = false } = {},
+) {
   const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
   if (selectedWorkOrders.length === 0 || state.workOrderDocumentWizard.mode === "znr") {
     return;
@@ -71067,23 +71213,24 @@ function ensureWorkOrderDocumentWizardPersonDefaults(workOrders = getAllSelected
       )),
     );
 
-    if (commonInspectorIds.length === 0 && executorInspectorIds.length > 0) {
+    if ((commonInspectorIds.length === 0 || refreshFromExecutors) && executorInspectorIds.length > 0) {
       if (inspectorListFieldName) {
         commonPatch[inspectorListFieldName] = executorInspectorIds;
       }
       commonPatch[inspectorFieldName] = executorInspectorIds[0];
     }
 
-    if (!String(state.workOrderDocumentWizard.common?.[authorizationFieldName] ?? "").trim()) {
-      const authorizationUser = selectedWorkOrders
-        .map((workOrder) => findPreferredWorkOrderDocumentWizardPerson(
-          workOrder,
-          "authorize",
-          normalizedArea,
-          executorInspectorIds,
-          { allowFirstQualifiedFallback: false },
-        ))
-        .find(Boolean);
+    if (refreshFromExecutors || !String(state.workOrderDocumentWizard.common?.[authorizationFieldName] ?? "").trim()) {
+      const executorAuthorizationUsers = selectedWorkOrders.flatMap((workOrder) => (
+        resolveQualifiedWorkOrderUsers(workOrder, "authorize", normalizedArea)
+      ));
+      const fallbackAuthorizationUsers = executorInspectorIds
+        .map((userId) => findQualifiedUserById(userId, "authorize", normalizedArea))
+        .filter(Boolean);
+      const authorizationUser = pickStableWorkOrderDocumentUser(
+        [...executorAuthorizationUsers, ...fallbackAuthorizationUsers],
+        `${normalizedArea}:${selectedWorkOrders.map((workOrder) => workOrder?.id || workOrder?.workOrderNumber || "").join("|")}`,
+      );
       if (authorizationUser?.id) {
         commonPatch[authorizationFieldName] = String(authorizationUser.id);
       }
@@ -71103,7 +71250,7 @@ function ensureWorkOrderDocumentWizardPersonDefaults(workOrders = getAllSelected
     getWorkOrderDocumentWizardRelevantAreasForWorkOrder(workOrder).forEach((area) => {
       const defaults = buildWorkOrderDocumentWizardPersonDefaults(workOrder, area);
       Object.entries(defaults).forEach(([fieldName, value]) => {
-        if (Object.prototype.hasOwnProperty.call(override, fieldName)) {
+        if (!refreshFromExecutors && Object.prototype.hasOwnProperty.call(override, fieldName)) {
           return;
         }
         if (Array.isArray(value)) {
@@ -73140,8 +73287,46 @@ function createWorkOrderBottomBarCard({
 
   const serviceRow = document.createElement("span");
   serviceRow.className = "work-order-bottom-card-services";
-  const visibleServices = serviceItems.slice(0, serviceItems.length > 2 ? 1 : 2);
-  if (visibleServices.length === 0) {
+  const createSequenceBadge = (entry) => {
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = "work-order-bottom-card-service is-sequence";
+    const index = Number(entry?.dockIndex);
+    const isEntryActive = Number.isFinite(index) && index === activeIndex && !sequenceState?.isSummary;
+    badge.classList.toggle("is-active-report", isEntryActive);
+    badge.textContent = entry?.timelineLabel || "Zapisnik";
+    badge.title = [
+      entry?.templateTitle || "Zapisnik",
+      group.workOrderNumber ? `RN ${group.workOrderNumber}` : "",
+    ].filter(Boolean).join(" · ");
+    badge.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (Number.isFinite(index) && index >= 0) {
+        openDocumentTemplateRuntimeSequenceIndex(index);
+      } else {
+        openWorkOrderFields();
+      }
+    });
+    return badge;
+  };
+  const visibleSequenceItems = hasSequence && groupItems.length > 0
+    ? groupItems.slice(0, groupItems.length > 3 ? 2 : 3)
+    : [];
+  const visibleServices = visibleSequenceItems.length > 0
+    ? []
+    : serviceItems.slice(0, serviceItems.length > 2 ? 1 : 2);
+  if (visibleSequenceItems.length > 0) {
+    visibleSequenceItems.forEach((entry) => {
+      serviceRow.append(createSequenceBadge(entry));
+    });
+    if (groupItems.length > visibleSequenceItems.length) {
+      const more = document.createElement("span");
+      more.className = "work-order-bottom-card-service is-neutral";
+      more.textContent = `+${groupItems.length - visibleSequenceItems.length}`;
+      serviceRow.append(more);
+    }
+  } else if (visibleServices.length === 0) {
     const empty = document.createElement("span");
     empty.className = "work-order-bottom-card-service is-neutral";
     empty.textContent = "N/A";
@@ -73232,9 +73417,13 @@ function renderDocumentTemplateRuntimeSidePanel({
   } else if (activeWorkOrder) {
     const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(activeWorkOrder);
     const completedServices = serviceItems.filter((service) => Boolean(service?.isCompleted)).length;
+    const recordSourceId = getDocumentTemplateRuntimeRecordSource(activeWorkOrder.id);
+    const isPreviousInspectionSource = String(recordSourceId || "").startsWith("record:");
+    const recordLabel = activeSequenceEntry?.timelineLabel || template?.title || "Zapisnik";
     summaryRows.push(
       ["RN", activeWorkOrder.workOrderNumber || "Bez broja"],
-      ["Zapisnik", activeSequenceEntry?.timelineLabel || template?.title || "Zapisnik"],
+      ["Zapisnik", isPreviousInspectionSource ? `${recordLabel} · Prethodno ispitivanje` : recordLabel],
+      ...(isPreviousInspectionSource ? [["Izvor", "Prethodno ispitivanje"]] : []),
       ["Tvrtka", activeWorkOrder.companyName || "Bez tvrtke"],
       ["Lokacija", activeWorkOrder.locationName || "Bez lokacije"],
       ["Datum", formatCompactDate(getDocumentTemplateRuntimeValue(activeWorkOrder.id, "inspectionDate")) || "Nije upisano"],
@@ -116142,6 +116331,12 @@ function createWorkOrderBatchExecutorPicker(selectedWorkOrders = []) {
       }
 
       setCurrentValues(normalized, { mixed: false });
+      if (state.workOrderDocumentWizard.open) {
+        ensureWorkOrderDocumentWizardPersonDefaults(getAllSelectedWorkOrdersForDocumentWizard(), {
+          refreshFromExecutors: true,
+        });
+        renderWorkOrderDocumentWizard();
+      }
       syncMenuState();
 
       if (focusSearch) {
@@ -119907,29 +120102,12 @@ function getWorkOrderDocumentWizardCommonSheetAvailability(workOrders = getAllSe
     };
   }
 
-  const hasSprLikeService = selectedWorkOrders.some((workOrder) => {
-    const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
-    if (serviceItems.length > 0) {
-      return serviceItems.some((service) => (
-        !isWorkOrderDocumentWorkEquipmentService(service)
-        && !isWorkOrderDocumentPhysicalFactorsService(service)
-        && !service?.isTraining
-      ));
-    }
-    const displayLabel = [workOrder?.serviceLine, workOrder?.displayService].filter(Boolean).join(" ");
-    return Boolean(
-      displayLabel
-      && !isWorkOrderDocumentWorkEquipmentText(displayLabel)
-      && !isWorkOrderDocumentPhysicalFactorsText(displayLabel),
-    );
-  });
-  const hasTemplates = getWorkOrderDocumentTemplateRecommendations(selectedWorkOrders).recommendations.length > 0;
   const hasRo = getWorkOrderDocumentWizardWorkEquipmentCandidates(selectedWorkOrders).length > 0;
   const hasFc = getWorkOrderDocumentWizardPhysicalFactorsCandidates(selectedWorkOrders).length > 0;
 
   return {
     basic: true,
-    spr: hasSprLikeService || hasTemplates,
+    spr: false,
     ro: hasRo,
     fc: hasFc,
     validity: true,
@@ -119941,7 +120119,7 @@ function getWorkOrderDocumentWizardActiveCommonSheet(availability = {}) {
   if (availability[requestedSheet]) {
     return requestedSheet;
   }
-  return ["basic", "spr", "ro", "fc", "validity"].find((sheet) => availability[sheet]) || "basic";
+  return ["basic", "validity", "ro", "fc", "spr"].find((sheet) => availability[sheet]) || "basic";
 }
 
 function syncWorkOrderDocumentWizardCommonSheetButton(button, sheetKey, activeSheet, availability, isTrainingMode) {
@@ -120014,10 +120192,10 @@ function renderWorkOrderDocumentWizardCommonSection() {
 
   [
     ["basic", workOrderDocumentWizardSheetBasicButton, workOrderDocumentWizardSheetBasicPanel],
+    ["validity", workOrderDocumentWizardSheetValidityButton, workOrderDocumentWizardSheetValidityPanel],
     ["spr", workOrderDocumentWizardSheetSprButton, workOrderDocumentWizardSheetSprPanel],
     ["ro", workOrderDocumentWizardSheetRoButton, workOrderDocumentWizardSheetRoPanel],
     ["fc", workOrderDocumentWizardSheetFcButton, workOrderDocumentWizardSheetFcPanel],
-    ["validity", workOrderDocumentWizardSheetValidityButton, workOrderDocumentWizardSheetValidityPanel],
   ].forEach(([sheetKey, button, panel]) => {
     syncWorkOrderDocumentWizardCommonSheetButton(button, sheetKey, activeSheet, sheetAvailability, isTrainingMode);
     syncWorkOrderDocumentWizardCommonSheetPanel(panel, sheetKey, activeSheet, sheetAvailability, isCollapsed, isTrainingMode);
@@ -123946,21 +124124,21 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   envGrid.className = "form-grid work-order-document-selection-env-grid";
   envGrid.append(
     createOverrideField({
-      label: "Vanjska temperatura",
+      label: "Vanjska temperatura (°C)",
       fieldName: "outsideTemperature",
-      placeholder: state.workOrderDocumentWizard.common.outsideTemperature || "npr. 18 °C",
+      placeholder: state.workOrderDocumentWizard.common.outsideTemperature || "npr. 18",
       ...getWeatherHintOptions("outsideTemperature"),
     }),
     createOverrideField({
-      label: "Relativna vlažnost",
+      label: "Relativna vlažnost (%)",
       fieldName: "relativeHumidity",
-      placeholder: state.workOrderDocumentWizard.common.relativeHumidity || "npr. 52 %",
+      placeholder: state.workOrderDocumentWizard.common.relativeHumidity || "npr. 52",
       ...getWeatherHintOptions("relativeHumidity"),
     }),
     createOverrideField({
-      label: "Brzina strujanja",
+      label: "Brzina strujanja (m/s)",
       fieldName: "airflowSpeed",
-      placeholder: state.workOrderDocumentWizard.common.airflowSpeed || "npr. 0,4 m/s",
+      placeholder: state.workOrderDocumentWizard.common.airflowSpeed || "npr. 0,4",
       ...getWeatherHintOptions("airflowSpeed"),
     }),
     createOverrideField({
@@ -123976,9 +124154,9 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
       ...getWeatherHintOptions("groundCondition"),
     }),
     createOverrideField({
-      label: "Otpor tla",
+      label: "Otpor tla (Ω)",
       fieldName: "groundResistance",
-      placeholder: state.workOrderDocumentWizard.common.groundResistance || "npr. 5,2 Ω",
+      placeholder: state.workOrderDocumentWizard.common.groundResistance || "npr. 5,2",
       ...getWeatherHintOptions("groundResistance"),
     }),
   );

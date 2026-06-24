@@ -2421,6 +2421,14 @@
                     Osnovno
                   </button>
                   <button
+                    id="work-order-document-wizard-sheet-validity"
+                    type="button"
+                    class="ghost-button work-order-document-wizard-sheet-tab"
+                    aria-selected="false"
+                  >
+                    Rokovi
+                  </button>
+                  <button
                     id="work-order-document-wizard-sheet-spr"
                     type="button"
                     class="ghost-button work-order-document-wizard-sheet-tab"
@@ -2443,14 +2451,6 @@
                     aria-selected="false"
                   >
                     FC
-                  </button>
-                  <button
-                    id="work-order-document-wizard-sheet-validity"
-                    type="button"
-                    class="ghost-button work-order-document-wizard-sheet-tab"
-                    aria-selected="false"
-                  >
-                    Rokovi
                   </button>
                 </div>
 
@@ -2549,16 +2549,16 @@
                       </label>
                       <div class="work-order-document-wizard-common-env-grid">
                         <label class="field">
-                          <span>Vanjska temperatura</span>
-                          <input id="work-order-document-common-outside-temperature" type="text" placeholder="npr. 18 °C" />
+                          <span>Vanjska temperatura (°C)</span>
+                          <input id="work-order-document-common-outside-temperature" type="text" placeholder="npr. 18" />
                         </label>
                         <label class="field">
-                          <span>Relativna vlažnost</span>
-                          <input id="work-order-document-common-relative-humidity" type="text" placeholder="npr. 52 %" />
+                          <span>Relativna vlažnost (%)</span>
+                          <input id="work-order-document-common-relative-humidity" type="text" placeholder="npr. 52" />
                         </label>
                         <label class="field">
-                          <span>Brzina strujanja</span>
-                          <input id="work-order-document-common-airflow-speed" type="text" placeholder="npr. 0,40 m/s" />
+                          <span>Brzina strujanja (m/s)</span>
+                          <input id="work-order-document-common-airflow-speed" type="text" placeholder="npr. 0,40" />
                         </label>
                         <label class="field">
                           <span>Vrijeme</span>
@@ -2569,8 +2569,8 @@
                           <input id="work-order-document-common-ground-condition" type="text" placeholder="npr. suho" />
                         </label>
                         <label class="field">
-                          <span>Otpor tla</span>
-                          <input id="work-order-document-common-ground-resistance" type="text" placeholder="npr. 5 Ω" />
+                          <span>Otpor tla (Ω)</span>
+                          <input id="work-order-document-common-ground-resistance" type="text" placeholder="npr. 5" />
                         </label>
                       </div>
                     </div>
