@@ -11593,8 +11593,6 @@ private fun OperationsContent(
         ClientPortalHomeContent(
             summary = data.clientHome,
             portalRecords = data.clientPortalRecords,
-            fallbackWorkOrders = workOrders,
-            onOpenWorkOrder = onOpenWorkOrder,
         )
     } else {
         HomeContent(
@@ -11609,14 +11607,9 @@ private fun OperationsContent(
 private fun ClientPortalHomeContent(
     summary: ClientHomeSummary,
     portalRecords: List<MobileRecord>,
-    fallbackWorkOrders: List<WorkOrder>,
-    onOpenWorkOrder: (WorkOrder) -> Unit,
 ) {
-    val latestWorkOrders = remember(summary.latestWorkOrders, fallbackWorkOrders) {
-        summary.latestWorkOrders.ifEmpty { fallbackWorkOrders.take(6) }
-    }
     val title = summary.title.ifBlank { "Client Portal" }
-    val subtitle = summary.subtitle.ifBlank { "Dokumenti, radni nalozi i evidencije" }
+    val subtitle = summary.subtitle.ifBlank { "Dokumenti i evidencije tvoje tvrtke" }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Surface(
@@ -11657,8 +11650,6 @@ private fun ClientPortalHomeContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    StatusCountPill("RN", summary.workOrdersTotal, Color(0xFF2563EB))
-                    StatusCountPill("Aktivni", summary.activeWorkOrders, Color(0xFF0F766E))
                     StatusCountPill("Lokacije", summary.locationsTotal, Color(0xFF7C3AED))
                     StatusCountPill("Dokumenti", summary.documentsTotal, Color(0xFF1D4ED8))
                     StatusCountPill("Procjene", summary.riskAssessmentsTotal, Color(0xFFD97706))
@@ -11668,56 +11659,6 @@ private fun ClientPortalHomeContent(
         }
 
         ClientPortalRecordBlocksSection(records = portalRecords)
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
-            shadowElevation = 2.dp,
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFEDE9FE)) {
-                        Icon(
-                            Icons.Rounded.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .padding(10.dp),
-                            tint = Color(0xFF7C3AED),
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Radni nalozi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                        Text(
-                            "Zadnje aktivnosti za tvoju tvrtku",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        )
-                    }
-                }
-
-                if (latestWorkOrders.isEmpty()) {
-                    Text(
-                        "Nema radnih naloga za prikaz.",
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                    )
-                } else {
-                    latestWorkOrders.forEach { workOrder ->
-                        ClientPortalWorkOrderRow(
-                            workOrder = workOrder,
-                            onClick = { onOpenWorkOrder(workOrder) },
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -11812,6 +11753,13 @@ private fun ClientPortalRecordBlocksSection(records: List<MobileRecord>) {
                     }
                 }
             }
+
+            ClientPortalFireExtinguisherSection(
+                records = recordsByType["fire_extinguisher"].orEmpty(),
+            )
+            ClientPortalVehicleFleetSection(
+                records = recordsByType["vehicle"].orEmpty(),
+            )
         }
     }
 }
@@ -11871,6 +11819,263 @@ private fun ClientPortalRecordBlockCard(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+private fun MobileRecord.metaValue(vararg keys: String): String {
+    keys.forEach { key ->
+        val value = meta[key].orEmpty()
+        if (value.isNotBlank()) return value
+    }
+    return ""
+}
+
+private fun clientPortalDateLabel(value: String): String =
+    formatDateLabel(value).ifBlank { value.ifBlank { "-" } }
+
+@Composable
+private fun ClientPortalFireExtinguisherSection(records: List<MobileRecord>) {
+    if (records.isEmpty()) return
+    ClientPortalRecordListSection(
+        title = "Vatrogasni aparati",
+        subtitle = "${records.size} aparata u evidenciji",
+        icon = Icons.Rounded.ErrorOutline,
+        accent = Color(0xFFDC2626),
+    ) {
+        records.forEach { record ->
+            ClientPortalFireExtinguisherCard(record = record)
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalVehicleFleetSection(records: List<MobileRecord>) {
+    if (records.isEmpty()) return
+    ClientPortalRecordListSection(
+        title = "Vozni park",
+        subtitle = "${records.size} vozila u evidenciji",
+        icon = Icons.Rounded.Business,
+        accent = Color(0xFF2563EB),
+    ) {
+        records.forEach { record ->
+            ClientPortalVehicleFleetCard(record = record)
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalRecordListSection(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    accent: Color,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = accent.copy(alpha = 0.07f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.14f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = Color.White.copy(alpha = 0.86f)) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(9.dp),
+                        tint = accent,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalFireExtinguisherCard(record: MobileRecord) {
+    val code = record.metaValue("code").ifBlank { record.title }
+    val location = record.metaValue("locationText", "locationName").ifBlank { record.subtitle }
+    val type = record.metaValue("extinguisherType")
+    val note = record.metaValue("note")
+    val attachmentCount = record.metaValue("attachmentCount")
+    val attachmentNames = record.metaValue("attachmentNames")
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, Color(0xFFDC2626).copy(alpha = 0.14f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFFFEE2E2)) {
+                    Icon(
+                        Icons.Rounded.ErrorOutline,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .padding(8.dp),
+                        tint = Color(0xFFDC2626),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(code, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        listOf(location, type).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ClientPortalMiniChip("3 mj", clientPortalDateLabel(record.metaValue("nextInspectionDate")), Color(0xFFDC2626))
+                ClientPortalMiniChip("Unutarnji", clientPortalDateLabel(record.metaValue("nextInternalInspectionDate")), Color(0xFFD97706))
+                ClientPortalMiniChip("Servis", clientPortalDateLabel(record.metaValue("nextServiceDate")), Color(0xFF059669))
+                if (attachmentCount.isNotBlank()) {
+                    ClientPortalMiniChip("Dok.", attachmentCount, Color(0xFF2563EB))
+                }
+            }
+            if (attachmentNames.isNotBlank()) {
+                Text(
+                    attachmentNames,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (note.isNotBlank()) {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalVehicleFleetCard(record: MobileRecord) {
+    val plate = record.metaValue("plateNumber")
+    val vehicle = record.metaValue("vehicleName").ifBlank { record.title }
+    val type = record.metaValue("vehicleType")
+    val responsible = record.metaValue("responsibleWorkerName")
+    val note = record.metaValue("note")
+    val attachmentCount = record.metaValue("attachmentCount")
+    val attachmentNames = record.metaValue("attachmentNames")
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.14f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = RoundedCornerShape(13.dp), color = Color(0xFFDBEAFE)) {
+                    Icon(
+                        Icons.Rounded.Business,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .padding(8.dp),
+                        tint = Color(0xFF2563EB),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        listOf(plate, vehicle).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        listOf(type, responsible).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ClientPortalMiniChip("Registracija", clientPortalDateLabel(record.metaValue("registrationDate")), Color(0xFF2563EB))
+                ClientPortalMiniChip("Osiguranje", clientPortalDateLabel(record.metaValue("insuranceDate")), Color(0xFF7C3AED))
+                ClientPortalMiniChip("Servis", clientPortalDateLabel(record.metaValue("serviceDate")), Color(0xFF059669))
+                if (attachmentCount.isNotBlank()) {
+                    ClientPortalMiniChip("Dok.", attachmentCount, Color(0xFF0F766E))
+                }
+            }
+            if (attachmentNames.isNotBlank()) {
+                Text(
+                    attachmentNames,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (note.isNotBlank()) {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalMiniChip(label: String, value: String, accent: Color) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = accent.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+    ) {
+        Text(
+            "$label ${value.ifBlank { "-" }}",
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = accent,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

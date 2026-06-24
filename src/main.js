@@ -91020,7 +91020,6 @@ function renderClientPortalPreview() {
     return;
   }
 
-  const scopedWorkOrders = sortWorkOrders(filterClientPortalRecordsByScope(state.workOrders, companyId, selectedLocationIds));
   const scopedDocumentRecords = getClientPortalDocumentRecordPreviews(companyId, selectedLocationIds);
   const scopedTrainingRecords = sortPersonTrainingRecords(filterClientPortalRecordsByScope(
     state.peopleTrainingRecords,
@@ -91038,7 +91037,6 @@ function renderClientPortalPreview() {
     selectedLocationIds,
   ));
 
-  const workOrderRows = scopedWorkOrders.map(createClientPortalWorkOrderPreviewRow);
   const foundationRows = getClientPortalFoundationalDocumentItems().map(createClientPortalFoundationPreviewRow);
   const documentRows = scopedDocumentRecords.map(createClientPortalDocumentPreviewRow);
   const trainingRows = scopedTrainingRecords.map(createClientPortalTrainingPreviewRow);
@@ -91049,13 +91047,6 @@ function renderClientPortalPreview() {
     ? "Ucitavam spremljene zapisnike za odabrani opseg."
     : "Spremljeni zapisnici koje klijent vidi u Documents.";
 
-  const workOrdersSection = createClientPortalPreviewSection({
-    key: "workOrders",
-    title: "Radni nalozi",
-    subtitle: "Klijent vidi RN pregled prema odabranoj tvrtki i lokacijama.",
-    rows: workOrderRows,
-    emptyMessage: companyId ? "Nema radnih naloga za odabranu tvrtku i lokacije." : "Odaberi tvrtku za preview radnih naloga.",
-  });
   const foundationSection = createClientPortalPreviewSection({
     key: "foundationDocuments",
     title: "Temeljna dokumentacija",
@@ -91093,7 +91084,6 @@ function renderClientPortalPreview() {
   });
 
   clientPortalPreviewList.replaceChildren(
-    workOrdersSection,
     foundationSection,
     clientRecordsSection,
     documentsSection,
