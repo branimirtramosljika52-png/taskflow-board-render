@@ -33883,6 +33883,10 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   background: linear-gradient(180deg, rgba(255, 251, 243, 0.98), rgba(252, 248, 238, 0.98));
 }
 
+.vehicle-list-row.is-checked-out {
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.98), rgba(254, 242, 232, 0.98));
+}
+
 .vehicle-list-row.is-service,
 .vehicle-list-row.is-inactive {
   background: linear-gradient(180deg, rgba(250, 247, 244, 0.98), rgba(246, 242, 238, 0.98));
@@ -33963,6 +33967,11 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 .vehicle-status-badge.is-reserved {
   background: rgba(234, 189, 77, 0.22);
   color: #8c5a10;
+}
+
+.vehicle-status-badge.is-checked-out {
+  background: rgba(249, 115, 22, 0.16);
+  color: #9a3412;
 }
 
 .vehicle-status-badge.is-service {

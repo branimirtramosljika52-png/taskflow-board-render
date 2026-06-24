@@ -105801,6 +105801,9 @@ function getVehicleStatusLabel(value) {
   if (value === "reserved") {
     return "Rezervirano";
   }
+  if (value === "checked_out") {
+    return "Na terenu";
+  }
   if (value === "inactive") {
     return "Servis";
   }
@@ -108580,6 +108583,7 @@ function renderSharedOptions() {
       { value: "all", label: "Sva dostupnost" },
       { value: "available", label: "Dostupno" },
       { value: "reserved", label: "Rezervirano" },
+      { value: "checked_out", label: "Na terenu" },
       { value: "service", label: "Servis" },
     ], vehiclesFilterStatusInput.value || "all");
   }

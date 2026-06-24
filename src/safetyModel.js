@@ -663,6 +663,7 @@ const DOCUMENT_TEMPLATE_STATUS_RANK = {
 };
 const VEHICLE_STATUS_RANK = {
   reserved: 0,
+  checked_out: 0,
   available: 1,
   service: 2,
 };
@@ -11140,7 +11141,7 @@ export function getVehicleNextReservation(vehicle, nowValue = isoNow()) {
       return false;
     }
 
-  return ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(reservation?.status));
+    return ACTIVE_VEHICLE_RESERVATION_STATUSES.has(normalizeVehicleReservationStatus(reservation?.status));
   }) ?? null;
 }
 
@@ -11167,11 +11168,17 @@ export function getVehicleAvailabilityStatus(vehicle, nowValue = isoNow()) {
     return baseStatus;
   }
 
-  if (getVehicleOpenTrip(vehicle)) {
-    return "reserved";
+  const activeReservation = getVehicleActiveReservation(vehicle, nowValue);
+  if (activeReservation) {
+    const reservationStatus = normalizeVehicleReservationStatus(activeReservation.status);
+    return reservationStatus === "checked_out" ? "checked_out" : "reserved";
   }
 
-  return getVehicleActiveReservation(vehicle, nowValue) ? "reserved" : "available";
+  if (getVehicleOpenTrip(vehicle)) {
+    return "checked_out";
+  }
+
+  return "available";
 }
 
 export function createClientPortalRecord(

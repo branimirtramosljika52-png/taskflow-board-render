@@ -4135,6 +4135,28 @@ test("vehicles ignore legacy trip-looking rows when deriving availability", () =
   );
 
   assert.equal(getVehicleAvailabilityStatus(vehicle, "2026-06-22T09:00:00.000Z"), "available");
+
+  const openTripVehicle = createVehicle(
+    {
+      organizationId: "55",
+      name: "Terenski kombi",
+      plateNumber: "ZG 1455 HS",
+      status: "available",
+      activityItems: [
+        {
+          activityType: "vehicle_trip",
+          performedBy: "Branimir Tramosljika",
+          departureAt: "2026-06-22T08:15:00.000Z",
+          startKm: "210144",
+        },
+      ],
+    },
+    state,
+    () => "vehicle-open-trip",
+    () => "2026-06-22T08:00:00.000Z",
+  );
+
+  assert.equal(getVehicleAvailabilityStatus(openTripVehicle, "2026-06-22T09:00:00.000Z"), "checked_out");
 });
 
 test("vehicles filter and sort by availability and search context", () => {

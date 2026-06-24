@@ -13227,8 +13227,8 @@ private fun vehicleBaseStatus(vehicle: MobileRecord): String =
 private fun vehicleAvailabilityStatus(vehicle: MobileRecord): String {
     val baseStatus = vehicleBaseStatus(vehicle)
     if (baseStatus == "service" || baseStatus == "inactive") return baseStatus
-    if (parseVehicleTrips(vehicle).any { vehicleTripIsOpen(it) }) return "reserved"
     if (parseVehicleReservations(vehicle).any { vehicleReservationAllowsMyTripNow(it) }) return "reserved"
+    if (parseVehicleTrips(vehicle).any { vehicleTripIsOpen(it) }) return "checked_out"
     return "available"
 }
 
@@ -13480,7 +13480,7 @@ private fun VehicleFleetContent(
 ) {
     val today = remember { LocalDate.now() }
     val available = vehicles.count { vehicleAvailabilityStatus(it) == "available" }
-    val reserved = vehicles.count { vehicleAvailabilityStatus(it) == "reserved" }
+    val reserved = vehicles.count { vehicleAvailabilityStatus(it) in setOf("reserved", "checked_out") }
     val service = vehicles.count { vehicleAvailabilityStatus(it) == "service" }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
