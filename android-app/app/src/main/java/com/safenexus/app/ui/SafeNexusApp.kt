@@ -354,14 +354,7 @@ private data class AppNavigationDestination(
     val moreFocus: MoreSectionFocus = MoreSectionFocus.Overview,
 )
 
-private val clientPortalMoreSections = setOf(
-    MoreSectionFocus.Companies,
-    MoreSectionFocus.Documents,
-    MoreSectionFocus.Periodics,
-    MoreSectionFocus.LegalFrameworks,
-    MoreSectionFocus.RiskAssessments,
-    MoreSectionFocus.Training,
-)
+private val clientPortalDestination = AppNavigationDestination(AppSection.Operations, MoreSectionFocus.Overview)
 
 private fun SafeNexusUser?.hasClientPortalAccess(): Boolean = this?.isClientPortalUser == true
 
@@ -370,13 +363,7 @@ private fun normalizeClientPortalDestination(
     user: SafeNexusUser?,
 ): AppNavigationDestination {
     if (!user.hasClientPortalAccess()) return destination
-    return when {
-        destination.section == AppSection.Vehicles -> AppNavigationDestination(AppSection.WorkOrders)
-        destination.section == AppSection.Calendar -> AppNavigationDestination(AppSection.More, MoreSectionFocus.Periodics)
-        destination.section == AppSection.More && destination.moreFocus !in clientPortalMoreSections ->
-            AppNavigationDestination(AppSection.More, MoreSectionFocus.Documents)
-        else -> destination
-    }
+    return clientPortalDestination
 }
 
 enum class WorkOrderDocumentInputMode(
@@ -595,7 +582,20 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
         shouldRememberSession = true
         api.restoreSession(storedSession.accessToken, storedSession.cookieHeader)
-        state = state.copy(user = storedSession.user, rememberedUser = storedSession.user, isLoading = true, error = "")
+        val destination = normalizeClientPortalDestination(
+            destination = AppNavigationDestination(state.section, state.moreFocus),
+            user = storedSession.user,
+        )
+        state = state.copy(
+            user = storedSession.user,
+            rememberedUser = storedSession.user,
+            section = destination.section,
+            moreFocus = destination.moreFocus,
+            navigationDepth = 0,
+            isLoading = true,
+            error = "",
+        )
+        navigationBackStack.clear()
         registerPushToken()
         refresh()
     }
@@ -615,9 +615,19 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     } else {
                         authStore.clear()
                     }
+                    val destination = normalizeClientPortalDestination(
+                        destination = AppNavigationDestination(state.section, state.moreFocus),
+                        user = user,
+                    )
+                    if (user.hasClientPortalAccess()) {
+                        navigationBackStack.clear()
+                    }
                     state = state.copy(
                         user = user,
                         rememberedUser = if (rememberSession) user else null,
+                        section = destination.section,
+                        moreFocus = destination.moreFocus,
+                        navigationDepth = navigationBackStack.size,
                         isLoading = false,
                         error = "",
                     )
@@ -656,10 +666,24 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                     }
                     val selectedId = state.selectedWorkOrder?.id
+                    val portalUser = state.user ?: state.rememberedUser
+                    val isClientPortal = portalUser.hasClientPortalAccess()
+                    val destination = normalizeClientPortalDestination(
+                        destination = AppNavigationDestination(state.section, state.moreFocus),
+                        user = portalUser,
+                    )
+                    if (isClientPortal) {
+                        navigationBackStack.clear()
+                    }
                     state = state.copy(
                         data = data,
                         workOrders = data.workOrders,
                         selectedWorkOrder = selectedId?.let { id -> data.workOrders.firstOrNull { it.id == id } } ?: state.selectedWorkOrder,
+                        selectedRecord = if (isClientPortal) null else state.selectedRecord,
+                        isCreatingWorkOrder = if (isClientPortal) false else state.isCreatingWorkOrder,
+                        section = destination.section,
+                        moreFocus = destination.moreFocus,
+                        navigationDepth = navigationBackStack.size,
                         isLoading = false,
                         error = "",
                     )
@@ -11025,20 +11049,26 @@ private fun MainAppTopBar(
 ) {
     TopAppBar(
         navigationIcon = {
-            MainMenuButton(
-                currentSection = currentSection,
-                currentMoreFocus = currentMoreFocus,
-                expanded = mainMenuExpanded,
-                isClientPortal = isClientPortal,
-                onExpandedChange = onMainMenuExpandedChange,
-                onSectionChange = onSectionChange,
-                onLogout = onLogout,
-            )
+            if (isClientPortal) {
+                IconButton(onClick = onRefresh) {
+                    Icon(Icons.Rounded.Business, contentDescription = "Client Portal")
+                }
+            } else {
+                MainMenuButton(
+                    currentSection = currentSection,
+                    currentMoreFocus = currentMoreFocus,
+                    expanded = mainMenuExpanded,
+                    isClientPortal = false,
+                    onExpandedChange = onMainMenuExpandedChange,
+                    onSectionChange = onSectionChange,
+                    onLogout = onLogout,
+                )
+            }
         },
         title = {
             Column {
                 Text(
-                    if (currentSection == AppSection.More) currentMoreFocus.title else currentSection.label,
+                    if (isClientPortal) "Client Portal" else if (currentSection == AppSection.More) currentMoreFocus.title else currentSection.label,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
@@ -11053,6 +11083,11 @@ private fun MainAppTopBar(
         actions = {
             IconButton(onClick = onRefresh) {
                 Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi")
+            }
+            if (isClientPortal) {
+                IconButton(onClick = onLogout) {
+                    Icon(Icons.Rounded.Lock, contentDescription = "Odjava")
+                }
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -11201,11 +11236,7 @@ private fun MainMenuDropdown(
         if (!isClientPortal) {
             allShortcuts
         } else {
-            allShortcuts.filter { shortcut ->
-                shortcut.section == AppSection.Operations ||
-                    shortcut.section == AppSection.WorkOrders ||
-                    shortcut.moreFocus in clientPortalMoreSections
-            }
+            listOf(MainMenuShortcut("Client Portal", "Dokumenti i podaci tvoje tvrtke", AppSection.Operations, Icons.Rounded.Business))
         }
     }
 
@@ -11522,12 +11553,9 @@ private fun MainBottomBar(
     isClientPortal: Boolean,
     onSectionChange: (AppSection) -> Unit,
 ) {
+    if (isClientPortal) return
     val visibleSections = remember(isClientPortal) {
-        if (isClientPortal) {
-            listOf(AppSection.Operations, AppSection.WorkOrders)
-        } else {
-            AppSection.entries.filter { section -> section != AppSection.More && section != AppSection.Calendar }
-        }
+        AppSection.entries.filter { section -> section != AppSection.More && section != AppSection.Calendar }
     }
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
         visibleSections.forEach { section ->
@@ -11585,7 +11613,7 @@ private fun ClientPortalHomeContent(
     val latestWorkOrders = remember(summary.latestWorkOrders, fallbackWorkOrders) {
         summary.latestWorkOrders.ifEmpty { fallbackWorkOrders.take(6) }
     }
-    val title = summary.title.ifBlank { "Klijentski portal" }
+    val title = summary.title.ifBlank { "Client Portal" }
     val subtitle = summary.subtitle.ifBlank { "Dokumenti, radni nalozi i evidencije" }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
