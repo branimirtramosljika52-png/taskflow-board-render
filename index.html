@@ -3091,24 +3091,14 @@
             </div>
 
             <div class="reminders-layout">
-              <section class="reminders-composer-card">
-                <div class="workspace-list-head reminders-composer-head">
-                  <div class="workspace-list-copy">
-                    <p class="section-kicker">Create</p>
-                    <h3>Novi reminder</h3>
-                  </div>
-                  <div class="workspace-list-actions">
-                    <button id="reminder-open-form" type="button" class="primary-button">+ Add Reminder</button>
-                  </div>
-                </div>
-                <p class="helper-copy module-copy">Dodaj novi reminder kroz popup editor. Klik na postojeći reminder otvara uređivanje u istom popupu.</p>
-              </section>
-
               <section class="reminders-list-card">
                 <div class="workspace-list-head">
                   <div class="workspace-list-copy">
                     <p class="section-kicker">List view</p>
                     <h3>Popis reminders</h3>
+                  </div>
+                  <div class="workspace-list-actions">
+                    <button id="reminder-open-form" type="button" class="primary-button">+ Reminder</button>
                   </div>
                 </div>
 
@@ -3153,7 +3143,7 @@
 
                     <label class="field reminder-field-compact">
                       <span>Datum</span>
-                      <input id="reminder-due-date" type="date" />
+                      <input id="reminder-due-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" autocomplete="off" />
                     </label>
 
                     <label class="field reminder-field-compact">
@@ -3289,7 +3279,7 @@
 
                   <label class="field todo-editor-core-field">
                     <span>Datum</span>
-                    <input id="todo-due-date" type="date" />
+                    <input id="todo-due-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" autocomplete="off" />
                   </label>
 
                   <label class="field todo-editor-core-field">

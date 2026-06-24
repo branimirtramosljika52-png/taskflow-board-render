@@ -21,7 +21,7 @@ export const PRIORITY_OPTIONS = [
 
 export const REMINDER_STATUS_OPTIONS = [
   { value: "active", label: "Aktivan" },
-  { value: "snoozed", label: "Odgoden" },
+  { value: "snoozed", label: "Odgođen" },
   { value: "done", label: "Gotov" },
 ];
 
@@ -37,8 +37,8 @@ export const FIELD_INQUIRY_STATUS_OPTIONS = [
 export const TODO_TASK_STATUS_OPTIONS = [
   { value: "open", label: "Novo" },
   { value: "in_progress", label: "U radu" },
-  { value: "waiting", label: "Ceka odgovor" },
-  { value: "done", label: "Zavrseno" },
+  { value: "waiting", label: "Čeka odgovor" },
+  { value: "done", label: "Završeno" },
 ];
 
 export const OFFER_STATUS_OPTIONS = [
@@ -916,9 +916,35 @@ function normalizeWorkOrderStatus(value) {
   return WORK_ORDER_STATUS_SET.has(status) ? status : "Otvoreni RN";
 }
 
-function normalizeReminderStatus(value) {
-  const status = normalizeText(value).toLowerCase();
-  return REMINDER_STATUS_SET.has(status) ? status : "active";
+function normalizeStatusLookupKey(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s-]+/g, "_");
+}
+
+export function normalizeReminderStatus(value) {
+  const status = normalizeStatusLookupKey(value);
+  const legacyMap = {
+    aktivan: "active",
+    active: "active",
+    otvoren: "active",
+    otvoreno: "active",
+    odgoden: "snoozed",
+    odgodeno: "snoozed",
+    odlozen: "snoozed",
+    odlozeno: "snoozed",
+    snoozed: "snoozed",
+    gotov: "done",
+    gotovo: "done",
+    zavrsen: "done",
+    zavrseno: "done",
+    done: "done",
+    completed: "done",
+  };
+  const normalized = legacyMap[status] ?? status;
+  return REMINDER_STATUS_SET.has(normalized) ? normalized : "active";
 }
 
 function normalizeReminderRepeatEveryDays(value, fallback = null) {
@@ -936,9 +962,31 @@ function normalizeReminderRepeatEveryDays(value, fallback = null) {
   return Math.min(365, parsed);
 }
 
-function normalizeTodoTaskStatus(value) {
-  const status = normalizeText(value).toLowerCase();
-  return TODO_TASK_STATUS_SET.has(status) ? status : "open";
+export function normalizeTodoTaskStatus(value) {
+  const status = normalizeStatusLookupKey(value);
+  const legacyMap = {
+    novo: "open",
+    open: "open",
+    otvoreno: "open",
+    aktivan: "open",
+    active: "open",
+    u_radu: "in_progress",
+    in_progress: "in_progress",
+    inprogress: "in_progress",
+    progress: "in_progress",
+    ceka_odgovor: "waiting",
+    waiting: "waiting",
+    odgoden: "waiting",
+    odgodeno: "waiting",
+    gotov: "done",
+    gotovo: "done",
+    zavrsen: "done",
+    zavrseno: "done",
+    done: "done",
+    completed: "done",
+  };
+  const normalized = legacyMap[status] ?? status;
+  return TODO_TASK_STATUS_SET.has(normalized) ? normalized : "open";
 }
 
 function normalizeOfferStatus(value) {
@@ -9924,9 +9972,10 @@ export function filterReminders(
   { query = "", status = "all" } = {},
 ) {
   const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedStatus = status === "all" ? "all" : normalizeReminderStatus(status);
 
   return reminders.filter((item) => {
-    if (status !== "all" && item.status !== status) {
+    if (normalizedStatus !== "all" && normalizeReminderStatus(item.status) !== normalizedStatus) {
       return false;
     }
 
@@ -9949,8 +9998,8 @@ export function filterReminders(
 
 export function sortReminders(reminders) {
   return [...reminders].sort((left, right) => {
-    const leftRank = REMINDER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
-    const rightRank = REMINDER_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+    const leftRank = REMINDER_STATUS_RANK[normalizeReminderStatus(left.status)] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = REMINDER_STATUS_RANK[normalizeReminderStatus(right.status)] ?? Number.MAX_SAFE_INTEGER;
 
     if (leftRank !== rightRank) {
       return leftRank - rightRank;
@@ -10293,9 +10342,10 @@ export function filterTodoTasks(
 ) {
   const normalizedQuery = normalizeText(query).toLowerCase();
   const normalizedUserId = normalizeText(userId);
+  const normalizedStatus = status === "all" ? "all" : normalizeTodoTaskStatus(status);
 
   return tasks.filter((item) => {
-    if (status !== "all" && item.status !== status) {
+    if (normalizedStatus !== "all" && normalizeTodoTaskStatus(item.status) !== normalizedStatus) {
       return false;
     }
 
@@ -10339,15 +10389,17 @@ export function filterTodoTasks(
 
 export function sortTodoTasks(tasks) {
   return [...tasks].sort((left, right) => {
-    const leftDone = left.status === "done";
-    const rightDone = right.status === "done";
+    const leftStatus = normalizeTodoTaskStatus(left.status);
+    const rightStatus = normalizeTodoTaskStatus(right.status);
+    const leftDone = leftStatus === "done";
+    const rightDone = rightStatus === "done";
 
     if (leftDone !== rightDone) {
       return leftDone ? 1 : -1;
     }
 
-    const leftRank = TODO_TASK_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
-    const rightRank = TODO_TASK_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+    const leftRank = TODO_TASK_STATUS_RANK[leftStatus] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = TODO_TASK_STATUS_RANK[rightStatus] ?? Number.MAX_SAFE_INTEGER;
 
     if (leftRank !== rightRank) {
       return leftRank - rightRank;

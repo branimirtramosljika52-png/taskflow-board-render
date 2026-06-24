@@ -14,6 +14,7 @@ class SafeNexusAuthStore(context: Context) {
     fun load(): StoredSafeNexusSession? {
         val accessToken = preferences.getString(KEY_ACCESS_TOKEN, "").orEmpty()
         val cookieHeader = preferences.getString(KEY_COOKIE_HEADER, "").orEmpty()
+        val userId = preferences.getString(KEY_USER_ID, "").orEmpty()
         val displayName = preferences.getString(KEY_DISPLAY_NAME, "").orEmpty()
         val email = preferences.getString(KEY_EMAIL, "").orEmpty()
         val profileRole = preferences.getString(KEY_PROFILE_ROLE, "").orEmpty()
@@ -28,6 +29,7 @@ class SafeNexusAuthStore(context: Context) {
 
         return StoredSafeNexusSession(
             user = SafeNexusUser(
+                id = userId,
                 displayName = displayName.ifBlank { email.ifBlank { "SafeNexus" } },
                 email = email,
                 profileRole = profileRole,
@@ -43,6 +45,7 @@ class SafeNexusAuthStore(context: Context) {
 
     fun save(user: SafeNexusUser, accessToken: String, cookieHeader: String) {
         preferences.edit()
+            .putString(KEY_USER_ID, user.id)
             .putString(KEY_DISPLAY_NAME, user.displayName)
             .putString(KEY_EMAIL, user.email)
             .putString(KEY_PROFILE_ROLE, user.profileRole)
@@ -60,6 +63,7 @@ class SafeNexusAuthStore(context: Context) {
     }
 
     private companion object {
+        const val KEY_USER_ID = "user_id"
         const val KEY_DISPLAY_NAME = "display_name"
         const val KEY_EMAIL = "email"
         const val KEY_PROFILE_ROLE = "profile_role"

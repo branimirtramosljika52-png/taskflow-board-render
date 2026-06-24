@@ -77,6 +77,7 @@ import {
   PERSON_TRAINING_TYPE_OPTIONS,
   PRIORITY_OPTIONS,
   FIELD_INQUIRY_STATUS_OPTIONS,
+  REMINDER_STATUS_OPTIONS,
   TODO_TASK_STATUS_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   doesAbsenceTypeRequireApproval,
@@ -101,7 +102,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.213.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.214.apk";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -14414,10 +14415,10 @@ function collectUserScheduledWorkOrderPushCandidates(user = {}, scopedSnapshot =
 }
 
 function collectUserScheduledReminderPushCandidates(user = {}, scopedSnapshot = {}, todayKey = "") {
-  const userId = String(user.id || "").trim();
+  const userId = normalizeInputValue(user?.id);
   return (scopedSnapshot.reminders ?? [])
     .filter((item) => normalizeInputValue(item?.status).toLowerCase() !== "done")
-    .filter((item) => !item?.assignedToUserId || String(item.assignedToUserId) === userId || isScheduledUserAdmin(user))
+    .filter((item) => userId && normalizeInputValue(item?.createdByUserId) === userId)
     .map((item) => {
       const dueDate = parseScheduledDateKey(item?.dueDate);
       if (!dueDate) {
@@ -24126,11 +24127,34 @@ function buildMobileClientPortalRecord(item = {}) {
     subtitleKeys: ["companyName", "locationName", "note"],
     statusKeys: ["status"],
     dateKeys: ["dueDate", "updatedAt", "createdAt"],
-    metaKeys: ["companyName", "locationName", "type", "dueDate"],
+    metaKeys: ["companyId", "companyName", "locationId", "locationName", "type", "dueDate"],
     fallbackTitle: "Klijentski zapis",
   });
 
   const detailMetaKeys = [
+    "fullName",
+    "riskWorkplaceKey",
+    "jobTitle",
+    "jobDescription",
+    "email",
+    "phone",
+    "oib",
+    "medicalReferralNumber",
+    "medicalReferralValidUntil",
+    "medicalCertificateNumber",
+    "medicalCertificateValidUntil",
+    "visionReferralNumber",
+    "visionReferralValidUntil",
+    "visionCertificateNumber",
+    "visionCertificateValidUntil",
+    "psychologicalCheckUntil",
+    "medicalWorkplace",
+    "medicalLoadWeights",
+    "medicalWorkOrganization",
+    "medicalBodyPositions",
+    "medicalWorkConditions",
+    "medicalEquipment",
+    "medicalSubstances",
     "code",
     "locationText",
     "extinguisherType",
@@ -24148,6 +24172,40 @@ function buildMobileClientPortalRecord(item = {}) {
     "registrationDate",
     "insuranceDate",
     "serviceDate",
+    "workerRecordId",
+    "workerName",
+    "ppeName",
+    "quantity",
+    "assignedDate",
+    "dueDate",
+    "returnedDate",
+    "defectTitle",
+    "priority",
+    "category",
+    "reportedDate",
+    "reportedBy",
+    "description",
+    "action",
+    "inspectionTitle",
+    "area",
+    "inspectionDate",
+    "inspectorName",
+    "result",
+    "finding",
+    "correctiveAction",
+    "documentName",
+    "testDate",
+    "measuredValue",
+    "testerName",
+    "nextTestDate",
+    "documentType",
+    "fileName",
+    "fileUrl",
+    "documentDate",
+    "validUntil",
+    "ownerName",
+    "deadlineType",
+    "deadlineName",
     "note",
   ];
 
@@ -25245,6 +25303,50 @@ function buildMobileFieldInquiryRecord(item = {}) {
 function getTodoTaskStatusLabel(status = "") {
   const normalized = normalizeInputValue(status) || "open";
   return TODO_TASK_STATUS_OPTIONS.find((option) => option.value === normalized)?.label || normalized;
+}
+
+function getReminderStatusLabel(status = "") {
+  const normalized = normalizeInputValue(status) || "active";
+  return REMINDER_STATUS_OPTIONS.find((option) => option.value === normalized)?.label || normalized;
+}
+
+function isReminderOwnedByUser(item = {}, user = {}) {
+  const userId = normalizeInputValue(user?.id);
+  const createdByUserId = normalizeInputValue(item?.createdByUserId);
+  return Boolean(userId && createdByUserId && userId === createdByUserId);
+}
+
+function buildMobileReminderRecord(item = {}) {
+  return {
+    id: normalizeInputValue(item.id),
+    title: normalizeInputValue(item.title || "Reminder"),
+    subtitle: [
+      normalizeInputValue(item.workOrderNumber ? `RN ${item.workOrderNumber}` : ""),
+      normalizeInputValue(item.companyName),
+      normalizeInputValue(item.locationName),
+    ].filter(Boolean).join(" - ") || "Osobni reminder",
+    status: getReminderStatusLabel(item.status || "active"),
+    kind: "reminder",
+    date: normalizeInputValue(item.dueDate),
+    relatedId: normalizeInputValue(item.workOrderId),
+    coordinates: "",
+    meta: {
+      statusValue: normalizeInputValue(item.status || "active"),
+      companyId: normalizeInputValue(item.companyId),
+      companyName: normalizeInputValue(item.companyName),
+      locationId: normalizeInputValue(item.locationId),
+      locationName: normalizeInputValue(item.locationName),
+      workOrderId: normalizeInputValue(item.workOrderId),
+      workOrderNumber: normalizeInputValue(item.workOrderNumber),
+      note: normalizeInputValue(item.note),
+      repeatEveryDays: normalizeInputValue(item.repeatEveryDays),
+      createdByUserId: normalizeInputValue(item.createdByUserId),
+      createdByLabel: normalizeInputValue(item.createdByLabel),
+      completedAt: normalizeInputValue(item.completedAt),
+      updatedAt: normalizeInputValue(item.updatedAt),
+      createdAt: normalizeInputValue(item.createdAt),
+    },
+  };
 }
 
 function buildMobileTodoTaskRecord(item = {}) {
@@ -27017,7 +27119,14 @@ async function writeMobileBootstrap(response, user, request) {
     .map((item) => buildMobileCompanyDirectoryRecord(item, scopedSnapshot.locations ?? []))
     .sort((left, right) => left.title.localeCompare(right.title, "hr", { numeric: true, sensitivity: "base" })), 80);
 
-  const locations = [];
+  const locations = isClientPortalUser(user)
+    ? limitMobileRecords(
+        (scopedSnapshot.locations ?? [])
+          .map(buildMobileLocationDirectoryRecord)
+          .sort((left, right) => left.title.localeCompare(right.title, "hr", { numeric: true, sensitivity: "base" })),
+        200,
+      )
+    : [];
 
   const vehicles = limitMobileRecords((scopedSnapshot.vehicles ?? []).map(buildMobileVehicleRecord));
   const measurementEquipmentRecords = limitMobileRecords((scopedSnapshot.measurementEquipment ?? []).map(buildMobileMeasurementEquipmentRecord));
@@ -27026,6 +27135,11 @@ async function writeMobileBootstrap(response, user, request) {
   const jobs = limitMobileRecords((scopedSnapshot.jobs ?? []).map(buildMobileJobRecord));
   const offers = limitMobileRecords((scopedSnapshot.offers ?? []).map(buildMobileOfferRecord));
   const documentRecords = await buildMobileDocumentRecords(scopedSnapshot);
+  const reminders = limitMobileRecords(
+    (scopedSnapshot.reminders ?? [])
+      .filter((item) => isReminderOwnedByUser(item, user))
+      .map(buildMobileReminderRecord),
+  );
 
   const peopleTrainingRecords = limitMobileRecords(
     (scopedSnapshot.peopleTrainingRecords ?? [])
@@ -27077,12 +27191,14 @@ async function writeMobileBootstrap(response, user, request) {
       workOrderUsers: buildMobileWorkOrderUserOptions(scopedSnapshot.users),
       workOrderServices: buildMobileWorkOrderServiceOptions(scopedSnapshot.serviceCatalog),
       fieldInquiryStatuses: FIELD_INQUIRY_STATUS_OPTIONS,
+      reminderStatuses: REMINDER_STATUS_OPTIONS,
       todoTaskStatuses: TODO_TASK_STATUS_OPTIONS,
     },
     dashboard: buildMobileDashboard(scopedSnapshot, workOrders, documentRecords),
     clientHome: buildMobileClientHome(user, scopedSnapshot, workOrders, documentRecords),
     workOrders,
     fieldInquiries,
+    reminders,
     todoTasks,
     jobs,
     offers,
@@ -32577,6 +32693,11 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronađen.");
+      const currentReminder = (scopedSnapshot.reminders ?? []).find((item) => String(item.id) === String(reminderMatch[1])) ?? null;
+      if (!isReminderOwnedByUser(currentReminder, user)) {
+        sendError(response, 403, "Mozete uredivati samo svoje remindere.");
+        return true;
+      }
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertWorkOrderPayloadInScope(scopedSnapshot, body);
@@ -33660,6 +33781,11 @@ async function handleApiRequest(request, response, url) {
 
       const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.reminders, reminderMatch[1], "Reminder nije pronađen.");
+      const currentReminder = (scopedSnapshot.reminders ?? []).find((item) => String(item.id) === String(reminderMatch[1])) ?? null;
+      if (!isReminderOwnedByUser(currentReminder, user)) {
+        sendError(response, 403, "Mozete brisati samo svoje remindere.");
+        return true;
+      }
       const deleted = await domainRepository.deleteReminder(reminderMatch[1]);
 
       if (!deleted) {

@@ -13664,8 +13664,8 @@ body.is-location-editor-open {
 .reminders-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  gap: 12px;
+  grid-template-rows: auto;
+  gap: 10px;
   align-items: start;
 }
 
@@ -13813,7 +13813,7 @@ body.is-reminder-editor-open {
 
 .reminders-list {
   display: grid;
-  gap: 10px;
+  gap: 7px;
   max-height: min(56vh, 640px);
   overflow: auto;
   padding-right: 2px;
@@ -13821,26 +13821,43 @@ body.is-reminder-editor-open {
 
 .reminder-card {
   display: grid;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(212, 188, 232, 0.72);
+  gap: 7px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(218, 224, 236, 0.88);
+  border-left: 4px solid rgba(148, 163, 184, 0.72);
   background:
-    radial-gradient(circle at top right, rgba(235, 103, 181, 0.06), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 255, 0.96));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 253, 0.98));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.82),
-    0 4px 12px rgba(89, 63, 129, 0.08);
+    0 3px 10px rgba(52, 64, 84, 0.06);
   cursor: pointer;
   transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
 }
 
+.reminder-card.is-active {
+  border-left-color: rgba(148, 163, 184, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 249, 252, 0.98));
+}
+
+.reminder-card.is-snoozed {
+  border-color: rgba(226, 185, 82, 0.45);
+  border-left-color: #d9a419;
+  background: linear-gradient(180deg, rgba(255, 252, 241, 0.98), rgba(255, 248, 225, 0.96));
+}
+
+.reminder-card.is-done {
+  border-color: rgba(74, 174, 114, 0.42);
+  border-left-color: #22a35a;
+  background: linear-gradient(180deg, rgba(244, 253, 247, 0.98), rgba(232, 247, 238, 0.95));
+}
+
 .reminder-card:hover,
 .reminder-card:focus-visible {
-  border-color: rgba(179, 124, 226, 0.88);
+  border-color: rgba(120, 137, 166, 0.62);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 10px 24px rgba(89, 63, 129, 0.16);
+    0 8px 20px rgba(52, 64, 84, 0.12);
   transform: translateY(-1px);
   outline: none;
 }
@@ -13860,23 +13877,23 @@ body.is-reminder-editor-open {
 }
 
 .reminder-card-title {
-  font-size: 0.98rem;
+  font-size: 0.92rem;
   color: #1f2940;
 }
 
 .reminder-card-subtitle,
 .reminder-card-footer-meta {
   color: #6f7a92;
-  font-size: 0.8rem;
+  font-size: 0.76rem;
 }
 
 .reminder-card-note {
   margin: 0;
   color: #3e4a67;
-  line-height: 1.4;
-  font-size: 0.84rem;
+  line-height: 1.32;
+  font-size: 0.8rem;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -13893,13 +13910,13 @@ body.is-reminder-editor-open {
 .reminder-due-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 26px;
+  padding: 0 9px;
   border-radius: 999px;
   border: 1px solid rgba(212, 220, 237, 0.88);
   background: rgba(245, 247, 252, 0.96);
   color: #50607f;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 700;
 }
 
@@ -13912,43 +13929,43 @@ body.is-reminder-editor-open {
 .reminder-repeat-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 26px;
+  padding: 0 9px;
   border-radius: 999px;
   border: 1px solid rgba(184, 194, 218, 0.75);
   background: rgba(235, 240, 249, 0.9);
   color: #49597a;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 700;
 }
 
 .reminder-status-select {
-  min-height: 30px;
+  min-height: 26px;
   padding: 0 28px 0 10px;
   border-radius: 999px;
   border: 1px solid rgba(179, 190, 213, 0.75);
   background-color: rgba(255, 255, 255, 0.95);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 700;
   color: #2e3a55;
 }
 
 .reminder-status-select.is-active {
-  background-color: rgba(224, 246, 235, 0.95);
-  border-color: rgba(148, 210, 171, 0.62);
-  color: #19714a;
+  background-color: rgba(248, 250, 252, 0.96);
+  border-color: rgba(180, 190, 207, 0.72);
+  color: #475569;
 }
 
 .reminder-status-select.is-snoozed {
-  background-color: rgba(246, 239, 220, 0.95);
-  border-color: rgba(223, 198, 136, 0.62);
+  background-color: rgba(255, 248, 225, 0.96);
+  border-color: rgba(226, 185, 82, 0.62);
   color: #8a5a08;
 }
 
 .reminder-status-select.is-done {
-  background-color: rgba(231, 236, 245, 0.96);
-  border-color: rgba(179, 190, 213, 0.62);
-  color: #4c576f;
+  background-color: rgba(225, 247, 234, 0.96);
+  border-color: rgba(74, 174, 114, 0.6);
+  color: #176c3a;
 }
 
 .reminder-inline-action {
@@ -14250,6 +14267,27 @@ body.is-reminder-editor-open {
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.95));
   cursor: pointer;
   transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.todo-task-card.is-status-open {
+  border-left-color: rgba(148, 163, 184, 0.72);
+}
+
+.todo-task-card.is-status-in-progress {
+  border-left-color: #2563eb;
+  background: linear-gradient(180deg, rgba(247, 251, 255, 0.98), rgba(237, 246, 255, 0.96));
+}
+
+.todo-task-card.is-status-waiting {
+  border-color: rgba(226, 185, 82, 0.4);
+  border-left-color: #d9a419;
+  background: linear-gradient(180deg, rgba(255, 252, 241, 0.98), rgba(255, 248, 225, 0.95));
+}
+
+.todo-task-card.is-status-done {
+  border-color: rgba(74, 174, 114, 0.4);
+  border-left-color: #22a35a;
+  background: linear-gradient(180deg, rgba(244, 253, 247, 0.98), rgba(232, 247, 238, 0.95));
 }
 
 .todo-task-card:hover,
@@ -14786,26 +14824,30 @@ body.is-todo-editor-open {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  right: 0;
+  right: auto;
   z-index: 9;
   display: grid;
-  gap: 8px;
-  max-height: 270px;
+  gap: 7px;
+  width: min(520px, calc(100vw - 56px));
+  max-width: 100%;
+  max-height: 320px;
   overflow: auto;
-  padding: 10px;
+  padding: 9px;
   border: 1px solid rgba(153, 116, 230, 0.38);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.99);
-  box-shadow: 0 22px 40px rgba(47, 27, 90, 0.2);
+  box-shadow: 0 22px 40px rgba(47, 27, 90, 0.18);
 }
 
 .todo-invited-option {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px 30px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 10px;
   border: 1px solid rgba(210, 198, 236, 0.9);
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(252, 249, 255, 0.95);
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
@@ -14820,6 +14862,9 @@ body.is-todo-editor-open {
 
 .todo-invited-option input {
   margin: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: #7c3aed;
 }
 
 .todo-invited-option-copy {

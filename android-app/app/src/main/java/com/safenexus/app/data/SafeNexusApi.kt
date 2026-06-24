@@ -77,6 +77,7 @@ class SafeNexusApi(
                 locations = json.optJSONArray("locations").toRecords(),
                 workOrderStatuses = json.optJSONObject("options")?.optJSONArray("workOrderStatuses").toOptions(),
                 priorities = json.optJSONObject("options")?.optJSONArray("priorities").toOptions(),
+                reminderStatuses = json.optJSONObject("options")?.optJSONArray("reminderStatuses").toOptions(),
                 todoTaskStatuses = json.optJSONObject("options")?.optJSONArray("todoTaskStatuses").toOptions(),
                 workOrderCompanies = json.optJSONObject("options")?.optJSONArray("workOrderCompanies").toWorkOrderCompanies(),
                 workOrderLocations = json.optJSONObject("options")?.optJSONArray("workOrderLocations").toWorkOrderLocations(),
@@ -94,6 +95,7 @@ class SafeNexusApi(
                 jobs = json.optJSONArray("jobs").toRecords(),
                 offers = json.optJSONArray("offers").toRecords(),
                 fieldInquiries = json.optJSONArray("fieldInquiries").toRecords(),
+                reminders = json.optJSONArray("reminders").toRecords(),
                 todoTasks = json.optJSONArray("todoTasks").toRecords(),
                 calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
                 dashboard = json.optJSONObject("dashboard").toDashboardStats(),
@@ -130,6 +132,19 @@ class SafeNexusApi(
             ) + query.trim().takeIf { it.isNotBlank() }?.let { listOf("q=${it.pathSegment()}") }.orEmpty()
             val json = JSONObject(request("/api/mobile/directory/companies/${companyId.pathSegment()}/locations?${params.joinToString("&")}"))
             json.toPagedMobileRecords()
+        }
+    }
+
+    suspend fun saveClientPortalRecord(draft: ClientPortalRecordDraft): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = if (draft.id.isBlank()) {
+                "/api/client-portal-records"
+            } else {
+                "/api/client-portal-records/${draft.id.pathSegment()}"
+            }
+            val method = if (draft.id.isBlank()) "POST" else "PATCH"
+            request(path, method = method, body = draft.toJsonPayload())
+            Unit
         }
     }
 
@@ -359,6 +374,42 @@ class SafeNexusApi(
                 .toString()
             val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
             (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
+        }
+    }
+
+    suspend fun createReminder(
+        title: String,
+        note: String,
+        dueDate: String,
+        status: String,
+        repeatEveryDays: String,
+        workOrderId: String,
+        companyId: String,
+        locationId: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("title", title.trim())
+                .put("note", note.trim())
+                .put("dueDate", dueDate.trim())
+                .put("status", status.trim().ifBlank { "active" })
+                .put("repeatEveryDays", repeatEveryDays.trim())
+                .put("workOrderId", workOrderId.trim())
+                .put("companyId", companyId.trim())
+                .put("locationId", locationId.trim())
+                .toString()
+            request("/api/reminders", method = "POST", body = payload)
+            Unit
+        }
+    }
+
+    suspend fun updateReminderStatus(reminderId: String, status: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("status", status.trim().ifBlank { "active" })
+                .toString()
+            request("/api/reminders/${reminderId.pathSegment()}", method = "PATCH", body = payload)
+            Unit
         }
     }
 
@@ -1481,6 +1532,7 @@ class SafeNexusApi(
 private fun JSONObject?.toSafeNexusUser(): SafeNexusUser {
     val user = this ?: JSONObject()
     return SafeNexusUser(
+        id = user.firstClean("id", "userId", "user_id"),
         displayName = user.firstClean("fullName", "displayName", "username", "email").ifBlank { "SafeNexus" },
         email = user.firstClean("email", "username"),
         profileRole = user.firstClean("profileRole", "profile_role"),
@@ -1787,6 +1839,15 @@ private fun Map<String, String>.toJsonObject(): JSONObject {
     forEach { (key, value) -> json.put(key, value) }
     return json
 }
+
+private fun ClientPortalRecordDraft.toJsonPayload(): String =
+    JSONObject()
+        .put("companyId", companyId.trim())
+        .put("locationId", locationId.trim())
+        .put("type", type.trim())
+        .put("status", status.trim().ifBlank { "active" })
+        .put("details", details.toJsonObject())
+        .toString()
 
 private fun Map<String, Map<String, String>>.toNestedJsonObject(): JSONObject {
     val json = JSONObject()

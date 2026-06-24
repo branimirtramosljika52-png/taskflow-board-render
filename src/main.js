@@ -77,6 +77,8 @@
   normalizeDocumentTemplateFieldHeight,
   getWorkOrderServiceItems,
   getWorkOrderServiceSummary,
+  normalizeReminderStatus,
+  normalizeTodoTaskStatus,
   getVehicleAvailabilityStatus,
   getVehicleNextReservation,
   nextOfferNumber,
@@ -97997,7 +97999,7 @@ function getReminderLinkedWorkOrder(reminder) {
 function isReminderOverdue(reminder) {
   return Boolean(
     reminder?.dueDate
-    && reminder.status !== "done"
+    && getReminderStatusValue(reminder) !== "done"
     && reminder.dueDate < new Date().toISOString().slice(0, 10),
   );
 }
@@ -98053,6 +98055,34 @@ function getNotificationKindLabel(kind = "") {
   return "Notifikacija";
 }
 
+function getCurrentUserId() {
+  return String(state.user?.id || "").trim();
+}
+
+function getReminderStatusValue(statusOrReminder) {
+  const rawStatus = statusOrReminder && typeof statusOrReminder === "object"
+    ? statusOrReminder.status
+    : statusOrReminder;
+  return normalizeReminderStatus(rawStatus || "active");
+}
+
+function getTodoTaskStatusValue(statusOrTask) {
+  const rawStatus = statusOrTask && typeof statusOrTask === "object"
+    ? statusOrTask.status
+    : statusOrTask;
+  return normalizeTodoTaskStatus(rawStatus || "open");
+}
+
+function isReminderForCurrentUser(reminder = {}) {
+  const currentUserId = getCurrentUserId();
+  const createdByUserId = String(reminder?.createdByUserId || "").trim();
+  return Boolean(currentUserId && createdByUserId && currentUserId === createdByUserId);
+}
+
+function getPersonalReminders() {
+  return (state.reminders ?? []).filter(isReminderForCurrentUser);
+}
+
 function buildReminderNotifications() {
   const today = new Date().toISOString().slice(0, 10);
   const todayDate = new Date();
@@ -98069,8 +98099,8 @@ function buildReminderNotifications() {
     return Math.round(deltaMs / (1000 * 60 * 60 * 24));
   };
 
-  return (state.reminders ?? [])
-    .filter((item) => item?.status !== "done" && item?.dueDate)
+  return getPersonalReminders()
+    .filter((item) => getReminderStatusValue(item) !== "done" && item?.dueDate)
     .map((item) => {
       const dueDate = String(item.dueDate || "");
       if (!dueDate) {
@@ -98715,11 +98745,11 @@ function buildSignupRequestNotifications() {
 }
 
 function getPendingReminderNotificationCount() {
-  return (state.reminders ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
+  return getPersonalReminders().filter((item) => getReminderStatusValue(item) !== "done").length;
 }
 
 function getPendingTodoNotificationCount() {
-  return (state.todoTasks ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
+  return (state.todoTasks ?? []).filter((item) => getTodoTaskStatusValue(item) !== "done").length;
 }
 
 function createTopbarShortcutPreviewRow({
@@ -98762,12 +98792,12 @@ function createTopbarShortcutPreviewRow({
 }
 
 function getTopbarActiveReminderItems() {
-  return sortReminders((state.reminders ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done"))
+  return sortReminders(getPersonalReminders().filter((item) => getReminderStatusValue(item) !== "done"))
     .slice(0, 6);
 }
 
 function getTopbarActiveTodoItems() {
-  return sortTodoTasks((state.todoTasks ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done"))
+  return sortTodoTasks((state.todoTasks ?? []).filter((item) => getTodoTaskStatusValue(item) !== "done"))
     .slice(0, 6);
 }
 
@@ -98785,7 +98815,7 @@ function renderTopbarRemindersPanel() {
   }
 
   if (topbarRemindersOpenAllButton) {
-    topbarRemindersOpenAllButton.disabled = (state.reminders ?? []).length === 0;
+    topbarRemindersOpenAllButton.disabled = getPersonalReminders().length === 0;
   }
 
   topbarRemindersPanelList.replaceChildren(...reminders.map((reminder) => createTopbarShortcutPreviewRow({
@@ -98917,6 +98947,10 @@ function getFilteredNotifications(source = getAllNotifications()) {
     ].join(" ").toLowerCase();
     return haystack.includes(query);
   });
+}
+
+function getTopbarNotificationItems(items = getAllNotifications()) {
+  return items.filter((item) => item.kind === "reminder");
 }
 
 function openNotificationEntry(entry) {
@@ -99098,7 +99132,7 @@ function createNotificationRow(entry, { compact = false } = {}) {
 }
 
 function renderNotificationsPanel(items = getAllNotifications()) {
-  const activeItems = items.filter((item) => !item.resolved);
+  const activeItems = getTopbarNotificationItems(items).filter((item) => !item.resolved);
   const count = activeItems.length;
 
   if (notificationsTriggerCount) {
@@ -99110,8 +99144,8 @@ function renderNotificationsPanel(items = getAllNotifications()) {
   }
   if (notificationsPanelMeta) {
     notificationsPanelMeta.textContent = count > 0
-      ? `${count} aktivnih notifikacija`
-      : "Nema novih stavki.";
+      ? `${count} aktivnih remindera`
+      : "Nema novih remindera.";
   }
   if (notificationsPanelOpenAllButton) {
     notificationsPanelOpenAllButton.disabled = count === 0;
@@ -99189,7 +99223,7 @@ function renderNotifications() {
 }
 
 function getFilteredReminders() {
-  return sortReminders(filterReminders(state.reminders, {
+  return sortReminders(filterReminders(getPersonalReminders(), {
     query: remindersSearchInput?.value ?? "",
     status: remindersFilterStatusInput?.value ?? "all",
   }));
@@ -99273,7 +99307,7 @@ function buildReminderPayload() {
 
   return {
     title: reminderTitleInput.value,
-    dueDate: reminderDueDateInput.value,
+    dueDate: normalizeDateInputValue(reminderDueDateInput.value),
     status: reminderStatusInput.value,
     workOrderId: reminderWorkOrderIdInput.value,
     companyId: linkedWorkOrder?.companyId || reminderCompanyIdInput.value,
@@ -99377,8 +99411,8 @@ function hydrateReminderForm(reminder) {
 
   reminderIdInput.value = reminder.id;
   reminderTitleInput.value = reminder.title || "";
-  reminderDueDateInput.value = reminder.dueDate || "";
-  reminderStatusInput.value = reminder.status || "active";
+  reminderDueDateInput.value = formatDateInputDisplayValue(reminder.dueDate || "");
+  reminderStatusInput.value = getReminderStatusValue(reminder);
   if (reminderRepeatDaysInput) {
     reminderRepeatDaysInput.value = Number.isInteger(Number(reminder.repeatEveryDays))
       ? String(reminder.repeatEveryDays)
@@ -99402,7 +99436,7 @@ function openReminderComposerForWorkOrder(workOrder = null) {
 
   if (workOrder) {
     reminderTitleInput.value = `Podsjetnik za ${workOrder.workOrderNumber}`;
-    reminderDueDateInput.value = workOrder.dueDate || workOrder.openedDate || "";
+    reminderDueDateInput.value = formatDateInputDisplayValue(workOrder.dueDate || workOrder.openedDate || "");
     rebuildReminderWorkOrderOptions(workOrder.id);
     reminderWorkOrderIdInput.value = workOrder.id;
     rebuildReminderCompanyOptions(workOrder.companyId || "");
@@ -99415,10 +99449,11 @@ function openReminderComposerForWorkOrder(workOrder = null) {
 }
 
 function createReminderStatusBadge(status) {
-  const option = REMINDER_STATUS_OPTIONS.find((item) => item.value === status);
-  const label = option?.label ?? status ?? "Aktivan";
+  const normalizedStatus = getReminderStatusValue(status);
+  const option = REMINDER_STATUS_OPTIONS.find((item) => item.value === normalizedStatus);
+  const label = option?.label ?? normalizedStatus ?? "Aktivan";
   const badge = document.createElement("span");
-  badge.className = `reminder-status-badge is-${status || "active"}`;
+  badge.className = `reminder-status-badge is-${normalizedStatus || "active"}`;
   badge.textContent = label;
   return badge;
 }
@@ -99443,9 +99478,10 @@ function formatReminderRepeatLabel(value) {
 
 function createReminderStatusSelect(reminder) {
   const select = document.createElement("select");
-  select.className = `reminder-status-select is-${reminder.status || "active"}`;
+  const currentStatus = getReminderStatusValue(reminder);
+  select.className = `reminder-status-select is-${currentStatus}`;
   select.setAttribute("aria-label", "Status remindera");
-  replaceSelectOptions(select, REMINDER_STATUS_OPTIONS, reminder.status || "active");
+  replaceSelectOptions(select, REMINDER_STATUS_OPTIONS, currentStatus);
 
   const stopPropagation = (event) => {
     event.stopPropagation();
@@ -99457,7 +99493,7 @@ function createReminderStatusSelect(reminder) {
   select.addEventListener("change", () => {
     const nextStatus = select.value;
 
-    if (nextStatus === (reminder.status || "active")) {
+    if (nextStatus === currentStatus) {
       return;
     }
 
@@ -99468,7 +99504,8 @@ function createReminderStatusSelect(reminder) {
       },
     }), reminderError).then((success) => {
       if (!success) {
-        select.value = reminder.status || "active";
+        select.value = currentStatus;
+        select.className = `reminder-status-select is-${currentStatus}`;
       }
     });
   });
@@ -99477,7 +99514,7 @@ function createReminderStatusSelect(reminder) {
 }
 
 function renderReminderSummary() {
-  const reminders = state.reminders;
+  const reminders = getPersonalReminders();
   const today = new Date().toISOString().slice(0, 10);
 
   if (remindersTotalCount) {
@@ -99493,7 +99530,7 @@ function renderReminderSummary() {
   }
 
   if (remindersDoneCount) {
-    remindersDoneCount.textContent = String(reminders.filter((item) => item.status === "done").length);
+    remindersDoneCount.textContent = String(reminders.filter((item) => getReminderStatusValue(item) === "done").length);
   }
 }
 
@@ -99514,7 +99551,7 @@ function renderReminders() {
       hydrateReminderForm(reminder);
     };
     const card = document.createElement("article");
-    card.className = "reminder-card";
+    card.className = `reminder-card is-${getReminderStatusValue(reminder)}`;
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", `Uredi reminder ${reminder.title}`);
@@ -99625,7 +99662,7 @@ function getLinkedTodoWorkOrder(task) {
 }
 
 function isTodoTaskOverdue(task) {
-  if (!task?.dueDate || task.status === "done") {
+  if (!task?.dueDate || getTodoTaskStatusValue(task) === "done") {
     return false;
   }
 
@@ -100001,7 +100038,7 @@ function buildTodoTaskPayload() {
     title: todoTitleInput.value,
     assignedToUserId: todoAssigneeInput.value,
     invitedUserIds: getTodoInvitedSelectedUserIds(todoInvitedUsersInput),
-    dueDate: todoDueDateInput.value,
+    dueDate: normalizeDateInputValue(todoDueDateInput.value),
     status: todoStatusInput.value,
     priority: todoPriorityInput.value,
     workOrderId: todoWorkOrderIdInput.value,
@@ -100159,8 +100196,8 @@ function hydrateTodoTaskForm(task) {
 
   todoIdInput.value = task.id;
   todoTitleInput.value = task.title || "";
-  todoDueDateInput.value = task.dueDate || "";
-  todoStatusInput.value = task.status || "open";
+  todoDueDateInput.value = formatDateInputDisplayValue(task.dueDate || "");
+  todoStatusInput.value = getTodoTaskStatusValue(task);
   syncTodoStatusInputLock(task);
   todoPriorityInput.value = task.priority || "Normal";
   rebuildTodoAssigneeOptions(task.assignedToUserId || "");
@@ -100194,7 +100231,7 @@ function openTodoComposerForWorkOrder(workOrder = null) {
 
   if (workOrder) {
     todoTitleInput.value = `Tema za ${workOrder.workOrderNumber}`;
-    todoDueDateInput.value = workOrder.dueDate || workOrder.openedDate || "";
+    todoDueDateInput.value = formatDateInputDisplayValue(workOrder.dueDate || workOrder.openedDate || "");
     rebuildTodoWorkOrderOptions(workOrder.id);
     todoWorkOrderIdInput.value = workOrder.id;
     rebuildTodoCompanyOptions(workOrder.companyId || "");
@@ -100215,9 +100252,10 @@ function openTodoComposerForWorkOrder(workOrder = null) {
 }
 
 function createTodoTaskStatusBadge(task) {
-  const label = getOptionLabel(TODO_TASK_STATUS_OPTIONS, task.status || "open");
+  const status = getTodoTaskStatusValue(task);
+  const label = getOptionLabel(TODO_TASK_STATUS_OPTIONS, status);
   const badge = document.createElement("span");
-  badge.className = `todo-task-status-badge is-${task.status || "open"}`;
+  badge.className = `todo-task-status-badge is-${status}`;
   badge.textContent = label;
   return badge;
 }
@@ -100294,8 +100332,9 @@ function createTodoTaskStatusControl(task = {}) {
 
   const select = document.createElement("select");
   select.className = "todo-task-status-select";
-  replaceSelectOptions(select, TODO_TASK_STATUS_OPTIONS, task.status || "open");
-  select.dataset.status = slugifyValue(task.status || "open");
+  const currentStatus = getTodoTaskStatusValue(task);
+  replaceSelectOptions(select, TODO_TASK_STATUS_OPTIONS, currentStatus);
+  select.dataset.status = slugifyValue(currentStatus);
   const canChangeStatus = canCurrentUserChangeTodoStatus(task);
   select.disabled = !canChangeStatus;
   select.title = canChangeStatus
@@ -100307,7 +100346,7 @@ function createTodoTaskStatusControl(task = {}) {
     });
   });
   select.addEventListener("change", () => {
-    const previousStatus = task.status || "open";
+    const previousStatus = currentStatus;
     const nextStatus = select.value || previousStatus;
     select.dataset.status = slugifyValue(nextStatus);
 
@@ -100810,7 +100849,7 @@ function renderTodoSummary() {
 
   const userId = String(state.user?.id ?? "");
   todoTotalCount.textContent = String(state.todoTasks.length);
-  todoAssignedCount.textContent = String(state.todoTasks.filter((item) => String(item.assignedToUserId) === userId && item.status !== "done").length);
+  todoAssignedCount.textContent = String(state.todoTasks.filter((item) => String(item.assignedToUserId) === userId && getTodoTaskStatusValue(item) !== "done").length);
   todoCreatedCount.textContent = String(state.todoTasks.filter((item) => String(item.createdByUserId) === userId).length);
   todoOverdueCount.textContent = String(state.todoTasks.filter((item) => isTodoTaskOverdue(item)).length);
 }
@@ -100883,7 +100922,7 @@ function renderTodoList() {
 
   todoBody.replaceChildren(...tasks.map((task) => {
     const card = document.createElement("article");
-    card.className = "todo-task-card";
+    card.className = `todo-task-card is-status-${slugifyValue(getTodoTaskStatusValue(task))}`;
     const isExpanded = isTodoTaskExpanded(task.id);
     card.classList.toggle("is-active", isExpanded || String(task.id) === String(state.activeTodoTaskId));
     card.tabIndex = 0;
@@ -101029,11 +101068,12 @@ function renderTodoDetail() {
       return fact;
     };
 
+    const status = getTodoTaskStatusValue(task);
     const facts = [];
     facts.push(
       createFact(
-        getOptionLabel(TODO_TASK_STATUS_OPTIONS, task.status || "open"),
-        [`is-status-${slugifyValue(task.status || "open")}`],
+        getOptionLabel(TODO_TASK_STATUS_OPTIONS, status),
+        [`is-status-${slugifyValue(status)}`],
       ),
     );
     facts.push(
@@ -101058,8 +101098,9 @@ function renderTodoDetail() {
   }
 
   if (todoDetailStatus) {
-    replaceSelectOptions(todoDetailStatus, TODO_TASK_STATUS_OPTIONS, task.status || "open");
-    todoDetailStatus.value = task.status || "open";
+    const status = getTodoTaskStatusValue(task);
+    replaceSelectOptions(todoDetailStatus, TODO_TASK_STATUS_OPTIONS, status);
+    todoDetailStatus.value = status;
     todoDetailStatus.dataset.taskId = task.id;
   }
 
@@ -128151,13 +128192,13 @@ function getRemindersHelpTourSteps() {
       title: "Reminders ekran",
       body: "Reminders služi za podsjetnike, follow-upove i rokove koje želiš pratiti uz radne naloge, tvrtke ili interne zadatke.",
       target: "#reminders-view",
-      points: ["Ekran ima dio za novi reminder i dio za listu.", "Statusi pomažu odvojiti aktivno od završeno."],
+      points: ["Lista je kompaktna, a novi reminder se otvara iz zaglavlja.", "Statusi pomažu odvojiti aktivno od završeno."],
       prepare: "reminders",
     },
     {
       title: "Novi reminder",
       body: "Add Reminder otvara editor u kojem upisuješ naslov, datum, status, ponavljanje, RN, tvrtku i bilješku.",
-      target: ".reminders-composer-card",
+      target: ".reminders-list-card",
       points: ["Klik na postojeći reminder otvara isti editor.", "Ponavljanje u danima koristi se za redovne podsjetnike."],
       prepare: "reminders",
     },
@@ -129697,6 +129738,21 @@ workOrderContactSlotInput.addEventListener("change", () => {
   workOrderDueDateInput,
   workOrderExecutionDateInput,
   workOrderInvoiceDateInput,
+].forEach((input) => {
+  input?.addEventListener("input", () => {
+    ensureWorkOrderDateInputDisplay(input);
+  });
+  input?.addEventListener("change", () => {
+    normalizeWorkOrderDateInputDisplay(input);
+  });
+  input?.addEventListener("blur", () => {
+    normalizeWorkOrderDateInputDisplay(input);
+  });
+});
+
+[
+  reminderDueDateInput,
+  todoDueDateInput,
 ].forEach((input) => {
   input?.addEventListener("input", () => {
     ensureWorkOrderDateInputDisplay(input);

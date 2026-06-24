@@ -201,6 +201,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.safenexus.app.BuildConfig
 import com.safenexus.app.data.BootstrapData
+import com.safenexus.app.data.ClientPortalRecordDraft
 import com.safenexus.app.data.ClientHomeSummary
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
@@ -486,12 +487,23 @@ private val fallbackTodoTaskStatusOptions = listOf(
     OptionItem("done", "Završeno"),
 )
 
+private val fallbackReminderStatusOptions = listOf(
+    OptionItem("active", "Aktivan"),
+    OptionItem("snoozed", "Odgođen"),
+    OptionItem("done", "Gotov"),
+)
+
 private enum class TodoTaskScope(val label: String) {
     Mine("Moje"),
     Invited("Pozvan sam"),
     WorkOrders("RN"),
     Overdue("Kasni"),
     All("Sve"),
+}
+
+private enum class HomeTaskTab(val label: String) {
+    Reminders("Reminders"),
+    Todo("ToDo"),
 }
 
 data class AppState(
@@ -740,6 +752,87 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             .onFailure { error ->
                 state = state.copy(isLoading = false, error = error.message ?: "ToDo je spremljen, ali osvježavanje nije uspjelo.")
             }
+    }
+
+    private suspend fun reloadAfterReminderMutation(
+        selectedReminderId: String? = state.selectedRecord?.takeIf { it.kind == "reminder" }?.id,
+        notice: String = "",
+    ) {
+        api.bootstrap()
+            .onSuccess { data ->
+                if (shouldRememberSession) {
+                    state.user?.let { user ->
+                        authStore.save(user, api.currentAccessToken(), api.currentAuthCookieHeader())
+                    }
+                }
+                val selectedWorkOrderId = state.selectedWorkOrder?.id
+                val nextSelectedRecord = if (!selectedReminderId.isNullOrBlank()) {
+                    data.reminders.firstOrNull { it.id == selectedReminderId } ?: state.selectedRecord
+                } else {
+                    state.selectedRecord
+                }
+                state = state.copy(
+                    data = data,
+                    workOrders = data.workOrders,
+                    selectedWorkOrder = selectedWorkOrderId?.let { id -> data.workOrders.firstOrNull { it.id == id } } ?: state.selectedWorkOrder,
+                    selectedRecord = nextSelectedRecord,
+                    isLoading = false,
+                    error = "",
+                    notice = notice,
+                )
+            }
+            .onFailure { error ->
+                state = state.copy(isLoading = false, error = error.message ?: "Reminder je spremljen, ali osvježavanje nije uspjelo.")
+            }
+    }
+
+    fun createReminder(
+        title: String,
+        note: String,
+        dueDate: String,
+        status: String,
+        repeatEveryDays: String,
+        workOrderId: String,
+        companyId: String,
+        locationId: String,
+    ) {
+        if (title.trim().isBlank()) {
+            state = state.copy(error = "Upiši naslov remindera.")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createReminder(
+                title = title,
+                note = note,
+                dueDate = dueDate,
+                status = status,
+                repeatEveryDays = repeatEveryDays,
+                workOrderId = workOrderId,
+                companyId = companyId,
+                locationId = locationId,
+            )
+                .onSuccess {
+                    reloadAfterReminderMutation(selectedReminderId = null, notice = "Reminder je dodan.")
+                }
+                .onFailure { error ->
+                    state = state.copy(isLoading = false, error = error.message ?: "Ne mogu dodati reminder.")
+                }
+        }
+    }
+
+    fun updateReminderStatus(reminderId: String, status: String) {
+        if (reminderId.isBlank()) return
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.updateReminderStatus(reminderId, status)
+                .onSuccess {
+                    reloadAfterReminderMutation(selectedReminderId = reminderId, notice = "Reminder je spremljen.")
+                }
+                .onFailure { error ->
+                    state = state.copy(isLoading = false, error = error.message ?: "Ne mogu spremiti reminder.")
+                }
+        }
     }
 
     fun createTodoTask(
@@ -1414,6 +1507,56 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun showError(message: String) {
         state = state.copy(isLoading = false, workOrderDocumentsLoading = false, error = message, notice = "")
+    }
+
+    fun saveClientPortalRecord(draft: ClientPortalRecordDraft, onSaved: () -> Unit = {}) {
+        if (!state.user.hasClientPortalAccess()) {
+            state = state.copy(error = "Klijentski portal nije dostupan za ovog korisnika.", notice = "")
+            return
+        }
+        if (draft.type.isBlank()) {
+            state = state.copy(error = "Odaberi vrstu evidencije.", notice = "")
+            return
+        }
+        val companyId = draft.companyId.ifBlank { state.user?.clientCompanyIds?.firstOrNull().orEmpty() }
+        if (companyId.isBlank()) {
+            state = state.copy(error = "Klijentski pristup nema povezanu tvrtku.", notice = "")
+            return
+        }
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.saveClientPortalRecord(draft.copy(companyId = companyId))
+                .onSuccess {
+                    api.bootstrap()
+                        .onSuccess { data ->
+                            state = state.copy(
+                                data = data,
+                                workOrders = data.workOrders,
+                                selectedRecord = null,
+                                selectedWorkOrder = null,
+                                isCreatingWorkOrder = false,
+                                isLoading = false,
+                                error = "",
+                                notice = "Evidencija je spremljena.",
+                            )
+                            onSaved()
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Evidencija je spremljena, ali osvježavanje nije uspjelo.",
+                                notice = "",
+                            )
+                        }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu spremiti evidenciju.",
+                        notice = "",
+                    )
+                }
+        }
     }
 
     private fun beginWorkOrderMutation(workOrderId: String): Int {
@@ -3124,9 +3267,12 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onDownloadTrainingDocument = { record, document ->
                             viewModel.downloadPeopleTrainingDocument(context.applicationContext, record, document)
                         },
+                        onCreateReminder = viewModel::createReminder,
+                        onUpdateReminderStatus = viewModel::updateReminderStatus,
                         onCreateTodoTask = viewModel::createTodoTask,
                         onUpdateTodoTask = viewModel::updateTodoTask,
                         onAddTodoTaskComment = viewModel::addTodoTaskComment,
+                        onSaveClientPortalRecord = viewModel::saveClientPortalRecord,
                     )
                 } else if (selectedRecord.kind == "todo_task") {
                     TodoTaskDetailScreen(
@@ -5529,8 +5675,44 @@ private fun fieldInquiryStatusLabel(status: String): String {
 private fun fieldInquiryId(record: MobileRecord): String =
     record.id.removePrefix("field-inquiry:").ifBlank { record.id }
 
+private fun reminderStatusValue(record: MobileRecord): String =
+    record.meta["statusValue"].orEmpty().ifBlank { record.status }.trim().lowercase(Locale.getDefault()).let { raw ->
+        when (raw.normalizedPickerText().replace(" ", "_").replace("-", "_")) {
+            "aktivan", "active", "otvoren", "otvoreno" -> "active"
+            "odgoden", "odgodeno", "snoozed", "odlozen", "odlozeno" -> "snoozed"
+            "gotov", "gotovo", "done", "completed", "zavrsen", "zavrseno" -> "done"
+            else -> raw.ifBlank { "active" }
+        }
+    }
+
+private fun reminderStatusLabel(status: String, options: List<OptionItem>): String =
+    options.firstOrNull { it.value == status }?.label ?: fallbackReminderStatusOptions.firstOrNull { it.value == status }?.label ?: status
+
+private fun reminderStatusAccent(status: String): Color = when (status) {
+    "done" -> Color(0xFF16A34A)
+    "snoozed" -> Color(0xFFB45309)
+    else -> Color(0xFF64748B)
+}
+
+private fun filteredRemindersByStatus(records: List<MobileRecord>, status: String): List<MobileRecord> =
+    records
+        .filter { record -> status == "all" || reminderStatusValue(record) == status }
+        .sortedWith(
+            compareBy<MobileRecord> { if (reminderStatusValue(it) == "done") 1 else 0 }
+                .thenBy { it.parsedDate ?: LocalDate.MAX }
+                .thenByDescending { it.meta["updatedAt"].orEmpty() },
+        )
+
 private fun todoTaskStatusValue(record: MobileRecord): String =
-    record.meta["statusValue"].orEmpty().ifBlank { record.status }.trim().lowercase(Locale.getDefault()).ifBlank { "open" }
+    record.meta["statusValue"].orEmpty().ifBlank { record.status }.trim().lowercase(Locale.getDefault()).let { raw ->
+        when (raw.normalizedPickerText().replace(" ", "_").replace("-", "_")) {
+            "novo", "open", "otvoreno", "aktivan", "active" -> "open"
+            "u_radu", "in_progress", "inprogress", "progress" -> "in_progress"
+            "ceka_odgovor", "waiting", "odgoden", "odgodeno" -> "waiting"
+            "gotov", "gotovo", "done", "completed", "zavrsen", "zavrseno" -> "done"
+            else -> raw.ifBlank { "open" }
+        }
+    }
 
 private fun todoTaskStatusLabel(status: String, options: List<OptionItem>): String =
     options.firstOrNull { it.value == status }?.label ?: fallbackTodoTaskStatusOptions.firstOrNull { it.value == status }?.label ?: status
@@ -5565,7 +5747,7 @@ private fun todoTaskMatchesCurrentUser(record: MobileRecord, user: SafeNexusUser
         record.meta["createdByUserId"].orEmpty(),
         record.meta["invitedUserIds"].orEmpty(),
     ).joinToString(" ").normalizedPickerText()
-    val userTokens = listOf(user?.displayName.orEmpty(), user?.email.orEmpty())
+    val userTokens = listOf(user?.id.orEmpty(), user?.displayName.orEmpty(), user?.email.orEmpty())
         .map { it.normalizedPickerText() }
         .filter { it.isNotBlank() }
     return userTokens.any { token -> haystack.contains(token) }
@@ -5583,7 +5765,7 @@ private fun filteredTodoTasks(
             TodoTaskScope.Mine -> todoTaskMatchesCurrentUser(record, user)
             TodoTaskScope.Invited -> {
                 val invited = record.meta["invitedUserLabels"].orEmpty() + " " + record.meta["invitedUserIds"].orEmpty()
-                val userTokens = listOf(user?.displayName.orEmpty(), user?.email.orEmpty())
+                val userTokens = listOf(user?.id.orEmpty(), user?.displayName.orEmpty(), user?.email.orEmpty())
                     .map { it.normalizedPickerText() }
                     .filter { it.isNotBlank() }
                 userTokens.any { invited.normalizedPickerText().contains(it) }
@@ -5600,6 +5782,318 @@ private fun filteredTodoTasks(
 }
 
 @Composable
+private fun HomeTasksTabs(
+    reminders: List<MobileRecord>,
+    todoTasks: List<MobileRecord>,
+    reminderStatusOptions: List<OptionItem>,
+    todoStatusOptions: List<OptionItem>,
+    priorityOptions: List<OptionItem>,
+    users: List<WorkOrderUserOption>,
+    workOrders: List<WorkOrder>,
+    currentUser: SafeNexusUser?,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+    onCreateReminder: (String, String, String, String, String, String, String, String) -> Unit,
+    onUpdateReminderStatus: (String, String) -> Unit,
+    onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
+) {
+    var tab by remember { mutableStateOf(HomeTaskTab.Reminders) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                HomeTaskTab.entries.forEach { item ->
+                    FilterChip(
+                        selected = tab == item,
+                        onClick = { tab = item },
+                        label = {
+                            val count = if (item == HomeTaskTab.Reminders) reminders.size else todoTasks.size
+                            Text("${item.label} $count", maxLines = 1)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        when (tab) {
+            HomeTaskTab.Reminders -> RemindersContent(
+                records = reminders,
+                statusOptions = reminderStatusOptions,
+                workOrders = workOrders,
+                onOpenRecord = onOpenRecord,
+                onOpenWorkOrder = onOpenWorkOrder,
+                onCreateReminder = onCreateReminder,
+                onUpdateReminderStatus = onUpdateReminderStatus,
+            )
+            HomeTaskTab.Todo -> TodoTasksContent(
+                records = todoTasks,
+                statusOptions = todoStatusOptions,
+                priorityOptions = priorityOptions,
+                users = users,
+                workOrders = workOrders,
+                currentUser = currentUser,
+                onOpenRecord = onOpenRecord,
+                onOpenWorkOrder = onOpenWorkOrder,
+                onCreateTodoTask = onCreateTodoTask,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RemindersContent(
+    records: List<MobileRecord>,
+    statusOptions: List<OptionItem>,
+    workOrders: List<WorkOrder>,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+    onCreateReminder: (String, String, String, String, String, String, String, String) -> Unit,
+    onUpdateReminderStatus: (String, String) -> Unit,
+) {
+    var statusFilter by remember { mutableStateOf("all") }
+    var createOpen by remember { mutableStateOf(false) }
+    val options = statusOptions.ifEmpty { fallbackReminderStatusOptions }
+    val visible = remember(records, statusFilter) { filteredRemindersByStatus(records, statusFilter) }
+    val activeCount = remember(records) { records.count { reminderStatusValue(it) == "active" } }
+    val doneCount = remember(records) { records.count { reminderStatusValue(it) == "done" } }
+    val overdueCount = remember(records) {
+        records.count { reminderStatusValue(it) != "done" && it.parsedDate?.isBefore(LocalDate.now()) == true }
+    }
+
+    if (createOpen) {
+        ReminderEditorDialog(
+            statusOptions = options,
+            workOrders = workOrders,
+            onDismiss = { createOpen = false },
+            onSave = { title, note, dueDate, status, repeatEveryDays, workOrderId ->
+                val linked = workOrders.firstOrNull { it.id == workOrderId }
+                onCreateReminder(
+                    title,
+                    note,
+                    dueDate,
+                    status,
+                    repeatEveryDays,
+                    workOrderId,
+                    linked?.companyId.orEmpty(),
+                    linked?.locationId.orEmpty(),
+                )
+                createOpen = false
+            },
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                title = "Reminders",
+                subtitle = "$activeCount aktivno · $overdueCount kasni · $doneCount gotovo",
+                icon = Icons.Rounded.EventNote,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                TodoStatTile("Aktivno", activeCount, Color(0xFF64748B), Modifier.weight(1f))
+                TodoStatTile("Kasni", overdueCount, Color(0xFFDC2626), Modifier.weight(1f))
+                TodoStatTile("Gotovo", doneCount, Color(0xFF16A34A), Modifier.weight(1f))
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = statusFilter == "all",
+                    onClick = { statusFilter = "all" },
+                    label = { Text("Svi ${records.size}") },
+                )
+                options.forEach { option ->
+                    FilterChip(
+                        selected = statusFilter == option.value,
+                        onClick = { statusFilter = option.value },
+                        label = { Text("${option.label} ${records.count { reminderStatusValue(it) == option.value }}") },
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = { createOpen = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Novi reminder")
+            }
+            if (visible.isEmpty()) {
+                Text("Nema reminders za ovaj filter.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f))
+            } else {
+                visible.forEach { record ->
+                    ReminderCard(
+                        record = record,
+                        statusOptions = options,
+                        onClick = { onOpenRecord(record) },
+                        onOpenWorkOrder = {
+                            val linked = workOrders.firstOrNull { it.id == record.relatedId }
+                            if (linked != null) onOpenWorkOrder(linked)
+                        },
+                        onStatusChange = { next -> onUpdateReminderStatus(record.id, next) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReminderCard(
+    record: MobileRecord,
+    statusOptions: List<OptionItem>,
+    onClick: () -> Unit,
+    onOpenWorkOrder: () -> Unit,
+    onStatusChange: (String) -> Unit,
+) {
+    val status = reminderStatusValue(record)
+    val accent = reminderStatusAccent(status)
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        color = accent.copy(alpha = if (status == "active") 0.06f else 0.09f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.2f)),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(shape = CircleShape, color = accent.copy(alpha = 0.13f)) {
+                    Icon(Icons.Rounded.EventNote, contentDescription = null, tint = accent, modifier = Modifier.padding(9.dp).size(22.dp))
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(record.title.ifBlank { "Reminder" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    if (record.subtitle.isNotBlank()) {
+                        Text(record.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                ReminderStatusMenu(status, statusOptions, onStatusChange)
+            }
+            record.meta["note"].orEmpty().takeIf { it.isNotBlank() }?.let { note ->
+                Text(note, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                record.date.takeIf { it.isNotBlank() }?.let { TodoMiniPill(formatDateLabel(it).ifBlank { it.take(10) }, if (record.parsedDate?.isBefore(LocalDate.now()) == true && status != "done") Color(0xFFDC2626) else Color(0xFF475569)) }
+                record.meta["repeatEveryDays"].orEmpty().takeIf { it.isNotBlank() && it != "0" }?.let { TodoMiniPill("Svakih $it dana", Color(0xFF7C3AED)) }
+                record.meta["workOrderNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { TodoMiniPill("RN $it", Color(0xFF2563EB)) }
+            }
+            if (record.relatedId.isNotBlank()) {
+                OutlinedButton(onClick = onOpenWorkOrder, shape = RoundedCornerShape(14.dp)) {
+                    Icon(Icons.Rounded.Work, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Otvori RN")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReminderStatusMenu(
+    status: String,
+    options: List<OptionItem>,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val accent = reminderStatusAccent(status)
+    Box {
+        OutlinedButton(
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(999.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            Text(reminderStatusLabel(status, options), color = accent, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Icon(Icons.Rounded.ExpandMore, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    onClick = {
+                        expanded = false
+                        if (option.value != status) onSelect(option.value)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReminderEditorDialog(
+    statusOptions: List<OptionItem>,
+    workOrders: List<WorkOrder>,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, String, String, String) -> Unit,
+) {
+    var title by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    var dueDate by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf(statusOptions.firstOrNull()?.value ?: "active") }
+    var repeatEveryDays by remember { mutableStateOf("") }
+    var workOrderId by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = { onSave(title, note, dueDate, status, repeatEveryDays, workOrderId) },
+                enabled = title.trim().isNotBlank(),
+            ) { Text("Spremi") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Odustani") }
+        },
+        title = { Text("Novi reminder", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Naslov") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                WorkOrderDatePickerField("Datum", dueDate, { dueDate = it }, true)
+                TodoOptionFlow("Status", statusOptions, status) { status = it }
+                OutlinedTextField(
+                    value = repeatEveryDays,
+                    onValueChange = { repeatEveryDays = it.filter { char -> char.isDigit() }.take(3) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Ponavljaj svakih dana") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                TodoWorkOrderPicker(workOrders, workOrderId) { workOrderId = it }
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Bilješka") },
+                    minLines = 3,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(16.dp),
+                )
+            }
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(14.dp),
+    )
+}
+
+@Composable
 private fun TodoTasksContent(
     records: List<MobileRecord>,
     statusOptions: List<OptionItem>,
@@ -5612,9 +6106,13 @@ private fun TodoTasksContent(
     onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
 ) {
     var scope by remember { mutableStateOf(TodoTaskScope.Mine) }
+    var statusFilter by remember { mutableStateOf("all") }
     var createOpen by remember { mutableStateOf(false) }
     val options = statusOptions.ifEmpty { fallbackTodoTaskStatusOptions }
-    val visible = remember(records, scope, currentUser) { filteredTodoTasks(records, scope, currentUser) }
+    val scopedRecords = remember(records, scope, currentUser) { filteredTodoTasks(records, scope, currentUser) }
+    val visible = remember(scopedRecords, statusFilter) {
+        scopedRecords.filter { statusFilter == "all" || todoTaskStatusValue(it) == statusFilter }
+    }
     val openCount = remember(records) { records.count { todoTaskStatusValue(it) != "done" } }
     val overdueCount = remember(records) {
         records.count { todoTaskStatusValue(it) != "done" && it.parsedDate?.isBefore(LocalDate.now()) == true }
@@ -5669,6 +6167,20 @@ private fun TodoTasksContent(
                         selected = scope == item,
                         onClick = { scope = item },
                         label = { Text("${item.label} ${filteredTodoTasks(records, item, currentUser).size}") },
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = statusFilter == "all",
+                    onClick = { statusFilter = "all" },
+                    label = { Text("Svi statusi ${scopedRecords.size}") },
+                )
+                options.forEach { option ->
+                    FilterChip(
+                        selected = statusFilter == option.value,
+                        onClick = { statusFilter = option.value },
+                        label = { Text("${option.label} ${scopedRecords.count { todoTaskStatusValue(it) == option.value }}") },
                     )
                 }
             }
@@ -6050,15 +6562,50 @@ private fun TodoMultiUserPicker(
     selected: List<String>,
     onSelect: (List<String>) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            users.take(18).forEach { user ->
-                FilterChip(
-                    selected = user.id in selected,
-                    onClick = { onSelect(selected.toggleValue(user.id)) },
-                    label = { Text(user.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            AssistChip(onClick = {}, label = { Text("${selected.size} pozvanih") })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { onSelect(users.map { it.id }.filter { it.isNotBlank() }.distinct()) },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.weight(1f),
+            ) { Text("Svi") }
+            OutlinedButton(
+                onClick = { onSelect(emptyList()) },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.weight(1f),
+            ) { Text("Očisti") }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            users.take(24).forEach { user ->
+                val checked = user.id in selected
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onSelect(selected.toggleValue(user.id)) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (checked) Color(0xFFEDE9FE) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, if (checked) Color(0xFF7C3AED).copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        Checkbox(checked = checked, onCheckedChange = { onSelect(selected.toggleValue(user.id)) })
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(user.label.ifBlank { "Korisnik" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(user.email.ifBlank { user.oib.ifBlank { "SafeNexus" } }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+            if (users.size > 24) {
+                Text("+${users.size - 24} korisnika izostavljeno u brzom prikazu.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
             }
         }
     }
@@ -10394,9 +10941,12 @@ private fun WorkOrdersScreen(
     onLoadMoreCompanyLocations: (MobileRecord) -> Unit,
     onDownloadDocument: (MobileRecord) -> Unit,
     onDownloadTrainingDocument: (MobileRecord, MobileTrainingDocument) -> Unit,
+    onCreateReminder: (String, String, String, String, String, String, String, String) -> Unit,
+    onUpdateReminderStatus: (String, String) -> Unit,
     onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
     onUpdateTodoTask: (String, String?, String?, String?, String?, List<String>?) -> Unit,
     onAddTodoTaskComment: (String, String) -> Unit,
+    onSaveClientPortalRecord: (ClientPortalRecordDraft, () -> Unit) -> Unit,
 ) {
     val isClientPortal = state.user.hasClientPortalAccess()
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
@@ -10445,6 +10995,9 @@ private fun WorkOrdersScreen(
     }
     val filteredTodoTasks = remember(state.data.todoTasks, normalizedQuery) {
         state.data.todoTasks.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
+    val filteredReminders = remember(state.data.reminders, normalizedQuery) {
+        state.data.reminders.filter { record -> record.matchesSearch(normalizedQuery) }
     }
     val filteredFieldInquiries = remember(state.data.fieldInquiries, normalizedQuery) {
         state.data.fieldInquiries.filter { record -> record.matchesSearch(normalizedQuery) }
@@ -10578,7 +11131,15 @@ private fun WorkOrdersScreen(
                         data = state.data,
                         user = state.user,
                         workOrders = state.workOrders,
+                        reminders = filteredReminders,
+                        todoTasks = filteredTodoTasks,
                         onOpenWorkOrder = onOpenWorkOrder,
+                        onOpenRecord = onOpenRecord,
+                        onCreateReminder = onCreateReminder,
+                        onUpdateReminderStatus = onUpdateReminderStatus,
+                        onCreateTodoTask = onCreateTodoTask,
+                        isLoading = state.isLoading,
+                        onSaveClientPortalRecord = onSaveClientPortalRecord,
                     )
                 }
                 item {
@@ -11587,18 +12148,40 @@ private fun OperationsContent(
     data: BootstrapData,
     user: SafeNexusUser?,
     workOrders: List<WorkOrder>,
+    reminders: List<MobileRecord>,
+    todoTasks: List<MobileRecord>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onCreateReminder: (String, String, String, String, String, String, String, String) -> Unit,
+    onUpdateReminderStatus: (String, String) -> Unit,
+    onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
+    isLoading: Boolean,
+    onSaveClientPortalRecord: (ClientPortalRecordDraft, () -> Unit) -> Unit,
 ) {
     if (user?.isClientPortalUser == true) {
         ClientPortalHomeContent(
             summary = data.clientHome,
             portalRecords = data.clientPortalRecords,
+            locations = data.locations,
+            user = user,
+            isLoading = isLoading,
+            onSaveRecord = onSaveClientPortalRecord,
         )
     } else {
         HomeContent(
             user = user,
             workOrders = workOrders,
+            reminders = reminders,
+            todoTasks = todoTasks,
+            reminderStatusOptions = data.reminderStatuses.ifEmpty { fallbackReminderStatusOptions },
+            todoStatusOptions = data.todoTaskStatuses.ifEmpty { fallbackTodoTaskStatusOptions },
+            priorityOptions = data.priorities,
+            users = data.workOrderUsers,
             onOpenWorkOrder = onOpenWorkOrder,
+            onOpenRecord = onOpenRecord,
+            onCreateReminder = onCreateReminder,
+            onUpdateReminderStatus = onUpdateReminderStatus,
+            onCreateTodoTask = onCreateTodoTask,
         )
     }
 }
@@ -11607,9 +12190,19 @@ private fun OperationsContent(
 private fun ClientPortalHomeContent(
     summary: ClientHomeSummary,
     portalRecords: List<MobileRecord>,
+    locations: List<MobileRecord>,
+    user: SafeNexusUser,
+    isLoading: Boolean,
+    onSaveRecord: (ClientPortalRecordDraft, () -> Unit) -> Unit,
 ) {
     val title = summary.title.ifBlank { "Client Portal" }
     val subtitle = summary.subtitle.ifBlank { "Dokumenti i evidencije tvoje tvrtke" }
+    var activeListType by remember { mutableStateOf<String?>(null) }
+    var editorType by remember { mutableStateOf<String?>(null) }
+    var editorRecord by remember { mutableStateOf<MobileRecord?>(null) }
+    val activeDefinition = activeListType?.let(::clientPortalRecordDefinitionFor)
+    val editorDefinition = editorType?.let(::clientPortalRecordDefinitionFor)
+    val recordsByType = remember(portalRecords) { portalRecords.groupBy { it.clientPortalRecordType() } }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Surface(
@@ -11658,7 +12251,51 @@ private fun ClientPortalHomeContent(
             }
         }
 
-        ClientPortalRecordBlocksSection(records = portalRecords)
+        ClientPortalRecordBlocksSection(
+            records = portalRecords,
+            onOpenType = { definition -> activeListType = definition.type },
+            onOpenRecord = { record ->
+                activeListType = record.clientPortalRecordType()
+                editorType = record.clientPortalRecordType()
+                editorRecord = record
+            },
+        )
+    }
+
+    if (activeDefinition != null && editorDefinition == null) {
+        ClientPortalRecordListDialog(
+            definition = activeDefinition,
+            records = recordsByType[activeDefinition.type].orEmpty(),
+            onDismiss = { activeListType = null },
+            onAdd = {
+                editorType = activeDefinition.type
+                editorRecord = null
+            },
+            onEdit = { record ->
+                editorType = activeDefinition.type
+                editorRecord = record
+            },
+        )
+    }
+
+    if (editorDefinition != null) {
+        ClientPortalRecordEditorDialog(
+            definition = editorDefinition,
+            record = editorRecord,
+            locations = locations,
+            user = user,
+            isLoading = isLoading,
+            onDismiss = {
+                editorType = null
+                editorRecord = null
+            },
+            onSave = { draft ->
+                onSaveRecord(draft) {
+                    editorType = null
+                    editorRecord = null
+                }
+            },
+        )
     }
 }
 
@@ -11682,6 +12319,176 @@ private val clientPortalRecordBlockDefinitions = listOf(
     ClientPortalRecordBlockDefinition("deadline", "Ostali rokovi", Icons.Rounded.CalendarMonth, Color(0xFF7C3AED)),
 )
 
+private data class ClientPortalRecordFieldDefinition(
+    val key: String,
+    val label: String,
+    val required: Boolean = false,
+    val isDate: Boolean = false,
+    val multiline: Boolean = false,
+    val keyboardType: KeyboardType = KeyboardType.Text,
+)
+
+private val clientPortalRecordStatusOptions = listOf(
+    "active" to "Aktivno",
+    "attention" to "Pažnja",
+    "done" to "Gotovo",
+    "inactive" to "Neaktivno",
+)
+
+private fun clientPortalRecordDefinitionFor(type: String): ClientPortalRecordBlockDefinition =
+    clientPortalRecordBlockDefinitions.firstOrNull { it.type == type }
+        ?: clientPortalRecordBlockDefinitions.last()
+
+private fun clientPortalRecordStatusLabel(status: String): String =
+    clientPortalRecordStatusOptions.firstOrNull { it.first == status }?.second
+        ?: status.ifBlank { "Aktivno" }
+
+private fun clientPortalRecordFieldsFor(type: String): List<ClientPortalRecordFieldDefinition> = when (type) {
+    "worker" -> listOf(
+        ClientPortalRecordFieldDefinition("fullName", "Ime i prezime", required = true),
+        ClientPortalRecordFieldDefinition("jobTitle", "Radno mjesto"),
+        ClientPortalRecordFieldDefinition("email", "Email", keyboardType = KeyboardType.Email),
+        ClientPortalRecordFieldDefinition("phone", "Telefon", keyboardType = KeyboardType.Phone),
+        ClientPortalRecordFieldDefinition("oib", "OIB", keyboardType = KeyboardType.Number),
+        ClientPortalRecordFieldDefinition("medicalCertificateValidUntil", "Zdravstveno vrijedi do", isDate = true),
+        ClientPortalRecordFieldDefinition("visionCertificateValidUntil", "Vid vrijedi do", isDate = true),
+        ClientPortalRecordFieldDefinition("psychologicalCheckUntil", "Psihološka provjera vrijedi do", isDate = true),
+        ClientPortalRecordFieldDefinition("medicalEquipment", "Radna oprema", multiline = true),
+        ClientPortalRecordFieldDefinition("medicalSubstances", "Štetnosti", multiline = true),
+        ClientPortalRecordFieldDefinition("note", "Napomena", multiline = true),
+    )
+    "vehicle" -> listOf(
+        ClientPortalRecordFieldDefinition("vehicleName", "Vozilo", required = true),
+        ClientPortalRecordFieldDefinition("plateNumber", "Registracija"),
+        ClientPortalRecordFieldDefinition("vehicleType", "Tip"),
+        ClientPortalRecordFieldDefinition("responsibleWorkerName", "Zaduženi radnik"),
+        ClientPortalRecordFieldDefinition("registrationDate", "Registracija vrijedi do", isDate = true),
+        ClientPortalRecordFieldDefinition("insuranceDate", "Osiguranje vrijedi do", isDate = true),
+        ClientPortalRecordFieldDefinition("serviceDate", "Sljedeći servis", isDate = true),
+        ClientPortalRecordFieldDefinition("note", "Napomena", multiline = true),
+    )
+    "fire_extinguisher" -> listOf(
+        ClientPortalRecordFieldDefinition("code", "Oznaka aparata", required = true),
+        ClientPortalRecordFieldDefinition("locationText", "Mjesto"),
+        ClientPortalRecordFieldDefinition("extinguisherType", "Tip aparata"),
+        ClientPortalRecordFieldDefinition("lastInspectionDate", "Zadnji 3-mjesečni pregled", isDate = true),
+        ClientPortalRecordFieldDefinition("nextInspectionDate", "Sljedeći pregled", isDate = true),
+        ClientPortalRecordFieldDefinition("lastInternalInspectionDate", "Zadnji unutarnji pregled", isDate = true),
+        ClientPortalRecordFieldDefinition("nextInternalInspectionDate", "Sljedeći unutarnji pregled", isDate = true),
+        ClientPortalRecordFieldDefinition("lastServiceDate", "Zadnji servis", isDate = true),
+        ClientPortalRecordFieldDefinition("nextServiceDate", "Sljedeći godišnji servis", isDate = true),
+        ClientPortalRecordFieldDefinition("note", "Napomena", multiline = true),
+    )
+    "ppe_assignment" -> listOf(
+        ClientPortalRecordFieldDefinition("workerName", "Radnik", required = true),
+        ClientPortalRecordFieldDefinition("ppeName", "OZO / oprema", required = true),
+        ClientPortalRecordFieldDefinition("quantity", "Količina", keyboardType = KeyboardType.Number),
+        ClientPortalRecordFieldDefinition("assignedDate", "Zaduženo", isDate = true),
+        ClientPortalRecordFieldDefinition("dueDate", "Rok / zamjena", isDate = true),
+        ClientPortalRecordFieldDefinition("returnedDate", "Razduženo", isDate = true),
+        ClientPortalRecordFieldDefinition("note", "Napomena", multiline = true),
+    )
+    "defect_report" -> listOf(
+        ClientPortalRecordFieldDefinition("defectTitle", "Nedostatak / prijava", required = true),
+        ClientPortalRecordFieldDefinition("priority", "Prioritet"),
+        ClientPortalRecordFieldDefinition("category", "Kategorija"),
+        ClientPortalRecordFieldDefinition("reportedDate", "Datum prijave", isDate = true),
+        ClientPortalRecordFieldDefinition("dueDate", "Rok rješavanja", isDate = true),
+        ClientPortalRecordFieldDefinition("reportedBy", "Prijavio"),
+        ClientPortalRecordFieldDefinition("locationText", "Mjesto"),
+        ClientPortalRecordFieldDefinition("description", "Opis", multiline = true),
+        ClientPortalRecordFieldDefinition("action", "Mjera / komentar", multiline = true),
+    )
+    "internal_inspection" -> listOf(
+        ClientPortalRecordFieldDefinition("inspectionTitle", "Naziv nadzora", required = true),
+        ClientPortalRecordFieldDefinition("area", "Područje / proces"),
+        ClientPortalRecordFieldDefinition("inspectionDate", "Datum nadzora", isDate = true),
+        ClientPortalRecordFieldDefinition("dueDate", "Rok mjere / sljedeći nadzor", isDate = true),
+        ClientPortalRecordFieldDefinition("inspectorName", "Kontrolor"),
+        ClientPortalRecordFieldDefinition("result", "Rezultat"),
+        ClientPortalRecordFieldDefinition("documentName", "Dokument / zapisnik"),
+        ClientPortalRecordFieldDefinition("finding", "Nalaz", multiline = true),
+        ClientPortalRecordFieldDefinition("correctiveAction", "Mjera / zaduženje", multiline = true),
+    )
+    "alcohol_test" -> listOf(
+        ClientPortalRecordFieldDefinition("workerName", "Radnik", required = true),
+        ClientPortalRecordFieldDefinition("testDate", "Datum testiranja", isDate = true),
+        ClientPortalRecordFieldDefinition("result", "Rezultat", required = true),
+        ClientPortalRecordFieldDefinition("measuredValue", "Vrijednost"),
+        ClientPortalRecordFieldDefinition("testerName", "Testirao"),
+        ClientPortalRecordFieldDefinition("nextTestDate", "Sljedeća kontrola", isDate = true),
+        ClientPortalRecordFieldDefinition("documentName", "Dokument / zapisnik"),
+        ClientPortalRecordFieldDefinition("note", "Napomena", multiline = true),
+    )
+    "document" -> listOf(
+        ClientPortalRecordFieldDefinition("documentName", "Naziv dokumenta", required = true),
+        ClientPortalRecordFieldDefinition("documentType", "Tip"),
+        ClientPortalRecordFieldDefinition("fileName", "Naziv datoteke"),
+        ClientPortalRecordFieldDefinition("documentDate", "Datum dokumenta", isDate = true),
+        ClientPortalRecordFieldDefinition("validUntil", "Vrijedi do", isDate = true),
+        ClientPortalRecordFieldDefinition("ownerName", "Vlasnik / osoba"),
+        ClientPortalRecordFieldDefinition("fileUrl", "Link dokumenta", keyboardType = KeyboardType.Uri),
+        ClientPortalRecordFieldDefinition("note", "Napomena", multiline = true),
+    )
+    else -> listOf(
+        ClientPortalRecordFieldDefinition("deadlineType", "Vrsta roka"),
+        ClientPortalRecordFieldDefinition("deadlineName", "Rok", required = true),
+        ClientPortalRecordFieldDefinition("dueDate", "Datum", required = true, isDate = true),
+        ClientPortalRecordFieldDefinition("ownerName", "Odgovorna osoba"),
+        ClientPortalRecordFieldDefinition("description", "Opis", multiline = true),
+    )
+}
+
+private fun clientPortalRecordEditableMeta(record: MobileRecord?): Map<String, String> {
+    if (record == null) return emptyMap()
+    val nonDetailKeys = setOf(
+        "companyId",
+        "companyName",
+        "locationId",
+        "locationName",
+        "type",
+        "attachmentCount",
+        "attachmentNames",
+    )
+    return record.meta.filterKeys { key -> key !in nonDetailKeys }
+}
+
+private fun clientPortalRecordDisplayTitle(record: MobileRecord): String =
+    record.title.ifBlank {
+        record.metaValue(
+            "fullName",
+            "vehicleName",
+            "plateNumber",
+            "code",
+            "defectTitle",
+            "inspectionTitle",
+            "documentName",
+            "deadlineName",
+            "ppeName",
+        ).ifBlank { "Zapis" }
+    }
+
+private fun clientPortalRecordDisplaySubtitle(record: MobileRecord): String =
+    listOf(
+        record.metaValue("locationName", "locationText").ifBlank { record.subtitle },
+        clientPortalRecordStatusLabel(record.status),
+        clientPortalDateLabel(record.metaValue("dueDate").ifBlank { record.date }).takeIf { it != "-" }.orEmpty(),
+    ).filter { it.isNotBlank() }.joinToString(" · ")
+
+private fun clientPortalLocationOptions(locations: List<MobileRecord>, record: MobileRecord?): List<Pair<String, String>> {
+    val currentLocationId = record?.metaValue("locationId").orEmpty()
+    val currentLocationName = record?.metaValue("locationName").orEmpty()
+    return buildList {
+        add("" to "Sve lokacije / bez lokacije")
+        if (currentLocationId.isNotBlank() && currentLocationName.isNotBlank()) {
+            add(currentLocationId to currentLocationName)
+        }
+        locations.forEach { location ->
+            add(location.id to location.title.ifBlank { location.subtitle }.ifBlank { "Lokacija" })
+        }
+    }.distinctBy { it.first }
+}
+
 private fun MobileRecord.clientPortalRecordType(): String =
     meta["type"].orEmpty().ifBlank { kind }.ifBlank { "deadline" }
 
@@ -11697,7 +12504,11 @@ private fun MobileRecord.isAttentionClientPortalRecord(today: LocalDate = LocalD
 }
 
 @Composable
-private fun ClientPortalRecordBlocksSection(records: List<MobileRecord>) {
+private fun ClientPortalRecordBlocksSection(
+    records: List<MobileRecord>,
+    onOpenType: (ClientPortalRecordBlockDefinition) -> Unit,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
     val today = remember { LocalDate.now() }
     val recordsByType = remember(records) {
         records.groupBy { it.clientPortalRecordType() }
@@ -11746,6 +12557,7 @@ private fun ClientPortalRecordBlocksSection(records: List<MobileRecord>) {
                             count = typedRecords.size,
                             attentionCount = attentionCount,
                             modifier = Modifier.weight(1f),
+                            onClick = { onOpenType(definition) },
                         )
                     }
                     if (rowItems.size == 1) {
@@ -11756,9 +12568,11 @@ private fun ClientPortalRecordBlocksSection(records: List<MobileRecord>) {
 
             ClientPortalFireExtinguisherSection(
                 records = recordsByType["fire_extinguisher"].orEmpty(),
+                onOpenRecord = onOpenRecord,
             )
             ClientPortalVehicleFleetSection(
                 records = recordsByType["vehicle"].orEmpty(),
+                onOpenRecord = onOpenRecord,
             )
         }
     }
@@ -11770,6 +12584,7 @@ private fun ClientPortalRecordBlockCard(
     count: Int,
     attentionCount: Int,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit,
 ) {
     val detail = when {
         attentionCount > 0 -> "$attentionCount za pažnju"
@@ -11777,7 +12592,10 @@ private fun ClientPortalRecordBlockCard(
         else -> "nema zapisa"
     }
     Surface(
-        modifier = modifier.heightIn(min = 104.dp),
+        modifier = modifier
+            .heightIn(min = 104.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         color = definition.accent.copy(alpha = if (count > 0) 0.12f else 0.06f),
         border = BorderStroke(1.dp, definition.accent.copy(alpha = if (attentionCount > 0) 0.36f else 0.14f)),
@@ -11834,7 +12652,326 @@ private fun clientPortalDateLabel(value: String): String =
     formatDateLabel(value).ifBlank { value.ifBlank { "-" } }
 
 @Composable
-private fun ClientPortalFireExtinguisherSection(records: List<MobileRecord>) {
+private fun ClientPortalRecordListDialog(
+    definition: ClientPortalRecordBlockDefinition,
+    records: List<MobileRecord>,
+    onDismiss: () -> Unit,
+    onAdd: () -> Unit,
+    onEdit: (MobileRecord) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Zatvori") }
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = RoundedCornerShape(14.dp), color = definition.accent.copy(alpha = 0.12f)) {
+                    Icon(
+                        definition.icon,
+                        contentDescription = null,
+                        tint = definition.accent,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .padding(10.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(definition.label, fontWeight = FontWeight.Black)
+                    Text(
+                        "${records.size} zapisa",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+                IconButton(onClick = onAdd) {
+                    Icon(Icons.Rounded.Add, contentDescription = "Dodaj zapis", tint = definition.accent)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (records.isEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = definition.accent.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, definition.accent.copy(alpha = 0.16f)),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(definition.icon, contentDescription = null, tint = definition.accent)
+                            Text("Još nema zapisa.", fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = onAdd,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = definition.accent),
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Dodaj")
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(records, key = { it.id }) { record ->
+                            ClientPortalRecordListRow(
+                                definition = definition,
+                                record = record,
+                                onClick = { onEdit(record) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        shape = RoundedCornerShape(24.dp),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(horizontal = 14.dp),
+    )
+}
+
+@Composable
+private fun ClientPortalRecordListRow(
+    definition: ClientPortalRecordBlockDefinition,
+    record: MobileRecord,
+    onClick: () -> Unit,
+) {
+    val attention = record.isAttentionClientPortalRecord()
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, definition.accent.copy(alpha = if (attention) 0.34f else 0.14f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(shape = RoundedCornerShape(13.dp), color = definition.accent.copy(alpha = 0.10f)) {
+                Icon(
+                    definition.icon,
+                    contentDescription = null,
+                    tint = definition.accent,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .padding(8.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    clientPortalRecordDisplayTitle(record),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    clientPortalRecordDisplaySubtitle(record),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = definition.accent)
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalRecordEditorDialog(
+    definition: ClientPortalRecordBlockDefinition,
+    record: MobileRecord?,
+    locations: List<MobileRecord>,
+    user: SafeNexusUser,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (ClientPortalRecordDraft) -> Unit,
+) {
+    val fields = remember(definition.type) { clientPortalRecordFieldsFor(definition.type) }
+    val originalDetails = remember(record?.id, definition.type) { clientPortalRecordEditableMeta(record) }
+    var status by remember(record?.id, definition.type) { mutableStateOf(record?.status?.ifBlank { null } ?: "active") }
+    var locationId by remember(record?.id, definition.type) { mutableStateOf(record?.metaValue("locationId").orEmpty()) }
+    var details by remember(record?.id, definition.type) { mutableStateOf(originalDetails) }
+    var localError by remember(record?.id, definition.type) { mutableStateOf("") }
+    val locationOptions = remember(locations, record?.id) { clientPortalLocationOptions(locations, record) }
+    val title = if (record == null) "Novi zapis" else "Uredi zapis"
+    val companyId = record?.metaValue("companyId").orEmpty().ifBlank { user.clientCompanyIds.firstOrNull().orEmpty() }
+
+    AlertDialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val missing = fields.firstOrNull { field -> field.required && details[field.key].orEmpty().trim().isBlank() }
+                    if (missing != null) {
+                        localError = "Upiši: ${missing.label}."
+                        return@Button
+                    }
+                    localError = ""
+                    onSave(
+                        ClientPortalRecordDraft(
+                            id = record?.id.orEmpty(),
+                            type = definition.type,
+                            companyId = companyId,
+                            locationId = locationId,
+                            status = status,
+                            details = details
+                                .mapValues { (_, value) -> value.trim() }
+                                .filterValues { it.isNotBlank() },
+                        ),
+                    )
+                },
+                enabled = !isLoading,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = definition.accent),
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (record == null) "Dodaj" else "Spremi")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) { Text("Odustani") }
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = RoundedCornerShape(14.dp), color = definition.accent.copy(alpha = 0.12f)) {
+                    Icon(
+                        definition.icon,
+                        contentDescription = null,
+                        tint = definition.accent,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .padding(10.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.Black)
+                    Text(
+                        definition.label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                WorkOrderSelectField(
+                    label = "Status",
+                    value = status,
+                    valueLabel = clientPortalRecordStatusLabel(status),
+                    options = clientPortalRecordStatusOptions,
+                    enabled = !isLoading,
+                    onSelect = { status = it },
+                )
+                WorkOrderSelectField(
+                    label = "Lokacija",
+                    value = locationId,
+                    valueLabel = locationOptions.firstOrNull { it.first == locationId }?.second.orEmpty(),
+                    options = locationOptions,
+                    enabled = !isLoading,
+                    onSelect = { locationId = it },
+                )
+                fields.forEach { field ->
+                    val value = details[field.key].orEmpty()
+                    if (field.isDate) {
+                        WorkOrderDatePickerField(
+                            label = field.label,
+                            value = value,
+                            onChange = { next -> details = details + (field.key to next) },
+                            enabled = !isLoading,
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = value,
+                            onValueChange = { next -> details = details + (field.key to next) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading,
+                            label = { Text(if (field.required) "${field.label} *" else field.label) },
+                            singleLine = !field.multiline,
+                            minLines = if (field.multiline) 3 else 1,
+                            maxLines = if (field.multiline) 5 else 1,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = field.keyboardType,
+                                imeAction = if (field.multiline) ImeAction.Default else ImeAction.Next,
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                    }
+                }
+                record?.metaValue("attachmentNames")?.takeIf { it.isNotBlank() }?.let { attachments ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = definition.accent.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, definition.accent.copy(alpha = 0.14f)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(Icons.Rounded.AttachFile, contentDescription = null, tint = definition.accent)
+                            Text(
+                                attachments,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                            )
+                        }
+                    }
+                }
+                if (localError.isNotBlank()) {
+                    Text(
+                        localError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFDC2626),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        },
+        shape = RoundedCornerShape(24.dp),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(horizontal = 14.dp),
+    )
+}
+
+@Composable
+private fun ClientPortalFireExtinguisherSection(
+    records: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
     if (records.isEmpty()) return
     ClientPortalRecordListSection(
         title = "Vatrogasni aparati",
@@ -11843,13 +12980,16 @@ private fun ClientPortalFireExtinguisherSection(records: List<MobileRecord>) {
         accent = Color(0xFFDC2626),
     ) {
         records.forEach { record ->
-            ClientPortalFireExtinguisherCard(record = record)
+            ClientPortalFireExtinguisherCard(record = record, onClick = { onOpenRecord(record) })
         }
     }
 }
 
 @Composable
-private fun ClientPortalVehicleFleetSection(records: List<MobileRecord>) {
+private fun ClientPortalVehicleFleetSection(
+    records: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
     if (records.isEmpty()) return
     ClientPortalRecordListSection(
         title = "Vozni park",
@@ -11858,7 +12998,7 @@ private fun ClientPortalVehicleFleetSection(records: List<MobileRecord>) {
         accent = Color(0xFF2563EB),
     ) {
         records.forEach { record ->
-            ClientPortalVehicleFleetCard(record = record)
+            ClientPortalVehicleFleetCard(record = record, onClick = { onOpenRecord(record) })
         }
     }
 }
@@ -11908,7 +13048,10 @@ private fun ClientPortalRecordListSection(
 }
 
 @Composable
-private fun ClientPortalFireExtinguisherCard(record: MobileRecord) {
+private fun ClientPortalFireExtinguisherCard(
+    record: MobileRecord,
+    onClick: () -> Unit,
+) {
     val code = record.metaValue("code").ifBlank { record.title }
     val location = record.metaValue("locationText", "locationName").ifBlank { record.subtitle }
     val type = record.metaValue("extinguisherType")
@@ -11916,7 +13059,10 @@ private fun ClientPortalFireExtinguisherCard(record: MobileRecord) {
     val attachmentCount = record.metaValue("attachmentCount")
     val attachmentNames = record.metaValue("attachmentNames")
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, Color(0xFFDC2626).copy(alpha = 0.14f)),
@@ -11981,7 +13127,10 @@ private fun ClientPortalFireExtinguisherCard(record: MobileRecord) {
 }
 
 @Composable
-private fun ClientPortalVehicleFleetCard(record: MobileRecord) {
+private fun ClientPortalVehicleFleetCard(
+    record: MobileRecord,
+    onClick: () -> Unit,
+) {
     val plate = record.metaValue("plateNumber")
     val vehicle = record.metaValue("vehicleName").ifBlank { record.title }
     val type = record.metaValue("vehicleType")
@@ -11990,7 +13139,10 @@ private fun ClientPortalVehicleFleetCard(record: MobileRecord) {
     val attachmentCount = record.metaValue("attachmentCount")
     val attachmentNames = record.metaValue("attachmentNames")
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.14f)),
@@ -12173,7 +13325,17 @@ private fun buildUpcomingExecutionHomeItems(
 private fun HomeContent(
     user: SafeNexusUser?,
     workOrders: List<WorkOrder>,
+    reminders: List<MobileRecord>,
+    todoTasks: List<MobileRecord>,
+    reminderStatusOptions: List<OptionItem>,
+    todoStatusOptions: List<OptionItem>,
+    priorityOptions: List<OptionItem>,
+    users: List<WorkOrderUserOption>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
+    onOpenRecord: (MobileRecord) -> Unit,
+    onCreateReminder: (String, String, String, String, String, String, String, String) -> Unit,
+    onUpdateReminderStatus: (String, String) -> Unit,
+    onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
 ) {
     var scope by remember { mutableStateOf(HomeWorkOrderScope.Mine) }
     val today = remember { LocalDate.now() }
@@ -12198,6 +13360,21 @@ private fun HomeContent(
             onScopeChange = { scope = it },
             mineCount = workOrders.count { workOrder -> workOrder.isAssignedToUser(user) },
             allCount = workOrders.size,
+        )
+        HomeTasksTabs(
+            reminders = reminders,
+            todoTasks = todoTasks,
+            reminderStatusOptions = reminderStatusOptions,
+            todoStatusOptions = todoStatusOptions,
+            priorityOptions = priorityOptions,
+            users = users,
+            workOrders = workOrders,
+            currentUser = user,
+            onOpenRecord = onOpenRecord,
+            onOpenWorkOrder = onOpenWorkOrder,
+            onCreateReminder = onCreateReminder,
+            onUpdateReminderStatus = onUpdateReminderStatus,
+            onCreateTodoTask = onCreateTodoTask,
         )
         HomeWorkOrderDateSection(
             title = "Istekli radni nalozi",

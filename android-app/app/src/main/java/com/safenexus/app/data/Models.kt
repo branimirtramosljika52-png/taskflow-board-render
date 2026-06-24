@@ -4,6 +4,7 @@ import org.json.JSONObject
 import java.time.LocalDate
 
 data class SafeNexusUser(
+    val id: String = "",
     val displayName: String,
     val email: String,
     val profileRole: String = "",
@@ -44,6 +45,7 @@ data class BootstrapData(
     val locations: List<MobileRecord> = emptyList(),
     val workOrderStatuses: List<OptionItem> = emptyList(),
     val priorities: List<OptionItem> = emptyList(),
+    val reminderStatuses: List<OptionItem> = emptyList(),
     val todoTaskStatuses: List<OptionItem> = emptyList(),
     val workOrderCompanies: List<WorkOrderCompanyOption> = emptyList(),
     val workOrderLocations: List<WorkOrderLocationOption> = emptyList(),
@@ -61,6 +63,7 @@ data class BootstrapData(
     val jobs: List<MobileRecord> = emptyList(),
     val offers: List<MobileRecord> = emptyList(),
     val fieldInquiries: List<MobileRecord> = emptyList(),
+    val reminders: List<MobileRecord> = emptyList(),
     val todoTasks: List<MobileRecord> = emptyList(),
     val calendarEvents: List<MobileRecord> = emptyList(),
     val dashboard: DashboardStats = DashboardStats(),
@@ -73,6 +76,15 @@ data class PagedMobileRecords(
     val offset: Int = 0,
     val nextOffset: Int = 0,
     val hasMore: Boolean = false,
+)
+
+data class ClientPortalRecordDraft(
+    val id: String = "",
+    val type: String,
+    val companyId: String = "",
+    val locationId: String = "",
+    val status: String = "active",
+    val details: Map<String, String> = emptyMap(),
 )
 
 data class OptionItem(
