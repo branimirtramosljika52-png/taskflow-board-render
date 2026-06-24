@@ -97,6 +97,7 @@ class SafeNexusApi(
                 todoTasks = json.optJSONArray("todoTasks").toRecords(),
                 calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
                 dashboard = json.optJSONObject("dashboard").toDashboardStats(),
+                clientHome = json.optJSONObject("clientHome").toClientHomeSummary(),
             )
         }
     }
@@ -1735,6 +1736,22 @@ private fun JSONObject?.toDashboardStats(): DashboardStats {
         rulebooksTotal = optInt("rulebooksTotal", 0),
         riskAssessmentsTotal = optInt("riskAssessmentsTotal", 0),
         measurementEquipmentTotal = optInt("measurementEquipmentTotal", 0),
+    )
+}
+
+private fun JSONObject?.toClientHomeSummary(): ClientHomeSummary {
+    if (this == null) return ClientHomeSummary()
+    return ClientHomeSummary(
+        title = optString("title", "").trim(),
+        subtitle = optString("subtitle", "").trim(),
+        companiesTotal = optInt("companiesTotal", 0),
+        locationsTotal = optInt("locationsTotal", 0),
+        workOrdersTotal = optInt("workOrdersTotal", 0),
+        activeWorkOrders = optInt("activeWorkOrders", 0),
+        documentsTotal = optInt("documentsTotal", 0),
+        trainingsTotal = optInt("trainingsTotal", 0),
+        riskAssessmentsTotal = optInt("riskAssessmentsTotal", 0),
+        latestWorkOrders = optJSONArray("latestWorkOrders").toWorkOrders(),
     )
 }
 

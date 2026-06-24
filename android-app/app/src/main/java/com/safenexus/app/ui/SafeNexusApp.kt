@@ -201,6 +201,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.safenexus.app.BuildConfig
 import com.safenexus.app.data.BootstrapData
+import com.safenexus.app.data.ClientHomeSummary
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
 import com.safenexus.app.data.DownloadedDocument
@@ -11560,11 +11561,184 @@ private fun OperationsContent(
     workOrders: List<WorkOrder>,
     onOpenWorkOrder: (WorkOrder) -> Unit,
 ) {
-    HomeContent(
-        user = user,
-        workOrders = workOrders,
-        onOpenWorkOrder = onOpenWorkOrder,
-    )
+    if (user?.isClientPortalUser == true) {
+        ClientPortalHomeContent(
+            summary = data.clientHome,
+            fallbackWorkOrders = workOrders,
+            onOpenWorkOrder = onOpenWorkOrder,
+        )
+    } else {
+        HomeContent(
+            user = user,
+            workOrders = workOrders,
+            onOpenWorkOrder = onOpenWorkOrder,
+        )
+    }
+}
+
+@Composable
+private fun ClientPortalHomeContent(
+    summary: ClientHomeSummary,
+    fallbackWorkOrders: List<WorkOrder>,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+) {
+    val latestWorkOrders = remember(summary.latestWorkOrders, fallbackWorkOrders) {
+        summary.latestWorkOrders.ifEmpty { fallbackWorkOrders.take(6) }
+    }
+    val title = summary.title.ifBlank { "Klijentski portal" }
+    val subtitle = summary.subtitle.ifBlank { "Dokumenti, radni nalozi i evidencije" }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            color = Color(0xFFEAF2FF),
+            tonalElevation = 1.dp,
+            shadowElevation = 2.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = 0.86f)) {
+                        Icon(
+                            Icons.Rounded.Business,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(46.dp)
+                                .padding(11.dp),
+                            tint = Color(0xFF2563EB),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    StatusCountPill("RN", summary.workOrdersTotal, Color(0xFF2563EB))
+                    StatusCountPill("Aktivni", summary.activeWorkOrders, Color(0xFF0F766E))
+                    StatusCountPill("Lokacije", summary.locationsTotal, Color(0xFF7C3AED))
+                    StatusCountPill("Dokumenti", summary.documentsTotal, Color(0xFF1D4ED8))
+                    StatusCountPill("Procjene", summary.riskAssessmentsTotal, Color(0xFFD97706))
+                    StatusCountPill("Ospos.", summary.trainingsTotal, Color(0xFF059669))
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+            shadowElevation = 2.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFFEDE9FE)) {
+                        Icon(
+                            Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .padding(10.dp),
+                            tint = Color(0xFF7C3AED),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Radni nalozi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                        Text(
+                            "Zadnje aktivnosti za tvoju tvrtku",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                }
+
+                if (latestWorkOrders.isEmpty()) {
+                    Text(
+                        "Nema radnih naloga za prikaz.",
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    )
+                } else {
+                    latestWorkOrders.forEach { workOrder ->
+                        ClientPortalWorkOrderRow(
+                            workOrder = workOrder,
+                            onClick = { onOpenWorkOrder(workOrder) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClientPortalWorkOrderRow(
+    workOrder: WorkOrder,
+    onClick: () -> Unit,
+) {
+    val statusStyle = rnStatusStyle(workOrder)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = statusStyle.background.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, statusStyle.accent.copy(alpha = 0.16f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(workOrder.displayNumber, fontWeight = FontWeight.Black)
+                    Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.76f)) {
+                        Text(
+                            statusStyle.label,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusStyle.accent,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
+                Text(
+                    workOrder.displayService,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    workOrder.locationName.ifBlank { workOrder.companyName },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(Icons.Rounded.ArrowForward, contentDescription = null, tint = statusStyle.accent)
+        }
+    }
 }
 
 private enum class HomeWorkOrderScope(val label: String) {

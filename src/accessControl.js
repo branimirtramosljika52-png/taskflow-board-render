@@ -185,7 +185,36 @@ export function roleLabel(role) {
 }
 
 export function isClientPortalUser(actor) {
-  return normalizeUserProfileRole(actor?.profileRole ?? actor?.profile_role, "") === "client_user";
+  if (normalizeUserProfileRole(actor?.profileRole ?? actor?.profile_role, "") === "client_user") {
+    return true;
+  }
+
+  const rawCompanyIds = actor?.clientCompanyIds ?? actor?.client_company_ids_json;
+  if (Array.isArray(rawCompanyIds)) {
+    return rawCompanyIds.some((value) => normalizeText(value));
+  }
+  if (rawCompanyIds && typeof rawCompanyIds === "object") {
+    return Object.values(rawCompanyIds).some((value) => normalizeText(value));
+  }
+  if (typeof rawCompanyIds === "string") {
+    const trimmed = rawCompanyIds.trim();
+    if (!trimmed) {
+      return false;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.some((value) => normalizeText(value));
+      }
+      if (parsed && typeof parsed === "object") {
+        return Object.values(parsed).some((value) => normalizeText(value));
+      }
+    } catch {
+      return trimmed.split(",").some((value) => normalizeText(value));
+    }
+  }
+
+  return false;
 }
 
 export function buildLegacyEmail(username, id = "") {

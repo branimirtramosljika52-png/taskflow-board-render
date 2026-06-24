@@ -383,6 +383,15 @@ function isClientPortalProfileRole(value = "") {
   return normalizeUserProfileRole(value, "") === "client_user";
 }
 
+function getClientPortalCompanyIds(actor = {}) {
+  return normalizeClientScopeIds(actor?.clientCompanyIds ?? actor?.client_company_ids_json);
+}
+
+function isClientPortalActor(actor = {}) {
+  return isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role)
+    || getClientPortalCompanyIds(actor).length > 0;
+}
+
 function mergePrimaryOrganization(primaryOrganizationId, organizationIds = []) {
   const primaryId = dbString(primaryOrganizationId);
   const ids = normalizeOrganizationIds(organizationIds);
@@ -1982,19 +1991,20 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   `);
 
   let users = rows.map(sanitizeUser);
+  const actorIsClientPortal = isClientPortalActor(actor);
 
-  if (actorRole === ROLE_USER && !isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role)) {
+  if (actorRole === ROLE_USER && !actorIsClientPortal) {
     users = users.filter((user) => user.id === String(actor?.id));
   } else if (actorRole === ROLE_USER) {
-    const actorClientCompanyIds = new Set(
-      normalizeClientScopeIds(actor?.clientCompanyIds ?? actor?.client_company_ids_json),
-    );
+    const actorClientCompanyIds = new Set(getClientPortalCompanyIds(actor));
     users = users.filter((user) => (
       user.organizationIds.includes(activeOrganizationId)
       && (
         user.id === String(actor?.id)
-        || !isClientPortalProfileRole(user.profileRole)
-        || normalizeClientScopeIds(user.clientCompanyIds).some((companyId) => actorClientCompanyIds.has(companyId))
+        || (
+          isClientPortalActor(user)
+          && normalizeClientScopeIds(user.clientCompanyIds).some((companyId) => actorClientCompanyIds.has(companyId))
+        )
       )
     ));
   } else if (actorRole === ROLE_ADMIN) {
@@ -2063,7 +2073,7 @@ async function fetchCompanyAssignments(connection) {
 }
 
 function buildClientPortalScope(actor = {}, assignedCompanyIds = [], rawSnapshot = {}) {
-  const isClientPortal = isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role);
+  const isClientPortal = isClientPortalActor(actor);
   if (!isClientPortal) {
     return {
       isClientPortal: false,
@@ -2075,7 +2085,7 @@ function buildClientPortalScope(actor = {}, assignedCompanyIds = [], rawSnapshot
 
   const assignedCompanySet = new Set(assignedCompanyIds.map((companyId) => String(companyId)));
   const companyIds = new Set(
-    normalizeClientScopeIds(actor?.clientCompanyIds ?? actor?.client_company_ids_json)
+    getClientPortalCompanyIds(actor)
       .filter((companyId) => assignedCompanySet.has(companyId)),
   );
   const companyLocationIds = (rawSnapshot.locations ?? [])
@@ -2210,8 +2220,8 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     )),
   );
   const appPermissions = resolveAppPermissionsForActor(actor, appRolePermissions);
-  const hasAppPermission = (permissionKey = "") => Boolean(appPermissions[permissionKey]);
-  const actorIsClientPortal = isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role);
+  const actorIsClientPortal = isClientPortalActor(actor);
+  const hasAppPermission = (permissionKey = "") => !actorIsClientPortal && Boolean(appPermissions[permissionKey]);
   const canViewOffers = actorIsClientPortal
     || ["offers.view", "offers.create", "offers.edit"].some((permissionKey) => hasAppPermission(permissionKey));
   const canViewPublicProcurements = canViewOffers;
@@ -2311,9 +2321,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
   };
 
   return {
-    appRolePermissions: appRolePermissions.map((item) => ({ ...item })),
-    appPermissions: { ...appPermissions },
-    companyRolePermissions: companyRolePermissions.map((item) => ({ ...item })),
+    appRolePermissions: actorIsClientPortal ? [] : appRolePermissions.map((item) => ({ ...item })),
+    appPermissions: actorIsClientPortal ? {} : { ...appPermissions },
+    companyRolePermissions: actorIsClientPortal ? [] : companyRolePermissions.map((item) => ({ ...item })),
     companyGeneralPermissions: {
       canView: Boolean(companyGeneralPermissions.canView),
       canCreate: Boolean(companyGeneralPermissions.canCreate),
@@ -2400,6 +2410,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       hazards: (item.hazards ?? []).map((hazard) => ({ ...hazard })),
     })),
     jobAiSettings: (() => {
+      if (actorIsClientPortal) {
+        return { organizationId: String(organizationId), aiInstructions: {} };
+      }
       const entry = (rawSnapshot.jobAiSettings ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
       ));
@@ -2412,7 +2425,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         }
         : { organizationId: String(organizationId), aiInstructions: {} };
     })(),
-    riskPpeCatalog: (rawSnapshot.riskPpeCatalog ?? []).filter((item) => (
+    riskPpeCatalog: (actorIsClientPortal ? [] : (rawSnapshot.riskPpeCatalog ?? [])).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({ ...item })),
     riskAssessments: (rawSnapshot.riskAssessments ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
@@ -2433,6 +2446,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
     })),
     riskAssessmentReportTemplate: (() => {
+      if (actorIsClientPortal) {
+        return null;
+      }
       const settingsEntry = (rawSnapshot.riskAssessmentTemplateSettings ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
       ));
@@ -2462,7 +2478,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       })),
       viewport: { ...(item.viewport ?? {}) },
     })),
-    contractTemplates: (rawSnapshot.contractTemplates ?? []).filter((item) => (
+    contractTemplates: (actorIsClientPortal ? [] : (rawSnapshot.contractTemplates ?? [])).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
@@ -2552,6 +2568,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       measurementSpecs: (item.measurementSpecs ?? []).map((entry) => ({ ...entry })),
     })),
     measurementEquipmentCardTemplate: (() => {
+      if (actorIsClientPortal) {
+        return null;
+      }
       const templateEntry = (rawSnapshot.measurementEquipmentCardTemplates ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
       ));
@@ -2692,6 +2711,14 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       };
     })(),
     isznrApiSettings: (() => {
+      if (actorIsClientPortal) {
+        return {
+          baseUrl: "",
+          username: "",
+          hasPassword: false,
+          updatedAt: null,
+        };
+      }
       const settingsEntry = (rawSnapshot.isznrApiSettings ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
       ));
@@ -2712,6 +2739,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       };
     })(),
     appCapabilities: (() => {
+      if (actorIsClientPortal) {
+        return [];
+      }
       const settingsEntry = (rawSnapshot.appCapabilities ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
       ));
@@ -2734,7 +2764,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
       documents: (item.documents ?? []).map((document) => ({ ...document })),
     })),
-    absenceEntries: (rawSnapshot.absenceEntries ?? []).filter((item) => (
+    absenceEntries: (actorIsClientPortal ? [] : (rawSnapshot.absenceEntries ?? [])).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => {
       const ownsEntry = String(item.userId) === actorId || String(item.requestedByUserId || "") === actorId;
@@ -2746,11 +2776,11 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
           : [],
       };
     }),
-    absenceBalances: (rawSnapshot.absenceBalances ?? []).filter((item) => (
+    absenceBalances: (actorIsClientPortal ? [] : (rawSnapshot.absenceBalances ?? [])).filter((item) => (
       String(item.organizationId) === String(organizationId)
       && (canViewSensitiveAbsenceData || String(item.userId) === actorId)
     )).map((item) => ({ ...item })),
-    dashboardWidgets: (rawSnapshot.dashboardWidgets ?? []).filter((item) => (
+    dashboardWidgets: (actorIsClientPortal ? [] : (rawSnapshot.dashboardWidgets ?? [])).filter((item) => (
       String(item.organizationId) === String(organizationId)
       && String(item.userId) === String(actor?.id ?? "")
     )).map((item) => ({
@@ -3476,8 +3506,8 @@ export class MemoryTenantRepository {
       })),
       actor,
     );
-    const actorClientCompanyIds = new Set(normalizeClientScopeIds(actor?.clientCompanyIds ?? actor?.client_company_ids_json));
-    const isActorClientPortal = isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role);
+    const actorClientCompanyIds = new Set(getClientPortalCompanyIds(actor));
+    const isActorClientPortal = isClientPortalActor(actor);
     const visibleUsers = normalizeRole(actor?.role) === ROLE_SUPER_ADMIN
       ? this.users.filter((item) => item.role === ROLE_SUPER_ADMIN || item.organizationIds.includes(String(activeOrganizationId)))
       : this.users.filter((item) => (
@@ -3487,8 +3517,10 @@ export class MemoryTenantRepository {
         && (
           !isActorClientPortal
           || item.id === String(actor?.id)
-          || !isClientPortalProfileRole(item.profileRole)
-          || normalizeClientScopeIds(item.clientCompanyIds).some((companyId) => actorClientCompanyIds.has(companyId))
+          || (
+            isClientPortalActor(item)
+            && normalizeClientScopeIds(item.clientCompanyIds).some((companyId) => actorClientCompanyIds.has(companyId))
+          )
         )
       ));
 
@@ -4320,7 +4352,8 @@ export class MySqlTenantRepository {
       const [rows] = await connection.query(
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
-                 u.report_email_enabled, u.report_email_time, u.report_email_last_sent_on, u.avatar_data_url,
+                 u.report_email_enabled, u.report_email_time, u.report_email_last_sent_on,
+                 u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,

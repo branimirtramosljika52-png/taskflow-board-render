@@ -14,7 +14,29 @@ data class SafeNexusUser(
 )
 
 val SafeNexusUser.isClientPortalUser: Boolean
-    get() = profileRole.equals("client_user", ignoreCase = true)
+    get() = profileRole.equals("client_user", ignoreCase = true) || clientCompanyIds.isNotEmpty()
+
+data class ClientHomeSummary(
+    val title: String = "",
+    val subtitle: String = "",
+    val companiesTotal: Int = 0,
+    val locationsTotal: Int = 0,
+    val workOrdersTotal: Int = 0,
+    val activeWorkOrders: Int = 0,
+    val documentsTotal: Int = 0,
+    val trainingsTotal: Int = 0,
+    val riskAssessmentsTotal: Int = 0,
+    val latestWorkOrders: List<WorkOrder> = emptyList(),
+) {
+    val hasData: Boolean
+        get() = title.isNotBlank() ||
+            companiesTotal > 0 ||
+            locationsTotal > 0 ||
+            workOrdersTotal > 0 ||
+            documentsTotal > 0 ||
+            trainingsTotal > 0 ||
+            riskAssessmentsTotal > 0
+}
 
 data class BootstrapData(
     val workOrders: List<WorkOrder> = emptyList(),
@@ -42,6 +64,7 @@ data class BootstrapData(
     val todoTasks: List<MobileRecord> = emptyList(),
     val calendarEvents: List<MobileRecord> = emptyList(),
     val dashboard: DashboardStats = DashboardStats(),
+    val clientHome: ClientHomeSummary = ClientHomeSummary(),
 )
 
 data class PagedMobileRecords(

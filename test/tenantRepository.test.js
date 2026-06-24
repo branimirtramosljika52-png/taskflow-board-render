@@ -423,6 +423,26 @@ test("memory tenant repository scopes client portal users to assigned company lo
     clientLocationIds: ["location-1"],
     clientAccessAllLocations: false,
   });
+  const sameCompanyClient = await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Ivan",
+    lastName: "Klijent",
+    email: "ivan-client@example.com",
+    password: "Secret123",
+    role: "user",
+    profileRole: "client_user",
+    clientCompanyIds: ["company-1"],
+    clientAccessAllLocations: true,
+  });
+  await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Interni",
+    lastName: "Korisnik",
+    email: "internal-user@example.com",
+    password: "Secret123",
+    role: "user",
+    profileRole: "senior_user",
+  });
 
   const scoped = await repository.getSnapshot(client, organization.id, {
     companies: [
@@ -483,7 +503,62 @@ test("memory tenant repository scopes client portal users to assigned company lo
   assert.deepEqual(scoped.workOrders.map((item) => item.id), ["wo-1"]);
   assert.deepEqual(scoped.offers.map((item) => item.id), ["offer-1"]);
   assert.deepEqual(scoped.rulebooks.map((item) => item.id), ["rulebook-1"]);
+  assert.deepEqual(scoped.users.map((item) => item.id).sort(), [client.id, sameCompanyClient.id].sort());
+  assert.deepEqual(scoped.serviceCatalog, []);
+  assert.deepEqual(scoped.vehicles, []);
+  assert.deepEqual(scoped.measurementEquipment, []);
+  assert.deepEqual(scoped.legalFrameworks, []);
   assert.equal(scoped.rulebooks[0].documents[0].fileName, "pravilnik-znr.pdf");
+});
+
+test("memory tenant repository treats users with client company scope as client portal users", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, { name: "Implicit Portal Org" });
+  await repository.assignCompanyToOrganization(organization.id, "company-1");
+  await repository.assignCompanyToOrganization(organization.id, "company-2");
+
+  const client = await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Brane",
+    lastName: "Client",
+    email: "brane-client@example.com",
+    password: "Secret123",
+    role: "user",
+    profileRole: "new_user",
+    clientCompanyIds: ["company-1"],
+    clientAccessAllLocations: true,
+  });
+
+  const scoped = await repository.getSnapshot(client, organization.id, {
+    companies: [
+      { id: "company-1", name: "Alpha" },
+      { id: "company-2", name: "Beta" },
+    ],
+    locations: [
+      { id: "location-1", companyId: "company-1", name: "Zagreb" },
+      { id: "location-2", companyId: "company-2", name: "Rijeka" },
+    ],
+    workOrders: [
+      { id: "wo-1", companyId: "company-1", locationId: "location-1" },
+      { id: "wo-2", companyId: "company-2", locationId: "location-2" },
+    ],
+    vehicles: [
+      { id: "vehicle-1", organizationId: organization.id, registration: "ZG1234AA" },
+    ],
+    serviceCatalog: [
+      { id: "service-1", organizationId: organization.id, name: "Interna usluga" },
+    ],
+  });
+
+  assert.deepEqual(scoped.companies.map((item) => item.id), ["company-1"]);
+  assert.deepEqual(scoped.locations.map((item) => item.id), ["location-1"]);
+  assert.deepEqual(scoped.workOrders.map((item) => item.id), ["wo-1"]);
+  assert.deepEqual(scoped.users.map((item) => item.id), [client.id]);
+  assert.deepEqual(scoped.vehicles, []);
+  assert.deepEqual(scoped.serviceCatalog, []);
 });
 
 test("memory tenant repository lets admins create users only inside their organization", async () => {
