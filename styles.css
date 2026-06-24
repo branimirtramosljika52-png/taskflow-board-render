@@ -80094,6 +80094,345 @@ body.is-signature-review-open::before {
   }
 }
 
+/* RN operations polish - quick create, list emphasis, map, calendar */
+.work-order-quick-filters {
+  display: none !important;
+}
+
+.work-order-premium-summary {
+  gap: 12px;
+}
+
+.work-order-metric-card {
+  position: relative;
+  border: 1px solid rgba(204, 216, 236, 0.98);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.98));
+  box-shadow:
+    0 16px 34px rgba(23, 37, 68, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.work-order-metric-card:hover,
+.work-order-metric-card.is-active {
+  border-color: rgba(93, 74, 255, 0.38);
+  box-shadow:
+    0 20px 42px rgba(54, 68, 119, 0.13),
+    0 0 0 2px rgba(93, 74, 255, 0.08);
+}
+
+.work-order-quick-create-slot[hidden] {
+  display: none;
+}
+
+.work-order-quick-create-slot {
+  margin: 0 0 12px;
+}
+
+.work-order-quick-create-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(202, 216, 238, 0.98);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.98) 42%),
+    radial-gradient(circle at 0% 0%, rgba(20, 184, 166, 0.13), transparent 32%);
+  box-shadow: 0 18px 42px rgba(20, 36, 70, 0.08);
+}
+
+.work-order-quick-create-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.work-order-quick-create-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.work-order-quick-create-head strong {
+  color: #11194a;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.work-order-quick-create-hint {
+  color: #60708c;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.work-order-quick-create-form {
+  display: grid;
+  grid-template-columns:
+    minmax(118px, 0.72fr)
+    minmax(190px, 1.08fr)
+    minmax(190px, 1.05fr)
+    minmax(190px, 1.05fr)
+    minmax(126px, 0.74fr)
+    minmax(164px, 0.94fr)
+    minmax(184px, 1.08fr)
+    minmax(160px, 0.92fr)
+    minmax(180px, 1.02fr)
+    minmax(138px, 0.76fr)
+    auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.work-order-quick-create-form .work-order-quick-cell {
+  gap: 5px;
+}
+
+.work-order-quick-create-form .work-order-quick-cell label {
+  color: #53627f;
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+}
+
+.work-order-quick-create-form .work-order-tag-picker-field {
+  min-height: 34px;
+  border-color: rgba(190, 207, 231, 0.95);
+  background: #ffffff;
+}
+
+.work-order-quick-create-actions {
+  display: grid;
+  gap: 5px;
+  align-self: end;
+}
+
+.work-order-quick-create-submit {
+  min-height: 36px;
+  padding-inline: 14px;
+  border-radius: 11px;
+  white-space: nowrap;
+}
+
+.work-orders-scroll-shell {
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.work-group-body {
+  gap: 8px;
+  padding: 10px;
+  background: linear-gradient(180deg, #f8fafc, #ffffff);
+}
+
+.work-item-card,
+.work-item-card:first-child {
+  overflow: hidden;
+  border: 1px solid rgba(210, 222, 242, 0.98);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow:
+    0 10px 24px rgba(31, 45, 78, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.work-item-card::after {
+  left: 14px;
+  width: 9px;
+  height: 9px;
+  background: #6255ff;
+  box-shadow: 0 0 0 4px rgba(98, 85, 255, 0.11);
+}
+
+.work-item-card:hover,
+.work-item-card:focus-within {
+  border-color: rgba(98, 85, 255, 0.46);
+  box-shadow:
+    0 16px 34px rgba(31, 45, 78, 0.105),
+    0 0 0 2px rgba(98, 85, 255, 0.055);
+}
+
+.work-item-row {
+  padding: 14px 16px;
+  background:
+    linear-gradient(90deg, rgba(98, 85, 255, 0.055), rgba(255, 255, 255, 0.98) 34%);
+}
+
+.work-item-card:hover .work-item-row,
+.work-item-card.is-expanded .work-item-row {
+  background:
+    linear-gradient(90deg, rgba(98, 85, 255, 0.09), rgba(241, 248, 255, 0.95) 36%, #ffffff);
+}
+
+.work-executor-score-card {
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(220, 228, 244, 0.96);
+  border-radius: 11px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.work-executor-score-total {
+  min-width: 44px;
+  height: auto;
+  min-height: 28px;
+  align-content: center;
+  gap: 1px;
+  padding: 3px 7px;
+  background: #eef6ff;
+  border-color: rgba(147, 197, 253, 0.55);
+}
+
+.work-executor-score-total span {
+  color: #47617f;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.work-executor-score-list {
+  gap: 3px;
+}
+
+.work-executor-score-row {
+  padding: 6px 0 7px;
+}
+
+.work-executor-score-value {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+}
+
+.work-executor-score-value strong {
+  color: #0f3f8f;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.work-executor-score-value span {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 850;
+}
+
+.work-order-map-canvas-card {
+  gap: 10px;
+  padding: 10px;
+  min-height: min(760px, calc(100dvh - 182px));
+}
+
+.work-order-map-stage {
+  height: min(720px, calc(100dvh - 258px));
+  min-height: 620px;
+  border-radius: 18px;
+}
+
+.work-order-map-popup-shell .leaflet-popup-content {
+  width: min(370px, calc(100vw - 42px)) !important;
+}
+
+.work-order-map-popup-card {
+  gap: 13px;
+  padding: 16px;
+}
+
+.work-order-map-popup-details {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.work-order-map-popup-detail {
+  border-radius: 12px;
+}
+
+.work-order-map-popup-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.work-order-map-popup-executors-control {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.work-order-calendar-content {
+  grid-template-columns: minmax(0, 1fr) minmax(236px, 270px);
+}
+
+.work-order-calendar-sidepanels {
+  gap: 10px;
+}
+
+.work-order-calendar-next-week {
+  background: linear-gradient(180deg, #ffffff, #f2fbf8);
+  border-color: rgba(20, 184, 166, 0.2);
+}
+
+.work-order-calendar-card-open {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(179, 194, 220, 0.8);
+  border-radius: 9px;
+  background: #ffffff;
+  color: #1d4ed8;
+  box-shadow: 0 8px 16px rgba(31, 45, 78, 0.08);
+  cursor: pointer;
+}
+
+.work-order-calendar-card-open svg {
+  width: 15px;
+  height: 15px;
+}
+
+.work-order-calendar-card-open:hover,
+.work-order-calendar-card-open:focus-visible {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: #eff6ff;
+}
+
+@media (max-width: 1440px) {
+  .work-order-quick-create-form {
+    grid-template-columns: repeat(5, minmax(150px, 1fr)) auto;
+  }
+
+  .work-order-quick-create-actions {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 980px) {
+  .work-order-quick-create-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .work-order-quick-create-actions {
+    grid-column: 1 / -1;
+  }
+
+  .work-order-calendar-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-order-calendar-sidepanels {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .work-order-quick-create-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-order-map-stage {
+    min-height: 460px;
+    height: 62vh;
+  }
+}
+
 .public-procurement-layout {
   display: block;
 }

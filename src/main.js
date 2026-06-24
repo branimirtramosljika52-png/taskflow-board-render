@@ -5713,6 +5713,7 @@ const workOrderFilterBuilder = document.querySelector("#work-order-filter-builde
 const workOrderFilterShell = document.querySelector(".work-order-filter-shell");
 const workOrderFilterResetButton = document.querySelector("#work-order-filter-reset");
 const workOrderQuickFilters = document.querySelector("#work-order-quick-filters");
+const workOrderQuickCreateSlot = document.querySelector("#work-order-quick-create-slot");
 const workOrderColumnsToggle = document.querySelector("#work-order-columns-toggle");
 const workOrderColumnsPanel = document.querySelector("#work-order-columns-panel");
 const workOrderColumnsClose = document.querySelector("#work-order-columns-close");
@@ -5854,6 +5855,7 @@ const workOrderCalendarGrid = document.querySelector("#work-order-calendar-grid"
 const workOrderCalendarSidepanels = document.querySelector("#work-order-calendar-sidepanels");
 const workOrderCalendarUnscheduled = document.querySelector("#work-order-calendar-unscheduled");
 const workOrderCalendarUnassigned = document.querySelector("#work-order-calendar-unassigned");
+const workOrderCalendarNextWeek = document.querySelector("#work-order-calendar-next-week");
 const workOrderCalendarWeekendsInput = document.querySelector("#work-order-calendar-weekends");
 const workOrderCalendarUnscheduledToggle = document.querySelector("#work-order-calendar-unscheduled-toggle");
 const workOrderCalendarDisplayWeekButton = document.querySelector("#work-order-calendar-display-week");
@@ -109115,6 +109117,10 @@ function renderWorkOrderQuickFilters() {
     return;
   }
 
+  workOrderQuickFilters.hidden = true;
+  workOrderQuickFilters.replaceChildren();
+  return;
+
   const controls = WORK_ORDER_QUICK_FILTERS.map((filter) => {
     const label = document.createElement("label");
     label.className = "work-order-quick-filter";
@@ -110810,17 +110816,77 @@ async function applyWorkOrderCalendarDropPayload(dragPayload, targetDate, laneTa
   await applyWorkOrderCalendarDrop(dragPayload.ids[0], targetDate, laneTarget);
 }
 
+function getWorkOrderNextWeekJobs(items = [], anchorDate = state.workOrderCalendar.weekStart) {
+  const weekStart = getPeriodicsCalendarWeekStart(anchorDate || getTodayDateKey());
+  const nextWeekStart = shiftDateKey(weekStart, 7);
+  const nextWeekEnd = shiftDateKey(nextWeekStart, 6);
+  const jobs = (Array.isArray(items) ? items : [])
+    .filter((item) => {
+      const executionDate = getWorkOrderDateKey(item?.executionDate);
+      return executionDate && executionDate >= nextWeekStart && executionDate <= nextWeekEnd;
+    })
+    .sort((left, right) => (
+      String(getWorkOrderDateKey(left.executionDate)).localeCompare(String(getWorkOrderDateKey(right.executionDate)))
+      || String(left.workOrderNumber || "").localeCompare(String(right.workOrderNumber || ""), "hr", { numeric: true })
+    ));
+
+  return {
+    start: nextWeekStart,
+    end: nextWeekEnd,
+    jobs,
+  };
+}
+
+function createWorkOrderCalendarNextWeekCard(workOrder = {}) {
+  const card = createWorkOrderCalendarSchedulerCard(workOrder);
+  card.classList.add("is-next-week-job");
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "work-order-calendar-card-open";
+  openButton.dataset.preventRowOpen = "true";
+  openButton.title = "Otvori RN";
+  openButton.setAttribute("aria-label", `Otvori RN ${workOrder.workOrderNumber || ""}`.trim());
+  openButton.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.25h6.75V10M12.75 3.25 7 9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35"/><path d="M10.5 7.75v4a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35"/></svg>';
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    openButton.addEventListener(eventName, (event) => event.stopPropagation());
+  });
+  openButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    hydrateWorkOrderForm(workOrder);
+  });
+
+  const top = card.querySelector(".work-order-calendar-card-top");
+  if (top) {
+    top.append(openButton);
+  } else {
+    card.append(openButton);
+  }
+
+  return card;
+}
+
 function renderWorkOrderCalendarSidePanels({
   unscheduled = [],
   unassigned = [],
+  nextWeekJobs = [],
+  nextWeekRange = null,
   unscheduledMessage = "Povuci karticu na dan kako bi se upisao datum izvršenja.",
   unassignedMessage = "Dodijeli izvršitelje pa će se RN pojaviti u rasporedu.",
 } = {}) {
   const hasUnscheduled = unscheduled.length > 0;
   const hasUnassigned = unassigned.length > 0;
+  const hasNextWeekJobs = nextWeekJobs.length > 0;
 
   if (workOrderCalendarSidepanels) {
-    workOrderCalendarSidepanels.hidden = !state.workOrderCalendar.showUnscheduled || (!hasUnscheduled && !hasUnassigned);
+    workOrderCalendarSidepanels.hidden = !state.workOrderCalendar.showUnscheduled || (!hasUnscheduled && !hasUnassigned && !hasNextWeekJobs);
+  }
+
+  if (workOrderCalendarContent) {
+    workOrderCalendarContent.classList.toggle(
+      "is-unscheduled-hidden",
+      !state.workOrderCalendar.showUnscheduled || (!hasUnscheduled && !hasUnassigned && !hasNextWeekJobs),
+    );
   }
 
   if (workOrderCalendarUnscheduled) {
@@ -110870,6 +110936,33 @@ function renderWorkOrderCalendarSidePanels({
       });
 
       workOrderCalendarUnassigned.append(head, list);
+    }
+  }
+
+  if (workOrderCalendarNextWeek) {
+    workOrderCalendarNextWeek.hidden = !hasNextWeekJobs || !state.workOrderCalendar.showUnscheduled;
+    workOrderCalendarNextWeek.replaceChildren();
+
+    if (hasNextWeekJobs && state.workOrderCalendar.showUnscheduled) {
+      const head = document.createElement("div");
+      head.className = "work-order-calendar-unscheduled-head";
+
+      const label = document.createElement("strong");
+      label.textContent = "Next week jobs";
+
+      const meta = document.createElement("span");
+      meta.textContent = nextWeekRange?.start && nextWeekRange?.end
+        ? `${formatCompactDate(nextWeekRange.start)} - ${formatCompactDate(nextWeekRange.end)} · povuci na dan ili otvori RN`
+        : "Povuci karticu na dan ili otvori RN.";
+      head.append(label, meta);
+
+      const list = document.createElement("div");
+      list.className = "work-order-calendar-unscheduled-list";
+      nextWeekJobs.forEach((workOrder) => {
+        list.append(createWorkOrderCalendarNextWeekCard(workOrder));
+      });
+
+      workOrderCalendarNextWeek.append(head, list);
     }
   }
 }
@@ -111104,10 +111197,16 @@ function renderWorkOrderCalendarWeekMode(filtered) {
     ].filter(Boolean).join(" · ");
   }
 
-  syncWorkOrderCalendarToolbar(calendar.unscheduled.length);
+  const nextWeekData = getWorkOrderNextWeekJobs(filtered, firstVisibleDay);
+  syncWorkOrderCalendarToolbar(
+    calendar.unscheduled.length,
+    calendar.unscheduled.length + calendar.unassigned.length + nextWeekData.jobs.length,
+  );
   renderWorkOrderCalendarSidePanels({
     unscheduled: calendar.unscheduled,
     unassigned: calendar.unassigned,
+    nextWeekJobs: nextWeekData.jobs,
+    nextWeekRange: nextWeekData,
   });
 
   const fragment = document.createDocumentFragment();
@@ -111184,10 +111283,16 @@ function renderWorkOrderCalendarMonthMode(filtered) {
     ].filter(Boolean).join(" · ");
   }
 
-  syncWorkOrderCalendarToolbar(calendar.unscheduled.length);
+  const nextWeekData = getWorkOrderNextWeekJobs(filtered, state.workOrderCalendar.weekStart);
+  syncWorkOrderCalendarToolbar(
+    calendar.unscheduled.length,
+    calendar.unscheduled.length + nextWeekData.jobs.length,
+  );
   renderWorkOrderCalendarSidePanels({
     unscheduled: calendar.unscheduled,
     unassigned: [],
+    nextWeekJobs: nextWeekData.jobs,
+    nextWeekRange: nextWeekData,
   });
 
   const fragment = document.createDocumentFragment();
@@ -111307,9 +111412,7 @@ function buildWorkOrderLeafletPopup(marker) {
   const dueLabel = workOrder.dueDate || marker.dueDate
     ? formatCompactDate(workOrder.dueDate || marker.dueDate)
     : "Bez roka";
-  const coordinatesLabel = workOrder.coordinates
-    || marker.coordinates
-    || `${marker.latitude.toFixed(4)}, ${marker.longitude.toFixed(4)}`;
+  const serviceLabel = getWorkOrderServiceSummary(workOrder) || workOrder.serviceLine || marker.serviceLine || "Bez usluge";
 
   const top = document.createElement("div");
   top.className = "work-order-map-popup-top";
@@ -111340,7 +111443,7 @@ function buildWorkOrderLeafletPopup(marker) {
   openMapsLink.href = `https://www.google.com/maps?q=${marker.latitude},${marker.longitude}`;
   openMapsLink.target = "_blank";
   openMapsLink.rel = "noreferrer";
-  openMapsLink.title = "Otvori u karti";
+  openMapsLink.title = "Navigacija";
   openMapsLink.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 13.25V4.1a.6.6 0 0 1 .42-.57l2.96-.98a.6.6 0 0 1 .38 0l2.48.82a.6.6 0 0 0 .38 0l2.45-.82a.6.6 0 0 1 .79.57v9.13a.6.6 0 0 1-.42.57l-2.96.98a.6.6 0 0 1-.38 0l-2.48-.82a.6.6 0 0 0-.38 0l-2.45.82a.6.6 0 0 1-.79-.57Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/><circle cx="10.95" cy="6.15" r="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
   openMapsLink.addEventListener("click", (event) => event.stopPropagation());
 
@@ -111356,7 +111459,7 @@ function buildWorkOrderLeafletPopup(marker) {
   details.append(
     createWorkOrderMapPopupDetail("Lokacija", locationLabel, true),
     createWorkOrderMapPopupDetail("Rok", dueLabel),
-    createWorkOrderMapPopupDetail("Koordinate", coordinatesLabel),
+    createWorkOrderMapPopupDetail("Usluga", serviceLabel),
   );
 
   const meta = document.createElement("div");
@@ -111591,11 +111694,11 @@ function syncWorkOrderLeafletMarkers(markers) {
     });
 
     leafletMarker.bindPopup(buildWorkOrderLeafletPopup(marker), {
-      autoPan: false,
+      autoPan: true,
       closeButton: false,
       className: "work-order-map-popup-shell",
-      minWidth: 300,
-      maxWidth: 360,
+      minWidth: 320,
+      maxWidth: 390,
       offset: [0, -20],
     });
     leafletMarker.on("click", () => {
@@ -111617,12 +111720,12 @@ function syncWorkOrderLeafletMarkers(markers) {
   });
 
   if (markers.length === 1 && shouldReframe) {
-    map.setView([markers[0].latitude, markers[0].longitude], 14, { animate: false });
+    map.setView([markers[0].latitude, markers[0].longitude], 11, { animate: false });
   } else if (markers.length > 1 && shouldReframe) {
     const bounds = window.L.latLngBounds(markers.map((marker) => [marker.latitude, marker.longitude]));
-    map.fitBounds(bounds.pad(0.2), {
+    map.fitBounds(bounds.pad(0.12), {
       animate: false,
-      maxZoom: 12,
+      maxZoom: 10,
     });
   } else if (markers.length === 0) {
     map.setView([45.3, 15.7], 7, { animate: false });
@@ -112223,7 +112326,7 @@ function bindWorkOrderCalendarGrabScroll() {
   }, { passive: false, capture: true });
 }
 
-function syncWorkOrderCalendarToolbar(unscheduledCount = 0) {
+function syncWorkOrderCalendarToolbar(unscheduledCount = 0, sidePanelCount = unscheduledCount) {
   if (workOrderCalendarPrevButton) {
     workOrderCalendarPrevButton.setAttribute(
       "aria-label",
@@ -112256,10 +112359,11 @@ function syncWorkOrderCalendarToolbar(unscheduledCount = 0) {
   }
 
   if (workOrderCalendarUnscheduledToggle) {
-    const visible = state.workOrderCalendar.showUnscheduled && unscheduledCount > 0;
+    const hasSidePanelItems = sidePanelCount > 0;
+    const visible = state.workOrderCalendar.showUnscheduled && hasSidePanelItems;
     workOrderCalendarUnscheduledToggle.classList.toggle("is-active", visible);
     workOrderCalendarUnscheduledToggle.setAttribute("aria-pressed", visible ? "true" : "false");
-    workOrderCalendarUnscheduledToggle.disabled = unscheduledCount === 0;
+    workOrderCalendarUnscheduledToggle.disabled = !hasSidePanelItems;
     workOrderCalendarUnscheduledToggle.textContent = unscheduledCount > 0
       ? `Bez datuma (${unscheduledCount})`
       : "Bez datuma";
@@ -112268,7 +112372,7 @@ function syncWorkOrderCalendarToolbar(unscheduledCount = 0) {
   if (workOrderCalendarContent) {
     workOrderCalendarContent.classList.toggle(
       "is-unscheduled-hidden",
-      !state.workOrderCalendar.showUnscheduled || unscheduledCount === 0,
+      !state.workOrderCalendar.showUnscheduled || sidePanelCount === 0,
     );
   }
 }
@@ -113813,6 +113917,7 @@ function renderWorkOrderWorkspace() {
   refreshWorkOrderTeamSuggestions();
   renderWorkOrderTemplateStrip();
   renderWorkOrderQuickFilters();
+  renderWorkOrderQuickCreateSlot();
   renderWorkOrderFilterSummary();
   renderWorkOrderColumnPanel();
   renderWorkOrderPremiumSummary(state.workOrders ?? []);
@@ -124961,8 +125066,16 @@ function getWorkOrderQuickLocationOptions(companyId = "") {
 }
 
 function getWorkOrderQuickLocationContact(locationId = "") {
+  return findWorkOrderQuickLocationContact(locationId);
+}
+
+function findWorkOrderQuickLocationContact(locationId = "", preferredSlot = "") {
   const location = getLocation(locationId);
-  const contact = buildLocationContacts(location)[0] ?? null;
+  const contacts = buildLocationContacts(location);
+  const normalizedSlot = String(preferredSlot || "").trim();
+  const contact = (normalizedSlot
+    ? contacts.find((entry) => String(entry.slot || "") === normalizedSlot)
+    : null) || contacts[0] || null;
   if (!contact) {
     return {
       slot: "",
@@ -124980,10 +125093,40 @@ function getWorkOrderQuickLocationContact(locationId = "") {
   };
 }
 
+function getWorkOrderQuickLocationContactOptions(locationId = "") {
+  const contacts = buildLocationContacts(getLocation(locationId));
+  return [
+    {
+      value: "",
+      label: contacts.length ? "Odaberi kontakt" : "Nema kontakata na lokaciji",
+    },
+    ...contacts.map((contact) => ({
+      value: String(contact.slot || ""),
+      label: [
+        contact.name || "Kontakt",
+        contact.phone || "",
+        contact.email || "",
+      ].filter(Boolean).join(" · "),
+    })),
+  ];
+}
+
+function setWorkOrderQuickRegionSelectValue(select, value = "") {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const normalizedValue = String(value || "").trim();
+  if (normalizedValue && !Array.from(select.options).some((option) => option.value === normalizedValue)) {
+    select.append(createOption(normalizedValue, normalizedValue));
+  }
+  select.value = normalizedValue;
+}
+
 function buildQuickWorkOrderPayload(form) {
   const formData = new FormData(form);
   const location = getLocation(formData.get("locationId"));
-  const contact = getWorkOrderQuickLocationContact(formData.get("locationId"));
+  const contact = findWorkOrderQuickLocationContact(formData.get("locationId"), formData.get("contactSlot"));
   const serviceItems = getWorkOrderServiceItems({
     serviceItems: readWorkOrderQuickJsonValue(formData, "serviceItemsJson", []),
   });
@@ -124991,7 +125134,8 @@ function buildQuickWorkOrderPayload(form) {
     readWorkOrderQuickJsonValue(formData, "executorsJson", []),
   );
   const serviceLine = getWorkOrderServiceSummary({ serviceItems });
-  const contactName = String(formData.get("contactName") || "").trim() || contact.name;
+  const region = String(formData.get("region") || "").trim() || location?.region || "";
+  const tagText = formatWorkOrderTagText(formData.get("tagText") || "");
 
   return {
     status: String(formData.get("status") || "Otvoreni RN"),
@@ -125002,9 +125146,9 @@ function buildQuickWorkOrderPayload(form) {
     companyId: String(formData.get("companyId") || ""),
     locationId: String(formData.get("locationId") || ""),
     coordinates: location?.coordinates || "",
-    region: location?.region || "",
+    region,
     contactSlot: contact.slot,
-    contactName,
+    contactName: contact.name,
     contactPhone: contact.phone,
     contactEmail: contact.email,
     executors,
@@ -125019,10 +125163,183 @@ function buildQuickWorkOrderPayload(form) {
     weight: "",
     completedBy: "",
     invoiceDate: "",
-    tagText: "",
+    tagText,
     description: serviceLine,
     invoiceNote: "",
   };
+}
+
+function createWorkOrderQuickCreatePanel() {
+  if (!getCanEditOperationalData() || !getCanCreateWorkOrders()) {
+    return null;
+  }
+
+  const card = document.createElement("section");
+  card.className = "work-order-quick-create-panel";
+
+  const head = document.createElement("div");
+  head.className = "work-order-quick-create-head";
+  const headCopy = document.createElement("div");
+  const kicker = document.createElement("span");
+  kicker.className = "section-kicker";
+  kicker.textContent = "Brzo otvaranje";
+  const title = document.createElement("strong");
+  title.textContent = "Novi radni nalog";
+  headCopy.append(kicker, title);
+  const hint = document.createElement("span");
+  hint.className = "work-order-quick-create-hint";
+  hint.textContent = "Tvrtka, lokacija, kontakt, usluge i ekipa u jednom potezu.";
+  head.append(headCopy, hint);
+
+  const form = document.createElement("form");
+  form.className = "work-order-quick-create-form";
+  form.dataset.preventRowOpen = "true";
+
+  const error = document.createElement("p");
+  error.className = "work-order-quick-error";
+  error.hidden = true;
+
+  const statusSelect = createWorkOrderQuickSelect("status", WORK_ORDER_STATUS_OPTIONS, "Otvoreni RN");
+  const companySelect = createWorkOrderQuickSelect("companyId", getWorkOrderQuickCompanyOptions());
+  companySelect.setAttribute("aria-required", "true");
+  const locationSelect = createWorkOrderQuickSelect("locationId", getWorkOrderQuickLocationOptions(""));
+  locationSelect.disabled = true;
+  const contactSelect = createWorkOrderQuickSelect("contactSlot", getWorkOrderQuickLocationContactOptions(""));
+  contactSelect.disabled = true;
+  const prioritySelect = createWorkOrderQuickSelect("priority", PRIORITY_OPTIONS, "Normal");
+  const regionSelect = createWorkOrderQuickSelect("region", [
+    { value: "", label: "Regija iz lokacije" },
+    ...WORK_ORDER_REGION_OPTIONS.map((region) => ({ value: region, label: region })),
+  ]);
+  const dueDateInput = createWorkOrderQuickDateInput("dueDate", "dd.mm.yyyy");
+  const servicePicker = createWorkOrderQuickServicePicker();
+  const executorPicker = createWorkOrderQuickExecutorPicker();
+  const tagHidden = document.createElement("input");
+  tagHidden.type = "hidden";
+  tagHidden.name = "tagText";
+  const tagPicker = createWorkOrderTagPickerControl({
+    value: "",
+    placeholder: "Tagovi",
+    className: "work-order-quick-tag-picker",
+    ariaLabel: "Odaberi tagove za novi RN",
+    onChange: (tags) => {
+      tagHidden.value = formatWorkOrderTagText(tags);
+    },
+  });
+
+  const syncLocationDependentControls = () => {
+    const locationId = locationSelect.value;
+    const location = getLocation(locationId);
+    replaceSelectOptions(contactSelect, getWorkOrderQuickLocationContactOptions(locationId), "");
+    contactSelect.disabled = !locationId || buildLocationContacts(location).length === 0;
+    const firstContact = buildLocationContacts(location)[0];
+    if (firstContact) {
+      contactSelect.value = String(firstContact.slot || "");
+    }
+    setWorkOrderQuickRegionSelectValue(regionSelect, location?.region || "");
+  };
+
+  companySelect.addEventListener("change", () => {
+    replaceSelectOptions(locationSelect, getWorkOrderQuickLocationOptions(companySelect.value), "");
+    locationSelect.disabled = !companySelect.value;
+    syncLocationDependentControls();
+  });
+
+  locationSelect.addEventListener("change", () => {
+    syncLocationDependentControls();
+  });
+
+  form.append(
+    createWorkOrderQuickControl("Status", statusSelect),
+    createWorkOrderQuickControl("Tvrtka", companySelect),
+    createWorkOrderQuickControl("Lokacija", locationSelect),
+    createWorkOrderQuickControl("Kontakt", contactSelect),
+    createWorkOrderQuickControl("Prioritet", prioritySelect),
+    createWorkOrderQuickControl("Regija", regionSelect),
+    createWorkOrderQuickControl("Usluge", servicePicker),
+    createWorkOrderQuickControl("Tagovi", tagPicker),
+    createWorkOrderQuickControl("Izvršitelji", executorPicker),
+    createWorkOrderQuickControl("Rok", dueDateInput),
+    tagHidden,
+  );
+
+  const actions = document.createElement("div");
+  actions.className = "work-order-quick-create-actions";
+  const submitButton = document.createElement("button");
+  submitButton.type = "submit";
+  submitButton.className = "primary-button work-order-quick-create-submit";
+  submitButton.textContent = "Otvori RN";
+  actions.append(error, submitButton);
+  form.append(actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    error.hidden = true;
+    error.textContent = "";
+
+    const payload = buildQuickWorkOrderPayload(form);
+    const blockMessage = getWorkOrderRequiredBlockMessage(payload);
+    if (blockMessage) {
+      error.textContent = blockMessage;
+      error.hidden = false;
+      const focusTarget = !payload.companyId
+        ? companySelect
+        : !payload.locationId
+          ? locationSelect
+          : !payload.dueDate
+            ? form.querySelector('input[name="dueDate"]')
+            : null;
+      focusTarget?.focus?.();
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = "Spremam...";
+    const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+    let createdFromResponse = null;
+    const success = await runMutation(() => apiRequest("/work-orders", {
+      method: "POST",
+      body: payload,
+    }), error, {
+      onSuccessPayload: (response) => {
+        createdFromResponse = applyCreatedWorkOrderResponse(response, payload);
+      },
+    });
+
+    if (success) {
+      const created = createdFromResponse || findCreatedWorkOrderMatch(previousIds, payload);
+      if (created?.id) {
+        renderWorkOrderWorkspace();
+        queueGeneratedWorkOrderPdfSave(created.id);
+      }
+      window.setTimeout(() => {
+        const nextCompanySelect = workOrderQuickCreateSlot?.querySelector('select[name="companyId"]');
+        if (nextCompanySelect instanceof HTMLSelectElement) {
+          nextCompanySelect.focus({ preventScroll: true });
+        }
+      }, 0);
+      return;
+    }
+
+    submitButton.disabled = false;
+    submitButton.textContent = "Otvori RN";
+    if (error.textContent) {
+      error.hidden = false;
+    }
+  });
+
+  card.append(head, form);
+  return card;
+}
+
+function renderWorkOrderQuickCreateSlot() {
+  if (!workOrderQuickCreateSlot) {
+    return;
+  }
+
+  const panel = createWorkOrderQuickCreatePanel();
+  workOrderQuickCreateSlot.hidden = !panel;
+  workOrderQuickCreateSlot.replaceChildren(...(panel ? [panel] : []));
 }
 
 function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
@@ -126144,7 +126461,9 @@ function createWorkOrderPointDistributionCard(item = {}) {
   headCopy.className = "work-executor-score-total";
   const total = document.createElement("strong");
   total.textContent = formatCompactDecimal(distribution.totalPoints);
-  headCopy.append(total);
+  const totalLabel = document.createElement("span");
+  totalLabel.textContent = "bodova";
+  headCopy.append(total, totalLabel);
   head.append(headCopy);
   const rail = createWorkOrderScoreDistributionRail(distribution);
   if (rail) {
@@ -126201,8 +126520,10 @@ function createWorkOrderPointDistributionCard(item = {}) {
     const value = document.createElement("div");
     value.className = "work-executor-score-value";
     const points = document.createElement("strong");
-    points.textContent = formatCompactDecimal(entry.points);
-    value.append(points);
+    points.textContent = `${formatCompactDecimal(entry.points)} b`;
+    const percent = document.createElement("span");
+    percent.textContent = `${formatCompactDecimal(entry.percent, 1)}%`;
+    value.append(points, percent);
 
     row.append(avatar, copy, value);
     if (index === 0) {
@@ -126852,8 +127173,7 @@ function renderCompactWorkOrdersList() {
       body.append(rowCard);
   });
 
-  const quickCreateRow = createWorkOrderQuickCreateRow(columnLayout, isExpanded);
-  section.append(...[columns, quickCreateRow, body].filter(Boolean));
+  section.append(columns, body);
   workOrdersBody.replaceChildren(section);
 
   workOrdersEmpty.hidden = filtered.length !== 0;
