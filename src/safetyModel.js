@@ -11226,10 +11226,6 @@ export function getVehicleAvailabilityStatus(vehicle, nowValue = isoNow()) {
     return reservationStatus === "checked_out" ? "checked_out" : "reserved";
   }
 
-  if (getVehicleOpenTrip(vehicle)) {
-    return "checked_out";
-  }
-
   return "available";
 }
 

@@ -2259,7 +2259,8 @@ const state = {
   absenceBalanceEditorOpen: false,
   documentTemplateEditorOpen: false,
   vehicleReservationAssigneePickerOpen: false,
-  vehicleScheduleDate: new Date().toISOString().slice(0, 10),
+  vehicleUsageUserPickerOpen: false,
+  vehicleScheduleDate: toDateKey(new Date()),
   vehicleScheduleSelection: null,
   activeWorkOrderViewMode: "list",
   workOrderListDensity: "collapsed",
@@ -4120,6 +4121,10 @@ const vehicleUsageEndKmInput = document.querySelector("#vehicle-usage-end-km");
 const vehicleUsageReservationIdInput = document.querySelector("#vehicle-usage-reservation-id");
 const vehicleUsageWorkOrderIdInput = document.querySelector("#vehicle-usage-work-order-id");
 const vehicleUsagePerformedByInput = document.querySelector("#vehicle-usage-performed-by");
+const vehicleUsageUsersDropdown = document.querySelector("#vehicle-usage-users-dropdown");
+const vehicleUsageUsersTrigger = document.querySelector("#vehicle-usage-users-trigger");
+const vehicleUsageUsersPreview = document.querySelector("#vehicle-usage-users-preview");
+const vehicleUsageUsersInput = document.querySelector("#vehicle-usage-users");
 const vehicleUsageDestinationInput = document.querySelector("#vehicle-usage-destination");
 const vehicleUsageDestinationLabel = document.querySelector("#vehicle-usage-destination-label");
 const vehicleUsageConditionInput = document.querySelector("#vehicle-usage-condition");
@@ -87248,6 +87253,27 @@ function setVehicleReservationAssigneePickerOpen(isOpen) {
   syncVehicleReservationAssigneePicker();
 }
 
+function syncVehicleUsageUserPicker() {
+  if (state.vehicleUsageUserPickerOpen && (!state.vehicleUsageEditorOpen || !vehicleUsageUsersDropdown)) {
+    state.vehicleUsageUserPickerOpen = false;
+  }
+
+  const isOpen = Boolean(state.vehicleUsageUserPickerOpen && vehicleUsageUsersDropdown);
+
+  vehicleUsageUsersDropdown?.classList.toggle("is-open", isOpen);
+  if (vehicleUsageUsersTrigger) {
+    vehicleUsageUsersTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }
+  if (vehicleUsageUsersInput) {
+    vehicleUsageUsersInput.hidden = !isOpen;
+  }
+}
+
+function setVehicleUsageUserPickerOpen(isOpen) {
+  state.vehicleUsageUserPickerOpen = Boolean(isOpen);
+  syncVehicleUsageUserPicker();
+}
+
 function syncVehicleEditorModal() {
   if (state.vehicleEditorOpen && (
     state.activeView !== "module"
@@ -87340,6 +87366,10 @@ function syncVehicleUsageModal() {
   }
 
   const isOpen = state.vehicleUsageEditorOpen;
+  if (!isOpen) {
+    state.vehicleUsageUserPickerOpen = false;
+  }
+
   vehicleUsagePanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-vehicle-usage-open", isOpen);
 
@@ -87355,6 +87385,8 @@ function syncVehicleUsageModal() {
   if (vehicleUsageCloseButton) {
     vehicleUsageCloseButton.hidden = !isOpen;
   }
+
+  syncVehicleUsageUserPicker();
 
   if (isOpen) {
     requestAnimationFrame(() => {
@@ -106261,6 +106293,123 @@ function rebuildVehicleReservationUserOptions(selectedValue = []) {
   syncVehicleReservationAssigneePicker();
 }
 
+function getVehicleUserLabel(user = {}) {
+  return user.fullName || user.displayName || user.email || user.username || "Korisnik";
+}
+
+function getVehicleUsageSelectedUserIds() {
+  if (!vehicleUsageUsersInput) {
+    return [];
+  }
+
+  return Array.from(
+    vehicleUsageUsersInput.querySelectorAll('input[name="vehicle-usage-user-id"]:checked'),
+  ).map((input) => String(input.value || "")).filter(Boolean);
+}
+
+function getVehicleUsageSelectedUsers() {
+  const selectedIds = getVehicleUsageSelectedUserIds();
+  return selectedIds
+    .map((userId) => state.users.find((user) => String(user.id) === String(userId)) ?? null)
+    .filter(Boolean);
+}
+
+function getVehicleUsageSelectedUserLabels() {
+  return getVehicleUsageSelectedUsers()
+    .map(getVehicleUserLabel)
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function syncVehicleUsageUsersPreview() {
+  if (!vehicleUsageUsersPreview) {
+    return;
+  }
+
+  const selectedUsers = getVehicleUsageSelectedUsers();
+  const labels = selectedUsers.map(getVehicleUserLabel);
+  const summary = document.createElement("span");
+  summary.className = "vehicle-reservation-assignees-summary";
+  summary.textContent = labels.length === 0
+    ? "Odaberi korisnike"
+    : labels.length === 1
+      ? labels[0]
+      : `${labels.length} korisnika`;
+
+  if (vehicleUsagePerformedByInput) {
+    vehicleUsagePerformedByInput.value = labels.join(", ");
+  }
+
+  if (labels.length === 0) {
+    summary.classList.add("is-placeholder");
+    vehicleUsageUsersPreview.replaceChildren(summary);
+    return;
+  }
+
+  const executors = createVehicleReservationExecutorList(labels, {
+    compact: true,
+    emptyLabel: "",
+  });
+  vehicleUsageUsersPreview.replaceChildren(executors, summary);
+}
+
+function rebuildVehicleUsageUserOptions(selectedValue = []) {
+  if (!vehicleUsageUsersInput) {
+    return;
+  }
+
+  const selectedIds = Array.isArray(selectedValue)
+    ? selectedValue.map((value) => String(value || "")).filter(Boolean)
+    : [String(selectedValue || "")].filter(Boolean);
+  const selectedSet = new Set(selectedIds);
+  const users = state.users
+    .filter((user) => user.isActive !== false)
+    .slice()
+    .sort((left, right) => (getVehicleUserLabel(left)).localeCompare(getVehicleUserLabel(right), "hr"));
+
+  if (users.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "vehicle-reservation-assignee-empty";
+    empty.textContent = "Nema aktivnih korisnika za odabir.";
+    vehicleUsageUsersInput.replaceChildren(empty);
+    syncVehicleUsageUsersPreview();
+    return;
+  }
+
+  vehicleUsageUsersInput.replaceChildren(...users.map((user) => {
+    const option = document.createElement("label");
+    option.className = "vehicle-reservation-assignee-option";
+    option.classList.toggle("is-selected", selectedSet.has(String(user.id)));
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "vehicle-usage-user-id";
+    checkbox.value = String(user.id);
+    checkbox.checked = selectedSet.has(String(user.id));
+
+    const avatar = createVehicleReservationExecutorAvatar(getVehicleUserLabel(user));
+
+    const main = document.createElement("span");
+    main.className = "vehicle-reservation-assignee-main";
+    const copy = document.createElement("span");
+    copy.className = "vehicle-reservation-assignee-copy";
+
+    const name = document.createElement("strong");
+    name.textContent = getVehicleUserLabel(user);
+
+    const meta = document.createElement("span");
+    meta.textContent = user.email || user.username || "Clan tima";
+
+    copy.append(name, meta);
+    main.append(avatar, copy);
+    option.append(main, checkbox);
+    return option;
+  }));
+
+  syncVehicleUsageUsersPreview();
+  syncVehicleUsageUserPicker();
+}
+
 function rebuildVehicleReservationVehicleOptions(selectedValue = "") {
   if (!vehicleReservationVehicleIdInput) {
     return;
@@ -106776,24 +106925,55 @@ function getVehicleTripLinkedWorkOrder(trip = {}) {
   return (state.workOrders ?? []).find((item) => String(item.id) === linkedId) ?? null;
 }
 
-function buildVehicleTripWorkOrderOptions(selectedValue = "", preferredDate = "") {
+function buildVehicleTripWorkOrderOptions(selectedValue = "", filters = "") {
   const selectedId = String(selectedValue || "").trim();
-  const dayKey = String(preferredDate || "").trim().slice(0, 10);
-  const currentUserLabels = [
-    state.user?.fullName,
-    state.user?.displayName,
-    state.user?.username,
-    state.user?.email,
+  const normalizedFilters = filters && typeof filters === "object"
+    ? filters
+    : { startDate: String(filters || "").trim().slice(0, 10), endDate: String(filters || "").trim().slice(0, 10) };
+  const startDateKey = String(normalizedFilters.startDate || "").trim().slice(0, 10);
+  const endDateKey = String(normalizedFilters.endDate || startDateKey || "").trim().slice(0, 10);
+  const strict = Boolean(normalizedFilters.strict);
+  const filterUsers = (Array.isArray(normalizedFilters.users) ? normalizedFilters.users : [])
+    .filter(Boolean);
+  const filterUserIds = new Set([
+    ...(Array.isArray(normalizedFilters.userIds) ? normalizedFilters.userIds : []),
+    ...filterUsers.map((user) => user.id),
+  ].map((value) => String(value || "").trim()).filter(Boolean));
+  const filterUserLabels = [
+    ...(Array.isArray(normalizedFilters.userLabels) ? normalizedFilters.userLabels : []),
+    ...filterUsers.flatMap((user) => [
+      user.fullName,
+      user.displayName,
+      user.username,
+      user.email,
+    ]),
+    ...(!filterUsers.length && !filterUserIds.size ? [
+      state.user?.fullName,
+      state.user?.displayName,
+      state.user?.username,
+      state.user?.email,
+    ] : []),
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
-  const isAssignedToCurrentUser = (workOrder = {}) => {
+  const isAssignedToSelectedUsers = (workOrder = {}) => {
+    const ids = [
+      ...(Array.isArray(workOrder.executorUserIds) ? workOrder.executorUserIds : []),
+      ...(Array.isArray(workOrder.executorIds) ? workOrder.executorIds : []),
+      ...(Array.isArray(workOrder.assignedUserIds) ? workOrder.assignedUserIds : []),
+      workOrder.assignedToUserId,
+      workOrder.executorUserId,
+    ].map((value) => String(value || "").trim()).filter(Boolean);
+    if (ids.some((id) => filterUserIds.has(id))) {
+      return true;
+    }
     const labels = [
+      ...getWorkOrderExecutors(workOrder),
       ...(Array.isArray(workOrder.executors) ? workOrder.executors : []),
       workOrder.executor,
       workOrder.executor1,
       workOrder.executor2,
       workOrder.assignedTo,
     ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
-    return labels.some((label) => currentUserLabels.some((userLabel) => label === userLabel || label.includes(userLabel) || userLabel.includes(label)));
+    return labels.some((label) => filterUserLabels.some((userLabel) => label === userLabel || label.includes(userLabel) || userLabel.includes(label)));
   };
   const getWorkOrderExecutionDay = (workOrder = {}) => String(
     workOrder.executionDate
@@ -106802,12 +106982,35 @@ function buildVehicleTripWorkOrderOptions(selectedValue = "", preferredDate = ""
       || workOrder.plannedExecutionDate
       || "",
   ).slice(0, 10);
+  const isInDateRange = (workOrder = {}) => {
+    const executionDay = getWorkOrderExecutionDay(workOrder);
+    if (!startDateKey || !executionDay) {
+      return !strict || selectedId === String(workOrder.id || "");
+    }
+    if (endDateKey) {
+      return executionDay >= startDateKey && executionDay <= endDateKey;
+    }
+    return executionDay === startDateKey;
+  };
   const ranked = sortWorkOrders(state.workOrders ?? [])
+    .filter((workOrder) => {
+      const id = String(workOrder.id || "");
+      if (id && id === selectedId) {
+        return true;
+      }
+      if (strict && !isInDateRange(workOrder)) {
+        return false;
+      }
+      if (strict && (filterUserLabels.length || filterUserIds.size) && !isAssignedToSelectedUsers(workOrder)) {
+        return false;
+      }
+      return true;
+    })
     .map((workOrder) => {
       const executionDay = getWorkOrderExecutionDay(workOrder);
       const rank = [
-        dayKey && executionDay === dayKey ? 0 : 1,
-        isAssignedToCurrentUser(workOrder) ? 0 : 1,
+        isInDateRange(workOrder) ? 0 : 1,
+        isAssignedToSelectedUsers(workOrder) ? 0 : 1,
       ];
       return { workOrder, rank };
     })
@@ -107232,16 +107435,109 @@ function buildVehicleReservationPayload() {
   };
 }
 
+const VEHICLE_MY_TRIP_WINDOW_TOLERANCE_MS = 60 * 60 * 1000;
+
+function getCurrentVehicleUsageUserId() {
+  return String(state.user?.id || state.user?.userId || state.user?.sub || "").trim();
+}
+
+function getCurrentVehicleUsageUserLabels() {
+  return [
+    state.user?.fullName,
+    state.user?.displayName,
+    state.user?.username,
+    state.user?.email,
+    state.user?.name,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+}
+
+function vehicleReservationBelongsToCurrentUser(reservation = null) {
+  if (!reservation) {
+    return false;
+  }
+
+  const currentUserId = getCurrentVehicleUsageUserId();
+  const reservationUserIds = [
+    ...(Array.isArray(reservation.reservedForUserIds) ? reservation.reservedForUserIds : []),
+    reservation.reservedForUserId,
+    reservation.userId,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+
+  if (reservationUserIds.length > 0) {
+    return Boolean(currentUserId && reservationUserIds.includes(currentUserId));
+  }
+
+  const userLabels = getCurrentVehicleUsageUserLabels();
+  const reservationLabels = [
+    ...(Array.isArray(reservation.reservedForLabels) ? reservation.reservedForLabels : []),
+    reservation.reservedForLabel,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+
+  return reservationLabels.some((label) => userLabels.some((userLabel) => (
+    label === userLabel || label.includes(userLabel) || userLabel.includes(label)
+  )));
+}
+
+function vehicleReservationStatusAllowsMyTrip(reservation = {}) {
+  const status = String(reservation?.status || "").trim().toLowerCase();
+  return status === "reserved" || status === "checked_out";
+}
+
+function vehicleUsageTimestampInReservationWindow(reservation = null, timestampValue = "") {
+  if (!reservation) {
+    return false;
+  }
+
+  const startTimestamp = Date.parse(reservation.startAt || "");
+  const endTimestamp = Date.parse(reservation.endAt || "");
+  const actionTimestamp = Date.parse(timestampValue || new Date().toISOString());
+
+  if (![startTimestamp, endTimestamp, actionTimestamp].every(Number.isFinite)) {
+    return false;
+  }
+
+  return actionTimestamp >= startTimestamp - VEHICLE_MY_TRIP_WINDOW_TOLERANCE_MS
+    && actionTimestamp <= endTimestamp + VEHICLE_MY_TRIP_WINDOW_TOLERANCE_MS;
+}
+
+function vehicleReservationAllowsCurrentUserMyTrip(reservation = null, timestampValue = new Date().toISOString()) {
+  return Boolean(
+    reservation
+      && vehicleReservationStatusAllowsMyTrip(reservation)
+      && vehicleReservationBelongsToCurrentUser(reservation)
+      && vehicleUsageTimestampInReservationWindow(reservation, timestampValue),
+  );
+}
+
 function getVehicleUsageModeLabel(mode = "") {
   return "My Trip";
 }
 
-function findVehicleUsageDefaultReservation(vehicle = {}, mode = "checkout") {
-  const reservations = sortVehicleReservations(vehicle?.reservations ?? [], new Date().toISOString());
+function findVehicleUsageDefaultReservation(vehicle = {}, mode = "checkout", options = {}) {
+  const requestedReservationId = String(options.reservationId || "").trim();
+  const timestampValue = options.timestamp || new Date().toISOString();
+  const reservations = sortVehicleReservations(vehicle?.reservations ?? [], timestampValue);
+  const openTrip = findVehicleOpenTripDraft(vehicle, requestedReservationId);
+  const openTripReservationId = String(openTrip?.reservationId || "").trim();
+
+  if (openTrip && vehicleTripDraftBelongsToCurrentUser(openTrip)) {
+    const openTripReservation = reservations.find((reservation) => String(reservation.id) === openTripReservationId) ?? null;
+    if (openTripReservation && vehicleReservationAllowsCurrentUserMyTrip(openTripReservation, timestampValue)) {
+      return openTripReservation;
+    }
+  }
+
+  if (requestedReservationId) {
+    const requestedReservation = reservations.find((reservation) => String(reservation.id) === requestedReservationId) ?? null;
+    return vehicleReservationAllowsCurrentUserMyTrip(requestedReservation, timestampValue) ? requestedReservation : null;
+  }
+
   const preferredStatus = mode === "return" ? "checked_out" : "reserved";
-  return reservations.find((reservation) => String(reservation.status || "").toLowerCase() === preferredStatus)
-    || getVehicleNextReservation(vehicle, new Date().toISOString())
-    || reservations[0]
+  return reservations.find((reservation) => (
+    String(reservation.status || "").toLowerCase() === preferredStatus
+    && vehicleReservationAllowsCurrentUserMyTrip(reservation, timestampValue)
+  ))
+    || reservations.find((reservation) => vehicleReservationAllowsCurrentUserMyTrip(reservation, timestampValue))
     || null;
 }
 
@@ -107310,85 +107606,51 @@ function getVehicleUsageRecentDrivers(vehicle = {}, defaultReservation = null, o
     .slice(0, 5);
 }
 
-function buildVehicleUsageWorkOrderOptions(selectedValue = "", preferredDate = "") {
-  return buildVehicleTripWorkOrderOptions(selectedValue, preferredDate);
+function getVehicleUsageDateRange(defaultReservation = null, openTrip = null) {
+  const startDate = String(
+    vehicleUsageDepartureAtInput?.value
+      || openTrip?.departureAt
+      || defaultReservation?.startAt
+      || "",
+  ).slice(0, 10);
+  const endDate = String(
+    vehicleUsageReturnAtInput?.value
+      || openTrip?.returnAt
+      || defaultReservation?.endAt
+      || startDate
+      || "",
+  ).slice(0, 10);
+  return {
+    startDate,
+    endDate: endDate || startDate,
+  };
 }
 
-function rebuildVehicleUsageWorkOrderOptions(selectedValue = "", preferredDate = "") {
+function buildVehicleUsageWorkOrderOptions(selectedValue = "", defaultReservation = null, openTrip = null) {
+  const selectedUsers = getVehicleUsageSelectedUsers();
+  const selectedLabels = getVehicleUsageSelectedUserLabels();
+  const range = getVehicleUsageDateRange(defaultReservation, openTrip);
+  return buildVehicleTripWorkOrderOptions(selectedValue, {
+    ...range,
+    users: selectedUsers,
+    userIds: selectedUsers.map((user) => user.id),
+    userLabels: selectedLabels,
+    strict: Boolean(range.startDate && selectedUsers.length),
+  });
+}
+
+function rebuildVehicleUsageWorkOrderOptions(selectedValue = "", defaultReservation = null, openTrip = null) {
   if (!vehicleUsageWorkOrderIdInput) {
     return;
   }
-  replaceSelectOptions(vehicleUsageWorkOrderIdInput, buildVehicleUsageWorkOrderOptions(selectedValue, preferredDate), selectedValue);
+  replaceSelectOptions(vehicleUsageWorkOrderIdInput, buildVehicleUsageWorkOrderOptions(selectedValue, defaultReservation, openTrip), selectedValue);
 }
 
 function renderVehicleUsageQuickActions(vehicle = {}, safeMode = "checkout", defaultReservation = null, openTrip = null) {
   if (!vehicleUsageQuickActions) {
     return;
   }
-
-  const actions = [];
-  const addAction = (label, handler, accent = false) => {
-    const normalizedLabel = String(label || "").trim();
-    if (!normalizedLabel) return;
-    actions.push({ label: normalizedLabel, handler, accent });
-  };
-
-  if (safeMode === "return" && openTrip) {
-    addAction("Preuzmi podatke polaska", () => {
-      if (vehicleUsageDestinationInput && openTrip.destination) {
-        vehicleUsageDestinationInput.value = openTrip.destination;
-      }
-      const drivers = getVehicleTripDrivers(openTrip);
-      if (vehicleUsagePerformedByInput && drivers) {
-        vehicleUsagePerformedByInput.value = drivers;
-      }
-      if (vehicleUsageWorkOrderIdInput && openTrip.linkedWorkOrderId) {
-        vehicleUsageWorkOrderIdInput.value = openTrip.linkedWorkOrderId;
-      }
-      if (vehicleUsageConditionInput && !vehicleUsageConditionInput.value.trim()) {
-        vehicleUsageConditionInput.value = "Uredno";
-      }
-    }, true);
-  }
-
-  getVehicleUsageRecentDestinations(vehicle, defaultReservation, openTrip).forEach((destination) => {
-    addAction(destination, () => {
-      if (vehicleUsageDestinationInput) {
-        vehicleUsageDestinationInput.value = destination;
-      }
-    });
-  });
-
-  getVehicleUsageRecentDrivers(vehicle, defaultReservation, openTrip).forEach((driver) => {
-    addAction(driver, () => {
-      if (vehicleUsagePerformedByInput) {
-        vehicleUsagePerformedByInput.value = driver;
-      }
-    });
-  });
-
-  ["Uredno", "Gorivo OK", "Dokumenti OK", "Oštećenje"].forEach((condition) => {
-    addAction(condition, () => {
-      if (!vehicleUsageConditionInput) return;
-      if (condition === "Oštećenje") {
-        if (vehicleUsageDamageInput) vehicleUsageDamageInput.checked = true;
-        vehicleUsageConditionInput.value = condition;
-        return;
-      }
-      vehicleUsageConditionInput.value = condition;
-      if (condition === "Gorivo OK" && vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
-      if (condition === "Dokumenti OK" && vehicleUsageDocumentsInput) vehicleUsageDocumentsInput.checked = true;
-    });
-  });
-
-  vehicleUsageQuickActions.replaceChildren(...actions.map((action) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = action.accent ? "is-accent" : "";
-    button.textContent = action.label;
-    button.addEventListener("click", action.handler);
-    return button;
-  }));
+  vehicleUsageQuickActions.replaceChildren();
 }
 
 function rebuildVehicleUsageReservationOptions(vehicle = {}, selectedValue = "") {
@@ -107410,6 +107672,26 @@ function rebuildVehicleUsageReservationOptions(vehicle = {}, selectedValue = "")
     })),
   ];
   replaceSelectOptions(vehicleUsageReservationIdInput, options, selectedValue);
+}
+
+function getVehicleUsageFormContext() {
+  const vehicleId = vehicleUsageVehicleIdInput?.value || state.activeVehicleId || "";
+  const vehicle = state.vehicles.find((item) => String(item.id) === String(vehicleId)) ?? null;
+  const reservationId = vehicleUsageReservationIdInput?.value || "";
+  const defaultReservation = vehicle
+    ? (
+      findVehicleUsageDefaultReservation(vehicle, "checkout", { reservationId })
+      || (vehicle.reservations ?? []).find((reservation) => String(reservation.id) === String(reservationId))
+      || null
+    )
+    : null;
+  const openTrip = vehicle ? findVehicleOpenTripDraft(vehicle, reservationId || defaultReservation?.id || "") : null;
+  return {
+    vehicle,
+    reservationId,
+    defaultReservation,
+    openTrip,
+  };
 }
 
 function renderVehicleUsageReturnFiles() {
@@ -107497,6 +107779,7 @@ function getVehicleUsageSignatureDataUrl() {
 
 function resetVehicleUsageForm() {
   vehicleUsageForm?.reset();
+  setVehicleUsageUserPickerOpen(false);
   if (vehicleUsageVehicleIdInput) vehicleUsageVehicleIdInput.value = "";
   if (vehicleUsageModeInput) vehicleUsageModeInput.value = "trip";
   if (vehicleUsageVehicleLabelInput) vehicleUsageVehicleLabelInput.value = "";
@@ -107509,9 +107792,7 @@ function resetVehicleUsageForm() {
   if (vehicleUsageDestinationLabel) vehicleUsageDestinationLabel.textContent = "Lokacija gdje se ide";
   if (vehicleUsageConditionLabel) vehicleUsageConditionLabel.textContent = "Stanje vozila / napomena";
   if (vehicleUsageConditionInput) vehicleUsageConditionInput.value = "";
-  if (vehicleUsagePerformedByInput) {
-    vehicleUsagePerformedByInput.value = state.user?.fullName || state.user?.email || state.user?.username || "";
-  }
+  rebuildVehicleUsageUserOptions(getCurrentVehicleUsageUserId() ? [getCurrentVehicleUsageUserId()] : []);
   if (vehicleUsageCleanInput) vehicleUsageCleanInput.checked = true;
   if (vehicleUsageDocumentsInput) vehicleUsageDocumentsInput.checked = true;
   if (vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
@@ -107529,20 +107810,27 @@ function resetVehicleUsageForm() {
 
 function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationId = "" } = {}) {
   const safeMode = "trip";
-  const defaultReservation = reservationId
-    ? (vehicle.reservations ?? []).find((reservation) => String(reservation.id) === String(reservationId))
-    : findVehicleUsageDefaultReservation(vehicle, "checkout");
-  const openTrip = findVehicleOpenTripDraft(vehicle, defaultReservation?.id || reservationId || "");
+  const requestedReservationId = String(reservationId || "").trim();
+  const defaultReservation = findVehicleUsageDefaultReservation(vehicle, "checkout", {
+    reservationId: requestedReservationId,
+  });
+  const openTrip = findVehicleOpenTripDraft(vehicle, defaultReservation?.id || requestedReservationId || "");
   const selectedWorkOrderId = openTrip?.linkedWorkOrderId || "";
   const nowLocal = toDateTimeLocalInputValue(new Date().toISOString());
-  const departureAt = toDateTimeLocalInputValue(openTrip?.departureAt || defaultReservation?.startAt || new Date().toISOString());
-  const returnAt = toDateTimeLocalInputValue(openTrip?.returnAt || "");
-  const preferredWorkOrderDate = (departureAt || nowLocal).slice(0, 10);
+  const departureAt = toDateTimeLocalInputValue(openTrip?.departureAt || new Date().toISOString());
+  const returnAt = toDateTimeLocalInputValue(openTrip?.returnAt || (openTrip ? new Date().toISOString() : ""));
+  const selectedUserIds = Array.from(new Set([
+    ...(Array.isArray(openTrip?.driverUserIds) ? openTrip.driverUserIds : []),
+    openTrip?.checkedOutByUserId,
+    ...(Array.isArray(defaultReservation?.reservedForUserIds) ? defaultReservation.reservedForUserIds : []),
+    defaultReservation?.reservedForUserId,
+    vehicleReservationBelongsToCurrentUser(defaultReservation) ? getCurrentVehicleUsageUserId() : "",
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
 
   if (vehicleUsageVehicleIdInput) vehicleUsageVehicleIdInput.value = vehicle.id || "";
   if (vehicleUsageModeInput) vehicleUsageModeInput.value = safeMode;
   if (vehicleUsageTitle) vehicleUsageTitle.textContent = getVehicleUsageModeLabel(safeMode);
-  if (vehicleUsageSubmitButton) vehicleUsageSubmitButton.textContent = openTrip ? "Spremi My Trip" : "Pokreni My Trip";
+  if (vehicleUsageSubmitButton) vehicleUsageSubmitButton.textContent = openTrip ? "Zaključi My Trip" : "Pokreni My Trip";
   if (vehicleUsageOdometerLabel) vehicleUsageOdometerLabel.textContent = "Kilometraža";
   if (vehicleUsageDestinationLabel) vehicleUsageDestinationLabel.textContent = "Lokacija gdje se ide";
   if (vehicleUsageConditionLabel) {
@@ -107559,14 +107847,7 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   if (vehicleUsageDestinationInput) {
     vehicleUsageDestinationInput.value = openTrip?.destination || defaultReservation?.destination || "";
   }
-  if (vehicleUsagePerformedByInput) {
-    vehicleUsagePerformedByInput.value = defaultReservation?.reservedForLabel
-      || getVehicleTripDrivers(openTrip || {})
-      || state.user?.fullName
-      || state.user?.email
-      || state.user?.username
-      || "";
-  }
+  rebuildVehicleUsageUserOptions(selectedUserIds);
   if (vehicleUsageCleanInput) vehicleUsageCleanInput.checked = true;
   if (vehicleUsageDocumentsInput) vehicleUsageDocumentsInput.checked = true;
   if (vehicleUsageFuelInput) vehicleUsageFuelInput.checked = true;
@@ -107582,8 +107863,8 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
   clearVehicleUsageSignatureCanvas();
   if (vehicleUsageReturnDocumentsPanel) vehicleUsageReturnDocumentsPanel.hidden = false;
   if (vehicleUsageSignaturePanel) vehicleUsageSignaturePanel.hidden = false;
-  rebuildVehicleUsageReservationOptions(vehicle, openTrip?.reservationId || "");
-  rebuildVehicleUsageWorkOrderOptions(selectedWorkOrderId, preferredWorkOrderDate);
+  rebuildVehicleUsageReservationOptions(vehicle, openTrip?.reservationId || defaultReservation?.id || "");
+  rebuildVehicleUsageWorkOrderOptions(selectedWorkOrderId, defaultReservation, openTrip);
   renderVehicleUsageQuickActions(vehicle, safeMode, defaultReservation, openTrip);
 }
 
@@ -107595,6 +107876,9 @@ function buildVehicleUsagePayload() {
   const linkedWorkOrderId = vehicleUsageWorkOrderIdInput?.value || "";
   const linkedWorkOrder = (state.workOrders ?? []).find((item) => String(item.id) === String(linkedWorkOrderId)) ?? null;
   const finalLinkedWorkOrderId = linkedWorkOrderId || openTrip?.linkedWorkOrderId || "";
+  const driverUsers = getVehicleUsageSelectedUsers();
+  const driverUserIds = driverUsers.map((user) => String(user.id || "")).filter(Boolean);
+  const driverLabels = driverUsers.map(getVehicleUserLabel).filter(Boolean);
   const endKm = String(vehicleUsageEndKmInput?.value || "").trim();
   const startKm = String(vehicleUsageStartKmInput?.value || "").trim();
   const odometerKm = endKm || startKm || vehicleUsageOdometerKmInput?.value || "";
@@ -107612,7 +107896,10 @@ function buildVehicleUsagePayload() {
     linkedWorkOrderNumber: linkedWorkOrder
       ? String(linkedWorkOrder.workOrderNumber || linkedWorkOrder.displayNumber || linkedWorkOrder.number || "").trim()
       : openTrip?.linkedWorkOrderNumber || "",
-    performedBy: vehicleUsagePerformedByInput?.value || "",
+    performedBy: driverLabels.join(", ") || vehicleUsagePerformedByInput?.value || "",
+    driverUserIds,
+    driverLabels,
+    drivers: driverLabels,
     destination: vehicleUsageDestinationInput?.value || openTrip?.destination || "",
     vehicleCondition: vehicleUsageConditionInput?.value || "",
     vehicleClean: Boolean(vehicleUsageCleanInput?.checked),
@@ -107629,11 +107916,25 @@ function openVehicleUsageComposer(vehicle, options = {}) {
   if (!vehicle || isVehicleServiceOnlyStatus(vehicle)) {
     return;
   }
+  const defaultReservation = findVehicleUsageDefaultReservation(vehicle, "checkout", {
+    reservationId: options.reservationId || "",
+  });
+  const openTrip = findVehicleOpenTripDraft(vehicle, defaultReservation?.id || options.reservationId || "");
+  const hasAllowedOpenTrip = Boolean(openTrip && vehicleTripDraftBelongsToCurrentUser(openTrip));
+  if (!defaultReservation && !hasAllowedOpenTrip) {
+    if (vehicleError) {
+      vehicleError.textContent = "My Trip možeš pokrenuti samo kad u tom terminu imaš rezerviran automobil.";
+    }
+    return;
+  }
   state.activeVehicleId = vehicle.id;
-  hydrateVehicleUsageForm(vehicle, options);
+  hydrateVehicleUsageForm(vehicle, {
+    ...options,
+    reservationId: defaultReservation?.id || options.reservationId || openTrip?.reservationId || "",
+  });
   openVehicleUsageEditor();
   requestAnimationFrame(() => {
-    vehicleUsageStartKmInput?.focus({ preventScroll: true });
+    (openTrip ? vehicleUsageEndKmInput : vehicleUsageStartKmInput)?.focus({ preventScroll: true });
   });
 }
 
@@ -107946,7 +108247,7 @@ function syncVehicleScheduleHelperText() {
     return;
   }
 
-  const dateKey = state.vehicleScheduleDate || new Date().toISOString().slice(0, 10);
+  const dateKey = state.vehicleScheduleDate || toDateKey(new Date());
   const selection = getVehicleScheduleSelectionRange();
 
   if (!selection) {
@@ -108016,7 +108317,7 @@ async function finalizeVehicleScheduleSelection() {
   }
 
   const vehicle = state.vehicles.find((item) => String(item.id) === String(selection.vehicleId)) ?? null;
-  const dateKey = state.vehicleScheduleDate || new Date().toISOString().slice(0, 10);
+  const dateKey = state.vehicleScheduleDate || toDateKey(new Date());
   const selectionWindow = resolveVehicleScheduleSelectionWindow(dateKey, selection.startHour, selection.endHour);
 
   clearVehicleScheduleSelection();
@@ -108115,7 +108416,7 @@ function renderVehicleSchedule(vehicles, nowValue = new Date().toISOString()) {
   }
 
   const hours = getVehicleScheduleHours();
-  const dateKey = state.vehicleScheduleDate || new Date().toISOString().slice(0, 10);
+  const dateKey = state.vehicleScheduleDate || toDateKey(new Date());
   const nowMarker = getVehicleScheduleNowMarker(dateKey, nowValue);
 
   if (vehicleScheduleDateInput) {
@@ -108398,17 +108699,19 @@ function renderVehiclesModule() {
     });
     actions.append(reserveButton);
     const openTrip = findVehicleOpenTripDraft(vehicle);
-    const myTripAllowed = !openTrip || vehicleTripDraftBelongsToCurrentUser(openTrip) || getCanManageVehicles();
+    const defaultMyTripReservation = findVehicleUsageDefaultReservation(vehicle, "checkout");
+    const openTripBelongsToCurrentUser = Boolean(openTrip && vehicleTripDraftBelongsToCurrentUser(openTrip));
+    const myTripAllowed = openTrip ? openTripBelongsToCurrentUser : Boolean(defaultMyTripReservation);
     const myTripButton = document.createElement("button");
     myTripButton.type = "button";
     myTripButton.className = "ghost-button";
-    myTripButton.textContent = openTrip ? "My Trip" : "Pokreni put";
+    myTripButton.textContent = "My Trip";
     myTripButton.hidden = !canReserveVehicles;
     myTripButton.disabled = !canReserveVehicles || isServiceVehicle || !myTripAllowed;
-    myTripButton.title = !myTripAllowed ? "Vozilo ima aktivan put kod drugog korisnika." : "";
+    myTripButton.title = !myTripAllowed ? "My Trip je dostupan samo za tvoju aktivnu rezervaciju vozila." : "";
     myTripButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      openVehicleUsageComposer(vehicle, { mode: "trip" });
+      openVehicleUsageComposer(vehicle, { mode: "trip", reservationId: defaultMyTripReservation?.id || openTrip?.reservationId || "" });
     });
     actions.append(myTripButton);
     const evidenceButton = document.createElement("button");
@@ -108515,6 +108818,12 @@ function renderVehiclesModule() {
       usageButton.type = "button";
       usageButton.className = "ghost-button";
       usageButton.textContent = "My Trip";
+      const openTrip = findVehicleOpenTripDraft(reservationVehicle, reservation.id);
+      const canOpenReservationTrip = openTrip
+        ? vehicleTripDraftBelongsToCurrentUser(openTrip)
+        : vehicleReservationAllowsCurrentUserMyTrip(reservation, new Date().toISOString());
+      usageButton.disabled = !canOpenReservationTrip;
+      usageButton.title = canOpenReservationTrip ? "" : "My Trip je dostupan samo za tvoju aktivnu rezervaciju vozila.";
       usageButton.addEventListener("click", () => {
         openVehicleUsageComposer(reservationVehicle, {
           mode: "trip",
@@ -108836,6 +109145,7 @@ function renderSharedOptions() {
     selectedAssigneeIds: getSelectedMultiSelectValues(fieldInquiryAssigneesInput),
   });
   rebuildVehicleReservationUserOptions(getVehicleReservationSelectedUserIds());
+  rebuildVehicleUsageUserOptions(getVehicleUsageSelectedUserIds());
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
   rebuildOfferCompanyOptions(offerCompanyIdInput?.value || "");
   renderOfferLocationPicker();
@@ -108926,7 +109236,7 @@ function renderSharedOptions() {
   renderWorkOrderFilterBuilder();
 
   if (vehicleScheduleDateInput) {
-    vehicleScheduleDateInput.value = state.vehicleScheduleDate || new Date().toISOString().slice(0, 10);
+    vehicleScheduleDateInput.value = state.vehicleScheduleDate || toDateKey(new Date());
   }
 
   if (organizationSwitcher) {
@@ -131388,6 +131698,15 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !state.vehicleUsageUserPickerOpen) {
+    return;
+  }
+
+  event.preventDefault();
+  setVehicleUsageUserPickerOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.workOrderColumnPanel.open) {
     event.preventDefault();
     setWorkOrderColumnsPanelOpen(false);
@@ -131621,29 +131940,47 @@ vehicleReservationAssigneesTrigger?.addEventListener("click", () => {
   setVehicleReservationAssigneePickerOpen(!state.vehicleReservationAssigneePickerOpen);
 });
 
+vehicleUsageUsersInput?.addEventListener("change", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+    return;
+  }
+
+  const option = target.closest(".vehicle-reservation-assignee-option");
+  option?.classList.toggle("is-selected", target.checked);
+  syncVehicleUsageUsersPreview();
+  const { defaultReservation, openTrip } = getVehicleUsageFormContext();
+  rebuildVehicleUsageWorkOrderOptions(vehicleUsageWorkOrderIdInput?.value || "", defaultReservation, openTrip);
+});
+
+vehicleUsageUsersTrigger?.addEventListener("click", () => {
+  setVehicleUsageUserPickerOpen(!state.vehicleUsageUserPickerOpen);
+});
+
 vehicleSchedulePrevButton?.addEventListener("click", () => {
   state.vehicleScheduleDate = shiftDateKey(
-    state.vehicleScheduleDate || new Date().toISOString().slice(0, 10),
+    state.vehicleScheduleDate || toDateKey(new Date()),
     -1,
   );
   renderVehiclesModule();
 });
 
 vehicleScheduleTodayButton?.addEventListener("click", () => {
-  state.vehicleScheduleDate = new Date().toISOString().slice(0, 10);
+  state.vehicleScheduleDate = toDateKey(new Date());
   renderVehiclesModule();
 });
 
 vehicleScheduleNextButton?.addEventListener("click", () => {
   state.vehicleScheduleDate = shiftDateKey(
-    state.vehicleScheduleDate || new Date().toISOString().slice(0, 10),
+    state.vehicleScheduleDate || toDateKey(new Date()),
     1,
   );
   renderVehiclesModule();
 });
 
 vehicleScheduleDateInput?.addEventListener("change", () => {
-  state.vehicleScheduleDate = vehicleScheduleDateInput.value || new Date().toISOString().slice(0, 10);
+  state.vehicleScheduleDate = vehicleScheduleDateInput.value || toDateKey(new Date());
   renderVehiclesModule();
 });
 
@@ -131675,8 +132012,18 @@ vehicleUsageAddFilesButton?.addEventListener("click", () => vehicleUsageFileInpu
 });
 
 vehicleUsageDepartureAtInput?.addEventListener("change", () => {
-  const selectedValue = vehicleUsageWorkOrderIdInput?.value || "";
-  rebuildVehicleUsageWorkOrderOptions(selectedValue, vehicleUsageDepartureAtInput.value.slice(0, 10));
+  const { defaultReservation, openTrip } = getVehicleUsageFormContext();
+  rebuildVehicleUsageWorkOrderOptions(vehicleUsageWorkOrderIdInput?.value || "", defaultReservation, openTrip);
+});
+
+vehicleUsageReturnAtInput?.addEventListener("change", () => {
+  const { defaultReservation, openTrip } = getVehicleUsageFormContext();
+  rebuildVehicleUsageWorkOrderOptions(vehicleUsageWorkOrderIdInput?.value || "", defaultReservation, openTrip);
+});
+
+vehicleUsageReservationIdInput?.addEventListener("change", () => {
+  const { defaultReservation, openTrip } = getVehicleUsageFormContext();
+  rebuildVehicleUsageWorkOrderOptions(vehicleUsageWorkOrderIdInput?.value || "", defaultReservation, openTrip);
 });
 
 vehicleUsageSignatureClearButton?.addEventListener("click", clearVehicleUsageSignatureCanvas);
@@ -131733,6 +132080,13 @@ vehicleUsageForm?.addEventListener("submit", (event) => {
   }
 
   const payload = buildVehicleUsagePayload();
+  if (!String(payload.reservationId || "").trim()) {
+    if (vehicleUsageError) {
+      vehicleUsageError.textContent = "My Trip možeš spremiti samo uz svoju aktivnu rezervaciju vozila.";
+    }
+    return;
+  }
+
   if (!String(payload.startKm || "").trim()) {
     if (vehicleUsageError) {
       vehicleUsageError.textContent = "Upiši početnu kilometražu vozila.";
@@ -138061,6 +138415,14 @@ document.addEventListener("click", (event) => {
   }
 
   if (
+    state.vehicleUsageUserPickerOpen
+    && event.target instanceof Node
+    && !vehicleUsageUsersDropdown?.contains(event.target)
+  ) {
+    setVehicleUsageUserPickerOpen(false);
+  }
+
+  if (
     state.todoInvitedPickerOpen
     && event.target instanceof Node
     && !todoInvitedDropdown?.contains(event.target)
@@ -138181,6 +138543,9 @@ window.addEventListener("resize", () => {
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
   }
+  if (state.vehicleUsageUserPickerOpen) {
+    setVehicleUsageUserPickerOpen(false);
+  }
   if (state.todoInvitedPickerOpen) {
     setTodoInvitedPickerOpen(false);
   }
@@ -138196,6 +138561,7 @@ document.addEventListener("scroll", (event) => {
       || target.closest(".work-order-service-picker-menu-portal")
       || target.closest(".work-order-quick-picker-menu-portal")
       || target.closest(".vehicle-reservation-assignees-dropdown")
+      || target.closest(".vehicle-usage-user-dropdown")
       || target.closest(".todo-invited-dropdown")
     )
   ) {
@@ -138205,6 +138571,9 @@ document.addEventListener("scroll", (event) => {
   closeOpenWorkOrderStatusMenus();
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
+  }
+  if (state.vehicleUsageUserPickerOpen) {
+    setVehicleUsageUserPickerOpen(false);
   }
   if (state.todoInvitedPickerOpen) {
     setTodoInvitedPickerOpen(false);

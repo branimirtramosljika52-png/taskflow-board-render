@@ -26016,6 +26016,26 @@ function getVehicleUsageDriverLabels(user = {}, body = {}, reservation = null) {
   return Array.from(new Set(labels));
 }
 
+function getVehicleUsageDriverUserIds(user = {}, body = {}, reservation = null) {
+  const explicitIds = [
+    ...(Array.isArray(body.driverUserIds) ? body.driverUserIds : []),
+    ...(Array.isArray(body.driverIds) ? body.driverIds : []),
+    ...(Array.isArray(body.userIds) ? body.userIds : []),
+    body.driverUserId,
+    body.userId,
+  ];
+  const reservationIds = [
+    ...(Array.isArray(reservation?.reservedForUserIds) ? reservation.reservedForUserIds : []),
+    reservation?.reservedForUserId,
+    reservation?.userId,
+  ];
+  return Array.from(new Set([
+    ...explicitIds,
+    ...reservationIds,
+    getVehicleUsageUserId(user),
+  ].map((value) => normalizeInputValue(value)).filter(Boolean)));
+}
+
 function isVehicleTripActivity(item = {}) {
   const activityType = normalizeInputValue(item?.activityType ?? item?.type).toLowerCase();
   return activityType === "vehicle_trip";
@@ -26361,8 +26381,13 @@ function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, option
   const existingDriverLabels = Array.isArray(openTrip?.driverLabels)
     ? openTrip.driverLabels.map((value) => normalizeInputValue(value)).filter(Boolean)
     : [];
+  const existingDriverUserIds = Array.isArray(openTrip?.driverUserIds)
+    ? openTrip.driverUserIds.map((value) => normalizeInputValue(value)).filter(Boolean)
+    : [];
   const requestedDriverLabels = getVehicleUsageDriverLabels(user, body, targetReservation);
   const driverLabels = requestedDriverLabels.length ? requestedDriverLabels : existingDriverLabels;
+  const requestedDriverUserIds = getVehicleUsageDriverUserIds(user, body, targetReservation);
+  const driverUserIds = requestedDriverUserIds.length ? requestedDriverUserIds : existingDriverUserIds;
   const destination = getVehicleUsageDestination(body, targetReservation, openTrip);
   const startKm = normalizeInputValue(body.startKm || (!openTrip ? body.odometerKm : "") || openTrip?.startKm || openTrip?.odometerKm);
   const endKm = normalizeInputValue(body.endKm || (returnAt ? body.odometerKm : "") || openTrip?.endKm);
@@ -26401,6 +26426,7 @@ function buildVehicleUnifiedTripPatch(vehicle = {}, body = {}, user = {}, option
     returnAt,
     destination,
     driverLabels,
+    driverUserIds,
     startKm,
     endKm,
     vehicleCondition: condition || normalizeInputValue(openTrip?.vehicleCondition),
@@ -26511,6 +26537,13 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
   const driverLabels = mode === "return" && openTripDriverLabels.length
     ? openTripDriverLabels
     : getVehicleUsageDriverLabels(user, body, targetReservation);
+  const openTripDriverUserIds = Array.isArray(openTrip?.driverUserIds)
+    ? openTrip.driverUserIds.map((value) => normalizeInputValue(value)).filter(Boolean)
+    : [];
+  const requestedDriverUserIds = getVehicleUsageDriverUserIds(user, body, targetReservation);
+  const driverUserIds = mode === "return" && openTripDriverUserIds.length
+    ? openTripDriverUserIds
+    : requestedDriverUserIds;
   const destination = mode === "return"
     ? normalizeInputValue(
       openTrip?.destination
@@ -26557,6 +26590,7 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
           returnAt: actionTimestamp,
           destination,
           driverLabels,
+          driverUserIds,
           startKm: normalizeInputValue(item.startKm || item.odometerKm || ""),
           endKm: odometerKm,
           vehicleCondition: condition || normalizeInputValue(item.vehicleCondition),
@@ -26598,6 +26632,7 @@ function buildVehicleUsagePatch(vehicle = {}, body = {}, user = {}, options = {}
       returnAt: isReturnFallback ? actionTimestamp : "",
       destination,
       driverLabels,
+      driverUserIds,
       startKm: isReturnFallback ? "" : odometerKm,
       endKm: isReturnFallback ? odometerKm : "",
       vehicleCondition: condition,

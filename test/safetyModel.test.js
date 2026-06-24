@@ -4113,7 +4113,7 @@ test("vehicles create reservations, block overlaps and derive availability", () 
   assert.equal(getVehicleAvailabilityStatus(completedVehicle, "2026-03-30T16:05:00.000Z"), "available");
 });
 
-test("vehicles ignore legacy trip-looking rows when deriving availability", () => {
+test("vehicles ignore trip rows without an active reservation when deriving availability", () => {
   const state = buildState();
   const vehicle = createVehicle(
     {
@@ -4156,7 +4156,7 @@ test("vehicles ignore legacy trip-looking rows when deriving availability", () =
     () => "2026-06-22T08:00:00.000Z",
   );
 
-  assert.equal(getVehicleAvailabilityStatus(openTripVehicle, "2026-06-22T09:00:00.000Z"), "checked_out");
+  assert.equal(getVehicleAvailabilityStatus(openTripVehicle, "2026-06-22T09:00:00.000Z"), "available");
 });
 
 test("vehicles filter and sort by availability and search context", () => {

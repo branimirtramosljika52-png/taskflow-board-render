@@ -9829,12 +9829,12 @@ function normalizeVehicleEvidenceActivity(activity = {}) {
   const drivers = Array.isArray(activity?.driverLabels)
     ? normalizePdfLines(activity.driverLabels).join(", ")
     : clean(activity?.performedBy);
-  const condition = normalizePdfLines([
+  const condition = mergeUniqueVehicleEvidenceValues(normalizePdfLines([
     activity?.returnCondition,
     activity?.vehicleCondition,
     activity?.departureCondition,
     compactVehicleEvidenceNote(activity?.note),
-  ]).join("\n");
+  ]), []).join("\n");
   const activityText = normalizePdfLines([
     activity?.activityType,
     activity?.type,

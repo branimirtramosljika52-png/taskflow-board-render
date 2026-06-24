@@ -7366,7 +7366,14 @@
                       </label>
                       <label class="field">
                         <span>Korisnici vozila</span>
-                        <input id="vehicle-usage-performed-by" type="text" maxlength="180" />
+                        <div id="vehicle-usage-users-dropdown" class="vehicle-reservation-assignee-dropdown vehicle-usage-user-dropdown">
+                          <button id="vehicle-usage-users-trigger" type="button" class="vehicle-reservation-assignee-trigger" aria-expanded="false" aria-haspopup="listbox">
+                            <div id="vehicle-usage-users-preview" class="vehicle-reservation-assignees-preview"></div>
+                            <span class="vehicle-reservation-assignee-caret" aria-hidden="true">&#9662;</span>
+                          </button>
+                          <div id="vehicle-usage-users" class="vehicle-reservation-assignee-panel" hidden></div>
+                        </div>
+                        <input id="vehicle-usage-performed-by" type="hidden" />
                       </label>
                       <label class="field">
                         <span>Datum i vrijeme polaska</span>
