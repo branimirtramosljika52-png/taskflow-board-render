@@ -6,7 +6,15 @@ import java.time.LocalDate
 data class SafeNexusUser(
     val displayName: String,
     val email: String,
+    val profileRole: String = "",
+    val role: String = "",
+    val clientCompanyIds: List<String> = emptyList(),
+    val clientLocationIds: List<String> = emptyList(),
+    val clientAccessAllLocations: Boolean = true,
 )
+
+val SafeNexusUser.isClientPortalUser: Boolean
+    get() = profileRole.equals("client_user", ignoreCase = true)
 
 data class BootstrapData(
     val workOrders: List<WorkOrder> = emptyList(),

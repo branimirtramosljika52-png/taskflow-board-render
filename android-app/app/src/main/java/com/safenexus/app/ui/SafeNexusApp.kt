@@ -228,6 +228,7 @@ import com.safenexus.app.data.RiskAssessmentRiskRowDraft
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
+import com.safenexus.app.data.isClientPortalUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.WorkOrderCompanyOption
 import com.safenexus.app.data.WorkOrderCreateDraft
@@ -351,6 +352,31 @@ private data class AppNavigationDestination(
     val section: AppSection,
     val moreFocus: MoreSectionFocus = MoreSectionFocus.Overview,
 )
+
+private val clientPortalMoreSections = setOf(
+    MoreSectionFocus.Companies,
+    MoreSectionFocus.Documents,
+    MoreSectionFocus.Periodics,
+    MoreSectionFocus.LegalFrameworks,
+    MoreSectionFocus.RiskAssessments,
+    MoreSectionFocus.Training,
+)
+
+private fun SafeNexusUser?.hasClientPortalAccess(): Boolean = this?.isClientPortalUser == true
+
+private fun normalizeClientPortalDestination(
+    destination: AppNavigationDestination,
+    user: SafeNexusUser?,
+): AppNavigationDestination {
+    if (!user.hasClientPortalAccess()) return destination
+    return when {
+        destination.section == AppSection.Vehicles -> AppNavigationDestination(AppSection.WorkOrders)
+        destination.section == AppSection.Calendar -> AppNavigationDestination(AppSection.More, MoreSectionFocus.Periodics)
+        destination.section == AppSection.More && destination.moreFocus !in clientPortalMoreSections ->
+            AppNavigationDestination(AppSection.More, MoreSectionFocus.Documents)
+        else -> destination
+    }
+}
 
 enum class WorkOrderDocumentInputMode(
     val label: String,
@@ -936,12 +962,17 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun normalizedDestination(section: AppSection, focus: MoreSectionFocus? = null): AppNavigationDestination {
-        if (section == AppSection.Calendar) {
-            return AppNavigationDestination(AppSection.More, MoreSectionFocus.Periodics)
+        val base = if (section == AppSection.Calendar) {
+            AppNavigationDestination(AppSection.More, MoreSectionFocus.Periodics)
+        } else {
+            AppNavigationDestination(
+                section = section,
+                moreFocus = if (section == AppSection.More) focus ?: MoreSectionFocus.Overview else MoreSectionFocus.Overview,
+            )
         }
-        return AppNavigationDestination(
-            section = section,
-            moreFocus = if (section == AppSection.More) focus ?: MoreSectionFocus.Overview else MoreSectionFocus.Overview,
+        return normalizeClientPortalDestination(
+            destination = base,
+            user = state.user ?: state.rememberedUser,
         )
     }
 
@@ -3123,6 +3154,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     documents = state.workOrderDocuments,
                     documentsLoading = state.workOrderDocumentsLoading,
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
+                    readOnly = state.user.hasClientPortalAccess(),
                     onBack = { viewModel.navigateBack() },
                     onStatusChange = viewModel::updateWorkOrderStatus,
                     onMetaChange = viewModel::updateWorkOrderMeta,
@@ -10341,6 +10373,7 @@ private fun WorkOrdersScreen(
     onUpdateTodoTask: (String, String?, String?, String?, String?, List<String>?) -> Unit,
     onAddTodoTaskComment: (String, String) -> Unit,
 ) {
+    val isClientPortal = state.user.hasClientPortalAccess()
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
     val filtered = remember(state.workOrders, normalizedQuery, state.filter, state.user?.displayName, state.user?.email) {
         state.workOrders
@@ -10442,6 +10475,7 @@ private fun WorkOrdersScreen(
                     currentMoreFocus = moreFocus,
                     viewMode = state.viewMode,
                     mainMenuExpanded = mainMenuExpanded,
+                    isClientPortal = isClientPortal,
                     onMainMenuExpandedChange = { mainMenuExpanded = it },
                     onSectionChange = openMenuShortcut,
                     onViewModeChange = onViewModeChange,
@@ -10458,6 +10492,7 @@ private fun WorkOrdersScreen(
                     currentMoreFocus = moreFocus,
                     displayName = state.user?.displayName.orEmpty(),
                     mainMenuExpanded = mainMenuExpanded,
+                    isClientPortal = isClientPortal,
                     onMainMenuExpandedChange = { mainMenuExpanded = it },
                     onSectionChange = openMenuShortcut,
                     onRefresh = onRefresh,
@@ -10469,7 +10504,7 @@ private fun WorkOrdersScreen(
             }
         },
         floatingActionButton = {
-            if (state.section == AppSection.WorkOrders) {
+            if (state.section == AppSection.WorkOrders && !isClientPortal) {
                 WorkOrderQuickActionsFab(
                     expanded = quickActionsExpanded,
                     filter = state.filter,
@@ -10496,6 +10531,7 @@ private fun WorkOrdersScreen(
         bottomBar = {
             MainBottomBar(
                 selected = state.section,
+                isClientPortal = isClientPortal,
                 onSectionChange = { section ->
                     onSectionChange(section, if (section == AppSection.More) MoreSectionFocus.Overview else null)
                 },
@@ -10901,10 +10937,10 @@ private fun WorkOrdersScreen(
                             WorkOrderMapPanel(
                                 points = mapPoints,
                                 totalWorkOrders = filtered.size,
-                                statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
+                                statusOptions = if (isClientPortal) emptyList() else state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                                 mapHeight = 560.dp,
                                 onOpenWorkOrder = onOpenWorkOrder,
-                                onStatusChange = onStatusChange,
+                                onStatusChange = if (isClientPortal) ({ _, _ -> }) else onStatusChange,
                             )
                         }
                     }
@@ -10918,10 +10954,11 @@ private fun WorkOrdersScreen(
                     WorkOrderCard(
                         workOrder = workOrder,
                         isLoading = state.isLoading,
-                        statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
+                        statusOptions = if (isClientPortal) emptyList() else state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                         onClick = { onOpenWorkOrder(workOrder) },
-                        onStatusChange = { status -> onStatusChange(workOrder, status) },
-                        onAddDocumentation = { onAddDocumentation(workOrder) },
+                        onStatusChange = { status -> if (!isClientPortal) onStatusChange(workOrder, status) },
+                        onAddDocumentation = { if (!isClientPortal) onAddDocumentation(workOrder) },
+                        readOnly = isClientPortal,
                     )
                 }
             }
@@ -10979,6 +11016,7 @@ private fun MainAppTopBar(
     currentMoreFocus: MoreSectionFocus,
     displayName: String,
     mainMenuExpanded: Boolean,
+    isClientPortal: Boolean,
     onMainMenuExpandedChange: (Boolean) -> Unit,
     onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onRefresh: () -> Unit,
@@ -10990,6 +11028,7 @@ private fun MainAppTopBar(
                 currentSection = currentSection,
                 currentMoreFocus = currentMoreFocus,
                 expanded = mainMenuExpanded,
+                isClientPortal = isClientPortal,
                 onExpandedChange = onMainMenuExpandedChange,
                 onSectionChange = onSectionChange,
                 onLogout = onLogout,
@@ -11026,6 +11065,7 @@ private fun WorkOrdersTopBar(
     currentMoreFocus: MoreSectionFocus,
     viewMode: WorkOrderViewMode,
     mainMenuExpanded: Boolean,
+    isClientPortal: Boolean,
     onMainMenuExpandedChange: (Boolean) -> Unit,
     onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onViewModeChange: (WorkOrderViewMode) -> Unit,
@@ -11039,6 +11079,7 @@ private fun WorkOrdersTopBar(
                 currentSection = currentSection,
                 currentMoreFocus = currentMoreFocus,
                 expanded = mainMenuExpanded,
+                isClientPortal = isClientPortal,
                 onExpandedChange = onMainMenuExpandedChange,
                 onSectionChange = onSectionChange,
                 onLogout = onLogout,
@@ -11085,15 +11126,17 @@ private fun WorkOrdersTopBar(
                     contentDescription = if (viewMode == WorkOrderViewMode.Map) "Prikaži listu" else "Prikaži kartu",
                 )
             }
-            Button(
-                onClick = onNewWorkOrder,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B63E5)),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(3.dp))
-                Text("Novi", fontWeight = FontWeight.Bold, maxLines = 1)
+            if (!isClientPortal) {
+                Button(
+                    onClick = onNewWorkOrder,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B63E5)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("Novi", fontWeight = FontWeight.Bold, maxLines = 1)
+                }
             }
             Spacer(Modifier.width(4.dp))
         },
@@ -11106,6 +11149,7 @@ private fun MainMenuButton(
     currentSection: AppSection,
     currentMoreFocus: MoreSectionFocus,
     expanded: Boolean,
+    isClientPortal: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onLogout: () -> Unit,
@@ -11118,6 +11162,7 @@ private fun MainMenuButton(
             expanded = expanded,
             currentSection = currentSection,
             currentMoreFocus = currentMoreFocus,
+            isClientPortal = isClientPortal,
             onDismiss = { onExpandedChange(false) },
             onSectionChange = onSectionChange,
             onLogout = onLogout,
@@ -11130,12 +11175,13 @@ private fun MainMenuDropdown(
     expanded: Boolean,
     currentSection: AppSection,
     currentMoreFocus: MoreSectionFocus,
+    isClientPortal: Boolean,
     onDismiss: () -> Unit,
     onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onLogout: () -> Unit,
 ) {
-    val shortcuts = remember {
-        listOf(
+    val shortcuts = remember(isClientPortal) {
+        val allShortcuts = listOf(
             MainMenuShortcut("Home", "Istekli rokovi i nadolazeći teren", AppSection.Operations, Icons.Rounded.Home),
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
@@ -11151,6 +11197,15 @@ private fun MainMenuDropdown(
             MainMenuShortcut("Procjene rizika", "Jobs, radna mjesta i mobilni unos", AppSection.More, Icons.Rounded.Badge, MoreSectionFocus.RiskAssessments),
             MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint, MoreSectionFocus.Training),
         )
+        if (!isClientPortal) {
+            allShortcuts
+        } else {
+            allShortcuts.filter { shortcut ->
+                shortcut.section == AppSection.Operations ||
+                    shortcut.section == AppSection.WorkOrders ||
+                    shortcut.moreFocus in clientPortalMoreSections
+            }
+        }
     }
 
     DropdownMenu(
@@ -11463,10 +11518,18 @@ private fun QuickActionDivider() {
 @Composable
 private fun MainBottomBar(
     selected: AppSection,
+    isClientPortal: Boolean,
     onSectionChange: (AppSection) -> Unit,
 ) {
+    val visibleSections = remember(isClientPortal) {
+        if (isClientPortal) {
+            listOf(AppSection.Operations, AppSection.WorkOrders)
+        } else {
+            AppSection.entries.filter { section -> section != AppSection.More && section != AppSection.Calendar }
+        }
+    }
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-        AppSection.entries.filter { section -> section != AppSection.More && section != AppSection.Calendar }.forEach { section ->
+        visibleSections.forEach { section ->
             NavigationBarItem(
                 selected = selected == section,
                 onClick = { onSectionChange(section) },
@@ -17287,6 +17350,7 @@ private fun WorkOrderCard(
     onClick: () -> Unit,
     onStatusChange: (String) -> Unit,
     onAddDocumentation: () -> Unit,
+    readOnly: Boolean = false,
 ) {
     val statusStyle = rnStatusStyle(workOrder)
     Card(
@@ -17305,12 +17369,16 @@ private fun WorkOrderCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RnStatusMenuChip(
-                    currentStatus = workOrder.status,
-                    statusOptions = statusOptions,
-                    enabled = !isLoading,
-                    onStatusSelected = onStatusChange,
-                )
+                if (readOnly) {
+                    StatusChip(workOrder)
+                } else {
+                    RnStatusMenuChip(
+                        currentStatus = workOrder.status,
+                        statusOptions = statusOptions,
+                        enabled = !isLoading,
+                        onStatusSelected = onStatusChange,
+                    )
+                }
                 Spacer(Modifier.width(10.dp))
                 Column(
                     modifier = Modifier.weight(1f),
@@ -17325,17 +17393,19 @@ private fun WorkOrderCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(
-                    onClick = onAddDocumentation,
-                    enabled = !isLoading,
-                    modifier = Modifier.size(42.dp),
-                ) {
-                    Icon(
-                        Icons.Rounded.Description,
-                        contentDescription = "Dodaj dokumentaciju",
-                        modifier = Modifier.size(21.dp),
-                        tint = if (isLoading) Color(0xFF94A3B8) else statusStyle.accent,
-                    )
+                if (!readOnly) {
+                    IconButton(
+                        onClick = onAddDocumentation,
+                        enabled = !isLoading,
+                        modifier = Modifier.size(42.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Description,
+                            contentDescription = "Dodaj dokumentaciju",
+                            modifier = Modifier.size(21.dp),
+                            tint = if (isLoading) Color(0xFF94A3B8) else statusStyle.accent,
+                        )
+                    }
                 }
                 Text(
                     "›",
@@ -18947,6 +19017,7 @@ private fun WorkOrderDetailScreen(
     documents: List<WorkOrderDocument>,
     documentsLoading: Boolean,
     statusOptions: List<String>,
+    readOnly: Boolean = false,
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onMetaChange: (WorkOrder, String, List<String>) -> Unit,
@@ -19009,7 +19080,7 @@ private fun WorkOrderDetailScreen(
     var showLocationDetails by remember(workOrder.id) { mutableStateOf(false) }
     var showExecutorsEditor by remember(workOrder.id) { mutableStateOf(false) }
     var showMetaEditor by remember(workOrder.id) { mutableStateOf(false) }
-    if (showMetaEditor) {
+    if (showMetaEditor && !readOnly) {
         AlertDialog(
             onDismissRequest = { showMetaEditor = false },
             title = {
@@ -19042,7 +19113,7 @@ private fun WorkOrderDetailScreen(
             },
         )
     }
-    if (showExecutorsEditor) {
+    if (showExecutorsEditor && !readOnly) {
         AlertDialog(
             onDismissRequest = { showExecutorsEditor = false },
             title = {
@@ -19092,7 +19163,11 @@ private fun WorkOrderDetailScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            WorkOrderHeaderMeta(workOrder, onClick = { showMetaEditor = true })
+                            WorkOrderHeaderMeta(
+                                workOrder = workOrder,
+                                enabled = !readOnly,
+                                onClick = { showMetaEditor = true },
+                            )
                         }
                         Text(
                             workOrder.status,
@@ -19208,111 +19283,136 @@ private fun WorkOrderDetailScreen(
                             }
                         }
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        AssistChip(
-                            onClick = {
-                                if (currentWatcherId.isBlank()) return@AssistChip
-                                val nextWatcherIds = if (currentUserIsWatcher) {
-                                    workOrder.watcherIds.filterNot { watcherId ->
-                                        watcherId.equals(currentWatcherId, ignoreCase = true)
+                    if (!readOnly) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            AssistChip(
+                                onClick = {
+                                    if (currentWatcherId.isBlank()) return@AssistChip
+                                    val nextWatcherIds = if (currentUserIsWatcher) {
+                                        workOrder.watcherIds.filterNot { watcherId ->
+                                            watcherId.equals(currentWatcherId, ignoreCase = true)
+                                        }
+                                    } else {
+                                        (workOrder.watcherIds + currentWatcherId).distinct()
                                     }
-                                } else {
-                                    (workOrder.watcherIds + currentWatcherId).distinct()
-                                }
-                                onWatchersChange(workOrder, nextWatcherIds)
-                            },
-                            enabled = !isLoading && currentWatcherId.isNotBlank(),
-                            leadingIcon = {
-                                Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                            },
-                            label = {
-                                Text(
-                                    when {
-                                        currentWatcherId.isBlank() -> "Nema profila"
-                                        currentUserIsWatcher -> "Pratiš RN"
-                                        else -> "Dodaj mene"
-                                    },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                        )
+                                    onWatchersChange(workOrder, nextWatcherIds)
+                                },
+                                enabled = !isLoading && currentWatcherId.isNotBlank(),
+                                leadingIcon = {
+                                    Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                label = {
+                                    Text(
+                                        when {
+                                            currentWatcherId.isBlank() -> "Nema profila"
+                                            currentUserIsWatcher -> "Pratiš RN"
+                                            else -> "Dodaj mene"
+                                        },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
                     }
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            WorkOrderStatusMenu(
-                                currentStatus = workOrder.status,
-                                statusOptions = statusOptions,
+                        if (readOnly) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                WorkOrderHeroActionTile(
+                                    label = "Dokumenti",
+                                    icon = Icons.Rounded.Folder,
+                                    onClick = onRefreshDocuments,
+                                    enabled = !isLoading && !documentsLoading,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                WorkOrderHeroActionTile(
+                                    label = "PDF RN",
+                                    icon = Icons.Rounded.PictureAsPdf,
+                                    onClick = { onDownloadPdf(workOrder) },
+                                    enabled = !isLoading,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                WorkOrderStatusMenu(
+                                    currentStatus = workOrder.status,
+                                    statusOptions = statusOptions,
+                                    enabled = !isLoading,
+                                    onStatusSelected = { status -> onStatusChange(workOrder, status) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                WorkOrderHeroActionTile(
+                                    label = "Usluge",
+                                    icon = Icons.Rounded.ListAlt,
+                                    onClick = { onManageServices(workOrder) },
+                                    enabled = !isLoading,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                WorkOrderHeroActionTile(
+                                    label = "Izvršitelji",
+                                    icon = Icons.Rounded.Person,
+                                    onClick = { showExecutorsEditor = true },
+                                    enabled = !isLoading,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                WorkOrderHeroActionTile(
+                                    label = "Izradi dokumentaciju",
+                                    icon = Icons.Rounded.Description,
+                                    onClick = { onGenerateDocumentation(workOrder) },
+                                    enabled = !isLoading,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                WorkOrderHeroActionTile(
+                                    label = "Dokumentacija",
+                                    icon = Icons.Rounded.Description,
+                                    onClick = { onAddDocumentation(workOrder) },
+                                    enabled = !isLoading,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                WorkOrderHeroActionTile(
+                                    label = "PDF RN",
+                                    icon = Icons.Rounded.PictureAsPdf,
+                                    onClick = { onDownloadPdf(workOrder) },
+                                    enabled = !isLoading,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            Button(
+                                onClick = { onSignWorkOrder(workOrder) },
                                 enabled = !isLoading,
-                                onStatusSelected = { status -> onStatusChange(workOrder, status) },
-                                modifier = Modifier.weight(1f),
-                            )
-                            WorkOrderHeroActionTile(
-                                label = "Usluge",
-                                icon = Icons.Rounded.ListAlt,
-                                onClick = { onManageServices(workOrder) },
-                                enabled = !isLoading,
-                                modifier = Modifier.weight(1f),
-                            )
-                            WorkOrderHeroActionTile(
-                                label = "Izvršitelji",
-                                icon = Icons.Rounded.Person,
-                                onClick = { showExecutorsEditor = true },
-                                enabled = !isLoading,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            WorkOrderHeroActionTile(
-                                label = "Izradi dokumentaciju",
-                                icon = Icons.Rounded.Description,
-                                onClick = { onGenerateDocumentation(workOrder) },
-                                enabled = !isLoading,
-                                modifier = Modifier.weight(1f),
-                            )
-                            WorkOrderHeroActionTile(
-                                label = "Dokumentacija",
-                                icon = Icons.Rounded.Description,
-                                onClick = { onAddDocumentation(workOrder) },
-                                enabled = !isLoading,
-                                modifier = Modifier.weight(1f),
-                            )
-                            WorkOrderHeroActionTile(
-                                label = "PDF RN",
-                                icon = Icons.Rounded.PictureAsPdf,
-                                onClick = { onDownloadPdf(workOrder) },
-                                enabled = !isLoading,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        Button(
-                            onClick = { onSignWorkOrder(workOrder) },
-                            enabled = !isLoading,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = statusStyle.accent,
-                                contentColor = Color.White,
-                            ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
-                        ) {
-                            Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Potpiši RN")
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = statusStyle.accent,
+                                    contentColor = Color.White,
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                            ) {
+                                Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Potpiši RN")
+                            }
                         }
                     }
                 }
@@ -19324,14 +19424,14 @@ private fun WorkOrderDetailScreen(
                     icon = Icons.Rounded.CalendarMonth,
                     label = "Rok",
                     value = workOrder.dueDate,
-                    enabled = !isLoading,
+                    enabled = !isLoading && !readOnly,
                     onChange = { date -> onDatesChange(workOrder, date, null) },
                 )
                 DetailDatePickerRow(
                     icon = Icons.Rounded.CalendarMonth,
                     label = "Izvršenje",
                     value = workOrder.executionDate,
-                    enabled = !isLoading,
+                    enabled = !isLoading && !readOnly,
                     onChange = { date -> onDatesChange(workOrder, null, date) },
                 )
             }
@@ -19356,6 +19456,7 @@ private fun WorkOrderDetailScreen(
                 onDownloadDocument = onDownloadDocument,
                 onDeleteDocument = onDeleteDocument,
                 onRefreshDocuments = onRefreshDocuments,
+                readOnly = readOnly,
             )
 
         }
@@ -19365,13 +19466,14 @@ private fun WorkOrderDetailScreen(
 @Composable
 private fun WorkOrderHeaderMeta(
     workOrder: WorkOrder,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val tags = workOrder.tags
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(start = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -20112,6 +20214,7 @@ private fun WorkOrderDocumentationSection(
     onDownloadDocument: (WorkOrderDocument) -> Unit,
     onDeleteDocument: (WorkOrderDocument) -> Unit,
     onRefreshDocuments: () -> Unit,
+    readOnly: Boolean = false,
 ) {
     DetailSection("Dokumentacija") {
         val groupedDocuments = remember(documents) { groupWorkOrderDocuments(documents) }
@@ -20123,25 +20226,27 @@ private fun WorkOrderDocumentationSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(
-                onClick = onGenerateDocumentation,
-                enabled = !isBusy,
-                shape = RoundedCornerShape(16.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Izradi", fontWeight = FontWeight.Black)
-            }
-            Button(
-                onClick = onAddDocumentation,
-                enabled = !isBusy,
-                shape = RoundedCornerShape(16.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Dodaj", fontWeight = FontWeight.Black)
+            if (!readOnly) {
+                Button(
+                    onClick = onGenerateDocumentation,
+                    enabled = !isBusy,
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Izradi", fontWeight = FontWeight.Black)
+                }
+                Button(
+                    onClick = onAddDocumentation,
+                    enabled = !isBusy,
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Dodaj", fontWeight = FontWeight.Black)
+                }
             }
             IconButton(onClick = onRefreshDocuments, enabled = !loading && !isBusy) {
                 Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi dokumentaciju")
@@ -20167,7 +20272,7 @@ private fun WorkOrderDocumentationSection(
                     Column {
                         Text("Još nema dokumentacije", fontWeight = FontWeight.Bold)
                         Text(
-                            "Dodaj sken, PDF, fotografije ili drugu datoteku.",
+                            if (readOnly) "Nema dokumenata za prikaz." else "Dodaj sken, PDF, fotografije ili drugu datoteku.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         )
@@ -20193,6 +20298,7 @@ private fun WorkOrderDocumentationSection(
                 onOpenDocument = onOpenDocument,
                 onDownloadDocument = onDownloadDocument,
                 onDeleteDocument = onDeleteDocument,
+                canDelete = !readOnly,
             )
         }
     }
@@ -20208,6 +20314,7 @@ private fun WorkOrderDocumentGroupCard(
     onOpenDocument: (WorkOrderDocument) -> Unit,
     onDownloadDocument: (WorkOrderDocument) -> Unit,
     onDeleteDocument: (WorkOrderDocument) -> Unit,
+    canDelete: Boolean = true,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -20292,6 +20399,7 @@ private fun WorkOrderDocumentGroupCard(
                             onOpen = { onOpenDocument(document) },
                             onDownload = { onDownloadDocument(document) },
                             onDelete = { onDeleteDocument(document) },
+                            canDelete = canDelete,
                         )
                     }
                 }
@@ -20307,6 +20415,7 @@ private fun WorkOrderDocumentCard(
     onOpen: () -> Unit,
     onDownload: () -> Unit,
     onDelete: () -> Unit,
+    canDelete: Boolean = true,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -20362,8 +20471,10 @@ private fun WorkOrderDocumentCard(
                     IconButton(onClick = onDownload, enabled = enabled) {
                         Icon(Icons.Rounded.Download, contentDescription = "Preuzmi dokument", tint = MaterialTheme.colorScheme.primary)
                     }
-                    IconButton(onClick = onDelete, enabled = enabled) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "Obriši dokument", tint = Color(0xFFDC2626))
+                    if (canDelete) {
+                        IconButton(onClick = onDelete, enabled = enabled) {
+                            Icon(Icons.Rounded.Delete, contentDescription = "Obriši dokument", tint = Color(0xFFDC2626))
+                        }
                     }
                 }
             }

@@ -156,9 +156,19 @@ function resolveAppUrl() {
   return dbString(process.env.PUBLIC_APP_URL) || dbString(process.env.APP_URL) || "https://safe-nexus.org";
 }
 
+function resolveAndroidAppUrl() {
+  const configuredUrl = dbString(process.env.PUBLIC_ANDROID_APP_URL) || dbString(process.env.ANDROID_APP_URL);
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+  return `${resolveAppUrl().replace(/\/+$/u, "")}/download-apk`;
+}
+
 function buildTemporaryPasswordMail(user = {}, temporaryPassword = "", options = {}) {
   const recipientName = dbString(user.firstName) || dbString(user.fullName) || dbString(user.email) || "korisniče";
   const appUrl = resolveAppUrl();
+  const androidAppUrl = resolveAndroidAppUrl();
+  const loginName = dbString(user.email).toLowerCase() || dbString(user.username);
   const isNewUser = Boolean(options.isNewUser);
   const initiatedBy = dbString(options.initiatedBy);
   const subject = isNewUser
@@ -176,9 +186,11 @@ function buildTemporaryPasswordMail(user = {}, temporaryPassword = "", options =
     introLine,
     contextLine,
     "",
+    `Korisnik: ${loginName}`,
     `Privremena lozinka: ${temporaryPassword}`,
     "",
     `Prijava: ${appUrl}`,
+    `Android aplikacija: ${androidAppUrl}`,
     "Nakon prijave morat ćete odmah postaviti novu lozinku.",
     "",
     "SafeNexus",
@@ -190,6 +202,9 @@ function buildTemporaryPasswordMail(user = {}, temporaryPassword = "", options =
       <p>${introLine}</p>
       <p>${contextLine}</p>
       <div style="margin:20px 0;padding:16px 18px;border-radius:18px;background:#eef4ff;border:1px solid #c9d7ef;">
+        <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#67758f;">Korisnik</div>
+        <div style="margin-top:8px;font-size:16px;font-weight:700;color:#14223c;">${loginName}</div>
+        <div style="height:14px;"></div>
         <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#67758f;">Privremena lozinka</div>
         <div style="margin-top:8px;font-size:22px;font-weight:700;color:#163e8e;">${temporaryPassword}</div>
       </div>
@@ -198,6 +213,10 @@ function buildTemporaryPasswordMail(user = {}, temporaryPassword = "", options =
         <a href="${appUrl}" style="color:#1d74f5;font-weight:700;text-decoration:none;">${appUrl}</a>
       </p>
       <p>Nakon prijave morat ćete odmah postaviti novu lozinku.</p>
+      <p>
+        Android aplikacija:
+        <a href="${androidAppUrl}" style="color:#1d74f5;font-weight:700;text-decoration:none;">preuzmi SafeNexus Android</a>
+      </p>
       <p style="margin-top:20px;color:#67758f;">SafeNexus</p>
     </div>
   `;

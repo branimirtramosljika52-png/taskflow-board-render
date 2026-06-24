@@ -1482,6 +1482,11 @@ private fun JSONObject?.toSafeNexusUser(): SafeNexusUser {
     return SafeNexusUser(
         displayName = user.firstClean("fullName", "displayName", "username", "email").ifBlank { "SafeNexus" },
         email = user.firstClean("email", "username"),
+        profileRole = user.firstClean("profileRole", "profile_role"),
+        role = user.firstClean("role"),
+        clientCompanyIds = user.optJSONArray("clientCompanyIds").toStringList("id", "value"),
+        clientLocationIds = user.optJSONArray("clientLocationIds").toStringList("id", "value"),
+        clientAccessAllLocations = user.firstNullableBoolean("clientAccessAllLocations", "client_access_all_locations") ?: true,
     )
 }
 
