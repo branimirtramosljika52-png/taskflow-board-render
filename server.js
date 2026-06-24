@@ -2953,6 +2953,40 @@ function normalizeIsznrRoRecord(source = {}) {
     .map((item, index) => normalizeIsznrWorkEquipmentUnit(item, index))
     .filter((item) => item.id || item.name || item.serialNumber || item.inventoryNumber);
   const finalGrade = normalizeIsznrFinalGrade(record.finalGrade ?? record.finalScore);
+  const mechanicalItems = normalizeIsznrRoAssessmentItemsFromRecord(
+    record,
+    [
+      "roMechanicalEngineerings",
+      "roMechanicalEngineering",
+      "mechanicalEngineerings",
+      "mechanicalItems",
+      "mechanicalChecks",
+      "ro_mechanical_engineerings",
+    ],
+    "ro_mechanical_engineering_registers",
+    [
+      "roMechanicalEngineeringRegister",
+      "mechanicalEngineeringRegister",
+      "register",
+    ],
+  );
+  const electricalItems = normalizeIsznrRoAssessmentItemsFromRecord(
+    record,
+    [
+      "roElectricals",
+      "roElectrical",
+      "electricals",
+      "electricalItems",
+      "electricalChecks",
+      "ro_electricals",
+    ],
+    "ro_electrical_registers",
+    [
+      "roElectricalRegister",
+      "electricalRegister",
+      "register",
+    ],
+  );
 
   return {
     id,
@@ -2983,6 +3017,8 @@ function normalizeIsznrRoRecord(source = {}) {
     instruments: normalizeIsznrRelatedArray(record.instruments),
     deficiencies: normalizeInputValue(record.deficiencies),
     measuresToEliminateDeficiencies: normalizeInputValue(record.measuresToEliminateDeficiencies),
+    mechanicalItems,
+    electricalItems,
     equipments,
   };
 }
@@ -5872,6 +5908,78 @@ function normalizeIsznrRoAssessmentItems(items = [], resourcePath = "") {
       };
     })
     .filter((item) => item.registerIri || item.customContent || item.label || item.measuredValue);
+}
+
+function normalizeIsznrRoAssessmentItemFromRecord(source = {}, resourcePath = "", registerKeys = []) {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const attributes = source.attributes && typeof source.attributes === "object" ? source.attributes : {};
+  const record = { ...attributes, ...source };
+  const registerRecord = registerKeys
+    .map((key) => record[key])
+    .find((value) => value && typeof value === "object");
+  const registerId = registerRecord ? extractIsznrId(registerRecord) : "";
+  const directRegisterIri = [
+    record.registerIri,
+    record.register,
+    record.iri,
+    record["@id"],
+  ]
+    .map((value) => normalizeInputValue(value))
+    .find((value) => value.includes(resourcePath));
+  const registerIri = normalizeIsznrApiIriValue(
+    directRegisterIri
+      || (registerId ? buildIsznrApiIri(resourcePath, registerId) : ""),
+    resourcePath,
+  );
+  const registerLabel = registerRecord
+    ? normalizeInputValue(pickIsznrValue(registerRecord, ["description", "name", "title", "label", "naziv"]))
+    : "";
+  const label = normalizeInputValue(pickIsznrValue(record, [
+    "label",
+    "description",
+    "name",
+    "title",
+    "content",
+    "customContent",
+    "text",
+  ])) || registerLabel;
+  const customContent = normalizeInputValue(pickIsznrValue(record, [
+    "customContent",
+    "content",
+    "text",
+    "note",
+    "remark",
+  ]));
+  const measuredValue = normalizeInputValue(pickIsznrValue(record, [
+    "measuredValue",
+    "value",
+    "result",
+    "measurementResult",
+  ]));
+  return {
+    registerIri,
+    label,
+    customContent,
+    measuredValue,
+    meetsConditions: normalizeRequestBoolean(
+      record.meetsConditions
+        ?? record.conditionMet
+        ?? record.satisfies
+        ?? record.finalGrade
+        ?? record.result,
+      true,
+    ) ? 1 : 0,
+  };
+}
+
+function normalizeIsznrRoAssessmentItemsFromRecord(record = {}, keys = [], resourcePath = "", registerKeys = []) {
+  const items = keys
+    .flatMap((key) => getIsznrNestedArray(record, [key]))
+    .map((item) => normalizeIsznrRoAssessmentItemFromRecord(item, resourcePath, registerKeys))
+    .filter(Boolean);
+  return normalizeIsznrRoAssessmentItems(items, resourcePath);
 }
 
 function normalizeIsznrRoAttachmentFilesForEquipment(equipment = {}) {

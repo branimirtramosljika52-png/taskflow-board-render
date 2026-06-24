@@ -117467,6 +117467,9 @@ function normalizeWorkOrderDocumentWorkEquipmentText(value = "") {
 
 function isWorkOrderDocumentWorkEquipmentText(value = "") {
   const normalized = normalizeWorkOrderDocumentWorkEquipmentText(value);
+  if (/^ro\s+[fk]\b/.test(normalized) || normalized === "rof" || normalized.startsWith("rof ")) {
+    return false;
+  }
   return normalized.includes("radna oprema")
     || normalized.includes("radne opreme")
     || normalized === "ro"
@@ -117482,6 +117485,7 @@ function isWorkOrderDocumentWorkEquipmentService(service = {}) {
     service?.code,
     service?.shortCode,
     service?.serviceGroup,
+    ...(Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
   ].some((value) => isWorkOrderDocumentWorkEquipmentText(value));
 }
 
@@ -117492,6 +117496,9 @@ function isWorkOrderDocumentPhysicalFactorsText(value = "") {
   }
   return normalized === "fc"
     || normalized.startsWith("fc ")
+    || normalized === "rof"
+    || normalized.startsWith("rof ")
+    || /^ro\s+f\b/.test(normalized)
     || normalized.includes("fizikalni cimbenici")
     || normalized.includes("fizikalnih cimbenika")
     || normalized.includes("radni okolis fizikal")
@@ -117507,6 +117514,7 @@ function isWorkOrderDocumentPhysicalFactorsService(service = {}) {
     service?.code,
     service?.shortCode,
     service?.serviceGroup,
+    ...(Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
   ].some((value) => isWorkOrderDocumentPhysicalFactorsText(value));
 }
 
@@ -117517,6 +117525,7 @@ function isWorkOrderDocumentChemicalFactorsText(value = "") {
   }
   return normalized === "kc"
     || normalized.startsWith("kc ")
+    || /^ro\s+k\b/.test(normalized)
     || normalized.includes("kemijski cimbenici")
     || normalized.includes("kemijskih cimbenika")
     || normalized.includes("radni okolis kemij")
@@ -117532,7 +117541,14 @@ function isWorkOrderDocumentChemicalFactorsService(service = {}) {
     service?.code,
     service?.shortCode,
     service?.serviceGroup,
+    ...(Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
   ].some((value) => isWorkOrderDocumentChemicalFactorsText(value));
+}
+
+function isWorkOrderDocumentIsznrNativeService(service = {}) {
+  return isWorkOrderDocumentWorkEquipmentService(service)
+    || isWorkOrderDocumentPhysicalFactorsService(service)
+    || isWorkOrderDocumentChemicalFactorsService(service);
 }
 
 function shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder = {}, serviceItems = []) {
@@ -118401,6 +118417,106 @@ function getWorkOrderDocumentWorkEquipmentFilterCounts(items = [], today = getWo
   }, {});
 }
 
+function normalizeWorkOrderDocumentRoAssessmentSourceItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const source = item && typeof item === "object" ? item : { label: item };
+      return {
+        registerIri: String(source.registerIri || source.iri || source["@id"] || source.register || "").trim(),
+        label: String(source.label || source.name || source.title || source.description || "").trim(),
+        customContent: String(source.customContent || source.content || source.text || "").trim(),
+        measuredValue: String(source.measuredValue || source.value || source.result || "").trim(),
+        meetsConditions: Number(source.meetsConditions) === 0 || String(source.meetsConditions).toLowerCase() === "false" ? 0 : 1,
+      };
+    })
+    .filter((item) => item.registerIri || item.label || item.customContent || item.measuredValue);
+}
+
+function getWorkOrderDocumentRoAssessmentItems(item = {}, bucketKey = "mechanical") {
+  const equipment = item.equipment || {};
+  const meta = item.meta || {};
+  const keys = bucketKey === "electrical"
+    ? ["electricalItems", "roElectricals", "electricals", "electricalChecks"]
+    : ["mechanicalItems", "roMechanicalEngineerings", "mechanicalEngineerings", "mechanicalChecks"];
+  const sources = [
+    ...keys.flatMap((key) => (Array.isArray(item[key]) ? item[key] : [])),
+    ...keys.flatMap((key) => (Array.isArray(equipment[key]) ? equipment[key] : [])),
+    ...keys.flatMap((key) => (Array.isArray(meta[key]) ? meta[key] : [])),
+  ];
+  return normalizeWorkOrderDocumentRoAssessmentSourceItems(sources);
+}
+
+function getWorkOrderDocumentRoRegisterPathForBucket(bucketKey = "mechanical") {
+  return bucketKey === "electrical" ? "ro_electrical_registers" : "ro_mechanical_engineering_registers";
+}
+
+function normalizeWorkOrderDocumentRoRegisterLookupValue(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/api\/v3\//i, "/")
+    .replace(/\/+$/g, "")
+    .toLowerCase();
+}
+
+function findWorkOrderDocumentRoRegisterItem(registerIri = "", bucketKey = "mechanical") {
+  const lookup = normalizeWorkOrderDocumentRoRegisterLookupValue(registerIri);
+  if (!lookup) {
+    return null;
+  }
+  const path = getWorkOrderDocumentRoRegisterPathForBucket(bucketKey);
+  const groups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [];
+  for (const group of groups) {
+    if (String(group?.path || "").trim() !== path) {
+      continue;
+    }
+    for (const item of Array.isArray(group.items) ? group.items : []) {
+      const candidates = [
+        getWorkEquipmentAiRegisterValue(item, group),
+        item.iri,
+        item["@id"],
+        item.id,
+        item.isznrId,
+        item.value,
+        item.code,
+      ]
+        .map((value) => normalizeWorkOrderDocumentRoRegisterLookupValue(value))
+        .filter(Boolean);
+      const id = normalizeWorkOrderDocumentRoRegisterLookupValue(item.id || item.isznrId || item.value || item.code);
+      if (
+        candidates.some((candidate) => candidate === lookup || candidate.endsWith(lookup) || lookup.endsWith(candidate))
+        || (id && (lookup === `/${path}/${id}` || lookup.endsWith(`/${path}/${id}`)))
+      ) {
+        return { group, item };
+      }
+    }
+  }
+  return null;
+}
+
+function getWorkOrderDocumentRoAssessmentLabel(assessment = {}, bucketKey = "mechanical") {
+  const direct = String(assessment.label || assessment.customContent || "").trim();
+  const register = assessment.registerIri
+    ? findWorkOrderDocumentRoRegisterItem(assessment.registerIri, bucketKey)
+    : null;
+  const registerLabel = register
+    ? getWorkEquipmentAiRegisterItemLabel(register.item, register.group?.label || "IS ZNR stavka")
+    : "";
+  const measured = String(assessment.measuredValue || "").trim();
+  return [direct || registerLabel, measured ? `(${measured})` : ""].filter(Boolean).join(" ");
+}
+
+function summarizeWorkOrderDocumentRoAssessmentItems(items = [], bucketKey = "mechanical", fallback = "") {
+  const labels = (Array.isArray(items) ? items : [])
+    .map((item) => getWorkOrderDocumentRoAssessmentLabel(item, bucketKey))
+    .filter(Boolean);
+  if (labels.length > 0) {
+    const visible = labels.slice(0, 2).join(" · ");
+    return labels.length > 2 ? `${visible} · +${labels.length - 2}` : visible;
+  }
+  return fallback;
+}
+
 function createWorkOrderDocumentWorkEquipmentKpiCard({
   label = "",
   value = 0,
@@ -118504,16 +118620,20 @@ function getWorkOrderDocumentRoMatrixRows(item = {}, today = getWorkOrderDocumen
     ...(Array.isArray(item.roHealthRequirementRegister) ? item.roHealthRequirementRegister : []),
     item.roHealthRequirementOther,
   ].filter(Boolean).length;
-  const mechanical = [
+  const mechanicalItems = getWorkOrderDocumentRoAssessmentItems(item, "mechanical");
+  const electricalItems = getWorkOrderDocumentRoAssessmentItems(item, "electrical");
+  const mechanicalFallbackCount = [
     item.equipmentsTechnicalData,
     item.methodsProceduresAndNorms,
     item.deficiencies,
     item.measuresToEliminateDeficiencies,
   ].filter(Boolean).length;
-  const electrical = [
+  const electricalFallbackCount = [
     item.methodsProceduresAndNorms,
     item.useAndMaintenance,
   ].filter(Boolean).length;
+  const mechanical = mechanicalItems.length || mechanicalFallbackCount;
+  const electrical = electricalItems.length || electricalFallbackCount;
   const risks = [
     item.deficiencies,
     item.measuresToEliminateDeficiencies,
@@ -118551,15 +118671,15 @@ function getWorkOrderDocumentRoMatrixRows(item = {}, today = getWorkOrderDocumen
     },
     {
       key: "mechanical",
-      value: mechanical ? "Zadovoljava" : "Provjeri",
-      detail: `${mechanical || 0} stavki`,
+      value: mechanicalItems.length ? `${mechanicalItems.length} stavki` : (mechanical ? "Zadovoljava" : "Provjeri"),
+      detail: summarizeWorkOrderDocumentRoAssessmentItems(mechanicalItems, "mechanical", mechanical ? "opisni podaci" : "bez stavki"),
       ok: mechanical > 0 && !normalizeWorkOrderDocumentWorkEquipmentGrade(grade).includes("ne zadovoljava"),
       warning: mechanical === 0,
     },
     {
       key: "electrical",
-      value: electrical ? "Zadovoljava" : "Nije posebno",
-      detail: `${electrical || 0} stavki`,
+      value: electricalItems.length ? `${electricalItems.length} stavki` : (electrical ? "Zadovoljava" : "Nije posebno"),
+      detail: summarizeWorkOrderDocumentRoAssessmentItems(electricalItems, "electrical", electrical ? "opisni podaci" : "bez stavki"),
       ok: electrical > 0,
     },
     {
@@ -122777,15 +122897,19 @@ function getWorkOrderDocumentTemplateRecommendations(workOrders = getAllSelected
 
   workOrders.forEach((workOrder) => {
     const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
-    let hasTemplate = false;
+    let hasDocumentSource = false;
 
     serviceItems.forEach((service) => {
+      if (isWorkOrderDocumentIsznrNativeService(service)) {
+        hasDocumentSource = true;
+        return;
+      }
       const resolvedTemplateIds = getWorkOrderServiceTemplateIds(service);
       if (resolvedTemplateIds.length === 0) {
         return;
       }
 
-      hasTemplate = true;
+      hasDocumentSource = true;
 
       resolvedTemplateIds.forEach((templateId) => {
         const template = getDocumentTemplateById(templateId);
@@ -122812,7 +122936,7 @@ function getWorkOrderDocumentTemplateRecommendations(workOrders = getAllSelected
       });
     });
 
-    if (!hasTemplate) {
+    if (!hasDocumentSource) {
       unmatchedWorkOrders.push(workOrder);
     }
   });
@@ -122883,6 +123007,9 @@ function buildWorkOrderDocumentWizardSequence(workOrders = getAllSelectedWorkOrd
 
   sortWorkOrders(Array.isArray(workOrders) ? workOrders : []).forEach((workOrder) => {
     getWorkOrderDocumentWizardResolvedServiceItems(workOrder).forEach((service) => {
+      if (isWorkOrderDocumentIsznrNativeService(service)) {
+        return;
+      }
       getWorkOrderServiceTemplateIds(service).forEach((templateId) => {
         const template = getDocumentTemplateById(templateId);
         if (!template) {
