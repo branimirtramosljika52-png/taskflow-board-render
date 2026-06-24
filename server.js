@@ -25942,8 +25942,8 @@ function vehicleUsageReservationBelongsToUser(reservation = null, user = {}) {
   ]
     .map((value) => normalizeInputValue(value))
     .filter(Boolean);
-  if (reservationUserIds.length > 0) {
-    return userId ? reservationUserIds.includes(userId) : false;
+  if (userId && reservationUserIds.includes(userId)) {
+    return true;
   }
   return vehicleUsageLabelMatches([
     ...(Array.isArray(reservation?.reservedForLabels) ? reservation.reservedForLabels : []),
@@ -25984,9 +25984,14 @@ function vehicleUsageTripBelongsToUser(trip = null, user = {}) {
     return false;
   }
   const userId = getVehicleUsageUserId(user);
-  const tripUserId = normalizeInputValue(trip?.checkedOutByUserId || trip?.userId || trip?.createdByUserId);
-  if (tripUserId) {
-    return userId ? tripUserId === userId : false;
+  const tripUserIds = [
+    ...(Array.isArray(trip?.driverUserIds) ? trip.driverUserIds : []),
+    trip?.checkedOutByUserId,
+    trip?.userId,
+    trip?.createdByUserId,
+  ].map((value) => normalizeInputValue(value)).filter(Boolean);
+  if (userId && tripUserIds.includes(userId)) {
+    return true;
   }
   return vehicleUsageLabelMatches([
     ...(Array.isArray(trip?.driverLabels) ? trip.driverLabels : []),

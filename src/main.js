@@ -107437,12 +107437,55 @@ function buildVehicleReservationPayload() {
 
 const VEHICLE_MY_TRIP_WINDOW_TOLERANCE_MS = 60 * 60 * 1000;
 
+function findCurrentVehicleUsageUserOption() {
+  const currentUser = state.user ?? {};
+  const currentIds = [
+    currentUser.id,
+    currentUser.userId,
+    currentUser.sub,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  const currentLabels = [
+    currentUser.fullName,
+    currentUser.displayName,
+    currentUser.username,
+    currentUser.email,
+    currentUser.name,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  const users = state.users ?? [];
+  return users.find((user) => currentIds.includes(String(user?.id || "").trim()))
+    || users.find((user) => {
+      const labels = [
+        user?.fullName,
+        user?.displayName,
+        user?.username,
+        user?.email,
+        user?.name,
+      ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+      return labels.some((label) => currentLabels.some((current) => (
+        label === current || label.includes(current) || current.includes(label)
+      )));
+    })
+    || null;
+}
+
 function getCurrentVehicleUsageUserId() {
-  return String(state.user?.id || state.user?.userId || state.user?.sub || "").trim();
+  return String(
+    findCurrentVehicleUsageUserOption()?.id
+      || state.user?.id
+      || state.user?.userId
+      || state.user?.sub
+      || "",
+  ).trim();
 }
 
 function getCurrentVehicleUsageUserLabels() {
+  const matchedUser = findCurrentVehicleUsageUserOption();
   return [
+    matchedUser?.fullName,
+    matchedUser?.displayName,
+    matchedUser?.username,
+    matchedUser?.email,
+    matchedUser?.name,
     state.user?.fullName,
     state.user?.displayName,
     state.user?.username,
@@ -107463,8 +107506,8 @@ function vehicleReservationBelongsToCurrentUser(reservation = null) {
     reservation.userId,
   ].map((value) => String(value || "").trim()).filter(Boolean);
 
-  if (reservationUserIds.length > 0) {
-    return Boolean(currentUserId && reservationUserIds.includes(currentUserId));
+  if (currentUserId && reservationUserIds.includes(currentUserId)) {
+    return true;
   }
 
   const userLabels = getCurrentVehicleUsageUserLabels();
@@ -107562,17 +107605,23 @@ function findVehicleOpenTripDraft(vehicle = {}, reservationId = "") {
 }
 
 function vehicleTripDraftBelongsToCurrentUser(trip = {}) {
+  const currentUserId = getCurrentVehicleUsageUserId();
+  const tripUserIds = [
+    ...(Array.isArray(trip.driverUserIds) ? trip.driverUserIds : []),
+    trip.checkedOutByUserId,
+    trip.userId,
+    trip.createdByUserId,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  if (currentUserId && tripUserIds.includes(currentUserId)) {
+    return true;
+  }
+
   const labels = [
     ...(Array.isArray(trip.driverLabels) ? trip.driverLabels : []),
     trip.performedBy,
     trip.checkedOutByLabel,
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
-  const currentLabels = [
-    state.user?.fullName,
-    state.user?.displayName,
-    state.user?.username,
-    state.user?.email,
-  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  const currentLabels = getCurrentVehicleUsageUserLabels();
   if (!labels.length || !currentLabels.length) {
     return false;
   }
@@ -107659,6 +107708,16 @@ function rebuildVehicleUsageReservationOptions(vehicle = {}, selectedValue = "")
   }
 
   const reservations = sortVehicleReservations(vehicle?.reservations ?? [], new Date().toISOString());
+  const normalizedSelectedValue = String(selectedValue || "").trim();
+  const selectedExists = normalizedSelectedValue
+    && reservations.some((reservation) => String(reservation.id) === normalizedSelectedValue);
+  const timestampValue = vehicleUsageReturnAtInput?.value || vehicleUsageDepartureAtInput?.value || new Date().toISOString();
+  const fallbackReservation = selectedExists
+    ? null
+    : findVehicleUsageDefaultReservation(vehicle, "checkout", { timestamp: timestampValue });
+  const effectiveSelectedValue = selectedExists
+    ? normalizedSelectedValue
+    : (fallbackReservation?.id || normalizedSelectedValue);
   const options = [
     { value: "", label: "Bez vezane rezervacije" },
     ...reservations.slice(0, 20).map((reservation) => ({
@@ -107671,7 +107730,7 @@ function rebuildVehicleUsageReservationOptions(vehicle = {}, selectedValue = "")
       ].filter(Boolean).join(" | "),
     })),
   ];
-  replaceSelectOptions(vehicleUsageReservationIdInput, options, selectedValue);
+  replaceSelectOptions(vehicleUsageReservationIdInput, options, effectiveSelectedValue);
 }
 
 function getVehicleUsageFormContext() {
@@ -107870,9 +107929,19 @@ function hydrateVehicleUsageForm(vehicle = {}, { mode = "checkout", reservationI
 
 function buildVehicleUsagePayload() {
   const mode = "trip";
-  const reservationId = vehicleUsageReservationIdInput?.value || "";
   const activeVehicle = getActiveVehicle();
-  const openTrip = activeVehicle ? findVehicleOpenTripDraft(activeVehicle, reservationId) : null;
+  const selectedReservationId = vehicleUsageReservationIdInput?.value || "";
+  const actionTimestampValue = vehicleUsageReturnAtInput?.value || vehicleUsageDepartureAtInput?.value || new Date().toISOString();
+  const openTrip = activeVehicle ? findVehicleOpenTripDraft(activeVehicle, selectedReservationId) : null;
+  const fallbackReservation = activeVehicle
+    ? findVehicleUsageDefaultReservation(activeVehicle, "checkout", {
+      reservationId: selectedReservationId || openTrip?.reservationId || "",
+      timestamp: actionTimestampValue,
+    }) || findVehicleUsageDefaultReservation(activeVehicle, "checkout", {
+      timestamp: vehicleUsageDepartureAtInput?.value || new Date().toISOString(),
+    })
+    : null;
+  const reservationId = selectedReservationId || openTrip?.reservationId || fallbackReservation?.id || "";
   const linkedWorkOrderId = vehicleUsageWorkOrderIdInput?.value || "";
   const linkedWorkOrder = (state.workOrders ?? []).find((item) => String(item.id) === String(linkedWorkOrderId)) ?? null;
   const finalLinkedWorkOrderId = linkedWorkOrderId || openTrip?.linkedWorkOrderId || "";
@@ -107891,7 +107960,7 @@ function buildVehicleUsagePayload() {
     startKm,
     endKm,
     odometerKm,
-    reservationId: reservationId || openTrip?.reservationId || "",
+    reservationId,
     linkedWorkOrderId: finalLinkedWorkOrderId,
     linkedWorkOrderNumber: linkedWorkOrder
       ? String(linkedWorkOrder.workOrderNumber || linkedWorkOrder.displayNumber || linkedWorkOrder.number || "").trim()
