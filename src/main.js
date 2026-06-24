@@ -106123,6 +106123,40 @@ function toDateTimeLocalInputValue(value) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
+function localDateTimeInputToIso(value) {
+  const rawValue = String(value || "").trim();
+
+  if (!rawValue) {
+    return "";
+  }
+
+  if (/([zZ]|[+-]\d{2}:?\d{2})$/.test(rawValue)) {
+    const parsedDate = parseDateValue(rawValue);
+    return parsedDate ? parsedDate.toISOString() : rawValue;
+  }
+
+  const match = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+
+  if (match) {
+    const [, year, month, day, hours, minutes, seconds = "0"] = match;
+    const localDate = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hours),
+      Number(minutes),
+      Number(seconds),
+    );
+
+    if (!Number.isNaN(localDate.getTime())) {
+      return localDate.toISOString();
+    }
+  }
+
+  const parsedDate = parseDateValue(rawValue);
+  return parsedDate ? parsedDate.toISOString() : rawValue;
+}
+
 function buildDefaultVehicleReservationWindow() {
   const now = new Date();
   now.setMinutes(0, 0, 0);
@@ -107420,6 +107454,8 @@ function buildVehicleReservationPayload() {
   const selectedUsers = getVehicleReservationSelectedUsers();
   const reservedForUserIds = selectedUsers.map((user) => String(user.id));
   const reservedForLabels = selectedUsers.map((user) => user.fullName || user.email || user.username || "User");
+  const startAt = localDateTimeInputToIso(vehicleReservationStartAtInput?.value || "");
+  const endAt = localDateTimeInputToIso(vehicleReservationEndAtInput?.value || "");
 
   return {
     status: vehicleReservationStatusInput?.value || "reserved",
@@ -107428,8 +107464,8 @@ function buildVehicleReservationPayload() {
     reservedForUserId: reservedForUserIds[0] || "",
     reservedForLabel: reservedForLabels.join(", "),
     purpose: vehicleReservationPurposeInput?.value || "",
-    startAt: vehicleReservationStartAtInput?.value || "",
-    endAt: vehicleReservationEndAtInput?.value || "",
+    startAt,
+    endAt,
     destination: vehicleReservationDestinationInput?.value || "",
     note: vehicleReservationNoteInput?.value || "",
   };
@@ -107931,7 +107967,9 @@ function buildVehicleUsagePayload() {
   const mode = "trip";
   const activeVehicle = getActiveVehicle();
   const selectedReservationId = vehicleUsageReservationIdInput?.value || "";
-  const actionTimestampValue = vehicleUsageReturnAtInput?.value || vehicleUsageDepartureAtInput?.value || new Date().toISOString();
+  const departureAt = localDateTimeInputToIso(vehicleUsageDepartureAtInput?.value || "");
+  const returnAt = localDateTimeInputToIso(vehicleUsageReturnAtInput?.value || "");
+  const actionTimestampValue = returnAt || departureAt || new Date().toISOString();
   const openTrip = activeVehicle ? findVehicleOpenTripDraft(activeVehicle, selectedReservationId) : null;
   const fallbackReservation = activeVehicle
     ? findVehicleUsageDefaultReservation(activeVehicle, "checkout", {
@@ -107955,8 +107993,8 @@ function buildVehicleUsagePayload() {
     mode,
     tripId: openTrip?.id || "",
     activityItemId: openTrip?.id || "",
-    departureAt: vehicleUsageDepartureAtInput?.value || openTrip?.departureAt || "",
-    returnAt: vehicleUsageReturnAtInput?.value || "",
+    departureAt: departureAt || openTrip?.departureAt || "",
+    returnAt,
     startKm,
     endKm,
     odometerKm,
@@ -108215,8 +108253,8 @@ function findCreatedVehicleReservationMatch(vehicle, previousIds, payload) {
 
   return (vehicle?.reservations ?? []).find((item) => (
     String(item.purpose || "") === String(payload.purpose || "")
-    && toDateTimeLocalInputValue(item.startAt) === String(payload.startAt || "")
-    && toDateTimeLocalInputValue(item.endAt) === String(payload.endAt || "")
+    && toDateTimeLocalInputValue(item.startAt) === toDateTimeLocalInputValue(payload.startAt)
+    && toDateTimeLocalInputValue(item.endAt) === toDateTimeLocalInputValue(payload.endAt)
   )) ?? null;
 }
 
@@ -108406,8 +108444,8 @@ async function finalizeVehicleScheduleSelection() {
     const success = await runMutation(() => apiRequest(`/vehicles/${vehicle.id}/reservations/${extensionTarget.reservation.id}`, {
       method: "PATCH",
       body: {
-        startAt: extensionTarget.startAt,
-        endAt: extensionTarget.endAt,
+        startAt: localDateTimeInputToIso(extensionTarget.startAt),
+        endAt: localDateTimeInputToIso(extensionTarget.endAt),
       },
     }), vehicleReservationError);
 
