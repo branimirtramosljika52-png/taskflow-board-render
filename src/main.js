@@ -120582,6 +120582,78 @@ const WORK_ORDER_DOCUMENT_KC_DEFAULT_HEALTH_REQUIREMENTS = Object.freeze([
   "Biološke granične vrijednosti",
 ]);
 
+const WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES = Object.freeze([
+  {
+    key: "office",
+    label: "Ured / administracija",
+    name: "Uredski prostor",
+    description: "Administrativni rad, rad za računalom i komunikacija sa strankama.",
+    processDescription: "Redoviti uredski proces rada.",
+    equipmentDescription: "Računala, monitori, pisači i uredska oprema.",
+    rangeDescription: "Mikroklima, osvijetljenost i buka prema mjernim mjestima.",
+  },
+  {
+    key: "production",
+    label: "Proizvodni prostor",
+    name: "Proizvodni prostor",
+    description: "Prostor za proizvodne aktivnosti i rad uz radnu opremu.",
+    processDescription: "Proizvodni proces prema zatečenom stanju i opisu poslodavca.",
+    equipmentDescription: "Radna oprema, strojevi, instalacije i izvori fizikalnih čimbenika.",
+    rangeDescription: "Buka, osvijetljenost, mikroklima i vibracije po potrebi.",
+  },
+  {
+    key: "warehouse",
+    label: "Skladište",
+    name: "Skladišni prostor",
+    description: "Skladištenje materijala, manipulacija robom i unutarnji transport.",
+    processDescription: "Zaprimanje, skladištenje i izdavanje robe.",
+    equipmentDescription: "Regali, transportna sredstva, viličari i pomoćna oprema.",
+    rangeDescription: "Osvijetljenost, buka i mikroklimatski uvjeti.",
+  },
+  {
+    key: "workshop",
+    label: "Radionica",
+    name: "Radionica",
+    description: "Servisni, montažni ili radionički poslovi.",
+    processDescription: "Radionički proces prema zatečenim aktivnostima.",
+    equipmentDescription: "Alati, strojevi, električna i ručna radna oprema.",
+    rangeDescription: "Buka, vibracije, osvijetljenost i mikroklima.",
+  },
+]);
+
+const WORK_ORDER_DOCUMENT_KC_SPACE_TEMPLATES = Object.freeze([
+  {
+    key: "laboratory",
+    label: "Laboratorij",
+    name: "Laboratorijski prostor",
+    description: "Rad s kemikalijama, uzorcima i laboratorijskom opremom.",
+    processDescription: "Laboratorijski proces prema zatečenim postupcima.",
+    equipmentDescription: "Digestori, laboratorijska oprema, kemikalije i mjerni instrumenti.",
+    rangeDescription: "Kemijske štetnosti prema mjernim mjestima i GVI/BGV vrijednostima.",
+  },
+  {
+    key: "chemical-storage",
+    label: "Skladište kemikalija",
+    name: "Skladište kemikalija",
+    description: "Skladištenje kemijskih tvari i pripravaka.",
+    processDescription: "Zaprimanje, skladištenje i izdavanje kemikalija.",
+    equipmentDescription: "Spremnici, ambalaža, ventilacija i zaštitna oprema.",
+    rangeDescription: "Kemijske štetnosti prema izvorima izloženosti.",
+  },
+]);
+
+const WORK_ORDER_DOCUMENT_FC_MEASUREMENT_PRESETS = Object.freeze([
+  { kind: "Mikroklimatski uvjeti", measuringPlace: "Radno mjesto", measured: "", allowed: "", unit: "°C / % / m/s" },
+  { kind: "Osvijetljenost", measuringPlace: "Radna površina", measured: "", allowed: "", unit: "lx" },
+  { kind: "Buka", measuringPlace: "Radno mjesto", measured: "", allowed: "85", unit: "dB" },
+  { kind: "Vibracije", measuringPlace: "Radna oprema", measured: "", allowed: "", unit: "m/s2" },
+]);
+
+const WORK_ORDER_DOCUMENT_KC_MEASUREMENT_PRESETS = Object.freeze([
+  { kind: "Kemijske štetnosti", measuringPlace: "Zona disanja", measured: "", allowed: "", unit: "mg/m3" },
+  { kind: "Uzorkovanje zraka", measuringPlace: "Mjerno mjesto", measured: "", allowed: "", unit: "mg/m3" },
+]);
+
 function createWorkOrderDocumentWorkEnvironmentDefaultSpaceRows(workOrder = {}, { isChemical = false } = {}) {
   return [
     {
@@ -120833,6 +120905,721 @@ function createWorkOrderDocumentWorkEnvironmentInfoCard(label = "", value = "", 
     card.append(small);
   }
   return card;
+}
+
+function rerenderWorkOrderDocumentWorkEnvironmentView() {
+  if (isDocumentTemplateRuntimeFillMode() && getDocumentTemplateRuntimeActivePanel() === "nativeService") {
+    renderDocumentTemplatePreviewContent();
+    return;
+  }
+  renderWorkOrderDocumentWizard();
+}
+
+function getWorkOrderDocumentWorkEnvironmentDraftKey({ isChemical = false } = {}) {
+  return isChemical ? "chemical" : "physical";
+}
+
+function getWorkOrderDocumentWorkEnvironmentStateDraftProperty({ isChemical = false } = {}) {
+  return isChemical ? "chemicalDraft" : "physicalDraft";
+}
+
+function cloneWorkOrderDocumentWorkEnvironmentDraft(value = {}) {
+  try {
+    return JSON.parse(JSON.stringify(value ?? {}));
+  } catch {
+    return {};
+  }
+}
+
+function normalizeWorkOrderDocumentWorkEnvironmentDraftList(values = [], fallback = []) {
+  const source = Array.isArray(values) ? values : String(values ?? "").split(/\r?\n|;/);
+  const normalized = source
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  if (normalized.length) {
+    return normalized;
+  }
+  return (Array.isArray(fallback) ? fallback : [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+}
+
+function normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space = {}, index = 0, workOrder = {}, { isChemical = false } = {}) {
+  const fallbackName = workOrder.locationName || (isChemical ? "Kemijski prostor" : "Radni prostor");
+  return {
+    id: String(space.id || space.rowId || `space-${index + 1}`).trim() || `space-${index + 1}`,
+    code: String(space.code || space.oznaka || `P-${index + 1}`).trim(),
+    name: String(space.name || space.spaceName || fallbackName).trim(),
+    description: String(space.description || space.purposeDescription || "").trim(),
+    processDescription: String(space.processDescription || space.workProcess || "").trim(),
+    equipmentDescription: String(space.equipmentDescription || space.workEquipment || "").trim(),
+    rangeDescription: String(space.rangeDescription || space.ranges || "").trim(),
+  };
+}
+
+function normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement(measurement = {}, index = 0, { isChemical = false } = {}) {
+  const preset = (isChemical ? WORK_ORDER_DOCUMENT_KC_MEASUREMENT_PRESETS : WORK_ORDER_DOCUMENT_FC_MEASUREMENT_PRESETS)[index % (isChemical ? WORK_ORDER_DOCUMENT_KC_MEASUREMENT_PRESETS.length : WORK_ORDER_DOCUMENT_FC_MEASUREMENT_PRESETS.length)] || {};
+  return {
+    id: String(measurement.id || measurement.rowId || `measurement-${index + 1}`).trim() || `measurement-${index + 1}`,
+    kind: String(measurement.kind || preset.kind || "Mjerenje").trim(),
+    spaceCode: String(measurement.spaceCode || measurement.spaceName || "P-1").trim(),
+    measuringPlace: String(measurement.measuringPlace || preset.measuringPlace || "").trim(),
+    measured: String(measurement.measured ?? preset.measured ?? "").trim(),
+    allowed: String(measurement.allowed ?? preset.allowed ?? "").trim(),
+    unit: String(measurement.unit || preset.unit || "").trim(),
+    finalGrade: String(measurement.finalGrade || "U pripremi").trim(),
+    formula: String(measurement.formula || "").trim(),
+    note: String(measurement.note || "").trim(),
+  };
+}
+
+function createWorkOrderDocumentWorkEnvironmentDefaultDraft(workOrder = {}, { isChemical = false, items = [] } = {}) {
+  const common = state.documentTemplateRuntime?.common || state.workOrderDocumentWizard?.common || {};
+  const runtimeInspectors = isDocumentTemplateRuntimeFillMode()
+    ? normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+      getDocumentTemplateRuntimeArrayValue(workOrder.id, "radni_okolisInspectorUserIds")
+        .map((userId) => getUserDocumentDisplayName((state.users ?? []).find((user) => String(user.id) === String(userId))))
+        .filter(Boolean),
+    )
+    : [];
+  const runtimeHolderId = isDocumentTemplateRuntimeFillMode()
+    ? getDocumentTemplateRuntimeValue(workOrder.id, "radni_okolisAuthorizationHolderUserId")
+    : "";
+  const runtimeHolder = runtimeHolderId
+    ? getUserDocumentDisplayName((state.users ?? []).find((user) => String(user.id) === String(runtimeHolderId)))
+    : "";
+  const types = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+    (Array.isArray(items) ? items : []).flatMap((item) => Array.isArray(item?.types) && item.types.length ? item.types : item?.typesOfExamination || []),
+    isChemical ? null : WORK_ORDER_DOCUMENT_FC_TYPE_LABELS,
+  );
+  const harmfulness = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+    (Array.isArray(items) ? items : []).flatMap((item) => item?.harmfulness || []),
+    isChemical ? null : WORK_ORDER_DOCUMENT_FC_HARMFULNESS_LABELS,
+  );
+  const spaces = createWorkOrderDocumentWorkEnvironmentDefaultSpaceRows(workOrder, { isChemical })
+    .map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, workOrder, { isChemical }));
+  const measurements = createWorkOrderDocumentWorkEnvironmentDefaultMeasurementRows({ isChemical })
+    .map((measurement, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement(measurement, index, { isChemical }));
+
+  return {
+    kind: getWorkOrderDocumentWorkEnvironmentDraftKey({ isChemical }),
+    workOrderId: String(workOrder?.id || "").trim(),
+    recordNumber: String(workOrder.workOrderNumber || workOrder.number || "").trim(),
+    companyName: String(workOrder.companyName || "").trim(),
+    companyOib: String(workOrder.companyOib || workOrder.oib || "").trim(),
+    location: String(workOrder.locationName || workOrder.location || "").trim(),
+    startDate: normalizeDateInputValue(common.inspectionDate || ""),
+    endDate: normalizeDateInputValue(common.inspectionDate || ""),
+    validUntil: "",
+    types: types.join(", ") || (isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici"),
+    harmfulness: harmfulness.join(", ") || (isChemical ? "Kemijske štetnosti" : "Mikroklima, osvijetljenost, buka, vibracije"),
+    airTemperature: String(common.outsideTemperature || "").trim(),
+    relativeHumidity: String(common.relativeHumidity || "").trim(),
+    airflowSpeed: String(common.airflowSpeed || "").trim(),
+    externalConditionsOther: String(common.weather || "").trim(),
+    workProcessConditions: "Redoviti proces rada",
+    instrumentSummary: "",
+    technicalDocumentation: "Podaci zatečeni na mjestu ispitivanja",
+    methodsProceduresAndNorms: "Prema važećim propisima, normama i pravilima struke",
+    expertsText: runtimeInspectors.join(", "),
+    signedByText: runtimeHolder,
+    obligationRegisters: [...WORK_ORDER_DOCUMENT_FC_DEFAULT_OBLIGATION_REGISTERS],
+    healthRequirementRegisters: isChemical
+      ? [...WORK_ORDER_DOCUMENT_KC_DEFAULT_HEALTH_REQUIREMENTS]
+      : [...WORK_ORDER_DOCUMENT_FC_DEFAULT_HEALTH_REQUIREMENTS],
+    spaces,
+    measurements,
+  };
+}
+
+function normalizeWorkOrderDocumentWorkEnvironmentDraft(draft = {}, workOrder = {}, { isChemical = false, items = [] } = {}) {
+  const defaults = createWorkOrderDocumentWorkEnvironmentDefaultDraft(workOrder, { isChemical, items });
+  const source = draft && typeof draft === "object" ? draft : {};
+  const spacesSource = Array.isArray(source.spaces) && source.spaces.length ? source.spaces : defaults.spaces;
+  const measurementsSource = Array.isArray(source.measurements) && source.measurements.length ? source.measurements : defaults.measurements;
+  return {
+    ...defaults,
+    ...source,
+    kind: getWorkOrderDocumentWorkEnvironmentDraftKey({ isChemical }),
+    workOrderId: String(workOrder?.id || source.workOrderId || "").trim(),
+    recordNumber: String(source.recordNumber || defaults.recordNumber || "").trim(),
+    companyName: String(source.companyName || defaults.companyName || "").trim(),
+    companyOib: String(source.companyOib || defaults.companyOib || "").trim(),
+    location: String(source.location || defaults.location || "").trim(),
+    startDate: normalizeDateInputValue(source.startDate || defaults.startDate || ""),
+    endDate: normalizeDateInputValue(source.endDate || defaults.endDate || ""),
+    validUntil: normalizeDateInputValue(source.validUntil || ""),
+    obligationRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.obligationRegisters, defaults.obligationRegisters),
+    healthRequirementRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.healthRequirementRegisters, defaults.healthRequirementRegisters),
+    spaces: spacesSource.map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, workOrder, { isChemical })),
+    measurements: measurementsSource.map((measurement, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement(measurement, index, { isChemical })),
+  };
+}
+
+function getPersistedWorkOrderDocumentWorkEnvironmentDraft(workOrder = {}, { isChemical = false } = {}) {
+  if (!isDocumentTemplateRuntimeFillMode()) {
+    return null;
+  }
+  const record = getDocumentTemplateRuntimeOverrideRecord(workOrder?.id);
+  const key = getWorkOrderDocumentWorkEnvironmentDraftKey({ isChemical });
+  const drafts = record?.workEnvironmentDrafts && typeof record.workEnvironmentDrafts === "object"
+    ? record.workEnvironmentDrafts
+    : {};
+  return drafts[key] && typeof drafts[key] === "object" ? cloneWorkOrderDocumentWorkEnvironmentDraft(drafts[key]) : null;
+}
+
+function persistWorkOrderDocumentWorkEnvironmentDraft(workOrder = {}, stateEntry = {}, draft = {}, { isChemical = false, render = false } = {}) {
+  const prop = getWorkOrderDocumentWorkEnvironmentStateDraftProperty({ isChemical });
+  const normalizedDraft = normalizeWorkOrderDocumentWorkEnvironmentDraft(draft, workOrder, { isChemical });
+  stateEntry[prop] = normalizedDraft;
+  const workOrderId = String(workOrder?.id || normalizedDraft.workOrderId || "").trim();
+  if (workOrderId && isDocumentTemplateRuntimeFillMode()) {
+    const key = getWorkOrderDocumentWorkEnvironmentDraftKey({ isChemical });
+    const record = getDocumentTemplateRuntimeOverrideRecord(workOrderId, { ensure: true }) ?? {};
+    state.documentTemplateRuntime.overrides = {
+      ...(state.documentTemplateRuntime.overrides ?? {}),
+      [workOrderId]: {
+        ...record,
+        workEnvironmentDrafts: {
+          ...(record.workEnvironmentDrafts ?? {}),
+          [key]: cloneWorkOrderDocumentWorkEnvironmentDraft(normalizedDraft),
+        },
+      },
+    };
+    scheduleDocumentTemplateRuntimeAutosave({ persist: false });
+  }
+  if (render) {
+    rerenderWorkOrderDocumentWorkEnvironmentView();
+  }
+  return normalizedDraft;
+}
+
+function ensureWorkOrderDocumentWorkEnvironmentDraft(workOrder = {}, stateEntry = {}, { isChemical = false, items = [] } = {}) {
+  const prop = getWorkOrderDocumentWorkEnvironmentStateDraftProperty({ isChemical });
+  const persisted = getPersistedWorkOrderDocumentWorkEnvironmentDraft(workOrder, { isChemical });
+  const current = persisted || stateEntry[prop] || createWorkOrderDocumentWorkEnvironmentDefaultDraft(workOrder, { isChemical, items });
+  return persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, current, { isChemical, render: false });
+}
+
+function updateWorkOrderDocumentWorkEnvironmentDraft(workOrder = {}, stateEntry = {}, draft = {}, patch = {}, { isChemical = false, render = false } = {}) {
+  Object.assign(draft, patch);
+  return persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, draft, { isChemical, render });
+}
+
+function createWorkOrderDocumentWorkEnvironmentDraftField({
+  label = "",
+  value = "",
+  placeholder = "",
+  detail = "",
+  type = "text",
+  multiline = false,
+  options = null,
+  onInput = null,
+  className = "",
+} = {}) {
+  const field = document.createElement("label");
+  field.className = `work-order-document-fc-draft-field${multiline ? " is-multiline" : ""}${className ? ` ${className}` : ""}`;
+  const title = document.createElement("span");
+  title.textContent = label;
+  field.append(title);
+  let input;
+  if (Array.isArray(options)) {
+    input = document.createElement("select");
+    options.forEach((option) => {
+      const optionNode = document.createElement("option");
+      optionNode.value = String(option.value ?? option);
+      optionNode.textContent = String(option.label ?? option);
+      input.append(optionNode);
+    });
+    input.value = String(value ?? "");
+  } else if (multiline) {
+    input = document.createElement("textarea");
+    input.rows = 3;
+    input.value = String(value ?? "");
+  } else {
+    const isDate = type === "date";
+    input = document.createElement("input");
+    input.type = isDate ? "text" : type;
+    input.value = isDate
+      ? formatDateInputDisplayValue(normalizeDateInputValue(value) || value || "")
+      : String(value ?? "");
+    if (isDate) {
+      input.inputMode = "numeric";
+    }
+  }
+  input.placeholder = placeholder;
+  const emitValue = () => {
+    if (typeof onInput === "function") {
+      onInput(type === "date" ? normalizeDateInputValue(input.value) : input.value);
+    }
+  };
+  input.addEventListener(Array.isArray(options) ? "change" : "input", emitValue);
+  if (type === "date") {
+    input.addEventListener("change", () => {
+      const normalized = normalizeDateInputValue(input.value);
+      input.value = normalized ? formatDateInputDisplayValue(normalized) : String(input.value || "").trim();
+      emitValue();
+    });
+  }
+  field.append(input);
+  if (detail) {
+    const small = document.createElement("small");
+    small.textContent = detail;
+    field.append(small);
+  }
+  return field;
+}
+
+function appendWorkOrderDocumentWorkEnvironmentDraftSection(bodyNode, {
+  stateEntry = {},
+  key = "",
+  title = "",
+  subtitle = "",
+  badge = "",
+  renderBody = null,
+} = {}) {
+  if (!key || typeof renderBody !== "function") {
+    return;
+  }
+  if (!stateEntry.collapsedBlocks || typeof stateEntry.collapsedBlocks !== "object") {
+    stateEntry.collapsedBlocks = {};
+  }
+  const isCollapsed = Boolean(stateEntry.collapsedBlocks[key]);
+  const section = document.createElement("section");
+  section.className = `work-order-document-fc-section work-order-document-fc-editor-section${isCollapsed ? " is-collapsed" : ""}`;
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "work-order-document-fc-section-head";
+  head.setAttribute("aria-expanded", String(!isCollapsed));
+  head.addEventListener("click", (event) => {
+    event.stopPropagation();
+    stateEntry.collapsedBlocks[key] = !isCollapsed;
+    rerenderWorkOrderDocumentWorkEnvironmentView();
+  });
+  const copy = document.createElement("span");
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const sub = document.createElement("small");
+  sub.textContent = subtitle;
+  copy.append(heading, sub);
+  const action = document.createElement("em");
+  action.textContent = isCollapsed ? "Otkrij" : "Sakrij";
+  head.append(copy);
+  if (badge) {
+    head.append(createBadge(badge, "document-template-meta-badge"));
+  }
+  head.append(action);
+  const content = document.createElement("div");
+  content.className = "work-order-document-fc-section-body";
+  content.hidden = isCollapsed;
+  if (!isCollapsed) {
+    renderBody(content);
+  }
+  section.append(head, content);
+  bodyNode.append(section);
+}
+
+function createWorkOrderDocumentWorkEnvironmentRegistryEditor({
+  title = "",
+  entries = [],
+  onChange = null,
+} = {}) {
+  const panel = document.createElement("div");
+  panel.className = "work-order-document-fc-registry-panel work-order-document-fc-registry-editor";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const list = document.createElement("div");
+  list.className = "work-order-document-fc-registry-editor-list";
+  const currentEntries = normalizeWorkOrderDocumentWorkEnvironmentDraftList(entries, []);
+  const emitChange = (nextEntries) => {
+    currentEntries.splice(0, currentEntries.length, ...normalizeWorkOrderDocumentWorkEnvironmentDraftList(nextEntries, []));
+    if (typeof onChange === "function") {
+      onChange([...currentEntries]);
+    }
+  };
+  currentEntries.forEach((entry, index) => {
+    const row = document.createElement("label");
+    row.className = "work-order-document-fc-registry-row";
+    const input = document.createElement("input");
+    input.value = entry;
+    input.placeholder = "Naziv propisa ili zahtjeva";
+    input.addEventListener("input", () => {
+      const next = [...currentEntries];
+      next[index] = input.value;
+      emitChange(next);
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-button";
+    remove.textContent = "×";
+    remove.title = "Ukloni stavku";
+    remove.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      emitChange(currentEntries.filter((_, itemIndex) => itemIndex !== index));
+      rerenderWorkOrderDocumentWorkEnvironmentView();
+    });
+    row.append(input, remove);
+    list.append(row);
+  });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "ghost-button";
+  add.textContent = "+ Dodaj stavku";
+  add.addEventListener("click", (event) => {
+    event.stopPropagation();
+    emitChange([...currentEntries, "Novi propis / zahtjev"]);
+    rerenderWorkOrderDocumentWorkEnvironmentView();
+  });
+  panel.append(heading, list, add);
+  return panel;
+}
+
+function appendWorkOrderDocumentWorkEnvironmentBasicEditorBlock(bodyNode, {
+  workOrder = {},
+  stateEntry = {},
+  draft = {},
+  shortLabel = "FC",
+  isChemical = false,
+} = {}) {
+  const save = (patch, { render = false } = {}) =>
+    updateWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, draft, patch, { isChemical, render });
+
+  appendWorkOrderDocumentWorkEnvironmentDraftSection(bodyNode, {
+    stateEntry,
+    key: `${shortLabel.toLowerCase()}-basic-editor`,
+    title: "Osnovno",
+    subtitle: "Podaci za novi zapisnik. Sve se može ručno urediti prije slanja kroz IS ZNR POST.",
+    badge: "Novi zapisnik",
+    renderBody: (sectionBody) => {
+      const grid = document.createElement("div");
+      grid.className = "work-order-document-fc-draft-grid";
+      [
+        ["RN", "recordNumber", "Broj RN"],
+        ["Tvrtka / naručitelj", "companyName", "Naziv tvrtke"],
+        ["OIB", "companyOib", "OIB tvrtke"],
+        ["Mjesto ispitivanja", "location", "Lokacija / objekt"],
+        ["Datum početka", "startDate", "dd.mm.yyyy", "date"],
+        ["Datum završetka", "endDate", "dd.mm.yyyy", "date"],
+        ["Vrijedi do", "validUntil", "dd.mm.yyyy", "date"],
+        ["Vrste ispitivanja", "types", isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici"],
+        ["Štetnosti", "harmfulness", "Odabrane štetnosti"],
+        ["Temperatura zraka (°C)", "airTemperature", "npr. 22"],
+        ["Relativna vlažnost (%)", "relativeHumidity", "npr. 52"],
+        ["Brzina strujanja (m/s)", "airflowSpeed", "npr. 0,20"],
+        ["Vanjski uvjeti", "externalConditionsOther", "npr. sunčano / zatvoreni prostor"],
+        ["Mjerna oprema", "instrumentSummary", "Oznake mjerne opreme"],
+      ].forEach(([label, fieldName, placeholder, type]) => {
+        grid.append(createWorkOrderDocumentWorkEnvironmentDraftField({
+          label,
+          value: draft[fieldName],
+          placeholder,
+          type: type || "text",
+          onInput: (value) => save({ [fieldName]: value }),
+        }));
+      });
+      sectionBody.append(grid);
+
+      const textGrid = document.createElement("div");
+      textGrid.className = "work-order-document-fc-draft-grid is-text";
+      [
+        ["Uvjeti procesa rada", "workProcessConditions", "Opiši proces rada i uvjete koji vrijede za mjerenja"],
+        ["Tehnička dokumentacija", "technicalDocumentation", "Dokumentacija, podaci poslodavca, zatečeno stanje"],
+        ["Metode, postupci i norme", "methodsProceduresAndNorms", "Metode i norme prema kojima se obavlja ispitivanje"],
+        ["Ispitivači", "expertsText", "Ispitivači za zapisnik"],
+        ["Nositelji ovlaštenja", "signedByText", "Nositelji ovlaštenja / odgovorne osobe"],
+      ].forEach(([label, fieldName, placeholder]) => {
+        textGrid.append(createWorkOrderDocumentWorkEnvironmentDraftField({
+          label,
+          value: draft[fieldName],
+          placeholder,
+          multiline: true,
+          onInput: (value) => save({ [fieldName]: value }),
+        }));
+      });
+      sectionBody.append(textGrid);
+
+      const registryGrid = document.createElement("div");
+      registryGrid.className = "work-order-document-fc-registry-grid";
+      registryGrid.append(
+        createWorkOrderDocumentWorkEnvironmentRegistryEditor({
+          title: "Propisi obveze",
+          entries: draft.obligationRegisters,
+          onChange: (entries) => save({ obligationRegisters: entries }),
+        }),
+        createWorkOrderDocumentWorkEnvironmentRegistryEditor({
+          title: "Propisi zahtjevi",
+          entries: draft.healthRequirementRegisters,
+          onChange: (entries) => save({ healthRequirementRegisters: entries }),
+        }),
+      );
+      sectionBody.append(registryGrid);
+    },
+  });
+}
+
+function appendWorkOrderDocumentWorkEnvironmentSpacesEditorBlock(bodyNode, {
+  workOrder = {},
+  stateEntry = {},
+  draft = {},
+  shortLabel = "FC",
+  isChemical = false,
+} = {}) {
+  const save = (patch, { render = false } = {}) =>
+    updateWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, draft, patch, { isChemical, render });
+  const templates = isChemical ? WORK_ORDER_DOCUMENT_KC_SPACE_TEMPLATES : WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES;
+
+  appendWorkOrderDocumentWorkEnvironmentDraftSection(bodyNode, {
+    stateEntry,
+    key: `${shortLabel.toLowerCase()}-spaces-editor`,
+    title: "Unos prostora",
+    subtitle: "RO-F.2: prostori, opisi namjene, procesi i rasponi koji se preslikavaju u mjerenja.",
+    badge: `${draft.spaces.length || 0} prostora`,
+    renderBody: (sectionBody) => {
+      const actions = document.createElement("div");
+      actions.className = "work-order-document-fc-editor-actions";
+      const templateSelect = document.createElement("select");
+      templates.forEach((template) => {
+        const option = document.createElement("option");
+        option.value = template.key;
+        option.textContent = template.label;
+        templateSelect.append(option);
+      });
+      const addTemplateButton = document.createElement("button");
+      addTemplateButton.type = "button";
+      addTemplateButton.className = "ghost-button";
+      addTemplateButton.textContent = "+ Dodaj iz templatea";
+      addTemplateButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const template = templates.find((item) => item.key === templateSelect.value) || templates[0];
+        const nextIndex = (draft.spaces || []).length;
+        const nextSpace = normalizeWorkOrderDocumentWorkEnvironmentDraftSpace({
+          id: createClientSideId("fc-space"),
+          code: `P-${nextIndex + 1}`,
+          ...template,
+        }, nextIndex, workOrder, { isChemical });
+        save({ spaces: [...draft.spaces, nextSpace] }, { render: true });
+      });
+      const addBlankButton = document.createElement("button");
+      addBlankButton.type = "button";
+      addBlankButton.className = "primary-action-button is-compact";
+      addBlankButton.textContent = "+ Novi prostor";
+      addBlankButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const nextIndex = (draft.spaces || []).length;
+        const nextSpace = normalizeWorkOrderDocumentWorkEnvironmentDraftSpace({
+          id: createClientSideId("fc-space"),
+          code: `P-${nextIndex + 1}`,
+          name: "Novi prostor",
+        }, nextIndex, workOrder, { isChemical });
+        save({ spaces: [...draft.spaces, nextSpace] }, { render: true });
+      });
+      actions.append(templateSelect, addTemplateButton, addBlankButton);
+      sectionBody.append(actions);
+
+      const wrap = document.createElement("div");
+      wrap.className = "work-order-document-fc-table-wrap";
+      const table = document.createElement("table");
+      table.className = "work-order-document-fc-table work-order-document-fc-editor-table";
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["Oznaka", "Naziv", "Opis i namjena", "Radni proces", "Radna oprema / izvori", "Rasponi", ""].forEach((label) => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        headRow.append(th);
+      });
+      head.append(headRow);
+      table.append(head);
+      const tableBody = document.createElement("tbody");
+      draft.spaces.forEach((space, index) => {
+        const row = document.createElement("tr");
+        const updateSpace = (patch) => {
+          const nextSpaces = draft.spaces.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
+          save({ spaces: nextSpaces });
+        };
+        [
+          ["code", "P-1"],
+          ["name", "Naziv prostora"],
+          ["description", "Opis prostora i namjene"],
+          ["processDescription", "Opis procesa"],
+          ["equipmentDescription", "Radna oprema / izvori"],
+          ["rangeDescription", "Rasponi / granice"],
+        ].forEach(([fieldName, placeholder]) => {
+          const cell = document.createElement("td");
+          const input = fieldName === "description" || fieldName === "processDescription" || fieldName === "equipmentDescription" || fieldName === "rangeDescription"
+            ? document.createElement("textarea")
+            : document.createElement("input");
+          if (input instanceof HTMLTextAreaElement) input.rows = 2;
+          input.value = String(space[fieldName] ?? "");
+          input.placeholder = placeholder;
+          input.addEventListener("input", () => updateSpace({ [fieldName]: input.value }));
+          cell.append(input);
+          row.append(cell);
+        });
+        const removeCell = document.createElement("td");
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "icon-button";
+        removeButton.textContent = "×";
+        removeButton.title = "Ukloni prostor";
+        removeButton.disabled = draft.spaces.length <= 1;
+        removeButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          save({ spaces: draft.spaces.filter((_, itemIndex) => itemIndex !== index) }, { render: true });
+        });
+        removeCell.append(removeButton);
+        row.append(removeCell);
+        tableBody.append(row);
+      });
+      table.append(tableBody);
+      wrap.append(table);
+      sectionBody.append(wrap);
+    },
+  });
+}
+
+function getWorkOrderDocumentWorkEnvironmentMeasurementGrade(measurement = {}) {
+  const measured = getWorkOrderDocumentWorkEnvironmentNumberValue(measurement.measured);
+  const allowed = getWorkOrderDocumentWorkEnvironmentNumberValue(measurement.allowed);
+  if (measurement.formula) {
+    try {
+      const formulaResult = evaluateMeasurementFormula(measurement.formula, {
+        resolveCellReference: (reference) => {
+          const normalized = String(reference?.reference || reference || "").toUpperCase();
+          if (normalized === "A1") return measured ?? 0;
+          if (normalized === "B1") return allowed ?? 0;
+          return 0;
+        },
+      });
+      if (String(formulaResult ?? "").trim()) {
+        return String(formulaResult);
+      }
+    } catch {
+      return measurement.finalGrade || "Formula nije ispravna";
+    }
+  }
+  if (measured !== null && allowed !== null) {
+    return measured <= allowed ? "Zadovoljava" : "Ne zadovoljava";
+  }
+  return measurement.finalGrade || "U pripremi";
+}
+
+function appendWorkOrderDocumentWorkEnvironmentMeasurementsEditorBlock(bodyNode, {
+  workOrder = {},
+  stateEntry = {},
+  draft = {},
+  shortLabel = "FC",
+  isChemical = false,
+} = {}) {
+  const save = (patch, { render = false } = {}) =>
+    updateWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, draft, patch, { isChemical, render });
+  const presets = isChemical ? WORK_ORDER_DOCUMENT_KC_MEASUREMENT_PRESETS : WORK_ORDER_DOCUMENT_FC_MEASUREMENT_PRESETS;
+
+  appendWorkOrderDocumentWorkEnvironmentDraftSection(bodyNode, {
+    stateEntry,
+    key: `${shortLabel.toLowerCase()}-measurements-editor`,
+    title: "Mjerenja",
+    subtitle: "RO-F.3: mjerna mjesta, dopuštene/izmjerene vrijednosti i zaključne ocjene.",
+    badge: `${draft.measurements.length || 0} mjerenja`,
+    renderBody: (sectionBody) => {
+      const actions = document.createElement("div");
+      actions.className = "work-order-document-fc-measurement-actions";
+      presets.forEach((preset) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ghost-button";
+        button.textContent = `+ ${preset.kind}`;
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const firstSpace = draft.spaces[0] || {};
+          const nextMeasurement = normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement({
+            id: createClientSideId("fc-measurement"),
+            ...preset,
+            spaceCode: firstSpace.code || "P-1",
+          }, draft.measurements.length, { isChemical });
+          save({ measurements: [...draft.measurements, nextMeasurement] }, { render: true });
+        });
+        actions.append(button);
+      });
+      sectionBody.append(actions);
+
+      const wrap = document.createElement("div");
+      wrap.className = "work-order-document-fc-table-wrap";
+      const table = document.createElement("table");
+      table.className = "work-order-document-fc-table is-measurements work-order-document-fc-editor-table";
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["Tip", "Prostor", "Mjerno mjesto", "Izmjereno", "Dopušteno", "Jedinica", "Formula", "Ocjena", "Napomena", ""].forEach((label) => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        headRow.append(th);
+      });
+      head.append(headRow);
+      table.append(head);
+      const tableBody = document.createElement("tbody");
+      draft.measurements.forEach((measurement, index) => {
+        const row = document.createElement("tr");
+        const updateMeasurement = (patch) => {
+          const nextMeasurements = draft.measurements.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
+          save({ measurements: nextMeasurements });
+        };
+        const addInputCell = (fieldName, placeholder = "", options = null) => {
+          const cell = document.createElement("td");
+          let input;
+          if (Array.isArray(options)) {
+            input = document.createElement("select");
+            options.forEach((option) => {
+              const optionNode = document.createElement("option");
+              optionNode.value = String(option.value ?? option);
+              optionNode.textContent = String(option.label ?? option);
+              input.append(optionNode);
+            });
+            input.value = String(measurement[fieldName] ?? "");
+            input.addEventListener("change", () => updateMeasurement({ [fieldName]: input.value }));
+          } else {
+            input = document.createElement(fieldName === "note" ? "textarea" : "input");
+            if (input instanceof HTMLTextAreaElement) input.rows = 2;
+            input.value = String(measurement[fieldName] ?? "");
+            input.placeholder = placeholder;
+            input.addEventListener("input", () => updateMeasurement({ [fieldName]: input.value }));
+          }
+          cell.append(input);
+          row.append(cell);
+        };
+        addInputCell("kind", "Tip mjerenja", presets.map((preset) => preset.kind));
+        addInputCell("spaceCode", "Prostor", draft.spaces.map((space) => ({ value: space.code, label: `${space.code} · ${space.name}` })));
+        addInputCell("measuringPlace", "Mjerno mjesto");
+        addInputCell("measured", "Izmjereno");
+        addInputCell("allowed", "Dopušteno");
+        addInputCell("unit", "Jedinica");
+        addInputCell("formula", "=IF(A1<=B1,\"Zadovoljava\",\"Ne zadovoljava\")");
+        const gradeCell = document.createElement("td");
+        const gradeInput = document.createElement("input");
+        gradeInput.value = getWorkOrderDocumentWorkEnvironmentMeasurementGrade(measurement);
+        gradeInput.placeholder = "Ocjena";
+        gradeInput.addEventListener("input", () => updateMeasurement({ finalGrade: gradeInput.value }));
+        gradeCell.append(gradeInput);
+        row.append(gradeCell);
+        addInputCell("note", "Napomena");
+        const removeCell = document.createElement("td");
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "icon-button";
+        removeButton.textContent = "×";
+        removeButton.title = "Ukloni mjerenje";
+        removeButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          save({ measurements: draft.measurements.filter((_, itemIndex) => itemIndex !== index) }, { render: true });
+        });
+        removeCell.append(removeButton);
+        row.append(removeCell);
+        tableBody.append(row);
+      });
+      table.append(tableBody);
+      wrap.append(table);
+      sectionBody.append(wrap);
+    },
+  });
 }
 
 function appendWorkOrderDocumentWorkEnvironmentSection(bodyNode, {
@@ -121149,265 +121936,58 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
   const isChemical = String(environmentKind || "").trim() === "chemical";
   const shortLabel = isChemical ? "KC" : "FC";
   const longLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
-  const sourceLabel = isChemical ? "kc_records" : "fc_records";
-  const filterField = isChemical ? "chemicalFilter" : "filter";
-  const selectionField = isChemical ? "selectedChemicalItemIds" : "selectedPhysicalItemIds";
-
-  const allItems = Array.isArray(stateEntry.items) ? stateEntry.items : [];
-  const items = allItems.filter((item) =>
+  const sourceItems = Array.isArray(stateEntry.items) ? stateEntry.items.filter((item) =>
     isChemical
       ? String(item?.environmentKind || "") === "chemical"
       : String(item?.environmentKind || "physical") !== "chemical",
+  ) : [];
+  const draft = ensureWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, {
+    isChemical,
+    items: sourceItems,
+  });
+
+  const intro = document.createElement("div");
+  intro.className = "work-order-document-fc-editor-hero";
+  const introCopy = document.createElement("div");
+  const introTitle = document.createElement("strong");
+  introTitle.textContent = `${shortLabel} - ${longLabel}`;
+  const introMeta = document.createElement("span");
+  introMeta.textContent = [
+    workOrder.workOrderNumber || workOrder.number || "RN",
+    workOrder.companyName || draft.companyName || "",
+    draft.location || "",
+  ].filter(Boolean).join(" · ");
+  introCopy.append(introTitle, introMeta);
+  const introBadges = document.createElement("div");
+  introBadges.className = "work-order-document-fc-editor-badges";
+  introBadges.append(
+    createBadge("Novi zapisnik", "document-template-meta-badge"),
+    createBadge(`${draft.spaces.length || 0} prostora`, "document-template-meta-badge"),
+    createBadge(`${draft.measurements.length || 0} mjerenja`, "document-template-meta-badge"),
   );
+  intro.append(introCopy, introBadges);
+  bodyNode.append(intro);
 
-  const toolbar = document.createElement("div");
-  toolbar.className = "work-order-document-work-equipment-toolbar";
-
-  const summary = document.createElement("span");
-  summary.className = "work-order-document-selection-helper";
-  summary.textContent = stateEntry.loading
-    ? `Dohvaćam ${shortLabel} zapisnike iz IS ZNR-a...`
-    : stateEntry.loaded
-      ? `${items.length} ${shortLabel} zapisnika${stateEntry.companyOib ? ` · OIB ${stateEntry.companyOib}` : ""}`
-      : `Dohvat ide iz IS ZNR ${sourceLabel} za tvrtku na ovom RN-u.`;
-
-  const refreshButton = document.createElement("button");
-  refreshButton.type = "button";
-  refreshButton.className = "ghost-button";
-  refreshButton.textContent = stateEntry.loading ? "Dohvaćam..." : (stateEntry.loaded ? "Osvježi" : `Dohvati ${shortLabel}`);
-  refreshButton.disabled = Boolean(stateEntry.loading);
-  refreshButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    void loadWorkOrderDocumentIsznrWorkEnvironment(workOrder, { force: true });
-  });
-
-  toolbar.append(summary, refreshButton);
-  bodyNode.append(toolbar);
-
-  if (stateEntry.error) {
-    const error = document.createElement("p");
-    error.className = "form-error work-order-document-work-equipment-message";
-    error.textContent = stateEntry.error;
-    bodyNode.append(error);
-  }
-  if (stateEntry.message) {
-    const message = document.createElement("p");
-    message.className = "helper-copy module-copy work-order-document-work-equipment-message";
-    message.textContent = stateEntry.message;
-    bodyNode.append(message);
-  }
-
-  if (stateEntry.loading && !items.length) {
-    const loading = document.createElement("p");
-    loading.className = "helper-copy module-copy";
-    loading.textContent = `Čitam ${longLabel.toLowerCase()} iz IS ZNR-a...`;
-    bodyNode.append(loading);
-  }
-  if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "helper-copy module-copy work-order-document-work-equipment-message";
-    empty.textContent = stateEntry.loaded
-      ? `Za ovaj RN trenutno nema dohvaćenih prethodnih ${shortLabel} zapisnika iz IS ZNR-a. Pripremni blokovi ispod ostaju dostupni za novi zapisnik.`
-      : `${shortLabel} zapisnici će se ponuditi ovdje prije izrade dokumentacije. Pripremni blokovi su već spremni.`;
-    bodyNode.append(empty);
-  }
-
-  const today = getWorkOrderDocumentWorkEquipmentToday();
-  const counts = getWorkOrderDocumentPhysicalFactorsFilterCounts(items, today);
-  const activeFilter = WORK_ORDER_DOCUMENT_FC_FILTERS.some((filter) => filter.key === stateEntry[filterField])
-    ? stateEntry[filterField]
-    : "all";
-  const selectedIds = new Set((Array.isArray(stateEntry[selectionField]) && stateEntry[selectionField].length
-    ? stateEntry[selectionField]
-    : (!isChemical ? stateEntry.selectedItemIds : []))
-    .map((value) => String(value || "").trim())
-    .filter(Boolean));
-  appendWorkOrderDocumentWorkEnvironmentOverview(bodyNode, {
-    items,
-    selectedIds,
-    activeFilter,
-    stateEntry,
-    filterField,
-    shortLabel,
-    today,
-  });
-  const filterRow = document.createElement("div");
-  filterRow.className = "work-order-document-work-equipment-filters";
-  WORK_ORDER_DOCUMENT_FC_FILTERS.forEach((filter) => {
-    const count = counts[filter.key] || 0;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `work-order-document-work-equipment-filter${activeFilter === filter.key ? " is-active" : ""}`;
-    button.disabled = count === 0 && filter.key !== "all";
-    button.textContent = `${filter.key === "all" ? `Svi ${shortLabel}` : filter.label} (${count})`;
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      stateEntry[filterField] = filter.key;
-      renderWorkOrderDocumentWizard();
-    });
-    filterRow.append(button);
-  });
-  bodyNode.append(filterRow);
-
-  const filteredItems = items
-    .filter((item) => matchesWorkOrderDocumentPhysicalFactorsFilter(item, activeFilter, today))
-    .sort((left, right) => {
-      const leftDeadline = getWorkOrderDocumentPhysicalFactorsDeadline(left)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      const rightDeadline = getWorkOrderDocumentPhysicalFactorsDeadline(right)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-      if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
-      return String(left.recordNumber || left.location || "").localeCompare(String(right.recordNumber || right.location || ""), "hr", { numeric: true, sensitivity: "base" });
-    });
-  const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft, ["sourceRecord"]);
-  const updateSelection = (next) => {
-    stateEntry[selectionField] = [...next];
-    if (!isChemical) {
-      stateEntry.selectedItemIds = [...next];
-    }
-    renderWorkOrderDocumentWizard();
-  };
-
-  const selectionBar = document.createElement("div");
-  selectionBar.className = "work-order-document-work-equipment-selection";
-  const selectionCopy = document.createElement("span");
-  selectionCopy.textContent = selectedIds.size > 0
-    ? `${selectedIds.size} ${shortLabel} odabrano za dokumentaciju`
-    : `Odaberi ${shortLabel} zapisnike koji ulaze u dokumentaciju.`;
-  const selectVisibleButton = document.createElement("button");
-  selectVisibleButton.type = "button";
-  selectVisibleButton.className = "ghost-button";
-  selectVisibleButton.textContent = "Odaberi prikazane";
-  selectVisibleButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const next = new Set(selectedIds);
-    filteredItems.forEach((item) => {
-      const itemId = String(item?.id || "").trim();
-      if (itemId) next.add(itemId);
-    });
-    updateSelection(next);
-  });
-  const clearSelectionButton = document.createElement("button");
-  clearSelectionButton.type = "button";
-  clearSelectionButton.className = "ghost-button";
-  clearSelectionButton.textContent = "Poništi";
-  clearSelectionButton.disabled = selectedIds.size === 0;
-  clearSelectionButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    updateSelection(new Set());
-  });
-  const submitButton = document.createElement("button");
-  submitButton.type = "button";
-  submitButton.className = "primary-action-button";
-  submitButton.textContent = isChemical ? "KC POST uskoro" : (stateEntry.submitting ? "Šaljem..." : "Pošalji FC u IS ZNR");
-  submitButton.disabled = isChemical || stateEntry.submitting || selectedIds.size === 0 || blockingLabels.length > 0;
-  submitButton.title = isChemical
-    ? "KC dohvat i odabir su uključeni. Slanje KC zapisnika treba zaseban POST builder."
-    : (blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "");
-  submitButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (!isChemical) {
-      void submitWorkOrderDocumentIsznrPhysicalFactors(workOrder);
-    }
-  });
-  selectionBar.append(selectionCopy, selectVisibleButton, clearSelectionButton, submitButton);
-  bodyNode.append(selectionBar);
-
-  const list = document.createElement("div");
-  list.className = "work-order-document-work-equipment-list";
-  filteredItems.slice(0, 24).forEach((item) => {
-    const itemId = String(item?.id || "").trim();
-    const grade = getWorkOrderDocumentPhysicalFactorsGrade(item);
-    const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
-    const card = document.createElement("article");
-    card.className = [
-      "work-order-document-work-equipment-card",
-      selectedIds.has(itemId) ? "is-selected" : "",
-      kind.isOverdue || kind.isUnsatisfactory ? "is-alert" : "",
-      kind.isUpcoming ? "is-upcoming" : "",
-      kind.isSatisfactory ? "is-ok" : "",
-    ].filter(Boolean).join(" ");
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = selectedIds.has(itemId);
-    checkbox.disabled = !itemId;
-    checkbox.setAttribute("aria-label", `Odaberi ${shortLabel} zapisnik za dokumentaciju`);
-    checkbox.addEventListener("click", (event) => event.stopPropagation());
-    checkbox.addEventListener("change", (event) => {
-      event.stopPropagation();
-      const next = new Set(selectedIds);
-      if (checkbox.checked) {
-        next.add(itemId);
-      } else {
-        next.delete(itemId);
-      }
-      updateSelection(next);
-    });
-
-    const title = document.createElement("strong");
-    title.textContent = item.recordNumber || item.location || `${shortLabel} zapisnik`;
-
-    const meta = document.createElement("span");
-    const spacesCount = Array.isArray(item.spaces) ? item.spaces.length : 0;
-    const measurementsCount = Array.isArray(item.measurements) ? item.measurements.length : 0;
-    meta.textContent = [
-      longLabel,
-      item.location || "",
-      Array.isArray(item.types) && item.types.length ? item.types.slice(0, 3).join(", ") : "",
-      spacesCount ? `${spacesCount} prostora` : "",
-      measurementsCount ? `${measurementsCount} mjerenja` : "",
-      item.deadlineForNextExamination ? `Rok ${formatCompactDate(item.deadlineForNextExamination)}` : "",
-    ].filter(Boolean).join(" · ") || `IS ZNR ${sourceLabel}`;
-
-    const badge = createBadge(grade || shortLabel, "document-template-meta-badge");
-    card.addEventListener("click", () => {
-      if (!itemId) return;
-      const next = new Set(selectedIds);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      updateSelection(next);
-    });
-    card.append(checkbox, title, meta, badge);
-    list.append(card);
-  });
-  bodyNode.append(list);
-
-  if (filteredItems.length > 24 || stateEntry.recordsLimited) {
-    const limited = document.createElement("p");
-    limited.className = "helper-copy module-copy";
-    limited.textContent = stateEntry.recordsLimited
-      ? `Dohvat ${shortLabel} zapisnika je ograničen. Prikazujem prvi skup iz IS ZNR-a.`
-      : `Prikazano prvih 24 od ${filteredItems.length} ${shortLabel} zapisnika za odabrani filter.`;
-    bodyNode.append(limited);
-  }
-
-  const previewItems = getWorkOrderDocumentWorkEnvironmentPreviewItems(items, selectedIds, filteredItems);
-  const measurementRows = getWorkOrderDocumentWorkEnvironmentMeasurementRows(previewItems);
-  const visibleMeasurementRows = measurementRows.length
-    ? measurementRows
-    : createWorkOrderDocumentWorkEnvironmentDefaultMeasurementRows({ isChemical });
-  const spaceRows = getWorkOrderDocumentWorkEnvironmentSpaceRows(previewItems, measurementRows);
-  const visibleSpaceRows = spaceRows.length
-    ? spaceRows
-    : createWorkOrderDocumentWorkEnvironmentDefaultSpaceRows(workOrder, { isChemical });
-  appendWorkOrderDocumentWorkEnvironmentBasicBlock(bodyNode, {
+  appendWorkOrderDocumentWorkEnvironmentBasicEditorBlock(bodyNode, {
     workOrder,
-    items: previewItems,
     stateEntry,
+    draft,
     shortLabel,
     isChemical,
   });
-  appendWorkOrderDocumentWorkEnvironmentSpacesBlock(bodyNode, {
-    spaces: visibleSpaceRows,
+  appendWorkOrderDocumentWorkEnvironmentSpacesEditorBlock(bodyNode, {
+    workOrder,
     stateEntry,
+    draft,
     shortLabel,
+    isChemical,
   });
-  appendWorkOrderDocumentWorkEnvironmentMeasurementsBlock(bodyNode, {
-    measurements: visibleMeasurementRows,
+  appendWorkOrderDocumentWorkEnvironmentMeasurementsEditorBlock(bodyNode, {
+    workOrder,
     stateEntry,
+    draft,
     shortLabel,
+    isChemical,
   });
 }
 
@@ -121433,7 +122013,6 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
   const longLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
   const workOrderId = String(workOrder?.id || "").trim();
   const stateEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrderId);
-  queueWorkOrderDocumentIsznrWorkEnvironmentLoad(workOrder);
 
   const card = document.createElement("article");
   card.className = "work-order-document-template-card work-order-document-ro-template-card is-ro-product work-order-document-fc-template-card";
