@@ -5036,6 +5036,7 @@ let documentTemplateHtmlBuilderEngine = null;
 let documentTemplateHtmlCodeDirty = false;
 let collapsedDocumentTemplateChapterIds = new Set();
 let documentTemplateMeasurementInlineHosts = new Map();
+let workOrderDocumentWorkEnvironmentMeasurementInlineHosts = new Map();
 let learningTestMaterialDrafts = [];
 let learningTestPreviewSlideIndex = 0;
 let learningTestPreviewOpen = false;
@@ -28545,6 +28546,11 @@ function handleMeasurementSheetMutation({ immediate = false } = {}) {
     return;
   }
 
+  if (state.measurementSheet.ownerKind === "work_environment_fc") {
+    persistMeasurementSheetToWorkOrderDocumentFcDraft();
+    return;
+  }
+
   if (!state.workOrderEditorOpen || !state.user) {
     return;
   }
@@ -43550,6 +43556,210 @@ function buildPhysicalFactorsRoF3SheetTemplate() {
   };
 }
 
+function isMeasurementSheetInlineOwnerKind(ownerKind = state.measurementSheet.ownerKind) {
+  const normalized = String(ownerKind || "").trim();
+  return normalized === "template_field"
+    || normalized === "document_template_runtime_field"
+    || normalized === "work_environment_fc";
+}
+
+function isWorkOrderDocumentFcMeasurementSheetOwner() {
+  return String(state.measurementSheet.ownerKind || "").trim() === "work_environment_fc";
+}
+
+function isPhysicalFactorsRoF3MeasurementSheet(sheet = null) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalized?.columns?.length) {
+    return false;
+  }
+  const labels = normalized.columns.map((column) => String(column.label || "").trim());
+  return labels[0] === "A"
+    && labels[10] === "K"
+    && labels[26] === "AA"
+    && labels[56] === "BE";
+}
+
+function getMeasurementSheetColumnIdByLetter(sheet = {}, letter = "") {
+  const columnIndex = parseMeasurementCellReference(`${String(letter || "").trim() || "A"}1`).columnIndex;
+  return sheet?.columns?.[columnIndex]?.id || "";
+}
+
+function setMeasurementSheetCellByLetter(sheet = {}, row = {}, letter = "", value = "", format = null) {
+  const columnId = getMeasurementSheetColumnIdByLetter(sheet, letter);
+  if (!columnId || !row?.cells) {
+    return;
+  }
+  row.cells[columnId] = value == null ? "" : String(value);
+  if (format && row.formats) {
+    row.formats[columnId] = format;
+  }
+}
+
+function createWorkOrderDocumentFcLookupSheetRow(rowNumber = 1, columns = [], valuesByLetter = {}) {
+  const row = {
+    id: `ro-f2-row-${rowNumber}`,
+    cells: {},
+    formats: {},
+  };
+  columns.forEach((column) => {
+    row.cells[column.id] = "";
+    row.formats[column.id] = buildPhysicalFactorsRoF3Format({
+      fillColor: rowNumber === 1 ? "#e2e8f0" : "",
+      bold: rowNumber === 1,
+      border: "all",
+    });
+  });
+  const sheet = { columns };
+  Object.entries(valuesByLetter).forEach(([letter, value]) => {
+    setMeasurementSheetCellByLetter(sheet, row, letter, value);
+  });
+  return row;
+}
+
+function buildWorkOrderDocumentFcRoF2LookupSheet(spaces = []) {
+  const columns = Array.from({ length: parseMeasurementCellReference("AI1").columnIndex + 1 }, (_, index) => {
+    const letter = formatMeasurementCellReference(0, index).replace(/\d+$/, "");
+    return normalizeMeasurementSheetColumnSnapshotLocal({
+      id: `ro-f2-${letter.toLowerCase()}`,
+      label: letter,
+      placeholder: letter,
+      width: ["D", "E", "F", "G"].includes(letter) ? 220 : 126,
+    }, index);
+  });
+  const headerRow = createWorkOrderDocumentFcLookupSheetRow(1, columns, {
+    B: "Oznaka prostora",
+    C: "Naziv",
+    D: "Opis prostorija i prostora s opisom namjene",
+    E: "Opis radnih procesa",
+    F: "Popis i opis radne opreme",
+    G: "ID prostor",
+    M: "Dopuštena temperatura [°C]",
+    N: "Temperatura min [°C]",
+    O: "Temperatura max [°C]",
+    P: "Dopuštena brzina strujanja [m/s]",
+    Q: "Strujanje min [m/s]",
+    R: "Strujanje max [m/s]",
+    S: "Preporučena relativna vlažnost [%]",
+    T: "Vlažnost min [%]",
+    U: "Vlažnost max [%]",
+    V: "Potrebna osvijetljenost [lx]",
+    W: "Osvijetljenost min [lx]",
+    X: "Osvijetljenost max [lx]",
+    Y: "Dopuštena razina buke [dB]",
+    Z: "Buka min [dB]",
+    AA: "Buka max [dB]",
+  });
+  const meaningfulSpaces = (Array.isArray(spaces) ? spaces : [])
+    .filter((space) => space && !space.isPlaceholder)
+    .map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, {}, { isChemical: false }));
+  const rows = [
+    headerRow,
+    ...meaningfulSpaces.map((space, index) => createWorkOrderDocumentFcLookupSheetRow(index + 2, columns, {
+      B: space.code || `P-${index + 1}`,
+      C: space.name || "Prostor",
+      D: space.description || "",
+      E: space.processDescription || "",
+      F: space.equipmentDescription || "",
+      G: space.name || space.description || space.code || `P-${index + 1}`,
+      M: space.allowedTemperature || getWorkOrderDocumentFcRangeValue(space, "temperatureMin", "temperatureMax"),
+      N: space.temperatureMin || "",
+      O: space.temperatureMax || "",
+      P: space.airflowAllowed || "",
+      Q: space.airflowMin || "",
+      R: space.airflowMax || "",
+      S: space.humidityRecommended || getWorkOrderDocumentFcRangeValue(space, "humidityMin", "humidityMax"),
+      T: space.humidityMin || "",
+      U: space.humidityMax || "",
+      V: space.lightingRequired || "",
+      W: space.lightingMin || "",
+      X: space.lightingMax || "",
+      Y: space.noiseAllowed || "",
+      Z: space.noiseMin || "",
+      AA: space.noiseMax || "",
+    })),
+  ];
+  return {
+    columns,
+    rows,
+    merges: [],
+    headerRows: [headerRow.id],
+  };
+}
+
+function buildWorkOrderDocumentFcMeasurementSheetFromSpaces(spaces = [], existingSheet = null, { reset = false } = {}) {
+  const meaningfulSpaces = (Array.isArray(spaces) ? spaces : [])
+    .filter((space) => space && !space.isPlaceholder)
+    .map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, {}, { isChemical: false }));
+  const sourceSheet = !reset && isPhysicalFactorsRoF3MeasurementSheet(existingSheet)
+    ? normalizeWorkOrderMeasurementSheet(existingSheet)
+    : buildPhysicalFactorsRoF3SheetTemplate();
+  const sheet = normalizeWorkOrderMeasurementSheet(sourceSheet) ?? buildPhysicalFactorsRoF3SheetTemplate();
+  const firstDataRowIndex = 3;
+
+  meaningfulSpaces.forEach((space, index) => {
+    const rowIndex = firstDataRowIndex + index;
+    const row = sheet.rows[rowIndex];
+    if (!row) {
+      return;
+    }
+    setMeasurementSheetCellByLetter(sheet, row, "A", space.code || `P-${index + 1}`);
+    if (!String(row.cells?.[getMeasurementSheetColumnIdByLetter(sheet, "E")] || "").trim()) {
+      setMeasurementSheetCellByLetter(sheet, row, "E", space.name || space.description || `Mjerno mjesto ${index + 1}`);
+    }
+  });
+
+  return sheet;
+}
+
+function getWorkOrderDocumentFcMeasurementSheetSummary(sheet = null) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalized?.columns?.length) {
+    return "RO-F.3 nije otvoren";
+  }
+  const firstColumnId = normalized.columns[0]?.id || "";
+  const populatedRows = normalized.rows.slice(3).reduce((count, row, offset) => {
+    const firstColumnValue = firstColumnId ? row?.cells?.[firstColumnId] : "";
+    return String(firstColumnValue || "").trim() ? count + 1 : count;
+  }, 0);
+  return `${normalized.columns.length} kolona · ${populatedRows} mjernih redova`;
+}
+
+function getWorkOrderDocumentFcMeasurementDraftContext(workOrderId = state.measurementSheet.ownerRuntimeWorkOrderId) {
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId)
+    || getDocumentTemplateRuntimeActiveWorkOrder()
+    || {};
+  const stateEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(normalizedWorkOrderId || workOrder?.id);
+  const draft = stateEntry?.physicalDraft || createWorkOrderDocumentWorkEnvironmentDefaultDraft(workOrder, { isChemical: false });
+  return { workOrder, stateEntry, draft };
+}
+
+function buildWorkOrderDocumentFcMeasurementFormulaContext({
+  workOrderId = state.measurementSheet.ownerRuntimeWorkOrderId,
+  currentSheet = null,
+} = {}) {
+  const context = buildDocumentTemplateMeasurementFormulaContext({
+    fields: [],
+    currentFieldId: "work-environment-fc",
+    currentSheet,
+    workOrderId,
+  });
+  const { draft } = getWorkOrderDocumentFcMeasurementDraftContext(workOrderId);
+  const lookupSheet = buildWorkOrderDocumentFcRoF2LookupSheet(draft?.spaces || []);
+  const lookupEntry = {
+    key: "work-environment-fc-ro-f2",
+    fieldId: "RO-F.2",
+    field: null,
+    sheet: lookupSheet,
+    index: 0,
+  };
+  context.entries.push(lookupEntry);
+  addMeasurementFormulaSheetAlias(context.lookup, "RO-F.2", lookupEntry);
+  addMeasurementFormulaSheetAlias(context.lookup, "RO F.2", lookupEntry);
+  addMeasurementFormulaSheetAlias(context.lookup, "ROF2", lookupEntry);
+  return context;
+}
+
 function hasCurrentMeasurementSheetContentForReplacement() {
   return isMeasurementSheetStructureCustomized(state.measurementSheet.columns)
     || state.measurementSheet.rows.some((row) => isMeasurementSheetRowMeaningful(row, state.measurementSheet.columns))
@@ -43558,6 +43768,19 @@ function hasCurrentMeasurementSheetContentForReplacement() {
 }
 
 function applyPhysicalFactorsRoF3MeasurementSheetTemplate() {
+  if (isWorkOrderDocumentFcMeasurementSheetOwner()) {
+    const { workOrder, stateEntry, draft } = getWorkOrderDocumentFcMeasurementDraftContext();
+    const nextSheet = buildWorkOrderDocumentFcMeasurementSheetFromSpaces(draft.spaces || [], null, { reset: true });
+    applyMeasurementSheetSnapshot(nextSheet);
+    renderMeasurementSheet();
+    syncMeasurementToolbar();
+    persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, {
+      ...draft,
+      measurementSheet: nextSheet,
+    }, { isChemical: false, render: false });
+    return;
+  }
+
   if (
     hasCurrentMeasurementSheetContentForReplacement()
     && !window.confirm("Zamijeniti trenutnu Excel tablicu RO-F.3 predloškom fizikalnih čimbenika?")
@@ -44008,6 +44231,12 @@ function buildDocumentTemplateMeasurementFormulaContext({
 function buildActiveMeasurementSheetFormulaContext() {
   const currentSheet = buildCurrentMeasurementSheetFormulaSnapshot();
   const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
+  if (ownerKind === "work_environment_fc") {
+    return buildWorkOrderDocumentFcMeasurementFormulaContext({
+      workOrderId: state.measurementSheet.ownerRuntimeWorkOrderId || state.documentTemplateRuntime.activeWorkOrderId || "",
+      currentSheet,
+    });
+  }
   if (ownerKind !== "template_field" && ownerKind !== "document_template_runtime_field") {
     return buildDocumentTemplateMeasurementFormulaContext({
       fields: [],
@@ -48238,6 +48467,41 @@ function syncMeasurementSheetHeaderFromWorkOrder() {
     return;
   }
 
+  if (state.measurementSheet.ownerKind === "work_environment_fc") {
+    const activeWorkOrderId = String(
+      state.measurementSheet.ownerRuntimeWorkOrderId
+      || state.documentTemplateRuntime.activeWorkOrderId
+      || "",
+    ).trim();
+    const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === activeWorkOrderId)
+      || getDocumentTemplateRuntimeActiveWorkOrder()
+      || {};
+    const { draft } = getWorkOrderDocumentFcMeasurementDraftContext(activeWorkOrderId);
+    const company = getCompany(workOrder?.companyId || "");
+    const location = getLocation(workOrder?.locationId || "");
+
+    if (measurementCompanyInput) {
+      measurementCompanyInput.value = company?.name || draft.companyName || workOrder.companyName || "FC";
+    }
+
+    if (measurementHeadquartersInput) {
+      measurementHeadquartersInput.value = draft.companyHeadquarters || company?.headquarters || "RO-F.3";
+    }
+
+    if (measurementLocationInput) {
+      measurementLocationInput.value = [
+        workOrder?.workOrderNumber || "",
+        location?.name || draft.location || "",
+      ].filter(Boolean).join(" · ");
+    }
+
+    if (measurementDateInput) {
+      measurementDateInput.value = draft.startDate || getDocumentTemplateRuntimeValue(activeWorkOrderId, "inspectionDate") || new Date().toISOString().slice(0, 10);
+    }
+
+    return;
+  }
+
   const company = getCompany(workOrderCompanyIdInput.value);
   const location = getLocation(workOrderLocationIdInput.value);
 
@@ -48313,6 +48577,28 @@ function persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRo
   }
 }
 
+function persistMeasurementSheetToWorkOrderDocumentFcDraft({ render = false } = {}) {
+  const workOrderId = String(
+    state.measurementSheet.ownerRuntimeWorkOrderId
+    || state.documentTemplateRuntime.activeWorkOrderId
+    || "",
+  ).trim();
+  if (!workOrderId) {
+    return;
+  }
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === workOrderId)
+    || getDocumentTemplateRuntimeActiveWorkOrder()
+    || {};
+  const stateEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrderId);
+  const draft = ensureWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, { isChemical: false });
+  const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true })
+    ?? buildWorkOrderDocumentFcMeasurementSheetFromSpaces(draft.spaces, null, { reset: true });
+  persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, {
+    ...draft,
+    measurementSheet: snapshot,
+  }, { isChemical: false, render });
+}
+
 function flushOpenDocumentTemplateRuntimeMeasurementSheet(workOrderId = "") {
   const normalizedWorkOrderId = String(workOrderId || "").trim();
   if (
@@ -48363,6 +48649,64 @@ function openDocumentTemplateRuntimeMeasurementSheet(fieldId, workOrderId = stat
 
   setMeasurementSheetOpen(true);
   syncMeasurementToolbar();
+}
+
+function openWorkOrderDocumentFcMeasurementSheet(workOrder = {}, stateEntry = {}, draft = {}, { reset = false } = {}) {
+  const workOrderId = String(workOrder?.id || draft?.workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  if (!workOrderId) {
+    return;
+  }
+  const currentDraft = draft && typeof draft === "object"
+    ? draft
+    : ensureWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, { isChemical: false });
+  const sheet = buildWorkOrderDocumentFcMeasurementSheetFromSpaces(
+    currentDraft.spaces || [],
+    reset ? null : currentDraft.measurementSheet,
+    { reset },
+  );
+  persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, {
+    ...currentDraft,
+    measurementSheet: sheet,
+  }, { isChemical: false, render: false });
+
+  state.measurementSheet.ownerKind = "work_environment_fc";
+  state.measurementSheet.ownerFieldId = "work-environment-fc";
+  state.measurementSheet.ownerRuntimeWorkOrderId = workOrderId;
+  state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
+  state.measurementSheet.aiPopoverOpen = false;
+  state.measurementSheet.quickFillPopoverOpen = false;
+  applyMeasurementSheetSnapshot(sheet);
+  syncMeasurementSheetHeaderFromWorkOrder();
+  renderMeasurementSheet();
+
+  if (!state.measurementSheet.activeCell) {
+    const firstColumnIndex = getFirstEditableMeasurementColumnIndex();
+
+    if (firstColumnIndex >= 0 && state.measurementSheet.rows[3]) {
+      setMeasurementSelectionByIndex(3, firstColumnIndex);
+    } else if (firstColumnIndex >= 0 && state.measurementSheet.rows[0]) {
+      setMeasurementSelectionByIndex(0, firstColumnIndex);
+    }
+  }
+
+  setMeasurementSheetOpen(true);
+  syncMeasurementToolbar();
+}
+
+function syncOpenWorkOrderDocumentFcMeasurementSheetWithSpaces(workOrder = {}, stateEntry = {}, draft = {}) {
+  const nextSheet = buildWorkOrderDocumentFcMeasurementSheetFromSpaces(draft.spaces || [], draft.measurementSheet);
+  const nextDraft = persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, {
+    ...draft,
+    measurementSheet: nextSheet,
+  }, { isChemical: false, render: false });
+  if (isWorkOrderDocumentFcMeasurementSheetOwner()
+    && String(state.measurementSheet.ownerRuntimeWorkOrderId || "") === String(workOrder?.id || "")) {
+    applyMeasurementSheetSnapshot(nextDraft.measurementSheet);
+    renderMeasurementSheet();
+    syncMeasurementToolbar();
+  }
+  return nextDraft;
 }
 
 function ensureDocumentTemplateRuntimeMeasurementSheetForField(fieldId, workOrderId = state.documentTemplateRuntime.activeWorkOrderId) {
@@ -48699,6 +49043,30 @@ function syncDocumentTemplateInlineExcelPreviewVisibility() {
   });
 }
 
+function syncWorkOrderDocumentWorkEnvironmentInlineExcelPreviewVisibility() {
+  const activeKey = state.measurementSheet.ownerKind === "work_environment_fc"
+    ? String(state.measurementSheet.ownerRuntimeWorkOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim()
+    : "";
+  const isInlineOpen = state.measurementSheet.isOpen
+    && state.measurementSheet.ownerKind === "work_environment_fc"
+    && Boolean(activeKey);
+
+  document.querySelectorAll(".work-order-document-fc-inline-excel-host").forEach((host) => {
+    if (!(host instanceof HTMLElement)) {
+      return;
+    }
+    const hostKey = String(host.dataset.workEnvironmentSheetId || "").trim();
+    const isActiveHost = isInlineOpen && hostKey === activeKey;
+    const hasInlinePanel = host.querySelector(".measurement-sheet-panel") instanceof HTMLElement;
+    host.classList.toggle("is-active", isActiveHost);
+    host.querySelectorAll(".work-order-document-fc-inline-excel-preview").forEach((preview) => {
+      if (preview instanceof HTMLElement) {
+        preview.hidden = isActiveHost && hasInlinePanel;
+      }
+    });
+  });
+}
+
 function getTemplateMeasurementSheetInlineHost(fieldId = state.measurementSheet.ownerFieldId) {
   if (!fieldId) {
     return null;
@@ -48731,20 +49099,48 @@ function getTemplateMeasurementSheetInlineHost(fieldId = state.measurementSheet.
   return null;
 }
 
+function getWorkOrderDocumentWorkEnvironmentMeasurementInlineHost(workOrderId = state.measurementSheet.ownerRuntimeWorkOrderId) {
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  if (!normalizedWorkOrderId) {
+    return null;
+  }
+
+  const mappedHost = workOrderDocumentWorkEnvironmentMeasurementInlineHosts.get(normalizedWorkOrderId);
+  if (mappedHost instanceof HTMLElement && mappedHost.isConnected) {
+    return mappedHost;
+  }
+
+  const escapedWorkOrderId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(normalizedWorkOrderId)
+    : normalizedWorkOrderId.replace(/["\\]/g, "\\$&");
+  const host = document.querySelector(`.work-order-document-fc-inline-excel-host[data-work-environment-sheet-id="${escapedWorkOrderId}"]`);
+  if (host instanceof HTMLElement) {
+    workOrderDocumentWorkEnvironmentMeasurementInlineHosts.set(normalizedWorkOrderId, host);
+    return host;
+  }
+
+  return null;
+}
+
 function syncMeasurementSheetPanelMount() {
   if (!measurementSheetPanel) {
     return;
   }
 
-  const shouldMountInline = state.measurementSheet.isOpen && (
-    state.measurementSheet.ownerKind === "template_field"
-    || state.measurementSheet.ownerKind === "document_template_runtime_field"
-  );
-  let inlineHost = shouldMountInline
-    ? getTemplateMeasurementSheetInlineHost(state.measurementSheet.ownerFieldId)
-    : null;
+  const shouldMountInline = state.measurementSheet.isOpen && isMeasurementSheetInlineOwnerKind();
+  let inlineHost = null;
+  if (shouldMountInline && state.measurementSheet.ownerKind === "work_environment_fc") {
+    inlineHost = getWorkOrderDocumentWorkEnvironmentMeasurementInlineHost(state.measurementSheet.ownerRuntimeWorkOrderId);
+  } else if (shouldMountInline) {
+    inlineHost = getTemplateMeasurementSheetInlineHost(state.measurementSheet.ownerFieldId);
+  }
 
-  if (!inlineHost && shouldMountInline && documentTemplateCustomFields) {
+  if (
+    !inlineHost
+    && shouldMountInline
+    && state.measurementSheet.ownerKind !== "work_environment_fc"
+    && documentTemplateCustomFields
+  ) {
     const firstHost = documentTemplateCustomFields.querySelector(".document-template-inline-excel-host");
     if (firstHost instanceof HTMLElement) {
       inlineHost = firstHost;
@@ -48769,18 +49165,25 @@ function syncMeasurementSheetPanelMount() {
     measurementSheetPanel.classList.add("is-inline-template-sheet");
     measurementSheetPanel.classList.toggle(
       "is-runtime-inline-sheet",
-      state.measurementSheet.ownerKind === "document_template_runtime_field",
+      state.measurementSheet.ownerKind === "document_template_runtime_field"
+        || state.measurementSheet.ownerKind === "work_environment_fc",
+    );
+    measurementSheetPanel.classList.toggle(
+      "is-work-environment-inline-sheet",
+      state.measurementSheet.ownerKind === "work_environment_fc",
     );
     if (measurementSheetModal) {
       measurementSheetModal.hidden = true;
     }
     syncDocumentTemplateInlineExcelPreviewVisibility();
+    syncWorkOrderDocumentWorkEnvironmentInlineExcelPreviewVisibility();
     document.body.classList.remove("measurement-sheet-open");
     return;
   }
 
   measurementSheetPanel.classList.remove("is-inline-template-sheet");
   measurementSheetPanel.classList.remove("is-runtime-inline-sheet");
+  measurementSheetPanel.classList.remove("is-work-environment-inline-sheet");
   if (measurementSheetModal && measurementSheetPanel.parentElement !== measurementSheetModal) {
     measurementSheetModal.append(measurementSheetPanel);
   }
@@ -48788,6 +49191,7 @@ function syncMeasurementSheetPanelMount() {
     measurementSheetModal.hidden = !state.measurementSheet.isOpen;
   }
   syncDocumentTemplateInlineExcelPreviewVisibility();
+  syncWorkOrderDocumentWorkEnvironmentInlineExcelPreviewVisibility();
 }
 
 function renderMeasurementSheet() {
@@ -49266,8 +49670,8 @@ function extendMeasurementSheetRowsIfNeeded() {
 
 function setMeasurementSheetOpen(isOpen) {
   state.measurementSheet.isOpen = Boolean(isOpen);
-  const inlineTemplateSheet = state.measurementSheet.isOpen && state.measurementSheet.ownerKind === "template_field";
-  document.body.classList.toggle("measurement-sheet-open", state.measurementSheet.isOpen && !inlineTemplateSheet);
+  const inlineSheet = state.measurementSheet.isOpen && isMeasurementSheetInlineOwnerKind();
+  document.body.classList.toggle("measurement-sheet-open", state.measurementSheet.isOpen && !inlineSheet);
   syncMeasurementSheetPanelMount();
 
   if (!state.measurementSheet.isOpen) {
@@ -49310,6 +49714,8 @@ function closeMeasurementSheet() {
     persistMeasurementSheetToTemplateField({ rerenderFieldRows: true });
   } else if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
     persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows: true });
+  } else if (state.measurementSheet.ownerKind === "work_environment_fc") {
+    persistMeasurementSheetToWorkOrderDocumentFcDraft({ render: true });
   }
 
   clearScheduledMeasurementSheetRefresh();
@@ -121438,6 +121844,7 @@ function createWorkOrderDocumentWorkEnvironmentDefaultDraft(workOrder = {}, { is
     attachments: [],
     spaces,
     measurements,
+    measurementSheet: isChemical ? null : buildWorkOrderDocumentFcMeasurementSheetFromSpaces(spaces, null, { reset: true }),
   };
 }
 
@@ -121446,6 +121853,13 @@ function normalizeWorkOrderDocumentWorkEnvironmentDraft(draft = {}, workOrder = 
   const source = draft && typeof draft === "object" ? draft : {};
   const spacesSource = Array.isArray(source.spaces) && source.spaces.length ? source.spaces : defaults.spaces;
   const measurementsSource = Array.isArray(source.measurements) && source.measurements.length ? source.measurements : defaults.measurements;
+  const normalizedSpaces = spacesSource.map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, workOrder, { isChemical }));
+  const normalizedMeasurementSheet = isChemical
+    ? null
+    : buildWorkOrderDocumentFcMeasurementSheetFromSpaces(
+      normalizedSpaces,
+      normalizeWorkOrderMeasurementSheet(source.measurementSheet) || defaults.measurementSheet,
+    );
   return {
     ...defaults,
     ...source,
@@ -121468,8 +121882,9 @@ function normalizeWorkOrderDocumentWorkEnvironmentDraft(draft = {}, workOrder = 
     healthRequirementRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.healthRequirementRegisters, defaults.healthRequirementRegisters),
     additionalRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.additionalRegisters, defaults.additionalRegisters),
     attachments: normalizeWorkOrderDocumentWorkEnvironmentDraftAttachments(source.attachments),
-    spaces: spacesSource.map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, workOrder, { isChemical })),
+    spaces: normalizedSpaces,
     measurements: measurementsSource.map((measurement, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement(measurement, index, { isChemical })),
+    measurementSheet: normalizedMeasurementSheet,
   };
 }
 
@@ -122201,11 +122616,12 @@ function appendWorkOrderDocumentWorkEnvironmentSpacesEditorBlock(bodyNode, {
           });
           const nextSpaces = [...meaningfulSpaces, nextSpace];
           const nextMeasurements = syncWorkOrderDocumentFcMeasurementsWithSpaces(draft.measurements, nextSpaces);
+          const nextMeasurementSheet = buildWorkOrderDocumentFcMeasurementSheetFromSpaces(nextSpaces, draft.measurementSheet);
           stateEntry.fcSpaceTemplateDraft = createWorkOrderDocumentFcSpaceDraft(nextSpaces.length, {
             code: `P-${nextSpaces.length + 1}`,
             name: "",
           });
-          save({ spaces: nextSpaces, measurements: nextMeasurements }, { render: true });
+          save({ spaces: nextSpaces, measurements: nextMeasurements, measurementSheet: nextMeasurementSheet }, { render: true });
         });
         actions.append(applyTemplateButton, aiButton, resetButton, saveButton);
         form.append(actions);
@@ -122245,7 +122661,11 @@ function appendWorkOrderDocumentWorkEnvironmentSpacesEditorBlock(bodyNode, {
               event.stopPropagation();
               const suggested = buildWorkOrderDocumentFcSpaceSuggestion(space.name || space.code || "", space);
               const nextSpaces = meaningfulSpaces.map((item, itemIndex) => itemIndex === index ? { ...item, ...suggested, id: item.id, code: item.code || suggested.code } : item);
-              save({ spaces: nextSpaces, measurements: syncWorkOrderDocumentFcMeasurementsWithSpaces(draft.measurements, nextSpaces) }, { render: true });
+              save({
+                spaces: nextSpaces,
+                measurements: syncWorkOrderDocumentFcMeasurementsWithSpaces(draft.measurements, nextSpaces),
+                measurementSheet: buildWorkOrderDocumentFcMeasurementSheetFromSpaces(nextSpaces, draft.measurementSheet),
+              }, { render: true });
             });
             const removeButton = document.createElement("button");
             removeButton.type = "button";
@@ -122257,7 +122677,11 @@ function appendWorkOrderDocumentWorkEnvironmentSpacesEditorBlock(bodyNode, {
               const removedCode = String(space.code || "").trim();
               const nextSpaces = meaningfulSpaces.filter((_, itemIndex) => itemIndex !== index);
               const nextMeasurements = (draft.measurements || []).filter((measurement) => String(measurement.spaceCode || "").trim() !== removedCode);
-              save({ spaces: nextSpaces, measurements: nextMeasurements }, { render: true });
+              save({
+                spaces: nextSpaces,
+                measurements: nextMeasurements,
+                measurementSheet: buildWorkOrderDocumentFcMeasurementSheetFromSpaces(nextSpaces, draft.measurementSheet),
+              }, { render: true });
             });
             rowActions.append(fillButton, removeButton);
             rowHead.append(copy, rowActions);
@@ -122273,7 +122697,11 @@ function appendWorkOrderDocumentWorkEnvironmentSpacesEditorBlock(bodyNode, {
                 }
                 return createWorkOrderDocumentFcMeasurementRowFromSpace(nextSpace, measurementIndex, measurement);
               });
-              save({ spaces: nextSpaces, measurements: nextMeasurements });
+              save({
+                spaces: nextSpaces,
+                measurements: nextMeasurements,
+                measurementSheet: buildWorkOrderDocumentFcMeasurementSheetFromSpaces(nextSpaces, draft.measurementSheet),
+              });
             };
             const rowGrid = document.createElement("div");
             rowGrid.className = "work-order-document-fc-space-row-grid";
@@ -122469,189 +122897,72 @@ function appendWorkOrderDocumentWorkEnvironmentMeasurementsEditorBlock(bodyNode,
     renderBody: (sectionBody) => {
       if (!isChemical) {
         const spaces = (draft.spaces || []).filter((space) => !space.isPlaceholder);
-        const measurementRows = (draft.measurements || []).filter((measurement) => !measurement.isPlaceholder);
+        const activeSheet = normalizeWorkOrderMeasurementSheet(draft.measurementSheet)
+          || buildWorkOrderDocumentFcMeasurementSheetFromSpaces(spaces, null, { reset: true });
         const actions = document.createElement("div");
         actions.className = "work-order-document-fc-measurement-actions is-excel";
-        const spaceSelect = document.createElement("select");
-        spaces.forEach((space) => {
-          const option = document.createElement("option");
-          option.value = String(space.code || space.name || "");
-          option.textContent = [space.code, space.name].filter(Boolean).join(" · ") || "Prostor";
-          spaceSelect.append(option);
-        });
-        const addRowButton = document.createElement("button");
-        addRowButton.type = "button";
-        addRowButton.className = "ghost-button";
-        addRowButton.textContent = "+ Red iz prostora";
-        addRowButton.disabled = !spaces.length;
-        addRowButton.addEventListener("click", (event) => {
+        const meta = document.createElement("div");
+        meta.className = "work-order-document-fc-excel-meta";
+        const metaTitle = document.createElement("strong");
+        metaTitle.textContent = "RO-F.3 Excel mjerenja";
+        const metaCopy = document.createElement("span");
+        metaCopy.textContent = `${getWorkOrderDocumentFcMeasurementSheetSummary(activeSheet)} · RO-F.2 se automatski puni iz ${spaces.length || 0} prostora.`;
+        meta.append(metaTitle, metaCopy);
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.className = "primary-action-button is-compact";
+        openButton.textContent = "Otvori Excel mjerenja";
+        openButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          const selectedSpace = spaces.find((space) => String(space.code || space.name || "") === String(spaceSelect.value)) || spaces[0];
-          const nextMeasurement = createWorkOrderDocumentFcMeasurementRowFromSpace(selectedSpace, measurementRows.length);
-          save({ measurements: [...measurementRows, nextMeasurement] }, { render: true });
+          openWorkOrderDocumentFcMeasurementSheet(workOrder, stateEntry, draft);
         });
         const syncButton = document.createElement("button");
         syncButton.type = "button";
         syncButton.className = "ghost-button";
-        syncButton.textContent = "Dodaj sve prostore";
+        syncButton.textContent = "Sinkroniziraj prostore";
         syncButton.disabled = !spaces.length;
         syncButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          save({ measurements: syncWorkOrderDocumentFcMeasurementsWithSpaces(measurementRows, spaces) }, { render: true });
+          const nextDraft = syncOpenWorkOrderDocumentFcMeasurementSheetWithSpaces(workOrder, stateEntry, draft);
+          save({ measurementSheet: nextDraft.measurementSheet }, { render: true });
+          requestAnimationFrame(() => openWorkOrderDocumentFcMeasurementSheet(workOrder, stateEntry, nextDraft));
         });
-        const fixButton = document.createElement("button");
-        fixButton.type = "button";
-        fixButton.className = "ghost-button";
-        fixButton.textContent = "Make fix";
-        fixButton.disabled = !measurementRows.length;
-        fixButton.addEventListener("click", (event) => {
+        const resetButton = document.createElement("button");
+        resetButton.type = "button";
+        resetButton.className = "ghost-button";
+        resetButton.textContent = "RO-F.3 predložak";
+        resetButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          const fixedRows = measurementRows.map((measurement, index) => {
-            const space = spaces.find((item) => String(item.code || item.name || "") === String(measurement.spaceCode || "")) || spaces[index] || spaces[0] || {};
-            return createWorkOrderDocumentFcMeasurementRowFromSpace(space, index, measurement);
-          });
-          save({ measurements: fixedRows }, { render: true });
+          if (!window.confirm("Zamijeniti FC Excel mjerenja novim RO-F.3 predloškom?")) {
+            return;
+          }
+          const nextSheet = buildWorkOrderDocumentFcMeasurementSheetFromSpaces(spaces, null, { reset: true });
+          save({ measurementSheet: nextSheet }, { render: true });
+          requestAnimationFrame(() => openWorkOrderDocumentFcMeasurementSheet(workOrder, stateEntry, { ...draft, measurementSheet: nextSheet }, { reset: true }));
         });
-        const randomButton = document.createElement("button");
-        randomButton.type = "button";
-        randomButton.className = "primary-action-button is-compact";
-        randomButton.textContent = "Make random";
-        randomButton.disabled = !measurementRows.length;
-        randomButton.addEventListener("click", (event) => {
-          event.stopPropagation();
-          save({
-            measurements: measurementRows.map((measurement) => randomizeWorkOrderDocumentFcMeasurementRow(measurement, spaces)),
-          }, { render: true });
-        });
-        actions.append(spaceSelect, addRowButton, syncButton, fixButton, randomButton);
+        actions.append(meta, openButton, syncButton, resetButton);
         sectionBody.append(actions);
 
-        const wrap = document.createElement("div");
-        wrap.className = "work-order-document-fc-results-wrap";
-        const table = document.createElement("table");
-        table.className = "work-order-document-fc-results-table";
-        const head = document.createElement("thead");
-        const groupRow = document.createElement("tr");
-        [
-          ["Mjerno mjesto", 4],
-          ["Osvijetljenost", 4],
-          ["Buka", 5],
-          ["Mikroklima", 7],
-          ["", 1],
-        ].forEach(([label, span]) => {
-          const th = document.createElement("th");
-          th.colSpan = span;
-          th.textContent = label;
-          groupRow.append(th);
+        const host = document.createElement("div");
+        host.className = "work-order-document-fc-inline-excel-host";
+        host.dataset.workEnvironmentSheetId = String(workOrder?.id || draft.workOrderId || "");
+        workOrderDocumentWorkEnvironmentMeasurementInlineHosts.set(host.dataset.workEnvironmentSheetId, host);
+        const preview = document.createElement("div");
+        preview.className = "work-order-document-fc-inline-excel-preview";
+        preview.innerHTML = `<strong>Excel editor je spreman.</strong><span>Klikni "Otvori Excel mjerenja" za RO-F.3 s formulama, fill handleom, validacijama i NexAI kolonama.</span>`;
+        host.append(preview);
+        sectionBody.append(host);
+
+        requestAnimationFrame(() => {
+          if (
+            host.isConnected
+            && state.measurementSheet.isOpen
+            && state.measurementSheet.ownerKind === "work_environment_fc"
+            && String(state.measurementSheet.ownerRuntimeWorkOrderId || "") === String(workOrder?.id || "")
+          ) {
+            syncMeasurementSheetPanelMount();
+          }
         });
-        const labelRow = document.createElement("tr");
-        [
-          "Prostor/Prostorija",
-          "Redni broj",
-          "Mjerno mjesto",
-          "Opis MM",
-          "Izmjereno opće [lx]",
-          "Izmjereno dopunski [lx]",
-          "Propisano [lx]",
-          "DA/NE",
-          "Ekvivalentna razina [dB]",
-          "Dopuštena razina [dB]",
-          "Vršna buka [dB]",
-          "Dnevna izloženost [dB]",
-          "DA/NE",
-          "Izmjerena temperatura [°C]",
-          "Dopuštena temperatura [°C]",
-          "Izmjerena brzina strujanja [m/s]",
-          "Dopuštena brzina strujanja [m/s]",
-          "Izmjerena relativna vlažnost [%]",
-          "Preporučena relativna vlažnost [%]",
-          "DA/NE",
-          "",
-        ].forEach((label) => {
-          const th = document.createElement("th");
-          th.textContent = label;
-          labelRow.append(th);
-        });
-        head.append(groupRow, labelRow);
-        table.append(head);
-        const tableBody = document.createElement("tbody");
-        if (!measurementRows.length) {
-          const row = document.createElement("tr");
-          const cell = document.createElement("td");
-          cell.colSpan = 21;
-          cell.className = "work-order-document-ro-table-empty";
-          cell.textContent = spaces.length
-            ? "Dodaj red iz prostora ili klikni Dodaj sve prostore."
-            : "Prvo dodaj prostor u RO-F.2 bloku.";
-          row.append(cell);
-          tableBody.append(row);
-        } else {
-          measurementRows.forEach((measurement, index) => {
-            const row = document.createElement("tr");
-            const updateMeasurement = (patch) => {
-              const nextMeasurements = measurementRows.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
-              save({ measurements: nextMeasurements });
-            };
-            const addCell = (fieldName, placeholder = "", { select = false, options = [] } = {}) => {
-              const cell = document.createElement("td");
-              let input;
-              if (select) {
-                input = document.createElement("select");
-                options.forEach((option) => {
-                  const optionNode = document.createElement("option");
-                  optionNode.value = String(option.value ?? option);
-                  optionNode.textContent = String(option.label ?? option);
-                  input.append(optionNode);
-                });
-                input.value = String(measurement[fieldName] || "");
-                input.addEventListener("change", () => updateMeasurement({ [fieldName]: input.value }));
-              } else {
-                input = document.createElement("input");
-                input.value = String(measurement[fieldName] || "");
-                input.placeholder = placeholder;
-                input.addEventListener("input", () => updateMeasurement({ [fieldName]: input.value }));
-              }
-              cell.append(input);
-              row.append(cell);
-            };
-            addCell("spaceCode", "Prostor", { select: true, options: spaces.map((space) => ({ value: space.code, label: space.name ? `${space.code} · ${space.name}` : space.code })) });
-            addCell("rowNumber", String(index + 1));
-            addCell("measuringPlace", "1 Blagajna");
-            addCell("placeDescription", "Opis mjernog mjesta");
-            addCell("illuminationMeasured", "719");
-            addCell("illuminationSupplementary", "");
-            addCell("illuminationAllowed", "500");
-            addCell("illuminationStatus", "Da", { select: true, options: ["Da", "Ne"] });
-            addCell("noiseEquivalent", "46,8");
-            addCell("noiseAllowed", "65");
-            addCell("noisePeak", "");
-            addCell("noiseDaily", "");
-            addCell("noiseStatus", "Da", { select: true, options: ["Da", "Ne"] });
-            addCell("temperatureMeasured", "22,9");
-            addCell("temperatureAllowed", "20-25");
-            addCell("airflowMeasured", "0,11");
-            addCell("airflowAllowed", "0,20");
-            addCell("humidityMeasured", "51,5");
-            addCell("humidityAllowed", "40-60");
-            addCell("passStatus", "Da", { select: true, options: ["Da", "Ne"] });
-            const removeCell = document.createElement("td");
-            const removeButton = document.createElement("button");
-            removeButton.type = "button";
-            removeButton.className = "icon-button";
-            removeButton.textContent = "×";
-            removeButton.title = "Ukloni red";
-            removeButton.addEventListener("click", (event) => {
-              event.stopPropagation();
-              save({ measurements: measurementRows.filter((_, itemIndex) => itemIndex !== index) }, { render: true });
-            });
-            removeCell.append(removeButton);
-            row.append(removeCell);
-            tableBody.append(row);
-          });
-        }
-        table.append(tableBody);
-        wrap.append(table);
-        sectionBody.append(wrap);
         return;
       }
 
