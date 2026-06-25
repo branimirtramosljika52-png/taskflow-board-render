@@ -157,6 +157,7 @@ import {
   MEASUREMENT_VIRTUALIZATION_ROW_HEIGHT,
   MIN_VISIBLE_MEASUREMENT_ROWS,
 } from "./features/measurementSheet/config.js";
+import { createMeasurementSheetFormulaController } from "./features/measurementSheet/formulaController.js";
 import { createMeasurementSheetViewportController } from "./features/measurementSheet/viewport.js";
 import {
   CHAT_EMOJI_SHORTCUTS,
@@ -44498,201 +44499,38 @@ function buildActiveMeasurementSheetFormulaContext(currentSheet = buildCurrentMe
   });
 }
 
+const measurementSheetFormulaController = createMeasurementSheetFormulaController({
+  getSheet: () => state.measurementSheet,
+  buildCurrentSnapshot: () => buildCurrentMeasurementSheetFormulaSnapshot(),
+  buildFormulaContext: (currentSheet) => buildActiveMeasurementSheetFormulaContext(currentSheet),
+  isLightCellRenderEnabled: isMeasurementSheetLightCellRenderEnabled,
+  applyWorkerCellResult: (result) => applyMeasurementFormulaWorkerCellResult(result),
+  updatePerformance: (payload) => updateMeasurementSheetPerformance(payload),
+  scheduleComputedRefresh: (options) => scheduleMeasurementSheetComputedRefresh(options),
+});
+
 function invalidateMeasurementSheetFormulaCache() {
-  state.measurementSheet.formulaCache = null;
-  state.measurementSheet.formulaDependencyIndex = null;
-  state.measurementSheet.formulaRevision = (Number(state.measurementSheet.formulaRevision) || 0) + 1;
-  state.measurementSheet.formulaWorker.pendingKey = "";
-  state.measurementSheet.formulaWorker.values.clear();
+  measurementSheetFormulaController.invalidateFormulaCache();
 }
 
-function getMeasurementFormulaCellCacheSuffix(rowIndex, columnIndex) {
-  return `:${rowIndex}:${columnIndex}`;
-}
-
-function deleteMeasurementFormulaCacheEntry(rowIndex, columnIndex) {
-  const suffix = getMeasurementFormulaCellCacheSuffix(rowIndex, columnIndex);
-  state.measurementSheet.formulaCache?.values?.forEach((value, key) => {
-    if (String(key).endsWith(suffix)) {
-      state.measurementSheet.formulaCache.values.delete(key);
-    }
-  });
-  state.measurementSheet.formulaWorker.values.delete(
-    getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex),
-  );
-}
-
-function getMeasurementFormulaDependencyIndex() {
-  const cacheKey = [
-    state.measurementSheet.rows.length,
-    state.measurementSheet.columns.length,
-    state.measurementSheet.formulaRevision,
-  ].join(":");
-
-  if (state.measurementSheet.formulaDependencyIndex?.key === cacheKey) {
-    return state.measurementSheet.formulaDependencyIndex;
-  }
-
-  const directDependents = new Map();
-  let hasExternalReferences = false;
-  state.measurementSheet.rows.forEach((row, rowIndex) => {
-    state.measurementSheet.columns.forEach((column, columnIndex) => {
-      const rawValue = row?.cells?.[column.id] ?? "";
-      if (!isMeasurementFormula(rawValue)) {
-        return;
-      }
-
-      const formulaKey = `${rowIndex}:${columnIndex}`;
-      listMeasurementFormulaReferences(rawValue).forEach((reference) => {
-        if (String(reference || "").includes("!")) {
-          hasExternalReferences = true;
-          return;
-        }
-
-        try {
-          const parsed = parseMeasurementCellReference(reference);
-          const dependencyKey = `${parsed.rowIndex}:${parsed.columnIndex}`;
-          const dependents = directDependents.get(dependencyKey) ?? new Set();
-          dependents.add(formulaKey);
-          directDependents.set(dependencyKey, dependents);
-        } catch {
-          // Ignore incomplete references while a formula is being edited.
-        }
-      });
-    });
-  });
-
-  state.measurementSheet.formulaDependencyIndex = {
-    key: cacheKey,
-    directDependents,
-    hasExternalReferences,
-  };
-  return state.measurementSheet.formulaDependencyIndex;
-}
-
-function getMeasurementFormulaDependentCellKeys(rowIndex, columnIndex) {
-  const index = getMeasurementFormulaDependencyIndex();
-  const visited = new Set();
-  const queue = [`${rowIndex}:${columnIndex}`];
-
-  while (queue.length) {
-    const key = queue.shift();
-    const dependents = index.directDependents.get(key);
-    if (!dependents) {
-      continue;
-    }
-
-    dependents.forEach((dependentKey) => {
-      if (visited.has(dependentKey)) {
-        return;
-      }
-      visited.add(dependentKey);
-      queue.push(dependentKey);
-    });
-  }
-
-  return visited;
-}
-
-function invalidateMeasurementSheetFormulaCacheForCell(rowIndex, columnIndex, { formulaChanged = false } = {}) {
-  if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex) || formulaChanged || canUseMeasurementFormulaWorker()) {
-    invalidateMeasurementSheetFormulaCache();
-    return;
-  }
-
-  const index = getMeasurementFormulaDependencyIndex();
-  if (index.hasExternalReferences) {
-    invalidateMeasurementSheetFormulaCache();
-    return;
-  }
-
-  deleteMeasurementFormulaCacheEntry(rowIndex, columnIndex);
-  getMeasurementFormulaDependentCellKeys(rowIndex, columnIndex).forEach((cellKey) => {
-    const [dependentRowIndex, dependentColumnIndex] = cellKey.split(":").map((value) => Number(value));
-    deleteMeasurementFormulaCacheEntry(dependentRowIndex, dependentColumnIndex);
-  });
+function invalidateMeasurementSheetFormulaCacheForCell(rowIndex, columnIndex, options = {}) {
+  measurementSheetFormulaController.invalidateFormulaCacheForCell(rowIndex, columnIndex, options);
 }
 
 function getActiveMeasurementSheetFormulaCache() {
-  const currentSheet = buildCurrentMeasurementSheetFormulaSnapshot();
-  const cacheKey = [
-    state.measurementSheet.ownerKind || "",
-    state.measurementSheet.ownerFieldId || "",
-    state.measurementSheet.ownerRuntimeWorkOrderId || "",
-    state.measurementSheet.formulaRevision || 0,
-    state.measurementSheet.rows.length,
-    state.measurementSheet.columns.length,
-  ].join("|");
-
-  if (state.measurementSheet.formulaCache?.key === cacheKey) {
-    return state.measurementSheet.formulaCache;
-  }
-
-  const formulaContext = buildActiveMeasurementSheetFormulaContext(currentSheet);
-  state.measurementSheet.formulaCache = {
-    key: cacheKey,
-    currentSheet,
-    formulaContext,
-    values: new Map(),
-    lookups: new Map(),
-  };
-  return state.measurementSheet.formulaCache;
+  return measurementSheetFormulaController.getActiveFormulaCache();
 }
 
 function isMeasurementFormulaWorkerEligibleFormula(value = "") {
-  return isMeasurementFormula(value) && !String(value ?? "").includes("!");
+  return measurementSheetFormulaController.isWorkerEligibleFormula(value);
 }
 
 function canUseMeasurementFormulaWorker() {
-  const workerState = state.measurementSheet.formulaWorker;
-  const cellCount = state.measurementSheet.rows.length * state.measurementSheet.columns.length;
-
-  return Boolean(workerState?.supported)
-    && typeof Worker !== "undefined"
-    && isMeasurementSheetLightCellRenderEnabled()
-    && cellCount >= MEASUREMENT_VIRTUALIZATION_MIN_CELLS;
-}
-
-function getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex, revision = state.measurementSheet.formulaRevision) {
-  return `${revision}:${rowIndex}:${columnIndex}`;
+  return measurementSheetFormulaController.canUseWorker();
 }
 
 function getMeasurementFormulaWorkerCachedResult(rowIndex, columnIndex) {
-  return state.measurementSheet.formulaWorker.values.get(
-    getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex),
-  ) || null;
-}
-
-function getMeasurementFormulaWorker() {
-  const workerState = state.measurementSheet.formulaWorker;
-
-  if (!workerState.supported || typeof Worker === "undefined") {
-    return null;
-  }
-
-  if (workerState.instance) {
-    return workerState.instance;
-  }
-
-  try {
-    const worker = new Worker(new URL("./measurementFormulaWorker.js", import.meta.url), {
-      type: "module",
-      name: "SafeNexus Excel formulas",
-    });
-    worker.addEventListener("message", handleMeasurementFormulaWorkerMessage);
-    worker.addEventListener("error", () => {
-      workerState.supported = false;
-      workerState.pendingKey = "";
-      worker.terminate();
-      workerState.instance = null;
-      scheduleMeasurementSheetComputedRefresh({ immediate: true });
-    });
-    workerState.instance = worker;
-    return worker;
-  } catch {
-    workerState.supported = false;
-    return null;
-  }
+  return measurementSheetFormulaController.getWorkerCachedResult(rowIndex, columnIndex);
 }
 
 function applyMeasurementFormulaWorkerCellResult(result = {}) {
@@ -44730,79 +44568,8 @@ function applyMeasurementFormulaWorkerCellResult(result = {}) {
   }
 }
 
-function handleMeasurementFormulaWorkerMessage(event) {
-  const payload = event.data || {};
-
-  if (payload.type !== "compute-result") {
-    return;
-  }
-
-  const workerState = state.measurementSheet.formulaWorker;
-  if (Number(payload.revision) !== Number(state.measurementSheet.formulaRevision)) {
-    return;
-  }
-
-  workerState.pendingKey = "";
-  (Array.isArray(payload.results) ? payload.results : []).forEach((result) => {
-    const rowIndex = Number(result.rowIndex);
-    const columnIndex = Number(result.columnIndex);
-    workerState.values.set(getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex, payload.revision), result);
-    applyMeasurementFormulaWorkerCellResult(result);
-  });
-
-  updateMeasurementSheetPerformance({
-    computeMs: Number(payload.durationMs) || 0,
-    workerCells: Array.isArray(payload.results) ? payload.results.length : 0,
-  });
-}
-
 function requestMeasurementFormulaWorkerCompute(cells = []) {
-  if (!cells.length || !canUseMeasurementFormulaWorker()) {
-    return false;
-  }
-
-  const worker = getMeasurementFormulaWorker();
-  if (!worker) {
-    return false;
-  }
-
-  const uniqueCells = [];
-  const seen = new Set();
-  cells.forEach((cell) => {
-    const rowIndex = Number(cell?.rowIndex);
-    const columnIndex = Number(cell?.columnIndex);
-    const key = `${rowIndex}:${columnIndex}`;
-    if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex) || seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    uniqueCells.push({ rowIndex, columnIndex });
-  });
-
-  if (!uniqueCells.length) {
-    return false;
-  }
-
-  const workerState = state.measurementSheet.formulaWorker;
-  const requestKey = [
-    state.measurementSheet.formulaRevision,
-    uniqueCells.map((cell) => `${cell.rowIndex}:${cell.columnIndex}`).join(","),
-  ].join("|");
-
-  if (workerState.pendingKey === requestKey) {
-    return true;
-  }
-
-  const requestId = `${Date.now()}-${workerState.sequence += 1}`;
-  workerState.pendingKey = requestKey;
-  worker.postMessage({
-    type: "compute",
-    requestId,
-    revision: state.measurementSheet.formulaRevision,
-    sheet: buildCurrentMeasurementSheetFormulaSnapshot(),
-    cells: uniqueCells,
-  });
-  return true;
+  return measurementSheetFormulaController.requestWorkerCompute(cells);
 }
 
 function normalizeMeasurementVLookupComparableValue(value) {
