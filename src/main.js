@@ -118617,9 +118617,9 @@ function appendWorkOrderDocumentWorkEquipmentOverview(bodyNode, {
     { label: "Sva oprema", value: scopedItems.length || items.length, tone: "all", filterKey: "all" },
     { label: "Isteklo", value: counts.overdue || 0, tone: "danger", filterKey: "overdue" },
     { label: "Uskoro", value: counts.upcoming || 0, tone: "warning", filterKey: "upcoming" },
-    { label: "Odabrano", value: selectedIds.size, tone: "selected" },
+    { label: "Odabrano", value: selectedIds.size, tone: "selected", filterKey: "selected" },
     { label: "Nije ispitano", value: counts["no-deadline"] || 0, tone: "neutral", filterKey: "no-deadline" },
-    { label: "Novo", value: manualCount, tone: "success" },
+    { label: "Novo", value: manualCount, tone: "success", filterKey: "new" },
   ].forEach((item) => {
     overview.append(createWorkOrderDocumentWorkEquipmentKpiCard({
       ...item,
@@ -118628,6 +118628,213 @@ function appendWorkOrderDocumentWorkEquipmentOverview(bodyNode, {
     }));
   });
   bodyNode.append(overview);
+}
+
+function getWorkOrderDocumentRoEquipmentValue(item = {}, key = "", fallback = "-") {
+  const equipment = item.equipment || {};
+  const value = (() => {
+    switch (key) {
+      case "name":
+        return equipment.name || item.equipmentType || item.name || item.recordNumber;
+      case "manufacturer":
+        return equipment.manufacturer || item.manufacturer;
+      case "model":
+        return equipment.model || item.model || item.type;
+      case "serialNumber":
+        return equipment.serialNumber || item.serialNumber;
+      case "inventoryNumber":
+        return equipment.inventoryNumber || item.inventoryNumber;
+      case "location":
+        return getWorkOrderDocumentWorkEquipmentLocationLabel(item);
+      case "object":
+        return item.objectName || item.locationObjectName || item.workplaceName || item.meta?.objectName || item.meta?.workplaceName;
+      case "startDate":
+        return formatCompactDate(item.startDate || item.inspectionDate);
+      case "deadline":
+        return formatCompactDate(item.deadlineForNextExamination);
+      case "grade":
+        return getWorkOrderDocumentWorkEquipmentGrade(item);
+      default:
+        return "";
+    }
+  })();
+  return String(value || "").trim() || fallback;
+}
+
+function appendWorkOrderDocumentRoEquipmentTable(bodyNode, {
+  workOrder = {},
+  items = [],
+  selectedIds = new Set(),
+  stateEntry = {},
+  activeFilter = "all",
+} = {}) {
+  const tableItems = Array.isArray(items) ? items : [];
+  const isCollapsed = Boolean(stateEntry.tableCollapsed);
+  const block = document.createElement("section");
+  block.className = `work-order-document-ro-table-block${isCollapsed ? " is-collapsed" : ""}`;
+
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "work-order-document-ro-table-head";
+  head.setAttribute("aria-expanded", String(!isCollapsed));
+  head.addEventListener("click", (event) => {
+    event.stopPropagation();
+    stateEntry.tableCollapsed = !isCollapsed;
+    renderWorkOrderDocumentWizard();
+  });
+
+  const copy = document.createElement("span");
+  const title = document.createElement("strong");
+  title.textContent = "Popis radne opreme";
+  const meta = document.createElement("small");
+  meta.textContent = [
+    workOrder?.companyName || "",
+    workOrder?.locationName || "",
+    activeFilter === "selected" ? "odabrano" : activeFilter === "new" ? "nova oprema" : "",
+    `${tableItems.length} prikazano`,
+  ].filter(Boolean).join(" · ");
+  copy.append(title, meta);
+
+  const action = document.createElement("em");
+  action.textContent = isCollapsed ? "Otkrij" : "Sakrij";
+  head.append(copy, action);
+  block.append(head);
+
+  const body = document.createElement("div");
+  body.className = "work-order-document-ro-table-body";
+  body.hidden = isCollapsed;
+
+  const columns = [
+    { key: "name", label: "Naziv radne opreme" },
+    { key: "manufacturer", label: "Proizvođač" },
+    { key: "model", label: "Tip" },
+    { key: "serialNumber", label: "Serijski broj" },
+    { key: "inventoryNumber", label: "Inventarni broj" },
+    { key: "location", label: "Lokacija" },
+    { key: "object", label: "Objekt" },
+    { key: "startDate", label: "Datum ispitivanja" },
+    { key: "deadline", label: "Vrijedi do" },
+    { key: "grade", label: "Zaključna ocjena" },
+  ];
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "work-order-document-ro-table-wrap";
+  const table = document.createElement("table");
+  table.className = "work-order-document-ro-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const selectHead = document.createElement("th");
+  const selectAll = document.createElement("input");
+  selectAll.type = "checkbox";
+  const visibleIds = tableItems
+    .map((item) => String(item?.id || "").trim())
+    .filter(Boolean);
+  selectAll.checked = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  selectAll.indeterminate = visibleIds.some((id) => selectedIds.has(id)) && !selectAll.checked;
+  selectAll.disabled = visibleIds.length === 0 || stateEntry.submitting;
+  selectAll.setAttribute("aria-label", "Označi svu prikazanu radnu opremu");
+  selectAll.addEventListener("click", (event) => event.stopPropagation());
+  selectAll.addEventListener("change", (event) => {
+    event.stopPropagation();
+    const next = new Set(selectedIds);
+    if (selectAll.checked) {
+      visibleIds.forEach((id) => next.add(id));
+    } else {
+      visibleIds.forEach((id) => next.delete(id));
+    }
+    stateEntry.selectedItemIds = [...next];
+    stateEntry.matrixPage = 0;
+    renderWorkOrderDocumentWizard();
+  });
+  selectHead.append(selectAll);
+  headRow.append(selectHead);
+  columns.forEach((column) => {
+    const th = document.createElement("th");
+    th.textContent = column.label;
+    headRow.append(th);
+  });
+  thead.append(headRow);
+  table.append(thead);
+
+  const tbody = document.createElement("tbody");
+  if (!tableItems.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = columns.length + 1;
+    cell.className = "work-order-document-ro-table-empty";
+    cell.textContent = activeFilter === "new"
+      ? "Nova oprema dolazi iz NexAI prepoznavanja i prikazuje se u bloku ispod."
+      : "Nema opreme za odabrani filter.";
+    row.append(cell);
+    tbody.append(row);
+  } else {
+    tableItems.forEach((item) => {
+      const itemId = String(item?.id || "").trim();
+      const row = document.createElement("tr");
+      row.className = selectedIds.has(itemId) ? "is-selected" : "";
+      const selectCell = document.createElement("td");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selectedIds.has(itemId);
+      checkbox.disabled = !itemId || stateEntry.submitting;
+      checkbox.setAttribute("aria-label", `Označi ${getWorkOrderDocumentRoEquipmentValue(item, "name", "radnu opremu")}`);
+      checkbox.addEventListener("click", (event) => event.stopPropagation());
+      checkbox.addEventListener("change", (event) => {
+        event.stopPropagation();
+        const next = new Set(selectedIds);
+        if (checkbox.checked) {
+          next.add(itemId);
+        } else {
+          next.delete(itemId);
+        }
+        stateEntry.selectedItemIds = [...next];
+        stateEntry.matrixPage = 0;
+        renderWorkOrderDocumentWizard();
+      });
+      selectCell.append(checkbox);
+      row.append(selectCell);
+      columns.forEach((column) => {
+        const cell = document.createElement("td");
+        cell.textContent = getWorkOrderDocumentRoEquipmentValue(item, column.key);
+        row.append(cell);
+      });
+      row.addEventListener("click", () => {
+        if (!itemId || stateEntry.submitting) return;
+        const next = new Set(selectedIds);
+        if (next.has(itemId)) {
+          next.delete(itemId);
+        } else {
+          next.add(itemId);
+        }
+        stateEntry.selectedItemIds = [...next];
+        stateEntry.matrixPage = 0;
+        renderWorkOrderDocumentWizard();
+      });
+      tbody.append(row);
+    });
+  }
+  table.append(tbody);
+  tableWrap.append(table);
+
+  const footer = document.createElement("div");
+  footer.className = "work-order-document-ro-table-actions";
+  const count = document.createElement("span");
+  count.textContent = `${selectedIds.size} označeno`;
+  const makeButton = document.createElement("button");
+  makeButton.type = "button";
+  makeButton.className = "primary-action-button";
+  makeButton.textContent = stateEntry.submitting ? "Izrađujem..." : "Izradi za označeno";
+  const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft);
+  makeButton.disabled = stateEntry.submitting || selectedIds.size === 0 || blockingLabels.length > 0;
+  makeButton.title = blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "";
+  makeButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    void submitWorkOrderDocumentIsznrWorkEquipment(workOrder);
+  });
+  footer.append(count, makeButton);
+  body.append(tableWrap, footer);
+  block.append(body);
+  bodyNode.append(block);
 }
 
 function getWorkOrderDocumentRoMatrixRows(item = {}, today = getWorkOrderDocumentWorkEquipmentToday()) {
@@ -118655,8 +118862,9 @@ function getWorkOrderDocumentRoMatrixRows(item = {}, today = getWorkOrderDocumen
     item.workingSubstancesAndRawMaterials,
     item.useAndMaintenance,
   ].filter(Boolean).length;
-  const regulations = [
-    ...(Array.isArray(item.roObligationRegister) ? item.roObligationRegister : []),
+  const obligationRegulations = (Array.isArray(item.roObligationRegister) ? item.roObligationRegister : [])
+    .filter(Boolean).length;
+  const requirementRegulations = [
     ...(Array.isArray(item.roHealthRequirementRegister) ? item.roHealthRequirementRegister : []),
     item.roHealthRequirementOther,
   ].filter(Boolean).length;
@@ -118704,10 +118912,16 @@ function getWorkOrderDocumentRoMatrixRows(item = {}, today = getWorkOrderDocumen
       alert: kind.isOverdue,
     },
     {
-      key: "regulations",
-      value: `${regulations || 0}`,
-      detail: regulations ? "potvrdeno" : "nije potvrdeno",
-      ok: regulations > 0,
+      key: "obligationRegulations",
+      value: `${obligationRegulations || 0}`,
+      detail: obligationRegulations ? "obveza potvrđena" : "bez obveze",
+      ok: obligationRegulations > 0,
+    },
+    {
+      key: "requirementRegulations",
+      value: `${requirementRegulations || 0}`,
+      detail: requirementRegulations ? "zahtjevi potvrđeni" : "bez zahtjeva",
+      ok: requirementRegulations > 0,
     },
     {
       key: "mechanical",
@@ -118744,7 +118958,13 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
   stateEntry = {},
   today = getWorkOrderDocumentWorkEquipmentToday(),
 } = {}) {
-  const matrixItems = (Array.isArray(items) ? items : []).filter(Boolean);
+  const allMatrixItems = (Array.isArray(items) ? items : []).filter(Boolean);
+  const pageSize = 3;
+  const maxPage = Math.max(0, Math.ceil(allMatrixItems.length / pageSize) - 1);
+  const requestedPage = Math.max(0, Number.parseInt(stateEntry.matrixPage, 10) || 0);
+  const page = Math.min(requestedPage, maxPage);
+  stateEntry.matrixPage = page;
+  const matrixItems = allMatrixItems.slice(page * pageSize, page * pageSize + pageSize);
   if (!matrixItems.length) {
     return;
   }
@@ -118752,7 +118972,8 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
     { key: "basic", title: "Osnovni podaci", subtitle: "Temeljni podaci" },
     { key: "equipment", title: "Podaci o radnoj opremi", subtitle: "Tehnički podaci i specifikacije" },
     { key: "inspection", title: "Podaci o ispitivanju", subtitle: "Datumi, ocjene i rokovi" },
-    { key: "regulations", title: "Propisi", subtitle: "Obveze i zahtjevi" },
+    { key: "obligationRegulations", title: "Propisi obavezni", subtitle: "Obveza ispitivanja" },
+    { key: "requirementRegulations", title: "Propisi zahtjevi", subtitle: "Zahtjevi provjere" },
     { key: "mechanical", title: "Strojarski dio", subtitle: "Mehanički pregledi i stanje" },
     { key: "electrical", title: "Elektro dio", subtitle: "Električni pregledi i stanje" },
     { key: "risks", title: "Opasnosti / štetnosti / napori", subtitle: "Identificirani rizici i napori" },
@@ -118810,13 +119031,29 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
   });
 
   rows.forEach((row) => {
-    const section = document.createElement("div");
-    section.className = "work-order-document-ro-matrix-section";
+    const collapsedRows = stateEntry.collapsedMatrixRows && typeof stateEntry.collapsedMatrixRows === "object"
+      ? stateEntry.collapsedMatrixRows
+      : {};
+    const isRowCollapsed = Boolean(collapsedRows[row.key]);
+    const section = document.createElement("button");
+    section.type = "button";
+    section.className = `work-order-document-ro-matrix-section${isRowCollapsed ? " is-collapsed" : ""}`;
+    section.setAttribute("aria-expanded", String(!isRowCollapsed));
+    section.addEventListener("click", (event) => {
+      event.stopPropagation();
+      stateEntry.collapsedMatrixRows = {
+        ...collapsedRows,
+        [row.key]: !isRowCollapsed,
+      };
+      renderWorkOrderDocumentWizard();
+    });
     const title = document.createElement("strong");
     title.textContent = row.title;
     const subtitle = document.createElement("span");
     subtitle.textContent = row.subtitle;
-    section.append(title, subtitle);
+    const toggle = document.createElement("em");
+    toggle.textContent = isRowCollapsed ? "Otkrij" : "Sakrij";
+    section.append(title, subtitle, toggle);
     grid.append(section);
 
     matrixItems.forEach((item) => {
@@ -118833,6 +119070,9 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
         cellData.ok ? "is-ok" : "",
       ].filter(Boolean).join(" ");
       cell.disabled = !itemId || stateEntry.submitting;
+      if (isRowCollapsed) {
+        cell.classList.add("is-collapsed");
+      }
       cell.addEventListener("click", (event) => {
         event.stopPropagation();
         if (!itemId || stateEntry.submitting) return;
@@ -118846,9 +119086,9 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
         renderWorkOrderDocumentWizard();
       });
       const value = document.createElement("strong");
-      value.textContent = cellData.value || "-";
+      value.textContent = isRowCollapsed ? "Sakriveno" : (cellData.value || "-");
       const detail = document.createElement("span");
-      detail.textContent = cellData.detail || "";
+      detail.textContent = isRowCollapsed ? "Klikni sekciju za prikaz" : (cellData.detail || "");
       cell.append(value, detail);
       grid.append(cell);
     });
@@ -118856,7 +119096,33 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
 
   const footer = document.createElement("div");
   footer.className = "work-order-document-ro-matrix-footer";
-  footer.textContent = `Prikazano ${matrixItems.length} opreme · klik na stupac ili ćeliju označava opremu za RO zapisnik.`;
+  const from = page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, allMatrixItems.length);
+  const prevButton = document.createElement("button");
+  prevButton.type = "button";
+  prevButton.className = "ghost-button";
+  prevButton.textContent = "←";
+  prevButton.disabled = page <= 0;
+  prevButton.setAttribute("aria-label", "Prethodne opreme");
+  prevButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    stateEntry.matrixPage = Math.max(0, page - 1);
+    renderWorkOrderDocumentWizard();
+  });
+  const label = document.createElement("span");
+  label.textContent = `${from} - ${to} od ${allMatrixItems.length} opreme`;
+  const nextButton = document.createElement("button");
+  nextButton.type = "button";
+  nextButton.className = "ghost-button";
+  nextButton.textContent = "→";
+  nextButton.disabled = page >= maxPage;
+  nextButton.setAttribute("aria-label", "Sljedeće opreme");
+  nextButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    stateEntry.matrixPage = Math.min(maxPage, page + 1);
+    renderWorkOrderDocumentWizard();
+  });
+  footer.append(prevButton, label, nextButton);
   shell.append(grid, footer);
   bodyNode.append(shell);
 }
@@ -119379,12 +119645,6 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
 
   toolbar.append(summary, refreshButton);
   bodyNode.append(toolbar);
-  const basicsHint = document.createElement("p");
-  basicsHint.className = "helper-copy module-copy work-order-document-work-equipment-message";
-  basicsHint.textContent = "Osnovni RO podaci i IS ZNR POST priprema nalaze se u tabu Osnovno.";
-  bodyNode.append(basicsHint);
-
-  appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder, stateEntry);
 
   if (stateEntry.postResult?.message) {
     const result = document.createElement("p");
@@ -119435,6 +119695,7 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   }
 
   if (!items.length) {
+    appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder, stateEntry);
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = stateEntry.loaded
@@ -119518,8 +119779,12 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     .map((value) => String(value || "").trim())
     .filter(Boolean));
   const manualEquipments = readyManualEquipments;
-  const counts = getWorkOrderDocumentWorkEquipmentFilterCounts(scopedItems, today);
-  const activeFilter = WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.some((filter) => filter.key === stateEntry.filter)
+  const allowedFilters = new Set([
+    ...WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.map((filter) => filter.key),
+    "selected",
+    "new",
+  ]);
+  const activeFilter = allowedFilters.has(String(stateEntry.filter || ""))
     ? stateEntry.filter
     : "all";
   appendWorkOrderDocumentWorkEquipmentOverview(bodyNode, {
@@ -119531,26 +119796,12 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     stateEntry,
     today,
   });
-  const filterRow = document.createElement("div");
-  filterRow.className = "work-order-document-work-equipment-filters";
-  WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.forEach((filter) => {
-    const count = counts[filter.key] || 0;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `work-order-document-work-equipment-filter${activeFilter === filter.key ? " is-active" : ""}`;
-    button.disabled = count === 0 && filter.key !== "all";
-    button.textContent = `${filter.label} (${count})`;
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      stateEntry.filter = filter.key;
-      renderWorkOrderDocumentWizard();
-    });
-    filterRow.append(button);
-  });
-  bodyNode.append(filterRow);
 
-  const filteredItems = scopedItems
-    .filter((item) => matchesWorkOrderDocumentWorkEquipmentFilter(item, activeFilter, today))
+  const filteredItems = (activeFilter === "selected"
+    ? scopedItems.filter((item) => selectedIds.has(String(item?.id || "").trim()))
+    : activeFilter === "new"
+      ? []
+      : scopedItems.filter((item) => matchesWorkOrderDocumentWorkEquipmentFilter(item, activeFilter, today)))
     .sort((left, right) => {
       const leftDeadline = getWorkOrderDocumentWorkEquipmentDeadline(left)?.getTime() ?? Number.MAX_SAFE_INTEGER;
       const rightDeadline = getWorkOrderDocumentWorkEquipmentDeadline(right)?.getTime() ?? Number.MAX_SAFE_INTEGER;
@@ -119558,10 +119809,21 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
       return String(left.equipmentType || left.recordNumber || "").localeCompare(String(right.equipmentType || right.recordNumber || ""), "hr", { numeric: true, sensitivity: "base" });
     });
 
+  appendWorkOrderDocumentRoEquipmentTable(bodyNode, {
+    workOrder,
+    items: filteredItems,
+    selectedIds,
+    stateEntry,
+    activeFilter,
+  });
+  appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder, stateEntry);
+
   if (!filteredItems.length) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = activeScope === "locations"
+    empty.textContent = activeFilter === "new"
+      ? "Nove opreme će se pojaviti ovdje nakon AI prepoznavanja ili ručnog unosa."
+      : activeScope === "locations"
       ? "Nema radne opreme za odabranu lokaciju i filter."
       : "Nema radne opreme za odabrani filter.";
     bodyNode.append(empty);
@@ -119573,12 +119835,12 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   selectionBar.className = "work-order-document-work-equipment-selection";
   const selectionCopy = document.createElement("span");
   selectionCopy.textContent = selectedIds.size > 0 || manualEquipments.length > 0
-    ? `${selectedIds.size} postojećih stupaca · ${manualEquipments.length} novih stupaca za RO zapisnik`
-    : "Odaberi postojeću opremu ili dodaj novi stupac radne opreme.";
+    ? `${selectedIds.size} postojećih oprema · ${manualEquipments.length} novih oprema za RO zapisnik`
+    : "Odaberi postojeću opremu ili dodaj novu radnu opremu.";
   const selectVisibleButton = document.createElement("button");
   selectVisibleButton.type = "button";
   selectVisibleButton.className = "ghost-button";
-  selectVisibleButton.textContent = "Dodaj prikazane stupce";
+  selectVisibleButton.textContent = "Označi prikazano";
   selectVisibleButton.addEventListener("click", (event) => {
     event.stopPropagation();
     const next = new Set(selectedIds);
@@ -119602,7 +119864,7 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   const submitButton = document.createElement("button");
   submitButton.type = "button";
   submitButton.className = "primary-action-button";
-  submitButton.textContent = stateEntry.submitting ? "Šaljem..." : "Pošalji u IS ZNR";
+  submitButton.textContent = stateEntry.submitting ? "Izrađujem..." : "Izradi za označeno";
   submitButton.disabled = stateEntry.submitting || (selectedIds.size === 0 && manualEquipments.length === 0) || blockingLabels.length > 0;
   submitButton.title = blockingLabels.length > 0 ? `Fali: ${blockingLabels.join(", ")}` : "";
   submitButton.addEventListener("click", (event) => {
@@ -119645,9 +119907,11 @@ function getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders = []) {
 }
 
 function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
+  const stateEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
+  queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder);
 
   const card = document.createElement("article");
-  card.className = "work-order-document-template-card work-order-document-ro-template-card";
+  card.className = "work-order-document-template-card work-order-document-ro-template-card is-ro-product";
   card.dataset.workOrderDocumentRoCard = String(workOrder?.id || workOrder?.workOrderNumber || "");
 
   const head = document.createElement("div");
@@ -119657,10 +119921,14 @@ function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
   copy.className = "work-order-document-template-card-copy";
 
   const title = document.createElement("strong");
-  title.textContent = "RO - Radna oprema";
+  title.textContent = `Radna oprema - RN ${workOrder?.workOrderNumber || workOrder?.number || "bez broja"}`;
 
   const meta = document.createElement("span");
-  meta.textContent = "Radna oprema je odabrana kroz usluge RN-a.";
+  meta.textContent = [
+    workOrder?.companyName || "",
+    workOrder?.locationName || "",
+    stateEntry.loaded ? `${stateEntry.items.length} opreme` : "Dohvat radne opreme",
+  ].filter(Boolean).join(" · ");
 
   copy.append(title, meta);
 
@@ -119683,11 +119951,11 @@ function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
   ].filter(Boolean).join(" · ");
   workOrderList.append(chip);
 
-  const note = document.createElement("p");
-  note.className = "helper-copy module-copy";
-  note.textContent = "Detaljan odabir radne opreme dodajemo u sljedećem koraku.";
+  const body = document.createElement("div");
+  body.className = "work-order-document-ro-template-body";
+  appendWorkOrderDocumentIsznrWorkEquipmentBody(body, workOrder, stateEntry);
 
-  card.append(head, workOrderList, note);
+  card.append(head, workOrderList, body);
   return card;
 }
 
