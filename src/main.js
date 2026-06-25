@@ -206,6 +206,10 @@ import {
   normalizeDocumentTemplateTextListStyleLocal,
 } from "./features/documentTemplates/fieldUtils.js";
 import {
+  buildDocumentTemplateRuntimeDocumentRecordFingerprint,
+  buildDocumentTemplateRuntimePdfPayloadFromEntry,
+} from "./features/documentTemplates/runtimeExport.js";
+import {
   getDocumentTemplateRuntimeNativeServiceBadges,
   getDocumentTemplateRuntimeNativeServiceKind,
   getDocumentTemplateRuntimeNativeServiceShortLabel,
@@ -69457,30 +69461,6 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
   }));
 }
 
-function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
-  if (!exportEntry) {
-    return null;
-  }
-
-  const templateEngine = exportEntry.templateReferenceKind === "word"
-    ? "word"
-    : (exportEntry.templateReferenceKind === "html" ? "html" : "native");
-  const usesTemplateDocument = templateEngine === "html" || templateEngine === "word";
-  return {
-    fileName: exportEntry.pdfFileName,
-    fastPdf: usesTemplateDocument ? false : true,
-    useTemplatePdf: usesTemplateDocument,
-    pdfEngine: templateEngine,
-    templateReferenceKind: exportEntry.templateReferenceKind,
-    exportKind: exportEntry.exportKind || "",
-    forceRenderModel: Boolean(exportEntry.forceRenderModel),
-    placeholders: exportEntry.placeholders,
-    appendBlocks: exportEntry.appendBlocks ?? [],
-    documentRecord: exportEntry.documentRecord,
-    renderModel: exportEntry.renderModel,
-  };
-}
-
 function getDocumentTemplatePdfLoadingPhases({ batch = false } = {}) {
   return [
     {
@@ -125004,24 +124984,6 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     fieldValues,
     fieldSheets,
   };
-}
-
-function buildDocumentTemplateRuntimeDocumentRecordFingerprint(payload = null) {
-  if (!payload) {
-    return "";
-  }
-
-  return JSON.stringify({
-    templateId: payload.templateId,
-    companyId: payload.companyId,
-    locationId: payload.locationId,
-    objectId: payload.objectId,
-    inspectionDate: payload.inspectionDate,
-    issuedDate: payload.issuedDate,
-    expirationDate: payload.expirationDate,
-    fieldValues: payload.fieldValues ?? {},
-    fieldSheets: payload.fieldSheets ?? {},
-  });
 }
 
 function upsertDocumentTemplatePreviousRecordCache(record = null) {
