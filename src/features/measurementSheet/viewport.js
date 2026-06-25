@@ -9,6 +9,31 @@ import {
   MEASUREMENT_VIRTUALIZATION_ROW_HEIGHT,
 } from "./config.js";
 
+function findColumnIndexAtOffset(widths = [], offsets = [], targetOffset = 0, lowerBound = 0) {
+  if (!widths.length) {
+    return 0;
+  }
+
+  const firstIndex = Math.max(0, Math.min(widths.length - 1, Number(lowerBound) || 0));
+  let low = firstIndex;
+  let high = widths.length - 1;
+  let match = widths.length - 1;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const rightEdge = (offsets[mid] || 0) + (widths[mid] || 0);
+
+    if (rightEdge < targetOffset) {
+      low = mid + 1;
+    } else {
+      match = mid;
+      high = mid - 1;
+    }
+  }
+
+  return Math.max(firstIndex, Math.min(widths.length - 1, match));
+}
+
 export function createMeasurementSheetViewportController({
   getSheet,
   getGridWrap,
@@ -97,27 +122,11 @@ export function createMeasurementSheetViewportController({
     const scrollLeft = Math.max(0, gridWrap.scrollLeft || 0);
     const viewportWidth = Math.max(gridWrap.clientWidth || 0, 640);
     const { widths, offsets, totalWidth } = getColumnWidthMetrics();
-    let runningLeft = 0;
-    let startColumnIndex = 0;
-
-    while (
-      startColumnIndex < columnCount - 1
-      && runningLeft + widths[startColumnIndex] < scrollLeft
-    ) {
-      runningLeft += widths[startColumnIndex];
-      startColumnIndex += 1;
-    }
+    let startColumnIndex = findColumnIndexAtOffset(widths, offsets, scrollLeft);
 
     startColumnIndex = Math.max(0, startColumnIndex - MEASUREMENT_COLUMN_VIRTUALIZATION_OVERSCAN_COLUMNS);
     const visibleRight = scrollLeft + viewportWidth;
-    let endColumnIndex = startColumnIndex;
-
-    while (
-      endColumnIndex < columnCount - 1
-      && offsets[endColumnIndex] + widths[endColumnIndex] < visibleRight
-    ) {
-      endColumnIndex += 1;
-    }
+    let endColumnIndex = findColumnIndexAtOffset(widths, offsets, visibleRight, startColumnIndex);
 
     endColumnIndex = Math.min(
       columnCount - 1,

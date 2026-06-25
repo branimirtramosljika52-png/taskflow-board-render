@@ -93,3 +93,35 @@ test("measurement viewport schedules rerender for horizontal-only virtual scroll
 
   assert.equal(renderCount, 1);
 });
+
+test("measurement viewport finds distant horizontal windows without walking every column", () => {
+  const sheet = {
+    isOpen: true,
+    rows: Array.from({ length: 120 }, (_, index) => ({ id: `r${index}`, cells: {} })),
+    columns: Array.from({ length: 1000 }, (_, index) => createColumn(index)),
+    merges: [],
+    viewport: {},
+  };
+  const gridWrap = {
+    scrollLeft: 120 * 720 + 17,
+    scrollTop: 0,
+    clientWidth: 600,
+    clientHeight: 480,
+  };
+
+  const controller = createMeasurementSheetViewportController({
+    getSheet: () => sheet,
+    getGridWrap: () => gridWrap,
+    getBody: () => null,
+    isLightCellRenderEnabled: () => true,
+    documentRef: fakeDocumentRef,
+    windowRef: fakeWindowRef,
+  });
+  const windowState = controller.getVirtualWindow();
+
+  assert.equal(windowState.virtualColumns, true);
+  assert.equal(windowState.startColumnIndex, 716);
+  assert.equal(windowState.endColumnIndex, 729);
+  assert.equal(windowState.leftSpacerWidth, 120 * 716);
+  assert.ok(windowState.rightSpacerWidth > 0);
+});

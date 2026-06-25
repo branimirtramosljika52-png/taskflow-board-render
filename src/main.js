@@ -3607,6 +3607,8 @@ state.railHidden = readRailHiddenPreference();
 let measurementRowCounter = 0;
 let measurementColumnCounter = 0;
 let measurementComputedRefreshTimerId = 0;
+let measurementSheetRenderFrameId = 0;
+let measurementSheetQueuedRenderOptions = null;
 let userPresenceMenuOpen = false;
 let notificationsMenuOpen = false;
 let remindersShortcutMenuOpen = false;
@@ -43480,7 +43482,7 @@ const measurementSheetViewport = createMeasurementSheetViewportController({
   getGridWrap: () => measurementSheetGridWrap,
   getBody: () => measurementSheetBody,
   isLightCellRenderEnabled: isMeasurementSheetLightCellRenderEnabled,
-  renderSheet: (options) => renderMeasurementSheet(options),
+  renderSheet: (options) => scheduleMeasurementSheetRender(options),
 });
 
 function canVirtualizeMeasurementSheetRows() {
@@ -49705,7 +49707,38 @@ function syncMeasurementSheetPanelMount() {
   syncWorkOrderDocumentWorkEnvironmentInlineExcelPreviewVisibility();
 }
 
+function clearScheduledMeasurementSheetRender() {
+  if (measurementSheetRenderFrameId) {
+    window.cancelAnimationFrame(measurementSheetRenderFrameId);
+  }
+  measurementSheetRenderFrameId = 0;
+  measurementSheetQueuedRenderOptions = null;
+}
+
+function scheduleMeasurementSheetRender(options = {}) {
+  const shouldInvalidateFormulaCache = options.invalidateFormulaCache !== false;
+  measurementSheetQueuedRenderOptions = {
+    invalidateFormulaCache: Boolean(measurementSheetQueuedRenderOptions?.invalidateFormulaCache)
+      || shouldInvalidateFormulaCache,
+  };
+
+  if (measurementSheetRenderFrameId) {
+    return;
+  }
+
+  measurementSheetRenderFrameId = window.requestAnimationFrame(() => {
+    measurementSheetRenderFrameId = 0;
+    const queuedOptions = measurementSheetQueuedRenderOptions ?? {};
+    measurementSheetQueuedRenderOptions = null;
+    renderMeasurementSheet(queuedOptions);
+  });
+}
+
 function renderMeasurementSheet(options = {}) {
+  if (measurementSheetRenderFrameId) {
+    clearScheduledMeasurementSheetRender();
+  }
+
   const {
     invalidateFormulaCache: shouldInvalidateFormulaCache = true,
   } = options;
@@ -50304,6 +50337,7 @@ function closeMeasurementSheet() {
   }
 
   clearScheduledMeasurementSheetRefresh();
+  clearScheduledMeasurementSheetRender();
   stopMeasurementFillAutoScroll();
   state.measurementSheet.selectionDrag = null;
   state.measurementSheet.fillMenu = null;
@@ -50338,6 +50372,7 @@ function closeMeasurementSheet() {
 
 function resetMeasurementSheet() {
   clearScheduledMeasurementSheetRefresh();
+  clearScheduledMeasurementSheetRender();
   stopMeasurementFillAutoScroll();
   state.measurementSheet.columns = buildDefaultMeasurementColumns();
   state.measurementSheet.rows = buildDefaultMeasurementRows();
@@ -50680,7 +50715,7 @@ function updateMeasurementColumnWidth(pointerX) {
   }
 
   column.width = Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, resizeState.startWidth + (pointerX - resizeState.startX));
-  renderMeasurementSheet();
+  scheduleMeasurementSheetRender({ invalidateFormulaCache: false });
 }
 
 function stopMeasurementColumnResize() {
