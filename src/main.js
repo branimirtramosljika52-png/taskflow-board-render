@@ -120659,6 +120659,21 @@ const WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES = Object.freeze([
     processDescription: "Redoviti uredski proces rada.",
     equipmentDescription: "Računala, monitori, pisači i uredska oprema.",
     rangeDescription: "Mikroklima, osvijetljenost i buka prema mjernim mjestima.",
+    allowedTemperature: "20-25",
+    temperatureMin: "22,0",
+    temperatureMax: "24,0",
+    humidityRecommended: "40-60",
+    humidityMin: "50,0",
+    humidityMax: "55,0",
+    airflowAllowed: "0,20",
+    airflowMin: "0,10",
+    airflowMax: "0,18",
+    lightingRequired: "500",
+    lightingMin: "650",
+    lightingMax: "850",
+    noiseAllowed: "60",
+    noiseMin: "45",
+    noiseMax: "55",
   },
   {
     key: "production",
@@ -120668,6 +120683,21 @@ const WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES = Object.freeze([
     processDescription: "Proizvodni proces prema zatečenom stanju i opisu poslodavca.",
     equipmentDescription: "Radna oprema, strojevi, instalacije i izvori fizikalnih čimbenika.",
     rangeDescription: "Buka, osvijetljenost, mikroklima i vibracije po potrebi.",
+    allowedTemperature: "18-26",
+    temperatureMin: "20,0",
+    temperatureMax: "25,0",
+    humidityRecommended: "40-60",
+    humidityMin: "45,0",
+    humidityMax: "60,0",
+    airflowAllowed: "0,30",
+    airflowMin: "0,10",
+    airflowMax: "0,28",
+    lightingRequired: "300",
+    lightingMin: "350",
+    lightingMax: "700",
+    noiseAllowed: "85",
+    noiseMin: "65",
+    noiseMax: "82",
   },
   {
     key: "warehouse",
@@ -120677,6 +120707,21 @@ const WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES = Object.freeze([
     processDescription: "Zaprimanje, skladištenje i izdavanje robe.",
     equipmentDescription: "Regali, transportna sredstva, viličari i pomoćna oprema.",
     rangeDescription: "Osvijetljenost, buka i mikroklimatski uvjeti.",
+    allowedTemperature: "16-26",
+    temperatureMin: "18,0",
+    temperatureMax: "24,0",
+    humidityRecommended: "40-60",
+    humidityMin: "45,0",
+    humidityMax: "60,0",
+    airflowAllowed: "0,30",
+    airflowMin: "0,08",
+    airflowMax: "0,25",
+    lightingRequired: "200",
+    lightingMin: "250",
+    lightingMax: "500",
+    noiseAllowed: "65",
+    noiseMin: "48",
+    noiseMax: "62",
   },
   {
     key: "workshop",
@@ -120686,6 +120731,21 @@ const WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES = Object.freeze([
     processDescription: "Radionički proces prema zatečenim aktivnostima.",
     equipmentDescription: "Alati, strojevi, električna i ručna radna oprema.",
     rangeDescription: "Buka, vibracije, osvijetljenost i mikroklima.",
+    allowedTemperature: "18-26",
+    temperatureMin: "19,0",
+    temperatureMax: "24,0",
+    humidityRecommended: "40-60",
+    humidityMin: "45,0",
+    humidityMax: "58,0",
+    airflowAllowed: "0,30",
+    airflowMin: "0,10",
+    airflowMax: "0,25",
+    lightingRequired: "500",
+    lightingMin: "550",
+    lightingMax: "850",
+    noiseAllowed: "85",
+    noiseMin: "68",
+    noiseMax: "82",
   },
 ]);
 
@@ -120710,6 +120770,60 @@ const WORK_ORDER_DOCUMENT_KC_SPACE_TEMPLATES = Object.freeze([
   },
 ]);
 
+const WORK_ORDER_DOCUMENT_FC_SPACE_AI_PROFILES = Object.freeze([
+  {
+    key: "office",
+    match: /(ured|administr|sastanak|računal|racunal|blagajn|pult|recepc|prodajni ured)/i,
+    templateKey: "office",
+    name: "Ured",
+    description: "Uredski prostor namijenjen je za administrativne, organizacijske i stručne poslove, rad za računalom, komunikaciju i obradu dokumentacije.",
+    processDescription: "U prostoru se odvijaju uredski poslovi, komunikacija s korisnicima, obrada podataka, izrada i pohrana dokumentacije te rad na računalu.",
+    equipmentDescription: "Radna oprema obuhvaća uredske stolove i stolice, računala, monitore, pisače, telefonsku i mrežnu opremu te uredski pribor.",
+  },
+  {
+    key: "sales",
+    match: /(prodaj|trgov|dućan|ducan|maloprod|blagajn|caffe|kafi|benzinsk|postaj)/i,
+    templateKey: "office",
+    name: "Prodajni prostor",
+    description: "Prodajni prostor namijenjen je za maloprodaju, komunikaciju s kupcima, izlaganje robe i naplatu usluga ili proizvoda.",
+    processDescription: "U prostoru se obavljaju poslovi prodaje, naplate, slaganja robe, održavanja urednosti i povremene kontrole zaliha.",
+    equipmentDescription: "Radna oprema obuhvaća blagajne, POS uređaje, prodajne police, rashladne vitrine, aparate za pripremu napitaka i pomoćnu opremu.",
+    lightingRequired: "500",
+    noiseAllowed: "65",
+  },
+  {
+    key: "warehouse",
+    match: /(skladi|spremi|magacin|arhiv|lager|odlag)/i,
+    templateKey: "warehouse",
+    name: "Skladišni prostor",
+    description: "Skladišni prostor namijenjen je za zaprimanje, čuvanje, sortiranje i izdavanje robe, materijala ili dokumentacije.",
+    processDescription: "U prostoru se odvijaju poslovi zaprimanja, skladištenja, komisioniranja, izdavanja robe i održavanja urednosti prostora.",
+    equipmentDescription: "Radna oprema obuhvaća police, regale, palete, transportna sredstva, viličare ili ručna kolica te pomoćnu skladišnu opremu.",
+    lightingRequired: "200",
+    noiseAllowed: "65",
+  },
+  {
+    key: "technical",
+    match: /(tehnič|tehnic|kotlov|strojarn|server|ventil|kompres|agregat|elektro|instalacij)/i,
+    templateKey: "workshop",
+    name: "Tehnička prostorija",
+    description: "Tehnička prostorija namijenjena je smještaju instalacija, uređaja i sustava koji osiguravaju rad objekta te se koristi povremeno za nadzor i održavanje.",
+    processDescription: "U prostoru se obavljaju povremeni pregledi, kontrole, podešavanja, čišćenje i servisiranje tehničkih uređaja i instalacija.",
+    equipmentDescription: "Radna oprema obuhvaća elektro ormare, ventilacijske, rashladne ili grijne uređaje, kompresore, instalacije i servisnu opremu.",
+    lightingRequired: "200",
+    noiseAllowed: "80",
+  },
+  {
+    key: "production",
+    match: /(proizvod|linij|hala|pog[oô]n|radionic|montaž|montaz|pakir|obrada)/i,
+    templateKey: "production",
+    name: "Proizvodni prostor",
+    description: "Proizvodni prostor namijenjen je za obavljanje proizvodnih, montažnih ili pomoćnih tehnoloških procesa uz korištenje radne opreme.",
+    processDescription: "U prostoru se odvijaju proizvodni i pomoćni procesi prema zatečenom stanju, organizaciji rada i opisu poslodavca.",
+    equipmentDescription: "Radna oprema obuhvaća strojeve, linije, alate, instalacije, transportna sredstva i izvore fizikalnih čimbenika.",
+  },
+]);
+
 const WORK_ORDER_DOCUMENT_FC_MEASUREMENT_PRESETS = Object.freeze([
   { kind: "Mikroklimatski uvjeti", measuringPlace: "Radno mjesto", measured: "", allowed: "", unit: "°C / % / m/s" },
   { kind: "Osvijetljenost", measuringPlace: "Radna površina", measured: "", allowed: "", unit: "lx" },
@@ -120731,6 +120845,21 @@ function createWorkOrderDocumentWorkEnvironmentDefaultSpaceRows(workOrder = {}, 
       description: "Opis prostora i namjene unosi se iz FC/KC pripreme ili prethodnog zapisnika.",
       processDescription: "Redoviti radni proces",
       equipmentDescription: isChemical ? "Kemijske tvari i izvori izloženosti" : "Radna oprema i izvori fizikalnih čimbenika",
+      allowedTemperature: isChemical ? "" : "20-25",
+      temperatureMin: isChemical ? "" : "22,0",
+      temperatureMax: isChemical ? "" : "24,0",
+      humidityRecommended: isChemical ? "" : "40-60",
+      humidityMin: isChemical ? "" : "50,0",
+      humidityMax: isChemical ? "" : "55,0",
+      airflowAllowed: isChemical ? "" : "0,20",
+      airflowMin: isChemical ? "" : "0,10",
+      airflowMax: isChemical ? "" : "0,18",
+      lightingRequired: isChemical ? "" : "500",
+      lightingMin: isChemical ? "" : "650",
+      lightingMax: isChemical ? "" : "850",
+      noiseAllowed: isChemical ? "" : "65",
+      noiseMin: isChemical ? "" : "45",
+      noiseMax: isChemical ? "" : "60",
       grades: new Set(["U pripremi"]),
       sourceRecords: new Set(),
       measurements: [],
@@ -120763,6 +120892,141 @@ function createWorkOrderDocumentWorkEnvironmentDefaultMeasurementRows({ isChemic
     recordNumber: "Novi zapisnik",
     isPlaceholder: true,
   }));
+}
+
+function getWorkOrderDocumentFcSpaceTemplateByKey(key = "") {
+  const normalizedKey = String(key || "").trim();
+  return WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES.find((template) => template.key === normalizedKey)
+    || WORK_ORDER_DOCUMENT_FC_SPACE_TEMPLATES[0]
+    || {};
+}
+
+function buildWorkOrderDocumentFcSpaceSuggestion(spaceName = "", current = {}) {
+  const name = String(spaceName || current?.name || "").trim();
+  const profile = WORK_ORDER_DOCUMENT_FC_SPACE_AI_PROFILES.find((item) => item.match.test(name))
+    || WORK_ORDER_DOCUMENT_FC_SPACE_AI_PROFILES[0];
+  const template = getWorkOrderDocumentFcSpaceTemplateByKey(profile.templateKey);
+  return normalizeWorkOrderDocumentWorkEnvironmentDraftSpace({
+    ...template,
+    ...profile,
+    ...current,
+    name: name || profile.name || template.name,
+    code: current.code || "",
+    description: profile.description || template.description,
+    processDescription: profile.processDescription || template.processDescription,
+    equipmentDescription: profile.equipmentDescription || template.equipmentDescription,
+    rangeDescription: profile.rangeDescription || template.rangeDescription,
+    allowedTemperature: profile.allowedTemperature || template.allowedTemperature,
+    temperatureMin: profile.temperatureMin || template.temperatureMin,
+    temperatureMax: profile.temperatureMax || template.temperatureMax,
+    humidityRecommended: profile.humidityRecommended || template.humidityRecommended,
+    humidityMin: profile.humidityMin || template.humidityMin,
+    humidityMax: profile.humidityMax || template.humidityMax,
+    airflowAllowed: profile.airflowAllowed || template.airflowAllowed,
+    airflowMin: profile.airflowMin || template.airflowMin,
+    airflowMax: profile.airflowMax || template.airflowMax,
+    lightingRequired: profile.lightingRequired || template.lightingRequired,
+    lightingMin: profile.lightingMin || template.lightingMin,
+    lightingMax: profile.lightingMax || template.lightingMax,
+    noiseAllowed: profile.noiseAllowed || template.noiseAllowed,
+    noiseMin: profile.noiseMin || template.noiseMin,
+    noiseMax: profile.noiseMax || template.noiseMax,
+  }, 0, {}, { isChemical: false });
+}
+
+function createWorkOrderDocumentFcSpaceDraft(index = 0, source = {}) {
+  const suggested = buildWorkOrderDocumentFcSpaceSuggestion(source.name || source.spaceName || "", source);
+  return normalizeWorkOrderDocumentWorkEnvironmentDraftSpace({
+    ...suggested,
+    ...source,
+    id: source.id || suggested.id || createClientSideId("fc-space"),
+    code: source.code || suggested.code || `P-${index + 1}`,
+  }, index, {}, { isChemical: false });
+}
+
+function formatWorkOrderDocumentFcMeasurementNumber(value, decimals = 1) {
+  const number = getWorkOrderDocumentWorkEnvironmentNumberValue(value);
+  if (number === null) {
+    return "";
+  }
+  return number.toLocaleString("hr-HR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+function getWorkOrderDocumentFcRangeValue(space = {}, minKey = "", maxKey = "") {
+  const min = getWorkOrderDocumentWorkEnvironmentNumberValue(space[minKey]);
+  const max = getWorkOrderDocumentWorkEnvironmentNumberValue(space[maxKey]);
+  if (min === null && max === null) {
+    return "";
+  }
+  if (min !== null && max !== null) {
+    return `${formatWorkOrderDocumentFcMeasurementNumber(min)}-${formatWorkOrderDocumentFcMeasurementNumber(max)}`;
+  }
+  return formatWorkOrderDocumentFcMeasurementNumber(min ?? max);
+}
+
+function getWorkOrderDocumentFcRandomInRange(space = {}, minKey = "", maxKey = "", fallback = "", decimals = 1) {
+  const min = getWorkOrderDocumentWorkEnvironmentNumberValue(space[minKey]);
+  const max = getWorkOrderDocumentWorkEnvironmentNumberValue(space[maxKey]);
+  if (min !== null && max !== null) {
+    const low = Math.min(min, max);
+    const high = Math.max(min, max);
+    return formatWorkOrderDocumentFcMeasurementNumber(low + Math.random() * (high - low), decimals);
+  }
+  const fallbackNumber = getWorkOrderDocumentWorkEnvironmentNumberValue(fallback);
+  return fallbackNumber === null ? "" : formatWorkOrderDocumentFcMeasurementNumber(fallbackNumber, decimals);
+}
+
+function createWorkOrderDocumentFcMeasurementRowFromSpace(space = {}, index = 0, seed = {}) {
+  const normalizedSpace = normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, {}, { isChemical: false });
+  const rowNumber = String(seed.rowNumber || index + 1);
+  return normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement({
+    ...seed,
+    id: seed.id || createClientSideId("fc-measurement"),
+    kind: "Rezultati FC",
+    spaceCode: normalizedSpace.code || `P-${index + 1}`,
+    rowNumber,
+    measuringPlace: seed.measuringPlace || `${rowNumber} ${normalizedSpace.name || "Mjerno mjesto"}`,
+    placeDescription: seed.placeDescription || normalizedSpace.name || "",
+    illuminationAllowed: normalizedSpace.lightingRequired || seed.illuminationAllowed || "",
+    noiseAllowed: normalizedSpace.noiseAllowed || seed.noiseAllowed || "",
+    temperatureAllowed: normalizedSpace.allowedTemperature || getWorkOrderDocumentFcRangeValue(normalizedSpace, "temperatureMin", "temperatureMax") || seed.temperatureAllowed || "",
+    airflowAllowed: normalizedSpace.airflowAllowed || seed.airflowAllowed || "",
+    humidityAllowed: normalizedSpace.humidityRecommended || getWorkOrderDocumentFcRangeValue(normalizedSpace, "humidityMin", "humidityMax") || seed.humidityAllowed || "",
+    illuminationStatus: seed.illuminationStatus || "Da",
+    noiseStatus: seed.noiseStatus || "Da",
+    passStatus: seed.passStatus || "Da",
+  }, index, { isChemical: false });
+}
+
+function randomizeWorkOrderDocumentFcMeasurementRow(measurement = {}, spaces = []) {
+  const space = (Array.isArray(spaces) ? spaces : []).find((item) =>
+    String(item.code || item.name || "") === String(measurement.spaceCode || measurement.spaceName || ""))
+    || spaces[0]
+    || {};
+  return {
+    ...measurement,
+    illuminationMeasured: getWorkOrderDocumentFcRandomInRange(space, "lightingMin", "lightingMax", measurement.illuminationAllowed, 0),
+    noiseEquivalent: getWorkOrderDocumentFcRandomInRange(space, "noiseMin", "noiseMax", measurement.noiseAllowed, 1),
+    temperatureMeasured: getWorkOrderDocumentFcRandomInRange(space, "temperatureMin", "temperatureMax", measurement.temperatureAllowed, 1),
+    airflowMeasured: getWorkOrderDocumentFcRandomInRange(space, "airflowMin", "airflowMax", measurement.airflowAllowed, 2),
+    humidityMeasured: getWorkOrderDocumentFcRandomInRange(space, "humidityMin", "humidityMax", measurement.humidityAllowed, 1),
+    illuminationStatus: "Da",
+    noiseStatus: "Da",
+    passStatus: "Da",
+  };
+}
+
+function syncWorkOrderDocumentFcMeasurementsWithSpaces(measurements = [], spaces = []) {
+  const normalizedSpaces = (Array.isArray(spaces) ? spaces : []).filter((space) => space && !space.isPlaceholder);
+  const meaningfulMeasurements = (Array.isArray(measurements) ? measurements : []).filter((measurement) => !measurement.isPlaceholder);
+  const bySpace = new Set(meaningfulMeasurements.map((measurement) => String(measurement.spaceCode || "").trim()).filter(Boolean));
+  const additions = normalizedSpaces
+    .filter((space) => space.code && !bySpace.has(String(space.code).trim()))
+    .map((space, index) => createWorkOrderDocumentFcMeasurementRowFromSpace(space, meaningfulMeasurements.length + index));
+  return [...meaningfulMeasurements, ...additions];
 }
 
 function getWorkOrderDocumentWorkEnvironmentDisplayText(value, fallback = "") {
@@ -121035,6 +121299,15 @@ function normalizeWorkOrderDocumentWorkEnvironmentDraftAttachments(values = []) 
 
 function normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space = {}, index = 0, workOrder = {}, { isChemical = false } = {}) {
   const fallbackName = workOrder.locationName || (isChemical ? "Kemijski prostor" : "Radni prostor");
+  const value = (...keys) => {
+    for (const key of keys) {
+      const candidate = space?.[key];
+      if (candidate !== null && candidate !== undefined && String(candidate).trim()) {
+        return String(candidate).trim();
+      }
+    }
+    return "";
+  };
   return {
     id: String(space.id || space.rowId || `space-${index + 1}`).trim() || `space-${index + 1}`,
     code: String(space.code || space.oznaka || `P-${index + 1}`).trim(),
@@ -121043,22 +121316,65 @@ function normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space = {}, index =
     processDescription: String(space.processDescription || space.workProcess || "").trim(),
     equipmentDescription: String(space.equipmentDescription || space.workEquipment || "").trim(),
     rangeDescription: String(space.rangeDescription || space.ranges || "").trim(),
+    allowedTemperature: value("allowedTemperature", "permittedTemperature", "temperatureAllowed", "dopTemp"),
+    temperatureMin: value("temperatureMin", "tempMin", "temperatureMinimum"),
+    temperatureMax: value("temperatureMax", "tempMax", "temperatureMaximum"),
+    humidityRecommended: value("humidityRecommended", "recommendedHumidity", "relativeHumidityRecommended"),
+    humidityMin: value("humidityMin", "relativeHumidityMin", "humidityMinimum"),
+    humidityMax: value("humidityMax", "relativeHumidityMax", "humidityMaximum"),
+    airflowAllowed: value("airflowAllowed", "airSpeedAllowed", "allowedAirflow"),
+    airflowMin: value("airflowMin", "airSpeedMin", "airflowMinimum"),
+    airflowMax: value("airflowMax", "airSpeedMax", "airflowMaximum"),
+    lightingRequired: value("lightingRequired", "requiredLighting", "illuminationRequired"),
+    lightingMin: value("lightingMin", "illuminationMin", "lightingMinimum"),
+    lightingMax: value("lightingMax", "illuminationMax", "lightingMaximum"),
+    noiseAllowed: value("noiseAllowed", "allowedNoise", "noiseLimit"),
+    noiseMin: value("noiseMin", "noiseMinimum"),
+    noiseMax: value("noiseMax", "noiseMaximum"),
   };
 }
 
 function normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement(measurement = {}, index = 0, { isChemical = false } = {}) {
   const preset = (isChemical ? WORK_ORDER_DOCUMENT_KC_MEASUREMENT_PRESETS : WORK_ORDER_DOCUMENT_FC_MEASUREMENT_PRESETS)[index % (isChemical ? WORK_ORDER_DOCUMENT_KC_MEASUREMENT_PRESETS.length : WORK_ORDER_DOCUMENT_FC_MEASUREMENT_PRESETS.length)] || {};
+  const value = (...keys) => {
+    for (const key of keys) {
+      const candidate = measurement?.[key];
+      if (candidate !== null && candidate !== undefined && String(candidate).trim()) {
+        return String(candidate).trim();
+      }
+    }
+    return "";
+  };
   return {
     id: String(measurement.id || measurement.rowId || `measurement-${index + 1}`).trim() || `measurement-${index + 1}`,
     kind: String(measurement.kind || preset.kind || "Mjerenje").trim(),
     spaceCode: String(measurement.spaceCode || measurement.spaceName || "P-1").trim(),
+    rowNumber: String(measurement.rowNumber || measurement.orderNumber || index + 1).trim(),
     measuringPlace: String(measurement.measuringPlace || preset.measuringPlace || "").trim(),
+    placeDescription: String(measurement.placeDescription || measurement.measuringPlaceDescription || "").trim(),
     measured: String(measurement.measured ?? preset.measured ?? "").trim(),
     allowed: String(measurement.allowed ?? preset.allowed ?? "").trim(),
     unit: String(measurement.unit || preset.unit || "").trim(),
     finalGrade: String(measurement.finalGrade || "U pripremi").trim(),
     formula: String(measurement.formula || "").trim(),
     note: String(measurement.note || "").trim(),
+    illuminationMeasured: value("illuminationMeasured", "measuredLighting", "measuredIllumination"),
+    illuminationAllowed: value("illuminationAllowed", "lightingRequired", "requiredLighting"),
+    illuminationGeneral: value("illuminationGeneral", "generalIllumination"),
+    illuminationSupplementary: value("illuminationSupplementary", "supplementaryIllumination"),
+    illuminationStatus: value("illuminationStatus", "lightingStatus") || "Da",
+    noiseEquivalent: value("noiseEquivalent", "equivalentNoise", "measuredNoise"),
+    noiseAllowed: value("noiseAllowed", "allowedNoise"),
+    noisePeak: value("noisePeak", "peakNoise"),
+    noiseDaily: value("noiseDaily", "dailyNoise"),
+    noiseStatus: value("noiseStatus", "noiseResultStatus") || "Da",
+    temperatureMeasured: value("temperatureMeasured", "airTemperature", "measuredTemperature"),
+    temperatureAllowed: value("temperatureAllowed", "allowedTemperature"),
+    airflowMeasured: value("airflowMeasured", "airSpeedMeasured", "measuredAirflow"),
+    airflowAllowed: value("airflowAllowed", "allowedAirflow"),
+    humidityMeasured: value("humidityMeasured", "relativeHumidityMeasured", "measuredHumidity"),
+    humidityAllowed: value("humidityAllowed", "humidityRecommended", "relativeHumidityRecommended"),
+    passStatus: value("passStatus", "resultStatus") || "Da",
   };
 }
 
@@ -121722,6 +122038,289 @@ function appendWorkOrderDocumentWorkEnvironmentSpacesEditorBlock(bodyNode, {
     subtitle: "RO-F.2: prostori, opisi namjene, procesi i rasponi koji se preslikavaju u mjerenja.",
     badge: `${draft.spaces.length || 0} prostora`,
     renderBody: (sectionBody) => {
+      if (!isChemical) {
+        const meaningfulSpaces = (draft.spaces || []).filter((space) => !space.isPlaceholder);
+        if (!stateEntry.fcSpaceTemplateDraft || typeof stateEntry.fcSpaceTemplateDraft !== "object") {
+          stateEntry.fcSpaceTemplateDraft = createWorkOrderDocumentFcSpaceDraft(meaningfulSpaces.length, {
+            code: `P-${meaningfulSpaces.length + 1}`,
+            name: "",
+          });
+        }
+        const formDraft = stateEntry.fcSpaceTemplateDraft;
+        const updateFormDraft = (patch = {}) => {
+          stateEntry.fcSpaceTemplateDraft = createWorkOrderDocumentFcSpaceDraft(meaningfulSpaces.length, {
+            ...stateEntry.fcSpaceTemplateDraft,
+            ...patch,
+          });
+        };
+        const createInput = (label, fieldName, placeholder = "", { multiline = false, className = "" } = {}) => {
+          const field = document.createElement("label");
+          field.className = ["work-order-document-fc-space-field", className].filter(Boolean).join(" ");
+          const span = document.createElement("span");
+          span.textContent = label;
+          const input = multiline ? document.createElement("textarea") : document.createElement("input");
+          if (input instanceof HTMLTextAreaElement) {
+            input.rows = 3;
+          }
+          input.value = String(formDraft[fieldName] || "");
+          input.placeholder = placeholder;
+          input.addEventListener("input", () => updateFormDraft({ [fieldName]: input.value }));
+          field.append(span, input);
+          return field;
+        };
+        const form = document.createElement("div");
+        form.className = "work-order-document-fc-space-template";
+        const formHead = document.createElement("div");
+        formHead.className = "work-order-document-fc-space-template-head";
+        const formTitle = document.createElement("div");
+        const eyebrow = document.createElement("span");
+        eyebrow.className = "section-kicker";
+        eyebrow.textContent = "FC template";
+        const title = document.createElement("strong");
+        title.textContent = "Dodavanje prostora";
+        const subtitle = document.createElement("small");
+        subtitle.textContent = "Upiši oznaku i naziv, zatim NexAI može predložiti opis, proces, opremu i granične vrijednosti.";
+        formTitle.append(eyebrow, title, subtitle);
+        const templateSelect = document.createElement("select");
+        templateSelect.className = "work-order-document-fc-space-template-select";
+        templates.forEach((template) => {
+          const option = document.createElement("option");
+          option.value = template.key;
+          option.textContent = template.label;
+          templateSelect.append(option);
+        });
+        formHead.append(formTitle, templateSelect);
+        form.append(formHead);
+
+        const topGrid = document.createElement("div");
+        topGrid.className = "work-order-document-fc-space-template-grid is-top";
+        topGrid.append(
+          createInput("Oznaka prostora", "code", "npr. P-1"),
+          createInput("Naziv prostora", "name", "npr. Ured, prodajni prostor, skladište"),
+        );
+        form.append(topGrid);
+
+        const descriptionGrid = document.createElement("div");
+        descriptionGrid.className = "work-order-document-fc-space-template-grid is-descriptions";
+        descriptionGrid.append(
+          createInput("Opis prostorija i prostora s opisom namjene", "description", "Opis namjene prostora", { multiline: true }),
+          createInput("Opis radnih procesa", "processDescription", "Opis procesa koji se odvijaju u prostoru", { multiline: true }),
+          createInput("Popis i opis radne opreme", "equipmentDescription", "Oprema i izvori fizikalnih čimbenika", { multiline: true }),
+        );
+        form.append(descriptionGrid);
+
+        const rangeGroups = document.createElement("div");
+        rangeGroups.className = "work-order-document-fc-space-range-groups";
+        [
+          ["Mikroklimatski uvjeti", [
+            ["Dopuštena temperatura (°C)", "allowedTemperature", "20-25"],
+            ["Temperatura min (°C)", "temperatureMin", "22,0"],
+            ["Temperatura max (°C)", "temperatureMax", "24,0"],
+            ["Preporučena rel. vlažnost (%)", "humidityRecommended", "40-60"],
+            ["Vlažnost min (%)", "humidityMin", "50,0"],
+            ["Vlažnost max (%)", "humidityMax", "55,0"],
+            ["Dopuštena brzina strujanja (m/s)", "airflowAllowed", "0,20"],
+            ["Strujanje min (m/s)", "airflowMin", "0,10"],
+            ["Strujanje max (m/s)", "airflowMax", "0,18"],
+          ]],
+          ["Osvijetljenost", [
+            ["Potrebna osvijetljenost (lx)", "lightingRequired", "500"],
+            ["Osvijetljenost min (lx)", "lightingMin", "650"],
+            ["Osvijetljenost max (lx)", "lightingMax", "850"],
+          ]],
+          ["Buka", [
+            ["Dopuštena razina buke (dB)", "noiseAllowed", "65"],
+            ["Razina buke min (dB)", "noiseMin", "45"],
+            ["Razina buke max (dB)", "noiseMax", "60"],
+          ]],
+        ].forEach(([groupTitle, fields]) => {
+          const group = document.createElement("section");
+          group.className = "work-order-document-fc-space-range-group";
+          const heading = document.createElement("strong");
+          heading.textContent = groupTitle;
+          const grid = document.createElement("div");
+          grid.className = "work-order-document-fc-space-range-grid";
+          fields.forEach(([label, fieldName, placeholder]) => {
+            grid.append(createInput(label, fieldName, placeholder));
+          });
+          group.append(heading, grid);
+          rangeGroups.append(group);
+        });
+        form.append(rangeGroups);
+
+        const actions = document.createElement("div");
+        actions.className = "work-order-document-fc-space-template-actions";
+        const applyTemplateButton = document.createElement("button");
+        applyTemplateButton.type = "button";
+        applyTemplateButton.className = "ghost-button";
+        applyTemplateButton.textContent = "Primijeni template";
+        applyTemplateButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const template = getWorkOrderDocumentFcSpaceTemplateByKey(templateSelect.value);
+          stateEntry.fcSpaceTemplateDraft = createWorkOrderDocumentFcSpaceDraft(meaningfulSpaces.length, {
+            ...template,
+            code: formDraft.code || `P-${meaningfulSpaces.length + 1}`,
+          });
+          rerenderWorkOrderDocumentWorkEnvironmentView();
+        });
+        const aiButton = document.createElement("button");
+        aiButton.type = "button";
+        aiButton.className = "ghost-button";
+        aiButton.textContent = "NexAI iz naziva";
+        aiButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          stateEntry.fcSpaceTemplateDraft = createWorkOrderDocumentFcSpaceDraft(meaningfulSpaces.length, {
+            ...buildWorkOrderDocumentFcSpaceSuggestion(formDraft.name || formDraft.code || "", formDraft),
+            code: formDraft.code || `P-${meaningfulSpaces.length + 1}`,
+          });
+          rerenderWorkOrderDocumentWorkEnvironmentView();
+        });
+        const resetButton = document.createElement("button");
+        resetButton.type = "button";
+        resetButton.className = "ghost-button";
+        resetButton.textContent = "Reset";
+        resetButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          stateEntry.fcSpaceTemplateDraft = createWorkOrderDocumentFcSpaceDraft(meaningfulSpaces.length, {
+            code: `P-${meaningfulSpaces.length + 1}`,
+            name: "",
+          });
+          rerenderWorkOrderDocumentWorkEnvironmentView();
+        });
+        const saveButton = document.createElement("button");
+        saveButton.type = "button";
+        saveButton.className = "primary-action-button is-compact";
+        saveButton.textContent = "Dodaj prostor";
+        saveButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const nextSpace = createWorkOrderDocumentFcSpaceDraft(meaningfulSpaces.length, {
+            ...stateEntry.fcSpaceTemplateDraft,
+            id: createClientSideId("fc-space"),
+            code: stateEntry.fcSpaceTemplateDraft?.code || `P-${meaningfulSpaces.length + 1}`,
+            name: stateEntry.fcSpaceTemplateDraft?.name || "Novi prostor",
+          });
+          const nextSpaces = [...meaningfulSpaces, nextSpace];
+          const nextMeasurements = syncWorkOrderDocumentFcMeasurementsWithSpaces(draft.measurements, nextSpaces);
+          stateEntry.fcSpaceTemplateDraft = createWorkOrderDocumentFcSpaceDraft(nextSpaces.length, {
+            code: `P-${nextSpaces.length + 1}`,
+            name: "",
+          });
+          save({ spaces: nextSpaces, measurements: nextMeasurements }, { render: true });
+        });
+        actions.append(applyTemplateButton, aiButton, resetButton, saveButton);
+        form.append(actions);
+        sectionBody.append(form);
+
+        const list = document.createElement("div");
+        list.className = "work-order-document-fc-space-list";
+        if (!meaningfulSpaces.length) {
+          const empty = document.createElement("div");
+          empty.className = "work-order-document-fc-space-empty";
+          empty.textContent = "Još nema dodanih prostora. Dodaj prostor iz FC templatea iznad.";
+          list.append(empty);
+        } else {
+          meaningfulSpaces.forEach((space, index) => {
+            const card = document.createElement("article");
+            card.className = "work-order-document-fc-space-row";
+            const rowHead = document.createElement("div");
+            rowHead.className = "work-order-document-fc-space-row-head";
+            const copy = document.createElement("div");
+            const code = document.createElement("span");
+            code.textContent = space.code || `P-${index + 1}`;
+            const name = document.createElement("strong");
+            name.textContent = space.name || "Prostor";
+            const meta = document.createElement("small");
+            meta.textContent = [
+              space.lightingRequired ? `${space.lightingRequired} lx` : "",
+              space.noiseAllowed ? `${space.noiseAllowed} dB` : "",
+              space.allowedTemperature ? `${space.allowedTemperature} °C` : "",
+            ].filter(Boolean).join(" · ") || "Bez raspona";
+            copy.append(code, name, meta);
+            const rowActions = document.createElement("div");
+            const fillButton = document.createElement("button");
+            fillButton.type = "button";
+            fillButton.className = "ghost-button";
+            fillButton.textContent = "AI popuni";
+            fillButton.addEventListener("click", (event) => {
+              event.stopPropagation();
+              const suggested = buildWorkOrderDocumentFcSpaceSuggestion(space.name || space.code || "", space);
+              const nextSpaces = meaningfulSpaces.map((item, itemIndex) => itemIndex === index ? { ...item, ...suggested, id: item.id, code: item.code || suggested.code } : item);
+              save({ spaces: nextSpaces, measurements: syncWorkOrderDocumentFcMeasurementsWithSpaces(draft.measurements, nextSpaces) }, { render: true });
+            });
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "icon-button";
+            removeButton.textContent = "×";
+            removeButton.title = "Ukloni prostor";
+            removeButton.addEventListener("click", (event) => {
+              event.stopPropagation();
+              const removedCode = String(space.code || "").trim();
+              const nextSpaces = meaningfulSpaces.filter((_, itemIndex) => itemIndex !== index);
+              const nextMeasurements = (draft.measurements || []).filter((measurement) => String(measurement.spaceCode || "").trim() !== removedCode);
+              save({ spaces: nextSpaces, measurements: nextMeasurements }, { render: true });
+            });
+            rowActions.append(fillButton, removeButton);
+            rowHead.append(copy, rowActions);
+            card.append(rowHead);
+
+            const updateSpace = (patch) => {
+              const nextSpaces = meaningfulSpaces.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
+              const previousCode = String(space.code || "").trim();
+              const nextSpace = nextSpaces[index] || {};
+              const nextMeasurements = (draft.measurements || []).map((measurement, measurementIndex) => {
+                if (!previousCode || String(measurement.spaceCode || "").trim() !== previousCode) {
+                  return measurement;
+                }
+                return createWorkOrderDocumentFcMeasurementRowFromSpace(nextSpace, measurementIndex, measurement);
+              });
+              save({ spaces: nextSpaces, measurements: nextMeasurements });
+            };
+            const rowGrid = document.createElement("div");
+            rowGrid.className = "work-order-document-fc-space-row-grid";
+            [
+              ["Oznaka", "code", "P-1"],
+              ["Naziv", "name", "Naziv prostora"],
+              ["Opis i namjena", "description", "Opis prostora", true],
+              ["Radni proces", "processDescription", "Opis procesa", true],
+              ["Radna oprema / izvori", "equipmentDescription", "Opis opreme", true],
+              ["Temp. dopušteno", "allowedTemperature", "20-25"],
+              ["Temp. min", "temperatureMin", "22,0"],
+              ["Temp. max", "temperatureMax", "24,0"],
+              ["Vlažnost preporučeno", "humidityRecommended", "40-60"],
+              ["Vlažnost min", "humidityMin", "50,0"],
+              ["Vlažnost max", "humidityMax", "55,0"],
+              ["Strujanje dopušteno", "airflowAllowed", "0,20"],
+              ["Strujanje min", "airflowMin", "0,10"],
+              ["Strujanje max", "airflowMax", "0,18"],
+              ["Osvijetljenost", "lightingRequired", "500"],
+              ["Lux min", "lightingMin", "650"],
+              ["Lux max", "lightingMax", "850"],
+              ["Buka dopušteno", "noiseAllowed", "65"],
+              ["Buka min", "noiseMin", "45"],
+              ["Buka max", "noiseMax", "60"],
+            ].forEach(([label, fieldName, placeholder, multiline]) => {
+              const field = document.createElement("label");
+              field.className = `work-order-document-fc-space-field${multiline ? " is-wide" : ""}`;
+              const span = document.createElement("span");
+              span.textContent = label;
+              const input = multiline ? document.createElement("textarea") : document.createElement("input");
+              if (input instanceof HTMLTextAreaElement) {
+                input.rows = 2;
+              }
+              input.value = String(space[fieldName] || "");
+              input.placeholder = placeholder;
+              input.addEventListener("input", () => updateSpace({ [fieldName]: input.value }));
+              field.append(span, input);
+              rowGrid.append(field);
+            });
+            card.append(rowGrid);
+            list.append(card);
+          });
+        }
+        sectionBody.append(list);
+        return;
+      }
+
       const actions = document.createElement("div");
       actions.className = "work-order-document-fc-editor-actions";
       const templateSelect = document.createElement("select");
@@ -121868,6 +122467,194 @@ function appendWorkOrderDocumentWorkEnvironmentMeasurementsEditorBlock(bodyNode,
     subtitle: "RO-F.3: mjerna mjesta, dopuštene/izmjerene vrijednosti i zaključne ocjene.",
     badge: `${draft.measurements.length || 0} mjerenja`,
     renderBody: (sectionBody) => {
+      if (!isChemical) {
+        const spaces = (draft.spaces || []).filter((space) => !space.isPlaceholder);
+        const measurementRows = (draft.measurements || []).filter((measurement) => !measurement.isPlaceholder);
+        const actions = document.createElement("div");
+        actions.className = "work-order-document-fc-measurement-actions is-excel";
+        const spaceSelect = document.createElement("select");
+        spaces.forEach((space) => {
+          const option = document.createElement("option");
+          option.value = String(space.code || space.name || "");
+          option.textContent = [space.code, space.name].filter(Boolean).join(" · ") || "Prostor";
+          spaceSelect.append(option);
+        });
+        const addRowButton = document.createElement("button");
+        addRowButton.type = "button";
+        addRowButton.className = "ghost-button";
+        addRowButton.textContent = "+ Red iz prostora";
+        addRowButton.disabled = !spaces.length;
+        addRowButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const selectedSpace = spaces.find((space) => String(space.code || space.name || "") === String(spaceSelect.value)) || spaces[0];
+          const nextMeasurement = createWorkOrderDocumentFcMeasurementRowFromSpace(selectedSpace, measurementRows.length);
+          save({ measurements: [...measurementRows, nextMeasurement] }, { render: true });
+        });
+        const syncButton = document.createElement("button");
+        syncButton.type = "button";
+        syncButton.className = "ghost-button";
+        syncButton.textContent = "Dodaj sve prostore";
+        syncButton.disabled = !spaces.length;
+        syncButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          save({ measurements: syncWorkOrderDocumentFcMeasurementsWithSpaces(measurementRows, spaces) }, { render: true });
+        });
+        const fixButton = document.createElement("button");
+        fixButton.type = "button";
+        fixButton.className = "ghost-button";
+        fixButton.textContent = "Make fix";
+        fixButton.disabled = !measurementRows.length;
+        fixButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const fixedRows = measurementRows.map((measurement, index) => {
+            const space = spaces.find((item) => String(item.code || item.name || "") === String(measurement.spaceCode || "")) || spaces[index] || spaces[0] || {};
+            return createWorkOrderDocumentFcMeasurementRowFromSpace(space, index, measurement);
+          });
+          save({ measurements: fixedRows }, { render: true });
+        });
+        const randomButton = document.createElement("button");
+        randomButton.type = "button";
+        randomButton.className = "primary-action-button is-compact";
+        randomButton.textContent = "Make random";
+        randomButton.disabled = !measurementRows.length;
+        randomButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          save({
+            measurements: measurementRows.map((measurement) => randomizeWorkOrderDocumentFcMeasurementRow(measurement, spaces)),
+          }, { render: true });
+        });
+        actions.append(spaceSelect, addRowButton, syncButton, fixButton, randomButton);
+        sectionBody.append(actions);
+
+        const wrap = document.createElement("div");
+        wrap.className = "work-order-document-fc-results-wrap";
+        const table = document.createElement("table");
+        table.className = "work-order-document-fc-results-table";
+        const head = document.createElement("thead");
+        const groupRow = document.createElement("tr");
+        [
+          ["Mjerno mjesto", 4],
+          ["Osvijetljenost", 4],
+          ["Buka", 5],
+          ["Mikroklima", 7],
+          ["", 1],
+        ].forEach(([label, span]) => {
+          const th = document.createElement("th");
+          th.colSpan = span;
+          th.textContent = label;
+          groupRow.append(th);
+        });
+        const labelRow = document.createElement("tr");
+        [
+          "Prostor/Prostorija",
+          "Redni broj",
+          "Mjerno mjesto",
+          "Opis MM",
+          "Izmjereno opće [lx]",
+          "Izmjereno dopunski [lx]",
+          "Propisano [lx]",
+          "DA/NE",
+          "Ekvivalentna razina [dB]",
+          "Dopuštena razina [dB]",
+          "Vršna buka [dB]",
+          "Dnevna izloženost [dB]",
+          "DA/NE",
+          "Izmjerena temperatura [°C]",
+          "Dopuštena temperatura [°C]",
+          "Izmjerena brzina strujanja [m/s]",
+          "Dopuštena brzina strujanja [m/s]",
+          "Izmjerena relativna vlažnost [%]",
+          "Preporučena relativna vlažnost [%]",
+          "DA/NE",
+          "",
+        ].forEach((label) => {
+          const th = document.createElement("th");
+          th.textContent = label;
+          labelRow.append(th);
+        });
+        head.append(groupRow, labelRow);
+        table.append(head);
+        const tableBody = document.createElement("tbody");
+        if (!measurementRows.length) {
+          const row = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.colSpan = 21;
+          cell.className = "work-order-document-ro-table-empty";
+          cell.textContent = spaces.length
+            ? "Dodaj red iz prostora ili klikni Dodaj sve prostore."
+            : "Prvo dodaj prostor u RO-F.2 bloku.";
+          row.append(cell);
+          tableBody.append(row);
+        } else {
+          measurementRows.forEach((measurement, index) => {
+            const row = document.createElement("tr");
+            const updateMeasurement = (patch) => {
+              const nextMeasurements = measurementRows.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
+              save({ measurements: nextMeasurements });
+            };
+            const addCell = (fieldName, placeholder = "", { select = false, options = [] } = {}) => {
+              const cell = document.createElement("td");
+              let input;
+              if (select) {
+                input = document.createElement("select");
+                options.forEach((option) => {
+                  const optionNode = document.createElement("option");
+                  optionNode.value = String(option.value ?? option);
+                  optionNode.textContent = String(option.label ?? option);
+                  input.append(optionNode);
+                });
+                input.value = String(measurement[fieldName] || "");
+                input.addEventListener("change", () => updateMeasurement({ [fieldName]: input.value }));
+              } else {
+                input = document.createElement("input");
+                input.value = String(measurement[fieldName] || "");
+                input.placeholder = placeholder;
+                input.addEventListener("input", () => updateMeasurement({ [fieldName]: input.value }));
+              }
+              cell.append(input);
+              row.append(cell);
+            };
+            addCell("spaceCode", "Prostor", { select: true, options: spaces.map((space) => ({ value: space.code, label: space.name ? `${space.code} · ${space.name}` : space.code })) });
+            addCell("rowNumber", String(index + 1));
+            addCell("measuringPlace", "1 Blagajna");
+            addCell("placeDescription", "Opis mjernog mjesta");
+            addCell("illuminationMeasured", "719");
+            addCell("illuminationSupplementary", "");
+            addCell("illuminationAllowed", "500");
+            addCell("illuminationStatus", "Da", { select: true, options: ["Da", "Ne"] });
+            addCell("noiseEquivalent", "46,8");
+            addCell("noiseAllowed", "65");
+            addCell("noisePeak", "");
+            addCell("noiseDaily", "");
+            addCell("noiseStatus", "Da", { select: true, options: ["Da", "Ne"] });
+            addCell("temperatureMeasured", "22,9");
+            addCell("temperatureAllowed", "20-25");
+            addCell("airflowMeasured", "0,11");
+            addCell("airflowAllowed", "0,20");
+            addCell("humidityMeasured", "51,5");
+            addCell("humidityAllowed", "40-60");
+            addCell("passStatus", "Da", { select: true, options: ["Da", "Ne"] });
+            const removeCell = document.createElement("td");
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "icon-button";
+            removeButton.textContent = "×";
+            removeButton.title = "Ukloni red";
+            removeButton.addEventListener("click", (event) => {
+              event.stopPropagation();
+              save({ measurements: measurementRows.filter((_, itemIndex) => itemIndex !== index) }, { render: true });
+            });
+            removeCell.append(removeButton);
+            row.append(removeCell);
+            tableBody.append(row);
+          });
+        }
+        table.append(tableBody);
+        wrap.append(table);
+        sectionBody.append(wrap);
+        return;
+      }
+
       const actions = document.createElement("div");
       actions.className = "work-order-document-fc-measurement-actions";
       presets.forEach((preset) => {
