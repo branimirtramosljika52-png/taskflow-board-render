@@ -121144,6 +121144,10 @@ function normalizeWorkOrderDocumentWorkEnvironmentDraft(draft = {}, workOrder = 
     endDate: normalizeDateInputValue(source.endDate || defaults.endDate || ""),
     validUntil: normalizeDateInputValue(source.validUntil || ""),
     measurementTime: String(source.measurementTime || defaults.measurementTime || "").trim(),
+    airTemperature: String(defaults.airTemperature || source.airTemperature || "").trim(),
+    relativeHumidity: String(defaults.relativeHumidity || source.relativeHumidity || "").trim(),
+    airflowSpeed: String(defaults.airflowSpeed || source.airflowSpeed || "").trim(),
+    externalConditionsOther: String(defaults.externalConditionsOther || source.externalConditionsOther || "").trim(),
     obligationRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.obligationRegisters, defaults.obligationRegisters),
     healthRequirementRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.healthRequirementRegisters, defaults.healthRequirementRegisters),
     additionalRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.additionalRegisters, defaults.additionalRegisters),
@@ -121220,6 +121224,9 @@ function createWorkOrderDocumentWorkEnvironmentDraftField({
   title.textContent = label;
   field.append(title);
   let input;
+  let dateWrap = null;
+  let nativeDateInput = null;
+  let datePickerButton = null;
   if (Array.isArray(options)) {
     input = document.createElement("select");
     options.forEach((option) => {
@@ -121242,6 +121249,21 @@ function createWorkOrderDocumentWorkEnvironmentDraftField({
       : String(value ?? "");
     if (isDate) {
       input.inputMode = "numeric";
+      input.maxLength = 10;
+      input.pattern = "[0-9.\\-/\\s]*";
+      dateWrap = document.createElement("span");
+      dateWrap.className = "work-order-document-fc-date-control";
+      nativeDateInput = document.createElement("input");
+      nativeDateInput.type = "date";
+      nativeDateInput.className = "work-order-document-fc-native-date";
+      nativeDateInput.value = normalizeDateInputValue(value) || "";
+      nativeDateInput.tabIndex = -1;
+      nativeDateInput.setAttribute("aria-hidden", "true");
+      datePickerButton = document.createElement("button");
+      datePickerButton.type = "button";
+      datePickerButton.className = "work-order-document-fc-date-button";
+      datePickerButton.innerHTML = getWorkOrderIconMarkup("dates");
+      datePickerButton.setAttribute("aria-label", `${label} - kalendar`);
     }
   }
   input.placeholder = placeholder;
@@ -121252,13 +121274,48 @@ function createWorkOrderDocumentWorkEnvironmentDraftField({
   };
   input.addEventListener(Array.isArray(options) ? "change" : "input", emitValue);
   if (type === "date") {
+    input.addEventListener("input", () => {
+      input.value = normalizeLiveDateTypingValue(input.value);
+    });
     input.addEventListener("change", () => {
       const normalized = normalizeDateInputValue(input.value);
       input.value = normalized ? formatDateInputDisplayValue(normalized) : String(input.value || "").trim();
+      if (nativeDateInput) {
+        nativeDateInput.value = normalized || "";
+      }
+      emitValue();
+    });
+    input.addEventListener("blur", () => {
+      const normalized = normalizeDateInputValue(input.value);
+      input.value = normalized ? formatDateInputDisplayValue(normalized) : String(input.value || "").trim();
+      if (nativeDateInput) {
+        nativeDateInput.value = normalized || "";
+      }
+    });
+    datePickerButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (nativeDateInput) {
+        nativeDateInput.value = normalizeDateInputValue(input.value) || "";
+        if (typeof nativeDateInput.showPicker === "function") {
+          nativeDateInput.showPicker();
+          return;
+        }
+        nativeDateInput.focus({ preventScroll: true });
+      }
+    });
+    nativeDateInput?.addEventListener("change", () => {
+      const normalized = normalizeDateInputValue(nativeDateInput.value);
+      input.value = normalized ? formatDateInputDisplayValue(normalized) : "";
       emitValue();
     });
   }
-  field.append(input);
+  if (dateWrap) {
+    dateWrap.append(input, datePickerButton, nativeDateInput);
+    field.append(dateWrap);
+  } else {
+    field.append(input);
+  }
   if (detail) {
     const small = document.createElement("small");
     small.textContent = detail;
@@ -121476,37 +121533,29 @@ function appendWorkOrderDocumentWorkEnvironmentBasicEditorBlock(bodyNode, {
       ]);
       shell.append(companyPanel.panel);
 
-      const datesPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
-        title: "Datumi",
+      const inspectionPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+        title: "Podaci o ispitivanju",
         icon: "□",
       });
-      appendFields(datesPanel.body, [
-        { label: "Datum početka", fieldName: "startDate", placeholder: "dd.mm.yyyy", type: "date" },
-        { label: "Datum završetka", fieldName: "endDate", placeholder: "dd.mm.yyyy", type: "date" },
-        { label: "Vrijedi do", fieldName: "validUntil", placeholder: "dd.mm.yyyy", type: "date" },
-      ]);
-      shell.append(datesPanel.panel);
-
-      const conditionsPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
-        title: "Uvjeti ispitivanja",
-        icon: "◌",
-      });
-      appendFields(conditionsPanel.body, [
+      appendFields(inspectionPanel.body, [
+        { label: "Datum početka", fieldName: "startDate", placeholder: "dd.mm.yyyy", type: "date", className: "is-compact-date" },
+        { label: "Datum završetka", fieldName: "endDate", placeholder: "dd.mm.yyyy", type: "date", className: "is-compact-date" },
+        { label: "Vrijedi do", fieldName: "validUntil", placeholder: "dd.mm.yyyy", type: "date", className: "is-compact-date" },
+      ], "is-compact-dates");
+      appendFields(inspectionPanel.body, [
         { label: "Relativna vlažnost (%)", fieldName: "relativeHumidity", placeholder: "npr. 52" },
         { label: "Brzina strujanja (m/s)", fieldName: "airflowSpeed", placeholder: "npr. 0,20" },
         { label: "Temperatura zraka (°C)", fieldName: "airTemperature", placeholder: "npr. 22" },
-        { label: "Vrijeme", fieldName: "measurementTime", placeholder: "npr. 12:00" },
-        { label: "Mjerna oprema", fieldName: "instrumentSummary", placeholder: "Oznake mjerne opreme" },
         { label: "Vanjski uvjeti", fieldName: "externalConditionsOther", placeholder: "npr. sunčano / zatvoreni prostor" },
-      ]);
-      appendFields(conditionsPanel.body, [
+      ], "is-weather");
+      appendFields(inspectionPanel.body, [
         { label: "Ispitivači", fieldName: "expertsText", placeholder: "Ispitivači za zapisnik" },
         { label: "Odgovorne osobe", fieldName: "signedByText", placeholder: "Nositelji ovlaštenja / odgovorne osobe" },
       ], "is-two");
-      shell.append(conditionsPanel.panel);
+      shell.append(inspectionPanel.panel);
 
       const examinationPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
-        title: "Podaci o ispitivanju",
+        title: "Opis i dokumentacija",
         icon: "▤",
       });
       appendFields(examinationPanel.body, [

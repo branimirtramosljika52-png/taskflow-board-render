@@ -24660,6 +24660,17 @@ body.is-document-template-editor-open .chat-dock {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-compact-dates {
+  grid-template-columns: repeat(3, minmax(132px, 168px));
+  justify-content: start;
+}
+
+.work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-weather {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 12px;
+  border-top: 1px solid rgba(226, 232, 240, 0.92);
+}
+
 .work-order-document-fc-basic-premium .work-order-document-fc-draft-field.is-span-full {
   grid-column: 1 / -1;
 }
@@ -24688,6 +24699,54 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-document-fc-basic-premium .work-order-document-fc-draft-field textarea {
   min-height: 86px;
+}
+
+.work-order-document-fc-basic-premium .work-order-document-fc-draft-field.is-compact-date input {
+  min-height: 40px;
+  padding: 9px 10px;
+}
+
+.work-order-document-fc-date-control {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 6px;
+  align-items: center;
+}
+
+.work-order-document-fc-date-button {
+  display: inline-grid;
+  width: 36px;
+  min-width: 36px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(191, 219, 254, 0.95);
+  border-radius: 11px;
+  background: #fff;
+  color: #2563eb;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.work-order-document-fc-date-button:hover {
+  border-color: rgba(37, 99, 235, 0.62);
+  background: rgba(239, 246, 255, 0.86);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.1);
+}
+
+.work-order-document-fc-date-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.work-order-document-fc-native-date {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .work-order-document-fc-basic-premium .work-order-document-fc-draft-field input::placeholder,
@@ -24912,8 +24971,13 @@ body.is-document-template-editor-open .chat-dock {
 @media (max-width: 1180px) {
   .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid,
   .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-examination,
+  .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-weather,
   .work-order-document-fc-registry-grid.is-premium {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-compact-dates {
+    grid-template-columns: repeat(3, minmax(126px, 1fr));
   }
 }
 
@@ -24936,6 +25000,8 @@ body.is-document-template-editor-open .chat-dock {
   .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid,
   .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-two,
   .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-examination,
+  .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-compact-dates,
+  .work-order-document-fc-basic-premium .work-order-document-fc-draft-grid.is-weather,
   .work-order-document-fc-registry-grid.is-premium {
     grid-template-columns: minmax(0, 1fr);
   }
