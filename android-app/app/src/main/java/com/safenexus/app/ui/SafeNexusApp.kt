@@ -283,9 +283,7 @@ import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Locale
@@ -5239,60 +5237,6 @@ private fun WorkOrderTextField(
         enabled = enabled,
         shape = RoundedCornerShape(16.dp),
     )
-}
-
-private fun isoDateToMillis(value: String): Long? =
-    parseDateOrNull(value)
-        ?.atStartOfDay(ZoneOffset.UTC)
-        ?.toInstant()
-        ?.toEpochMilli()
-
-private fun millisToIsoDate(value: Long?): String =
-    value?.let {
-        Instant.ofEpochMilli(it)
-            .atZone(ZoneOffset.UTC)
-            .toLocalDate()
-            .toString()
-    }.orEmpty()
-
-private fun formatDatePickerLabel(value: String): String =
-    parseDateOrNull(value)
-        ?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-        ?: value
-
-private val reservationTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-private val reservationTimeOptions: List<Pair<String, String>> = (0 until 24)
-    .flatMap { hour -> (0 until 60 step 15).map { minute -> "%02d:%02d".format(hour, minute) } }
-    .map { value -> value to value }
-
-private fun defaultReservationStartTime(): String {
-    val now = LocalTime.now()
-    val roundedTotalMinutes = ((now.hour * 60 + now.minute + 14) / 15) * 15
-    val normalizedTotalMinutes = roundedTotalMinutes % (24 * 60)
-    return LocalTime.of(normalizedTotalMinutes / 60, normalizedTotalMinutes % 60)
-        .format(reservationTimeFormatter)
-}
-
-private fun defaultVehicleUsageTime(): String =
-    LocalTime.now().format(reservationTimeFormatter)
-
-private fun parseReservationDateTime(date: String, time: String): LocalDateTime? =
-    runCatching { LocalDateTime.parse("${date}T${time}:00") }.getOrNull()
-
-private fun formatReservationDateTime(date: String, time: String): String =
-    "${date}T${time}:00"
-
-private fun addReservationMinutes(date: String, time: String, minutes: Long): Pair<String, String> {
-    val start = parseReservationDateTime(date, time) ?: LocalDate.now().atTime(8, 0)
-    val next = start.plusMinutes(minutes)
-    return next.toLocalDate().toString() to next.toLocalTime().format(reservationTimeFormatter)
-}
-
-private fun isReservationRangeValid(startDate: String, startTime: String, endDate: String, endTime: String): Boolean {
-    val start = parseReservationDateTime(startDate, startTime) ?: return false
-    val end = parseReservationDateTime(endDate, endTime) ?: return false
-    return end.isAfter(start)
 }
 
 @Composable
@@ -31193,11 +31137,6 @@ private fun BrandMark() {
             Text("SN", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
         }
     }
-}
-
-private fun formatDateLabel(value: String): String {
-    val date = parseDateOrNull(value) ?: return ""
-    return date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy."))
 }
 
 private suspend fun buildWorkOrderDocumentUploadFiles(

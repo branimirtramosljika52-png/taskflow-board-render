@@ -69340,8 +69340,11 @@ async function ensureDocumentTemplateRuntimePreviousLookupState(
 async function buildDocumentTemplateRuntimeExportEntryAsync(
   template = buildDocumentTemplateDraft(),
   workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+  { ensurePreviousLookup = true } = {},
 ) {
-  await ensureDocumentTemplateRuntimePreviousLookupState(template, workOrder);
+  if (ensurePreviousLookup) {
+    await ensureDocumentTemplateRuntimePreviousLookupState(template, workOrder);
+  }
   return buildDocumentTemplateRuntimeExportEntry(template, workOrder);
 }
 
@@ -69524,7 +69527,9 @@ async function exportDocumentTemplatePdf() {
   let payload = null;
   try {
     loading.setPhase(1, { message: "Punim placeholdere podacima iz RN-a..." });
-    const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
+    const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder, {
+      ensurePreviousLookup: !isDocumentTemplateRuntimeFillMode(),
+    });
     payload = buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry);
     if (!payload) {
       setDocumentTemplateMessage("PDF payload nije ispravno pripremljen.");
@@ -70058,7 +70063,9 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         await persistDocumentTemplateRuntimeServiceProgress(workOrder, template, "in_progress");
 
         await persistDocumentTemplateRuntimeRecordFor(template, workOrder);
-        const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
+        const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder, {
+          ensurePreviousLookup: false,
+        });
         const payload = buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry);
         if (!exportEntry || !payload) {
           throw new Error("PDF payload nije ispravno pripremljen.");
@@ -110038,16 +110045,8 @@ function renderActiveView() {
     state.vehicleUsageEditorOpen = false;
   }
 
-  if (state.activeView === "reminders") {
-    renderReminders();
-  }
-
-  if (state.activeView === "todo") {
-    renderTodo();
-  }
-
-  renderDashboardOverview();
   if (isSelfdashView) {
+    renderDashboardOverview();
     renderWorkOrderWorkspace();
   }
   renderSidebarState();
@@ -133056,12 +133055,6 @@ function render() {
   renderLoginContent();
   renderSummary();
   renderSharedOptions();
-  if (state.activeView === "reminders") {
-    renderReminders();
-  }
-  if (state.activeView === "todo") {
-    renderTodo();
-  }
   if (state.activeView === "notifications") {
     renderNotifications();
   }

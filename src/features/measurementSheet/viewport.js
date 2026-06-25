@@ -50,6 +50,34 @@ export function createMeasurementSheetViewportController({
 
   const getColumnWidth = (column = {}) => Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column?.width) || 140);
 
+  const getColumnWidthMetrics = () => {
+    const sheet = getCurrentSheet();
+    const columns = sheet.columns ?? [];
+    const key = columns
+      .map((column) => `${column?.id || ""}:${Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column?.width) || 140)}`)
+      .join("|");
+
+    if (sheet.viewportColumnMetrics?.key === key) {
+      return sheet.viewportColumnMetrics;
+    }
+
+    const widths = columns.map(getColumnWidth);
+    const offsets = [];
+    let totalWidth = 0;
+    widths.forEach((width) => {
+      offsets.push(totalWidth);
+      totalWidth += width;
+    });
+
+    sheet.viewportColumnMetrics = {
+      key,
+      widths,
+      offsets,
+      totalWidth,
+    };
+    return sheet.viewportColumnMetrics;
+  };
+
   const getColumnVirtualWindow = () => {
     const sheet = getCurrentSheet();
     const columnCount = sheet.columns?.length || 0;
@@ -68,7 +96,7 @@ export function createMeasurementSheetViewportController({
 
     const scrollLeft = Math.max(0, gridWrap.scrollLeft || 0);
     const viewportWidth = Math.max(gridWrap.clientWidth || 0, 640);
-    const widths = sheet.columns.map(getColumnWidth);
+    const { widths, offsets, totalWidth } = getColumnWidthMetrics();
     let runningLeft = 0;
     let startColumnIndex = 0;
 
@@ -81,11 +109,13 @@ export function createMeasurementSheetViewportController({
     }
 
     startColumnIndex = Math.max(0, startColumnIndex - MEASUREMENT_COLUMN_VIRTUALIZATION_OVERSCAN_COLUMNS);
-    let visibleWidth = widths.slice(0, startColumnIndex).reduce((sum, width) => sum + width, 0);
+    const visibleRight = scrollLeft + viewportWidth;
     let endColumnIndex = startColumnIndex;
 
-    while (endColumnIndex < columnCount - 1 && visibleWidth < scrollLeft + viewportWidth) {
-      visibleWidth += widths[endColumnIndex];
+    while (
+      endColumnIndex < columnCount - 1
+      && offsets[endColumnIndex] + widths[endColumnIndex] < visibleRight
+    ) {
       endColumnIndex += 1;
     }
 
@@ -94,8 +124,8 @@ export function createMeasurementSheetViewportController({
       endColumnIndex + MEASUREMENT_COLUMN_VIRTUALIZATION_OVERSCAN_COLUMNS,
     );
 
-    const leftSpacerWidth = widths.slice(0, startColumnIndex).reduce((sum, width) => sum + width, 0);
-    const rightSpacerWidth = widths.slice(endColumnIndex + 1).reduce((sum, width) => sum + width, 0);
+    const leftSpacerWidth = offsets[startColumnIndex] || 0;
+    const rightSpacerWidth = Math.max(0, totalWidth - ((offsets[endColumnIndex] || 0) + (widths[endColumnIndex] || 0)));
 
     return {
       virtualColumns: true,
@@ -267,8 +297,8 @@ export function createMeasurementSheetViewportController({
     }
 
     if (Number.isInteger(columnIndex) && canVirtualizeColumns()) {
-      const widths = (sheet.columns ?? []).map(getColumnWidth);
-      const columnLeft = widths.slice(0, columnIndex).reduce((sum, width) => sum + width, 0);
+      const { widths, offsets } = getColumnWidthMetrics();
+      const columnLeft = offsets[columnIndex] || 0;
       const columnRight = columnLeft + (widths[columnIndex] || 0);
       const visibleLeft = gridWrap.scrollLeft || 0;
       const visibleRight = visibleLeft + Math.max(gridWrap.clientWidth || 0, 320);
@@ -292,7 +322,7 @@ export function createMeasurementSheetViewportController({
 
   const scheduleVirtualViewportRender = () => {
     const sheet = getCurrentSheet();
-    if (!sheet.isOpen || sheet.editingCell || !canVirtualizeRows()) {
+    if (!sheet.isOpen || sheet.editingCell || (!canVirtualizeRows() && !canVirtualizeColumns())) {
       return;
     }
 
