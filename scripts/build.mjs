@@ -11,6 +11,7 @@ const vendorVersion = "20260430g";
 const browserSrcDir = resolve(rootDir, "src");
 const browserEntryModules = [
   resolve(browserSrcDir, "main.js"),
+  resolve(browserSrcDir, "measurementFormulaWorker.js"),
   resolve(browserSrcDir, "auth-transitions.js"),
   resolve(browserSrcDir, "request-access.js"),
   resolve(browserSrcDir, "learning-test.js"),

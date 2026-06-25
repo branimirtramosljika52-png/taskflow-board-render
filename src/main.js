@@ -1585,8 +1585,14 @@ const MEASUREMENT_COMPUTE_DEBOUNCE_MS = 90;
 const MEASUREMENT_VIRTUALIZATION_MIN_ROWS = 96;
 const MEASUREMENT_VIRTUALIZATION_MIN_CELLS = 1800;
 const MEASUREMENT_VIRTUALIZATION_OVERSCAN_ROWS = 18;
+const MEASUREMENT_COLUMN_VIRTUALIZATION_MIN_COLUMNS = 22;
+const MEASUREMENT_COLUMN_VIRTUALIZATION_MIN_CELLS = 2600;
+const MEASUREMENT_COLUMN_VIRTUALIZATION_OVERSCAN_COLUMNS = 4;
 const MEASUREMENT_VIRTUALIZATION_ROW_HEIGHT = 44;
 const MEASUREMENT_PERF_LOG_LIMIT = 12;
+const MEASUREMENT_LOCAL_DRAFT_PREFIX = "safenexus.measurementSheetDraft";
+const MEASUREMENT_LOCAL_DRAFT_DELAY_MS = 900;
+const MEASUREMENT_LOCAL_DRAFT_MAX_BYTES = 2_500_000;
 const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 const COMPANIES_SEARCH_DEBOUNCE_MS = 140;
 const LOCATIONS_SEARCH_DEBOUNCE_MS = 140;
@@ -2698,13 +2704,25 @@ const state = {
     editorSource: null,
     formulaReferences: [],
     formulaCache: null,
+    formulaDependencyIndex: null,
     formulaRevision: 0,
+    formulaWorker: {
+      instance: null,
+      supported: true,
+      sequence: 0,
+      pendingKey: "",
+      values: new Map(),
+    },
     persistTimer: 0,
+    localDraftTimer: 0,
     lastPersistFingerprint: "",
     viewport: {
       virtual: false,
       startRowIndex: 0,
       endRowIndex: -1,
+      virtualColumns: false,
+      startColumnIndex: 0,
+      endColumnIndex: -1,
       rowHeight: MEASUREMENT_VIRTUALIZATION_ROW_HEIGHT,
       scrollRenderFrame: 0,
     },
@@ -2718,6 +2736,8 @@ const state = {
       lightCells: 0,
       formulas: 0,
       renderedRows: 0,
+      renderedColumns: 0,
+      workerCells: 0,
       mode: "standard",
       updatedAt: "",
     },
@@ -28557,6 +28577,92 @@ function isMeasurementSheetOwnerPersistSnapshotUnchanged(snapshot = null) {
   return false;
 }
 
+function getMeasurementSheetLocalDraftKey() {
+  const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
+
+  if (!isMeasurementSheetInlineOwnerKind(ownerKind)) {
+    return "";
+  }
+
+  return [
+    MEASUREMENT_LOCAL_DRAFT_PREFIX,
+    ownerKind,
+    state.measurementSheet.ownerRuntimeWorkOrderId || state.documentTemplateRuntime.activeWorkOrderId || "template",
+    state.measurementSheet.ownerFieldId || "sheet",
+  ].map((part) => encodeURIComponent(String(part || ""))).join(":");
+}
+
+function clearScheduledMeasurementSheetLocalDraft() {
+  if (!state.measurementSheet.localDraftTimer) {
+    return;
+  }
+
+  window.clearTimeout(state.measurementSheet.localDraftTimer);
+  state.measurementSheet.localDraftTimer = 0;
+}
+
+function clearMeasurementSheetLocalDraft() {
+  const key = getMeasurementSheetLocalDraftKey();
+  clearScheduledMeasurementSheetLocalDraft();
+
+  if (!key || typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Local draft cache is a best-effort speed/safety layer.
+  }
+}
+
+function saveMeasurementSheetLocalDraftNow() {
+  const key = getMeasurementSheetLocalDraftKey();
+
+  if (!key || typeof localStorage === "undefined") {
+    return;
+  }
+
+  const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true });
+  if (!snapshot) {
+    clearMeasurementSheetLocalDraft();
+    return;
+  }
+
+  try {
+    const payload = JSON.stringify({
+      savedAt: new Date().toISOString(),
+      ownerKind: state.measurementSheet.ownerKind,
+      ownerFieldId: state.measurementSheet.ownerFieldId,
+      ownerRuntimeWorkOrderId: state.measurementSheet.ownerRuntimeWorkOrderId,
+      sheet: snapshot,
+    });
+
+    if (payload.length <= MEASUREMENT_LOCAL_DRAFT_MAX_BYTES) {
+      localStorage.setItem(key, payload);
+    }
+  } catch {
+    // Quota/private-mode errors should never block editing.
+  }
+}
+
+function scheduleMeasurementSheetLocalDraftSave() {
+  if (!getMeasurementSheetLocalDraftKey()) {
+    return;
+  }
+
+  clearScheduledMeasurementSheetLocalDraft();
+  state.measurementSheet.localDraftTimer = window.setTimeout(() => {
+    state.measurementSheet.localDraftTimer = 0;
+    const save = () => saveMeasurementSheetLocalDraftNow();
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(save, { timeout: 1200 });
+    } else {
+      save();
+    }
+  }, MEASUREMENT_LOCAL_DRAFT_DELAY_MS);
+}
+
 function persistMeasurementSheetToTemplateField({ rerenderFieldRows = false } = {}) {
   clearScheduledMeasurementSheetOwnerPersist();
   const fieldIndex = getMeasurementSheetOwnerFieldIndex();
@@ -28569,6 +28675,7 @@ function persistMeasurementSheetToTemplateField({ rerenderFieldRows = false } = 
   const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true })
     ?? buildTemplateMeasurementSheetFromLegacyConfig(currentField);
   if (!rerenderFieldRows && isMeasurementSheetOwnerPersistSnapshotUnchanged(snapshot)) {
+    clearMeasurementSheetLocalDraft();
     return;
   }
   const sheet = ensureDocumentTemplateMeasurementFieldSheet({
@@ -28590,10 +28697,21 @@ function persistMeasurementSheetToTemplateField({ rerenderFieldRows = false } = 
   if (rerenderFieldRows) {
     renderDocumentTemplateFieldRows();
   }
+  clearMeasurementSheetLocalDraft();
 }
 
-function handleMeasurementSheetMutation({ immediate = false } = {}) {
-  invalidateMeasurementSheetFormulaCache();
+function handleMeasurementSheetMutation({ immediate = false, changedCell = null, formulaChanged = false } = {}) {
+  if (changedCell) {
+    invalidateMeasurementSheetFormulaCacheForCell(
+      changedCell.rowIndex,
+      changedCell.columnIndex,
+      { formulaChanged },
+    );
+  } else {
+    invalidateMeasurementSheetFormulaCache();
+  }
+
+  scheduleMeasurementSheetLocalDraftSave();
 
   if (state.measurementSheet.ownerKind === "template_field") {
     scheduleMeasurementSheetOwnerPersist({ immediate });
@@ -43665,6 +43783,17 @@ function canVirtualizeMeasurementSheetRows() {
     && !(state.measurementSheet.merges ?? []).length;
 }
 
+function canVirtualizeMeasurementSheetColumns() {
+  const rowCount = state.measurementSheet.rows.length;
+  const columnCount = state.measurementSheet.columns.length;
+  const cellCount = rowCount * columnCount;
+
+  return isMeasurementSheetLightCellRenderEnabled()
+    && columnCount >= MEASUREMENT_COLUMN_VIRTUALIZATION_MIN_COLUMNS
+    && cellCount >= MEASUREMENT_COLUMN_VIRTUALIZATION_MIN_CELLS
+    && !(state.measurementSheet.merges ?? []).length;
+}
+
 function getMeasurementSheetRowHeightEstimate() {
   return Math.max(
     28,
@@ -43672,8 +43801,67 @@ function getMeasurementSheetRowHeightEstimate() {
   );
 }
 
+function getMeasurementColumnWidth(column = {}) {
+  return Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column?.width) || 140);
+}
+
+function getMeasurementColumnVirtualWindow() {
+  const columnCount = state.measurementSheet.columns.length;
+  const fullWindow = {
+    virtualColumns: false,
+    startColumnIndex: 0,
+    endColumnIndex: columnCount - 1,
+    leftSpacerWidth: 0,
+    rightSpacerWidth: 0,
+  };
+
+  if (!canVirtualizeMeasurementSheetColumns() || !measurementSheetGridWrap || columnCount <= 0) {
+    return fullWindow;
+  }
+
+  const scrollLeft = Math.max(0, measurementSheetGridWrap.scrollLeft || 0);
+  const viewportWidth = Math.max(measurementSheetGridWrap.clientWidth || 0, 640);
+  const widths = state.measurementSheet.columns.map(getMeasurementColumnWidth);
+  let runningLeft = 0;
+  let startColumnIndex = 0;
+
+  while (
+    startColumnIndex < columnCount - 1
+    && runningLeft + widths[startColumnIndex] < scrollLeft
+  ) {
+    runningLeft += widths[startColumnIndex];
+    startColumnIndex += 1;
+  }
+
+  startColumnIndex = Math.max(0, startColumnIndex - MEASUREMENT_COLUMN_VIRTUALIZATION_OVERSCAN_COLUMNS);
+  let visibleWidth = widths.slice(0, startColumnIndex).reduce((sum, width) => sum + width, 0);
+  let endColumnIndex = startColumnIndex;
+
+  while (endColumnIndex < columnCount - 1 && visibleWidth < scrollLeft + viewportWidth) {
+    visibleWidth += widths[endColumnIndex];
+    endColumnIndex += 1;
+  }
+
+  endColumnIndex = Math.min(
+    columnCount - 1,
+    endColumnIndex + MEASUREMENT_COLUMN_VIRTUALIZATION_OVERSCAN_COLUMNS,
+  );
+
+  const leftSpacerWidth = widths.slice(0, startColumnIndex).reduce((sum, width) => sum + width, 0);
+  const rightSpacerWidth = widths.slice(endColumnIndex + 1).reduce((sum, width) => sum + width, 0);
+
+  return {
+    virtualColumns: true,
+    startColumnIndex,
+    endColumnIndex,
+    leftSpacerWidth,
+    rightSpacerWidth,
+  };
+}
+
 function getMeasurementSheetVirtualWindow() {
   const rowCount = state.measurementSheet.rows.length;
+  const columnWindow = getMeasurementColumnVirtualWindow();
   const fullWindow = {
     virtual: false,
     startRowIndex: 0,
@@ -43681,6 +43869,7 @@ function getMeasurementSheetVirtualWindow() {
     topSpacerRows: 0,
     bottomSpacerRows: 0,
     rowHeight: getMeasurementSheetRowHeightEstimate(),
+    ...columnWindow,
   };
 
   if (!canVirtualizeMeasurementSheetRows() || !measurementSheetGridWrap || rowCount <= 0) {
@@ -43705,6 +43894,7 @@ function getMeasurementSheetVirtualWindow() {
     topSpacerRows: startRowIndex,
     bottomSpacerRows: Math.max(0, rowCount - endRowIndex - 1),
     rowHeight,
+    ...columnWindow,
   };
 }
 
@@ -43714,6 +43904,9 @@ function syncMeasurementSheetVirtualViewport(windowState) {
     virtual: Boolean(windowState?.virtual),
     startRowIndex: Number.isInteger(windowState?.startRowIndex) ? windowState.startRowIndex : 0,
     endRowIndex: Number.isInteger(windowState?.endRowIndex) ? windowState.endRowIndex : -1,
+    virtualColumns: Boolean(windowState?.virtualColumns),
+    startColumnIndex: Number.isInteger(windowState?.startColumnIndex) ? windowState.startColumnIndex : 0,
+    endColumnIndex: Number.isInteger(windowState?.endColumnIndex) ? windowState.endColumnIndex : -1,
     rowHeight: Math.max(
       28,
       Number(windowState?.rowHeight) || Number(current.rowHeight) || MEASUREMENT_VIRTUALIZATION_ROW_HEIGHT,
@@ -43739,6 +43932,23 @@ function getMeasurementRenderedRowIndexBounds() {
   };
 }
 
+function getMeasurementRenderedColumnIndexBounds() {
+  const viewport = state.measurementSheet.viewport ?? {};
+  const columnCount = state.measurementSheet.columns.length;
+
+  if (!viewport.virtualColumns) {
+    return {
+      startColumnIndex: 0,
+      endColumnIndex: columnCount - 1,
+    };
+  }
+
+  return {
+    startColumnIndex: Math.max(0, Number(viewport.startColumnIndex) || 0),
+    endColumnIndex: Math.min(columnCount - 1, Number(viewport.endColumnIndex) || 0),
+  };
+}
+
 function appendMeasurementVirtualSpacer(fragment, rowCount) {
   if (!rowCount || rowCount <= 0) {
     return;
@@ -43753,6 +43963,19 @@ function appendMeasurementVirtualSpacer(fragment, rowCount) {
   fragment.append(spacerRow);
 }
 
+function appendMeasurementVirtualColumnSpacer(parent, width, tagName = "td") {
+  if (!width || width <= 0) {
+    return;
+  }
+
+  const cell = document.createElement(tagName);
+  cell.className = "measurement-sheet-virtual-column-spacer";
+  cell.style.width = `${Math.round(width)}px`;
+  cell.style.minWidth = `${Math.round(width)}px`;
+  cell.style.maxWidth = `${Math.round(width)}px`;
+  parent.append(cell);
+}
+
 function updateMeasurementVirtualRowHeightFromDom() {
   if (!state.measurementSheet.viewport?.virtual || !measurementSheetBody) {
     return;
@@ -43765,27 +43988,53 @@ function updateMeasurementVirtualRowHeightFromDom() {
   }
 }
 
-function ensureMeasurementRowVisible(rowIndex, { render = false } = {}) {
-  if (!Number.isInteger(rowIndex) || !measurementSheetGridWrap || !canVirtualizeMeasurementSheetRows()) {
+function ensureMeasurementCellVisible(rowIndex, columnIndex = null, { render = false } = {}) {
+  if (!measurementSheetGridWrap) {
     return false;
   }
 
-  const rowHeight = getMeasurementSheetRowHeightEstimate();
-  const visibleTop = measurementSheetGridWrap.scrollTop || 0;
-  const visibleBottom = visibleTop + Math.max(measurementSheetGridWrap.clientHeight || 0, rowHeight);
-  const rowTop = rowIndex * rowHeight;
-  const rowBottom = rowTop + rowHeight;
-  const padding = rowHeight * 2;
+  let changed = false;
 
-  if (rowTop >= visibleTop + padding && rowBottom <= visibleBottom - padding) {
+  if (Number.isInteger(rowIndex) && canVirtualizeMeasurementSheetRows()) {
+    const rowHeight = getMeasurementSheetRowHeightEstimate();
+    const visibleTop = measurementSheetGridWrap.scrollTop || 0;
+    const visibleBottom = visibleTop + Math.max(measurementSheetGridWrap.clientHeight || 0, rowHeight);
+    const rowTop = rowIndex * rowHeight;
+    const rowBottom = rowTop + rowHeight;
+    const padding = rowHeight * 2;
+
+    if (!(rowTop >= visibleTop + padding && rowBottom <= visibleBottom - padding)) {
+      measurementSheetGridWrap.scrollTop = Math.max(0, rowTop - padding);
+      changed = true;
+    }
+  }
+
+  if (Number.isInteger(columnIndex) && canVirtualizeMeasurementSheetColumns()) {
+    const widths = state.measurementSheet.columns.map(getMeasurementColumnWidth);
+    const columnLeft = widths.slice(0, columnIndex).reduce((sum, width) => sum + width, 0);
+    const columnRight = columnLeft + (widths[columnIndex] || 0);
+    const visibleLeft = measurementSheetGridWrap.scrollLeft || 0;
+    const visibleRight = visibleLeft + Math.max(measurementSheetGridWrap.clientWidth || 0, 320);
+    const padding = 180;
+
+    if (!(columnLeft >= visibleLeft + padding && columnRight <= visibleRight - padding)) {
+      measurementSheetGridWrap.scrollLeft = Math.max(0, columnLeft - padding);
+      changed = true;
+    }
+  }
+
+  if (!changed) {
     return false;
   }
 
-  measurementSheetGridWrap.scrollTop = Math.max(0, rowTop - padding);
   if (render) {
     renderMeasurementSheet({ invalidateFormulaCache: false });
   }
   return true;
+}
+
+function ensureMeasurementRowVisible(rowIndex, options = {}) {
+  return ensureMeasurementCellVisible(rowIndex, null, options);
 }
 
 function scheduleMeasurementVirtualViewportRender() {
@@ -43806,6 +44055,9 @@ function scheduleMeasurementVirtualViewportRender() {
       nextWindow.virtual !== Boolean(current.virtual)
       || nextWindow.startRowIndex !== current.startRowIndex
       || nextWindow.endRowIndex !== current.endRowIndex
+      || nextWindow.virtualColumns !== Boolean(current.virtualColumns)
+      || nextWindow.startColumnIndex !== current.startColumnIndex
+      || nextWindow.endColumnIndex !== current.endColumnIndex
     ) {
       renderMeasurementSheet({ invalidateFormulaCache: false });
     }
@@ -44270,6 +44522,9 @@ function applyMeasurementSheetSnapshot(snapshot = null) {
     virtual: false,
     startRowIndex: 0,
     endRowIndex: -1,
+    virtualColumns: false,
+    startColumnIndex: 0,
+    endColumnIndex: -1,
     rowHeight: MEASUREMENT_VIRTUALIZATION_ROW_HEIGHT,
     scrollRenderFrame: state.measurementSheet.viewport?.scrollRenderFrame || 0,
   };
@@ -44518,7 +44773,117 @@ function buildActiveMeasurementSheetFormulaContext(currentSheet = buildCurrentMe
 
 function invalidateMeasurementSheetFormulaCache() {
   state.measurementSheet.formulaCache = null;
+  state.measurementSheet.formulaDependencyIndex = null;
   state.measurementSheet.formulaRevision = (Number(state.measurementSheet.formulaRevision) || 0) + 1;
+  state.measurementSheet.formulaWorker.pendingKey = "";
+  state.measurementSheet.formulaWorker.values.clear();
+}
+
+function getMeasurementFormulaCellCacheSuffix(rowIndex, columnIndex) {
+  return `:${rowIndex}:${columnIndex}`;
+}
+
+function deleteMeasurementFormulaCacheEntry(rowIndex, columnIndex) {
+  const suffix = getMeasurementFormulaCellCacheSuffix(rowIndex, columnIndex);
+  state.measurementSheet.formulaCache?.values?.forEach((value, key) => {
+    if (String(key).endsWith(suffix)) {
+      state.measurementSheet.formulaCache.values.delete(key);
+    }
+  });
+  state.measurementSheet.formulaWorker.values.delete(
+    getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex),
+  );
+}
+
+function getMeasurementFormulaDependencyIndex() {
+  const cacheKey = [
+    state.measurementSheet.rows.length,
+    state.measurementSheet.columns.length,
+    state.measurementSheet.formulaRevision,
+  ].join(":");
+
+  if (state.measurementSheet.formulaDependencyIndex?.key === cacheKey) {
+    return state.measurementSheet.formulaDependencyIndex;
+  }
+
+  const directDependents = new Map();
+  let hasExternalReferences = false;
+  state.measurementSheet.rows.forEach((row, rowIndex) => {
+    state.measurementSheet.columns.forEach((column, columnIndex) => {
+      const rawValue = row?.cells?.[column.id] ?? "";
+      if (!isMeasurementFormula(rawValue)) {
+        return;
+      }
+
+      const formulaKey = `${rowIndex}:${columnIndex}`;
+      listMeasurementFormulaReferences(rawValue).forEach((reference) => {
+        if (String(reference || "").includes("!")) {
+          hasExternalReferences = true;
+          return;
+        }
+
+        try {
+          const parsed = parseMeasurementCellReference(reference);
+          const dependencyKey = `${parsed.rowIndex}:${parsed.columnIndex}`;
+          const dependents = directDependents.get(dependencyKey) ?? new Set();
+          dependents.add(formulaKey);
+          directDependents.set(dependencyKey, dependents);
+        } catch {
+          // Ignore incomplete references while a formula is being edited.
+        }
+      });
+    });
+  });
+
+  state.measurementSheet.formulaDependencyIndex = {
+    key: cacheKey,
+    directDependents,
+    hasExternalReferences,
+  };
+  return state.measurementSheet.formulaDependencyIndex;
+}
+
+function getMeasurementFormulaDependentCellKeys(rowIndex, columnIndex) {
+  const index = getMeasurementFormulaDependencyIndex();
+  const visited = new Set();
+  const queue = [`${rowIndex}:${columnIndex}`];
+
+  while (queue.length) {
+    const key = queue.shift();
+    const dependents = index.directDependents.get(key);
+    if (!dependents) {
+      continue;
+    }
+
+    dependents.forEach((dependentKey) => {
+      if (visited.has(dependentKey)) {
+        return;
+      }
+      visited.add(dependentKey);
+      queue.push(dependentKey);
+    });
+  }
+
+  return visited;
+}
+
+function invalidateMeasurementSheetFormulaCacheForCell(rowIndex, columnIndex, { formulaChanged = false } = {}) {
+  if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex) || formulaChanged || canUseMeasurementFormulaWorker()) {
+    invalidateMeasurementSheetFormulaCache();
+    return;
+  }
+
+  const index = getMeasurementFormulaDependencyIndex();
+  if (index.hasExternalReferences) {
+    invalidateMeasurementSheetFormulaCache();
+    return;
+  }
+
+  deleteMeasurementFormulaCacheEntry(rowIndex, columnIndex);
+  getMeasurementFormulaDependentCellKeys(rowIndex, columnIndex).forEach((cellKey) => {
+    const [dependentRowIndex, dependentColumnIndex] = cellKey.split(":").map((value) => Number(value));
+    deleteMeasurementFormulaCacheEntry(dependentRowIndex, dependentColumnIndex);
+  });
 }
 
 function getActiveMeasurementSheetFormulaCache() {
@@ -44545,6 +44910,172 @@ function getActiveMeasurementSheetFormulaCache() {
     lookups: new Map(),
   };
   return state.measurementSheet.formulaCache;
+}
+
+function isMeasurementFormulaWorkerEligibleFormula(value = "") {
+  return isMeasurementFormula(value) && !String(value ?? "").includes("!");
+}
+
+function canUseMeasurementFormulaWorker() {
+  const workerState = state.measurementSheet.formulaWorker;
+  const cellCount = state.measurementSheet.rows.length * state.measurementSheet.columns.length;
+
+  return Boolean(workerState?.supported)
+    && typeof Worker !== "undefined"
+    && isMeasurementSheetLightCellRenderEnabled()
+    && cellCount >= MEASUREMENT_VIRTUALIZATION_MIN_CELLS;
+}
+
+function getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex, revision = state.measurementSheet.formulaRevision) {
+  return `${revision}:${rowIndex}:${columnIndex}`;
+}
+
+function getMeasurementFormulaWorkerCachedResult(rowIndex, columnIndex) {
+  return state.measurementSheet.formulaWorker.values.get(
+    getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex),
+  ) || null;
+}
+
+function getMeasurementFormulaWorker() {
+  const workerState = state.measurementSheet.formulaWorker;
+
+  if (!workerState.supported || typeof Worker === "undefined") {
+    return null;
+  }
+
+  if (workerState.instance) {
+    return workerState.instance;
+  }
+
+  try {
+    const worker = new Worker(new URL("./measurementFormulaWorker.js", import.meta.url), {
+      type: "module",
+      name: "SafeNexus Excel formulas",
+    });
+    worker.addEventListener("message", handleMeasurementFormulaWorkerMessage);
+    worker.addEventListener("error", () => {
+      workerState.supported = false;
+      workerState.pendingKey = "";
+      worker.terminate();
+      workerState.instance = null;
+      scheduleMeasurementSheetComputedRefresh({ immediate: true });
+    });
+    workerState.instance = worker;
+    return worker;
+  } catch {
+    workerState.supported = false;
+    return null;
+  }
+}
+
+function applyMeasurementFormulaWorkerCellResult(result = {}) {
+  const rowIndex = Number(result.rowIndex);
+  const columnIndex = Number(result.columnIndex);
+  const row = state.measurementSheet.rows[rowIndex];
+  const column = state.measurementSheet.columns[columnIndex];
+
+  if (!row || !column) {
+    return;
+  }
+
+  const cell = getMeasurementCellElement(row.id, column.id);
+  if (!(cell instanceof HTMLTableCellElement)) {
+    return;
+  }
+
+  const input = cell.querySelector(".measurement-cell-input");
+  const display = cell.querySelector(".measurement-cell-value");
+  const displayText = String(result.displayText ?? "");
+  const rawValue = row.cells?.[column.id] ?? "";
+  const hasError = displayText === "#ERROR" || Boolean(result.error);
+
+  cell.classList.toggle("has-formula-cell", isMeasurementFormula(rawValue));
+  cell.classList.toggle("has-formula-error", hasError);
+
+  if (input instanceof HTMLInputElement && !isMeasurementEditingCell(row.id, column.id)) {
+    input.value = displayText;
+    input.title = rawValue;
+  }
+
+  if (display instanceof HTMLElement) {
+    display.textContent = displayText;
+    display.title = rawValue;
+  }
+}
+
+function handleMeasurementFormulaWorkerMessage(event) {
+  const payload = event.data || {};
+
+  if (payload.type !== "compute-result") {
+    return;
+  }
+
+  const workerState = state.measurementSheet.formulaWorker;
+  if (Number(payload.revision) !== Number(state.measurementSheet.formulaRevision)) {
+    return;
+  }
+
+  workerState.pendingKey = "";
+  (Array.isArray(payload.results) ? payload.results : []).forEach((result) => {
+    const rowIndex = Number(result.rowIndex);
+    const columnIndex = Number(result.columnIndex);
+    workerState.values.set(getMeasurementFormulaWorkerCellKey(rowIndex, columnIndex, payload.revision), result);
+    applyMeasurementFormulaWorkerCellResult(result);
+  });
+
+  updateMeasurementSheetPerformance({
+    computeMs: Number(payload.durationMs) || 0,
+    workerCells: Array.isArray(payload.results) ? payload.results.length : 0,
+  });
+}
+
+function requestMeasurementFormulaWorkerCompute(cells = []) {
+  if (!cells.length || !canUseMeasurementFormulaWorker()) {
+    return false;
+  }
+
+  const worker = getMeasurementFormulaWorker();
+  if (!worker) {
+    return false;
+  }
+
+  const uniqueCells = [];
+  const seen = new Set();
+  cells.forEach((cell) => {
+    const rowIndex = Number(cell?.rowIndex);
+    const columnIndex = Number(cell?.columnIndex);
+    const key = `${rowIndex}:${columnIndex}`;
+    if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex) || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    uniqueCells.push({ rowIndex, columnIndex });
+  });
+
+  if (!uniqueCells.length) {
+    return false;
+  }
+
+  const workerState = state.measurementSheet.formulaWorker;
+  const requestKey = [
+    state.measurementSheet.formulaRevision,
+    uniqueCells.map((cell) => `${cell.rowIndex}:${cell.columnIndex}`).join(","),
+  ].join("|");
+
+  if (workerState.pendingKey === requestKey) {
+    return true;
+  }
+
+  const requestId = `${Date.now()}-${workerState.sequence += 1}`;
+  workerState.pendingKey = requestKey;
+  worker.postMessage({
+    type: "compute",
+    requestId,
+    revision: state.measurementSheet.formulaRevision,
+    sheet: buildCurrentMeasurementSheetFormulaSnapshot(),
+    cells: uniqueCells,
+  });
+  return true;
 }
 
 function normalizeMeasurementVLookupComparableValue(value) {
@@ -46774,12 +47305,16 @@ function setMeasurementCellRawValue(rowId, columnId, value) {
     return;
   }
 
-  if (Object.is(row.cells[column.id] ?? "", value ?? "")) {
+  const previousValue = row.cells[column.id] ?? "";
+  if (Object.is(previousValue, value ?? "")) {
     return;
   }
 
   row.cells[column.id] = value;
-  handleMeasurementSheetMutation();
+  handleMeasurementSheetMutation({
+    changedCell: { rowIndex, columnIndex },
+    formulaChanged: isMeasurementFormula(previousValue) || isMeasurementFormula(value),
+  });
 }
 
 function applyMeasurementFormatToRange(formatOverrides = {}) {
@@ -47057,7 +47592,8 @@ function focusMeasurementCell(rowId, columnId, options = {}) {
 
   if (!(input instanceof HTMLInputElement)) {
     const rowIndex = getMeasurementRowIndex(rowId);
-    if (ensureMeasurementRowVisible(rowIndex, { render: true })) {
+    const columnIndex = getMeasurementColumnIndex(columnId);
+    if (ensureMeasurementCellVisible(rowIndex, columnIndex, { render: true })) {
       input = getMeasurementInputElement(rowId, columnId);
     }
   }
@@ -47624,7 +48160,19 @@ function getMeasurementCellComputedValue(rowIndex, columnIndex, stack = new Set(
   );
 }
 
-function getMeasurementCellDisplayText(rowIndex, columnIndex) {
+function getMeasurementCellDisplayText(rowIndex, columnIndex, options = {}) {
+  const {
+    preferWorker = false,
+  } = options;
+  const row = state.measurementSheet.rows[rowIndex];
+  const column = state.measurementSheet.columns[columnIndex];
+  const rawValue = row?.cells?.[column?.id] ?? "";
+
+  if (preferWorker && canUseMeasurementFormulaWorker() && isMeasurementFormulaWorkerEligibleFormula(rawValue)) {
+    const cached = getMeasurementFormulaWorkerCachedResult(rowIndex, columnIndex);
+    return cached?.displayText ?? "...";
+  }
+
   try {
     return formatMeasurementComputedDisplayValue(
       getMeasurementCellComputedValue(rowIndex, columnIndex),
@@ -47881,7 +48429,7 @@ function getMeasurementCellInputDisplayValue(rowIndex, columnIndex) {
   }
 
   if (isMeasurementFormula(rawValue)) {
-    return getMeasurementCellDisplayText(rowIndex, columnIndex);
+    return getMeasurementCellDisplayText(rowIndex, columnIndex, { preferWorker: true });
   }
 
   return formatMeasurementLiteralDisplayValue(rawValue, format);
@@ -47973,6 +48521,7 @@ function refreshMeasurementSheetComputedValues() {
   }
 
   const renderedRowElements = Array.from(measurementSheetBody.querySelectorAll("tr[data-row-id]"));
+  const workerFormulaCells = [];
 
   renderedRowElements.forEach((rowElement) => {
     const rowIndex = getMeasurementRowIndex(rowElement.dataset.rowId || "");
@@ -48002,10 +48551,25 @@ function refreshMeasurementSheetComputedValues() {
       let hasError = false;
       let formulaDisplayText = "";
       const format = getMeasurementCellVisualFormat(rowIndex, columnIndex);
+      const isFormulaBarEditingCell = isMeasurementFormulaBarEditingCell(row.id, column.id);
+      const isCellEditing = isMeasurementEditingCell(row.id, column.id);
 
       if (hasFormula) {
-        formulaDisplayText = getMeasurementCellDisplayText(rowIndex, columnIndex);
-        hasError = formulaDisplayText === "#ERROR";
+        const canWorkerCompute = canUseMeasurementFormulaWorker()
+          && isMeasurementFormulaWorkerEligibleFormula(rawValue)
+          && !isFormulaBarEditingCell
+          && !isCellEditing;
+        if (canWorkerCompute) {
+          const cached = getMeasurementFormulaWorkerCachedResult(rowIndex, columnIndex);
+          formulaDisplayText = cached?.displayText ?? "...";
+          hasError = formulaDisplayText === "#ERROR" || Boolean(cached?.error);
+          if (!cached) {
+            workerFormulaCells.push({ rowIndex, columnIndex });
+          }
+        } else {
+          formulaDisplayText = getMeasurementCellDisplayText(rowIndex, columnIndex);
+          hasError = formulaDisplayText === "#ERROR";
+        }
       }
 
       cell.classList.toggle("has-formula-cell", hasFormula);
@@ -48013,8 +48577,6 @@ function refreshMeasurementSheetComputedValues() {
       cell.classList.toggle("has-conditional-format", hasMeasurementConditionalFormat(format));
       applyMeasurementCellBorderStyle(cell, format.border);
       applyMeasurementCellStyleToElements(cell, input ?? display, format);
-
-      const isFormulaBarEditingCell = isMeasurementFormulaBarEditingCell(row.id, column.id);
 
       if (input instanceof HTMLInputElement && (!isMeasurementEditingCell(row.id, column.id) || isFormulaBarEditingCell)) {
         input.value = isFormulaBarEditingCell && hasFormula
@@ -48032,8 +48594,10 @@ function refreshMeasurementSheetComputedValues() {
 
   renderMeasurementFormulaReferences();
   syncMeasurementToolbar();
+  requestMeasurementFormulaWorkerCompute(workerFormulaCells);
   updateMeasurementSheetPerformance({
     computeMs: performance.now() - computeStartedAt,
+    workerCells: workerFormulaCells.length,
   });
 }
 
@@ -48103,7 +48667,11 @@ function renderMeasurementSelection() {
     return;
   }
 
-  for (let columnIndex = selectedRange.startColumnIndex; columnIndex <= selectedRange.endColumnIndex; columnIndex += 1) {
+  const renderedColumnBounds = getMeasurementRenderedColumnIndexBounds();
+  const startColumnIndex = Math.max(selectedRange.startColumnIndex, renderedColumnBounds.startColumnIndex);
+  const endColumnIndex = Math.min(selectedRange.endColumnIndex, renderedColumnBounds.endColumnIndex);
+
+  for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
     const column = state.measurementSheet.columns[columnIndex];
 
     if (!column) {
@@ -48130,7 +48698,7 @@ function renderMeasurementSelection() {
       ?.querySelector(`tr[data-row-id="${CSS.escape(row.id)}"] > th`)
       ?.classList.add("is-selected-row");
 
-    for (let columnIndex = selectedRange.startColumnIndex; columnIndex <= selectedRange.endColumnIndex; columnIndex += 1) {
+    for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
       const column = state.measurementSheet.columns[columnIndex];
 
       if (!column) {
@@ -48177,7 +48745,7 @@ function setMeasurementSelectionByIndex(rowIndex, columnIndex, options = {}) {
   state.measurementSheet.fillMenu = null;
   state.measurementSheet.contextMenu = null;
   clearMeasurementFillPreview();
-  const renderedForVirtualScroll = ensureMeasurementRowVisible(rowIndex, { render: true });
+  const renderedForVirtualScroll = ensureMeasurementCellVisible(rowIndex, columnIndex, { render: true });
   if (!renderedForVirtualScroll) {
     renderMeasurementSelection();
     renderMeasurementActiveCell();
@@ -48218,8 +48786,11 @@ function renderMeasurementFillPreview() {
   });
 
   const renderedBounds = getMeasurementRenderedRowIndexBounds();
+  const renderedColumnBounds = getMeasurementRenderedColumnIndexBounds();
   const startRowIndex = Math.max(fillDrag.selectionRange.endRowIndex + 1, renderedBounds.startRowIndex);
   const endRowIndex = Math.min(fillDrag.endRowIndex, renderedBounds.endRowIndex);
+  const startColumnIndex = Math.max(fillDrag.selectionRange.startColumnIndex, renderedColumnBounds.startColumnIndex);
+  const endColumnIndex = Math.min(fillDrag.selectionRange.endColumnIndex, renderedColumnBounds.endColumnIndex);
 
   for (let rowIndex = startRowIndex; rowIndex <= endRowIndex; rowIndex += 1) {
     const row = state.measurementSheet.rows[rowIndex];
@@ -48232,7 +48803,7 @@ function renderMeasurementFillPreview() {
       ?.querySelector(`tr[data-row-id="${CSS.escape(row.id)}"] > th`)
       ?.classList.add("is-fill-preview-row");
 
-    for (let columnIndex = fillDrag.selectionRange.startColumnIndex; columnIndex <= fillDrag.selectionRange.endColumnIndex; columnIndex += 1) {
+    for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
       const column = state.measurementSheet.columns[columnIndex];
 
       if (!column) {
@@ -49183,6 +49754,7 @@ function persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRo
   const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true })
     ?? buildTemplateMeasurementSheetFromLegacyConfig(field ?? {});
   if (!rerenderFieldRows && isMeasurementSheetOwnerPersistSnapshotUnchanged(snapshot)) {
+    clearMeasurementSheetLocalDraft();
     return;
   }
   setDocumentTemplateRuntimeMeasurementSheet(workOrderId, fieldId, snapshot, { render: false });
@@ -49192,6 +49764,7 @@ function persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRo
   if (rerenderFieldRows) {
     renderDocumentTemplateFieldRows();
   }
+  clearMeasurementSheetLocalDraft();
 }
 
 function persistMeasurementSheetToWorkOrderDocumentFcDraft({ render = false } = {}) {
@@ -49212,12 +49785,14 @@ function persistMeasurementSheetToWorkOrderDocumentFcDraft({ render = false } = 
   const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true })
     ?? buildWorkOrderDocumentFcMeasurementSheetFromSpaces(draft.spaces, null, { reset: true });
   if (!render && isMeasurementSheetOwnerPersistSnapshotUnchanged(snapshot)) {
+    clearMeasurementSheetLocalDraft();
     return;
   }
   persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, {
     ...draft,
     measurementSheet: snapshot,
   }, { isChemical: false, render });
+  clearMeasurementSheetLocalDraft();
 }
 
 function clearScheduledMeasurementSheetOwnerPersist() {
@@ -49294,8 +49869,9 @@ function renderMeasurementSheetPerformanceBadge() {
   const inputCount = Number(perf.inputs) || 0;
   const lightCount = Number(perf.lightCells) || 0;
   const renderedRows = Number(perf.renderedRows) || Number(perf.rows) || 0;
+  const renderedColumns = Number(perf.renderedColumns) || Number(perf.columns) || 0;
   const rowPart = perf.mode === "virtual" && Number(perf.rows) > 0
-    ? ` · ${renderedRows}/${Number(perf.rows)} red`
+    ? ` · ${renderedRows}/${Number(perf.rows)} red · ${renderedColumns}/${Number(perf.columns) || 0} kol`
     : "";
   badge.textContent = `Perf ${renderMs}/${computeMs} ms${rowPart} · ${inputCount} input · ${lightCount} light`;
   badge.title = [
@@ -49305,7 +49881,9 @@ function renderMeasurementSheetPerformanceBadge() {
     `Redovi: ${Number(perf.rows) || 0}`,
     `Renderirano redova: ${renderedRows}`,
     `Kolone: ${Number(perf.columns) || 0}`,
+    `Renderirano kolona: ${renderedColumns}`,
     `Formule: ${Number(perf.formulas) || 0}`,
+    `Worker formule: ${Number(perf.workerCells) || 0}`,
     `Način: ${perf.mode || "standard"}`,
     `Zadnjih mjerenja: ${(state.measurementSheet.perfLog ?? []).length}`,
   ].join("\n");
@@ -49991,11 +50569,28 @@ function renderMeasurementSheet(options = {}) {
   cornerCol.style.width = "54px";
   colgroupFragment.append(cornerCol);
 
-  state.measurementSheet.columns.forEach((column) => {
+  if (virtualWindow.leftSpacerWidth > 0) {
+    const leftSpacerCol = document.createElement("col");
+    leftSpacerCol.style.width = `${Math.round(virtualWindow.leftSpacerWidth)}px`;
+    colgroupFragment.append(leftSpacerCol);
+  }
+
+  const renderedColumns = state.measurementSheet.columns.slice(
+    virtualWindow.startColumnIndex,
+    virtualWindow.endColumnIndex + 1,
+  );
+
+  renderedColumns.forEach((column) => {
     const col = document.createElement("col");
-    col.style.width = `${column.width || 140}px`;
+    col.style.width = `${getMeasurementColumnWidth(column)}px`;
     colgroupFragment.append(col);
   });
+
+  if (virtualWindow.rightSpacerWidth > 0) {
+    const rightSpacerCol = document.createElement("col");
+    rightSpacerCol.style.width = `${Math.round(virtualWindow.rightSpacerWidth)}px`;
+    colgroupFragment.append(rightSpacerCol);
+  }
 
   measurementSheetColgroup.replaceChildren(colgroupFragment);
 
@@ -50012,8 +50607,10 @@ function renderMeasurementSheet(options = {}) {
     closeMeasurementContextMenu();
   });
   headRow.append(cornerHeader);
+  appendMeasurementVirtualColumnSpacer(headRow, virtualWindow.leftSpacerWidth, "th");
 
-  state.measurementSheet.columns.forEach((column, index) => {
+  renderedColumns.forEach((column) => {
+    const index = getMeasurementColumnIndex(column.id);
     const th = document.createElement("th");
     th.dataset.columnId = column.id;
     th.classList.toggle(
@@ -50125,6 +50722,7 @@ function renderMeasurementSheet(options = {}) {
     }
     headRow.append(th);
   });
+  appendMeasurementVirtualColumnSpacer(headRow, virtualWindow.rightSpacerWidth, "th");
 
   measurementSheetHead.replaceChildren(headRow);
 
@@ -50166,8 +50764,9 @@ function renderMeasurementSheet(options = {}) {
       });
     });
     tr.append(indexCell);
+    appendMeasurementVirtualColumnSpacer(tr, virtualWindow.leftSpacerWidth, "td");
 
-    state.measurementSheet.columns.forEach((column) => {
+    renderedColumns.forEach((column) => {
       const columnIndex = getMeasurementColumnIndex(column.id);
 
       if (coveredCells.has(`${index}:${columnIndex}`)) {
@@ -50420,6 +51019,7 @@ function renderMeasurementSheet(options = {}) {
       td.classList.toggle("has-formula-cell", isMeasurementFormula(row.cells?.[column.id] ?? ""));
       tr.append(td);
     });
+    appendMeasurementVirtualColumnSpacer(tr, virtualWindow.rightSpacerWidth, "td");
 
     bodyFragment.append(tr);
   }
@@ -50444,7 +51044,10 @@ function renderMeasurementSheet(options = {}) {
     renderedRows: virtualWindow.virtual
       ? Math.max(0, virtualWindow.endRowIndex - virtualWindow.startRowIndex + 1)
       : state.measurementSheet.rows.length,
-    mode: virtualWindow.virtual ? "virtual" : (lightCellRender ? "light" : "standard"),
+    renderedColumns: virtualWindow.virtualColumns
+      ? Math.max(0, virtualWindow.endColumnIndex - virtualWindow.startColumnIndex + 1)
+      : state.measurementSheet.columns.length,
+    mode: virtualWindow.virtual || virtualWindow.virtualColumns ? "virtual" : (lightCellRender ? "light" : "standard"),
   });
 }
 
