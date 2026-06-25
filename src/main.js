@@ -2781,6 +2781,10 @@ const state = {
     rows: [],
     merges: [],
     headerRows: [],
+    undoStack: [],
+    redoStack: [],
+    historyCoalesceKey: "",
+    freezePanes: true,
     resizing: null,
     activeCell: null,
     editingCell: null,
@@ -3609,6 +3613,7 @@ let measurementColumnCounter = 0;
 let measurementComputedRefreshTimerId = 0;
 let measurementSheetRenderFrameId = 0;
 let measurementSheetQueuedRenderOptions = null;
+const MEASUREMENT_HISTORY_LIMIT = 40;
 let userPresenceMenuOpen = false;
 let notificationsMenuOpen = false;
 let remindersShortcutMenuOpen = false;
@@ -5954,6 +5959,9 @@ const measurementAlignTopButton = document.querySelector("#measurement-align-top
 const measurementAlignMiddleButton = document.querySelector("#measurement-align-middle");
 const measurementAlignBottomButton = document.querySelector("#measurement-align-bottom");
 const measurementStyleTitleButton = document.querySelector("#measurement-style-title");
+const measurementUndoButton = document.querySelector("#measurement-undo");
+const measurementRedoButton = document.querySelector("#measurement-redo");
+const measurementFreezePanesButton = document.querySelector("#measurement-freeze-panes");
 const measurementMergeButton = document.querySelector("#measurement-merge");
 const measurementMergeRowsButton = document.querySelector("#measurement-merge-rows");
 const measurementMergeColumnsButton = document.querySelector("#measurement-merge-columns");
@@ -43990,6 +43998,132 @@ function buildMeasurementSheetSnapshot({ includeBlankStructure = false } = {}) {
   return measurementSheetSnapshotController.buildSnapshot({ includeBlankStructure });
 }
 
+function getMeasurementHistorySelectionSnapshot() {
+  const activeCell = state.measurementSheet.activeCell;
+  const selection = state.measurementSheet.selectedRange;
+  return {
+    activeCell: activeCell ? { ...activeCell } : null,
+    selectedRange: selection ? { ...selection } : null,
+    selectionAnchor: state.measurementSheet.selectionAnchor ? { ...state.measurementSheet.selectionAnchor } : null,
+  };
+}
+
+function restoreMeasurementHistorySelection(selection = {}) {
+  state.measurementSheet.activeCell = selection?.activeCell ? { ...selection.activeCell } : null;
+  state.measurementSheet.selectedRange = selection?.selectedRange ? { ...selection.selectedRange } : null;
+  state.measurementSheet.selectionAnchor = selection?.selectionAnchor ? { ...selection.selectionAnchor } : null;
+}
+
+function getMeasurementHistorySnapshotKey(snapshot = null) {
+  try {
+    return JSON.stringify(snapshot ?? {});
+  } catch {
+    return "";
+  }
+}
+
+function resetMeasurementSheetHistory() {
+  state.measurementSheet.undoStack = [];
+  state.measurementSheet.redoStack = [];
+  state.measurementSheet.historyCoalesceKey = "";
+  syncMeasurementToolbar();
+}
+
+function pushMeasurementSheetHistorySnapshot({ coalesceKey = "" } = {}) {
+  const normalizedCoalesceKey = String(coalesceKey || "");
+  if (normalizedCoalesceKey && state.measurementSheet.historyCoalesceKey === normalizedCoalesceKey) {
+    return;
+  }
+
+  const snapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true });
+  if (!snapshot) {
+    return;
+  }
+
+  const entry = {
+    sheet: snapshot,
+    selection: getMeasurementHistorySelectionSnapshot(),
+    key: getMeasurementHistorySnapshotKey(snapshot),
+  };
+  const currentStack = Array.isArray(state.measurementSheet.undoStack) ? state.measurementSheet.undoStack : [];
+  const lastEntry = currentStack[currentStack.length - 1] ?? null;
+
+  if (lastEntry?.key === entry.key) {
+    state.measurementSheet.historyCoalesceKey = normalizedCoalesceKey;
+    return;
+  }
+
+  state.measurementSheet.undoStack = [...currentStack, entry].slice(-MEASUREMENT_HISTORY_LIMIT);
+  state.measurementSheet.redoStack = [];
+  state.measurementSheet.historyCoalesceKey = normalizedCoalesceKey;
+  syncMeasurementToolbar();
+}
+
+function restoreMeasurementSheetHistoryEntry(entry = null) {
+  if (!entry?.sheet) {
+    return false;
+  }
+
+  const previousScrollTop = measurementSheetGridWrap?.scrollTop ?? 0;
+  const previousScrollLeft = measurementSheetGridWrap?.scrollLeft ?? 0;
+  applyMeasurementSheetSnapshot(entry.sheet);
+  restoreMeasurementHistorySelection(entry.selection);
+  renderMeasurementSheet();
+  if (measurementSheetGridWrap) {
+    measurementSheetGridWrap.scrollTop = previousScrollTop;
+    measurementSheetGridWrap.scrollLeft = previousScrollLeft;
+  }
+  syncMeasurementToolbar();
+  handleMeasurementSheetMutation();
+  return true;
+}
+
+function undoMeasurementSheetChange() {
+  const undoStack = Array.isArray(state.measurementSheet.undoStack) ? state.measurementSheet.undoStack : [];
+  const entry = undoStack[undoStack.length - 1] ?? null;
+  if (!entry) {
+    return false;
+  }
+
+  const currentSnapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true });
+  state.measurementSheet.undoStack = undoStack.slice(0, -1);
+  if (currentSnapshot) {
+    state.measurementSheet.redoStack = [
+      ...(Array.isArray(state.measurementSheet.redoStack) ? state.measurementSheet.redoStack : []),
+      {
+        sheet: currentSnapshot,
+        selection: getMeasurementHistorySelectionSnapshot(),
+        key: getMeasurementHistorySnapshotKey(currentSnapshot),
+      },
+    ].slice(-MEASUREMENT_HISTORY_LIMIT);
+  }
+  state.measurementSheet.historyCoalesceKey = "";
+  return restoreMeasurementSheetHistoryEntry(entry);
+}
+
+function redoMeasurementSheetChange() {
+  const redoStack = Array.isArray(state.measurementSheet.redoStack) ? state.measurementSheet.redoStack : [];
+  const entry = redoStack[redoStack.length - 1] ?? null;
+  if (!entry) {
+    return false;
+  }
+
+  const currentSnapshot = buildMeasurementSheetSnapshot({ includeBlankStructure: true });
+  state.measurementSheet.redoStack = redoStack.slice(0, -1);
+  if (currentSnapshot) {
+    state.measurementSheet.undoStack = [
+      ...(Array.isArray(state.measurementSheet.undoStack) ? state.measurementSheet.undoStack : []),
+      {
+        sheet: currentSnapshot,
+        selection: getMeasurementHistorySelectionSnapshot(),
+        key: getMeasurementHistorySnapshotKey(currentSnapshot),
+      },
+    ].slice(-MEASUREMENT_HISTORY_LIMIT);
+  }
+  state.measurementSheet.historyCoalesceKey = "";
+  return restoreMeasurementSheetHistoryEntry(entry);
+}
+
 function parseMeasurementNumber(value) {
   const normalized = String(value ?? "").trim().replace(",", ".");
 
@@ -44808,6 +44942,7 @@ function mergeMeasurementSelection() {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
   clearMeasurementRangeCells(range, new Set([`${range.startRowIndex}:${range.startColumnIndex}`]));
   appendMeasurementMergeForRange(range);
@@ -44822,6 +44957,7 @@ function mergeMeasurementSelectionByRows() {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
   const anchorKeys = new Set();
 
@@ -44851,6 +44987,7 @@ function mergeMeasurementSelectionByColumns() {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   unmergeMeasurementSelection({ preserveSelection: true, suppressPersistence: true });
   const anchorKeys = new Set();
 
@@ -44892,6 +45029,9 @@ function unmergeMeasurementSelection({ preserveSelection = false, suppressPersis
     return;
   }
 
+  if (!suppressPersistence) {
+    pushMeasurementSheetHistorySnapshot();
+  }
   const removedKeys = new Set(toRemove.map((merge) => `${merge.rowId}:${merge.columnId}`));
   state.measurementSheet.merges = (state.measurementSheet.merges ?? []).filter((merge) => (
     !removedKeys.has(`${merge.rowId}:${merge.columnId}`)
@@ -45196,6 +45336,7 @@ function toggleMeasurementHeaderRows() {
   const allSelectedAreHeaders = selectedRowIds.every((rowId) => isMeasurementHeaderRow(rowId));
   const nextHeaderRows = new Set(state.measurementSheet.headerRows);
 
+  pushMeasurementSheetHistorySnapshot();
   selectedRowIds.forEach((rowId) => {
     if (allSelectedAreHeaders) {
       nextHeaderRows.delete(rowId);
@@ -45443,6 +45584,7 @@ function applyMeasurementValidationToColumns(validationPatch = {}) {
 
   const editableColumnIds = new Set(state.measurementSheet.columns.filter((column) => !column.computed).map((column) => column.id));
 
+  pushMeasurementSheetHistorySnapshot();
   targetIndexes.forEach((columnIndex) => {
     const column = state.measurementSheet.columns[columnIndex];
     if (!column || column.computed) {
@@ -45472,6 +45614,7 @@ function applyMeasurementAiMappingToColumn(mappingPatch = {}) {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   targetColumn.aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal({
     ...(targetColumn.aiMapping ?? {}),
     ...mappingPatch,
@@ -46385,6 +46528,7 @@ function applyMeasurementSheetPresetItem(item = null) {
     return false;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   applyMeasurementSheetSnapshot(snapshot);
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
@@ -46494,6 +46638,7 @@ function setMeasurementCellRawValue(rowId, columnId, value) {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot({ coalesceKey: `cell:${row.id}:${column.id}` });
   row.cells[column.id] = value;
   handleMeasurementSheetMutation({
     changedCell: { rowIndex, columnIndex },
@@ -46657,6 +46802,7 @@ function applyMeasurementToolbarFormat(overrides = {}) {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   applyMeasurementFormatToRange(overrides);
   refreshMeasurementSheetComputedValues();
   renderMeasurementSelection();
@@ -46670,6 +46816,7 @@ function applyMeasurementConditionalToolbarFormat(overrides = {}) {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   applyMeasurementConditionalFormatToRange(overrides);
   refreshMeasurementSheetComputedValues();
   renderMeasurementSelection();
@@ -46806,6 +46953,21 @@ function syncMeasurementToolbar() {
     }
 
     measurementFormulaInput.disabled = !state.measurementSheet.activeCell;
+  }
+
+  if (measurementUndoButton instanceof HTMLButtonElement) {
+    measurementUndoButton.disabled = !(state.measurementSheet.undoStack ?? []).length;
+  }
+
+  if (measurementRedoButton instanceof HTMLButtonElement) {
+    measurementRedoButton.disabled = !(state.measurementSheet.redoStack ?? []).length;
+  }
+
+  if (measurementFreezePanesButton instanceof HTMLButtonElement) {
+    const freezeEnabled = state.measurementSheet.freezePanes !== false;
+    measurementFreezePanesButton.classList.toggle("is-active", freezeEnabled);
+    measurementFreezePanesButton.setAttribute("aria-pressed", freezeEnabled ? "true" : "false");
+    measurementFreezePanesButton.title = freezeEnabled ? "Freeze uključen" : "Freeze isključen";
   }
 
   const activeFormat = getMeasurementActiveCellFormat();
@@ -47575,6 +47737,7 @@ function exitMeasurementEditMode() {
   state.measurementSheet.editingCell = null;
   state.measurementSheet.editorSource = null;
   state.measurementSheet.formulaReferences = [];
+  state.measurementSheet.historyCoalesceKey = "";
   if (shouldRestoreLightCells) {
     renderMeasurementSheet();
     syncMeasurementToolbar();
@@ -47913,6 +48076,7 @@ function setMeasurementSelectionByIndex(rowIndex, columnIndex, options = {}) {
   }
 
   state.measurementSheet.activeCell = { rowId: row.id, columnId: column.id };
+  state.measurementSheet.historyCoalesceKey = "";
 
   if (extend && state.measurementSheet.selectionAnchor) {
     state.measurementSheet.selectedRange = createMeasurementSelectionRange(
@@ -48689,6 +48853,7 @@ function pasteMeasurementClipboard(text) {
     return false;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   let startRowIndex = state.measurementSheet.activeCell
     ? getMeasurementRowIndex(state.measurementSheet.activeCell.rowId)
     : 0;
@@ -48753,6 +48918,7 @@ function clearMeasurementRange(range) {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   for (let rowIndex = range.startRowIndex; rowIndex <= range.endRowIndex; rowIndex += 1) {
     const row = state.measurementSheet.rows[rowIndex];
 
@@ -48905,6 +49071,7 @@ function openTemplateMeasurementSheet(fieldId) {
   state.measurementSheet.quickFillPopoverOpen = false;
   documentTemplateFieldDrafts[fieldIndex].sheet = ensureDocumentTemplateMeasurementFieldSheet(documentTemplateFieldDrafts[fieldIndex]);
   applyMeasurementSheetSnapshot(documentTemplateFieldDrafts[fieldIndex].sheet);
+  resetMeasurementSheetHistory();
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
   renderMeasurementSheetPresetLibrary();
@@ -49125,6 +49292,7 @@ function openDocumentTemplateRuntimeMeasurementSheet(fieldId, workOrderId = stat
   state.measurementSheet.ownerFieldId = normalizedFieldId;
   state.measurementSheet.ownerRuntimeWorkOrderId = normalizedWorkOrderId;
   applyMeasurementSheetSnapshot(getDocumentTemplateRuntimeMeasurementSheet(normalizedWorkOrderId, field));
+  resetMeasurementSheetHistory();
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
 
@@ -49166,6 +49334,7 @@ function openWorkOrderDocumentFcMeasurementSheet(workOrder = {}, stateEntry = {}
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   applyMeasurementSheetSnapshot(sheet);
+  resetMeasurementSheetHistory();
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
 
@@ -49763,6 +49932,7 @@ function renderMeasurementSheet(options = {}) {
   let renderedFormulaCount = 0;
   syncMeasurementSheetVirtualViewport(virtualWindow);
   measurementSheetPanel?.classList.toggle("is-virtualized-grid", virtualWindow.virtual);
+  measurementSheetPanel?.classList.toggle("is-freeze-panes", state.measurementSheet.freezePanes !== false);
   renderMeasurementSharedValidationLists(validationRenderMeta);
 
   mergeDescriptors.forEach((merge) => {
@@ -49856,6 +50026,9 @@ function renderMeasurementSheet(options = {}) {
         title.addEventListener(eventName, (event) => {
           event.stopPropagation();
         });
+      });
+      title.addEventListener("focus", () => {
+        pushMeasurementSheetHistorySnapshot({ coalesceKey: `column-title:${column.id}` });
       });
       title.addEventListener("input", (event) => {
         column.label = event.currentTarget.value || "Nova kolona";
@@ -50310,6 +50483,7 @@ function openMeasurementSheet() {
   state.measurementSheet.ownerKind = "work_order";
   state.measurementSheet.ownerFieldId = "";
   state.measurementSheet.ownerRuntimeWorkOrderId = "";
+  resetMeasurementSheetHistory();
   syncMeasurementSheetHeaderFromWorkOrder();
   renderMeasurementSheet();
   if (!state.measurementSheet.activeCell) {
@@ -50368,12 +50542,14 @@ function closeMeasurementSheet() {
     error: "",
     message: "",
   };
+  resetMeasurementSheetHistory();
 }
 
 function resetMeasurementSheet() {
   clearScheduledMeasurementSheetRefresh();
   clearScheduledMeasurementSheetRender();
   stopMeasurementFillAutoScroll();
+  pushMeasurementSheetHistorySnapshot();
   state.measurementSheet.columns = buildDefaultMeasurementColumns();
   state.measurementSheet.rows = buildDefaultMeasurementRows();
   state.measurementSheet.merges = [];
@@ -50401,6 +50577,7 @@ function resetMeasurementSheet() {
 
 function addMeasurementColumn() {
   ensureMeasurementSheetStructure();
+  pushMeasurementSheetHistorySnapshot();
   appendMeasurementEditableColumn();
   renderMeasurementSheet();
   handleMeasurementSheetMutation();
@@ -50441,6 +50618,7 @@ function insertMeasurementRowAt(index) {
   const scrollTop = measurementSheetGridWrap?.scrollTop ?? 0;
   const scrollLeft = measurementSheetGridWrap?.scrollLeft ?? 0;
 
+  pushMeasurementSheetHistorySnapshot();
   state.measurementSheet.rows.splice(insertionIndex, 0, createMeasurementRow());
   expandMeasurementMergesForInsertedRow(insertionIndex);
   renderMeasurementSheet();
@@ -50464,6 +50642,7 @@ function insertMeasurementColumnAt(index) {
   const activeRowIndex = getMeasurementActiveCellPosition()?.rowIndex ?? 0;
   const scrollTop = measurementSheetGridWrap?.scrollTop ?? 0;
   const scrollLeft = measurementSheetGridWrap?.scrollLeft ?? 0;
+  pushMeasurementSheetHistorySnapshot();
   const nextColumnIndex = insertMeasurementEditableColumnAt(insertionIndex);
   expandMeasurementMergesForInsertedColumn(insertionIndex);
 
@@ -50516,6 +50695,7 @@ function deleteMeasurementRowAt(index) {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   state.measurementSheet.rows.splice(index, 1);
   state.measurementSheet.headerRows = state.measurementSheet.headerRows.filter((rowId) => rowId !== targetRow.id);
   state.measurementSheet.merges = getMeasurementMergeDescriptors()
@@ -50550,6 +50730,7 @@ function deleteMeasurementColumnAt(index) {
     return;
   }
 
+  pushMeasurementSheetHistorySnapshot();
   state.measurementSheet.columns.splice(index, 1);
   state.measurementSheet.rows.forEach((row) => {
     if (row?.cells) {
@@ -50635,6 +50816,7 @@ function applyMeasurementFill(mode, options = {}) {
   const targetColumns = getEditableMeasurementColumnsInRange(selectionRange);
   const selectionHeight = selectionRange.endRowIndex - selectionRange.startRowIndex + 1;
 
+  pushMeasurementSheetHistorySnapshot();
   targetColumns.forEach((column) => {
     const snapshotValues = snapshotRows.map((row) => row.cells?.[column.id] ?? "");
     const snapshotFormats = snapshotRows.map((row) => normalizeMeasurementCellFormat(row.formats?.[column.id]));
@@ -134183,6 +134365,17 @@ measurementContextAddColumnRightButton?.addEventListener("click", () => {
 measurementContextDeleteColumnButton?.addEventListener("click", () => {
   deleteMeasurementContextColumn();
 });
+measurementUndoButton?.addEventListener("click", () => {
+  undoMeasurementSheetChange();
+});
+measurementRedoButton?.addEventListener("click", () => {
+  redoMeasurementSheetChange();
+});
+measurementFreezePanesButton?.addEventListener("click", () => {
+  state.measurementSheet.freezePanes = state.measurementSheet.freezePanes === false;
+  renderMeasurementSheet({ invalidateFormulaCache: false });
+  syncMeasurementToolbar();
+});
 measurementFormulaInput?.addEventListener("focus", () => {
   if (!state.measurementSheet.activeCell) {
     measurementFormulaInput.blur();
@@ -141439,6 +141632,30 @@ document.addEventListener("keydown", (event) => {
 
     event.preventDefault();
     selectAllMeasurementCells();
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+    if (isMeasurementEditorFocused) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.shiftKey) {
+      redoMeasurementSheetChange();
+    } else {
+      undoMeasurementSheetChange();
+    }
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+    if (isMeasurementEditorFocused) {
+      return;
+    }
+
+    event.preventDefault();
+    redoMeasurementSheetChange();
     return;
   }
 

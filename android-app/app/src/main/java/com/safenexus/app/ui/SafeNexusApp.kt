@@ -27696,8 +27696,29 @@ private fun MeasurementTableEditor(
     requireSpaceSelection: Boolean = false,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
+    val historyLimit = 24
     val columnWindowSize = 8
     var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
+    var undoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
+    var redoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
+    fun commitSheetChange(nextSheet: WorkOrderMeasurementSheet) {
+        if (nextSheet == sheet) return
+        undoStack = (undoStack + sheet).takeLast(historyLimit)
+        redoStack = emptyList()
+        onSheetChange(nextSheet)
+    }
+    fun undoSheetChange() {
+        val previous = undoStack.lastOrNull() ?: return
+        undoStack = undoStack.dropLast(1)
+        redoStack = (redoStack + sheet).takeLast(historyLimit)
+        onSheetChange(previous)
+    }
+    fun redoSheetChange() {
+        val next = redoStack.lastOrNull() ?: return
+        redoStack = redoStack.dropLast(1)
+        undoStack = (undoStack + sheet).takeLast(historyLimit)
+        onSheetChange(next)
+    }
     LaunchedEffect(sheet.columns.size) {
         val maxStart = (sheet.columns.size - columnWindowSize).coerceAtLeast(0)
         if (columnWindowStart > maxStart) {
@@ -27758,7 +27779,7 @@ private fun MeasurementTableEditor(
             enabled = enabled,
             onDismiss = { quickFillOpen = false },
             onApply = { draft ->
-                onSheetChange(applyMeasurementQuickFill(sheet, draft))
+                commitSheetChange(applyMeasurementQuickFill(sheet, draft))
                 extraRowWindow = extraRowWindow.coerceAtLeast(20)
                 quickFillOpen = false
             },
@@ -27839,7 +27860,7 @@ private fun MeasurementTableEditor(
                                     val row = selectedRow
                                     val column = selectedColumn
                                     if (row != null && column != null) {
-                                        onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                        commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
                                     }
                                 },
                             )
@@ -27851,7 +27872,7 @@ private fun MeasurementTableEditor(
                                 val row = selectedRow
                                 val column = selectedColumn
                                 if (row != null && column != null && selectedEditable) {
-                                    onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                    commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
                                 }
                             },
                             modifier = Modifier.weight(1f),
@@ -27868,12 +27889,12 @@ private fun MeasurementTableEditor(
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     AssistChip(
-                        onClick = { onSheetChange(appendBlankMeasurementRows(sheet, 1)) },
+                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheet, 1)) },
                         enabled = enabled,
                         label = { Text("+ Red") },
                     )
                     AssistChip(
-                        onClick = { onSheetChange(appendBlankMeasurementRows(sheet, 5)) },
+                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheet, 5)) },
                         enabled = enabled,
                         label = { Text("+ 5") },
                     )
@@ -27883,20 +27904,59 @@ private fun MeasurementTableEditor(
                         label = { Text("Brzi unos") },
                     )
                     AssistChip(
-                        onClick = { onSheetChange(duplicateLastMeasurementRow(sheet)) },
+                        onClick = { commitSheetChange(duplicateLastMeasurementRow(sheet)) },
                         enabled = enabled,
                         label = { Text("Kopiraj zadnji") },
                     )
                     AssistChip(
-                        onClick = { onSheetChange(fillMeasurementRowNumbers(sheet)) },
+                        onClick = { commitSheetChange(fillMeasurementRowNumbers(sheet)) },
                         enabled = enabled,
                         label = { Text("R.br.") },
                     )
                     AssistChip(
-                        onClick = { onSheetChange(appendMeasurementColumn(sheet)) },
+                        onClick = { commitSheetChange(appendMeasurementColumn(sheet)) },
                         enabled = enabled,
                         label = { Text("+ Kolona") },
                     )
+                    AssistChip(
+                        onClick = { undoSheetChange() },
+                        enabled = enabled && undoStack.isNotEmpty(),
+                        label = { Text("Undo") },
+                    )
+                    AssistChip(
+                        onClick = { redoSheetChange() },
+                        enabled = enabled && redoStack.isNotEmpty(),
+                        label = { Text("Redo") },
+                    )
+                }
+                if (selectedRow != null && selectedColumn != null && selectedEditable && !selectedRequiresSpaceSelection) {
+                    val formulaSeeds = listOf("SUM", "AVERAGE", "IF", "IFERROR", "COUNTIF", "VLOOKUP", "RANDBETWEEN")
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        Text(
+                            "fx prijedlozi",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                        formulaSeeds.forEach { seed ->
+                            AssistChip(
+                                onClick = {
+                                    val nextValue = if (selectedRaw.trim().startsWith("=")) {
+                                        selectedRaw + seed + "("
+                                    } else {
+                                        "=$seed("
+                                    }
+                                    commitSheetChange(updateMeasurementSheetCell(sheet, selectedRow.id, selectedColumn.id, nextValue))
+                                },
+                                enabled = enabled,
+                                label = { Text(seed) },
+                            )
+                        }
+                    }
                 }
                 if (sheet.columns.size > columnWindowSize) {
                     Row(
@@ -27940,7 +28000,7 @@ private fun MeasurementTableEditor(
                         ).forEach { (value, color) ->
                             AssistChip(
                                 onClick = {
-                                    onSheetChange(
+                                    commitSheetChange(
                                         updateMeasurementCellFill(
                                             updateMeasurementSheetCell(sheet, selectedRow.id, selectedColumn.id, value),
                                             selectedRow.id,
@@ -27954,71 +28014,84 @@ private fun MeasurementTableEditor(
                             )
                         }
                         MeasurementColorChip("Zelena", "#d9ead3", enabled) {
-                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#d9ead3"))
+                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#d9ead3"))
                         }
                         MeasurementColorChip("Žuta", "#fff2cc", enabled) {
-                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#fff2cc"))
+                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#fff2cc"))
                         }
                         MeasurementColorChip("Crvena", "#f4cccc", enabled) {
-                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#f4cccc"))
+                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#f4cccc"))
                         }
                         MeasurementColorChip("Siva", "#eeeeee", enabled) {
-                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#eeeeee"))
+                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#eeeeee"))
                         }
                         MeasurementColorChip("Bez", null, enabled) {
-                            onSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, null))
+                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, null))
                         }
                     }
                 }
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
                         .border(1.dp, gridLine, RoundedCornerShape(6.dp))
                         .clip(RoundedCornerShape(6.dp)),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column {
                         MeasurementHeaderCell("", 46, subtle = true)
-                        visibleColumns.forEachIndexed { columnIndex, column ->
-                            val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
-                                ?: (columnWindowStart + columnIndex)
-                            MeasurementHeaderCell(measurementColumnLabel(absoluteColumnIndex), column.width)
-                        }
-                    }
-                    visibleRows.forEachIndexed { rowIndex, row ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        visibleRows.forEachIndexed { rowIndex, row ->
                             Surface(
                                 modifier = Modifier
                                     .width(46.dp)
                                     .height(44.dp)
                                     .border(0.6.dp, gridLine),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+                                color = if (selectedCell.rowIndex == rowIndex) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                                },
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text("${rowIndex + 1}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                 }
                             }
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             visibleColumns.forEachIndexed { columnIndex, column ->
                                 val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
                                     ?: (columnWindowStart + columnIndex)
-                                MeasurementGridCell(
-                                    column = column,
-                                    displayValue = sheet.measurementCellDisplay(rowIndex, absoluteColumnIndex),
-                                    rawValue = row.cells[column.id].orEmpty(),
-                                    cellFormat = row.formats[column.id],
-                                    headerRow = sheet.headerRows.contains(row.id),
-                                    selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex,
-                                    enabled = enabled,
-                                    onClick = {
-                                        selectedCell = MeasurementCellSelection(rowIndex, absoluteColumnIndex)
-                                    },
-                                    onChange = { value ->
-                                        if (!(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn())) {
-                                            onSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
-                                        }
-                                    },
-                                    directEditable = !(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn()),
-                                )
+                                MeasurementHeaderCell(measurementColumnLabel(absoluteColumnIndex), column.width)
+                            }
+                        }
+                        visibleRows.forEachIndexed { rowIndex, row ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                visibleColumns.forEachIndexed { columnIndex, column ->
+                                    val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
+                                        ?: (columnWindowStart + columnIndex)
+                                    MeasurementGridCell(
+                                        column = column,
+                                        displayValue = sheet.measurementCellDisplay(rowIndex, absoluteColumnIndex),
+                                        rawValue = row.cells[column.id].orEmpty(),
+                                        cellFormat = row.formats[column.id],
+                                        headerRow = sheet.headerRows.contains(row.id),
+                                        selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex,
+                                        enabled = enabled,
+                                        onClick = {
+                                            selectedCell = MeasurementCellSelection(rowIndex, absoluteColumnIndex)
+                                        },
+                                        onChange = { value ->
+                                            if (!(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn())) {
+                                                commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                            }
+                                        },
+                                        directEditable = !(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn()),
+                                    )
+                                }
                             }
                         }
                     }

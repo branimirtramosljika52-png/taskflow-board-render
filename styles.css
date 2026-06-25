@@ -20754,6 +20754,31 @@ body.is-work-order-document-category-open {
   cursor: cell;
 }
 
+.measurement-sheet-panel:not(.is-freeze-panes) .measurement-sheet-grid thead th,
+.measurement-sheet-panel:not(.is-freeze-panes) .measurement-sheet-corner,
+.measurement-sheet-panel:not(.is-freeze-panes) .measurement-sheet-grid tbody th {
+  position: static;
+}
+
+.measurement-sheet-panel.is-freeze-panes .measurement-sheet-corner {
+  z-index: 5;
+  box-shadow: 8px 0 18px rgba(15, 23, 42, 0.06);
+}
+
+.measurement-sheet-panel.is-freeze-panes .measurement-sheet-grid tbody th {
+  z-index: 3;
+  box-shadow: 8px 0 18px rgba(15, 23, 42, 0.045);
+}
+
+.measurement-sheet-panel.is-freeze-panes .measurement-sheet-grid thead th {
+  z-index: 4;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.045);
+}
+
+.measurement-sheet-panel.is-freeze-panes .measurement-sheet-grid thead th.measurement-sheet-corner {
+  z-index: 6;
+}
+
 .measurement-sheet-grid tbody td {
   padding: 0;
   border-right: 1px solid rgba(17, 17, 17, 0.12);

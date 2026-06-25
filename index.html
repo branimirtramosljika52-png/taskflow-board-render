@@ -2689,14 +2689,33 @@
                     id="measurement-formula-input"
                     type="text"
                     autocomplete="off"
+                    list="measurement-formula-suggestions"
                     spellcheck="false"
                     placeholder="Vrijednost ili formula"
                   />
+                  <datalist id="measurement-formula-suggestions">
+                    <option value="=SUM("></option>
+                    <option value="=AVERAGE("></option>
+                    <option value="=MIN("></option>
+                    <option value="=MAX("></option>
+                    <option value="=IF("></option>
+                    <option value="=IFERROR("></option>
+                    <option value="=COUNTIF("></option>
+                    <option value="=COUNTIFS("></option>
+                    <option value="=VLOOKUP("></option>
+                    <option value="=ROWS("></option>
+                    <option value="=ROW("></option>
+                    <option value="=CONCATENATE("></option>
+                    <option value="=RANDBETWEEN("></option>
+                  </datalist>
                 </label>
               </div>
 
               <div class="measurement-toolbar-secondary">
                 <div class="measurement-toolbar-icon-cluster" role="group" aria-label="Brzi alati za ćeliju">
+                  <button id="measurement-undo" type="button" class="ghost-button measurement-toolbar-icon-button" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+                  <button id="measurement-redo" type="button" class="ghost-button measurement-toolbar-icon-button" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+                  <button id="measurement-freeze-panes" type="button" class="ghost-button measurement-toolbar-icon-button" title="Freeze header/row index" aria-label="Freeze header/row index">▣</button>
                   <button id="measurement-format-type-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Tip ćelije" aria-label="Tip ćelije">123</button>
 
                   <div class="measurement-toolbar-decimal-stepper" role="group" aria-label="Broj decimalnih mjesta">
