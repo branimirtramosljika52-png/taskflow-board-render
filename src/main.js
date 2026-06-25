@@ -2692,6 +2692,7 @@ const state = {
     editingCell: null,
     editorSource: null,
     formulaReferences: [],
+    formulaCache: null,
     selectionAnchor: null,
     selectedRange: null,
     selectionDrag: null,
@@ -28536,6 +28537,8 @@ function persistMeasurementSheetToTemplateField({ rerenderFieldRows = false } = 
 }
 
 function handleMeasurementSheetMutation({ immediate = false } = {}) {
+  invalidateMeasurementSheetFormulaCache();
+
   if (state.measurementSheet.ownerKind === "template_field") {
     persistMeasurementSheetToTemplateField();
     return;
@@ -43192,6 +43195,8 @@ function buildDefaultMeasurementRows(count = DEFAULT_MEASUREMENT_ROW_COUNT) {
 }
 
 const PHYSICAL_FACTORS_RO_F3_DATA_ROW_COUNT = 120;
+const PHYSICAL_FACTORS_RO_F3_MIN_INLINE_DATA_ROW_COUNT = 36;
+const PHYSICAL_FACTORS_RO_F3_MAX_INLINE_DATA_ROW_COUNT = 80;
 
 const PHYSICAL_FACTORS_RO_F3_HEADERS = {
   A: "Prostor/    Prostorija*",
@@ -43457,7 +43462,25 @@ function buildPhysicalFactorsRoF3DataFormulas(rowNumber) {
   };
 }
 
-function buildPhysicalFactorsRoF3SheetTemplate() {
+function buildPhysicalFactorsRoF3DataRow(rowNumber, columns) {
+  const formulaCells = buildPhysicalFactorsRoF3DataFormulas(rowNumber);
+  return createPhysicalFactorsRoF3Row(rowNumber, columns, formulaCells, {
+    I: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
+    Y: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
+    AL: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
+    BC: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
+  });
+}
+
+function normalizePhysicalFactorsRoF3DataRowCount(value = PHYSICAL_FACTORS_RO_F3_DATA_ROW_COUNT) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return PHYSICAL_FACTORS_RO_F3_DATA_ROW_COUNT;
+  }
+  return Math.max(1, Math.min(PHYSICAL_FACTORS_RO_F3_DATA_ROW_COUNT, Math.round(parsed)));
+}
+
+function buildPhysicalFactorsRoF3SheetTemplate({ dataRowCount = PHYSICAL_FACTORS_RO_F3_DATA_ROW_COUNT } = {}) {
   const columns = buildPhysicalFactorsRoF3Columns();
   const titleFormat = buildPhysicalFactorsRoF3Format({
     fillColor: "#dbeafe",
@@ -43517,14 +43540,9 @@ function buildPhysicalFactorsRoF3SheetTemplate() {
     ]),
   )));
 
-  for (let rowNumber = 4; rowNumber < PHYSICAL_FACTORS_RO_F3_DATA_ROW_COUNT + 4; rowNumber += 1) {
-    const formulaCells = buildPhysicalFactorsRoF3DataFormulas(rowNumber);
-    rows.push(createPhysicalFactorsRoF3Row(rowNumber, columns, formulaCells, {
-      I: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
-      Y: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
-      AL: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
-      BC: buildPhysicalFactorsRoF3Format({ align: "center", border: "all" }),
-    }));
+  const normalizedDataRowCount = normalizePhysicalFactorsRoF3DataRowCount(dataRowCount);
+  for (let rowNumber = 4; rowNumber < normalizedDataRowCount + 4; rowNumber += 1) {
+    rows.push(buildPhysicalFactorsRoF3DataRow(rowNumber, columns));
   }
 
   const idByLetter = new Map(columns.map((column) => [column.label, column.id]));
@@ -43690,10 +43708,14 @@ function buildWorkOrderDocumentFcMeasurementSheetFromSpaces(spaces = [], existin
   const meaningfulSpaces = (Array.isArray(spaces) ? spaces : [])
     .filter((space) => space && !space.isPlaceholder)
     .map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, {}, { isChemical: false }));
+  const inlineDataRowCount = Math.max(
+    PHYSICAL_FACTORS_RO_F3_MIN_INLINE_DATA_ROW_COUNT,
+    Math.min(PHYSICAL_FACTORS_RO_F3_MAX_INLINE_DATA_ROW_COUNT, meaningfulSpaces.length + 24),
+  );
   const sourceSheet = !reset && isPhysicalFactorsRoF3MeasurementSheet(existingSheet)
     ? normalizeWorkOrderMeasurementSheet(existingSheet)
-    : buildPhysicalFactorsRoF3SheetTemplate();
-  const sheet = normalizeWorkOrderMeasurementSheet(sourceSheet) ?? buildPhysicalFactorsRoF3SheetTemplate();
+    : buildPhysicalFactorsRoF3SheetTemplate({ dataRowCount: inlineDataRowCount });
+  const sheet = normalizeWorkOrderMeasurementSheet(sourceSheet) ?? buildPhysicalFactorsRoF3SheetTemplate({ dataRowCount: inlineDataRowCount });
   const firstDataRowIndex = 3;
 
   meaningfulSpaces.forEach((space, index) => {
@@ -44012,6 +44034,7 @@ function applyMeasurementSheetSnapshot(snapshot = null) {
   state.measurementSheet.editingCell = null;
   state.measurementSheet.editorSource = null;
   state.measurementSheet.formulaReferences = [];
+  invalidateMeasurementSheetFormulaCache();
   state.measurementSheet.selectionAnchor = null;
   state.measurementSheet.selectedRange = null;
   state.measurementSheet.selectionDrag = null;
@@ -44228,8 +44251,7 @@ function buildDocumentTemplateMeasurementFormulaContext({
   };
 }
 
-function buildActiveMeasurementSheetFormulaContext() {
-  const currentSheet = buildCurrentMeasurementSheetFormulaSnapshot();
+function buildActiveMeasurementSheetFormulaContext(currentSheet = buildCurrentMeasurementSheetFormulaSnapshot()) {
   const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
   if (ownerKind === "work_environment_fc") {
     return buildWorkOrderDocumentFcMeasurementFormulaContext({
@@ -44256,6 +44278,34 @@ function buildActiveMeasurementSheetFormulaContext() {
   });
 }
 
+function invalidateMeasurementSheetFormulaCache() {
+  state.measurementSheet.formulaCache = null;
+}
+
+function getActiveMeasurementSheetFormulaCache() {
+  const currentSheet = buildCurrentMeasurementSheetFormulaSnapshot();
+  const cacheKey = [
+    state.measurementSheet.ownerKind || "",
+    state.measurementSheet.ownerFieldId || "",
+    state.measurementSheet.ownerRuntimeWorkOrderId || "",
+    state.measurementSheet.rows.length,
+    state.measurementSheet.columns.length,
+  ].join("|");
+
+  if (state.measurementSheet.formulaCache?.key === cacheKey) {
+    return state.measurementSheet.formulaCache;
+  }
+
+  const formulaContext = buildActiveMeasurementSheetFormulaContext(currentSheet);
+  state.measurementSheet.formulaCache = {
+    key: cacheKey,
+    currentSheet,
+    formulaContext,
+    values: new Map(),
+  };
+  return state.measurementSheet.formulaCache;
+}
+
 function resolveMeasurementFormulaSheetEntry(reference, formulaContext = null, currentEntry = null) {
   const sheetName = getMeasurementFormulaReferenceSheetName(reference);
   const context = formulaContext || {};
@@ -44270,7 +44320,7 @@ function resolveMeasurementFormulaSheetEntry(reference, formulaContext = null, c
     || fallbackEntry;
 }
 
-function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex, stack = new Set(), formulaContext = null, sheetEntry = null) {
+function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex, stack = new Set(), formulaContext = null, sheetEntry = null, formulaCache = null) {
   const currentSheet = sheet || sheetEntry?.sheet || null;
   const currentEntry = sheetEntry || formulaContext?.current || {
     key: "current",
@@ -44283,17 +44333,24 @@ function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex
     return "";
   }
 
+  const cellKey = `${currentEntry?.key || "current"}:${rowIndex}:${columnIndex}`;
+  if (formulaCache?.values?.has(cellKey)) {
+    return formulaCache.values.get(cellKey);
+  }
+
   if (column.computed === "average") {
-    return getMeasurementAverageValue(row) ?? "";
+    const averageValue = getMeasurementAverageValue(row) ?? "";
+    formulaCache?.values?.set(cellKey, averageValue);
+    return averageValue;
   }
 
   const rawValue = row.cells?.[column.id] ?? "";
 
   if (!isMeasurementFormula(rawValue)) {
-    return normalizeMeasurementLiteralValue(rawValue);
+    const literalValue = normalizeMeasurementLiteralValue(rawValue);
+    formulaCache?.values?.set(cellKey, literalValue);
+    return literalValue;
   }
-
-  const cellKey = `${currentEntry?.key || "current"}:${rowIndex}:${columnIndex}`;
 
   if (stack.has(cellKey)) {
     throw new Error("Kruzna referenca u formuli.");
@@ -44302,7 +44359,7 @@ function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex
   stack.add(cellKey);
 
   try {
-    return evaluateMeasurementFormula(rawValue, {
+    const computedValue = evaluateMeasurementFormula(rawValue, {
       currentRowIndex: rowIndex,
       currentColumnIndex: columnIndex,
       resolveCellReference(reference) {
@@ -44327,6 +44384,7 @@ function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex
           stack,
           formulaContext,
           targetEntry || currentEntry,
+          formulaCache,
         );
       },
       resolveRange(startReference, endReference) {
@@ -44367,6 +44425,7 @@ function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex
               stack,
               formulaContext,
               targetEntry,
+              formulaCache,
             ));
           }
           matrix.push(rowValues);
@@ -44375,6 +44434,8 @@ function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex
         return matrix;
       },
     });
+    formulaCache?.values?.set(cellKey, computedValue);
+    return computedValue;
   } finally {
     stack.delete(cellKey);
   }
@@ -46950,15 +47011,26 @@ function syncMeasurementToolbar() {
 
 function ensureMeasurementRowsThrough(targetRowIndex) {
   while (state.measurementSheet.rows.length <= targetRowIndex) {
-    state.measurementSheet.rows.push(createMeasurementRow());
+    state.measurementSheet.rows.push(createMeasurementRowForAppend());
   }
+}
+
+function createMeasurementRowForAppend() {
+  if (
+    isWorkOrderDocumentFcMeasurementSheetOwner()
+    && isPhysicalFactorsRoF3MeasurementSheet(buildCurrentMeasurementSheetFormulaSnapshot())
+  ) {
+    return buildPhysicalFactorsRoF3DataRow(state.measurementSheet.rows.length + 1, state.measurementSheet.columns);
+  }
+
+  return createMeasurementRow();
 }
 
 function appendMeasurementRows(count = MEASUREMENT_ROW_BATCH_SIZE) {
   const total = Math.max(1, count);
 
   for (let index = 0; index < total; index += 1) {
-    state.measurementSheet.rows.push(createMeasurementRow());
+    state.measurementSheet.rows.push(createMeasurementRowForAppend());
   }
 }
 
@@ -47073,14 +47145,16 @@ function isMeasurementFormulaBarEditingCell(rowId, columnId) {
 }
 
 function getMeasurementCellComputedValue(rowIndex, columnIndex, stack = new Set()) {
-  const formulaContext = buildActiveMeasurementSheetFormulaContext();
+  const formulaCache = getActiveMeasurementSheetFormulaCache();
+  const formulaContext = formulaCache.formulaContext;
   return getMeasurementSheetFormulaComputedRawValue(
-    buildCurrentMeasurementSheetFormulaSnapshot(),
+    formulaCache.currentSheet,
     rowIndex,
     columnIndex,
     stack,
     formulaContext,
     formulaContext.current,
+    formulaCache,
   );
 }
 
@@ -49196,6 +49270,7 @@ function syncMeasurementSheetPanelMount() {
 
 function renderMeasurementSheet() {
   ensureMeasurementSheetStructure();
+  invalidateMeasurementSheetFormulaCache();
 
   if (!measurementSheetBody || !measurementSheetHead || !measurementSheetColgroup) {
     return;
@@ -49727,6 +49802,7 @@ function closeMeasurementSheet() {
   state.measurementSheet.editingCell = null;
   state.measurementSheet.editorSource = null;
   state.measurementSheet.formulaReferences = [];
+  invalidateMeasurementSheetFormulaCache();
   state.measurementSheet.validationPopoverOpen = false;
   state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.aiPopoverOpen = false;
@@ -49761,6 +49837,7 @@ function resetMeasurementSheet() {
   state.measurementSheet.activeCell = null;
   state.measurementSheet.editingCell = null;
   state.measurementSheet.editorSource = null;
+  invalidateMeasurementSheetFormulaCache();
   state.measurementSheet.selectionAnchor = null;
   state.measurementSheet.selectedRange = null;
   state.measurementSheet.selectionDrag = null;
