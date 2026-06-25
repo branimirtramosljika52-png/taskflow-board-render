@@ -226,6 +226,22 @@ import {
   shouldShowWorkOrderDocumentPhysicalFactorsSection,
 } from "./features/workOrderDocuments/nativeServices.js";
 import {
+  WORK_ORDER_DOCUMENT_RO_MATRIX_SECTIONS,
+  WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS as WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS_MODEL,
+  WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES as WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES_MODEL,
+  buildWorkOrderDocumentRoMatrixRows,
+  getWorkOrderDocumentRoAssessmentItems as getWorkOrderDocumentRoAssessmentItemsModel,
+  getWorkOrderDocumentRoEquipmentValue as getWorkOrderDocumentRoEquipmentValueModel,
+  getWorkOrderDocumentWorkEquipmentFilterCounts as getWorkOrderDocumentWorkEquipmentFilterCountsModel,
+  getWorkOrderDocumentWorkEquipmentFilterKind as getWorkOrderDocumentWorkEquipmentFilterKindModel,
+  getWorkOrderDocumentWorkEquipmentGrade as getWorkOrderDocumentWorkEquipmentGradeModel,
+  getWorkOrderDocumentWorkEquipmentToday as getWorkOrderDocumentWorkEquipmentTodayModel,
+  matchesWorkOrderDocumentWorkEquipmentFilter as matchesWorkOrderDocumentWorkEquipmentFilterModel,
+  normalizeWorkOrderDocumentRoAssessmentSourceItems as normalizeWorkOrderDocumentRoAssessmentSourceItemsModel,
+  normalizeWorkOrderDocumentWorkEquipmentGrade as normalizeWorkOrderDocumentWorkEquipmentGradeModel,
+  parseWorkOrderDocumentWorkEquipmentDate as parseWorkOrderDocumentWorkEquipmentDateModel,
+} from "./features/workOrderDocuments/workEquipmentPresentation.js";
+import {
   WORK_ORDER_DOCUMENT_FC_DEFAULT_HEALTH_REQUIREMENTS,
   WORK_ORDER_DOCUMENT_FC_DEFAULT_OBLIGATION_REGISTERS,
   WORK_ORDER_DOCUMENT_FC_HARMFULNESS_LABELS,
@@ -250,6 +266,22 @@ import {
   randomizeWorkOrderDocumentFcMeasurementRow,
   syncWorkOrderDocumentFcMeasurementsWithSpaces,
 } from "./features/workEnvironment/physicalFactors.js";
+import {
+  WORK_ORDER_DOCUMENT_FC_FILTERS as WORK_ORDER_DOCUMENT_FC_FILTERS_MODEL,
+  getWorkOrderDocumentPhysicalFactorsDeadline as getWorkOrderDocumentPhysicalFactorsDeadlineModel,
+  getWorkOrderDocumentPhysicalFactorsFilterCounts as getWorkOrderDocumentPhysicalFactorsFilterCountsModel,
+  getWorkOrderDocumentPhysicalFactorsGrade as getWorkOrderDocumentPhysicalFactorsGradeModel,
+  getWorkOrderDocumentWorkEnvironmentDisplayText as getWorkOrderDocumentWorkEnvironmentDisplayTextModel,
+  getWorkOrderDocumentWorkEnvironmentGradeLabel as getWorkOrderDocumentWorkEnvironmentGradeLabelModel,
+  getWorkOrderDocumentWorkEnvironmentMeasurementRows as getWorkOrderDocumentWorkEnvironmentMeasurementRowsModel,
+  getWorkOrderDocumentWorkEnvironmentPreviewItems as getWorkOrderDocumentWorkEnvironmentPreviewItemsModel,
+  getWorkOrderDocumentWorkEnvironmentRecordId as getWorkOrderDocumentWorkEnvironmentRecordIdModel,
+  getWorkOrderDocumentWorkEnvironmentSpaceRows as getWorkOrderDocumentWorkEnvironmentSpaceRowsModel,
+  matchesWorkOrderDocumentPhysicalFactorsFilter as matchesWorkOrderDocumentPhysicalFactorsFilterModel,
+  normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels as normalizeWorkOrderDocumentWorkEnvironmentUniqueLabelsModel,
+  summarizeWorkOrderDocumentWorkEnvironmentMeasurements as summarizeWorkOrderDocumentWorkEnvironmentMeasurementsModel,
+  summarizeWorkOrderDocumentWorkEnvironmentValues as summarizeWorkOrderDocumentWorkEnvironmentValuesModel,
+} from "./features/workEnvironment/presentation.js";
 import {
   CHAT_EMOJI_SHORTCUTS,
   normalizeChatMessageBody,
@@ -119010,33 +119042,15 @@ function queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder = {}) {
   });
 }
 
-const WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS = Object.freeze([
-  { key: "all", label: "Sva oprema" },
-  { key: "overdue", label: "Istekla" },
-  { key: "upcoming", label: "Uskoro" },
-  { key: "no-deadline", label: "Bez roka" },
-  { key: "satisfactory", label: "Zadovoljava" },
-  { key: "unsatisfactory", label: "Ne zadovoljava" },
-]);
-
-const WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES = Object.freeze([
-  { key: "employer", label: "Sva oprema poslodavca" },
-  { key: "locations", label: "Oprema po lokacijama" },
-]);
+const WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS = WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS_MODEL;
+const WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES = WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_SCOPES_MODEL;
 
 function parseWorkOrderDocumentWorkEquipmentDate(value = "") {
-  const normalized = String(value || "").trim().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    return null;
-  }
-  const parsed = new Date(`${normalized}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseWorkOrderDocumentWorkEquipmentDateModel(value);
 }
 
 function getWorkOrderDocumentWorkEquipmentToday() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
+  return getWorkOrderDocumentWorkEquipmentTodayModel();
 }
 
 function getWorkOrderDocumentWorkEquipmentDeadline(item = {}) {
@@ -119044,86 +119058,31 @@ function getWorkOrderDocumentWorkEquipmentDeadline(item = {}) {
 }
 
 function getWorkOrderDocumentWorkEquipmentGrade(item = {}) {
-  return String(item.finalGrade?.label || item.finalGrade || "").trim();
+  return getWorkOrderDocumentWorkEquipmentGradeModel(item);
 }
 
 function normalizeWorkOrderDocumentWorkEquipmentGrade(value = "") {
-  return normalizeSearchText(value).replace(/\s+/g, " ").trim();
+  return normalizeWorkOrderDocumentWorkEquipmentGradeModel(value);
 }
 
 function getWorkOrderDocumentWorkEquipmentFilterKind(item = {}, today = getWorkOrderDocumentWorkEquipmentToday()) {
-  const deadline = getWorkOrderDocumentWorkEquipmentDeadline(item);
-  const grade = normalizeWorkOrderDocumentWorkEquipmentGrade(getWorkOrderDocumentWorkEquipmentGrade(item));
-  const isOverdue = Boolean(deadline && deadline < today);
-  const upcomingLimit = new Date(today);
-  upcomingLimit.setDate(today.getDate() + 30);
-  const isUpcoming = Boolean(deadline && deadline >= today && deadline <= upcomingLimit);
-  const isUnsatisfactory = grade.includes("ne zadovoljava") || grade.includes("nezadovoljava");
-  const isSatisfactory = !isUnsatisfactory && grade.includes("zadovoljava");
-  return {
-    deadline,
-    isOverdue,
-    isUpcoming,
-    isUnsatisfactory,
-    isSatisfactory,
-  };
+  return getWorkOrderDocumentWorkEquipmentFilterKindModel(item, today);
 }
 
 function matchesWorkOrderDocumentWorkEquipmentFilter(item = {}, filterKey = "all", today = getWorkOrderDocumentWorkEquipmentToday()) {
-  const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
-  switch (filterKey) {
-    case "overdue":
-      return kind.isOverdue;
-    case "upcoming":
-      return kind.isUpcoming;
-    case "no-deadline":
-      return !kind.deadline;
-    case "satisfactory":
-      return kind.isSatisfactory;
-    case "unsatisfactory":
-      return kind.isUnsatisfactory;
-    case "all":
-    default:
-      return true;
-  }
+  return matchesWorkOrderDocumentWorkEquipmentFilterModel(item, filterKey, today);
 }
 
 function getWorkOrderDocumentWorkEquipmentFilterCounts(items = [], today = getWorkOrderDocumentWorkEquipmentToday()) {
-  return WORK_ORDER_DOCUMENT_WORK_EQUIPMENT_FILTERS.reduce((counts, filter) => {
-    counts[filter.key] = (Array.isArray(items) ? items : []).filter((item) =>
-      matchesWorkOrderDocumentWorkEquipmentFilter(item, filter.key, today),
-    ).length;
-    return counts;
-  }, {});
+  return getWorkOrderDocumentWorkEquipmentFilterCountsModel(items, today);
 }
 
 function normalizeWorkOrderDocumentRoAssessmentSourceItems(items = []) {
-  return (Array.isArray(items) ? items : [])
-    .map((item) => {
-      const source = item && typeof item === "object" ? item : { label: item };
-      return {
-        registerIri: String(source.registerIri || source.iri || source["@id"] || source.register || "").trim(),
-        label: String(source.label || source.name || source.title || source.description || "").trim(),
-        customContent: String(source.customContent || source.content || source.text || "").trim(),
-        measuredValue: String(source.measuredValue || source.value || source.result || "").trim(),
-        meetsConditions: Number(source.meetsConditions) === 0 || String(source.meetsConditions).toLowerCase() === "false" ? 0 : 1,
-      };
-    })
-    .filter((item) => item.registerIri || item.label || item.customContent || item.measuredValue);
+  return normalizeWorkOrderDocumentRoAssessmentSourceItemsModel(items);
 }
 
 function getWorkOrderDocumentRoAssessmentItems(item = {}, bucketKey = "mechanical") {
-  const equipment = item.equipment || {};
-  const meta = item.meta || {};
-  const keys = bucketKey === "electrical"
-    ? ["electricalItems", "roElectricals", "electricals", "electricalChecks"]
-    : ["mechanicalItems", "roMechanicalEngineerings", "mechanicalEngineerings", "mechanicalChecks"];
-  const sources = [
-    ...keys.flatMap((key) => (Array.isArray(item[key]) ? item[key] : [])),
-    ...keys.flatMap((key) => (Array.isArray(equipment[key]) ? equipment[key] : [])),
-    ...keys.flatMap((key) => (Array.isArray(meta[key]) ? meta[key] : [])),
-  ];
-  return normalizeWorkOrderDocumentRoAssessmentSourceItems(sources);
+  return getWorkOrderDocumentRoAssessmentItemsModel(item, bucketKey);
 }
 
 function getWorkOrderDocumentRoRegisterPathForBucket(bucketKey = "mechanical") {
@@ -119359,34 +119318,12 @@ function appendWorkOrderDocumentWorkEquipmentHero(bodyNode, workOrder = {}, stat
 }
 
 function getWorkOrderDocumentRoEquipmentValue(item = {}, key = "", fallback = "-") {
-  const equipment = item.equipment || {};
-  const value = (() => {
-    switch (key) {
-      case "name":
-        return equipment.name || item.equipmentType || item.name || item.recordNumber;
-      case "manufacturer":
-        return equipment.manufacturer || item.manufacturer;
-      case "model":
-        return equipment.model || item.model || item.type;
-      case "serialNumber":
-        return equipment.serialNumber || item.serialNumber;
-      case "inventoryNumber":
-        return equipment.inventoryNumber || item.inventoryNumber;
-      case "location":
-        return getWorkOrderDocumentWorkEquipmentLocationLabel(item);
-      case "object":
-        return item.objectName || item.locationObjectName || item.workplaceName || item.meta?.objectName || item.meta?.workplaceName;
-      case "startDate":
-        return formatCompactDate(item.startDate || item.inspectionDate);
-      case "deadline":
-        return formatCompactDate(item.deadlineForNextExamination);
-      case "grade":
-        return getWorkOrderDocumentWorkEquipmentGrade(item);
-      default:
-        return "";
-    }
-  })();
-  return String(value || "").trim() || fallback;
+  return getWorkOrderDocumentRoEquipmentValueModel(item, key, {
+    fallback,
+    formatDate: formatCompactDate,
+    getLocationLabel: getWorkOrderDocumentWorkEquipmentLocationLabel,
+    getGrade: getWorkOrderDocumentWorkEquipmentGrade,
+  });
 }
 
 function appendWorkOrderDocumentRoEquipmentTable(bodyNode, {
@@ -119566,118 +119503,14 @@ function appendWorkOrderDocumentRoEquipmentTable(bodyNode, {
 }
 
 function getWorkOrderDocumentRoMatrixRows(item = {}, today = getWorkOrderDocumentWorkEquipmentToday()) {
-  const equipment = item.equipment || {};
-  const grade = getWorkOrderDocumentWorkEquipmentGrade(item);
-  const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
-  const basics = [
-    item.recordNumber,
-    item.location,
-    item.startDate,
-    item.endDate,
-    item.deadlineForNextExamination,
-    grade,
-  ].filter(Boolean).length;
-  const equipmentData = [
-    equipment.name,
-    equipment.manufacturer,
-    equipment.model,
-    equipment.serialNumber,
-    equipment.inventoryNumber,
-    equipment.note,
-    item.equipmentsTechnicalData,
-    item.equipmentsPurposeDescription,
-    item.equipmentsWorkspacePosition,
-    item.workingSubstancesAndRawMaterials,
-    item.useAndMaintenance,
-  ].filter(Boolean).length;
-  const obligationRegulations = (Array.isArray(item.roObligationRegister) ? item.roObligationRegister : [])
-    .filter(Boolean).length;
-  const requirementRegulations = [
-    ...(Array.isArray(item.roHealthRequirementRegister) ? item.roHealthRequirementRegister : []),
-    item.roHealthRequirementOther,
-  ].filter(Boolean).length;
-  const mechanicalItems = getWorkOrderDocumentRoAssessmentItems(item, "mechanical");
-  const electricalItems = getWorkOrderDocumentRoAssessmentItems(item, "electrical");
-  const mechanicalFallbackCount = [
-    item.equipmentsTechnicalData,
-    item.methodsProceduresAndNorms,
-    item.deficiencies,
-    item.measuresToEliminateDeficiencies,
-  ].filter(Boolean).length;
-  const electricalFallbackCount = [
-    item.methodsProceduresAndNorms,
-    item.useAndMaintenance,
-  ].filter(Boolean).length;
-  const mechanical = mechanicalItems.length || mechanicalFallbackCount;
-  const electrical = electricalItems.length || electricalFallbackCount;
-  const risks = [
-    item.deficiencies,
-    item.measuresToEliminateDeficiencies,
-    ...(Array.isArray(item.hazardRegisterIris) ? item.hazardRegisterIris : []),
-    ...(Array.isArray(item.harmfulnessRegisterIris) ? item.harmfulnessRegisterIris : []),
-    ...(Array.isArray(item.strainRegisterIris) ? item.strainRegisterIris : []),
-  ].filter(Boolean).length;
-  const attachments = Number(item.attachmentCount || item.attachmentsCount || 0) || 0;
-  return [
-    {
-      key: "basic",
-      value: `${Math.min(basics, 6)} / 6`,
-      detail: "popunjeno",
-      ok: basics >= 5,
-    },
-    {
-      key: "equipment",
-      value: `${Math.min(equipmentData, 11)} / 11`,
-      detail: "podaci",
-      ok: equipmentData >= 6,
-    },
-    {
-      key: "inspection",
-      value: item.endDate ? formatCompactDate(item.endDate) : "Nije ispitano",
-      detail: item.deadlineForNextExamination ? `Vrijedi do: ${formatCompactDate(item.deadlineForNextExamination)}` : "Vrijedi do: -",
-      ok: Boolean(item.endDate && !kind.isOverdue),
-      warning: kind.isUpcoming,
-      alert: kind.isOverdue,
-    },
-    {
-      key: "obligationRegulations",
-      value: `${obligationRegulations || 0}`,
-      detail: obligationRegulations ? "obveza potvrđena" : "bez obveze",
-      ok: obligationRegulations > 0,
-    },
-    {
-      key: "requirementRegulations",
-      value: `${requirementRegulations || 0}`,
-      detail: requirementRegulations ? "zahtjevi potvrđeni" : "bez zahtjeva",
-      ok: requirementRegulations > 0,
-    },
-    {
-      key: "mechanical",
-      value: mechanicalItems.length ? `${mechanicalItems.length} stavki` : (mechanical ? "Zadovoljava" : "Provjeri"),
-      detail: summarizeWorkOrderDocumentRoAssessmentItems(mechanicalItems, "mechanical", mechanical ? "opisni podaci" : "bez stavki"),
-      ok: mechanical > 0 && !normalizeWorkOrderDocumentWorkEquipmentGrade(grade).includes("ne zadovoljava"),
-      warning: mechanical === 0,
-    },
-    {
-      key: "electrical",
-      value: electricalItems.length ? `${electricalItems.length} stavki` : (electrical ? "Zadovoljava" : "Nije posebno"),
-      detail: summarizeWorkOrderDocumentRoAssessmentItems(electricalItems, "electrical", electrical ? "opisni podaci" : "bez stavki"),
-      ok: electrical > 0,
-    },
-    {
-      key: "risks",
-      value: risks ? `${risks} identificirano` : "0 identificirano",
-      detail: item.deficiencies ? "ima nedostataka" : "bez istaknutih nedostataka",
-      ok: risks === 0,
-      warning: risks > 0,
-    },
-    {
-      key: "attachments",
-      value: `${attachments} priloga`,
-      detail: item.sourceLabel || "IS ZNR",
-      ok: attachments > 0,
-    },
-  ];
+  return buildWorkOrderDocumentRoMatrixRows(item, {
+    today,
+    formatDate: formatCompactDate,
+    getFilterKind: getWorkOrderDocumentWorkEquipmentFilterKind,
+    getAssessmentItems: getWorkOrderDocumentRoAssessmentItems,
+    summarizeAssessmentItems: summarizeWorkOrderDocumentRoAssessmentItems,
+    getGrade: getWorkOrderDocumentWorkEquipmentGrade,
+  });
 }
 
 function appendWorkOrderDocumentRoMatrix(bodyNode, {
@@ -119696,17 +119529,7 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
   if (!matrixItems.length) {
     return;
   }
-  const rows = [
-    { key: "basic", title: "Osnovni podaci", subtitle: "Temeljni podaci" },
-    { key: "equipment", title: "Podaci o radnoj opremi", subtitle: "Tehnički podaci i specifikacije" },
-    { key: "inspection", title: "Podaci o ispitivanju", subtitle: "Datumi, ocjene i rokovi" },
-    { key: "obligationRegulations", title: "Propisi obavezni", subtitle: "Obveza ispitivanja" },
-    { key: "requirementRegulations", title: "Propisi zahtjevi", subtitle: "Zahtjevi provjere" },
-    { key: "mechanical", title: "Strojarski dio", subtitle: "Mehanički pregledi i stanje" },
-    { key: "electrical", title: "Elektro dio", subtitle: "Električni pregledi i stanje" },
-    { key: "risks", title: "Opasnosti / štetnosti / napori", subtitle: "Identificirani rizici i napori" },
-    { key: "attachments", title: "Prilozi", subtitle: "Dokumenti i fotografije" },
-  ];
+  const rows = WORK_ORDER_DOCUMENT_RO_MATRIX_SECTIONS;
   const shell = document.createElement("div");
   shell.className = "work-order-document-ro-matrix-shell";
   const grid = document.createElement("div");
@@ -120864,240 +120687,60 @@ async function submitWorkOrderDocumentIsznrPhysicalFactors(workOrder = {}) {
   }
 }
 
-const WORK_ORDER_DOCUMENT_FC_FILTERS = Object.freeze([
-  { key: "all", label: "Svi FC" },
-  { key: "overdue", label: "Istekli" },
-  { key: "upcoming", label: "Uskoro" },
-  { key: "no-deadline", label: "Bez roka" },
-  { key: "satisfactory", label: "Zadovoljava" },
-  { key: "unsatisfactory", label: "Ne zadovoljava" },
-]);
+const WORK_ORDER_DOCUMENT_FC_FILTERS = WORK_ORDER_DOCUMENT_FC_FILTERS_MODEL;
 
 function getWorkOrderDocumentPhysicalFactorsDeadline(item = {}) {
-  return parseWorkOrderDocumentWorkEquipmentDate(item.deadlineForNextExamination);
+  return getWorkOrderDocumentPhysicalFactorsDeadlineModel(item);
 }
 
 function getWorkOrderDocumentPhysicalFactorsGrade(item = {}) {
-  return String(item.finalGrade?.label || item.finalGrade || "").trim();
+  return getWorkOrderDocumentPhysicalFactorsGradeModel(item);
 }
 
 function matchesWorkOrderDocumentPhysicalFactorsFilter(item = {}, filterKey = "all", today = getWorkOrderDocumentWorkEquipmentToday()) {
-  const deadline = getWorkOrderDocumentPhysicalFactorsDeadline(item);
-  const grade = normalizeWorkOrderDocumentWorkEquipmentGrade(getWorkOrderDocumentPhysicalFactorsGrade(item));
-  const isOverdue = Boolean(deadline && deadline < today);
-  const upcomingLimit = new Date(today);
-  upcomingLimit.setDate(today.getDate() + 30);
-  const isUpcoming = Boolean(deadline && deadline >= today && deadline <= upcomingLimit);
-  const isUnsatisfactory = grade.includes("ne zadovoljava") || grade.includes("nezadovoljava");
-  const isSatisfactory = !isUnsatisfactory && grade.includes("zadovoljava");
-  switch (filterKey) {
-    case "overdue":
-      return isOverdue;
-    case "upcoming":
-      return isUpcoming;
-    case "no-deadline":
-      return !deadline;
-    case "satisfactory":
-      return isSatisfactory;
-    case "unsatisfactory":
-      return isUnsatisfactory;
-    case "all":
-    default:
-      return true;
-  }
+  return matchesWorkOrderDocumentPhysicalFactorsFilterModel(item, filterKey, today);
 }
 
 function getWorkOrderDocumentPhysicalFactorsFilterCounts(items = [], today = getWorkOrderDocumentWorkEquipmentToday()) {
-  return WORK_ORDER_DOCUMENT_FC_FILTERS.reduce((counts, filter) => {
-    counts[filter.key] = (Array.isArray(items) ? items : [])
-      .filter((item) => matchesWorkOrderDocumentPhysicalFactorsFilter(item, filter.key, today)).length;
-    return counts;
-  }, {});
+  return getWorkOrderDocumentPhysicalFactorsFilterCountsModel(items, today);
 }
 
 function getWorkOrderDocumentWorkEnvironmentDisplayText(value, fallback = "") {
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-  if (Array.isArray(value)) {
-    const labels = value
-      .map((item) => getWorkOrderDocumentWorkEnvironmentDisplayText(item, ""))
-      .filter(Boolean);
-    return labels.join(", ") || fallback;
-  }
-  if (typeof value === "object") {
-    const expert = value.expert && typeof value.expert === "object" ? value.expert : null;
-    if (expert) {
-      return getWorkOrderDocumentWorkEnvironmentDisplayText(expert, fallback);
-    }
-    const firstLast = [value.firstName, value.lastName].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
-    const direct = String(
-      value.label
-        || value.name
-        || value.title
-        || value.description
-        || value.customContent
-        || value.value
-        || value.displayName
-        || firstLast
-        || value.oib
-        || "",
-    ).trim();
-    return direct || fallback;
-  }
-  return String(value || "").trim() || fallback;
+  return getWorkOrderDocumentWorkEnvironmentDisplayTextModel(value, fallback);
 }
 
 function normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(values = [], labelMap = null) {
-  const source = Array.isArray(values) ? values : [values];
-  return [...new Set(source
-    .map((value) => {
-      if (labelMap && (typeof value === "number" || /^\d+$/.test(String(value || "").trim()))) {
-        return labelMap[Number(value)] || String(value || "").trim();
-      }
-      return getWorkOrderDocumentWorkEnvironmentDisplayText(value, "");
-    })
-    .map((value) => String(value || "").trim())
-    .filter(Boolean))];
+  return normalizeWorkOrderDocumentWorkEnvironmentUniqueLabelsModel(values, labelMap);
 }
 
 function getWorkOrderDocumentWorkEnvironmentGradeLabel(value = "") {
-  const label = getWorkOrderDocumentWorkEnvironmentDisplayText(value, "");
-  if (label) {
-    const normalized = normalizeSearchText(label);
-    if (normalized === "1" || (normalized.includes("zadovoljava") && !normalized.includes("ne zadovoljava"))) {
-      return "Zadovoljava";
-    }
-    if (normalized === "0" || normalized.includes("ne zadovoljava") || normalized.includes("nezadovoljava")) {
-      return "Ne zadovoljava";
-    }
-    return label;
-  }
-  if (Number(value) === 1) return "Zadovoljava";
-  if (Number(value) === 0) return "Ne zadovoljava";
-  return "";
+  return getWorkOrderDocumentWorkEnvironmentGradeLabelModel(value);
 }
 
 function getWorkOrderDocumentWorkEnvironmentRecordId(item = {}) {
-  return String(item?.id || item?.isznrId || item?.recordNumber || item?.internalId || "").trim();
+  return getWorkOrderDocumentWorkEnvironmentRecordIdModel(item);
 }
 
 function getWorkOrderDocumentWorkEnvironmentPreviewItems(items = [], selectedIds = new Set(), filteredItems = []) {
-  const selected = (Array.isArray(items) ? items : []).filter((item) =>
-    selectedIds.has(getWorkOrderDocumentWorkEnvironmentRecordId(item)),
-  );
-  if (selected.length > 0) {
-    return selected.slice(0, 4);
-  }
-  const source = Array.isArray(filteredItems) && filteredItems.length ? filteredItems : items;
-  return (Array.isArray(source) ? source : []).slice(0, 4);
+  return getWorkOrderDocumentWorkEnvironmentPreviewItemsModel(items, selectedIds, filteredItems);
 }
 
 function getWorkOrderDocumentWorkEnvironmentMeasurementRows(items = []) {
-  return (Array.isArray(items) ? items : []).flatMap((item) => {
-    const recordId = getWorkOrderDocumentWorkEnvironmentRecordId(item);
-    const recordNumber = String(item?.recordNumber || item?.internalId || "").trim();
-    return (Array.isArray(item?.measurements) ? item.measurements : [])
-      .map((measurement, index) => ({
-        ...measurement,
-        recordId,
-        recordNumber,
-        rowId: String(measurement?.id || `${recordId || "record"}-${index + 1}`),
-      }));
-  });
+  return getWorkOrderDocumentWorkEnvironmentMeasurementRowsModel(items);
 }
 
 function getWorkOrderDocumentWorkEnvironmentSpaceRows(items = [], measurementRows = []) {
-  const rows = new Map();
-  const upsert = (space = {}, sourceItem = null) => {
-    const sourceRecordId = getWorkOrderDocumentWorkEnvironmentRecordId(sourceItem || {});
-    const key = String(space?.id || space?.code || space?.name || space?.spaceName || sourceRecordId || "").trim()
-      || createClientSideId("fc-space");
-    const existing = rows.get(key) || {
-      id: key,
-      code: "",
-      name: "",
-      description: "",
-      processDescription: "",
-      equipmentDescription: "",
-      grades: new Set(),
-      sourceRecords: new Set(),
-      measurements: [],
-    };
-    existing.code = existing.code || String(space?.code || space?.oznaka || "").trim();
-    existing.name = existing.name || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.name || space?.spaceName || space?.title, "Prostor");
-    existing.description = existing.description || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.description || space?.purposeDescription, "");
-    existing.processDescription = existing.processDescription || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.processDescription || space?.workProcess, "");
-    existing.equipmentDescription = existing.equipmentDescription || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.equipmentDescription || space?.workEquipment, "");
-    normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(space?.finalGrades || [])
-      .forEach((grade) => existing.grades.add(getWorkOrderDocumentWorkEnvironmentGradeLabel(grade) || grade));
-    if (sourceRecordId) {
-      existing.sourceRecords.add(sourceRecordId);
-    }
-    rows.set(key, existing);
-    return existing;
-  };
-
-  (Array.isArray(items) ? items : []).forEach((item) => {
-    const spaces = Array.isArray(item?.spaces) ? item.spaces : [];
-    spaces.forEach((space) => upsert(space, item));
+  return getWorkOrderDocumentWorkEnvironmentSpaceRowsModel(items, measurementRows, {
+    createId: createClientSideId,
   });
-
-  (Array.isArray(measurementRows) ? measurementRows : []).forEach((measurement) => {
-    const key = String(measurement?.spaceId || measurement?.spaceName || "").trim();
-    const row = key && rows.has(key)
-      ? rows.get(key)
-      : upsert({
-        id: key || `${measurement.recordId || "measurement"}-${measurement.spaceName || "space"}`,
-        name: measurement.spaceName || "Prostor",
-      }, { id: measurement.recordId });
-    row.measurements.push(measurement);
-  });
-
-  return [...rows.values()].sort((left, right) =>
-    String(left.name || left.code || "").localeCompare(String(right.name || right.code || ""), "hr", { numeric: true, sensitivity: "base" }),
-  );
 }
 
 function summarizeWorkOrderDocumentWorkEnvironmentValues(values = [], unit = "") {
-  const labels = [...new Set((Array.isArray(values) ? values : [])
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean))];
-  if (!labels.length) {
-    return "";
-  }
-  const numbers = labels
-    .map((value) => getWorkOrderDocumentWorkEnvironmentNumberValue(value))
-    .filter((value) => value !== null);
-  if (numbers.length === labels.length && numbers.length > 0) {
-    const min = Math.min(...numbers);
-    const max = Math.max(...numbers);
-    const suffix = unit ? ` ${unit}` : "";
-    return min === max ? `${String(min).replace(".", ",")}${suffix}` : `${String(min).replace(".", ",")} - ${String(max).replace(".", ",")}${suffix}`;
-  }
-  return labels.slice(0, 3).join(", ");
+  return summarizeWorkOrderDocumentWorkEnvironmentValuesModel(values, unit);
 }
 
 function summarizeWorkOrderDocumentWorkEnvironmentMeasurements(measurements = []) {
-  const groups = new Map();
-  (Array.isArray(measurements) ? measurements : []).forEach((measurement) => {
-    const key = String(measurement?.kind || "Mjerenje").trim() || "Mjerenje";
-    const group = groups.get(key) || { measured: [], allowed: [], units: new Set() };
-    group.measured.push(measurement?.measured);
-    group.allowed.push(measurement?.allowed);
-    if (measurement?.unit) group.units.add(String(measurement.unit).trim());
-    groups.set(key, group);
-  });
-  return [...groups.entries()]
-    .map(([kind, group]) => {
-      const unit = [...group.units].find(Boolean) || "";
-      const measured = summarizeWorkOrderDocumentWorkEnvironmentValues(group.measured, unit);
-      const allowed = summarizeWorkOrderDocumentWorkEnvironmentValues(group.allowed, unit);
-      return [kind, measured ? `izmj. ${measured}` : "", allowed ? `dop. ${allowed}` : ""].filter(Boolean).join(": ");
-    })
-    .filter(Boolean)
-    .slice(0, 4)
-    .join(" · ");
+  return summarizeWorkOrderDocumentWorkEnvironmentMeasurementsModel(measurements);
 }
 
 function createWorkOrderDocumentWorkEnvironmentInfoCard(label = "", value = "", detail = "") {
