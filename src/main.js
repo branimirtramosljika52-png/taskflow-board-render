@@ -73144,10 +73144,15 @@ function getDocumentTemplateRuntimeServiceBadgeLabel(service = {}) {
   return compact.length > 5 ? compact.slice(0, 5).toUpperCase() : compact.toUpperCase();
 }
 
-function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = false } = {}) {
+function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = false, onClick = null } = {}) {
   const status = getWorkOrderServiceProgressStatus(service);
-  const badge = document.createElement("span");
+  const isAction = typeof onClick === "function";
+  const badge = document.createElement(isAction ? "button" : "span");
+  if (isAction) {
+    badge.type = "button";
+  }
   badge.className = "work-order-bottom-card-service";
+  badge.classList.toggle("is-native-service", isAction);
   badge.classList.add(
     status === "completed"
       ? "is-ok"
@@ -73158,7 +73163,94 @@ function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = fal
     service.name || service.serviceName || service.serviceCode || "Usluga",
     getWorkOrderServiceProgressMeta(service)?.label || "",
   ].filter(Boolean).join(" · ");
+  if (isAction) {
+    badge.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClick(service);
+    });
+  }
   return badge;
+}
+
+function getDocumentTemplateRuntimeNativeServiceKind(service = {}) {
+  if (isWorkOrderDocumentWorkEquipmentService(service)) {
+    return "workEquipment";
+  }
+  if (isWorkOrderDocumentPhysicalFactorsService(service)) {
+    return "physicalFactors";
+  }
+  if (isWorkOrderDocumentChemicalFactorsService(service)) {
+    return "chemicalFactors";
+  }
+  return "";
+}
+
+function getWorkOrderDocumentNativeServiceCardSelector(workOrder = {}, nativeKind = "") {
+  const key = String(workOrder?.id || workOrder?.workOrderNumber || "").trim();
+  if (!key) {
+    return "";
+  }
+  const escapedKey = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(key)
+    : key.replace(/"/g, "\\\"");
+  if (nativeKind === "physicalFactors") {
+    return `[data-work-order-document-fc-card="${escapedKey}"]`;
+  }
+  if (nativeKind === "chemicalFactors") {
+    return `[data-work-order-document-kc-card="${escapedKey}"]`;
+  }
+  return `[data-work-order-document-ro-card="${escapedKey}"]`;
+}
+
+function focusWorkOrderDocumentNativeServiceCard(workOrder = {}, nativeKind = "") {
+  const selector = getWorkOrderDocumentNativeServiceCardSelector(workOrder, nativeKind);
+  if (!selector) {
+    return;
+  }
+  const target = workOrderDocumentWizardTemplateList?.querySelector(selector);
+  target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (target instanceof HTMLElement) {
+    target.classList.add("is-native-focus");
+    window.setTimeout(() => target.classList.remove("is-native-focus"), 1200);
+  }
+}
+
+function openWorkOrderDocumentNativeServiceFromRuntime(workOrder = {}, nativeKind = "") {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const normalizedKind = String(nativeKind || "").trim();
+  if (!workOrderId || !normalizedKind) {
+    return false;
+  }
+
+  const runtimeReturnState = { ...(state.documentTemplateRuntime.returnState ?? {}) };
+  closeDocumentTemplateEditor({ reset: false });
+  if (runtimeReturnState.activeView) {
+    state.activeView = runtimeReturnState.activeView;
+    state.activeSidebarGroup = runtimeReturnState.activeSidebarGroup || state.activeSidebarGroup;
+    state.activeSidebarItem = runtimeReturnState.activeSidebarItem || state.activeSidebarItem;
+    state.activeModuleItem = runtimeReturnState.activeModuleItem || "";
+    if (runtimeReturnState.activeView === "selfdash" && runtimeReturnState.activeWorkOrderViewMode) {
+      state.activeWorkOrderViewMode = runtimeReturnState.activeWorkOrderViewMode;
+    }
+    renderActiveView();
+    if (state.activeView === "module") {
+      renderModuleView();
+    }
+  }
+
+  state.workOrderDocumentWizard.selectedIds = new Set([workOrderId]);
+  openWorkOrderDocumentWizard("inspection", { launchSource: "editor" });
+  if (!state.workOrderDocumentWizard.open) {
+    return false;
+  }
+  state.workOrderDocumentWizard.step = "templates";
+  renderWorkOrderDocumentWizard();
+  syncWorkOrderDocumentWizardModal();
+  requestAnimationFrame(() => {
+    focusWorkOrderDocumentNativeServiceCard(workOrder, normalizedKind);
+  });
+  return true;
 }
 
 function getDocumentTemplateRuntimeNativeServiceBadges(serviceItems = []) {
@@ -73260,7 +73352,7 @@ function createWorkOrderBottomBarCard({
     card.addEventListener("pointerdown", (event) => {
       if (
         event.button !== 0
-        || (event.target instanceof HTMLElement && event.target.closest(".work-order-bottom-card-service.is-handover-action, .work-order-bottom-card-add-service"))
+        || (event.target instanceof HTMLElement && event.target.closest(".work-order-bottom-card-service.is-handover-action, .work-order-bottom-card-service.is-native-service, .work-order-bottom-card-add-service"))
       ) {
         return;
       }
@@ -73288,7 +73380,7 @@ function createWorkOrderBottomBarCard({
     openWorkOrderFields();
   });
   card.addEventListener("keydown", (event) => {
-    if (event.target instanceof HTMLElement && event.target.closest(".work-order-bottom-card-service.is-handover-action")) {
+    if (event.target instanceof HTMLElement && event.target.closest(".work-order-bottom-card-service.is-handover-action, .work-order-bottom-card-service.is-native-service")) {
       return;
     }
     if (event.key !== "Enter" && event.key !== " ") {
@@ -73341,6 +73433,15 @@ function createWorkOrderBottomBarCard({
     ? groupItems.slice(0, groupItems.length > 3 ? 2 : 3)
     : [];
   const nativeServiceItems = getDocumentTemplateRuntimeNativeServiceBadges(serviceItems);
+  const createServiceBadge = (service) => {
+    const nativeKind = getDocumentTemplateRuntimeNativeServiceKind(service);
+    return createWorkOrderBottomBarServiceBadge(service, {
+      forceProblem: hasProblem && !service?.isCompleted,
+      onClick: nativeKind
+        ? () => openWorkOrderDocumentNativeServiceFromRuntime(workOrder, nativeKind)
+        : null,
+    });
+  };
   const visibleServices = visibleSequenceItems.length > 0
     ? []
     : serviceItems.slice(0, serviceItems.length > 2 ? 1 : 2);
@@ -73355,7 +73456,7 @@ function createWorkOrderBottomBarCard({
       serviceRow.append(more);
     }
     nativeServiceItems.forEach((service) => {
-      serviceRow.append(createWorkOrderBottomBarServiceBadge(service, { forceProblem: hasProblem && !service?.isCompleted }));
+      serviceRow.append(createServiceBadge(service));
     });
   } else if (visibleServices.length === 0) {
     const empty = document.createElement("span");
@@ -73364,7 +73465,7 @@ function createWorkOrderBottomBarCard({
     serviceRow.append(empty);
   } else {
     visibleServices.forEach((service) => {
-      serviceRow.append(createWorkOrderBottomBarServiceBadge(service, { forceProblem: hasProblem && !service?.isCompleted }));
+      serviceRow.append(createServiceBadge(service));
     });
     if (serviceItems.length > visibleServices.length) {
       const more = document.createElement("span");
@@ -120185,6 +120286,524 @@ function getWorkOrderDocumentPhysicalFactorsFilterCounts(items = [], today = get
   }, {});
 }
 
+const WORK_ORDER_DOCUMENT_FC_TYPE_LABELS = Object.freeze({
+  1: "Mikroklimatski uvjeti",
+  2: "Osvijetljenost",
+  3: "Buka",
+  4: "Vibracije",
+});
+
+const WORK_ORDER_DOCUMENT_FC_HARMFULNESS_LABELS = Object.freeze({
+  1: "Buka",
+  2: "Vibracije",
+  3: "Promjenjivi tlak",
+  4: "Nepovoljni klimatski i mikroklimatski uvjeti",
+  5: "Ionizirajuće zračenje",
+  6: "Neionizirajuće zračenje",
+  7: "Nedovoljna osvijetljenost / blještanje",
+});
+
+function getWorkOrderDocumentWorkEnvironmentDisplayText(value, fallback = "") {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+  if (Array.isArray(value)) {
+    const labels = value
+      .map((item) => getWorkOrderDocumentWorkEnvironmentDisplayText(item, ""))
+      .filter(Boolean);
+    return labels.join(", ") || fallback;
+  }
+  if (typeof value === "object") {
+    const expert = value.expert && typeof value.expert === "object" ? value.expert : null;
+    if (expert) {
+      return getWorkOrderDocumentWorkEnvironmentDisplayText(expert, fallback);
+    }
+    const firstLast = [value.firstName, value.lastName].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
+    const direct = String(
+      value.label
+        || value.name
+        || value.title
+        || value.description
+        || value.customContent
+        || value.value
+        || value.displayName
+        || firstLast
+        || value.oib
+        || "",
+    ).trim();
+    return direct || fallback;
+  }
+  return String(value || "").trim() || fallback;
+}
+
+function normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(values = [], labelMap = null) {
+  const source = Array.isArray(values) ? values : [values];
+  return [...new Set(source
+    .map((value) => {
+      if (labelMap && (typeof value === "number" || /^\d+$/.test(String(value || "").trim()))) {
+        return labelMap[Number(value)] || String(value || "").trim();
+      }
+      return getWorkOrderDocumentWorkEnvironmentDisplayText(value, "");
+    })
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))];
+}
+
+function getWorkOrderDocumentWorkEnvironmentGradeLabel(value = "") {
+  const label = getWorkOrderDocumentWorkEnvironmentDisplayText(value, "");
+  if (label) {
+    const normalized = normalizeSearchText(label);
+    if (normalized === "1" || (normalized.includes("zadovoljava") && !normalized.includes("ne zadovoljava"))) {
+      return "Zadovoljava";
+    }
+    if (normalized === "0" || normalized.includes("ne zadovoljava") || normalized.includes("nezadovoljava")) {
+      return "Ne zadovoljava";
+    }
+    return label;
+  }
+  if (Number(value) === 1) return "Zadovoljava";
+  if (Number(value) === 0) return "Ne zadovoljava";
+  return "";
+}
+
+function getWorkOrderDocumentWorkEnvironmentRecordId(item = {}) {
+  return String(item?.id || item?.isznrId || item?.recordNumber || item?.internalId || "").trim();
+}
+
+function getWorkOrderDocumentWorkEnvironmentPreviewItems(items = [], selectedIds = new Set(), filteredItems = []) {
+  const selected = (Array.isArray(items) ? items : []).filter((item) =>
+    selectedIds.has(getWorkOrderDocumentWorkEnvironmentRecordId(item)),
+  );
+  if (selected.length > 0) {
+    return selected.slice(0, 4);
+  }
+  const source = Array.isArray(filteredItems) && filteredItems.length ? filteredItems : items;
+  return (Array.isArray(source) ? source : []).slice(0, 4);
+}
+
+function getWorkOrderDocumentWorkEnvironmentMeasurementRows(items = []) {
+  return (Array.isArray(items) ? items : []).flatMap((item) => {
+    const recordId = getWorkOrderDocumentWorkEnvironmentRecordId(item);
+    const recordNumber = String(item?.recordNumber || item?.internalId || "").trim();
+    return (Array.isArray(item?.measurements) ? item.measurements : [])
+      .map((measurement, index) => ({
+        ...measurement,
+        recordId,
+        recordNumber,
+        rowId: String(measurement?.id || `${recordId || "record"}-${index + 1}`),
+      }));
+  });
+}
+
+function getWorkOrderDocumentWorkEnvironmentSpaceRows(items = [], measurementRows = []) {
+  const rows = new Map();
+  const upsert = (space = {}, sourceItem = null) => {
+    const sourceRecordId = getWorkOrderDocumentWorkEnvironmentRecordId(sourceItem || {});
+    const key = String(space?.id || space?.code || space?.name || space?.spaceName || sourceRecordId || "").trim()
+      || createClientSideId("fc-space");
+    const existing = rows.get(key) || {
+      id: key,
+      code: "",
+      name: "",
+      description: "",
+      processDescription: "",
+      equipmentDescription: "",
+      grades: new Set(),
+      sourceRecords: new Set(),
+      measurements: [],
+    };
+    existing.code = existing.code || String(space?.code || space?.oznaka || "").trim();
+    existing.name = existing.name || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.name || space?.spaceName || space?.title, "Prostor");
+    existing.description = existing.description || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.description || space?.purposeDescription, "");
+    existing.processDescription = existing.processDescription || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.processDescription || space?.workProcess, "");
+    existing.equipmentDescription = existing.equipmentDescription || getWorkOrderDocumentWorkEnvironmentDisplayText(space?.equipmentDescription || space?.workEquipment, "");
+    normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(space?.finalGrades || [])
+      .forEach((grade) => existing.grades.add(getWorkOrderDocumentWorkEnvironmentGradeLabel(grade) || grade));
+    if (sourceRecordId) {
+      existing.sourceRecords.add(sourceRecordId);
+    }
+    rows.set(key, existing);
+    return existing;
+  };
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const spaces = Array.isArray(item?.spaces) ? item.spaces : [];
+    spaces.forEach((space) => upsert(space, item));
+  });
+
+  (Array.isArray(measurementRows) ? measurementRows : []).forEach((measurement) => {
+    const key = String(measurement?.spaceId || measurement?.spaceName || "").trim();
+    const row = key && rows.has(key)
+      ? rows.get(key)
+      : upsert({
+        id: key || `${measurement.recordId || "measurement"}-${measurement.spaceName || "space"}`,
+        name: measurement.spaceName || "Prostor",
+      }, { id: measurement.recordId });
+    row.measurements.push(measurement);
+  });
+
+  return [...rows.values()].sort((left, right) =>
+    String(left.name || left.code || "").localeCompare(String(right.name || right.code || ""), "hr", { numeric: true, sensitivity: "base" }),
+  );
+}
+
+function getWorkOrderDocumentWorkEnvironmentNumberValue(value = "") {
+  const normalized = String(value ?? "").replace(",", ".").match(/-?\d+(?:\.\d+)?/);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number.parseFloat(normalized[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function summarizeWorkOrderDocumentWorkEnvironmentValues(values = [], unit = "") {
+  const labels = [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean))];
+  if (!labels.length) {
+    return "";
+  }
+  const numbers = labels
+    .map((value) => getWorkOrderDocumentWorkEnvironmentNumberValue(value))
+    .filter((value) => value !== null);
+  if (numbers.length === labels.length && numbers.length > 0) {
+    const min = Math.min(...numbers);
+    const max = Math.max(...numbers);
+    const suffix = unit ? ` ${unit}` : "";
+    return min === max ? `${String(min).replace(".", ",")}${suffix}` : `${String(min).replace(".", ",")} - ${String(max).replace(".", ",")}${suffix}`;
+  }
+  return labels.slice(0, 3).join(", ");
+}
+
+function summarizeWorkOrderDocumentWorkEnvironmentMeasurements(measurements = []) {
+  const groups = new Map();
+  (Array.isArray(measurements) ? measurements : []).forEach((measurement) => {
+    const key = String(measurement?.kind || "Mjerenje").trim() || "Mjerenje";
+    const group = groups.get(key) || { measured: [], allowed: [], units: new Set() };
+    group.measured.push(measurement?.measured);
+    group.allowed.push(measurement?.allowed);
+    if (measurement?.unit) group.units.add(String(measurement.unit).trim());
+    groups.set(key, group);
+  });
+  return [...groups.entries()]
+    .map(([kind, group]) => {
+      const unit = [...group.units].find(Boolean) || "";
+      const measured = summarizeWorkOrderDocumentWorkEnvironmentValues(group.measured, unit);
+      const allowed = summarizeWorkOrderDocumentWorkEnvironmentValues(group.allowed, unit);
+      return [kind, measured ? `izmj. ${measured}` : "", allowed ? `dop. ${allowed}` : ""].filter(Boolean).join(": ");
+    })
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(" · ");
+}
+
+function createWorkOrderDocumentWorkEnvironmentInfoCard(label = "", value = "", detail = "") {
+  const card = document.createElement("div");
+  card.className = "work-order-document-fc-info-card";
+  const title = document.createElement("span");
+  title.textContent = label;
+  const main = document.createElement("strong");
+  main.textContent = String(value || "-");
+  card.append(title, main);
+  if (detail) {
+    const small = document.createElement("small");
+    small.textContent = detail;
+    card.append(small);
+  }
+  return card;
+}
+
+function appendWorkOrderDocumentWorkEnvironmentSection(bodyNode, {
+  stateEntry = {},
+  key = "",
+  title = "",
+  subtitle = "",
+  badge = "",
+  renderBody = null,
+} = {}) {
+  if (!key || typeof renderBody !== "function") {
+    return;
+  }
+  if (!stateEntry.collapsedBlocks || typeof stateEntry.collapsedBlocks !== "object") {
+    stateEntry.collapsedBlocks = {};
+  }
+  const isCollapsed = Boolean(stateEntry.collapsedBlocks[key]);
+  const section = document.createElement("section");
+  section.className = `work-order-document-fc-section${isCollapsed ? " is-collapsed" : ""}`;
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "work-order-document-fc-section-head";
+  head.setAttribute("aria-expanded", String(!isCollapsed));
+  head.addEventListener("click", (event) => {
+    event.stopPropagation();
+    stateEntry.collapsedBlocks[key] = !isCollapsed;
+    renderWorkOrderDocumentWizard();
+  });
+  const copy = document.createElement("span");
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const sub = document.createElement("small");
+  sub.textContent = subtitle;
+  copy.append(heading, sub);
+  const action = document.createElement("em");
+  action.textContent = isCollapsed ? "Otkrij" : "Sakrij";
+  head.append(copy);
+  if (badge) {
+    head.append(createBadge(badge, "document-template-meta-badge"));
+  }
+  head.append(action);
+  const content = document.createElement("div");
+  content.className = "work-order-document-fc-section-body";
+  content.hidden = isCollapsed;
+  if (!isCollapsed) {
+    renderBody(content);
+  }
+  section.append(head, content);
+  bodyNode.append(section);
+}
+
+function appendWorkOrderDocumentWorkEnvironmentOverview(bodyNode, {
+  items = [],
+  selectedIds = new Set(),
+  activeFilter = "all",
+  stateEntry = null,
+  filterField = "filter",
+  shortLabel = "FC",
+  today = getWorkOrderDocumentWorkEquipmentToday(),
+} = {}) {
+  const counts = getWorkOrderDocumentPhysicalFactorsFilterCounts(items, today);
+  const overview = document.createElement("div");
+  overview.className = "work-order-document-work-equipment-kpis work-order-document-fc-kpis";
+  const updateFilter = (filterKey) => {
+    if (!stateEntry) return;
+    stateEntry[filterField] = filterKey;
+    renderWorkOrderDocumentWizard();
+  };
+  [
+    { label: `Svi ${shortLabel}`, value: items.length, tone: "all", filterKey: "all" },
+    { label: "Isteklo", value: counts.overdue || 0, tone: "danger", filterKey: "overdue" },
+    { label: "Uskoro", value: counts.upcoming || 0, tone: "warning", filterKey: "upcoming" },
+    { label: "Odabrano", value: selectedIds.size, tone: "selected", filterKey: "" },
+    { label: "Bez roka", value: counts["no-deadline"] || 0, tone: "neutral", filterKey: "no-deadline" },
+    { label: "Ne zadovoljava", value: counts.unsatisfactory || 0, tone: "danger", filterKey: "unsatisfactory" },
+  ].forEach((item) => {
+    overview.append(createWorkOrderDocumentWorkEquipmentKpiCard({
+      ...item,
+      activeFilter,
+      onClick: item.filterKey ? () => updateFilter(item.filterKey) : null,
+    }));
+  });
+  bodyNode.append(overview);
+}
+
+function appendWorkOrderDocumentWorkEnvironmentBasicBlock(bodyNode, {
+  workOrder = {},
+  items = [],
+  stateEntry = {},
+  shortLabel = "FC",
+  isChemical = false,
+} = {}) {
+  const primary = items[0] || {};
+  const common = state.workOrderDocumentWizard.common || {};
+  const types = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+    items.flatMap((item) => Array.isArray(item?.types) && item.types.length ? item.types : item?.typesOfExamination || []),
+    isChemical ? null : WORK_ORDER_DOCUMENT_FC_TYPE_LABELS,
+  );
+  const harmfulness = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+    items.flatMap((item) => item?.harmfulness || []),
+    isChemical ? null : WORK_ORDER_DOCUMENT_FC_HARMFULNESS_LABELS,
+  );
+  const obligationRegisters = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+    items.flatMap((item) => item?.obligationRegisters || item?.workingEnvironmentObligationRegister || []),
+  );
+  const healthRegisters = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+    items.flatMap((item) => item?.healthRequirementRegisters || item?.healthRequirementRegister || []),
+  );
+  const experts = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(items.flatMap((item) => item?.experts || []));
+  const signedBy = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(items.flatMap((item) => item?.signedBy || []));
+  const instruments = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(items.flatMap((item) => item?.instruments || []));
+
+  appendWorkOrderDocumentWorkEnvironmentSection(bodyNode, {
+    stateEntry,
+    key: `${shortLabel.toLowerCase()}-basic`,
+    title: "Osnovno",
+    subtitle: "Podaci iz RO-F.1: pravilnici, uvjeti okoline, ljudi i oprema.",
+    badge: `${items.length || 0} zapisnika`,
+    renderBody: (sectionBody) => {
+      const grid = document.createElement("div");
+      grid.className = "work-order-document-fc-basic-grid";
+      [
+        ["RN", workOrder.workOrderNumber || workOrder.number || "-", workOrder.companyName || ""],
+        ["Prethodni zapisnik", primary.recordNumber || primary.internalId || "Nema odabranog", primary.deadlineForNextExamination ? `Vrijedi do ${formatCompactDate(primary.deadlineForNextExamination)}` : "Periodika iz IS ZNR-a"],
+        ["Tvrtka / OIB", getWorkOrderDocumentWorkEnvironmentDisplayText(primary.company?.name || workOrder.companyName, "-"), getWorkOrderDocumentWorkEnvironmentDisplayText(primary.company?.oib || stateEntry.companyOib, "")],
+        ["Lokacija", primary.location || workOrder.locationName || "-", primary.endDate || primary.startDate ? `Ispitivanje ${formatCompactDate(primary.endDate || primary.startDate)}` : ""],
+        ["Vrste ispitivanja", types.join(", ") || (isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici"), ""],
+        ["Štetnosti", harmfulness.join(", ") || "Nije posebno navedeno", ""],
+        ["Temperatura zraka", primary.airTemperature || common.outsideTemperature || "-", "°C"],
+        ["Relativna vlažnost", primary.relativeAirHumidity || common.relativeHumidity || "-", "%"],
+        ["Brzina strujanja", primary.airFlowSpeed || common.airflowSpeed || "-", "m/s"],
+        ["Vanjski uvjeti", primary.externalConditionsOther || common.weather || "-", ""],
+        ["Uvjeti procesa rada", primary.workProcessConditions || "Redoviti proces rada", ""],
+        ["Mjerna oprema", instruments.join(", ") || "Odaberi mjernu opremu", ""],
+      ].forEach(([label, value, detail]) => {
+        grid.append(createWorkOrderDocumentWorkEnvironmentInfoCard(label, value, detail));
+      });
+      sectionBody.append(grid);
+
+      const people = document.createElement("div");
+      people.className = "work-order-document-fc-people-grid";
+      people.append(
+        createWorkOrderDocumentWorkEnvironmentInfoCard("Ispitivači", experts.join(", ") || "Nisu upisani", ""),
+        createWorkOrderDocumentWorkEnvironmentInfoCard("Nositelji ovlaštenja", signedBy.join(", ") || "Nisu upisani", ""),
+      );
+      sectionBody.append(people);
+
+      const registryGrid = document.createElement("div");
+      registryGrid.className = "work-order-document-fc-registry-grid";
+      [
+        ["Propisi obveze", obligationRegisters, "Zakon o zaštiti na radu i Pravilnik o ispitivanju radnog okoliša."],
+        ["Propisi zahtjevi", healthRegisters, "Norme i pravilnici prema odabranim štetnostima i mjerenjima."],
+      ].forEach(([title, entries, emptyText]) => {
+        const panel = document.createElement("div");
+        panel.className = "work-order-document-fc-registry-panel";
+        const heading = document.createElement("strong");
+        heading.textContent = title;
+        const list = document.createElement("ul");
+        (entries.length ? entries : [emptyText]).slice(0, 8).forEach((entry) => {
+          const item = document.createElement("li");
+          item.textContent = entry;
+          list.append(item);
+        });
+        panel.append(heading, list);
+        registryGrid.append(panel);
+      });
+      sectionBody.append(registryGrid);
+    },
+  });
+}
+
+function appendWorkOrderDocumentWorkEnvironmentSpacesBlock(bodyNode, {
+  spaces = [],
+  stateEntry = {},
+  shortLabel = "FC",
+} = {}) {
+  appendWorkOrderDocumentWorkEnvironmentSection(bodyNode, {
+    stateEntry,
+    key: `${shortLabel.toLowerCase()}-spaces`,
+    title: "Prostori",
+    subtitle: "RO-F.2: prostor, opis namjene, proces, oprema i rasponi koji se preslikavaju u mjerenja.",
+    badge: `${spaces.length || 0} prostora`,
+    renderBody: (sectionBody) => {
+      const wrap = document.createElement("div");
+      wrap.className = "work-order-document-fc-table-wrap";
+      const table = document.createElement("table");
+      table.className = "work-order-document-fc-table";
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["Oznaka", "Naziv", "Opis / namjena", "Radni proces", "Radna oprema", "Rasponi i granice", "Ocjena"].forEach((label) => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        headRow.append(th);
+      });
+      head.append(headRow);
+      table.append(head);
+      const body = document.createElement("tbody");
+      if (!spaces.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.className = "work-order-document-ro-table-empty";
+        cell.textContent = "Nema prostora iz prethodnog FC zapisnika. Dodavanje novih prostora ide kroz FC POST pripremu.";
+        row.append(cell);
+        body.append(row);
+      } else {
+        spaces.forEach((space) => {
+          const row = document.createElement("tr");
+          [
+            space.code || "-",
+            space.name || "Prostor",
+            space.description || "-",
+            space.processDescription || "-",
+            space.equipmentDescription || "-",
+            summarizeWorkOrderDocumentWorkEnvironmentMeasurements(space.measurements) || "-",
+            [...space.grades].filter(Boolean).join(", ") || "-",
+          ].forEach((value) => {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.append(cell);
+          });
+          body.append(row);
+        });
+      }
+      table.append(body);
+      wrap.append(table);
+      sectionBody.append(wrap);
+    },
+  });
+}
+
+function appendWorkOrderDocumentWorkEnvironmentMeasurementsBlock(bodyNode, {
+  measurements = [],
+  stateEntry = {},
+  shortLabel = "FC",
+} = {}) {
+  appendWorkOrderDocumentWorkEnvironmentSection(bodyNode, {
+    stateEntry,
+    key: `${shortLabel.toLowerCase()}-measurements`,
+    title: "Mjerenja",
+    subtitle: "RO-F.3: mjerna mjesta, izmjerene/dopuštene vrijednosti i zaključne ocjene.",
+    badge: `${measurements.length || 0} mjerenja`,
+    renderBody: (sectionBody) => {
+      const wrap = document.createElement("div");
+      wrap.className = "work-order-document-fc-table-wrap";
+      const table = document.createElement("table");
+      table.className = "work-order-document-fc-table is-measurements";
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["Tip", "Prostor", "Mjerno mjesto", "Izmjereno", "Dopušteno", "Jedinica", "Ocjena", "Izvor"].forEach((label) => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        headRow.append(th);
+      });
+      head.append(headRow);
+      table.append(head);
+      const body = document.createElement("tbody");
+      if (!measurements.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 8;
+        cell.className = "work-order-document-ro-table-empty";
+        cell.textContent = "Nema mjerenja za prikaz. Nakon odabira prethodnog zapisnika ovdje se vide mjerenja po prostorima.";
+        row.append(cell);
+        body.append(row);
+      } else {
+        measurements.slice(0, 160).forEach((measurement) => {
+          const row = document.createElement("tr");
+          const grade = getWorkOrderDocumentWorkEnvironmentGradeLabel(measurement.finalGrade);
+          [
+            measurement.kind || "Mjerenje",
+            measurement.spaceName || "-",
+            measurement.measuringPlace || "-",
+            measurement.measured || "-",
+            measurement.allowed || "-",
+            measurement.unit || "-",
+            grade || "-",
+            measurement.recordNumber || "-",
+          ].forEach((value) => {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.append(cell);
+          });
+          body.append(row);
+        });
+      }
+      table.append(body);
+      wrap.append(table);
+      sectionBody.append(wrap);
+    },
+  });
+}
+
 function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {}, stateEntry = {}, { environmentKind = "physical" } = {}) {
   const isChemical = String(environmentKind || "").trim() === "chemical";
   const shortLabel = isChemical ? "KC" : "FC";
@@ -120260,6 +120879,20 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
   const activeFilter = WORK_ORDER_DOCUMENT_FC_FILTERS.some((filter) => filter.key === stateEntry[filterField])
     ? stateEntry[filterField]
     : "all";
+  const selectedIds = new Set((Array.isArray(stateEntry[selectionField]) && stateEntry[selectionField].length
+    ? stateEntry[selectionField]
+    : (!isChemical ? stateEntry.selectedItemIds : []))
+    .map((value) => String(value || "").trim())
+    .filter(Boolean));
+  appendWorkOrderDocumentWorkEnvironmentOverview(bodyNode, {
+    items,
+    selectedIds,
+    activeFilter,
+    stateEntry,
+    filterField,
+    shortLabel,
+    today,
+  });
   const filterRow = document.createElement("div");
   filterRow.className = "work-order-document-work-equipment-filters";
   WORK_ORDER_DOCUMENT_FC_FILTERS.forEach((filter) => {
@@ -120286,11 +120919,6 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
       if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
       return String(left.recordNumber || left.location || "").localeCompare(String(right.recordNumber || right.location || ""), "hr", { numeric: true, sensitivity: "base" });
     });
-  const selectedIds = new Set((Array.isArray(stateEntry[selectionField]) && stateEntry[selectionField].length
-    ? stateEntry[selectionField]
-    : (!isChemical ? stateEntry.selectedItemIds : []))
-    .map((value) => String(value || "").trim())
-    .filter(Boolean));
   const blockingLabels = getWorkOrderDocumentIsznrPostBlockingLabels(stateEntry.postDraft, ["sourceRecord"]);
   const updateSelection = (next) => {
     stateEntry[selectionField] = [...next];
@@ -120416,6 +121044,27 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
       : `Prikazano prvih 24 od ${filteredItems.length} ${shortLabel} zapisnika za odabrani filter.`;
     bodyNode.append(limited);
   }
+
+  const previewItems = getWorkOrderDocumentWorkEnvironmentPreviewItems(items, selectedIds, filteredItems);
+  const measurementRows = getWorkOrderDocumentWorkEnvironmentMeasurementRows(previewItems);
+  const spaceRows = getWorkOrderDocumentWorkEnvironmentSpaceRows(previewItems, measurementRows);
+  appendWorkOrderDocumentWorkEnvironmentBasicBlock(bodyNode, {
+    workOrder,
+    items: previewItems,
+    stateEntry,
+    shortLabel,
+    isChemical,
+  });
+  appendWorkOrderDocumentWorkEnvironmentSpacesBlock(bodyNode, {
+    spaces: spaceRows,
+    stateEntry,
+    shortLabel,
+  });
+  appendWorkOrderDocumentWorkEnvironmentMeasurementsBlock(bodyNode, {
+    measurements: measurementRows,
+    stateEntry,
+    shortLabel,
+  });
 }
 
 function getWorkOrderDocumentWizardPhysicalFactorsCandidates(workOrders = []) {
@@ -120438,9 +121087,12 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
   const isChemical = String(environmentKind || "").trim() === "chemical";
   const shortLabel = isChemical ? "KC" : "FC";
   const longLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
+  const workOrderId = String(workOrder?.id || "").trim();
+  const stateEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrderId);
+  queueWorkOrderDocumentIsznrWorkEnvironmentLoad(workOrder);
 
   const card = document.createElement("article");
-  card.className = "work-order-document-template-card work-order-document-ro-template-card";
+  card.className = "work-order-document-template-card work-order-document-ro-template-card is-ro-product work-order-document-fc-template-card";
   if (isChemical) {
     card.dataset.workOrderDocumentKcCard = String(workOrder?.id || workOrder?.workOrderNumber || "");
   } else {
@@ -120479,11 +121131,11 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
   ].filter(Boolean).join(" · ");
   workOrderList.append(chip);
 
-  const note = document.createElement("p");
-  note.className = "helper-copy module-copy";
-  note.textContent = `Detaljan odabir za ${shortLabel} dodajemo u sljedećem koraku.`;
+  const body = document.createElement("div");
+  body.className = "work-order-document-ro-template-body work-order-document-fc-template-body";
+  appendWorkOrderDocumentIsznrWorkEnvironmentBody(body, workOrder, stateEntry, { environmentKind });
 
-  card.append(head, workOrderList, note);
+  card.append(head, workOrderList, body);
   return card;
 }
 
