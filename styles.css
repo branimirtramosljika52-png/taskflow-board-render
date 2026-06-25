@@ -24210,6 +24210,20 @@ body.is-document-template-editor-open .chat-dock {
     0 18px 40px rgba(37, 99, 235, 0.14);
 }
 
+.document-template-runtime-native-service-panel {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.document-template-runtime-native-service-card {
+  margin: 0;
+  box-shadow: none;
+}
+
+.document-template-runtime-native-service-card.work-order-document-ro-template-card.is-ro-product {
+  border-color: rgba(37, 99, 235, 0.16);
+}
+
 .work-order-document-fc-template-card {
   border-color: rgba(59, 130, 246, 0.22);
   background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.98));
@@ -82670,6 +82684,13 @@ button.work-order-bottom-card-service {
   background: rgba(37, 99, 235, 0.62);
   color: #ffffff;
   box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.18);
+}
+
+.work-order-bottom-card-service.is-native-service.is-active {
+  border-color: rgba(167, 139, 250, 0.9);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.86), rgba(14, 116, 144, 0.78));
+  color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2), 0 10px 24px rgba(15, 23, 42, 0.28);
 }
 
 .work-order-bottom-card-service.is-active-report {

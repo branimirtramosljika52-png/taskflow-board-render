@@ -2562,6 +2562,7 @@ const state = {
     workOrderIds: [],
     activeWorkOrderId: "",
     activePanel: "fields",
+    activeNativeServiceKind: "",
     returnState: null,
     sequenceEntries: [],
     sequenceIndex: -1,
@@ -73144,7 +73145,7 @@ function getDocumentTemplateRuntimeServiceBadgeLabel(service = {}) {
   return compact.length > 5 ? compact.slice(0, 5).toUpperCase() : compact.toUpperCase();
 }
 
-function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = false, onClick = null } = {}) {
+function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = false, active = false, onClick = null } = {}) {
   const status = getWorkOrderServiceProgressStatus(service);
   const isAction = typeof onClick === "function";
   const badge = document.createElement(isAction ? "button" : "span");
@@ -73153,6 +73154,7 @@ function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = fal
   }
   badge.className = "work-order-bottom-card-service";
   badge.classList.toggle("is-native-service", isAction);
+  badge.classList.toggle("is-active", Boolean(active));
   badge.classList.add(
     status === "completed"
       ? "is-ok"
@@ -73263,6 +73265,10 @@ function openWorkOrderDocumentNativeServiceFromRuntime(workOrder = {}, nativeKin
   const normalizedKind = String(nativeKind || "").trim();
   if (!workOrderId || !normalizedKind) {
     return false;
+  }
+
+  if (openDocumentTemplateRuntimeNativeServicePanel(workOrder, normalizedKind)) {
+    return true;
   }
 
   const runtimeReturnState = { ...(state.documentTemplateRuntime.returnState ?? {}) };
@@ -73477,6 +73483,12 @@ function createWorkOrderBottomBarCard({
     const nativeKind = getDocumentTemplateRuntimeNativeServiceKind(service);
     return createWorkOrderBottomBarServiceBadge(service, {
       forceProblem: hasProblem && !service?.isCompleted,
+      active: Boolean(
+        nativeKind
+        && activePanel === "nativeService"
+        && getDocumentTemplateRuntimeActiveNativeServiceKind() === nativeKind
+        && String(workOrder?.id || "") === String(activeWorkOrder?.id || ""),
+      ),
       onClick: nativeKind
         ? () => openWorkOrderDocumentNativeServiceFromRuntime(workOrder, nativeKind)
         : null,
@@ -74135,6 +74147,15 @@ function renderDocumentTemplateRuntimeContext() {
   const activeSequenceEntry = hasSequence && !isSummaryStep
     ? (Array.isArray(sequenceState?.entries) ? (sequenceState.entries[sequenceState.index] || sequenceState.entries[0] || null) : null)
     : null;
+  const activePanel = getDocumentTemplateRuntimeActivePanel();
+  const activeNativeKind = activePanel === "nativeService" ? getDocumentTemplateRuntimeActiveNativeServiceKind() : "";
+  const activeNativeLabel = activeNativeKind === "workEquipment"
+    ? "RO"
+    : activeNativeKind === "physicalFactors"
+      ? "FC"
+      : activeNativeKind === "chemicalFactors"
+        ? "KC"
+        : "";
   renderDocumentTemplateRuntimeSidePanel({
     template,
     fillMode,
@@ -74252,7 +74273,6 @@ function renderDocumentTemplateRuntimeContext() {
       ? dockEntries[dockEntries.length - 1]
       : (dockEntries[activeIndex] || dockEntries[0]);
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(dockEntries);
-    const activePanel = getDocumentTemplateRuntimeActivePanel();
     documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
     if (sequenceState?.isSummary) {
       documentTemplateRuntimeDockTitle.textContent = "Radni nalozi";
@@ -74360,7 +74380,9 @@ function renderDocumentTemplateRuntimeContext() {
   const commonBadges = [
     {
       label: "Zapisnik",
-      value: activeSequenceEntry?.timelineLabel
+      value: activeNativeLabel
+        ? `${activeNativeLabel} native prikaz`
+        : activeSequenceEntry?.timelineLabel
         || documentTemplateTitleInput?.value?.trim()
         || "",
     },
@@ -83497,6 +83519,56 @@ function renderDocumentTemplateRuntimeFieldRows() {
   };
 
   const visibleBlocks = buildDocumentTemplateRuntimeBlockGroups(documentTemplateFieldDrafts);
+  if (getDocumentTemplateRuntimeActivePanel() === "nativeService") {
+    const nativeKind = getDocumentTemplateRuntimeActiveNativeServiceKind();
+    renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
+    const nativePanel = document.createElement("section");
+    nativePanel.className = "document-template-runtime-block document-template-runtime-native-service-panel";
+    nativePanel.dataset.documentTemplateRuntimePanel = "nativeService";
+
+    if (!activeWorkOrder || !nativeKind) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "Odaberi RO, FC ili KC iz donje alatne trake.";
+      nativePanel.append(empty);
+    } else {
+      const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(activeWorkOrder);
+      const isAvailable = nativeKind === "workEquipment"
+        ? shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(activeWorkOrder, serviceItems)
+        : nativeKind === "physicalFactors"
+          ? shouldShowWorkOrderDocumentPhysicalFactorsSection(activeWorkOrder, serviceItems)
+          : shouldShowWorkOrderDocumentChemicalFactorsSection(activeWorkOrder, serviceItems);
+
+      if (!isAvailable) {
+        const empty = document.createElement("p");
+        empty.className = "helper-copy module-copy";
+        empty.textContent = "Ova usluga više nije dostupna na aktivnom RN-u.";
+        nativePanel.append(empty);
+      } else {
+        const nativeCard = nativeKind === "workEquipment"
+          ? createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(activeWorkOrder)
+          : createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(activeWorkOrder, {
+            environmentKind: nativeKind === "chemicalFactors" ? "chemical" : "physical",
+          });
+        nativeCard.classList.add("document-template-runtime-native-service-card");
+        nativePanel.append(nativeCard);
+      }
+    }
+
+    shell.append(nativePanel);
+    documentTemplateCustomFields.replaceChildren(shell);
+    if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
+      setMeasurementSheetOpen(false);
+      state.measurementSheet.ownerKind = "work_order";
+      state.measurementSheet.ownerFieldId = "";
+      state.measurementSheet.ownerRuntimeWorkOrderId = "";
+      syncMeasurementToolbar();
+    }
+    syncMeasurementSheetPanelMount();
+    syncDocumentTemplateInlineExcelPreviewVisibility();
+    return;
+  }
+
   if (getDocumentTemplateRuntimeActivePanel() === "handover") {
     renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: visibleBlocks });
     shell.append(createHandoverProtocolBlock());
@@ -122392,15 +122464,55 @@ function applyDocumentTemplateRuntimePersistedFieldCandidate(
 }
 
 function normalizeDocumentTemplateRuntimeActivePanel(value = "fields") {
-  return String(value || "").trim().toLowerCase() === "handover" ? "handover" : "fields";
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "handover") {
+    return "handover";
+  }
+  if (["native", "nativeservice", "native-service"].includes(normalized)) {
+    return "nativeService";
+  }
+  return "fields";
 }
 
 function getDocumentTemplateRuntimeActivePanel() {
   return normalizeDocumentTemplateRuntimeActivePanel(state.documentTemplateRuntime.activePanel);
 }
 
+function normalizeDocumentTemplateRuntimeNativeServiceKind(value = "") {
+  const normalized = String(value || "").trim();
+  if (["workEquipment", "physicalFactors", "chemicalFactors"].includes(normalized)) {
+    return normalized;
+  }
+  const compact = normalized.toLowerCase();
+  if (["ro", "work-equipment", "workequipment", "radna-oprema"].includes(compact)) {
+    return "workEquipment";
+  }
+  if (["fc", "physical", "physical-factors", "physicalfactors"].includes(compact)) {
+    return "physicalFactors";
+  }
+  if (["kc", "chemical", "chemical-factors", "chemicalfactors"].includes(compact)) {
+    return "chemicalFactors";
+  }
+  return "";
+}
+
+function getDocumentTemplateRuntimeActiveNativeServiceKind() {
+  return normalizeDocumentTemplateRuntimeNativeServiceKind(state.documentTemplateRuntime.activeNativeServiceKind);
+}
+
+function isDocumentTemplateRuntimeNativeServicePanelActive() {
+  return getDocumentTemplateRuntimeActivePanel() === "nativeService"
+    && Boolean(getDocumentTemplateRuntimeActiveNativeServiceKind())
+    && isDocumentTemplateRuntimeFillMode()
+    && hasDocumentTemplateRuntimeContext();
+}
+
 function setDocumentTemplateRuntimeActivePanel(panel = "fields", { render = true, scroll = false } = {}) {
-  state.documentTemplateRuntime.activePanel = normalizeDocumentTemplateRuntimeActivePanel(panel);
+  const nextPanel = normalizeDocumentTemplateRuntimeActivePanel(panel);
+  state.documentTemplateRuntime.activePanel = nextPanel;
+  if (nextPanel !== "nativeService") {
+    state.documentTemplateRuntime.activeNativeServiceKind = "";
+  }
   if (render) {
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
@@ -122424,13 +122536,50 @@ function openDocumentTemplateRuntimeHandoverPanel(workOrderId = state.documentTe
   setDocumentTemplateRuntimeActivePanel("handover", { render: true, scroll: true });
 }
 
+function openDocumentTemplateRuntimeNativeServicePanel(workOrder = {}, nativeKind = "") {
+  const workOrderId = String(workOrder?.id || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  const normalizedKind = normalizeDocumentTemplateRuntimeNativeServiceKind(nativeKind);
+  if (!workOrderId || !normalizedKind || !isDocumentTemplateRuntimeFillMode() || !hasDocumentTemplateRuntimeContext()) {
+    return false;
+  }
+
+  const runtimeWorkOrder = getDocumentTemplateRuntimeWorkOrderById(workOrderId) || workOrder;
+  const serviceItems = runtimeWorkOrder?.id ? getDocumentTemplateRuntimeResolvedServiceItems(runtimeWorkOrder) : [];
+  const isAvailable = normalizedKind === "workEquipment"
+    ? shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(runtimeWorkOrder, serviceItems)
+    : normalizedKind === "physicalFactors"
+      ? shouldShowWorkOrderDocumentPhysicalFactorsSection(runtimeWorkOrder, serviceItems)
+      : shouldShowWorkOrderDocumentChemicalFactorsSection(runtimeWorkOrder, serviceItems);
+  if (!isAvailable) {
+    return false;
+  }
+
+  state.documentTemplateRuntime.activeWorkOrderId = workOrderId;
+  state.documentTemplateRuntime.activePanel = "nativeService";
+  state.documentTemplateRuntime.activeNativeServiceKind = normalizedKind;
+  renderDocumentTemplateRuntimeContext();
+  renderDocumentTemplateFieldRows();
+  renderDocumentTemplatePreviewContent();
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+  requestAnimationFrame(() => {
+    document
+      .querySelector("[data-document-template-runtime-panel='nativeService']")
+      ?.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+  return true;
+}
+
 function setDocumentTemplateRuntimeActiveWorkOrder(workOrderId, { render = true, activePanel = "fields" } = {}) {
   const normalizedId = String(workOrderId || "").trim();
   if (!normalizedId) {
     return;
   }
   state.documentTemplateRuntime.activeWorkOrderId = normalizedId;
-  state.documentTemplateRuntime.activePanel = normalizeDocumentTemplateRuntimeActivePanel(activePanel);
+  const nextPanel = normalizeDocumentTemplateRuntimeActivePanel(activePanel);
+  state.documentTemplateRuntime.activePanel = nextPanel;
+  if (nextPanel !== "nativeService") {
+    state.documentTemplateRuntime.activeNativeServiceKind = "";
+  }
   if (render) {
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
@@ -122680,6 +122829,8 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
+    activePanel: "fields",
+    activeNativeServiceKind: "",
     returnState: null,
     sequenceEntries: [],
     sequenceIndex: -1,
@@ -122927,6 +123078,7 @@ function buildDocumentTemplateRuntimeLocalDraftSnapshot() {
       workOrderIds,
       activeWorkOrderId: String(state.documentTemplateRuntime.activeWorkOrderId || workOrderIds[0] || "").trim(),
       activePanel: getDocumentTemplateRuntimeActivePanel(),
+      activeNativeServiceKind: getDocumentTemplateRuntimeActiveNativeServiceKind(),
       returnState: state.documentTemplateRuntime.returnState ?? null,
       sequenceEntries,
       sequenceIndex,
@@ -123014,6 +123166,7 @@ function normalizeDocumentTemplateRuntimeLocalDraft(snapshot = null) {
       workOrderIds,
       activeWorkOrderId,
       activePanel: normalizeDocumentTemplateRuntimeActivePanel(runtime.activePanel),
+      activeNativeServiceKind: normalizeDocumentTemplateRuntimeNativeServiceKind(runtime.activeNativeServiceKind),
       returnState: runtime.returnState && typeof runtime.returnState === "object" ? runtime.returnState : null,
       sequenceEntries,
       sequenceIndex: sequenceEntries.length > 0
@@ -123146,6 +123299,7 @@ function restoreDocumentTemplateRuntimeLocalDraft() {
     workOrderIds: runtime.workOrderIds,
     activeWorkOrderId: runtime.activeWorkOrderId || runtime.workOrderIds[0] || "",
     activePanel: normalizeDocumentTemplateRuntimeActivePanel(runtime.activePanel),
+    activeNativeServiceKind: normalizeDocumentTemplateRuntimeNativeServiceKind(runtime.activeNativeServiceKind),
     returnState: runtime.returnState ?? {
       activeView: state.activeView,
       activeSidebarGroup: state.activeSidebarGroup,
@@ -123246,6 +123400,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     workOrderIds: ids,
     activeWorkOrderId: ids[0] || "",
     activePanel: "fields",
+    activeNativeServiceKind: "",
     objectSelections: {},
     previousRecordOptions: {},
     savedRecordFingerprints: {},
@@ -125936,6 +126091,7 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
   if (safeIndex === sequenceState.summaryIndex) {
     state.documentTemplateRuntime.sequenceIndex = safeIndex;
     state.documentTemplateRuntime.activePanel = "fields";
+    state.documentTemplateRuntime.activeNativeServiceKind = "";
     syncDocumentTemplateEditorChrome();
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
@@ -126322,6 +126478,10 @@ function renderWorkOrderDocumentWizard() {
   renderWorkOrderDocumentWizardSelectionSummary(workOrders);
   renderWorkOrderDocumentWizardWorkOrders(workOrders);
   renderWorkOrderDocumentWizardTemplates(workOrders);
+  if (isDocumentTemplateRuntimeNativeServicePanelActive()) {
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateRuntimeFieldRows();
+  }
 }
 
 function closeOpenWorkOrderStatusMenus(except = null) {
