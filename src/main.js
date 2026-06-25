@@ -73102,6 +73102,16 @@ function groupDocumentTemplateRuntimeDockEntries(entries = []) {
 }
 
 function getDocumentTemplateRuntimeServiceBadgeLabel(service = {}) {
+  if (isWorkOrderDocumentChemicalFactorsService(service)) {
+    return "KC";
+  }
+  if (isWorkOrderDocumentPhysicalFactorsService(service)) {
+    return "FC";
+  }
+  if (isWorkOrderDocumentWorkEquipmentService(service)) {
+    return "RO";
+  }
+
   const rawLabel = String(
     service.serviceCode
       || service.shortLabel
@@ -73149,6 +73159,23 @@ function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = fal
     getWorkOrderServiceProgressMeta(service)?.label || "",
   ].filter(Boolean).join(" · ");
   return badge;
+}
+
+function getDocumentTemplateRuntimeNativeServiceBadges(serviceItems = []) {
+  const nativeServices = [];
+  const seen = new Set();
+  (Array.isArray(serviceItems) ? serviceItems : []).forEach((service) => {
+    if (!isWorkOrderDocumentIsznrNativeService(service)) {
+      return;
+    }
+    const label = getDocumentTemplateRuntimeServiceBadgeLabel(service);
+    if (!label || seen.has(label)) {
+      return;
+    }
+    seen.add(label);
+    nativeServices.push(service);
+  });
+  return nativeServices;
 }
 
 function createWorkOrderBottomBarCard({
@@ -73313,6 +73340,7 @@ function createWorkOrderBottomBarCard({
   const visibleSequenceItems = hasSequence && groupItems.length > 0
     ? groupItems.slice(0, groupItems.length > 3 ? 2 : 3)
     : [];
+  const nativeServiceItems = getDocumentTemplateRuntimeNativeServiceBadges(serviceItems);
   const visibleServices = visibleSequenceItems.length > 0
     ? []
     : serviceItems.slice(0, serviceItems.length > 2 ? 1 : 2);
@@ -73326,6 +73354,9 @@ function createWorkOrderBottomBarCard({
       more.textContent = `+${groupItems.length - visibleSequenceItems.length}`;
       serviceRow.append(more);
     }
+    nativeServiceItems.forEach((service) => {
+      serviceRow.append(createWorkOrderBottomBarServiceBadge(service, { forceProblem: hasProblem && !service?.isCompleted }));
+    });
   } else if (visibleServices.length === 0) {
     const empty = document.createElement("span");
     empty.className = "work-order-bottom-card-service is-neutral";
@@ -119614,8 +119645,6 @@ function getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders = []) {
 }
 
 function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
-  const stateEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
-  queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder);
 
   const card = document.createElement("article");
   card.className = "work-order-document-template-card work-order-document-ro-template-card";
@@ -119631,9 +119660,7 @@ function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
   title.textContent = "RO - Radna oprema";
 
   const meta = document.createElement("span");
-  meta.textContent = stateEntry.loaded
-    ? `${stateEntry.items.length} IS ZNR stavki${stateEntry.companyOib ? ` | OIB ${stateEntry.companyOib}` : ""}`
-    : "Live dohvat radne opreme iz IS ZNR-a";
+  meta.textContent = "Radna oprema je odabrana kroz usluge RN-a.";
 
   copy.append(title, meta);
 
@@ -119641,7 +119668,7 @@ function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
   badges.className = "work-order-document-template-card-badges";
   badges.append(
     createBadge("RO", "document-template-meta-badge"),
-    createBadge("IS ZNR", "document-template-meta-badge"),
+    createBadge("Usluga", "document-template-meta-badge"),
   );
 
   head.append(copy, badges);
@@ -119656,11 +119683,11 @@ function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
   ].filter(Boolean).join(" · ");
   workOrderList.append(chip);
 
-  const body = document.createElement("div");
-  body.className = "work-order-document-ro-template-body";
-  appendWorkOrderDocumentIsznrWorkEquipmentBody(body, workOrder, stateEntry);
+  const note = document.createElement("p");
+  note.className = "helper-copy module-copy";
+  note.textContent = "Detaljan odabir radne opreme dodajemo u sljedećem koraku.";
 
-  card.append(head, workOrderList, body);
+  card.append(head, workOrderList, note);
   return card;
 }
 
@@ -120143,8 +120170,6 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
   const isChemical = String(environmentKind || "").trim() === "chemical";
   const shortLabel = isChemical ? "KC" : "FC";
   const longLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
-  const stateEntry = getWorkOrderDocumentIsznrWorkEnvironmentState(workOrder?.id);
-  queueWorkOrderDocumentIsznrWorkEnvironmentLoad(workOrder);
 
   const card = document.createElement("article");
   card.className = "work-order-document-template-card work-order-document-ro-template-card";
@@ -120164,11 +120189,7 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
   title.textContent = `${shortLabel} - ${longLabel}`;
 
   const meta = document.createElement("span");
-  const kindCount = (Array.isArray(stateEntry.items) ? stateEntry.items : [])
-    .filter((item) => (isChemical ? item.environmentKind === "chemical" : item.environmentKind !== "chemical")).length;
-  meta.textContent = stateEntry.loaded
-    ? `${kindCount} IS ZNR ${shortLabel} zapisnika${stateEntry.companyOib ? ` | OIB ${stateEntry.companyOib}` : ""}`
-    : `Live dohvat ${longLabel.toLowerCase()} iz IS ZNR-a`;
+  meta.textContent = `${longLabel} su odabrani kroz usluge RN-a.`;
 
   copy.append(title, meta);
 
@@ -120176,7 +120197,7 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
   badges.className = "work-order-document-template-card-badges";
   badges.append(
     createBadge(shortLabel, "document-template-meta-badge"),
-    createBadge("IS ZNR", "document-template-meta-badge"),
+    createBadge("Usluga", "document-template-meta-badge"),
   );
   head.append(copy, badges);
 
@@ -120190,11 +120211,11 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
   ].filter(Boolean).join(" · ");
   workOrderList.append(chip);
 
-  const body = document.createElement("div");
-  body.className = "work-order-document-ro-template-body";
-  appendWorkOrderDocumentIsznrWorkEnvironmentBody(body, workOrder, stateEntry, { environmentKind: isChemical ? "chemical" : "physical" });
+  const note = document.createElement("p");
+  note.className = "helper-copy module-copy";
+  note.textContent = `Detaljan odabir za ${shortLabel} dodajemo u sljedećem koraku.`;
 
-  card.append(head, workOrderList, body);
+  card.append(head, workOrderList, note);
   return card;
 }
 
@@ -120584,14 +120605,11 @@ function getWorkOrderDocumentWizardCommonSheetAvailability(workOrders = getAllSe
     };
   }
 
-  const hasRo = getWorkOrderDocumentWizardWorkEquipmentCandidates(selectedWorkOrders).length > 0;
-  const hasFc = getWorkOrderDocumentWizardPhysicalFactorsCandidates(selectedWorkOrders).length > 0;
-
   return {
     basic: true,
     spr: false,
-    ro: hasRo,
-    fc: hasFc,
+    ro: false,
+    fc: false,
     validity: true,
   };
 }
@@ -120601,7 +120619,7 @@ function getWorkOrderDocumentWizardActiveCommonSheet(availability = {}) {
   if (availability[requestedSheet]) {
     return requestedSheet;
   }
-  return ["basic", "validity", "ro", "fc", "spr"].find((sheet) => availability[sheet]) || "basic";
+  return ["basic", "validity"].find((sheet) => availability[sheet]) || "basic";
 }
 
 function syncWorkOrderDocumentWizardCommonSheetButton(button, sheetKey, activeSheet, availability, isTrainingMode) {
@@ -120684,7 +120702,6 @@ function renderWorkOrderDocumentWizardCommonSection() {
   });
 
   renderWorkOrderDocumentWizardCommonPeopleSection();
-  renderWorkOrderDocumentWizardCommonRoSection(selectedWorkOrders);
   renderWorkOrderDocumentWizardCommonEnvSection();
 }
 
