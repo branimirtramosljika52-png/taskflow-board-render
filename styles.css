@@ -19610,6 +19610,20 @@ body.is-work-order-document-category-open {
   align-items: center;
 }
 
+.measurement-sheet-perf-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(83, 104, 255, 0.22);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(238, 242, 255, 0.92));
+  color: #4051af;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .measurement-sheet-meta {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -47311,6 +47325,19 @@ body.is-measurement-equipment-export-open {
   border: 1px solid rgba(196, 168, 231, 0.35);
   border-radius: 12px;
   background: #fff;
+}
+
+.document-template-inline-excel-editor-summary {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.98), rgba(255, 255, 255, 0.96));
+}
+
+.document-template-inline-excel-editor-summary-text {
+  color: #405173;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .document-template-inline-excel-editor-grid {

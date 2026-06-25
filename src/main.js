@@ -2694,6 +2694,18 @@ const state = {
     formulaReferences: [],
     formulaCache: null,
     persistTimer: 0,
+    perf: {
+      renderMs: 0,
+      computeMs: 0,
+      rows: 0,
+      columns: 0,
+      cells: 0,
+      inputs: 0,
+      lightCells: 0,
+      formulas: 0,
+      mode: "standard",
+      updatedAt: "",
+    },
     selectionAnchor: null,
     selectedRange: null,
     selectionDrag: null,
@@ -28507,6 +28519,7 @@ function getMeasurementSheetOwnerFieldIndex() {
 }
 
 function persistMeasurementSheetToTemplateField({ rerenderFieldRows = false } = {}) {
+  clearScheduledMeasurementSheetOwnerPersist();
   const fieldIndex = getMeasurementSheetOwnerFieldIndex();
 
   if (fieldIndex < 0) {
@@ -28541,17 +28554,17 @@ function handleMeasurementSheetMutation({ immediate = false } = {}) {
   invalidateMeasurementSheetFormulaCache();
 
   if (state.measurementSheet.ownerKind === "template_field") {
-    persistMeasurementSheetToTemplateField();
+    scheduleMeasurementSheetOwnerPersist({ immediate });
     return;
   }
 
   if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
-    persistMeasurementSheetToDocumentTemplateRuntimeField();
+    scheduleMeasurementSheetOwnerPersist({ immediate });
     return;
   }
 
   if (state.measurementSheet.ownerKind === "work_environment_fc") {
-    scheduleWorkOrderDocumentFcMeasurementPersist({ immediate });
+    scheduleMeasurementSheetOwnerPersist({ immediate });
     return;
   }
 
@@ -43587,8 +43600,16 @@ function isWorkOrderDocumentFcMeasurementSheetOwner() {
 }
 
 function isMeasurementSheetLightCellRenderEnabled() {
-  return isWorkOrderDocumentFcMeasurementSheetOwner()
-    && isPhysicalFactorsRoF3MeasurementSheet(buildCurrentMeasurementSheetFormulaSnapshot());
+  const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
+  const sheet = buildCurrentMeasurementSheetFormulaSnapshot();
+  const cellCount = (sheet.rows?.length || 0) * (sheet.columns?.length || 0);
+
+  if (isWorkOrderDocumentFcMeasurementSheetOwner()) {
+    return isPhysicalFactorsRoF3MeasurementSheet(sheet);
+  }
+
+  return (ownerKind === "template_field" || ownerKind === "document_template_runtime_field")
+    && cellCount >= 240;
 }
 
 function isPhysicalFactorsRoF3MeasurementSheet(sheet = null) {
@@ -46418,6 +46439,7 @@ async function loadMeasurementSheetPresetLibrary({ force = false } = {}) {
     };
   }
 
+  renderMeasurementSheetPerformanceBadge();
   renderMeasurementSheetPresetLibrary();
 }
 
@@ -46505,6 +46527,7 @@ async function saveMeasurementSheetPreset() {
     };
   }
 
+  renderMeasurementSheetPerformanceBadge();
   renderMeasurementSheetPresetLibrary();
 }
 
@@ -47717,6 +47740,7 @@ function scheduleMeasurementSheetComputedRefresh({ immediate = false } = {}) {
 }
 
 function refreshMeasurementSheetComputedValues() {
+  const computeStartedAt = performance.now();
   clearScheduledMeasurementSheetRefresh();
 
   if (!measurementSheetBody) {
@@ -47774,6 +47798,9 @@ function refreshMeasurementSheetComputedValues() {
 
   renderMeasurementFormulaReferences();
   syncMeasurementToolbar();
+  updateMeasurementSheetPerformance({
+    computeMs: performance.now() - computeStartedAt,
+  });
 }
 
 function clearMeasurementFillPreview() {
@@ -48887,6 +48914,7 @@ function openTemplateMeasurementSheet(fieldId) {
 }
 
 function persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows = false } = {}) {
+  clearScheduledMeasurementSheetOwnerPersist();
   const workOrderId = String(
     state.measurementSheet.ownerRuntimeWorkOrderId
     || state.documentTemplateRuntime.activeWorkOrderId
@@ -48910,7 +48938,7 @@ function persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRo
 }
 
 function persistMeasurementSheetToWorkOrderDocumentFcDraft({ render = false } = {}) {
-  clearScheduledWorkOrderDocumentFcMeasurementPersist();
+  clearScheduledMeasurementSheetOwnerPersist();
   const workOrderId = String(
     state.measurementSheet.ownerRuntimeWorkOrderId
     || state.documentTemplateRuntime.activeWorkOrderId
@@ -48932,7 +48960,7 @@ function persistMeasurementSheetToWorkOrderDocumentFcDraft({ render = false } = 
   }, { isChemical: false, render });
 }
 
-function clearScheduledWorkOrderDocumentFcMeasurementPersist() {
+function clearScheduledMeasurementSheetOwnerPersist() {
   if (!state.measurementSheet.persistTimer) {
     return;
   }
@@ -48941,18 +48969,89 @@ function clearScheduledWorkOrderDocumentFcMeasurementPersist() {
   state.measurementSheet.persistTimer = 0;
 }
 
-function scheduleWorkOrderDocumentFcMeasurementPersist({ immediate = false, render = false } = {}) {
-  clearScheduledWorkOrderDocumentFcMeasurementPersist();
+function persistMeasurementSheetOwnerNow({ render = false, rerenderFieldRows = false } = {}) {
+  const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
+
+  if (ownerKind === "template_field") {
+    persistMeasurementSheetToTemplateField({ rerenderFieldRows });
+    return;
+  }
+
+  if (ownerKind === "document_template_runtime_field") {
+    persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows });
+    return;
+  }
+
+  if (ownerKind === "work_environment_fc") {
+    persistMeasurementSheetToWorkOrderDocumentFcDraft({ render });
+  }
+}
+
+function scheduleMeasurementSheetOwnerPersist({ immediate = false, render = false, rerenderFieldRows = false } = {}) {
+  clearScheduledMeasurementSheetOwnerPersist();
 
   if (immediate) {
-    persistMeasurementSheetToWorkOrderDocumentFcDraft({ render });
+    persistMeasurementSheetOwnerNow({ render, rerenderFieldRows });
     return;
   }
 
   state.measurementSheet.persistTimer = window.setTimeout(() => {
     state.measurementSheet.persistTimer = 0;
-    persistMeasurementSheetToWorkOrderDocumentFcDraft({ render });
+    persistMeasurementSheetOwnerNow({ render, rerenderFieldRows });
   }, 450);
+}
+
+function renderMeasurementSheetPerformanceBadge() {
+  if (!measurementSheetPanel) {
+    return;
+  }
+
+  const actions = measurementSheetPanel.querySelector(".measurement-sheet-head-actions");
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+
+  let badge = actions.querySelector(".measurement-sheet-perf-pill");
+  if (!(badge instanceof HTMLElement)) {
+    badge = document.createElement("span");
+    badge.className = "measurement-sheet-perf-pill";
+    actions.prepend(badge);
+  }
+
+  const perf = state.measurementSheet.perf || {};
+  const cells = Number(perf.cells) || 0;
+  const shouldShow = state.measurementSheet.isOpen
+    && cells >= 120
+    && isMeasurementSheetInlineOwnerKind();
+
+  badge.hidden = !shouldShow;
+  if (!shouldShow) {
+    return;
+  }
+
+  const renderMs = Math.round(Number(perf.renderMs) || 0);
+  const computeMs = Math.round(Number(perf.computeMs) || 0);
+  const inputCount = Number(perf.inputs) || 0;
+  const lightCount = Number(perf.lightCells) || 0;
+  badge.textContent = `Perf ${renderMs}/${computeMs} ms · ${inputCount} input · ${lightCount} light`;
+  badge.title = [
+    `Render: ${renderMs} ms`,
+    `Formule: ${computeMs} ms`,
+    `Ćelije: ${cells}`,
+    `Redovi: ${Number(perf.rows) || 0}`,
+    `Kolone: ${Number(perf.columns) || 0}`,
+    `Formule: ${Number(perf.formulas) || 0}`,
+    `Način: ${perf.mode || "standard"}`,
+  ].join("\n");
+}
+
+function updateMeasurementSheetPerformance(partial = {}) {
+  state.measurementSheet.perf = {
+    ...(state.measurementSheet.perf || {}),
+    ...partial,
+    updatedAt: new Date().toISOString(),
+  };
+  renderMeasurementSheetPerformanceBadge();
 }
 
 function flushOpenDocumentTemplateRuntimeMeasurementSheet(workOrderId = "") {
@@ -49231,6 +49330,30 @@ function buildDocumentTemplateInlineExcelEditor(field, draftIndex) {
     ));
     sheet.rows = sheet.rows.map((row, index) => ensureRowShape(row, index));
     syncDraftSheetMeta();
+
+    const inlineCellCount = sheet.rows.length * sheet.columns.length;
+    if (inlineCellCount >= 360) {
+      const summary = document.createElement("div");
+      summary.className = "document-template-inline-excel-editor-summary";
+
+      const summaryText = document.createElement("div");
+      summaryText.className = "document-template-inline-excel-editor-summary-text";
+      summaryText.textContent = `${sheet.rows.length} redova · ${sheet.columns.length} kolona · ${inlineCellCount} ćelija`;
+
+      const summaryButton = createActionButton("Otvori Excel", "primary-button");
+      summaryButton.addEventListener("click", () => {
+        openTemplateMeasurementSheet(fieldId);
+      });
+
+      const preview = buildDocumentTemplateInlineExcelPreview({
+        ...field,
+        sheet,
+      });
+
+      summary.append(summaryText, summaryButton, preview);
+      gridWrap.replaceChildren(summary);
+      return;
+    }
 
     const table = document.createElement("table");
     table.className = "document-template-inline-excel-editor-grid";
@@ -49551,6 +49674,7 @@ function syncMeasurementSheetPanelMount() {
 }
 
 function renderMeasurementSheet() {
+  const renderStartedAt = performance.now();
   ensureMeasurementSheetStructure();
   invalidateMeasurementSheetFormulaCache();
 
@@ -49563,6 +49687,9 @@ function renderMeasurementSheet() {
   const coveredCells = new Set();
   const validationRenderMeta = buildMeasurementValidationRenderMeta();
   const lightCellRender = isMeasurementSheetLightCellRenderEnabled();
+  let renderedInputCount = 0;
+  let renderedLightCellCount = 0;
+  let renderedFormulaCount = 0;
   renderMeasurementSharedValidationLists(validationRenderMeta);
 
   mergeDescriptors.forEach((merge) => {
@@ -49838,11 +49965,15 @@ function renderMeasurementSheet() {
       });
 
       const validationMeta = validationRenderMeta.get(column.id) ?? {};
+      if (isMeasurementFormula(row.cells?.[column.id] ?? "")) {
+        renderedFormulaCount += 1;
+      }
       const shouldRenderInput = !lightCellRender
         || isMeasurementEditingCell(row.id, column.id)
         || isMeasurementFormulaBarEditingCell(row.id, column.id);
 
       if (shouldRenderInput) {
+        renderedInputCount += 1;
         const input = document.createElement("input");
         input.type = "text";
         input.className = "measurement-cell-input";
@@ -49899,6 +50030,7 @@ function renderMeasurementSheet() {
         });
         shell.append(input);
       } else {
+        renderedLightCellCount += 1;
         const display = document.createElement("button");
         display.type = "button";
         display.tabIndex = -1;
@@ -50012,6 +50144,16 @@ function renderMeasurementSheet() {
   renderMeasurementFillPreview();
   renderMeasurementFillMenu();
   renderMeasurementContextMenu();
+  updateMeasurementSheetPerformance({
+    renderMs: performance.now() - renderStartedAt,
+    rows: state.measurementSheet.rows.length,
+    columns: state.measurementSheet.columns.length,
+    cells: state.measurementSheet.rows.length * state.measurementSheet.columns.length,
+    inputs: renderedInputCount,
+    lightCells: renderedLightCellCount,
+    formulas: renderedFormulaCount,
+    mode: lightCellRender ? "light" : "standard",
+  });
 }
 
 function extendMeasurementSheetRowsIfNeeded() {
