@@ -101485,6 +101485,7 @@ function renderTodoDetail() {
 }
 
 function renderTodo() {
+  ensureTodoWorkspaceVisible();
   syncTodoEditorModal();
   renderTodoSummary();
   renderTopbarShortcutCounts();
@@ -109247,6 +109248,14 @@ function renderActiveView() {
 
   if (state.activeView !== "module" || state.activeModuleItem !== "vehicles") {
     state.vehicleUsageEditorOpen = false;
+  }
+
+  if (state.activeView === "reminders") {
+    renderReminders();
+  }
+
+  if (state.activeView === "todo") {
+    renderTodo();
   }
 
   renderDashboardOverview();
