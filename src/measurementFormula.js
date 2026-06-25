@@ -9,6 +9,27 @@ class MeasurementFormulaError extends Error {
   }
 }
 
+const FORMULA_AST_CACHE_LIMIT = 500;
+const formulaAstCache = new Map();
+
+function getCachedFormulaAst(expression = "") {
+  const cacheKey = String(expression ?? "");
+  if (formulaAstCache.has(cacheKey)) {
+    const cached = formulaAstCache.get(cacheKey);
+    formulaAstCache.delete(cacheKey);
+    formulaAstCache.set(cacheKey, cached);
+    return cached;
+  }
+
+  const tokens = tokenizeFormulaExpression(cacheKey);
+  const ast = createFormulaParser(tokens);
+  formulaAstCache.set(cacheKey, ast);
+  if (formulaAstCache.size > FORMULA_AST_CACHE_LIMIT) {
+    formulaAstCache.delete(formulaAstCache.keys().next().value);
+  }
+  return ast;
+}
+
 function tokenizeFormulaExpression(expression) {
   const tokens = [];
   let index = 0;
@@ -474,21 +495,39 @@ function evaluateVLookup(node, context) {
   }
 
   const lookupValue = evaluateFormulaAst(node.args[0], context);
-  const matrix = evaluateFormulaAst(node.args[1], context);
   const columnIndex = Math.floor(coerceToNumber(evaluateFormulaAst(node.args[2], context)));
   const approximateMatch = node.args.length === 4
     ? isTruthyFormulaValue(evaluateFormulaAst(node.args[3], context))
     : false;
-
-  if (!isMeasurementRangeMatrix(matrix) || matrix.length === 0) {
-    throw new MeasurementFormulaError("VLOOKUP trazi raspon celija kao drugi argument.");
-  }
 
   if (!Number.isFinite(columnIndex) || columnIndex < 1) {
     throw new MeasurementFormulaError("VLOOKUP trazi pozitivan indeks kolone.");
   }
 
   const normalizedColumnIndex = columnIndex - 1;
+
+  if (
+    !approximateMatch
+    && node.args[1]?.type === "range"
+    && typeof context.resolveVLookup === "function"
+  ) {
+    const optimizedLookup = context.resolveVLookup(
+      node.args[1].startReference,
+      node.args[1].endReference,
+      lookupValue,
+      columnIndex,
+    );
+    if (optimizedLookup?.handled) {
+      return optimizedLookup.value ?? "";
+    }
+  }
+
+  const matrix = evaluateFormulaAst(node.args[1], context);
+
+  if (!isMeasurementRangeMatrix(matrix) || matrix.length === 0) {
+    throw new MeasurementFormulaError("VLOOKUP trazi raspon celija kao drugi argument.");
+  }
+
   if (normalizedColumnIndex >= matrix[0].length) {
     throw new MeasurementFormulaError("VLOOKUP indeks kolone izlazi izvan raspona.");
   }
@@ -1019,8 +1058,7 @@ export function evaluateMeasurementFormula(formulaText, context) {
     return "";
   }
 
-  const tokens = tokenizeFormulaExpression(expression);
-  const ast = createFormulaParser(tokens);
+  const ast = getCachedFormulaAst(expression);
   return evaluateFormulaAst(ast, context);
 }
 
