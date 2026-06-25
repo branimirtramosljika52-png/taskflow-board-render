@@ -121012,6 +121012,27 @@ function normalizeWorkOrderDocumentWorkEnvironmentDraftList(values = [], fallbac
     .filter(Boolean);
 }
 
+function normalizeWorkOrderDocumentWorkEnvironmentDraftAttachments(values = []) {
+  return (Array.isArray(values) ? values : [])
+    .map((attachment, index) => {
+      const fileName = String(attachment?.fileName || attachment?.name || "").trim();
+      const dataUrl = String(attachment?.dataUrl || attachment?.storageUrl || attachment?.url || "").trim();
+      if (!fileName && !dataUrl) {
+        return null;
+      }
+      return {
+        id: String(attachment?.id || createClientSideId("fc-attachment")).trim() || `fc-attachment-${index + 1}`,
+        fileName: fileName || `Prilog ${index + 1}`,
+        fileType: String(attachment?.fileType || attachment?.type || "").trim(),
+        fileSize: Number(attachment?.fileSize || attachment?.size || 0) || 0,
+        dataUrl,
+        createdAt: String(attachment?.createdAt || attachment?.uploadedAt || new Date().toISOString()).trim(),
+        description: String(attachment?.description || attachment?.note || "").trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space = {}, index = 0, workOrder = {}, { isChemical = false } = {}) {
   const fallbackName = workOrder.locationName || (isChemical ? "Kemijski prostor" : "Radni prostor");
   return {
@@ -121075,10 +121096,12 @@ function createWorkOrderDocumentWorkEnvironmentDefaultDraft(workOrder = {}, { is
     recordNumber: String(workOrder.workOrderNumber || workOrder.number || "").trim(),
     companyName: String(workOrder.companyName || "").trim(),
     companyOib: String(workOrder.companyOib || workOrder.oib || "").trim(),
+    companyHeadquarters: String(workOrder.headquarters || workOrder.companyHeadquarters || workOrder.companyAddress || "").trim(),
     location: String(workOrder.locationName || workOrder.location || "").trim(),
     startDate: normalizeDateInputValue(common.inspectionDate || ""),
     endDate: normalizeDateInputValue(common.inspectionDate || ""),
     validUntil: "",
+    measurementTime: "",
     types: types.join(", ") || (isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici"),
     harmfulness: harmfulness.join(", ") || (isChemical ? "Kemijske štetnosti" : "Mikroklima, osvijetljenost, buka, vibracije"),
     airTemperature: String(common.outsideTemperature || "").trim(),
@@ -121095,6 +121118,8 @@ function createWorkOrderDocumentWorkEnvironmentDefaultDraft(workOrder = {}, { is
     healthRequirementRegisters: isChemical
       ? [...WORK_ORDER_DOCUMENT_KC_DEFAULT_HEALTH_REQUIREMENTS]
       : [...WORK_ORDER_DOCUMENT_FC_DEFAULT_HEALTH_REQUIREMENTS],
+    additionalRegisters: [],
+    attachments: [],
     spaces,
     measurements,
   };
@@ -121113,12 +121138,16 @@ function normalizeWorkOrderDocumentWorkEnvironmentDraft(draft = {}, workOrder = 
     recordNumber: String(source.recordNumber || defaults.recordNumber || "").trim(),
     companyName: String(source.companyName || defaults.companyName || "").trim(),
     companyOib: String(source.companyOib || defaults.companyOib || "").trim(),
+    companyHeadquarters: String(source.companyHeadquarters || source.headquarters || defaults.companyHeadquarters || "").trim(),
     location: String(source.location || defaults.location || "").trim(),
     startDate: normalizeDateInputValue(source.startDate || defaults.startDate || ""),
     endDate: normalizeDateInputValue(source.endDate || defaults.endDate || ""),
     validUntil: normalizeDateInputValue(source.validUntil || ""),
+    measurementTime: String(source.measurementTime || defaults.measurementTime || "").trim(),
     obligationRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.obligationRegisters, defaults.obligationRegisters),
     healthRequirementRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.healthRequirementRegisters, defaults.healthRequirementRegisters),
+    additionalRegisters: normalizeWorkOrderDocumentWorkEnvironmentDraftList(source.additionalRegisters, defaults.additionalRegisters),
+    attachments: normalizeWorkOrderDocumentWorkEnvironmentDraftAttachments(source.attachments),
     spaces: spacesSource.map((space, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftSpace(space, index, workOrder, { isChemical })),
     measurements: measurementsSource.map((measurement, index) => normalizeWorkOrderDocumentWorkEnvironmentDraftMeasurement(measurement, index, { isChemical })),
   };
@@ -121343,6 +121372,50 @@ function createWorkOrderDocumentWorkEnvironmentRegistryEditor({
   return panel;
 }
 
+function createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+  title = "",
+  subtitle = "",
+  icon = "",
+  className = "",
+} = {}) {
+  const panel = document.createElement("section");
+  panel.className = `work-order-document-fc-basic-panel${className ? ` ${className}` : ""}`;
+  const head = document.createElement("div");
+  head.className = "work-order-document-fc-basic-panel-head";
+  if (icon) {
+    const iconNode = document.createElement("span");
+    iconNode.className = "work-order-document-fc-basic-panel-icon";
+    iconNode.textContent = icon;
+    head.append(iconNode);
+  }
+  const copy = document.createElement("div");
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  copy.append(heading);
+  if (subtitle) {
+    const small = document.createElement("small");
+    small.textContent = subtitle;
+    copy.append(small);
+  }
+  head.append(copy);
+  const body = document.createElement("div");
+  body.className = "work-order-document-fc-basic-panel-body";
+  panel.append(head, body);
+  return { panel, body };
+}
+
+async function createWorkOrderDocumentWorkEnvironmentAttachmentDraft(file) {
+  return {
+    id: createClientSideId("fc-attachment"),
+    fileName: file.name || "Prilog",
+    fileType: file.type || "",
+    fileSize: Number(file.size) || 0,
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati prilog ${file.name}.`),
+    createdAt: new Date().toISOString(),
+    description: "",
+  };
+}
+
 function appendWorkOrderDocumentWorkEnvironmentBasicEditorBlock(bodyNode, {
   workOrder = {},
   stateEntry = {},
@@ -121360,55 +121433,97 @@ function appendWorkOrderDocumentWorkEnvironmentBasicEditorBlock(bodyNode, {
     subtitle: "Podaci za novi zapisnik. Sve se može ručno urediti prije slanja kroz IS ZNR POST.",
     badge: "Novi zapisnik",
     renderBody: (sectionBody) => {
-      const grid = document.createElement("div");
-      grid.className = "work-order-document-fc-draft-grid";
-      [
-        ["RN", "recordNumber", "Broj RN"],
-        ["Tvrtka / naručitelj", "companyName", "Naziv tvrtke"],
-        ["OIB", "companyOib", "OIB tvrtke"],
-        ["Mjesto ispitivanja", "location", "Lokacija / objekt"],
-        ["Datum početka", "startDate", "dd.mm.yyyy", "date"],
-        ["Datum završetka", "endDate", "dd.mm.yyyy", "date"],
-        ["Vrijedi do", "validUntil", "dd.mm.yyyy", "date"],
-        ["Vrste ispitivanja", "types", isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici"],
-        ["Štetnosti", "harmfulness", "Odabrane štetnosti"],
-        ["Temperatura zraka (°C)", "airTemperature", "npr. 22"],
-        ["Relativna vlažnost (%)", "relativeHumidity", "npr. 52"],
-        ["Brzina strujanja (m/s)", "airflowSpeed", "npr. 0,20"],
-        ["Vanjski uvjeti", "externalConditionsOther", "npr. sunčano / zatvoreni prostor"],
-        ["Mjerna oprema", "instrumentSummary", "Oznake mjerne opreme"],
-      ].forEach(([label, fieldName, placeholder, type]) => {
-        grid.append(createWorkOrderDocumentWorkEnvironmentDraftField({
-          label,
-          value: draft[fieldName],
-          placeholder,
-          type: type || "text",
-          onInput: (value) => save({ [fieldName]: value }),
-        }));
-      });
-      sectionBody.append(grid);
+      const shell = document.createElement("div");
+      shell.className = "work-order-document-fc-basic-premium";
 
-      const textGrid = document.createElement("div");
-      textGrid.className = "work-order-document-fc-draft-grid is-text";
-      [
-        ["Uvjeti procesa rada", "workProcessConditions", "Opiši proces rada i uvjete koji vrijede za mjerenja"],
-        ["Tehnička dokumentacija", "technicalDocumentation", "Dokumentacija, podaci poslodavca, zatečeno stanje"],
-        ["Metode, postupci i norme", "methodsProceduresAndNorms", "Metode i norme prema kojima se obavlja ispitivanje"],
-        ["Ispitivači", "expertsText", "Ispitivači za zapisnik"],
-        ["Nositelji ovlaštenja", "signedByText", "Nositelji ovlaštenja / odgovorne osobe"],
-      ].forEach(([label, fieldName, placeholder]) => {
-        textGrid.append(createWorkOrderDocumentWorkEnvironmentDraftField({
-          label,
-          value: draft[fieldName],
-          placeholder,
-          multiline: true,
-          onInput: (value) => save({ [fieldName]: value }),
-        }));
-      });
-      sectionBody.append(textGrid);
+      const summary = document.createElement("div");
+      summary.className = "work-order-document-fc-basic-summary";
+      const summaryCopy = document.createElement("div");
+      const summaryLabel = document.createElement("span");
+      summaryLabel.textContent = "Broj radnog naloga (RN)";
+      const summaryNumber = document.createElement("strong");
+      summaryNumber.textContent = draft.recordNumber || workOrder.workOrderNumber || workOrder.number || "-";
+      summaryCopy.append(summaryLabel, summaryNumber);
+      summary.append(summaryCopy, createBadge("Novi zapisnik", "document-template-meta-badge"));
+      shell.append(summary);
 
+      const appendFields = (body, fields = [], gridClass = "") => {
+        const grid = document.createElement("div");
+        grid.className = `work-order-document-fc-draft-grid${gridClass ? ` ${gridClass}` : ""}`;
+        fields.forEach(({ label, fieldName, placeholder, type = "text", multiline = false, className = "" }) => {
+          grid.append(createWorkOrderDocumentWorkEnvironmentDraftField({
+            label,
+            value: draft[fieldName],
+            placeholder,
+            type,
+            multiline,
+            className,
+            onInput: (value) => save({ [fieldName]: value }, { render: fieldName === "recordNumber" }),
+          }));
+        });
+        body.append(grid);
+      };
+
+      const companyPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+        title: "Tvrtka i sjedište",
+        icon: "▣",
+      });
+      appendFields(companyPanel.body, [
+        { label: "Tvrtka / naručitelj", fieldName: "companyName", placeholder: "Naziv tvrtke" },
+        { label: "Adresa sjedišta", fieldName: "companyHeadquarters", placeholder: "Sjedište naručitelja" },
+        { label: "OIB", fieldName: "companyOib", placeholder: "OIB tvrtke" },
+        { label: "Mjesto ispitivanja", fieldName: "location", placeholder: "Lokacija / objekt", className: "is-span-full" },
+      ]);
+      shell.append(companyPanel.panel);
+
+      const datesPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+        title: "Datumi",
+        icon: "□",
+      });
+      appendFields(datesPanel.body, [
+        { label: "Datum početka", fieldName: "startDate", placeholder: "dd.mm.yyyy", type: "date" },
+        { label: "Datum završetka", fieldName: "endDate", placeholder: "dd.mm.yyyy", type: "date" },
+        { label: "Vrijedi do", fieldName: "validUntil", placeholder: "dd.mm.yyyy", type: "date" },
+      ]);
+      shell.append(datesPanel.panel);
+
+      const conditionsPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+        title: "Uvjeti ispitivanja",
+        icon: "◌",
+      });
+      appendFields(conditionsPanel.body, [
+        { label: "Relativna vlažnost (%)", fieldName: "relativeHumidity", placeholder: "npr. 52" },
+        { label: "Brzina strujanja (m/s)", fieldName: "airflowSpeed", placeholder: "npr. 0,20" },
+        { label: "Temperatura zraka (°C)", fieldName: "airTemperature", placeholder: "npr. 22" },
+        { label: "Vrijeme", fieldName: "measurementTime", placeholder: "npr. 12:00" },
+        { label: "Mjerna oprema", fieldName: "instrumentSummary", placeholder: "Oznake mjerne opreme" },
+        { label: "Vanjski uvjeti", fieldName: "externalConditionsOther", placeholder: "npr. sunčano / zatvoreni prostor" },
+      ]);
+      appendFields(conditionsPanel.body, [
+        { label: "Ispitivači", fieldName: "expertsText", placeholder: "Ispitivači za zapisnik" },
+        { label: "Odgovorne osobe", fieldName: "signedByText", placeholder: "Nositelji ovlaštenja / odgovorne osobe" },
+      ], "is-two");
+      shell.append(conditionsPanel.panel);
+
+      const examinationPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+        title: "Podaci o ispitivanju",
+        icon: "▤",
+      });
+      appendFields(examinationPanel.body, [
+        { label: "Vrsta radnog procesa", fieldName: "workProcessConditions", placeholder: "npr. skladištenje / proizvodnja / administrativni poslovi", multiline: true },
+        { label: "Dokumentacija (tehnička)", fieldName: "technicalDocumentation", placeholder: "Podaci zatečeni na mjestu ispitivanja", multiline: true },
+        { label: "Metode, postupci i norme", fieldName: "methodsProceduresAndNorms", placeholder: "Prema važećim propisima, normama i pravilima struke", multiline: true },
+        { label: "Vrste ispitivanja", fieldName: "types", placeholder: isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici" },
+        { label: "Štetnosti", fieldName: "harmfulness", placeholder: "Odabrane štetnosti" },
+      ], "is-examination");
+      shell.append(examinationPanel.panel);
+
+      const regulationsPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+        title: "Propisi",
+        icon: "▦",
+      });
       const registryGrid = document.createElement("div");
-      registryGrid.className = "work-order-document-fc-registry-grid";
+      registryGrid.className = "work-order-document-fc-registry-grid is-premium";
       registryGrid.append(
         createWorkOrderDocumentWorkEnvironmentRegistryEditor({
           title: "Propisi obveze",
@@ -121420,8 +121535,122 @@ function appendWorkOrderDocumentWorkEnvironmentBasicEditorBlock(bodyNode, {
           entries: draft.healthRequirementRegisters,
           onChange: (entries) => save({ healthRequirementRegisters: entries }),
         }),
+        createWorkOrderDocumentWorkEnvironmentRegistryEditor({
+          title: "Dodatno propisi",
+          entries: draft.additionalRegisters,
+          onChange: (entries) => save({ additionalRegisters: entries }),
+        }),
       );
-      sectionBody.append(registryGrid);
+      regulationsPanel.body.append(registryGrid);
+      shell.append(regulationsPanel.panel);
+
+      const attachmentsPanel = createWorkOrderDocumentWorkEnvironmentPremiumPanel({
+        title: "Prilozi",
+        icon: "⌁",
+      });
+      const attachments = normalizeWorkOrderDocumentWorkEnvironmentDraftAttachments(draft.attachments);
+      const upload = document.createElement("label");
+      upload.className = "work-order-document-fc-attachments-drop";
+      const uploadInput = document.createElement("input");
+      uploadInput.type = "file";
+      uploadInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
+      uploadInput.multiple = true;
+      uploadInput.hidden = true;
+      const uploadCopy = document.createElement("span");
+      uploadCopy.innerHTML = `<strong>Povuci i spusti datoteke ovdje ili</strong> <em>Odaberi datoteke</em><small>Podržani formati: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG (maks. 12 MB po datoteci)</small>`;
+      upload.append(uploadInput, uploadCopy);
+      const uploadMessage = document.createElement("p");
+      uploadMessage.className = "helper-copy module-copy work-order-document-fc-attachment-message";
+      const addAttachments = async (files) => {
+        const incoming = Array.from(files ?? []).filter((file) => file instanceof File);
+        if (!incoming.length) {
+          return;
+        }
+        try {
+          for (const file of incoming) {
+            if (!isWorkOrderDocumentFileAllowed(file)) {
+              throw new Error(`Format ${file.name} nije podržan.`);
+            }
+            if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+              throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+            }
+          }
+          const nextAttachments = await Promise.all(incoming.map(createWorkOrderDocumentWorkEnvironmentAttachmentDraft));
+          save({ attachments: [...attachments, ...nextAttachments] }, { render: true });
+        } catch (error) {
+          uploadMessage.textContent = error?.message || "Prilog nije dodan.";
+          uploadMessage.classList.add("is-error");
+        }
+      };
+      uploadInput.addEventListener("change", () => {
+        void addAttachments(uploadInput.files);
+      });
+      upload.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        upload.classList.add("is-dragging");
+      });
+      upload.addEventListener("dragleave", () => upload.classList.remove("is-dragging"));
+      upload.addEventListener("drop", (event) => {
+        event.preventDefault();
+        upload.classList.remove("is-dragging");
+        void addAttachments(event.dataTransfer?.files);
+      });
+      attachmentsPanel.body.append(upload, uploadMessage);
+      const list = document.createElement("div");
+      list.className = "work-order-document-fc-attachments-list";
+      if (!attachments.length) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-document-fc-attachments-empty";
+        empty.textContent = "Nema dodanih priloga.";
+        list.append(empty);
+      } else {
+        attachments.forEach((attachment) => {
+          const row = document.createElement("div");
+          row.className = "work-order-document-fc-attachment-row";
+          const fileCopy = document.createElement("div");
+          const fileName = document.createElement("strong");
+          fileName.textContent = attachment.fileName || "Prilog";
+          const meta = document.createElement("small");
+          meta.textContent = [
+            attachment.fileType || "Datoteka",
+            formatFileSize(attachment.fileSize),
+            attachment.createdAt ? formatCompactDateTime(attachment.createdAt) : "",
+          ].filter(Boolean).join(" · ");
+          fileCopy.append(fileName, meta);
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "icon-button";
+          remove.textContent = "×";
+          remove.title = "Ukloni prilog";
+          remove.addEventListener("click", (event) => {
+            event.stopPropagation();
+            save({
+              attachments: attachments.filter((item) => String(item.id) !== String(attachment.id)),
+            }, { render: true });
+          });
+          row.append(fileCopy, remove);
+          list.append(row);
+        });
+      }
+      attachmentsPanel.body.append(list);
+      shell.append(attachmentsPanel.panel);
+
+      const footer = document.createElement("div");
+      footer.className = "work-order-document-fc-basic-footer";
+      const hint = document.createElement("span");
+      hint.textContent = "Savjet: ispuni osnovne podatke i dodaj propise. Sve izmjene možeš napraviti prije slanja kroz IS ZNR POST.";
+      const saveDraft = document.createElement("button");
+      saveDraft.type = "button";
+      saveDraft.className = "ghost-button";
+      saveDraft.textContent = "Spremi nacrt";
+      saveDraft.addEventListener("click", (event) => {
+        event.stopPropagation();
+        persistWorkOrderDocumentWorkEnvironmentDraft(workOrder, stateEntry, draft, { isChemical, render: true });
+      });
+      footer.append(hint, saveDraft);
+      shell.append(footer);
+
+      sectionBody.append(shell);
     },
   });
 }
