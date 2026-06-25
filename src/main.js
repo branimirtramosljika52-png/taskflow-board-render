@@ -73260,6 +73260,124 @@ function queueWorkOrderDocumentNativeServiceFocus(workOrder = {}, nativeKind = "
   return true;
 }
 
+function getDocumentTemplateRuntimeNativeServiceShortLabel(nativeKind = "") {
+  const normalizedKind = normalizeDocumentTemplateRuntimeNativeServiceKind(nativeKind);
+  if (normalizedKind === "workEquipment") {
+    return "RO";
+  }
+  if (normalizedKind === "physicalFactors") {
+    return "FC";
+  }
+  if (normalizedKind === "chemicalFactors") {
+    return "KC";
+  }
+  return "IS ZNR";
+}
+
+function getDocumentTemplateRuntimeNativeServiceTitle(nativeKind = "") {
+  const normalizedKind = normalizeDocumentTemplateRuntimeNativeServiceKind(nativeKind);
+  if (normalizedKind === "workEquipment") {
+    return "Radna oprema";
+  }
+  if (normalizedKind === "physicalFactors") {
+    return "Fizikalni čimbenici";
+  }
+  if (normalizedKind === "chemicalFactors") {
+    return "Kemijski čimbenici";
+  }
+  return "IS ZNR usluga";
+}
+
+function createDocumentTemplateRuntimeNativeOnlyTemplate(nativeKind = "", workOrder = {}) {
+  const shortLabel = getDocumentTemplateRuntimeNativeServiceShortLabel(nativeKind);
+  const title = getDocumentTemplateRuntimeNativeServiceTitle(nativeKind);
+  const workOrderNumber = String(workOrder?.workOrderNumber || workOrder?.number || "").trim();
+  return {
+    id: "",
+    organizationId: state.activeOrganizationId || "",
+    title: `${shortLabel} - ${title}${workOrderNumber ? ` - RN ${workOrderNumber}` : ""}`,
+    useAi: false,
+    documentType: "Zapisnik",
+    status: "draft",
+    outputFileName: `${shortLabel.toLowerCase()}-${workOrderNumber || "rn"}`,
+    sampleCompanyId: workOrder?.companyId || "",
+    sampleLocationId: workOrder?.locationId || "",
+    description: `${title} se obrađuje kroz native IS ZNR prikaz bez klasičnog templatea.`,
+    selectedLegalFrameworkIds: [],
+    customFields: [],
+    equipmentItems: [],
+    sections: [],
+    referenceDocument: null,
+  };
+}
+
+function openDocumentTemplateRuntimeNativeServiceOnly(workOrders = [], nativeKind = "", activeWorkOrder = null) {
+  const normalizedKind = normalizeDocumentTemplateRuntimeNativeServiceKind(nativeKind);
+  const sourceWorkOrders = (Array.isArray(workOrders) ? workOrders : [])
+    .filter((workOrder) => String(workOrder?.id || "").trim());
+  const targetWorkOrder = activeWorkOrder?.id
+    ? activeWorkOrder
+    : sourceWorkOrders.find((workOrder) => String(workOrder?.id || "") === String(activeWorkOrder || ""))
+      || sourceWorkOrders[0]
+      || null;
+  if (!normalizedKind || !targetWorkOrder?.id) {
+    return false;
+  }
+
+  const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(targetWorkOrder);
+  const isAvailable = normalizedKind === "workEquipment"
+    ? shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(targetWorkOrder, serviceItems)
+    : normalizedKind === "physicalFactors"
+      ? shouldShowWorkOrderDocumentPhysicalFactorsSection(targetWorkOrder, serviceItems)
+      : shouldShowWorkOrderDocumentChemicalFactorsSection(targetWorkOrder, serviceItems);
+  if (!isAvailable) {
+    return false;
+  }
+
+  const runtimeWorkOrders = sourceWorkOrders.length
+    ? sourceWorkOrders
+    : [targetWorkOrder];
+  setDocumentTemplateRuntimeFromWizard(runtimeWorkOrders);
+  state.documentTemplateRuntime.activeWorkOrderId = String(targetWorkOrder.id || "").trim();
+  state.documentTemplateRuntime.activePanel = "nativeService";
+  state.documentTemplateRuntime.activeNativeServiceKind = normalizedKind;
+  state.documentTemplateRuntime.sequenceEntries = [];
+  state.documentTemplateRuntime.sequenceIndex = -1;
+
+  const template = createDocumentTemplateRuntimeNativeOnlyTemplate(normalizedKind, targetWorkOrder);
+  hydrateDocumentTemplateForm(template, {
+    preserveRuntimeContext: true,
+    runtimeMode: "fill",
+    skipModuleNavigation: true,
+  });
+  state.activeDocumentTemplateId = "";
+  if (documentTemplateIdInput) {
+    documentTemplateIdInput.value = "";
+  }
+  if (documentTemplateTitleInput) {
+    documentTemplateTitleInput.value = template.title;
+  }
+  if (documentTemplateOutputFileNameInput) {
+    documentTemplateOutputFileNameInput.value = template.outputFileName;
+  }
+  setDocumentTemplateFieldDrafts([], { ensureOne: false });
+  setDocumentTemplateEquipmentDrafts([], { ensureOne: false });
+  setDocumentTemplateSectionDrafts([], { ensureDefault: false });
+  state.workOrderDocumentWizard.open = false;
+  syncWorkOrderDocumentWizardModal();
+  syncDocumentTemplateEditorChrome();
+  renderDocumentTemplateRuntimeContext();
+  renderDocumentTemplateFieldRows();
+  renderDocumentTemplatePreviewContent();
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+  requestAnimationFrame(() => {
+    document
+      .querySelector("[data-document-template-runtime-panel='nativeService']")
+      ?.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+  return true;
+}
+
 function openWorkOrderDocumentNativeServiceFromRuntime(workOrder = {}, nativeKind = "") {
   const workOrderId = String(workOrder?.id || "").trim();
   const normalizedKind = String(nativeKind || "").trim();
@@ -73272,6 +73390,8 @@ function openWorkOrderDocumentNativeServiceFromRuntime(workOrder = {}, nativeKin
   }
 
   const runtimeReturnState = { ...(state.documentTemplateRuntime.returnState ?? {}) };
+  const selectedWorkOrders = getDocumentTemplateRuntimeWorkOrders();
+  const sourceWorkOrders = selectedWorkOrders.length ? selectedWorkOrders : [workOrder];
   closeDocumentTemplateEditor({ reset: false });
   if (runtimeReturnState.activeView) {
     state.activeView = runtimeReturnState.activeView;
@@ -73287,16 +73407,7 @@ function openWorkOrderDocumentNativeServiceFromRuntime(workOrder = {}, nativeKin
     }
   }
 
-  state.workOrderDocumentWizard.selectedIds = new Set([workOrderId]);
-  openWorkOrderDocumentWizard("inspection", { launchSource: "editor" });
-  if (!state.workOrderDocumentWizard.open) {
-    return false;
-  }
-  state.workOrderDocumentWizard.step = "templates";
-  renderWorkOrderDocumentWizard();
-  syncWorkOrderDocumentWizardModal();
-  queueWorkOrderDocumentNativeServiceFocus(workOrder, normalizedKind, { rerender: true });
-  return true;
+  return openDocumentTemplateRuntimeNativeServiceOnly(sourceWorkOrders, normalizedKind, workOrder);
 }
 
 function getDocumentTemplateRuntimeNativeServiceBadges(serviceItems = []) {
@@ -119887,7 +119998,6 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
     error.className = "form-error work-order-document-work-equipment-message";
     error.textContent = stateEntry.error;
     bodyNode.append(error);
-    return;
   }
 
   if (stateEntry.message) {
@@ -119908,7 +120018,27 @@ function appendWorkOrderDocumentIsznrWorkEquipmentBody(bodyNode, workOrder = {},
   }
 
   if (!items.length) {
+    const today = getWorkOrderDocumentWorkEquipmentToday();
+    const selectedIds = new Set((Array.isArray(stateEntry.selectedItemIds) ? stateEntry.selectedItemIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean));
+    appendWorkOrderDocumentWorkEquipmentOverview(bodyNode, {
+      items: [],
+      scopedItems: [],
+      selectedIds,
+      manualCount: readyManualEquipments.length,
+      activeFilter: "all",
+      stateEntry,
+      today,
+    });
     appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder, stateEntry);
+    appendWorkOrderDocumentRoEquipmentTable(bodyNode, {
+      workOrder,
+      items: [],
+      selectedIds,
+      stateEntry,
+      activeFilter: "all",
+    });
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = stateEntry.loaded
@@ -120119,7 +120249,7 @@ function getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders = []) {
   });
 }
 
-function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
+function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}, { compact = false } = {}) {
   const stateEntry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
   queueWorkOrderDocumentIsznrWorkEquipmentLoad(workOrder);
 
@@ -120163,6 +120293,25 @@ function createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder = {}) {
     workOrder?.companyName || "",
   ].filter(Boolean).join(" · ");
   workOrderList.append(chip);
+
+  if (compact) {
+    const note = document.createElement("span");
+    note.className = "work-order-document-template-card-note";
+    note.textContent = "RO se otvara u donjoj alatnoj traci kao native IS ZNR prikaz bez Word templatea.";
+    const footer = document.createElement("div");
+    footer.className = "work-order-document-template-card-footer";
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "ghost-button";
+    openButton.textContent = "Otvori RO";
+    openButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openDocumentTemplateRuntimeNativeServiceOnly(getAllSelectedWorkOrdersForDocumentWizard(), "workEquipment", workOrder);
+    });
+    footer.append(note, openButton);
+    card.append(head, workOrderList, footer);
+    return card;
+  }
 
   const body = document.createElement("div");
   body.className = "work-order-document-ro-template-body";
@@ -120414,6 +120563,67 @@ const WORK_ORDER_DOCUMENT_FC_HARMFULNESS_LABELS = Object.freeze({
   6: "Neionizirajuće zračenje",
   7: "Nedovoljna osvijetljenost / blještanje",
 });
+
+const WORK_ORDER_DOCUMENT_FC_DEFAULT_OBLIGATION_REGISTERS = Object.freeze([
+  "Zakon o zaštiti na radu",
+  "Pravilnik o ispitivanju radnog okoliša",
+]);
+
+const WORK_ORDER_DOCUMENT_FC_DEFAULT_HEALTH_REQUIREMENTS = Object.freeze([
+  "Mikroklimatski uvjeti",
+  "Osvijetljenost",
+  "Buka",
+  "Vibracije",
+]);
+
+const WORK_ORDER_DOCUMENT_KC_DEFAULT_HEALTH_REQUIREMENTS = Object.freeze([
+  "Kemijske štetnosti",
+  "Granične vrijednosti izloženosti",
+  "Biološke granične vrijednosti",
+]);
+
+function createWorkOrderDocumentWorkEnvironmentDefaultSpaceRows(workOrder = {}, { isChemical = false } = {}) {
+  return [
+    {
+      id: "default-space-1",
+      code: "P-1",
+      name: workOrder.locationName || "Radni prostor",
+      description: "Opis prostora i namjene unosi se iz FC/KC pripreme ili prethodnog zapisnika.",
+      processDescription: "Redoviti radni proces",
+      equipmentDescription: isChemical ? "Kemijske tvari i izvori izloženosti" : "Radna oprema i izvori fizikalnih čimbenika",
+      grades: new Set(["U pripremi"]),
+      sourceRecords: new Set(),
+      measurements: [],
+      isPlaceholder: true,
+    },
+  ];
+}
+
+function createWorkOrderDocumentWorkEnvironmentDefaultMeasurementRows({ isChemical = false } = {}) {
+  const source = isChemical
+    ? [
+      ["Kemijske štetnosti", "GVI/BGV", "mg/m3"],
+      ["Uzorkovanje zraka", "Rezultat analize", "mg/m3"],
+    ]
+    : [
+      ["Mikroklimatski uvjeti", "Temperatura / vlaga / strujanje", "°C / % / m/s"],
+      ["Osvijetljenost", "Minimalna i izmjerena osvijetljenost", "lx"],
+      ["Buka", "Dnevna/tjedna izloženost i vršna buka", "dB"],
+      ["Vibracije", "Šaka-ruka / cijelo tijelo", "m/s2"],
+    ];
+  return source.map(([kind, measuringPlace, unit], index) => ({
+    rowId: `default-measurement-${index + 1}`,
+    kind,
+    spaceName: "P-1",
+    measuringPlace,
+    measured: "unos",
+    allowed: "granica",
+    unit,
+    finalGrade: "U pripremi",
+    recordNumber: "Novi zapisnik",
+    isPlaceholder: true,
+  }));
+}
 
 function getWorkOrderDocumentWorkEnvironmentDisplayText(value, fallback = "") {
   if (value === null || value === undefined) {
@@ -120731,9 +120941,26 @@ function appendWorkOrderDocumentWorkEnvironmentBasicBlock(bodyNode, {
   const healthRegisters = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
     items.flatMap((item) => item?.healthRequirementRegisters || item?.healthRequirementRegister || []),
   );
+  const obligationRegisterLabels = obligationRegisters.length
+    ? obligationRegisters
+    : [...WORK_ORDER_DOCUMENT_FC_DEFAULT_OBLIGATION_REGISTERS];
+  const healthRegisterLabels = healthRegisters.length
+    ? healthRegisters
+    : (isChemical
+      ? [...WORK_ORDER_DOCUMENT_KC_DEFAULT_HEALTH_REQUIREMENTS]
+      : [...WORK_ORDER_DOCUMENT_FC_DEFAULT_HEALTH_REQUIREMENTS]);
   const experts = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(items.flatMap((item) => item?.experts || []));
   const signedBy = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(items.flatMap((item) => item?.signedBy || []));
   const instruments = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(items.flatMap((item) => item?.instruments || []));
+  const runtimeInspectors = normalizeWorkOrderDocumentWorkEnvironmentUniqueLabels(
+    getDocumentTemplateRuntimeArrayValue(workOrder.id, "radni_okolisInspectorUserIds")
+      .map((userId) => getUserDocumentDisplayName((state.users ?? []).find((user) => String(user.id) === String(userId))))
+      .filter(Boolean),
+  );
+  const runtimeHolderId = getDocumentTemplateRuntimeValue(workOrder.id, "radni_okolisAuthorizationHolderUserId");
+  const runtimeHolder = runtimeHolderId
+    ? getUserDocumentDisplayName((state.users ?? []).find((user) => String(user.id) === String(runtimeHolderId)))
+    : "";
 
   appendWorkOrderDocumentWorkEnvironmentSection(bodyNode, {
     stateEntry,
@@ -120757,6 +120984,8 @@ function appendWorkOrderDocumentWorkEnvironmentBasicBlock(bodyNode, {
         ["Vanjski uvjeti", primary.externalConditionsOther || common.weather || "-", ""],
         ["Uvjeti procesa rada", primary.workProcessConditions || "Redoviti proces rada", ""],
         ["Mjerna oprema", instruments.join(", ") || "Odaberi mjernu opremu", ""],
+        ["Tehnička dokumentacija", primary.technicalDocumentation || "Podaci zatečeni na mjestu ispitivanja", ""],
+        ["Metode / norme", primary.methodsProceduresAndNorms || "Prema važećim propisima, normama i pravilima struke", ""],
       ].forEach(([label, value, detail]) => {
         grid.append(createWorkOrderDocumentWorkEnvironmentInfoCard(label, value, detail));
       });
@@ -120765,16 +120994,16 @@ function appendWorkOrderDocumentWorkEnvironmentBasicBlock(bodyNode, {
       const people = document.createElement("div");
       people.className = "work-order-document-fc-people-grid";
       people.append(
-        createWorkOrderDocumentWorkEnvironmentInfoCard("Ispitivači", experts.join(", ") || "Nisu upisani", ""),
-        createWorkOrderDocumentWorkEnvironmentInfoCard("Nositelji ovlaštenja", signedBy.join(", ") || "Nisu upisani", ""),
+        createWorkOrderDocumentWorkEnvironmentInfoCard("Ispitivači", experts.join(", ") || runtimeInspectors.join(", ") || "Nisu upisani", ""),
+        createWorkOrderDocumentWorkEnvironmentInfoCard("Nositelji ovlaštenja", signedBy.join(", ") || runtimeHolder || "Nisu upisani", ""),
       );
       sectionBody.append(people);
 
       const registryGrid = document.createElement("div");
       registryGrid.className = "work-order-document-fc-registry-grid";
       [
-        ["Propisi obveze", obligationRegisters, "Zakon o zaštiti na radu i Pravilnik o ispitivanju radnog okoliša."],
-        ["Propisi zahtjevi", healthRegisters, "Norme i pravilnici prema odabranim štetnostima i mjerenjima."],
+        ["Propisi obveze", obligationRegisterLabels, "Zakon o zaštiti na radu i Pravilnik o ispitivanju radnog okoliša."],
+        ["Propisi zahtjevi", healthRegisterLabels, "Norme i pravilnici prema odabranim štetnostima i mjerenjima."],
       ].forEach(([title, entries, emptyText]) => {
         const panel = document.createElement("div");
         panel.className = "work-order-document-fc-registry-panel";
@@ -120960,7 +121189,6 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
     error.className = "form-error work-order-document-work-equipment-message";
     error.textContent = stateEntry.error;
     bodyNode.append(error);
-    return;
   }
   if (stateEntry.message) {
     const message = document.createElement("p");
@@ -120974,16 +121202,14 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
     loading.className = "helper-copy module-copy";
     loading.textContent = `Čitam ${longLabel.toLowerCase()} iz IS ZNR-a...`;
     bodyNode.append(loading);
-    return;
   }
   if (!items.length) {
     const empty = document.createElement("p");
-    empty.className = "helper-copy module-copy";
+    empty.className = "helper-copy module-copy work-order-document-work-equipment-message";
     empty.textContent = stateEntry.loaded
-      ? `Za ovaj RN trenutno nema dohvaćenih ${shortLabel} zapisnika iz IS ZNR-a.`
-      : `${shortLabel} zapisnici će se ponuditi ovdje prije izrade dokumentacije.`;
+      ? `Za ovaj RN trenutno nema dohvaćenih prethodnih ${shortLabel} zapisnika iz IS ZNR-a. Pripremni blokovi ispod ostaju dostupni za novi zapisnik.`
+      : `${shortLabel} zapisnici će se ponuditi ovdje prije izrade dokumentacije. Pripremni blokovi su već spremni.`;
     bodyNode.append(empty);
-    return;
   }
 
   const today = getWorkOrderDocumentWorkEquipmentToday();
@@ -121159,7 +121385,13 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
 
   const previewItems = getWorkOrderDocumentWorkEnvironmentPreviewItems(items, selectedIds, filteredItems);
   const measurementRows = getWorkOrderDocumentWorkEnvironmentMeasurementRows(previewItems);
+  const visibleMeasurementRows = measurementRows.length
+    ? measurementRows
+    : createWorkOrderDocumentWorkEnvironmentDefaultMeasurementRows({ isChemical });
   const spaceRows = getWorkOrderDocumentWorkEnvironmentSpaceRows(previewItems, measurementRows);
+  const visibleSpaceRows = spaceRows.length
+    ? spaceRows
+    : createWorkOrderDocumentWorkEnvironmentDefaultSpaceRows(workOrder, { isChemical });
   appendWorkOrderDocumentWorkEnvironmentBasicBlock(bodyNode, {
     workOrder,
     items: previewItems,
@@ -121168,12 +121400,12 @@ function appendWorkOrderDocumentIsznrWorkEnvironmentBody(bodyNode, workOrder = {
     isChemical,
   });
   appendWorkOrderDocumentWorkEnvironmentSpacesBlock(bodyNode, {
-    spaces: spaceRows,
+    spaces: visibleSpaceRows,
     stateEntry,
     shortLabel,
   });
   appendWorkOrderDocumentWorkEnvironmentMeasurementsBlock(bodyNode, {
-    measurements: measurementRows,
+    measurements: visibleMeasurementRows,
     stateEntry,
     shortLabel,
   });
@@ -121195,7 +121427,7 @@ function getWorkOrderDocumentWizardChemicalFactorsCandidates(workOrders = []) {
   });
 }
 
-function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {}, { environmentKind = "physical" } = {}) {
+function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {}, { environmentKind = "physical", compact = false } = {}) {
   const isChemical = String(environmentKind || "").trim() === "chemical";
   const shortLabel = isChemical ? "KC" : "FC";
   const longLabel = isChemical ? "Kemijski čimbenici" : "Fizikalni čimbenici";
@@ -121242,6 +121474,29 @@ function createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder = {},
     workOrder?.companyName || "",
   ].filter(Boolean).join(" · ");
   workOrderList.append(chip);
+
+  if (compact) {
+    const note = document.createElement("span");
+    note.className = "work-order-document-template-card-note";
+    note.textContent = `${shortLabel} se otvara u donjoj alatnoj traci kao native IS ZNR prikaz bez Word templatea.`;
+    const footer = document.createElement("div");
+    footer.className = "work-order-document-template-card-footer";
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "ghost-button";
+    openButton.textContent = `Otvori ${shortLabel}`;
+    openButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openDocumentTemplateRuntimeNativeServiceOnly(
+        getAllSelectedWorkOrdersForDocumentWizard(),
+        isChemical ? "chemicalFactors" : "physicalFactors",
+        workOrder,
+      );
+    });
+    footer.append(note, openButton);
+    card.append(head, workOrderList, footer);
+    return card;
+  }
 
   const body = document.createElement("div");
   body.className = "work-order-document-ro-template-body work-order-document-fc-template-body";
@@ -126179,7 +126434,7 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEqu
         openDocumentTemplateFromWizard(template.id, [workOrder]);
         return;
       }
-      queueWorkOrderDocumentNativeServiceFocus(workOrder, kind, { rerender: true });
+      openDocumentTemplateRuntimeNativeServiceOnly(getAllSelectedWorkOrdersForDocumentWizard(), kind, workOrder);
     });
 
     const templateLabel = document.createElement("span");
@@ -126292,15 +126547,15 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   const { recommendations, unmatchedWorkOrders } = getWorkOrderDocumentTemplateRecommendations(workOrders);
   const workEquipmentWorkOrders = getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders);
   const workEquipmentCards = workEquipmentWorkOrders.map((workOrder) =>
-    createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder),
+    createWorkOrderDocumentIsznrWorkEquipmentTemplateCard(workOrder, { compact: true }),
   );
   const physicalFactorsWorkOrders = getWorkOrderDocumentWizardPhysicalFactorsCandidates(workOrders);
   const physicalFactorsCards = physicalFactorsWorkOrders.map((workOrder) =>
-    createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder, { environmentKind: "physical" }),
+    createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder, { environmentKind: "physical", compact: true }),
   );
   const chemicalFactorsWorkOrders = getWorkOrderDocumentWizardChemicalFactorsCandidates(workOrders);
   const chemicalFactorsCards = chemicalFactorsWorkOrders.map((workOrder) =>
-    createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder, { environmentKind: "chemical" }),
+    createWorkOrderDocumentIsznrWorkEnvironmentTemplateCard(workOrder, { environmentKind: "chemical", compact: true }),
   );
   const selectedTemplateCount = recommendations.length;
 
@@ -132457,7 +132712,7 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
         workOrderDocumentWizardError.textContent = "";
       }
       const firstNativeTarget = nativeTargets[0];
-      queueWorkOrderDocumentNativeServiceFocus(firstNativeTarget.workOrder, firstNativeTarget.kind);
+      openDocumentTemplateRuntimeNativeServiceOnly(selectedWorkOrders, firstNativeTarget.kind, firstNativeTarget.workOrder);
       return;
     }
     if (workOrderDocumentWizardError) {

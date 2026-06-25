@@ -23998,14 +23998,17 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-document-ro-matrix-shell {
   overflow-x: auto;
-  border: 1px solid rgba(203, 213, 225, 0.86);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.07);
 }
 
 .work-order-document-ro-matrix {
   display: grid;
   min-width: max-content;
+  overflow: hidden;
+  border-radius: 18px;
 }
 
 .work-order-document-ro-matrix-section,
@@ -24015,7 +24018,7 @@ body.is-document-template-editor-open .chat-dock {
   border: 0;
   border-right: 1px solid rgba(226, 232, 240, 0.96);
   border-bottom: 1px solid rgba(226, 232, 240, 0.96);
-  background: rgba(255, 255, 255, 0.94);
+  background: #ffffff;
 }
 
 .work-order-document-ro-matrix-section {
@@ -24029,6 +24032,7 @@ body.is-document-template-editor-open .chat-dock {
   border: 0;
   border-right: 1px solid rgba(226, 232, 240, 0.96);
   border-bottom: 1px solid rgba(226, 232, 240, 0.96);
+  background: rgba(255, 255, 255, 0.98);
   color: #0f172a;
   text-align: left;
   text-transform: none;
@@ -24037,7 +24041,8 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-document-ro-matrix-section.is-header {
   min-height: 86px;
-  color: #1e3a8a;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  color: #0f172a;
   cursor: default;
   font-size: 0.76rem;
   font-weight: 950;
@@ -24066,7 +24071,7 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-document-ro-matrix-section.is-collapsed,
 .work-order-document-ro-matrix-cell.is-collapsed {
-  background: rgba(248, 250, 252, 0.96);
+  background: rgba(248, 250, 252, 0.74);
   color: #64748b;
 }
 
@@ -24083,7 +24088,7 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-document-ro-matrix-equipment {
   min-height: 86px;
-  background: rgba(248, 251, 255, 0.98);
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
 }
 
 .work-order-document-ro-matrix-equipment strong,
@@ -24112,28 +24117,28 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-document-ro-matrix-equipment:hover,
 .work-order-document-ro-matrix-cell:hover {
-  background: #eff6ff;
+  background: #f8fbff;
 }
 
 .work-order-document-ro-matrix-equipment.is-selected,
 .work-order-document-ro-matrix-cell.is-selected {
-  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.32);
-  background: #eef4ff;
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.26);
+  background: #f3f7ff;
 }
 
 .work-order-document-ro-matrix-equipment.is-alert,
 .work-order-document-ro-matrix-cell.is-alert {
-  background: #fff1f2;
+  background: #fff7f7;
 }
 
 .work-order-document-ro-matrix-equipment.is-upcoming,
 .work-order-document-ro-matrix-cell.is-warning {
-  background: #fff7ed;
+  background: #fffaf1;
 }
 
 .work-order-document-ro-matrix-equipment.is-ok,
 .work-order-document-ro-matrix-cell.is-ok {
-  background: #f0fdf4;
+  background: #f6fef9;
 }
 
 .work-order-document-ro-matrix-footer {
