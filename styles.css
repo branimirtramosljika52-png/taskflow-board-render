@@ -24755,6 +24755,394 @@ body.is-document-template-editor-open .chat-dock {
   font-weight: 850;
 }
 
+.work-order-document-ro-template-card.is-ro-product {
+  overflow: hidden;
+  border-color: rgba(191, 219, 254, 0.86);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.98));
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.08);
+}
+
+.document-template-runtime-native-service-card.work-order-document-ro-template-card.is-ro-product {
+  border-color: rgba(191, 219, 254, 0.92);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
+}
+
+.document-template-runtime-native-service-card.work-order-document-ro-template-card.is-ro-product > .work-order-document-template-card-head,
+.document-template-runtime-native-service-card.work-order-document-ro-template-card.is-ro-product > .work-order-document-template-card-work-orders {
+  display: none;
+}
+
+.work-order-document-ro-template-body {
+  gap: 14px;
+}
+
+.work-order-document-ro-editor-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: stretch;
+  padding: 16px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.99));
+  box-shadow: 0 16px 38px rgba(37, 99, 235, 0.09);
+}
+
+.work-order-document-ro-editor-hero-main,
+.work-order-document-ro-editor-hero-copy,
+.work-order-document-ro-editor-hero-side {
+  display: grid;
+  min-width: 0;
+}
+
+.work-order-document-ro-editor-hero-main {
+  gap: 10px;
+}
+
+.work-order-document-ro-editor-hero-copy {
+  gap: 4px;
+}
+
+.work-order-document-ro-editor-hero-copy strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 1.1rem;
+  font-weight: 950;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-ro-editor-hero-copy span {
+  overflow: hidden;
+  color: #475569;
+  font-size: 0.79rem;
+  font-weight: 780;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-ro-editor-badges,
+.work-order-document-ro-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-order-document-ro-editor-hero-side {
+  align-content: space-between;
+  gap: 12px;
+  min-width: 280px;
+}
+
+.work-order-document-ro-editor-actions {
+  justify-content: flex-end;
+}
+
+.work-order-document-ro-editor-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.work-order-document-ro-editor-status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.work-order-document-ro-editor-status.is-ready {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(240, 253, 244, 0.92);
+  color: #047857;
+}
+
+.work-order-document-ro-editor-status.is-ready::before {
+  background: #22c55e;
+}
+
+.work-order-document-ro-editor-status.is-loading {
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(239, 246, 255, 0.94);
+  color: #1d4ed8;
+}
+
+.work-order-document-ro-editor-status.is-loading::before {
+  background: #3b82f6;
+}
+
+.work-order-document-ro-editor-status.is-error {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(254, 242, 242, 0.94);
+  color: #b91c1c;
+}
+
+.work-order-document-ro-editor-status.is-error::before {
+  background: #ef4444;
+}
+
+.work-order-document-ro-editor-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.work-order-document-ro-editor-stats > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.work-order-document-ro-editor-stats small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.work-order-document-ro-editor-stats b {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpis {
+  grid-template-columns: repeat(6, minmax(132px, 1fr));
+  gap: 12px;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi {
+  min-height: 68px;
+  padding: 12px 14px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.055);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi.is-active {
+  border-color: rgba(37, 99, 235, 0.52);
+  background: linear-gradient(180deg, #ffffff, #f2f7ff);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi.is-danger {
+  background: linear-gradient(180deg, #fff, #fff5f5);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi.is-warning {
+  background: linear-gradient(180deg, #fff, #fff8ed);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi.is-success {
+  background: linear-gradient(180deg, #fff, #f3fdf7);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi-dot {
+  width: 20px;
+  height: 20px;
+  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.8);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi-copy strong {
+  color: #0f172a;
+  font-size: 0.78rem;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpi-copy em {
+  font-size: 1.28rem;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-scope,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-locations {
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(248, 251, 255, 0.86);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-scope-button,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-location {
+  min-height: 34px;
+  border-color: rgba(203, 213, 225, 0.9);
+  background: #fff;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-scope-button.is-active,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-location.is-active {
+  border-color: rgba(37, 99, 235, 0.46);
+  background: #eaf2ff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-table-block,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-ai-panel,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-shell {
+  border-color: rgba(203, 213, 225, 0.86);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.065);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-table-head {
+  min-height: 60px;
+  background: linear-gradient(135deg, rgba(248, 251, 255, 0.99), rgba(255, 255, 255, 0.99));
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-table th {
+  background: #f5f8fc;
+  color: #334155;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-table tbody tr:hover td {
+  background: #f0f6ff;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-table tbody tr.is-selected td {
+  background: #eaf2ff;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-ai-panel {
+  padding: 15px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.99));
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-ai-head strong {
+  font-size: 0.96rem;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-ai-actions .ghost-button,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-ai-actions .primary-action-button,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-ai-model {
+  min-height: 38px;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-selection {
+  padding: 12px;
+  border-color: rgba(37, 99, 235, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.96));
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-column-head {
+  padding: 4px 2px;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-shell {
+  background: #ffffff;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix {
+  border-radius: 18px;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-section,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-equipment,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-cell {
+  border-right-color: rgba(226, 232, 240, 0.9);
+  border-bottom-color: rgba(226, 232, 240, 0.9);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-section {
+  background: rgba(255, 255, 255, 0.99);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-section.is-header,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-equipment {
+  min-height: 96px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-equipment {
+  border-top: 3px solid transparent;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-equipment.is-selected {
+  border-top-color: #2563eb;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-equipment.is-alert,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-cell.is-alert {
+  background: linear-gradient(180deg, #fff, #fff5f5);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-equipment.is-upcoming,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-cell.is-warning {
+  background: linear-gradient(180deg, #fff, #fff8ed);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-equipment.is-ok,
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-cell.is-ok {
+  background: linear-gradient(180deg, #fff, #f2fdf7);
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-cell {
+  min-height: 74px;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-cell strong {
+  font-size: 0.84rem;
+}
+
+.work-order-document-ro-template-card.is-ro-product .work-order-document-ro-matrix-footer {
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(248, 251, 255, 0.78);
+}
+
+@media (max-width: 1180px) {
+  .work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .work-order-document-ro-editor-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-document-ro-editor-hero-side {
+    min-width: 0;
+  }
+
+  .work-order-document-ro-editor-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .work-order-document-ro-editor-hero {
+    padding: 13px;
+  }
+
+  .work-order-document-ro-template-card.is-ro-product .work-order-document-work-equipment-kpis,
+  .work-order-document-ro-editor-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-document-ro-editor-hero-copy strong,
+  .work-order-document-ro-editor-hero-copy span {
+    white-space: normal;
+  }
+}
+
 .work-order-document-wizard-common-ro-block {
   display: grid;
   gap: 12px;
