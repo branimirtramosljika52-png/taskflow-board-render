@@ -73206,14 +73206,56 @@ function getWorkOrderDocumentNativeServiceCardSelector(workOrder = {}, nativeKin
 function focusWorkOrderDocumentNativeServiceCard(workOrder = {}, nativeKind = "") {
   const selector = getWorkOrderDocumentNativeServiceCardSelector(workOrder, nativeKind);
   if (!selector) {
-    return;
+    return false;
   }
   const target = workOrderDocumentWizardTemplateList?.querySelector(selector);
-  target?.scrollIntoView({ behavior: "smooth", block: "center" });
-  if (target instanceof HTMLElement) {
-    target.classList.add("is-native-focus");
-    window.setTimeout(() => target.classList.remove("is-native-focus"), 1200);
+  if (!(target instanceof HTMLElement)) {
+    return false;
   }
+  target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("is-native-focus");
+  window.setTimeout(() => target.classList.remove("is-native-focus"), 1200);
+  return true;
+}
+
+function getWorkOrderDocumentWizardNativeServiceTargets(workOrders = []) {
+  const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
+  return [
+    ...getWorkOrderDocumentWizardWorkEquipmentCandidates(selectedWorkOrders).map((workOrder) => ({
+      kind: "workEquipment",
+      workOrder,
+    })),
+    ...getWorkOrderDocumentWizardPhysicalFactorsCandidates(selectedWorkOrders).map((workOrder) => ({
+      kind: "physicalFactors",
+      workOrder,
+    })),
+    ...getWorkOrderDocumentWizardChemicalFactorsCandidates(selectedWorkOrders).map((workOrder) => ({
+      kind: "chemicalFactors",
+      workOrder,
+    })),
+  ];
+}
+
+function queueWorkOrderDocumentNativeServiceFocus(workOrder = {}, nativeKind = "", { rerender = false } = {}) {
+  const normalizedKind = String(nativeKind || "").trim();
+  if (!normalizedKind) {
+    return false;
+  }
+  let attempts = 0;
+  const tryFocus = () => {
+    attempts += 1;
+    if (focusWorkOrderDocumentNativeServiceCard(workOrder, normalizedKind)) {
+      return;
+    }
+    if (rerender && attempts === 1) {
+      renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+    }
+    if (attempts < 4) {
+      requestAnimationFrame(tryFocus);
+    }
+  };
+  requestAnimationFrame(tryFocus);
+  return true;
 }
 
 function openWorkOrderDocumentNativeServiceFromRuntime(workOrder = {}, nativeKind = "") {
@@ -73247,9 +73289,7 @@ function openWorkOrderDocumentNativeServiceFromRuntime(workOrder = {}, nativeKin
   state.workOrderDocumentWizard.step = "templates";
   renderWorkOrderDocumentWizard();
   syncWorkOrderDocumentWizardModal();
-  requestAnimationFrame(() => {
-    focusWorkOrderDocumentNativeServiceCard(workOrder, normalizedKind);
-  });
+  queueWorkOrderDocumentNativeServiceFocus(workOrder, normalizedKind, { rerender: true });
   return true;
 }
 
@@ -125983,17 +126023,7 @@ function renderWorkOrderDocumentWizardTemplateDock(recommendations = [], workEqu
         openDocumentTemplateFromWizard(template.id, [workOrder]);
         return;
       }
-      const key = String(workOrder?.id || workOrder?.workOrderNumber || "");
-      const escapedKey = typeof CSS !== "undefined" && typeof CSS.escape === "function"
-        ? CSS.escape(key)
-        : key.replace(/"/g, "\\\"");
-      const selector = kind === "physicalFactors"
-        ? `[data-work-order-document-fc-card="${escapedKey}"]`
-        : kind === "chemicalFactors"
-          ? `[data-work-order-document-kc-card="${escapedKey}"]`
-          : `[data-work-order-document-ro-card="${escapedKey}"]`;
-      const target = workOrderDocumentWizardTemplateList?.querySelector(selector);
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      queueWorkOrderDocumentNativeServiceFocus(workOrder, kind, { rerender: true });
     });
 
     const templateLabel = document.createElement("span");
@@ -132260,7 +132290,16 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
   if (sequence.length === 0) {
+    const nativeTargets = getWorkOrderDocumentWizardNativeServiceTargets(selectedWorkOrders);
     setWorkOrderDocumentWizardStep("templates");
+    if (nativeTargets.length > 0) {
+      if (workOrderDocumentWizardError) {
+        workOrderDocumentWizardError.textContent = "";
+      }
+      const firstNativeTarget = nativeTargets[0];
+      queueWorkOrderDocumentNativeServiceFocus(firstNativeTarget.workOrder, firstNativeTarget.kind);
+      return;
+    }
     if (workOrderDocumentWizardError) {
       workOrderDocumentWizardError.textContent = "Za odabrane RN-ove nema povezanog zapisnika. Poveži template na usluzi pa pokušaj ponovno.";
     }
