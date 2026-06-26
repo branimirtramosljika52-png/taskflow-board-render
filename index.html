@@ -2677,6 +2677,13 @@
             </div>
 
             <div class="measurement-sheet-toolbar" aria-label="Spreadsheet toolbar">
+              <div class="measurement-toolbar-tabs" role="tablist" aria-label="Excel alati">
+                <button type="button" class="measurement-toolbar-tab is-active" aria-selected="true">Home</button>
+                <button type="button" class="measurement-toolbar-tab" aria-selected="false" disabled>Insert</button>
+                <button type="button" class="measurement-toolbar-tab" aria-selected="false" disabled>Data</button>
+                <button type="button" class="measurement-toolbar-tab" aria-selected="false" disabled>Review</button>
+              </div>
+
               <div class="measurement-toolbar-primary">
                 <label class="measurement-toolbar-namebox measurement-toolbar-namebox-compact">
                   <span class="measurement-toolbar-label">Ćelija</span>
@@ -2712,10 +2719,14 @@
               </div>
 
               <div class="measurement-toolbar-secondary">
-                <div class="measurement-toolbar-icon-cluster" role="group" aria-label="Brzi alati za ćeliju">
+                <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-clipboard" role="group" aria-label="Clipboard alati">
                   <button id="measurement-undo" type="button" class="ghost-button measurement-toolbar-icon-button" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
                   <button id="measurement-redo" type="button" class="ghost-button measurement-toolbar-icon-button" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
                   <button id="measurement-freeze-panes" type="button" class="ghost-button measurement-toolbar-icon-button" title="Freeze header/row index" aria-label="Freeze header/row index">▣</button>
+                  <span class="measurement-toolbar-group-title">Clipboard</span>
+                </div>
+
+                <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-number" role="group" aria-label="Format brojeva">
                   <button id="measurement-format-type-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Tip ćelije" aria-label="Tip ćelije">123</button>
 
                   <div class="measurement-toolbar-decimal-stepper" role="group" aria-label="Broj decimalnih mjesta">
@@ -2723,7 +2734,10 @@
                     <button id="measurement-format-decimals-indicator" type="button" class="ghost-button measurement-toolbar-icon-button measurement-toolbar-decimals-indicator" title="Broj decimalnih mjesta" aria-label="Broj decimalnih mjesta">0,00</button>
                     <button id="measurement-format-decimals-increase" type="button" class="ghost-button measurement-toolbar-icon-button" title="Povećaj broj decimala" aria-label="Povećaj broj decimala">+</button>
                   </div>
+                  <span class="measurement-toolbar-group-title">Number</span>
+                </div>
 
+                <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-data" role="group" aria-label="Data alati">
                   <div class="measurement-toolbar-validation">
                     <button id="measurement-validation-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Data Validation list" aria-label="Data Validation list">DV</button>
                     <div id="measurement-validation-popover" class="measurement-validation-popover" hidden>
@@ -2927,7 +2941,10 @@
                       </div>
                     </div>
                   </div>
+                  <span class="measurement-toolbar-group-title">Data</span>
+                </div>
 
+                <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-styles" role="group" aria-label="Styles alati">
                   <button id="measurement-format-border-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Obrub ćelije" aria-label="Obrub ćelije">[]</button>
                   <div class="measurement-toolbar-conditional">
                     <button id="measurement-conditional-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="Uvjetno oblikovanje" aria-label="Uvjetno oblikovanje">CF</button>
@@ -2969,10 +2986,15 @@
                       <button id="measurement-conditional-clear" type="button" class="ghost-button measurement-conditional-clear">Očisti uvjet</button>
                     </div>
                   </div>
+                  <span class="measurement-toolbar-group-title">Styles</span>
+                </div>
+
+                <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-merge" role="group" aria-label="Merge alati">
                   <button id="measurement-merge" type="button" class="ghost-button measurement-toolbar-icon-button" title="Spoji cijeli odabir" aria-label="Spoji cijeli odabir">[+]</button>
                   <button id="measurement-merge-rows" type="button" class="ghost-button measurement-toolbar-icon-button" title="Spoji vodoravno po svakom retku" aria-label="Spoji vodoravno po svakom retku">↔</button>
                   <button id="measurement-merge-columns" type="button" class="ghost-button measurement-toolbar-icon-button" title="Spoji okomito po svakoj koloni" aria-label="Spoji okomito po svakoj koloni">↕</button>
                   <button id="measurement-unmerge" type="button" class="ghost-button measurement-toolbar-icon-button" title="Razdvoji spojene ćelije" aria-label="Razdvoji spojene ćelije">[ ]</button>
+                  <span class="measurement-toolbar-group-title">Merge</span>
                 </div>
 
                 <div class="measurement-toolbar-hidden-controls" aria-hidden="true">
@@ -3009,71 +3031,77 @@
               </div>
 
               <div class="measurement-toolbar-tertiary">
-                <div class="measurement-toolbar-style-buttons" role="group" aria-label="Format slova">
-                  <button id="measurement-format-bold" type="button" class="ghost-button measurement-toolbar-toggle-button" title="Bold" aria-label="Bold">B</button>
-                  <button id="measurement-format-italic" type="button" class="ghost-button measurement-toolbar-toggle-button is-italic" title="Italic" aria-label="Italic">I</button>
-                  <button id="measurement-format-underline" type="button" class="ghost-button measurement-toolbar-toggle-button is-underlined" title="Podcrtano" aria-label="Podcrtano">U</button>
+                <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-font" role="group" aria-label="Font alati">
+                  <label class="measurement-toolbar-format measurement-toolbar-font-family is-compact" title="Font">
+                    <span class="measurement-toolbar-label">Font</span>
+                    <select id="measurement-format-font-family" aria-label="Font">
+                      <option value="default">Aa</option>
+                      <option value="arial">Arial</option>
+                      <option value="calibri">Calibri</option>
+                      <option value="georgia">Georgia</option>
+                      <option value="times">Times</option>
+                      <option value="verdana">Verdana</option>
+                      <option value="courier">Courier</option>
+                    </select>
+                  </label>
+
+                  <label class="measurement-toolbar-format measurement-toolbar-font-size is-compact" title="Veličina fonta">
+                    <span class="measurement-toolbar-label">Veličina</span>
+                    <select id="measurement-format-font-size" aria-label="Veličina fonta">
+                      <option value="8">8</option>
+                      <option value="9">9</option>
+                      <option value="10">10</option>
+                      <option value="11">11</option>
+                      <option value="12">12</option>
+                      <option value="14" selected>14</option>
+                      <option value="16">16</option>
+                      <option value="18">18</option>
+                      <option value="20">20</option>
+                      <option value="24">24</option>
+                      <option value="28">28</option>
+                    </select>
+                  </label>
+
+                  <div class="measurement-toolbar-style-buttons" role="group" aria-label="Format slova">
+                    <button id="measurement-format-bold" type="button" class="ghost-button measurement-toolbar-toggle-button" title="Bold" aria-label="Bold">B</button>
+                    <button id="measurement-format-italic" type="button" class="ghost-button measurement-toolbar-toggle-button is-italic" title="Italic" aria-label="Italic">I</button>
+                    <button id="measurement-format-underline" type="button" class="ghost-button measurement-toolbar-toggle-button is-underlined" title="Podcrtano" aria-label="Podcrtano">U</button>
+                  </div>
+
+                  <div class="measurement-toolbar-color-palette" role="group" aria-label="Osnovne boje ćelije">
+                    <button type="button" class="measurement-color-swatch" data-fill-color="" title="Bez boje" aria-label="Bez boje"></button>
+                    <button type="button" class="measurement-color-swatch" data-fill-color="#ffe599" style="--swatch-color:#ffe599" title="Žuta" aria-label="Žuta"></button>
+                    <button type="button" class="measurement-color-swatch" data-fill-color="#f9cb9c" style="--swatch-color:#f9cb9c" title="Narančasta" aria-label="Narančasta"></button>
+                    <button type="button" class="measurement-color-swatch" data-fill-color="#b6d7a8" style="--swatch-color:#b6d7a8" title="Zelena" aria-label="Zelena"></button>
+                    <button type="button" class="measurement-color-swatch" data-fill-color="#a2c4c9" style="--swatch-color:#a2c4c9" title="Plava" aria-label="Plava"></button>
+                    <button type="button" class="measurement-color-swatch" data-fill-color="#b4a7d6" style="--swatch-color:#b4a7d6" title="Ljubičasta" aria-label="Ljubičasta"></button>
+                    <button type="button" class="measurement-color-swatch" data-fill-color="#d5a6bd" style="--swatch-color:#d5a6bd" title="Roza" aria-label="Roza"></button>
+                    <button type="button" class="measurement-color-swatch" data-fill-color="#d9d9d9" style="--swatch-color:#d9d9d9" title="Siva" aria-label="Siva"></button>
+                  </div>
+
+                  <label class="measurement-toolbar-format measurement-toolbar-color is-compact" title="Vlastita boja">
+                    <span class="measurement-toolbar-label">Custom boja</span>
+                    <input id="measurement-format-fill-color" type="color" value="#ffffff" aria-label="Vlastita boja" />
+                  </label>
+                  <span class="measurement-toolbar-group-title">Font</span>
                 </div>
 
-                <div class="measurement-toolbar-style-buttons" role="group" aria-label="Poravnanje teksta">
-                  <button id="measurement-align-left" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj lijevo" aria-label="Poravnaj lijevo">L</button>
-                  <button id="measurement-align-center" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Centriraj" aria-label="Centriraj">C</button>
-                  <button id="measurement-align-right" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj desno" aria-label="Poravnaj desno">R</button>
+                <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-alignment" role="group" aria-label="Poravnanje">
+                  <div class="measurement-toolbar-style-buttons" role="group" aria-label="Poravnanje teksta">
+                    <button id="measurement-align-left" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj lijevo" aria-label="Poravnaj lijevo">L</button>
+                    <button id="measurement-align-center" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Centriraj" aria-label="Centriraj">C</button>
+                    <button id="measurement-align-right" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj desno" aria-label="Poravnaj desno">R</button>
+                  </div>
+
+                  <div class="measurement-toolbar-style-buttons" role="group" aria-label="Okomito poravnanje">
+                    <button id="measurement-align-top" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj gore" aria-label="Poravnaj gore">T</button>
+                    <button id="measurement-align-middle" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj po sredini okomito" aria-label="Poravnaj po sredini okomito">M</button>
+                    <button id="measurement-align-bottom" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj dolje" aria-label="Poravnaj dolje">B</button>
+                  </div>
+
+                  <button id="measurement-style-title" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Označi odabrane retke kao naslovne za Word" aria-label="Naslovni red">Title</button>
+                  <span class="measurement-toolbar-group-title">Alignment</span>
                 </div>
-
-                <div class="measurement-toolbar-style-buttons" role="group" aria-label="Okomito poravnanje">
-                  <button id="measurement-align-top" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj gore" aria-label="Poravnaj gore">T</button>
-                  <button id="measurement-align-middle" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj po sredini okomito" aria-label="Poravnaj po sredini okomito">M</button>
-                  <button id="measurement-align-bottom" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Poravnaj dolje" aria-label="Poravnaj dolje">B</button>
-                </div>
-
-                <button id="measurement-style-title" type="button" class="ghost-button measurement-toolbar-toggle-button measurement-toolbar-icon-button" title="Označi odabrane retke kao naslovne za Word" aria-label="Naslovni red">T</button>
-
-                <label class="measurement-toolbar-format measurement-toolbar-font-family is-compact" title="Font">
-                  <span class="measurement-toolbar-label">Font</span>
-                  <select id="measurement-format-font-family" aria-label="Font">
-                    <option value="default">Aa</option>
-                    <option value="arial">Arial</option>
-                    <option value="calibri">Calibri</option>
-                    <option value="georgia">Georgia</option>
-                    <option value="times">Times</option>
-                    <option value="verdana">Verdana</option>
-                    <option value="courier">Courier</option>
-                  </select>
-                </label>
-
-                <label class="measurement-toolbar-format measurement-toolbar-font-size is-compact" title="Veličina fonta">
-                  <span class="measurement-toolbar-label">Veličina</span>
-                  <select id="measurement-format-font-size" aria-label="Veličina fonta">
-                    <option value="8">8</option>
-                    <option value="9">9</option>
-                    <option value="10">10</option>
-                    <option value="11">11</option>
-                    <option value="12">12</option>
-                    <option value="14" selected>14</option>
-                    <option value="16">16</option>
-                    <option value="18">18</option>
-                    <option value="20">20</option>
-                    <option value="24">24</option>
-                    <option value="28">28</option>
-                  </select>
-                </label>
-
-                <div class="measurement-toolbar-color-palette" role="group" aria-label="Osnovne boje ćelije">
-                  <button type="button" class="measurement-color-swatch" data-fill-color="" title="Bez boje" aria-label="Bez boje"></button>
-                  <button type="button" class="measurement-color-swatch" data-fill-color="#ffe599" style="--swatch-color:#ffe599" title="Žuta" aria-label="Žuta"></button>
-                  <button type="button" class="measurement-color-swatch" data-fill-color="#f9cb9c" style="--swatch-color:#f9cb9c" title="Narančasta" aria-label="Narančasta"></button>
-                  <button type="button" class="measurement-color-swatch" data-fill-color="#b6d7a8" style="--swatch-color:#b6d7a8" title="Zelena" aria-label="Zelena"></button>
-                  <button type="button" class="measurement-color-swatch" data-fill-color="#a2c4c9" style="--swatch-color:#a2c4c9" title="Plava" aria-label="Plava"></button>
-                  <button type="button" class="measurement-color-swatch" data-fill-color="#b4a7d6" style="--swatch-color:#b4a7d6" title="Ljubičasta" aria-label="Ljubičasta"></button>
-                  <button type="button" class="measurement-color-swatch" data-fill-color="#d5a6bd" style="--swatch-color:#d5a6bd" title="Roza" aria-label="Roza"></button>
-                  <button type="button" class="measurement-color-swatch" data-fill-color="#d9d9d9" style="--swatch-color:#d9d9d9" title="Siva" aria-label="Siva"></button>
-                </div>
-
-                <label class="measurement-toolbar-format measurement-toolbar-color is-compact" title="Vlastita boja">
-                  <span class="measurement-toolbar-label">Custom boja</span>
-                  <input id="measurement-format-fill-color" type="color" value="#ffffff" aria-label="Vlastita boja" />
-                </label>
               </div>
             </div>
 
