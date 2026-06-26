@@ -20327,6 +20327,8 @@ body.is-work-order-document-category-open {
 
 .measurement-quick-dialog {
   width: min(1480px, calc(100vw - 24px));
+  min-height: min(820px, calc(100dvh - 28px));
+  max-height: calc(100dvh - 20px);
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -20361,8 +20363,8 @@ body.is-work-order-document-category-open {
   grid-column: 1 / -1;
   display: grid;
   gap: 12px;
-  max-height: min(64vh, 720px);
-  min-height: 160px;
+  max-height: min(72vh, 780px);
+  min-height: 260px;
   overflow: auto;
   padding: 2px 4px 6px 2px;
 }

@@ -2706,6 +2706,45 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
   };
 }
 
+function normalizeDocumentTemplateQuickFillSettings(settings = null) {
+  if (!settings || typeof settings !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(settings).slice(0, 48).map(([columnId, setting]) => [
+    normalizeText(columnId).slice(0, 120),
+    {
+      mode: normalizeText(setting?.mode || "empty").slice(0, 40) || "empty",
+      customValue: String(setting?.customValue ?? "").slice(0, 2000),
+    },
+  ]).filter(([columnId]) => columnId));
+}
+
+function normalizeDocumentTemplateQuickFillStructure(value = null) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const floors = (Array.isArray(value.floors) ? value.floors : []).slice(0, 32).map((floor, floorIndex) => ({
+    id: normalizeText(floor?.id) || `floor-${floorIndex + 1}`,
+    name: normalizeText(floor?.name).slice(0, 160),
+    collapsed: normalizeBoolean(floor?.collapsed, false),
+    rooms: (Array.isArray(floor?.rooms) ? floor.rooms : []).slice(0, 80).map((room, roomIndex) => ({
+      id: normalizeText(room?.id) || `room-${floorIndex + 1}-${roomIndex + 1}`,
+      name: normalizeText(room?.name).slice(0, 180),
+      collapsed: normalizeBoolean(room?.collapsed, false),
+      items: (Array.isArray(room?.items) ? room.items : []).slice(0, 80).map((item, itemIndex) => ({
+        id: normalizeText(item?.id) || `item-${floorIndex + 1}-${roomIndex + 1}-${itemIndex + 1}`,
+        name: normalizeText(item?.name).slice(0, 220),
+        count: Math.max(1, Math.min(500, Math.round(normalizeFiniteNumber(item?.count, 1)))),
+        settings: normalizeDocumentTemplateQuickFillSettings(item?.settings),
+      })),
+    })),
+  }));
+
+  return floors.length ? { floors } : null;
+}
+
 function normalizeDocumentTemplateFields(fields = []) {
   const source = Array.isArray(fields) ? fields : [];
   const seenKeys = new Set();
@@ -2804,6 +2843,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       rowCount: type === "measurement_table"
         ? legacyRowCount
         : 0,
+      quickFillStructure: type === "measurement_table"
+        ? normalizeDocumentTemplateQuickFillStructure(field?.quickFillStructure ?? field?.quickGeneratorStructure)
+        : null,
       sheet: normalizedSheet,
     };
   });
