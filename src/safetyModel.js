@@ -259,6 +259,7 @@ export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "legal_list", label: "Popis propisa" },
   { value: "equipment_list", label: "Popis opreme" },
   { value: "measurement_table", label: "Excel tablica" },
+  { value: "gridline", label: "Gridline" },
   { value: "inspector_signature", label: "Potpis ispitivača" },
   { value: "authorization_holder_signature", label: "Potpis nositelja" },
   { value: "digital_signature", label: "Digitalni potpis" },
@@ -347,6 +348,7 @@ const DOCUMENT_TEMPLATE_FULL_WIDTH_FIELD_TYPES = new Set([
   "legal_list",
   "equipment_list",
   "measurement_table",
+  "gridline",
   "inspector_signature",
   "authorization_holder_signature",
   "digital_signature",
@@ -385,7 +387,7 @@ export function normalizeDocumentTemplateFieldLayoutWidth(value = "", type = "te
 
 export function normalizeDocumentTemplateFieldHeight(value = 0, type = "text") {
   const normalizedType = String(type || "text").trim().toLowerCase();
-  if (normalizedType === "measurement_table" || normalizedType === "page_break") {
+  if (normalizedType === "measurement_table" || normalizedType === "gridline" || normalizedType === "page_break") {
     return 0;
   }
   if (normalizedType === "longtext") {
@@ -2745,6 +2747,28 @@ function normalizeDocumentTemplateQuickFillStructure(value = null) {
   return floors.length ? { floors } : null;
 }
 
+function normalizeDocumentTemplateGridlineRows(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const normalizedRows = source
+    .slice(0, 24)
+    .map((row) => (
+      Array.isArray(row)
+        ? row
+        : [
+          row?.label ?? row?.name ?? "",
+          row?.value ?? "",
+          row?.note ?? row?.description ?? "",
+        ]
+    ))
+    .map((row) => Array.from({ length: 3 }, (_, index) => normalizeText(row?.[index]).slice(0, 500)));
+
+  if (normalizedRows.length > 0) {
+    return normalizedRows;
+  }
+
+  return Array.from({ length: 5 }, () => ["", "", ""]);
+}
+
 function normalizeDocumentTemplateFields(fields = []) {
   const source = Array.isArray(fields) ? fields : [];
   const seenKeys = new Set();
@@ -2835,6 +2859,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       toggleFalseText: normalizeText(field?.toggleFalseText ?? field?.toggleFalseDetailText).slice(0, 500),
       dropdownOptions: type === "dropdown"
         ? normalizeDocumentTemplateDropdownOptions(field?.dropdownOptions ?? field?.options ?? field?.choices)
+        : [],
+      gridlineRows: type === "gridline"
+        ? normalizeDocumentTemplateGridlineRows(field?.gridlineRows ?? field?.rows ?? [])
         : [],
       columns: type === "measurement_table"
         ? (normalizedSheet?.columns?.map((column) => column.label).filter(Boolean).slice(0, 16)

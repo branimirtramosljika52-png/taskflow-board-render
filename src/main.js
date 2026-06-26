@@ -59526,6 +59526,124 @@ function buildDocumentTemplateDropdownSelectOptions(field = {}, { includePlaceho
   ];
 }
 
+const DOCUMENT_TEMPLATE_GRIDLINE_COLUMNS = ["Naziv", "Vrijednost", "Napomena"];
+
+function createDefaultDocumentTemplateGridlineRows() {
+  return Array.from({ length: 5 }, () => DOCUMENT_TEMPLATE_GRIDLINE_COLUMNS.map(() => ""));
+}
+
+function normalizeDocumentTemplateGridlineRows(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const rows = source
+    .slice(0, 24)
+    .map((row) => (
+      Array.isArray(row)
+        ? row
+        : [
+          row?.label ?? row?.name ?? "",
+          row?.value ?? "",
+          row?.note ?? row?.description ?? "",
+        ]
+    ))
+    .map((row) => DOCUMENT_TEMPLATE_GRIDLINE_COLUMNS.map((_, index) => String(row?.[index] ?? "").slice(0, 500)));
+
+  return rows.length > 0 ? rows : createDefaultDocumentTemplateGridlineRows();
+}
+
+function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
+  const rows = normalizeDocumentTemplateGridlineRows(field.gridlineRows);
+  if (draftIndex >= 0 && documentTemplateFieldDrafts[draftIndex]) {
+    documentTemplateFieldDrafts[draftIndex].gridlineRows = rows;
+  }
+
+  const shell = document.createElement("div");
+  shell.className = "document-template-gridline-demo";
+
+  const head = document.createElement("div");
+  head.className = "document-template-gridline-demo-head";
+  const title = document.createElement("strong");
+  title.textContent = "Gridline";
+  const hint = document.createElement("span");
+  hint.textContent = "Klikni celiju i upisi probnu vrijednost.";
+  head.append(title, hint);
+
+  const actions = document.createElement("div");
+  actions.className = "document-template-gridline-demo-actions";
+  const addRowButton = document.createElement("button");
+  addRowButton.type = "button";
+  addRowButton.className = "ghost-button";
+  addRowButton.textContent = "+ Red";
+  addRowButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const draft = documentTemplateFieldDrafts[draftIndex];
+    if (!draft) {
+      return;
+    }
+    draft.gridlineRows = [
+      ...normalizeDocumentTemplateGridlineRows(draft.gridlineRows),
+      DOCUMENT_TEMPLATE_GRIDLINE_COLUMNS.map(() => ""),
+    ].slice(0, 24);
+    invalidateDocumentTemplateDraftCache();
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+  });
+  actions.append(addRowButton);
+  head.append(actions);
+
+  const wrap = document.createElement("div");
+  wrap.className = "document-template-gridline-demo-wrap";
+  const table = document.createElement("table");
+  table.className = "document-template-gridline-demo-table";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const indexHead = document.createElement("th");
+  indexHead.textContent = "#";
+  headRow.append(indexHead);
+  DOCUMENT_TEMPLATE_GRIDLINE_COLUMNS.forEach((column) => {
+    const th = document.createElement("th");
+    th.textContent = column;
+    headRow.append(th);
+  });
+  thead.append(headRow);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((rowValues, rowIndex) => {
+    const tr = document.createElement("tr");
+    const rowHead = document.createElement("th");
+    rowHead.textContent = String(rowIndex + 1);
+    tr.append(rowHead);
+
+    DOCUMENT_TEMPLATE_GRIDLINE_COLUMNS.forEach((_, columnIndex) => {
+      const td = document.createElement("td");
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "document-template-gridline-demo-input";
+      input.value = rowValues[columnIndex] || "";
+      input.placeholder = columnIndex === 0 ? "npr. Stavka" : "";
+      input.addEventListener("input", (event) => {
+        const draft = documentTemplateFieldDrafts[draftIndex];
+        if (!draft) {
+          return;
+        }
+        const nextRows = normalizeDocumentTemplateGridlineRows(draft.gridlineRows);
+        nextRows[rowIndex][columnIndex] = String(event.currentTarget.value ?? "").slice(0, 500);
+        draft.gridlineRows = nextRows;
+        invalidateDocumentTemplateDraftCache();
+      });
+      input.addEventListener("click", (event) => event.stopPropagation());
+      td.append(input);
+      tr.append(td);
+    });
+
+    tbody.append(tr);
+  });
+
+  table.append(thead, tbody);
+  wrap.append(table);
+  shell.append(head, wrap);
+  return shell;
+}
+
 function buildDocumentTemplateToolFieldDraft(tool = "text") {
   const safeTool = String(tool || "text").trim().toLowerCase();
   const baseIndex = documentTemplateFieldDrafts.length;
@@ -59583,6 +59701,19 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
         columns: sheet.columns.map((column) => column.label),
         rowCount: sheet.rows.length,
         sheet,
+      },
+      baseIndex,
+    );
+  }
+
+  if (safeTool === "gridline") {
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: "Gridline",
+        wordLabel: "Gridline",
+        type: "gridline",
+        helpText: "Lagana probna tablica samo za klik i unos u template builderu.",
+        gridlineRows: createDefaultDocumentTemplateGridlineRows(),
       },
       baseIndex,
     );
@@ -61759,6 +61890,9 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     dropdownOptions: type === "dropdown"
       ? normalizeDocumentTemplateDropdownOptionsLocal(initial.dropdownOptions ?? initial.options ?? initial.choices)
       : [],
+    gridlineRows: type === "gridline"
+      ? normalizeDocumentTemplateGridlineRows(initial.gridlineRows ?? initial.rows)
+      : [],
     sectionSubtitle: String(initial.sectionSubtitle ?? "").trim(),
     systemRows: type === "system_description"
       ? normalizeDocumentTemplateSystemDescriptionRows(
@@ -63629,6 +63763,9 @@ function buildDocumentTemplateDraft() {
       dropdownOptions: field.type === "dropdown"
         ? normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions ?? field.options ?? field.choices)
         : [],
+      gridlineRows: field.type === "gridline"
+        ? normalizeDocumentTemplateGridlineRows(field.gridlineRows)
+        : [],
       sectionSubtitle: String(field.sectionSubtitle || "").trim(),
       systemRows: normalizeDocumentTemplateSystemDescriptionRows(field.systemRows, {
         ensureOne: field.type === "system_description",
@@ -63713,6 +63850,9 @@ function buildDocumentTemplateDraft() {
               fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
             })
             : [],
+          gridlineRows: field.type === "gridline"
+            ? normalizeDocumentTemplateGridlineRows(field.gridlineRows)
+            : [],
           layoutWidth: getDocumentTemplateRuntimeFieldLayoutWidth(field),
           fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
           legalFrameworkIds,
@@ -63742,6 +63882,7 @@ function buildDocumentTemplateDraft() {
           dropdownOptions: field.type === "dropdown"
             ? normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions)
             : [],
+          gridlineRows: [],
           legalFrameworkIds: [],
           defaultLegalFrameworkIds: [],
           columns: [],
@@ -87480,6 +87621,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     }
     if (field.type === "measurement_table") {
       row.classList.add("is-excel-block");
+    } else if (field.type === "gridline") {
+      row.classList.add("is-gridline-block");
     }
 
     const head = document.createElement("div");
@@ -87655,6 +87798,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     grid.className = "form-grid document-template-inline-grid";
     if (field.type === "measurement_table") {
       grid.classList.add("is-excel-layout");
+    } else if (field.type === "gridline") {
+      grid.classList.add("is-gridline-layout");
     }
     const isSpecialType = isDocumentTemplateSpecialFieldType(field.type);
 
@@ -88358,6 +88503,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       grid.append(subtitleField, rowsField);
     } else if (field.type === "measurement_table") {
       specialInfoField.hidden = true;
+    } else if (field.type === "gridline") {
+      specialInfoField.hidden = true;
     } else if (isDocumentTemplateMediaFieldType(field.type)) {
       specialInfoSpan.textContent = "Upload u zapisniku";
       const specialInfoValue = document.createElement("div");
@@ -88558,6 +88705,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
     if (field.type === "measurement_table") {
       grid.append(columnsField);
+    } else if (field.type === "gridline") {
+      // Gridline is rendered directly on the canvas as a light browser-only table.
     } else if (field.type === "system_description") {
       // system description fields already appended above
     } else if (field.type === "legal_list") {
@@ -88594,6 +88743,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     previewShell.innerHTML = buildDocumentTemplateFieldPreviewMarkup(field, previewContext, draftIndex, {
       placeholderMode: false,
     });
+    if (field.type === "gridline") {
+      previewShell.replaceChildren(createDocumentTemplateGridlinePreview(field, draftIndex));
+    }
     const previewFieldValue = previewShell.querySelector(".document-template-preview-field-value");
     const applyCanvasPreviewHeight = (resolvedField = field) => {
       const nextHeight = getDocumentTemplateBuilderFieldHeightPx(resolvedField, { preserveAuto: true });

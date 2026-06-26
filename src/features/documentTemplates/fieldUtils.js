@@ -37,6 +37,7 @@ export const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
   "legal_list",
   "equipment_list",
   "measurement_table",
+  "gridline",
   "inspector_signature",
   "authorization_holder_signature",
   "digital_signature",
@@ -77,6 +78,7 @@ export const DOCUMENT_TEMPLATE_MEDIA_FIELD_TYPES = new Set([
 
 export const DOCUMENT_TEMPLATE_RUNTIME_FORCE_FULL_WIDTH_TYPES = new Set([
   "measurement_table",
+  "gridline",
 ]);
 
 export const DOCUMENT_TEMPLATE_FIELD_WIDTH_SPANS = {
@@ -297,6 +299,7 @@ export function isDocumentTemplateFieldHeightEditable(type = "text") {
   const normalizedType = String(type || "text").trim().toLowerCase();
   return normalizedType !== "chapter"
     && normalizedType !== "measurement_table"
+    && normalizedType !== "gridline"
     && normalizedType !== "page_break";
 }
 
