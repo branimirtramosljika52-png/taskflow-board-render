@@ -68,6 +68,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -184,6 +185,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -24191,6 +24193,8 @@ private fun WorkOrderDocumentationWizardDialog(
     val selectedFlowIndex = flowTabs.indexOfFirst { it.key == selectedFlowService }.coerceAtLeast(0)
     val previousFlowKey = flowTabs.getOrNull(selectedFlowIndex - 1)?.key
     val nextFlowKey = flowTabs.getOrNull(selectedFlowIndex + 1)?.key
+    val screenConfiguration = LocalConfiguration.current
+    val isDocumentationLandscape = screenConfiguration.screenWidthDp > screenConfiguration.screenHeightDp
 
     if (newObjectDialogOpen) {
         AlertDialog(
@@ -24316,7 +24320,9 @@ private fun WorkOrderDocumentationWizardDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.fillMaxWidth(0.96f),
+        modifier = Modifier
+            .fillMaxWidth(if (isDocumentationLandscape) 0.985f else 0.96f)
+            .fillMaxHeight(if (isDocumentationLandscape) 0.92f else 0.88f),
         properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
             Column {
@@ -24341,6 +24347,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         flowTabs = flowTabs,
                         selectedService = selectedFlowService,
                         enabled = !formLoading,
+                        compact = isDocumentationLandscape,
                         onSelectService = { selectedFlowService = it },
                         onLongPressService = { item ->
                             val usedObjectIds = additionalRecords
@@ -24359,7 +24366,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = if (serviceFlowItems.isNotEmpty()) 540.dp else 660.dp)
+                        .heightIn(max = if (isDocumentationLandscape) 720.dp else if (serviceFlowItems.isNotEmpty()) 540.dp else 660.dp)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
@@ -24784,6 +24791,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                         table = table,
                                         sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet,
                                         enabled = !formLoading,
+                                        expanded = isDocumentationLandscape,
                                         onSheetChange = { nextSheet ->
                                             measurementSheets = measurementSheets + (measurementSheetStateKey(template, table) to nextSheet)
                                         },
@@ -27497,37 +27505,67 @@ private fun DocumentationProcessToolbar(
     flowTabs: List<DocumentationFlowTab>,
     selectedService: String,
     enabled: Boolean,
+    compact: Boolean = false,
     onSelectService: (String) -> Unit,
     onLongPressService: (DocumentationServiceFlowItem) -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(if (compact) 14.dp else 18.dp),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Text("Proces izrade", fontWeight = FontWeight.Black)
-            }
+        if (compact) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                flowTabs.forEach { tab ->
-                    DocumentationProcessChip(
-                        label = tab.label,
-                        selected = tab.key.equals(selectedService, ignoreCase = true),
-                        onClick = { onSelectService(tab.key) },
-                        onLongClick = tab.serviceItem?.let { item -> { onLongPressService(item) } },
-                        enabled = enabled,
-                    )
+                Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Text("Proces", fontWeight = FontWeight.Black, maxLines = 1)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    flowTabs.forEach { tab ->
+                        DocumentationProcessChip(
+                            label = tab.label,
+                            selected = tab.key.equals(selectedService, ignoreCase = true),
+                            compact = true,
+                            onClick = { onSelectService(tab.key) },
+                            onLongClick = tab.serviceItem?.let { item -> { onLongPressService(item) } },
+                            enabled = enabled,
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Text("Proces izrade", fontWeight = FontWeight.Black)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    flowTabs.forEach { tab ->
+                        DocumentationProcessChip(
+                            label = tab.label,
+                            selected = tab.key.equals(selectedService, ignoreCase = true),
+                            onClick = { onSelectService(tab.key) },
+                            onLongClick = tab.serviceItem?.let { item -> { onLongPressService(item) } },
+                            enabled = enabled,
+                        )
+                    }
                 }
             }
         }
@@ -27540,6 +27578,7 @@ private fun DocumentationProcessChip(
     label: String,
     selected: Boolean,
     enabled: Boolean,
+    compact: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -27570,9 +27609,10 @@ private fun DocumentationProcessChip(
                     },
                     shape = shape,
                 )
-                .padding(horizontal = 18.dp, vertical = 10.dp),
+                .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 8.dp else 10.dp),
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+            style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -27705,6 +27745,7 @@ private fun MeasurementTableEditor(
     enabled: Boolean,
     spaceOptions: List<Pair<String, String>> = emptyList(),
     requireSpaceSelection: Boolean = false,
+    expanded: Boolean = false,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
     val context = LocalContext.current
@@ -27719,7 +27760,7 @@ private fun MeasurementTableEditor(
         }
     }
     val historyLimit = 24
-    val columnWindowSize = 10
+    val columnWindowSize = if (expanded) 8 else 10
     var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
     var undoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
     var redoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
@@ -27814,6 +27855,9 @@ private fun MeasurementTableEditor(
     val selectedRequiresSpaceSelection = requireSpaceSelection && selectedColumn?.isPhysicalFactorsSpaceSelectorColumn() == true
     val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+    val rowHeaderWidth = if (expanded) 54.dp else 46.dp
+    val rowHeight = if (expanded) 52.dp else 44.dp
+    val columnHeaderHeight = if (expanded) 40.dp else 34.dp
     LaunchedEffect(selectedRow?.id.orEmpty(), selectedColumn?.id.orEmpty()) {
         val nextSheet = sheetWithPendingCellValue(sheet)
         if (nextSheet != sheet) {
@@ -28102,12 +28146,12 @@ private fun MeasurementTableEditor(
                         .clip(RoundedCornerShape(6.dp)),
                 ) {
                     Column {
-                        MeasurementHeaderCell("", 46, subtle = true)
+                        MeasurementHeaderCell("", rowHeaderWidth.value.toInt(), height = columnHeaderHeight, subtle = true)
                         visibleRows.forEachIndexed { rowIndex, row ->
                             Surface(
                                 modifier = Modifier
-                                    .width(46.dp)
-                                    .height(44.dp)
+                                    .width(rowHeaderWidth)
+                                    .height(rowHeight)
                                     .border(0.6.dp, gridLine),
                                 color = if (selectedCell.rowIndex == rowIndex) {
                                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
@@ -28130,7 +28174,7 @@ private fun MeasurementTableEditor(
                             visibleColumns.forEachIndexed { columnIndex, column ->
                                 val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
                                     ?: (columnWindowStart + columnIndex)
-                                MeasurementHeaderCell(measurementColumnLabel(absoluteColumnIndex), column.width)
+                                MeasurementHeaderCell(measurementColumnLabel(absoluteColumnIndex), column.width, height = columnHeaderHeight)
                             }
                         }
                         visibleRows.forEachIndexed { rowIndex, row ->
@@ -28158,6 +28202,8 @@ private fun MeasurementTableEditor(
                                                 editingValue = value
                                             }
                                         },
+                                        rowHeight = rowHeight,
+                                        expanded = expanded,
                                         directEditable = !(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn()),
                                     )
                                 }
@@ -28379,12 +28425,12 @@ private fun MeasurementColorChip(
 }
 
 @Composable
-private fun MeasurementHeaderCell(label: String, width: Int, subtle: Boolean = false) {
+private fun MeasurementHeaderCell(label: String, width: Int, height: Dp = 34.dp, subtle: Boolean = false) {
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
     Box(
         modifier = Modifier
             .width(width.coerceIn(46, 260).dp)
-            .height(34.dp)
+            .height(height)
             .border(0.6.dp, gridLine)
             .background(
                 if (subtle) {
@@ -28411,6 +28457,8 @@ private fun MeasurementGridCell(
     enabled: Boolean,
     onClick: () -> Unit,
     onChange: (String) -> Unit,
+    rowHeight: Dp = 44.dp,
+    expanded: Boolean = false,
     directEditable: Boolean = true,
 ) {
     val editable = column.isEditableMeasurementColumn()
@@ -28433,10 +28481,10 @@ private fun MeasurementGridCell(
             onValueChange = onChange,
             modifier = Modifier
                 .width(cellWidth)
-                .height(44.dp),
+                .height(rowHeight),
             singleLine = true,
             enabled = enabled,
-            textStyle = MaterialTheme.typography.bodySmall,
+            textStyle = if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             shape = RoundedCornerShape(2.dp),
         )
@@ -28445,7 +28493,7 @@ private fun MeasurementGridCell(
     Box(
         modifier = Modifier
             .width(cellWidth)
-            .height(44.dp)
+            .height(rowHeight)
             .border(if (selected) 2.dp else 0.6.dp, if (selected) MaterialTheme.colorScheme.primary else gridLine)
             .background(
                 when {
@@ -28463,7 +28511,7 @@ private fun MeasurementGridCell(
         Text(
             value.ifBlank { if (isFormula) "" else column.placeholder },
             modifier = Modifier.padding(horizontal = 8.dp),
-            style = MaterialTheme.typography.bodySmall,
+            style = if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
             fontWeight = if (selected || bold) FontWeight.Bold else FontWeight.Normal,
             textAlign = textAlign,
             maxLines = 1,
