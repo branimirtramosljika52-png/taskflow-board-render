@@ -190,6 +190,7 @@ await mkdir(resolve(distDir, "assets", "vendor"), { recursive: true });
 
 await cp(resolve(rootDir, "index.html"), resolve(distDir, "index.html"));
 await cp(resolve(rootDir, "gridline.html"), resolve(distDir, "gridline.html"));
+await cp(resolve(rootDir, "gridline.js"), resolve(distDir, "gridline.js"));
 await cp(resolve(rootDir, "learning-test.html"), resolve(distDir, "learning-test.html"));
 await cp(resolve(rootDir, "request-access.html"), resolve(distDir, "request-access.html"));
 await cp(resolve(rootDir, "site.webmanifest"), resolve(distDir, "site.webmanifest"));
