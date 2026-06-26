@@ -153,6 +153,17 @@
         overflow: auto;
       }
 
+      .grid-error {
+        margin: 18px;
+        padding: 14px;
+        border: 1px solid #ffd6a8;
+        border-radius: 12px;
+        background: #fff8ef;
+        color: #87540c;
+        font-size: 0.88rem;
+        font-weight: 800;
+      }
+
       table {
         border-collapse: separate;
         border-spacing: 0;
@@ -301,6 +312,35 @@
         let active = { row: 0, column: 0 };
         let saveTimer = 0;
 
+        function clearNode(node) {
+          while (node.firstChild) {
+            node.removeChild(node.firstChild);
+          }
+        }
+
+        function getClosestCellInput(target) {
+          if (!target || typeof target.closest !== "function") {
+            return null;
+          }
+          return target.closest("input.cell");
+        }
+
+        function showGridError(error) {
+          clearNode(grid);
+          const tbody = document.createElement("tbody");
+          const tr = document.createElement("tr");
+          const td = document.createElement("td");
+          td.colSpan = 2;
+          const box = document.createElement("div");
+          box.className = "grid-error";
+          box.textContent = `Grid se nije mogao nacrtati na ovom browseru: ${error && error.message ? error.message : "nepoznata greska"}`;
+          td.appendChild(box);
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          grid.appendChild(tbody);
+          setStatus("Greska prikaza", "is-saving");
+        }
+
         function columnLabel(index) {
           let label = "";
           let current = index + 1;
@@ -353,7 +393,7 @@
             if (saved && typeof saved === "object") {
               rowCount = Math.max(INITIAL_ROWS, Number(saved.rowCount) || INITIAL_ROWS);
               columnCount = Math.max(INITIAL_COLUMNS, Number(saved.columnCount) || INITIAL_COLUMNS);
-              data = saved.data && typeof saved.data === "object" ? { ...saved.data } : Object.create(null);
+              data = saved.data && typeof saved.data === "object" ? Object.assign(Object.create(null), saved.data) : Object.create(null);
             }
           } catch {
             data = Object.create(null);
@@ -366,21 +406,21 @@
           const headRow = document.createElement("tr");
           const corner = document.createElement("th");
           corner.className = "corner";
-          headRow.append(corner);
+          headRow.appendChild(corner);
           for (let column = 0; column < columnCount; column += 1) {
             const th = document.createElement("th");
             th.textContent = columnLabel(column);
-            headRow.append(th);
+            headRow.appendChild(th);
           }
-          thead.append(headRow);
-          fragment.append(thead);
+          thead.appendChild(headRow);
+          fragment.appendChild(thead);
 
           const tbody = document.createElement("tbody");
           for (let row = 0; row < rowCount; row += 1) {
             const tr = document.createElement("tr");
             const rowHead = document.createElement("th");
             rowHead.textContent = String(row + 1);
-            tr.append(rowHead);
+            tr.appendChild(rowHead);
             for (let column = 0; column < columnCount; column += 1) {
               const td = document.createElement("td");
               td.dataset.row = String(row);
@@ -392,13 +432,14 @@
               input.spellcheck = false;
               input.dataset.row = String(row);
               input.dataset.column = String(column);
-              td.append(input);
-              tr.append(td);
+              td.appendChild(input);
+              tr.appendChild(td);
             }
-            tbody.append(tr);
+            tbody.appendChild(tr);
           }
-          fragment.append(tbody);
-          grid.replaceChildren(fragment);
+          fragment.appendChild(tbody);
+          clearNode(grid);
+          grid.appendChild(fragment);
           selectCell(active.row, active.column, { focus: false });
         }
 
@@ -413,20 +454,20 @@
           };
           grid.querySelectorAll("td.is-selected").forEach((cell) => cell.classList.remove("is-selected"));
           const input = getInput(active.row, active.column);
-          const td = input?.parentElement;
+          const td = input ? input.parentElement : null;
           if (td) {
             td.classList.add("is-selected");
           }
           cellRef.textContent = `${columnLabel(active.column)}${active.row + 1}`;
           formulaInput.value = getValue(active.row, active.column);
           if (focus && input) {
-            input.focus({ preventScroll: true });
+            input.focus();
             input.select();
           }
         }
 
         function handlePaste(event) {
-          const text = event.clipboardData?.getData("text/plain") || "";
+          const text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
           if (!text.includes("\t") && !text.includes("\n")) {
             return;
           }
@@ -451,7 +492,7 @@
         }
 
         grid.addEventListener("focusin", (event) => {
-          const input = event.target.closest?.("input.cell");
+          const input = getClosestCellInput(event.target);
           if (!input) {
             return;
           }
@@ -459,7 +500,7 @@
         });
 
         grid.addEventListener("input", (event) => {
-          const input = event.target.closest?.("input.cell");
+          const input = getClosestCellInput(event.target);
           if (!input) {
             return;
           }
@@ -473,7 +514,7 @@
         });
 
         grid.addEventListener("keydown", (event) => {
-          const input = event.target.closest?.("input.cell");
+          const input = getClosestCellInput(event.target);
           if (!input) {
             return;
           }
@@ -534,7 +575,11 @@
         });
 
         load();
-        render();
+        try {
+          render();
+        } catch (error) {
+          showGridError(error);
+        }
       })();
     </script>
   </body>
