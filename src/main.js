@@ -52472,7 +52472,9 @@ function createActionButton(label, className, onClick) {
   button.textContent = label;
   button.setAttribute("aria-label", label);
   button.title = label;
-  button.addEventListener("click", onClick);
+  if (typeof onClick === "function") {
+    button.addEventListener("click", onClick);
+  }
   return button;
 }
 
@@ -59679,61 +59681,107 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
   }
 
   const shell = document.createElement("div");
-  shell.className = "document-template-gridline-demo";
+  shell.className = "document-template-gridline-demo documentation-gridline-module is-template-editor";
+  shell.dataset.gridlineInstance = String(field.id || `gridline-template-${draftIndex}`);
 
-  const head = document.createElement("div");
-  head.className = "document-template-gridline-demo-head";
-  const title = document.createElement("strong");
-  title.textContent = "Gridline blok";
+  const topbar = document.createElement("div");
+  topbar.className = "documentation-gridline-topbar document-template-gridline-designer-topbar";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "documentation-gridline-title";
+  const mark = document.createElement("span");
+  mark.className = "documentation-gridline-mark";
+  mark.setAttribute("aria-hidden", "true");
+  mark.innerHTML = getWorkOrderIconMarkup("table");
+  const titleCopy = document.createElement("div");
+  const title = document.createElement("h3");
+  title.textContent = field.label || "Gridline tablica";
   const hint = document.createElement("span");
-  hint.textContent = "Dodano u template. Tablica se popunjava u operativi.";
-  head.append(title, hint);
+  hint.textContent = "Ovdje složi početnu tablicu. Ista struktura se otvara u zapisniku.";
+  titleCopy.append(title, hint);
+  titleWrap.append(mark, titleCopy);
 
   const actions = document.createElement("div");
-  actions.className = "document-template-gridline-demo-actions";
+  actions.className = "documentation-gridline-actions document-template-gridline-designer-actions";
+  const status = document.createElement("span");
+  status.className = "status is-saved";
+  status.dataset.gridlineRole = "status";
+  status.textContent = "Spremno";
   const summary = document.createElement("span");
   summary.className = "document-template-gridline-demo-summary";
   summary.textContent = getDocumentTemplateGridlineSummary(model);
-  actions.append(summary);
-  head.append(actions);
+  const addRowButton = createActionButton("+ 20 redova", "ghost-button");
+  addRowButton.dataset.gridlineAction = "add-row";
+  const addColumnButton = createActionButton("+ Kolone", "ghost-button");
+  addColumnButton.dataset.gridlineAction = "add-column";
+  const clearButton = createActionButton("Očisti", "ghost-button");
+  clearButton.dataset.gridlineAction = "clear";
+  actions.append(status, summary, addRowButton, addColumnButton, clearButton);
+  topbar.append(titleWrap, actions);
 
-  const wrap = document.createElement("div");
-  wrap.className = "document-template-gridline-demo-wrap";
+  const formula = document.createElement("div");
+  formula.className = "documentation-gridline-formula document-template-gridline-designer-formula";
+  const cellRef = document.createElement("div");
+  cellRef.className = "cell-ref";
+  cellRef.dataset.gridlineRole = "cell-ref";
+  cellRef.textContent = "A1";
+  const formulaInput = document.createElement("input");
+  formulaInput.type = "text";
+  formulaInput.dataset.gridlineRole = "formula";
+  formulaInput.placeholder = "Vrijednost aktivne ćelije";
+  formula.append(cellRef, formulaInput);
+
+  const gridShell = document.createElement("div");
+  gridShell.className = "documentation-gridline-shell document-template-gridline-designer-shell";
+  const scroll = document.createElement("div");
+  scroll.className = "documentation-gridline-scroll";
   const table = document.createElement("table");
-  table.className = "document-template-gridline-demo-table";
+  table.dataset.gridlineRole = "grid";
+  table.setAttribute("aria-label", field.label || "Gridline tablica");
+  scroll.append(table);
+  gridShell.append(scroll);
+  shell.append(topbar, formula, gridShell);
 
-  const thead = document.createElement("thead");
-  const headRow = document.createElement("tr");
-  const indexHead = document.createElement("th");
-  indexHead.textContent = "#";
-  headRow.append(indexHead);
-  const previewColumnCount = Math.min(6, model.columnCount);
-  Array.from({ length: previewColumnCount }).forEach((_, columnIndex) => {
-    const th = document.createElement("th");
-    th.textContent = getSpreadsheetColumnLabel(columnIndex);
-    headRow.append(th);
-  });
-  thead.append(headRow);
+  let latestModel = model;
+  let previewTimer = 0;
+  const persistDesignerModel = (nextModel) => {
+    latestModel = normalizeDocumentTemplateGridlineModel(nextModel, rows);
+    summary.textContent = getDocumentTemplateGridlineSummary(latestModel);
+    if (draftIndex >= 0 && documentTemplateFieldDrafts[draftIndex]) {
+      documentTemplateFieldDrafts[draftIndex].gridlineRows = rows;
+      documentTemplateFieldDrafts[draftIndex].gridlineModel = latestModel;
+    }
+    if (previewTimer) {
+      window.clearTimeout(previewTimer);
+    }
+    previewTimer = window.setTimeout(() => {
+      previewTimer = 0;
+      renderDocumentTemplatePreviewContent();
+    }, 650);
+  };
 
-  const tbody = document.createElement("tbody");
-  Array.from({ length: Math.min(6, model.rowCount) }).forEach((_, rowIndex) => {
-    const tr = document.createElement("tr");
-    const rowHead = document.createElement("th");
-    rowHead.textContent = String(rowIndex + 1);
-    tr.append(rowHead);
-
-    Array.from({ length: previewColumnCount }).forEach((__, columnIndex) => {
-      const td = document.createElement("td");
-      td.textContent = model.data?.[`${rowIndex}:${columnIndex}`] || "";
-      tr.append(td);
+  requestAnimationFrame(() => {
+    if (!shell.isConnected) {
+      return;
+    }
+    const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+    if (!gridlineApi?.mount) {
+      const error = document.createElement("div");
+      error.className = "grid-error";
+      error.textContent = "Gridline komponenta nije učitana.";
+      gridShell.replaceChildren(error);
+      return;
+    }
+    gridlineApi.mount(shell, {
+      model: latestModel,
+      storageKey: "",
+      defaultRows: latestModel.rowCount || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_ROWS,
+      defaultColumns: latestModel.columnCount || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_COLUMNS,
+      saveDelayMs: 350,
+      onChange: persistDesignerModel,
     });
-
-    tbody.append(tr);
   });
 
-  table.append(thead, tbody);
-  wrap.append(table);
-  shell.append(head, wrap);
   return shell;
 }
 

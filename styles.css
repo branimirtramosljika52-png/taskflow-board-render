@@ -48134,6 +48134,72 @@ body.is-measurement-equipment-export-open {
   background: #f8fbff;
 }
 
+.document-template-gridline-demo.documentation-gridline-module.is-template-editor {
+  grid-template-rows: auto auto minmax(300px, 1fr);
+  min-height: 500px;
+  padding: 12px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(31, 111, 255, 0.13), transparent 24rem),
+    linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.97));
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-topbar,
+.document-template-gridline-demo.is-template-editor .documentation-gridline-formula {
+  padding: 10px 12px;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(18, 38, 72, 0.07);
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-title h3 {
+  font-size: 1rem;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-title span:not(.documentation-gridline-mark) {
+  font-size: 0.76rem;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-mark .icon-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-actions {
+  gap: 6px;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-actions .status {
+  font-size: 0.74rem;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-actions .ghost-button {
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-scroll {
+  min-height: 300px;
+  max-height: 430px;
+}
+
+.document-template-gridline-demo.is-template-editor table {
+  min-width: 980px;
+  font-size: 0.8rem;
+}
+
+.document-template-gridline-demo.is-template-editor td {
+  width: 128px;
+  min-width: 128px;
+}
+
 .document-template-inline-excel-host {
   margin-top: 10px;
   min-height: 0;
