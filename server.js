@@ -104,6 +104,14 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
 const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.220.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
+const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
+const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
+const MOBILE_ANDROID_APK_CACHE_HEADERS = Object.freeze({
+  "Cache-Control": "public, max-age=300, must-revalidate",
+  "Accept-Ranges": "bytes",
+  "Content-Description": "SafeNexus Android APK",
+  "Content-Transfer-Encoding": "binary",
+});
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -274,8 +282,9 @@ async function sendFirebasePushMessage(token, payload = {}) {
 }
 
 function buildAndroidDownloadPage() {
-  const apkUrl = `/assets/mobile/${MOBILE_ANDROID_APK_FILE_NAME}`;
-  const directApkUrl = "/apk";
+  const apkUrl = `/${MOBILE_ANDROID_APK_FILE_NAME}`;
+  const directApkUrl = "/SafeNexus.apk";
+  const shortApkUrl = "/download-apk";
   const apiApkUrl = "/api/mobile/android-apk";
   const plainPageUrl = "/mobile/plain";
   return `<!doctype html>
@@ -381,15 +390,15 @@ function buildAndroidDownloadPage() {
 </head>
 <body>
   <main>
-    <span class="badge">Safe Nexus Android ${MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "")}</span>
+    <span class="badge">Safe Nexus Android ${MOBILE_ANDROID_APK_VERSION_LABEL}</span>
     <h1>Preuzmi aplikaciju</h1>
     <p>Ovo je instalacijska datoteka za Safe Nexus Android aplikaciju.</p>
     <div class="actions">
       <a class="button" href="${directApkUrl}">Direktno skidanje APK-a</a>
-      <a class="copy" href="${directApkUrl}">Kratki link: https://taskflow-board-do-cai56.ondigitalocean.app${directApkUrl}</a>
-      <a class="copy" href="${plainPageUrl}">Jednostavna stranica: https://taskflow-board-do-cai56.ondigitalocean.app${plainPageUrl}</a>
-      <a class="copy" href="${apkUrl}">Stari direktni link: https://taskflow-board-do-cai56.ondigitalocean.app${apkUrl}</a>
-      <a class="copy" href="${apiApkUrl}">API download: https://taskflow-board-do-cai56.ondigitalocean.app${apiApkUrl}</a>
+      <a class="copy" href="${shortApkUrl}">Kratki install link: ${shortApkUrl}</a>
+      <a class="copy" href="${plainPageUrl}">Jednostavna stranica: ${plainPageUrl}</a>
+      <a class="copy" href="${apkUrl}">Versionirani APK: ${apkUrl}</a>
+      <a class="copy" href="${apiApkUrl}">API download: ${apiApkUrl}</a>
     </div>
     <p class="note">Ako mobitel pita za dopuštenje instalacije iz preglednika, uključi ga za taj preglednik i ponovi instalaciju.</p>
   </main>
@@ -398,10 +407,10 @@ function buildAndroidDownloadPage() {
 }
 
 function buildAndroidPlainDownloadPage() {
-  const directApkUrl = "/apk";
+  const directApkUrl = "/SafeNexus.apk";
   const backupApkUrl = "/download-apk";
   const apiApkUrl = "/api/mobile/android-apk";
-  const assetApkUrl = `/assets/mobile/${MOBILE_ANDROID_APK_FILE_NAME}`;
+  const assetApkUrl = `/${MOBILE_ANDROID_APK_FILE_NAME}`;
   return `<!doctype html>
 <html lang="hr">
 <head>
@@ -410,7 +419,7 @@ function buildAndroidPlainDownloadPage() {
   <title>SafeNexus APK</title>
 </head>
 <body>
-  <h1>SafeNexus Android ${MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "")}</h1>
+  <h1>SafeNexus Android ${MOBILE_ANDROID_APK_VERSION_LABEL}</h1>
   <p>Ako jedan link zapne, vrati se ovdje i probaj sljedeci.</p>
   <p><a href="${directApkUrl}">1. Direktno skidanje</a></p>
   <p><a href="${backupApkUrl}">2. Rezervno direktno skidanje</a></p>
@@ -828,18 +837,18 @@ function buildIsznrRoRecordPdfBridgePage({
 
 async function writeAndroidApkDownload(response, {
   contentType = MOBILE_ANDROID_APK_CONTENT_TYPE,
+  fileName = MOBILE_ANDROID_APK_PUBLIC_FILE_NAME,
 } = {}) {
   const rootApkPath = resolve(rootDir, "assets", "mobile", MOBILE_ANDROID_APK_FILE_NAME);
   const distApkPath = resolve(staticRoot, "assets", "mobile", MOBILE_ANDROID_APK_FILE_NAME);
   const apkPath = existsSync(rootApkPath) ? rootApkPath : distApkPath;
   const apkBuffer = await readFile(apkPath);
+  const safeFileName = String(fileName || MOBILE_ANDROID_APK_PUBLIC_FILE_NAME).replace(/"/g, "");
   writeBufferResponse(response, 200, apkBuffer, {
     contentType,
-    fileName: MOBILE_ANDROID_APK_FILE_NAME,
     headers: {
-      ...NO_STORE_HEADERS,
-      "Content-Description": "SafeNexus Android APK",
-      "Content-Transfer-Encoding": "binary",
+      ...MOBILE_ANDROID_APK_CACHE_HEADERS,
+      "Content-Disposition": `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeURIComponent(safeFileName)}`,
     },
   });
 }
@@ -34602,15 +34611,24 @@ const server = createServer(async (request, response) => {
   }
 
   if ((request.method === "GET" || request.method === "HEAD")
-    && [
-      "/apk",
-      "/download-apk",
-      "/mobile/apk",
-      "/android.apk",
-      "/SafeNexus.apk",
-      `/${MOBILE_ANDROID_APK_FILE_NAME}`,
-    ].includes(url.pathname)) {
-    await writeAndroidApkDownload(response);
+    && ["/apk", "/download-apk", "/mobile/apk"].includes(url.pathname)) {
+    redirect(response, `/SafeNexus.apk?v=${encodeURIComponent(MOBILE_ANDROID_APK_VERSION_LABEL)}`, 302);
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD")
+    && ["/android.apk", "/SafeNexus.apk"].includes(url.pathname)) {
+    await writeAndroidApkDownload(response, {
+      fileName: MOBILE_ANDROID_APK_PUBLIC_FILE_NAME,
+    });
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD")
+    && url.pathname === `/${MOBILE_ANDROID_APK_FILE_NAME}`) {
+    await writeAndroidApkDownload(response, {
+      fileName: MOBILE_ANDROID_APK_FILE_NAME,
+    });
     return;
   }
 
