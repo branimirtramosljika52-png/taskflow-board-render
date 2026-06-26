@@ -2779,17 +2779,56 @@
 
                 <div class="measurement-toolbar-ribbon-group measurement-toolbar-group-ai-entry" role="group" aria-label="AI i brzi unos">
                   <div class="measurement-toolbar-ai">
-                    <button id="measurement-ai-button" type="button" class="ghost-button measurement-toolbar-icon-button measurement-toolbar-command-button" title="NexAI postavke kolone" aria-label="NexAI postavke kolone">AI unos</button>
+                    <button id="measurement-ai-button" type="button" class="ghost-button measurement-toolbar-icon-button measurement-toolbar-command-button" title="AI unos i NexAI postavke kolone" aria-label="AI unos i NexAI postavke kolone">AI unos</button>
                     <div id="measurement-ai-popover" class="measurement-ai-popover" hidden>
                       <div class="measurement-ai-dialog" role="dialog" aria-modal="true" aria-labelledby="measurement-ai-title">
                         <div class="measurement-ai-popover-head">
                           <div>
-                            <strong id="measurement-ai-title">NexAI postavke kolone</strong>
+                            <strong id="measurement-ai-title">AI unos i postavke kolone</strong>
                             <span id="measurement-ai-column-label">Odaberi kolonu</span>
                             <span id="measurement-ai-connection-status" class="measurement-ai-connection-status">NexAI veza: nije provjereno</span>
                           </div>
                           <button id="measurement-ai-close" type="button" class="ghost-button measurement-ai-close">Zatvori</button>
                         </div>
+
+                        <section class="measurement-ai-import-panel" aria-label="AI unos u Excel tablicu">
+                          <div class="measurement-ai-import-head">
+                            <div>
+                              <strong>AI unos u Excel</strong>
+                              <span>Zalijepi tekst/CSV ili dodaj PDF/sliku. Prvo dobiješ preview, pa tek onda upisuješ u tablicu.</span>
+                            </div>
+                            <span id="measurement-ai-import-status" class="measurement-ai-import-status">Spremno</span>
+                          </div>
+
+                          <label class="measurement-toolbar-format measurement-ai-import-text-field">
+                            <span class="measurement-toolbar-label">Tekst / CSV / tablica</span>
+                            <textarea id="measurement-ai-import-text" rows="4" placeholder="Primjer: Prostor 1; 500; Da&#10;Prostor 2; 512; Da"></textarea>
+                          </label>
+
+                          <div class="measurement-ai-import-controls">
+                            <input id="measurement-ai-import-files" type="file" accept=".pdf,.doc,.docx,.txt,.csv,.json,.xml,.jpg,.jpeg,.png,.webp,application/pdf,text/*,image/*" multiple hidden />
+                            <button id="measurement-ai-import-add-files" type="button" class="ghost-button">Dodaj datoteke</button>
+                            <label class="measurement-toolbar-format is-compact">
+                              <span class="measurement-toolbar-label">Model</span>
+                              <select id="measurement-ai-import-model" aria-label="Snaga AI modela za Excel unos">
+                                <option value="fast">Brzi</option>
+                                <option value="standard" selected>Standard</option>
+                                <option value="strong">Jaki</option>
+                                <option value="max">Najjači</option>
+                              </select>
+                            </label>
+                            <label class="measurement-toolbar-format is-compact">
+                              <span class="measurement-toolbar-label">Početni red</span>
+                              <input id="measurement-ai-import-start-row" type="number" min="1" max="5000" step="1" value="1" />
+                            </label>
+                            <button id="measurement-ai-import-run" type="button" class="primary-button">Predloži redove</button>
+                            <button id="measurement-ai-import-apply" type="button" class="ghost-button" disabled>Upiši preview</button>
+                            <button id="measurement-ai-import-clear" type="button" class="ghost-button">Očisti</button>
+                          </div>
+
+                          <div id="measurement-ai-import-files-list" class="measurement-ai-import-files-list"></div>
+                          <div id="measurement-ai-import-preview" class="measurement-ai-import-preview"></div>
+                        </section>
 
                         <label class="measurement-validation-checkbox measurement-ai-full">
                           <input id="measurement-ai-enabled" type="checkbox" />

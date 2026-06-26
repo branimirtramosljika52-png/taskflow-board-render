@@ -2842,6 +2842,14 @@ const state = {
     validationPopoverOpen: false,
     conditionalPopoverOpen: false,
     aiPopoverOpen: false,
+    aiImport: {
+      files: [],
+      status: "idle",
+      message: "",
+      previewRows: [],
+      source: "",
+      modelTier: "standard",
+    },
     quickFillPopoverOpen: false,
     presetLibrary: {
       scopeKey: "",
@@ -5936,6 +5944,17 @@ const measurementAiConfidenceRequiredInput = document.querySelector("#measuremen
 const measurementAiGroupInput = document.querySelector("#measurement-ai-group");
 const measurementAiDisplayOrderInput = document.querySelector("#measurement-ai-display-order");
 const measurementAiValidationRulesInput = document.querySelector("#measurement-ai-validation-rules");
+const measurementAiImportTextInput = document.querySelector("#measurement-ai-import-text");
+const measurementAiImportFileInput = document.querySelector("#measurement-ai-import-files");
+const measurementAiImportAddFilesButton = document.querySelector("#measurement-ai-import-add-files");
+const measurementAiImportRunButton = document.querySelector("#measurement-ai-import-run");
+const measurementAiImportApplyButton = document.querySelector("#measurement-ai-import-apply");
+const measurementAiImportClearButton = document.querySelector("#measurement-ai-import-clear");
+const measurementAiImportStatus = document.querySelector("#measurement-ai-import-status");
+const measurementAiImportFilesList = document.querySelector("#measurement-ai-import-files-list");
+const measurementAiImportPreview = document.querySelector("#measurement-ai-import-preview");
+const measurementAiImportStartRowInput = document.querySelector("#measurement-ai-import-start-row");
+const measurementAiImportModelInput = document.querySelector("#measurement-ai-import-model");
 const measurementTemplateRoF3Button = document.querySelector("#measurement-template-ro-f3-button");
 const measurementQuickFillButton = document.querySelector("#measurement-quick-fill-button");
 const measurementQuickFillPopover = document.querySelector("#measurement-quick-fill-popover");
@@ -45625,6 +45644,547 @@ function applyMeasurementAiMappingToColumn(mappingPatch = {}) {
   handleMeasurementSheetMutation();
 }
 
+const MEASUREMENT_AI_IMPORT_FIELD_ID = "active-measurement-sheet";
+const MEASUREMENT_AI_IMPORT_MAX_FILES = 8;
+const MEASUREMENT_AI_IMPORT_MAX_PREVIEW_ROWS = 120;
+
+function getMeasurementAiImportState() {
+  if (!state.measurementSheet.aiImport || typeof state.measurementSheet.aiImport !== "object") {
+    state.measurementSheet.aiImport = {};
+  }
+  const aiImport = state.measurementSheet.aiImport;
+  aiImport.files = Array.isArray(aiImport.files) ? aiImport.files : [];
+  aiImport.previewRows = Array.isArray(aiImport.previewRows) ? aiImport.previewRows : [];
+  aiImport.status = String(aiImport.status || "idle");
+  aiImport.message = String(aiImport.message || "");
+  aiImport.source = String(aiImport.source || "");
+  aiImport.modelTier = normalizeDocumentTemplateRuntimeAiModelTier(aiImport.modelTier || "standard");
+  return aiImport;
+}
+
+function getMeasurementAiImportColumns() {
+  ensureMeasurementSheetStructure();
+  return state.measurementSheet.columns
+    .filter((column) => !column?.computed)
+    .map((column, columnIndex) => {
+      const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+      return {
+        fieldId: MEASUREMENT_AI_IMPORT_FIELD_ID,
+        fieldKey: "active_measurement_sheet",
+        fieldLabel: "Aktivna Excel tablica",
+        fieldDescription: "Trenutno otvorena Excel tablica u SafeNexus editoru.",
+        columnId: String(column?.id || ""),
+        columnIndex,
+        columnLetter: getSpreadsheetColumnLabel(columnIndex),
+        key: aiMapping.key || String(column?.id || ""),
+        label: aiMapping.label || String(column?.label || column?.placeholder || column?.id || `Kolona ${columnIndex + 1}`),
+        type: aiMapping.type || aiMapping.format || "text",
+        required: Boolean(aiMapping.required),
+        placeholder: String(column?.placeholder || aiMapping.placeholder || ""),
+        helpText: aiMapping.helpText || aiMapping.description || aiMapping.aiDescription || "",
+        aiMapping,
+        column: {
+          ...column,
+          aiMapping,
+          aiSheetColumnIndex: columnIndex,
+          aiTargetColumnIndex: columnIndex,
+        },
+      };
+    });
+}
+
+function setMeasurementAiImportStatus(status = "idle", message = "") {
+  const aiImport = getMeasurementAiImportState();
+  aiImport.status = String(status || "idle");
+  aiImport.message = String(message || "");
+  renderMeasurementAiImportPanel();
+}
+
+function clearMeasurementAiImport({ keepText = false } = {}) {
+  const aiImport = getMeasurementAiImportState();
+  aiImport.files = [];
+  aiImport.previewRows = [];
+  aiImport.source = "";
+  aiImport.status = "idle";
+  aiImport.message = "";
+  if (!keepText && measurementAiImportTextInput instanceof HTMLTextAreaElement) {
+    measurementAiImportTextInput.value = "";
+  }
+  renderMeasurementAiImportPanel();
+}
+
+function getMeasurementAiImportDefaultStartRow() {
+  return getMeasurementQuickDefaultStartRowNumber();
+}
+
+function syncMeasurementAiImportStartRowInput({ force = false } = {}) {
+  if (!(measurementAiImportStartRowInput instanceof HTMLInputElement)) {
+    return;
+  }
+  const currentValue = Number.parseInt(String(measurementAiImportStartRowInput.value || ""), 10);
+  if (!force && Number.isFinite(currentValue) && currentValue >= 1) {
+    return;
+  }
+  measurementAiImportStartRowInput.value = String(getMeasurementAiImportDefaultStartRow());
+}
+
+async function addMeasurementAiImportFiles(files) {
+  const fileList = Array.from(files ?? []);
+  if (!fileList.length) {
+    return;
+  }
+  const aiImport = getMeasurementAiImportState();
+  aiImport.status = "loading";
+  aiImport.message = "Učitavam datoteke za AI unos...";
+  renderMeasurementAiImportPanel();
+
+  const incoming = (await Promise.all(fileList.map(createDocumentTemplateRuntimeAiFileMeta)))
+    .filter((file) => file.name);
+  const fileMap = new Map((aiImport.files ?? []).map((file) => [String(file.id || file.name), file]));
+  incoming.forEach((file) => {
+    fileMap.set(String(file.id || file.name), file);
+  });
+  aiImport.files = Array.from(fileMap.values()).slice(0, MEASUREMENT_AI_IMPORT_MAX_FILES);
+  aiImport.previewRows = [];
+  aiImport.status = "ready";
+  aiImport.message = `${aiImport.files.length} datoteka spremno za AI unos.`;
+  renderMeasurementAiImportPanel();
+}
+
+function removeMeasurementAiImportFile(fileId = "") {
+  const aiImport = getMeasurementAiImportState();
+  aiImport.files = (aiImport.files ?? []).filter((file) => String(file.id || file.name) !== String(fileId));
+  aiImport.previewRows = [];
+  aiImport.status = aiImport.files.length ? "ready" : "idle";
+  aiImport.message = aiImport.files.length ? `${aiImport.files.length} datoteka ostaje.` : "";
+  renderMeasurementAiImportPanel();
+}
+
+function getMeasurementAiImportDelimiter(lines = []) {
+  const sample = (Array.isArray(lines) ? lines : []).slice(0, 8).join("\n");
+  const candidates = [
+    { delimiter: "\t", score: (sample.match(/\t/g) || []).length },
+    { delimiter: ";", score: (sample.match(/;/g) || []).length },
+    { delimiter: "|", score: (sample.match(/\|/g) || []).length },
+    { delimiter: ",", score: (sample.match(/,/g) || []).length },
+  ].sort((a, b) => b.score - a.score);
+  return candidates[0]?.score > 0 ? candidates[0].delimiter : "";
+}
+
+function splitMeasurementAiDelimitedLine(line = "", delimiter = "") {
+  const text = String(line ?? "");
+  if (!delimiter) {
+    return text.split(/\s{2,}/).map((item) => item.trim()).filter(Boolean);
+  }
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === "\"") {
+      if (quoted && next === "\"") {
+        current += "\"";
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (!quoted && char === delimiter) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function getMeasurementAiImportColumnLookup(columnEntry = {}) {
+  const column = columnEntry.column ?? columnEntry;
+  return getDocumentTemplateRuntimeAiMeasurementColumnLookupValues(
+    {
+      ...column,
+      id: columnEntry.columnId || column?.id,
+      key: columnEntry.key || column?.key,
+      label: columnEntry.label || column?.label,
+      placeholder: columnEntry.placeholder || column?.placeholder,
+      aiMapping: columnEntry.aiMapping || column?.aiMapping,
+      aiSheetColumnIndex: columnEntry.columnIndex,
+      aiTargetColumnIndex: columnEntry.columnIndex,
+    },
+    Number(columnEntry.columnIndex || 0),
+  );
+}
+
+function buildMeasurementAiImportHeaderMap(cells = [], columns = []) {
+  const map = new Map();
+  cells.forEach((cell, cellIndex) => {
+    const variants = getDocumentTemplateRuntimeAiLookupKeyVariants(cell);
+    const matched = columns.find((column) => {
+      const lookup = getMeasurementAiImportColumnLookup(column);
+      return variants.some((variant) => lookup.has(variant));
+    });
+    if (matched) {
+      map.set(cellIndex, matched);
+    }
+  });
+  return map;
+}
+
+function shouldTreatMeasurementAiImportFirstRowAsHeader(firstRow = [], columns = []) {
+  const headerMap = buildMeasurementAiImportHeaderMap(firstRow, columns);
+  return headerMap.size >= Math.min(2, Math.max(1, columns.length));
+}
+
+function parseMeasurementAiImportTextRows(text = "", columns = getMeasurementAiImportColumns()) {
+  const normalizedText = String(text || "").trim();
+  if (!normalizedText || !columns.length) {
+    return [];
+  }
+  const lines = normalizedText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) {
+    return [];
+  }
+
+  const delimiter = getMeasurementAiImportDelimiter(lines);
+  const matrix = lines
+    .map((line) => splitMeasurementAiDelimitedLine(line, delimiter))
+    .filter((row) => row.some((cell) => String(cell || "").trim()));
+  if (!matrix.length) {
+    return [];
+  }
+
+  const firstRow = matrix[0] ?? [];
+  const hasHeader = shouldTreatMeasurementAiImportFirstRowAsHeader(firstRow, columns);
+  const headerMap = hasHeader ? buildMeasurementAiImportHeaderMap(firstRow, columns) : new Map();
+  const dataRows = hasHeader ? matrix.slice(1) : matrix;
+
+  return dataRows.slice(0, MEASUREMENT_AI_IMPORT_MAX_PREVIEW_ROWS).map((rowValues, rowIndex) => {
+    const cells = {};
+    const formats = {};
+    rowValues.forEach((value, valueIndex) => {
+      const columnEntry = headerMap.get(valueIndex) || columns[valueIndex];
+      if (!columnEntry?.columnId) {
+        return;
+      }
+      cells[columnEntry.columnId] = String(value ?? "").trim();
+      formats[columnEntry.columnId] = normalizeMeasurementCellFormat();
+    });
+    return normalizeMeasurementSheetRowSnapshotLocal({
+      id: `measurement-ai-import-local-${Date.now()}-${rowIndex + 1}`,
+      cells,
+      formats,
+    }, state.measurementSheet.columns, state.measurementSheet.rows.length + rowIndex);
+  }).filter((row) => isMeasurementSheetRowMeaningful(row, state.measurementSheet.columns));
+}
+
+function buildMeasurementAiImportRowsFromSuggestionRows(rows = [], columns = getMeasurementAiImportColumns()) {
+  if (!Array.isArray(rows) || !rows.length || !columns.length) {
+    return [];
+  }
+  const targetColumns = columns.map((entry, targetColumnIndex) => ({
+    column: {
+      ...(entry.column ?? {}),
+      id: entry.columnId,
+      key: entry.key,
+      label: entry.label,
+      placeholder: entry.placeholder,
+      aiMapping: entry.aiMapping,
+      aiSheetColumnIndex: entry.columnIndex,
+      aiTargetColumnIndex: targetColumnIndex,
+    },
+    sheetColumnIndex: entry.columnIndex,
+    targetColumnIndex,
+  }));
+
+  return rows.slice(0, MEASUREMENT_AI_IMPORT_MAX_PREVIEW_ROWS).map((row, rowIndex) => {
+    const values = getDocumentTemplateRuntimeAiSuggestionRowValues(row, targetColumns.map(({ column }) => column));
+    const cells = {};
+    const formats = {};
+    targetColumns.forEach(({ column, sheetColumnIndex }, targetColumnIndex) => {
+      const cellValue = getDocumentTemplateRuntimeAiSuggestionCellValue(values, column, targetColumnIndex);
+      cells[column.id] = cellValue == null ? "" : String(cellValue);
+      formats[column.id] = normalizeMeasurementCellFormat(row?.formats?.[column.id] ?? row?.formats?.[sheetColumnIndex]);
+    });
+    return normalizeMeasurementSheetRowSnapshotLocal({
+      id: `measurement-ai-import-${Date.now()}-${rowIndex + 1}`,
+      cells,
+      formats,
+    }, state.measurementSheet.columns, state.measurementSheet.rows.length + rowIndex);
+  }).filter((row) => isMeasurementSheetRowMeaningful(row, state.measurementSheet.columns));
+}
+
+function extractMeasurementAiImportRowsFromPayload(payload = {}, columns = getMeasurementAiImportColumns()) {
+  const result = getDocumentTemplateRuntimeAiResultObject(payload) || (payload && typeof payload === "object" ? payload.result || payload : {});
+  const suggestions = [
+    ...getDocumentTemplateRuntimeAiSuggestionArray(result, "measurementSuggestions", "measurement_suggestions"),
+    ...(Array.isArray(result?.excelSuggestions) ? result.excelSuggestions : []),
+    ...(Array.isArray(result?.excel_suggestions) ? result.excel_suggestions : []),
+  ];
+
+  for (const suggestion of suggestions) {
+    const fieldId = String(suggestion?.fieldId ?? suggestion?.field_id ?? "").trim();
+    if (fieldId && fieldId !== MEASUREMENT_AI_IMPORT_FIELD_ID) {
+      continue;
+    }
+    const rows = buildMeasurementAiImportRowsFromSuggestionRows(
+      getDocumentTemplateRuntimeAiSuggestionRows(suggestion),
+      columns,
+    );
+    if (rows.length) {
+      return rows;
+    }
+  }
+
+  const directRows = [
+    result?.rows,
+    result?.tableRows,
+    result?.table_rows,
+    result?.dataRows,
+    result?.data_rows,
+    result?.items,
+    payload?.rows,
+  ].find((entry) => Array.isArray(entry));
+  return buildMeasurementAiImportRowsFromSuggestionRows(directRows || [], columns);
+}
+
+async function runMeasurementAiImport() {
+  const aiImport = getMeasurementAiImportState();
+  const columns = getMeasurementAiImportColumns();
+  const pastedText = measurementAiImportTextInput instanceof HTMLTextAreaElement
+    ? measurementAiImportTextInput.value.trim()
+    : "";
+  if (!columns.length) {
+    setMeasurementAiImportStatus("error", "Dodaj barem jednu kolonu u Excel tablicu.");
+    return;
+  }
+  if (!pastedText && !aiImport.files.length) {
+    setMeasurementAiImportStatus("error", "Zalijepi tekst/CSV ili dodaj datoteku.");
+    return;
+  }
+
+  aiImport.status = "loading";
+  aiImport.message = "Pripremam AI prijedlog redova...";
+  aiImport.previewRows = [];
+  renderMeasurementAiImportPanel();
+
+  const localRows = pastedText ? parseMeasurementAiImportTextRows(pastedText, columns) : [];
+  let aiRows = [];
+  let aiWarning = "";
+
+  try {
+    await loadOpenAiIntegrationStatus({ force: true });
+    const modelTier = normalizeDocumentTemplateRuntimeAiModelTier(aiImport.modelTier || measurementAiImportModelInput?.value || "standard");
+    const modelOption = getDocumentTemplateRuntimeAiModelTierOption(modelTier);
+    const payload = await apiRequest("/ai/openai/prepare", {
+      method: "POST",
+      body: {
+        purpose: "measurement-sheet-ai-prefill",
+        organizationId: state.activeOrganizationId || "",
+        templateId: state.activeDocumentTemplateId || "",
+        workOrderId: state.measurementSheet.ownerRuntimeWorkOrderId || state.documentTemplateRuntime.activeWorkOrderId || "",
+        files: getDocumentTemplateRuntimeAiPayloadFiles(aiImport.files),
+        columns,
+        context: {
+          pastedText,
+          sheet: {
+            rowCount: state.measurementSheet.rows.length,
+            columnCount: state.measurementSheet.columns.length,
+            ownerKind: state.measurementSheet.ownerKind,
+          },
+        },
+        expectedJsonShape: {
+          measurementSuggestions: [
+            {
+              fieldId: MEASUREMENT_AI_IMPORT_FIELD_ID,
+              rows: [
+                {
+                  values: columns.reduce((acc, column) => {
+                    acc[column.columnId] = `vrijednost za ${column.label}`;
+                    return acc;
+                  }, {}),
+                  confidence: "high | medium | low",
+                  reason: "kratko objasnjenje",
+                  sourceFile: "ime datoteke ili tekst",
+                },
+              ],
+            },
+          ],
+          warnings: ["što treba ručno provjeriti"],
+          summary: "kratak sažetak AI unosa",
+        },
+        modelTier: modelOption.value,
+        modelPreference: {
+          label: modelOption.label,
+          strength: modelOption.strength,
+          description: modelOption.description,
+        },
+        dryRun: false,
+      },
+    });
+    if (!payload?.dryRun) {
+      aiRows = extractMeasurementAiImportRowsFromPayload(payload, columns);
+    } else if (aiImport.files.length && !localRows.length) {
+      aiWarning = "AI live je trenutno u dry-run modu, pa PDF/slika ne mogu dati stvarne redove.";
+    }
+  } catch (error) {
+    aiWarning = error?.message || "AI poziv nije uspio.";
+  }
+
+  const previewRows = aiRows.length ? aiRows : localRows;
+  aiImport.previewRows = previewRows;
+  aiImport.source = aiRows.length ? "ai" : "local";
+  if (!previewRows.length) {
+    aiImport.status = "error";
+    aiImport.message = aiWarning || "Nisam pronašao redove za preview. Za lokalni unos koristi CSV/tablicu po kolonama.";
+  } else {
+    aiImport.status = "success";
+    aiImport.message = [
+      `${previewRows.length} redaka spremno za preview.`,
+      aiRows.length ? "Izvor: AI mapiranje." : "Izvor: lokalni CSV/tekst parser.",
+      aiWarning,
+    ].filter(Boolean).join(" ");
+    syncMeasurementAiImportStartRowInput();
+  }
+  renderMeasurementAiImportPanel();
+}
+
+function applyMeasurementAiImportPreviewRows() {
+  const aiImport = getMeasurementAiImportState();
+  const previewRows = Array.isArray(aiImport.previewRows) ? aiImport.previewRows : [];
+  if (!previewRows.length) {
+    setMeasurementAiImportStatus("error", "Nema preview redova za upis.");
+    return;
+  }
+  const requestedStartRow = Math.max(
+    1,
+    Math.min(
+      5000,
+      Number.parseInt(String(measurementAiImportStartRowInput?.value || ""), 10)
+        || getMeasurementAiImportDefaultStartRow(),
+    ),
+  );
+  const insertionIndex = Math.max(0, requestedStartRow - 1);
+  pushMeasurementSheetHistorySnapshot();
+  if (insertionIndex > 0) {
+    ensureMeasurementRowsThrough(insertionIndex - 1);
+  }
+
+  const rowsToInsert = previewRows.map((row, index) => normalizeMeasurementSheetRowSnapshotLocal({
+    ...row,
+    id: `measurement-ai-import-row-${Date.now()}-${index + 1}`,
+  }, state.measurementSheet.columns, insertionIndex + index));
+  state.measurementSheet.rows.splice(insertionIndex, 0, ...rowsToInsert);
+  aiImport.previewRows = [];
+  aiImport.status = "success";
+  aiImport.message = `Upisano ${rowsToInsert.length} redaka u Excel.`;
+  if (measurementAiImportStartRowInput instanceof HTMLInputElement) {
+    measurementAiImportStartRowInput.value = String(insertionIndex + rowsToInsert.length + 1);
+  }
+  const firstEditableIndex = getFirstEditableMeasurementColumnIndex();
+  renderMeasurementSheet();
+  if (firstEditableIndex >= 0 && rowsToInsert.at(-1)) {
+    setMeasurementSelectionByIndex(insertionIndex + rowsToInsert.length - 1, firstEditableIndex);
+  }
+  handleMeasurementSheetMutation({ immediate: true });
+  syncMeasurementToolbar();
+}
+
+function renderMeasurementAiImportPanel() {
+  const aiImport = getMeasurementAiImportState();
+
+  if (measurementAiImportModelInput instanceof HTMLSelectElement) {
+    measurementAiImportModelInput.value = normalizeDocumentTemplateRuntimeAiModelTier(aiImport.modelTier || "standard");
+  }
+  syncMeasurementAiImportStartRowInput();
+
+  if (measurementAiImportStatus instanceof HTMLElement) {
+    measurementAiImportStatus.textContent = aiImport.message || "Spremno";
+    measurementAiImportStatus.classList.toggle("is-loading", aiImport.status === "loading");
+    measurementAiImportStatus.classList.toggle("is-success", aiImport.status === "success");
+    measurementAiImportStatus.classList.toggle("is-error", aiImport.status === "error");
+  }
+
+  if (measurementAiImportRunButton instanceof HTMLButtonElement) {
+    const hasText = measurementAiImportTextInput instanceof HTMLTextAreaElement && measurementAiImportTextInput.value.trim();
+    measurementAiImportRunButton.disabled = aiImport.status === "loading" || (!hasText && !aiImport.files.length);
+    measurementAiImportRunButton.textContent = aiImport.status === "loading" ? "Pripremam..." : "Predloži redove";
+  }
+  if (measurementAiImportApplyButton instanceof HTMLButtonElement) {
+    measurementAiImportApplyButton.disabled = aiImport.status === "loading" || !aiImport.previewRows.length;
+    measurementAiImportApplyButton.textContent = aiImport.previewRows.length
+      ? `Upiši preview (${aiImport.previewRows.length})`
+      : "Upiši preview";
+  }
+
+  if (measurementAiImportFilesList instanceof HTMLElement) {
+    const fragment = document.createDocumentFragment();
+    if (!aiImport.files.length) {
+      const empty = document.createElement("span");
+      empty.className = "measurement-ai-import-empty";
+      empty.textContent = "Nema dodanih datoteka.";
+      fragment.append(empty);
+    } else {
+      aiImport.files.forEach((file) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "measurement-ai-import-file-chip";
+        chip.dataset.measurementAiImportFileId = String(file.id || file.name || "");
+        chip.title = "Klikni za uklanjanje datoteke";
+        chip.textContent = `${file.inlineReady || file.contentDataUrl ? "✓" : "•"} ${file.name || "datoteka"}`;
+        fragment.append(chip);
+      });
+    }
+    measurementAiImportFilesList.replaceChildren(fragment);
+  }
+
+  if (measurementAiImportPreview instanceof HTMLElement) {
+    const rows = aiImport.previewRows.slice(0, 8);
+    if (!rows.length) {
+      const empty = document.createElement("p");
+      empty.className = "measurement-ai-import-empty";
+      empty.textContent = "Preview će se prikazati ovdje prije upisa.";
+      measurementAiImportPreview.replaceChildren(empty);
+    } else {
+      const table = document.createElement("table");
+      const columns = getMeasurementAiImportColumns()
+        .filter((column) => rows.some((row) => String(row?.cells?.[column.columnId] ?? "").trim()))
+        .slice(0, 12);
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      columns.forEach((column) => {
+        const th = document.createElement("th");
+        th.textContent = column.label || column.columnLetter || column.columnId;
+        headRow.append(th);
+      });
+      thead.append(headRow);
+      const tbody = document.createElement("tbody");
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        columns.forEach((column) => {
+          const td = document.createElement("td");
+          td.textContent = String(row?.cells?.[column.columnId] ?? "");
+          tr.append(td);
+        });
+        tbody.append(tr);
+      });
+      table.append(thead, tbody);
+      const meta = document.createElement("p");
+      meta.className = "measurement-ai-import-preview-meta";
+      meta.textContent = rows.length < aiImport.previewRows.length
+        ? `Prikazano ${rows.length} od ${aiImport.previewRows.length} redaka.`
+        : `${aiImport.previewRows.length} redaka spremno.`;
+      measurementAiImportPreview.replaceChildren(table, meta);
+    }
+  }
+}
+
 function getDefaultMeasurementQuickFillColumnMode(column = {}) {
   const label = normalizeLooseName([column.label, column.id].filter(Boolean).join(" "));
   if (label.includes("mjerno mjesto") || label.includes("mjerno_mjesto")) {
@@ -47132,22 +47692,23 @@ function syncMeasurementToolbar() {
   }
 
   const aiColumn = getMeasurementPrimaryAiColumn();
+  const hasEditableMeasurementColumns = state.measurementSheet.columns.some((column) => !column?.computed);
   const activeAiMapping = aiColumn
     ? normalizeMeasurementSheetColumnAiMappingSnapshotLocal(aiColumn.aiMapping)
     : normalizeMeasurementSheetColumnAiMappingSnapshotLocal();
   const hasAiMapping = Boolean(aiColumn) && hasMeasurementColumnAiMapping(activeAiMapping);
 
   if (measurementAiButton instanceof HTMLButtonElement) {
-    measurementAiButton.disabled = !aiColumn;
+    measurementAiButton.disabled = !hasEditableMeasurementColumns;
     measurementAiButton.classList.toggle("is-active", hasAiMapping);
     measurementAiButton.textContent = hasAiMapping ? "AI unos*" : "AI unos";
     measurementAiButton.title = hasAiMapping
-      ? "NexAI opis kolone je postavljen"
-      : "NexAI opis kolone";
+      ? "AI unos i NexAI opis kolone je postavljen"
+      : "AI unos redova i NexAI opis kolone";
   }
 
   if (measurementAiPopover instanceof HTMLElement) {
-    measurementAiPopover.hidden = !(state.measurementSheet.aiPopoverOpen && aiColumn);
+    measurementAiPopover.hidden = !(state.measurementSheet.aiPopoverOpen && hasEditableMeasurementColumns);
   }
 
   if (measurementAiColumnLabel) {
@@ -47157,6 +47718,7 @@ function syncMeasurementToolbar() {
   }
 
   syncOpenAiIntegrationStatusTargets(measurementAiConnectionStatus);
+  renderMeasurementAiImportPanel();
 
   if (measurementAiEnabledInput) {
     measurementAiEnabledInput.checked = Boolean(activeAiMapping.enabled);
@@ -134622,6 +135184,42 @@ measurementAiPopover?.addEventListener("click", (event) => {
 measurementAiCloseButton?.addEventListener("click", () => {
   state.measurementSheet.aiPopoverOpen = false;
   syncMeasurementToolbar();
+});
+measurementAiImportAddFilesButton?.addEventListener("click", () => {
+  measurementAiImportFileInput?.click();
+});
+measurementAiImportFileInput?.addEventListener("change", () => {
+  void addMeasurementAiImportFiles(measurementAiImportFileInput.files);
+  measurementAiImportFileInput.value = "";
+});
+measurementAiImportTextInput?.addEventListener("input", () => {
+  const aiImport = getMeasurementAiImportState();
+  if (aiImport.status !== "loading") {
+    aiImport.status = aiImport.previewRows.length ? "success" : "idle";
+    aiImport.message = aiImport.previewRows.length ? aiImport.message : "";
+  }
+  renderMeasurementAiImportPanel();
+});
+measurementAiImportModelInput?.addEventListener("change", () => {
+  getMeasurementAiImportState().modelTier = normalizeDocumentTemplateRuntimeAiModelTier(measurementAiImportModelInput.value);
+});
+measurementAiImportRunButton?.addEventListener("click", () => {
+  void runMeasurementAiImport();
+});
+measurementAiImportApplyButton?.addEventListener("click", () => {
+  applyMeasurementAiImportPreviewRows();
+});
+measurementAiImportClearButton?.addEventListener("click", () => {
+  clearMeasurementAiImport();
+});
+measurementAiImportFilesList?.addEventListener("click", (event) => {
+  const target = event.target instanceof HTMLElement
+    ? event.target.closest("[data-measurement-ai-import-file-id]")
+    : null;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  removeMeasurementAiImportFile(target.dataset.measurementAiImportFileId || "");
 });
 measurementAiEnabledInput?.addEventListener("change", () => {
   applyMeasurementAiMappingToColumn({
