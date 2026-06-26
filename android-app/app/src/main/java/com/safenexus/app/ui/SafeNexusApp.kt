@@ -23988,6 +23988,12 @@ private fun WorkOrderDocumentationWizardDialog(
             .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
             .filter { it.measurementTables.isNotEmpty() }
     }
+    var measurementPreviewOpen by rememberSaveable(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    LaunchedEffect(selectedFlowService, measurementTemplates.size) {
+        if (measurementTemplates.isEmpty()) {
+            measurementPreviewOpen = false
+        }
+    }
     val measurementDefaultsKey = remember(allMeasurementTemplates) {
         allMeasurementTemplates.joinToString("|") { template ->
             "${template.id}:${template.measurementTables.joinToString(",") { table -> "${table.key}:${table.sheet.rows.size}:${table.sheet.columns.size}" }}"
@@ -24321,28 +24327,89 @@ private fun WorkOrderDocumentationWizardDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier
-            .fillMaxWidth(if (isDocumentationLandscape) 0.985f else 0.96f)
-            .fillMaxHeight(if (isDocumentationLandscape) 0.92f else 0.88f),
+            .fillMaxWidth(if (isDocumentationLandscape) 0.99f else 0.96f)
+            .fillMaxHeight(
+                when {
+                    isDocumentationLandscape && measurementPreviewOpen -> 0.97f
+                    isDocumentationLandscape -> 0.9f
+                    else -> 0.88f
+                },
+            ),
         properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
-            Column {
-                Text("Izrada dokumentacije", fontWeight = FontWeight.Black)
-                Text(
-                    text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+            if (measurementPreviewOpen) {
+                DocumentationMeasurementPreviewHeader(
+                    workOrder = workOrder,
+                    selectedLabel = selectedFlowTab?.label ?: selectedFlowItem?.serviceCode ?: "Mjerenja",
+                    onDone = { measurementPreviewOpen = false },
                 )
+            } else if (isDocumentationLandscape && serviceFlowItems.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.widthIn(min = 190.dp, max = 270.dp)) {
+                        Text(
+                            "Izrada dokumentacije",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    DocumentationProcessToolbar(
+                        flowTabs = flowTabs,
+                        selectedService = selectedFlowService,
+                        enabled = !formLoading,
+                        compact = true,
+                        modifier = Modifier.weight(1f),
+                        onSelectService = { selectedFlowService = it },
+                        onLongPressService = { item ->
+                            val usedObjectIds = additionalRecords
+                                .filter { it.serviceKey == item.serviceKey }
+                                .map { it.objectId }
+                                .toSet() + selectedObjectId
+                            val nextObject = availableLocationObjects.firstOrNull { it.id !in usedObjectIds }
+                            additionalRecordTarget = item
+                            additionalRecordObjectId = nextObject?.id.orEmpty()
+                        },
+                    )
+                }
+            } else {
+                Column {
+                    Text("Izrada dokumentacije", fontWeight = FontWeight.Black)
+                    Text(
+                        text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         },
         text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                if (serviceFlowItems.isNotEmpty()) {
+            if (measurementPreviewOpen) {
+                DocumentationMeasurementPreviewContent(
+                    measurementTemplates = measurementTemplates,
+                    measurementSheets = measurementSheets,
+                    enabled = !formLoading,
+                    onSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                if (serviceFlowItems.isNotEmpty() && !isDocumentationLandscape) {
                     DocumentationProcessToolbar(
                         flowTabs = flowTabs,
                         selectedService = selectedFlowService,
@@ -24784,20 +24851,12 @@ private fun WorkOrderDocumentationWizardDialog(
                                 "Povezani predlošci nemaju Excel tablicu za mjerenja.",
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                             )
-                            else -> measurementTemplates.forEach { template ->
-                                template.measurementTables.forEach { table ->
-                                    MeasurementTableEditor(
-                                        template = template,
-                                        table = table,
-                                        sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet,
-                                        enabled = !formLoading,
-                                        expanded = isDocumentationLandscape,
-                                        onSheetChange = { nextSheet ->
-                                            measurementSheets = measurementSheets + (measurementSheetStateKey(template, table) to nextSheet)
-                                        },
-                                    )
-                                }
-                            }
+                            else -> DocumentationMeasurementLaunchCard(
+                                measurementTemplates = measurementTemplates,
+                                measurementSheets = measurementSheets,
+                                enabled = !formLoading,
+                                onOpen = { measurementPreviewOpen = true },
+                            )
                         }
                     }
                 }
@@ -24848,124 +24907,129 @@ private fun WorkOrderDocumentationWizardDialog(
                 }
                 }
             }
+            }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    if (isTrainingDocumentationFlow) {
-                        launchTrainingDocumentation()
-                        return@Button
-                    }
-                    if (!summaryFlowSelected) {
-                        selectedFlowService = nextFlowKey ?: DOCUMENTATION_SUMMARY_FLOW_KEY
-                        return@Button
-                    }
-                    if (missingRequiredFields.isNotEmpty()) {
-                        requiredWarning = "Popuni obavezno: ${missingRequiredFields.take(5).joinToString(", ")}${if (missingRequiredFields.size > 5) "..." else ""}."
-                        selectedFlowService = DOCUMENTATION_BASICS_FLOW_KEY
-                        return@Button
-                    }
-                    requiredWarning = ""
-                    val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
-                    val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
-                    val serviceValidityPayload = buildServiceValidityPayload(serviceFlowItems, serviceValidityMonths, validityMonths)
-                    val primaryValidityMonths = serviceValidityPayload.values.firstOrNull { it.isNotBlank() }
-                        ?: validityMonths.trim()
-                    val draft = WorkOrderDocumentationDraft(
-                        objectId = selectedObject?.id.orEmpty(),
-                        objectName = selectedObject?.name.orEmpty(),
-                        inspectionDate = inspectionDate.trim(),
-                        issuedDate = issuedDate.trim(),
-                        issuedPlace = "",
-                        testingLocation = testingLocation.trim(),
-                        note = "",
-                        inspectionType = inspectionType.trim(),
-                        completedBy = completedBy.trim(),
-                        outsideTemperature = outsideTemperature.trim(),
-                        relativeHumidity = relativeHumidity.trim(),
-                        airflowSpeed = airflowSpeed.trim(),
-                        weather = weather.trim(),
-                        groundCondition = groundCondition.trim(),
-                        groundResistance = groundResistance.trim(),
-                        measurementEquipmentGroup = measurementEquipmentGroup.trim(),
-                        selectedEquipmentIds = selectedEquipmentIds.toList(),
-                        selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
-                        selectedRulebookIds = emptyList(),
-                        selectedWorkEquipmentRecords = selectedWorkEquipmentRecords,
-                        selectedWorkEnvironmentRecords = selectedPhysicalFactorsRecords,
-                        manualWorkEquipments = readyManualWorkEquipments,
-                        workEquipmentSubmitResult = lastWorkEquipmentSubmitResult,
-                        workEnvironmentSubmitResult = lastPhysicalFactorsSubmitResult,
-                        signatureMode = signatureMode,
-                        validityMonths = primaryValidityMonths,
-                        electricalValidityMonths = electricalValidityMonths.trim(),
-                        tipkaloValidityMonths = tipkaloValidityMonths.trim(),
-                        serviceValidityMonths = serviceValidityPayload,
-                        executors = editableExecutors,
-                        inspectorUserIds = inspectorUserIds.toList(),
-                        inspectorUserId = inspectorUserId.ifBlank { inspectorUserIds.firstOrNull().orEmpty() },
-                        authorizationHolderUserId = authorizationHolderUserId,
-                        electricalInspectorUserIds = electricalInspectorUserIds.toList(),
-                        electricalInspectorUserId = electricalInspectorUserId.ifBlank { electricalInspectorUserIds.firstOrNull().orEmpty() },
-                        electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
-                        tipkaloInspectorUserIds = tipkaloInspectorUserIds.toList(),
-                        tipkaloInspectorUserId = tipkaloInspectorUserId.ifBlank { tipkaloInspectorUserIds.firstOrNull().orEmpty() },
-                        tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
-                        workEquipmentInspectorUserIds = workEquipmentInspectorUserIds.toList(),
-                        workEquipmentInspectorUserId = workEquipmentInspectorUserId.ifBlank { workEquipmentInspectorUserIds.firstOrNull().orEmpty() },
-                        workEquipmentAuthorizationHolderUserId = workEquipmentAuthorizationHolderUserId,
-                        workEnvironmentInspectorUserIds = workEnvironmentInspectorUserIds.toList(),
-                        workEnvironmentInspectorUserId = workEnvironmentInspectorUserId.ifBlank { workEnvironmentInspectorUserIds.firstOrNull().orEmpty() },
-                        workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
-                        handoverVerifierUserId = handoverVerifierUserId,
-                        fieldValues = templatePayload.first,
-                        templateFieldValues = templatePayload.second,
-                        fieldSheets = sheetPayload.first,
-                        templateFieldSheets = sheetPayload.second,
-                        additionalRecords = additionalRecords.map { record ->
-                            WorkOrderDocumentationAdditionalRecord(
-                                serviceKey = record.serviceKey,
-                                serviceIndex = record.serviceIndex,
-                                serviceCode = record.serviceCode,
-                                serviceName = record.serviceName,
-                                objectId = record.objectId,
-                                objectName = record.objectName,
-                            )
-                        },
-                        includeHandoverProtocol = includeHandoverProtocol,
-                    )
-                    onConfirm(draft)
-                },
-                enabled = !formLoading &&
-                    (!isTrainingDocumentationFlow || (selectedTrainingPersonIds.isNotEmpty() && selectedTrainingServiceKeys.isNotEmpty())),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                if (formLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    when {
-                        isTrainingDocumentationFlow -> selectedTrainingModeOption.actionLabel
-                        summaryFlowSelected -> "Izradi dokumentaciju"
-                        else -> "Dalje"
+            if (!measurementPreviewOpen) {
+                Button(
+                    onClick = {
+                        if (isTrainingDocumentationFlow) {
+                            launchTrainingDocumentation()
+                            return@Button
+                        }
+                        if (!summaryFlowSelected) {
+                            selectedFlowService = nextFlowKey ?: DOCUMENTATION_SUMMARY_FLOW_KEY
+                            return@Button
+                        }
+                        if (missingRequiredFields.isNotEmpty()) {
+                            requiredWarning = "Popuni obavezno: ${missingRequiredFields.take(5).joinToString(", ")}${if (missingRequiredFields.size > 5) "..." else ""}."
+                            selectedFlowService = DOCUMENTATION_BASICS_FLOW_KEY
+                            return@Button
+                        }
+                        requiredWarning = ""
+                        val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
+                        val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
+                        val serviceValidityPayload = buildServiceValidityPayload(serviceFlowItems, serviceValidityMonths, validityMonths)
+                        val primaryValidityMonths = serviceValidityPayload.values.firstOrNull { it.isNotBlank() }
+                            ?: validityMonths.trim()
+                        val draft = WorkOrderDocumentationDraft(
+                            objectId = selectedObject?.id.orEmpty(),
+                            objectName = selectedObject?.name.orEmpty(),
+                            inspectionDate = inspectionDate.trim(),
+                            issuedDate = issuedDate.trim(),
+                            issuedPlace = "",
+                            testingLocation = testingLocation.trim(),
+                            note = "",
+                            inspectionType = inspectionType.trim(),
+                            completedBy = completedBy.trim(),
+                            outsideTemperature = outsideTemperature.trim(),
+                            relativeHumidity = relativeHumidity.trim(),
+                            airflowSpeed = airflowSpeed.trim(),
+                            weather = weather.trim(),
+                            groundCondition = groundCondition.trim(),
+                            groundResistance = groundResistance.trim(),
+                            measurementEquipmentGroup = measurementEquipmentGroup.trim(),
+                            selectedEquipmentIds = selectedEquipmentIds.toList(),
+                            selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
+                            selectedRulebookIds = emptyList(),
+                            selectedWorkEquipmentRecords = selectedWorkEquipmentRecords,
+                            selectedWorkEnvironmentRecords = selectedPhysicalFactorsRecords,
+                            manualWorkEquipments = readyManualWorkEquipments,
+                            workEquipmentSubmitResult = lastWorkEquipmentSubmitResult,
+                            workEnvironmentSubmitResult = lastPhysicalFactorsSubmitResult,
+                            signatureMode = signatureMode,
+                            validityMonths = primaryValidityMonths,
+                            electricalValidityMonths = electricalValidityMonths.trim(),
+                            tipkaloValidityMonths = tipkaloValidityMonths.trim(),
+                            serviceValidityMonths = serviceValidityPayload,
+                            executors = editableExecutors,
+                            inspectorUserIds = inspectorUserIds.toList(),
+                            inspectorUserId = inspectorUserId.ifBlank { inspectorUserIds.firstOrNull().orEmpty() },
+                            authorizationHolderUserId = authorizationHolderUserId,
+                            electricalInspectorUserIds = electricalInspectorUserIds.toList(),
+                            electricalInspectorUserId = electricalInspectorUserId.ifBlank { electricalInspectorUserIds.firstOrNull().orEmpty() },
+                            electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+                            tipkaloInspectorUserIds = tipkaloInspectorUserIds.toList(),
+                            tipkaloInspectorUserId = tipkaloInspectorUserId.ifBlank { tipkaloInspectorUserIds.firstOrNull().orEmpty() },
+                            tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                            workEquipmentInspectorUserIds = workEquipmentInspectorUserIds.toList(),
+                            workEquipmentInspectorUserId = workEquipmentInspectorUserId.ifBlank { workEquipmentInspectorUserIds.firstOrNull().orEmpty() },
+                            workEquipmentAuthorizationHolderUserId = workEquipmentAuthorizationHolderUserId,
+                            workEnvironmentInspectorUserIds = workEnvironmentInspectorUserIds.toList(),
+                            workEnvironmentInspectorUserId = workEnvironmentInspectorUserId.ifBlank { workEnvironmentInspectorUserIds.firstOrNull().orEmpty() },
+                            workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
+                            handoverVerifierUserId = handoverVerifierUserId,
+                            fieldValues = templatePayload.first,
+                            templateFieldValues = templatePayload.second,
+                            fieldSheets = sheetPayload.first,
+                            templateFieldSheets = sheetPayload.second,
+                            additionalRecords = additionalRecords.map { record ->
+                                WorkOrderDocumentationAdditionalRecord(
+                                    serviceKey = record.serviceKey,
+                                    serviceIndex = record.serviceIndex,
+                                    serviceCode = record.serviceCode,
+                                    serviceName = record.serviceName,
+                                    objectId = record.objectId,
+                                    objectName = record.objectName,
+                                )
+                            },
+                            includeHandoverProtocol = includeHandoverProtocol,
+                        )
+                        onConfirm(draft)
                     },
-                    fontWeight = FontWeight.Black,
-                )
+                    enabled = !formLoading &&
+                        (!isTrainingDocumentationFlow || (selectedTrainingPersonIds.isNotEmpty() && selectedTrainingServiceKeys.isNotEmpty())),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    if (formLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        when {
+                            isTrainingDocumentationFlow -> selectedTrainingModeOption.actionLabel
+                            summaryFlowSelected -> "Izradi dokumentaciju"
+                            else -> "Dalje"
+                        },
+                        fontWeight = FontWeight.Black,
+                    )
+                }
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = {
-                    if (previousFlowKey != null) {
-                        selectedFlowService = previousFlowKey
-                    } else {
-                        onDismiss()
-                    }
-                },
-                enabled = !formLoading,
-            ) {
-                Text(if (previousFlowKey != null) "Natrag" else "Odustani")
+            if (!measurementPreviewOpen) {
+                TextButton(
+                    onClick = {
+                        if (previousFlowKey != null) {
+                            selectedFlowService = previousFlowKey
+                        } else {
+                            onDismiss()
+                        }
+                    },
+                    enabled = !formLoading,
+                ) {
+                    Text(if (previousFlowKey != null) "Natrag" else "Odustani")
+                }
             }
         },
     )
@@ -27499,6 +27563,135 @@ private fun DocumentationSummaryRow(
     }
 }
 
+@Composable
+private fun DocumentationMeasurementPreviewHeader(
+    workOrder: WorkOrder,
+    selectedLabel: String,
+    onDone: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Mjerenja",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+            )
+            Text(
+                listOf("RN ${workOrder.displayNumber}", selectedLabel, workOrder.companyName)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onDone) {
+            Icon(
+                Icons.Rounded.CheckCircle,
+                contentDescription = "Gotovo",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(30.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocumentationMeasurementLaunchCard(
+    measurementTemplates: List<WorkOrderDocumentationTemplate>,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+) {
+    val tables = remember(measurementTemplates) {
+        measurementTemplates.flatMap { template ->
+            template.measurementTables.map { table -> template to table }
+        }
+    }
+    val rowCount = remember(measurementTemplates, measurementSheets) {
+        tables.sumOf { (template, table) ->
+            (measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet).rows.size
+        }
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.26f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)) {
+                Icon(
+                    Icons.Rounded.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .padding(9.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Rezultati ispitivanja", fontWeight = FontWeight.Black)
+                Text(
+                    "${tables.size} tablica · $rowCount redova · otvara se u većem prikazu",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+            Button(onClick = onOpen, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
+                Text("Prikaži mjerenja", fontWeight = FontWeight.Black)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationMeasurementPreviewContent(
+    measurementTemplates: List<WorkOrderDocumentationTemplate>,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+    enabled: Boolean,
+    onSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
+) {
+    val tables = remember(measurementTemplates) {
+        measurementTemplates.flatMap { template ->
+            template.measurementTables.map { table -> template to table }
+        }
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.82f),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 8.dp),
+    ) {
+        items(
+            items = tables,
+            key = { (template, table) -> "${template.id}:${table.key}:${table.id}" },
+        ) { (template, table) ->
+            val stateKey = measurementSheetStateKey(template, table)
+            MeasurementTableEditor(
+                template = template,
+                table = table,
+                sheet = measurementSheets[stateKey] ?: table.sheet,
+                enabled = enabled,
+                expanded = true,
+                tableOnly = true,
+                onSheetChange = { nextSheet -> onSheetChange(stateKey, nextSheet) },
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DocumentationProcessToolbar(
@@ -27506,11 +27699,12 @@ private fun DocumentationProcessToolbar(
     selectedService: String,
     enabled: Boolean,
     compact: Boolean = false,
+    modifier: Modifier = Modifier,
     onSelectService: (String) -> Unit,
     onLongPressService: (DocumentationServiceFlowItem) -> Unit,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(if (compact) 14.dp else 18.dp),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
     ) {
@@ -27746,6 +27940,7 @@ private fun MeasurementTableEditor(
     spaceOptions: List<Pair<String, String>> = emptyList(),
     requireSpaceSelection: Boolean = false,
     expanded: Boolean = false,
+    tableOnly: Boolean = false,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
     val context = LocalContext.current
@@ -27760,7 +27955,7 @@ private fun MeasurementTableEditor(
         }
     }
     val historyLimit = 24
-    val columnWindowSize = if (expanded) 8 else 10
+    val columnWindowSize = if (tableOnly) 10 else if (expanded) 8 else 10
     var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
     var undoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
     var redoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
@@ -27797,13 +27992,14 @@ private fun MeasurementTableEditor(
     var extraRowWindow by remember(table.key, table.id) { mutableStateOf(0) }
     var quickFillOpen by remember(table.key, table.id) { mutableStateOf(false) }
     var lastQuickFillDraft by remember(table.key, table.id) { mutableStateOf<MeasurementQuickFillDraft?>(null) }
-    val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex) {
+    val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex, tableOnly) {
         if (sheet.rows.isEmpty()) {
             0
         } else if (lastMeaningfulRowIndex >= 0) {
-            maxOf(12, minOf(lastMeaningfulRowIndex + 4, 32)).coerceAtMost(sheet.rows.size)
+            val maxRows = if (tableOnly) 72 else 32
+            maxOf(if (tableOnly) 18 else 12, minOf(lastMeaningfulRowIndex + 6, maxRows)).coerceAtMost(sheet.rows.size)
         } else {
-            minOf(12, sheet.rows.size)
+            minOf(if (tableOnly) 24 else 12, sheet.rows.size)
         }
     }
     val visibleRowCount = (baseVisibleRowCount + extraRowWindow).coerceAtMost(sheet.rows.size)
@@ -27855,9 +28051,9 @@ private fun MeasurementTableEditor(
     val selectedRequiresSpaceSelection = requireSpaceSelection && selectedColumn?.isPhysicalFactorsSpaceSelectorColumn() == true
     val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
-    val rowHeaderWidth = if (expanded) 54.dp else 46.dp
-    val rowHeight = if (expanded) 52.dp else 44.dp
-    val columnHeaderHeight = if (expanded) 40.dp else 34.dp
+    val rowHeaderWidth = if (tableOnly) 46.dp else if (expanded) 54.dp else 46.dp
+    val rowHeight = if (tableOnly) 42.dp else if (expanded) 52.dp else 44.dp
+    val columnHeaderHeight = if (tableOnly) 34.dp else if (expanded) 40.dp else 34.dp
     LaunchedEffect(selectedRow?.id.orEmpty(), selectedColumn?.id.orEmpty()) {
         val nextSheet = sheetWithPendingCellValue(sheet)
         if (nextSheet != sheet) {
@@ -27900,19 +28096,21 @@ private fun MeasurementTableEditor(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(table.label, fontWeight = FontWeight.Black)
-                Text(
-                    listOf(template.title, table.summary).filter { it.isNotBlank() }.joinToString(" - "),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                )
-                if (table.helpText.isNotBlank()) {
+            if (!tableOnly) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(table.label, fontWeight = FontWeight.Black)
                     Text(
-                        table.helpText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                        listOf(template.title, table.summary).filter { it.isNotBlank() }.joinToString(" - "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                     )
+                    if (table.helpText.isNotBlank()) {
+                        Text(
+                            table.helpText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                        )
+                    }
                 }
             }
             if (visibleColumns.isEmpty() || visibleRows.isEmpty()) {
@@ -28036,7 +28234,7 @@ private fun MeasurementTableEditor(
                         label = { Text("Redo") },
                     )
                 }
-                if (selectedRow != null && selectedColumn != null && selectedEditable && !selectedRequiresSpaceSelection) {
+                if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable && !selectedRequiresSpaceSelection) {
                     val formulaSeeds = listOf("SUM", "AVERAGE", "IF", "IFERROR", "COUNTIF", "VLOOKUP", "RANDBETWEEN")
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -28139,11 +28337,21 @@ private fun MeasurementTableEditor(
                         }
                     }
                 }
+                val gridModifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, gridLine, RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(6.dp))
+                    .let { baseModifier ->
+                        if (tableOnly) {
+                            baseModifier
+                                .heightIn(max = if (expanded) 440.dp else 360.dp)
+                                .verticalScroll(rememberScrollState())
+                        } else {
+                            baseModifier
+                        }
+                    }
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, gridLine, RoundedCornerShape(6.dp))
-                        .clip(RoundedCornerShape(6.dp)),
+                    modifier = gridModifier,
                 ) {
                     Column {
                         MeasurementHeaderCell("", rowHeaderWidth.value.toInt(), height = columnHeaderHeight, subtle = true)

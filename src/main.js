@@ -2808,6 +2808,10 @@ const state = {
     pendingCellMutationTimer: 0,
     pendingCellMutation: null,
     lastPersistFingerprint: "",
+    saveState: "saved",
+    saveMessage: "Spremljeno",
+    saveError: "",
+    lastSavedAt: "",
     viewport: {
       virtual: false,
       startRowIndex: 0,
@@ -5998,6 +6002,8 @@ const measurementSheetGridWrap = document.querySelector(".measurement-sheet-grid
 const measurementSheetColgroup = document.querySelector("#measurement-sheet-colgroup");
 const measurementSheetHead = document.querySelector("#measurement-sheet-head");
 const measurementSheetBody = document.querySelector("#measurement-sheet-body");
+const measurementSaveStatus = document.querySelector("#measurement-save-status");
+const measurementSaveNowButton = document.querySelector("#measurement-save-now");
 const measurementSheetPresetWrap = document.querySelector("#measurement-sheet-preset-wrap");
 const measurementSheetPresetSelect = document.querySelector("#measurement-sheet-preset-select");
 const measurementSheetPresetLoadButton = document.querySelector("#measurement-sheet-preset-load");
@@ -28895,6 +28901,7 @@ function flushMeasurementCellMutation() {
 }
 
 function scheduleMeasurementCellMutation(request = {}) {
+  markMeasurementSheetDirty("Čeka autosave");
   state.measurementSheet.pendingCellMutation = mergeMeasurementCellMutationRequest(
     state.measurementSheet.pendingCellMutation,
     request,
@@ -28935,6 +28942,13 @@ function handleMeasurementSheetMutation({
   }
 
   if (state.measurementSheet.ownerKind === "work_environment_fc") {
+    scheduleMeasurementSheetOwnerPersist({ immediate });
+    return;
+  }
+
+  if (state.measurementSheet.ownerKind === "work_order") {
+    state.workOrderAutoSave.dirty = true;
+    setWorkOrderSaveState("pending", immediate ? "Spremam Excel..." : "Excel autosave za 1 min.");
     scheduleMeasurementSheetOwnerPersist({ immediate });
     return;
   }
@@ -45265,8 +45279,9 @@ function commitMeasurementPendingEditorValue() {
     }
   }
 
-  const changed = setMeasurementCellRawValueAt(rowIndex, columnIndex, nextValue);
-  flushMeasurementCellMutation();
+  const changed = setMeasurementCellRawValueAt(rowIndex, columnIndex, nextValue, {
+    deferMutation: true,
+  });
   updateMeasurementEditingCellPreviewAt(rowIndex, columnIndex);
   return changed;
 }
@@ -47974,12 +47989,13 @@ function applyMeasurementToolbarFormat(overrides = {}) {
   }
 
   pushMeasurementSheetHistorySnapshot();
+  const range = getMeasurementSelectedRange();
   applyMeasurementFormatToRange(overrides);
-  refreshMeasurementSheetComputedValues();
+  refreshMeasurementRenderedRange(range);
   renderMeasurementSelection();
   renderMeasurementActiveCell();
   syncMeasurementToolbar();
-  handleMeasurementSheetMutation();
+  scheduleMeasurementCellMutation({ skipFormulaInvalidation: true });
 }
 
 function applyMeasurementConditionalToolbarFormat(overrides = {}) {
@@ -47988,12 +48004,13 @@ function applyMeasurementConditionalToolbarFormat(overrides = {}) {
   }
 
   pushMeasurementSheetHistorySnapshot();
+  const range = getMeasurementSelectedRange();
   applyMeasurementConditionalFormatToRange(overrides);
-  refreshMeasurementSheetComputedValues();
+  refreshMeasurementRenderedRange(range);
   renderMeasurementSelection();
   renderMeasurementActiveCell();
   syncMeasurementToolbar();
-  handleMeasurementSheetMutation();
+  scheduleMeasurementCellMutation({ skipFormulaInvalidation: true });
 }
 
 function toggleMeasurementToolbarButtonState(button, isActive) {
@@ -48825,11 +48842,13 @@ function isMeasurementDirectTypingKey(event) {
 }
 
 function exitMeasurementEditMode() {
-  const shouldRestoreLightCells = isMeasurementSheetLightCellRenderEnabled();
+  const editedCell = state.measurementSheet.editingCell
+    ? { ...state.measurementSheet.editingCell }
+    : null;
   commitMeasurementPendingEditorValue();
 
-  if (state.measurementSheet.editingCell) {
-    const { rowId, columnId } = state.measurementSheet.editingCell;
+  if (editedCell) {
+    const { rowId, columnId } = editedCell;
     const rowIndex = getMeasurementRowIndex(rowId);
     const columnIndex = getMeasurementColumnIndex(columnId);
     const column = state.measurementSheet.columns[columnIndex];
@@ -48846,13 +48865,21 @@ function exitMeasurementEditMode() {
   state.measurementSheet.editorSource = null;
   state.measurementSheet.formulaReferences = [];
   state.measurementSheet.historyCoalesceKey = "";
-  if (shouldRestoreLightCells) {
-    renderMeasurementSheet();
-    syncMeasurementToolbar();
-    return;
+  if (editedCell) {
+    const rowIndex = getMeasurementRowIndex(editedCell.rowId);
+    const columnIndex = getMeasurementColumnIndex(editedCell.columnId);
+    const row = state.measurementSheet.rows[rowIndex];
+    const column = state.measurementSheet.columns[columnIndex];
+    updateMeasurementEditingCellPreview(editedCell.rowId, editedCell.columnId);
+    scheduleMeasurementSheetComputedRefresh({
+      delay: 420,
+      partialCell: { rowIndex, columnIndex },
+      formulaTouched: isMeasurementFormula(row?.cells?.[column?.id] ?? ""),
+    });
+  } else {
+    scheduleMeasurementSheetComputedRefresh({ delay: 420 });
   }
   renderMeasurementFormulaReferences();
-  scheduleMeasurementSheetComputedRefresh({ immediate: true });
   syncMeasurementToolbar();
 }
 
@@ -48931,7 +48958,7 @@ function updateMeasurementEditingCellPreviewAt(rowIndex, columnIndex) {
   applyMeasurementCellStyleToElements(cell, input ?? display, format);
 
   if (input instanceof HTMLInputElement) {
-    if (isFormulaBarEditingCell) {
+    if (isFormulaBarEditingCell || !isMeasurementEditingCell(row.id, column.id)) {
       input.value = hasFormula ? formulaDisplayText : formatMeasurementLiteralDisplayValue(rawValue, format);
     }
     input.title = hasFormula ? rawValue : "";
@@ -49092,6 +49119,21 @@ function refreshMeasurementRenderedCell(rowIndex, columnIndex, workerFormulaCell
   }
 
   return true;
+}
+
+function refreshMeasurementRenderedRange(range = null) {
+  const targetRange = range ?? getMeasurementSelectedRange();
+  if (!targetRange) {
+    return;
+  }
+
+  const workerFormulaCells = [];
+  for (let rowIndex = targetRange.startRowIndex; rowIndex <= targetRange.endRowIndex; rowIndex += 1) {
+    for (let columnIndex = targetRange.startColumnIndex; columnIndex <= targetRange.endColumnIndex; columnIndex += 1) {
+      refreshMeasurementRenderedCell(rowIndex, columnIndex, workerFormulaCells);
+    }
+  }
+  requestMeasurementFormulaWorkerCompute(workerFormulaCells);
 }
 
 function getMeasurementPartialComputedRefreshKeys(request = null) {
@@ -50385,18 +50427,46 @@ function clearScheduledMeasurementSheetOwnerPersist() {
 function persistMeasurementSheetOwnerNow({ render = false, rerenderFieldRows = false } = {}) {
   const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
 
-  if (ownerKind === "template_field") {
-    persistMeasurementSheetToTemplateField({ rerenderFieldRows });
-    return;
-  }
+  setMeasurementSheetSaveState("saving", "Spremanje...");
+  try {
+    if (ownerKind === "template_field") {
+      persistMeasurementSheetToTemplateField({ rerenderFieldRows });
+      setMeasurementSheetSaveState("saved", "Spremljeno");
+      return;
+    }
 
-  if (ownerKind === "document_template_runtime_field") {
-    persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows });
-    return;
-  }
+    if (ownerKind === "document_template_runtime_field") {
+      persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows });
+      setMeasurementSheetSaveState("saved", "Spremljeno");
+      return;
+    }
 
-  if (ownerKind === "work_environment_fc") {
-    persistMeasurementSheetToWorkOrderDocumentFcDraft({ render });
+    if (ownerKind === "work_environment_fc") {
+      persistMeasurementSheetToWorkOrderDocumentFcDraft({ render });
+      setMeasurementSheetSaveState("saved", "Spremljeno");
+      return;
+    }
+
+    if (ownerKind === "work_order") {
+      if (!state.workOrderEditorOpen || !state.user) {
+        setMeasurementSheetSaveState("saved", "Spremljeno lokalno");
+        return;
+      }
+      state.workOrderAutoSave.dirty = true;
+      void persistWorkOrderAutoSave({ immediate: true })
+        .then((success) => {
+          setMeasurementSheetSaveState(success ? "saved" : "error", success ? "Spremljeno" : "Greška spremanja");
+        })
+        .catch((error) => {
+          setMeasurementSheetSaveState("error", "Greška spremanja", error?.message || String(error || ""));
+        });
+      return;
+    }
+
+    setMeasurementSheetSaveState("saved", "Spremljeno lokalno");
+  } catch (error) {
+    setMeasurementSheetSaveState("error", "Greška spremanja", error?.message || String(error || ""));
+    throw error;
   }
 }
 
@@ -50408,10 +50478,29 @@ function scheduleMeasurementSheetOwnerPersist({ immediate = false, render = fals
     return;
   }
 
+  markMeasurementSheetDirty("Autosave za 1 min");
   state.measurementSheet.persistTimer = window.setTimeout(() => {
     state.measurementSheet.persistTimer = 0;
     persistMeasurementSheetOwnerNow({ render, rerenderFieldRows });
   }, getMeasurementSheetOwnerPersistDelay({ render, rerenderFieldRows }));
+}
+
+function saveMeasurementSheetNow({ render = false, rerenderFieldRows = false } = {}) {
+  if (!state.measurementSheet.isOpen) {
+    return;
+  }
+
+  try {
+    if (state.measurementSheet.editingCell) {
+      commitMeasurementPendingEditorValue();
+    }
+    flushMeasurementCellMutation();
+    persistMeasurementQuickFillTemplateNow();
+    clearScheduledMeasurementSheetOwnerPersist();
+    persistMeasurementSheetOwnerNow({ render, rerenderFieldRows });
+  } catch (error) {
+    setMeasurementSheetSaveState("error", "Greška spremanja", error?.message || String(error || ""));
+  }
 }
 
 function getMeasurementSheetOwnerPersistDelay({ render = false, rerenderFieldRows = false } = {}) {
@@ -50419,16 +50508,48 @@ function getMeasurementSheetOwnerPersistDelay({ render = false, rerenderFieldRow
     return 450;
   }
 
-  const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
-  if (ownerKind === "template_field" || ownerKind === "document_template_runtime_field") {
-    return 1200;
+  return 60_000;
+}
+
+function setMeasurementSheetSaveState(status = "saved", message = "", error = "") {
+  const normalizedStatus = ["saved", "dirty", "saving", "error"].includes(status) ? status : "saved";
+  state.measurementSheet.saveState = normalizedStatus;
+  state.measurementSheet.saveMessage = message || (
+    normalizedStatus === "saving"
+      ? "Spremanje..."
+      : normalizedStatus === "dirty"
+        ? "Čeka autosave"
+        : normalizedStatus === "error"
+          ? "Greška spremanja"
+          : "Spremljeno"
+  );
+  state.measurementSheet.saveError = error || "";
+  if (normalizedStatus === "saved") {
+    state.measurementSheet.lastSavedAt = new Date().toISOString();
+  }
+  renderMeasurementSaveStatus();
+}
+
+function renderMeasurementSaveStatus() {
+  if (!(measurementSaveStatus instanceof HTMLElement)) {
+    return;
   }
 
-  if (ownerKind === "work_environment_fc") {
-    return 900;
+  const status = state.measurementSheet.saveState || "saved";
+  measurementSaveStatus.classList.remove("is-saved", "is-dirty", "is-saving", "is-error");
+  measurementSaveStatus.classList.add(`is-${status}`);
+  measurementSaveStatus.textContent = state.measurementSheet.saveMessage || "Spremljeno";
+  measurementSaveStatus.title = state.measurementSheet.saveError
+    || (state.measurementSheet.lastSavedAt
+      ? `Zadnje spremanje: ${formatDateTime(state.measurementSheet.lastSavedAt)}`
+      : "Excel tablica se sprema kao JSON model.");
+  if (measurementSaveNowButton instanceof HTMLButtonElement) {
+    measurementSaveNowButton.disabled = status === "saving";
   }
+}
 
-  return 450;
+function markMeasurementSheetDirty(message = "Čeka autosave") {
+  setMeasurementSheetSaveState("dirty", message);
 }
 
 function renderMeasurementSheetPerformanceBadge() {
@@ -51559,7 +51680,6 @@ function renderMeasurementSheet(options = {}) {
             value: nextValue,
             source: "cell",
           });
-          syncMeasurementInputListSource(input);
         });
         shell.append(input);
       } else {
@@ -51723,6 +51843,7 @@ function setMeasurementSheetOpen(isOpen) {
   const inlineSheet = state.measurementSheet.isOpen && isMeasurementSheetInlineOwnerKind();
   document.body.classList.toggle("measurement-sheet-open", state.measurementSheet.isOpen && !inlineSheet);
   syncMeasurementSheetPanelMount();
+  renderMeasurementSaveStatus();
 
   if (!state.measurementSheet.isOpen) {
     if (state.measurementSheet.previewSyncTimer) {
@@ -135594,6 +135715,9 @@ workOrderOpenTodoButton?.addEventListener("click", () => {
 measurementSheetOpenButton?.addEventListener("click", () => {
   openMeasurementSheet();
 });
+measurementSaveNowButton?.addEventListener("click", () => {
+  saveMeasurementSheetNow({ render: false, rerenderFieldRows: false });
+});
 measurementSheetCloseButton?.addEventListener("click", closeMeasurementSheet);
 measurementSheetBackdrop?.addEventListener("click", closeMeasurementSheet);
 measurementSheetPresetSelect?.addEventListener("change", () => {
@@ -142953,6 +143077,13 @@ document.addEventListener("keydown", (event) => {
 
   if (isMeasurementContextMenuActive) {
     return;
+  }
+
+  if (isMeasurementInputFocused && !event.ctrlKey && !event.metaKey) {
+    const localEditKeys = new Set(["Backspace", "Delete", "Home", "End", "ArrowLeft", "ArrowRight"]);
+    if (isMeasurementDirectTypingKey(event) || localEditKeys.has(event.key)) {
+      return;
+    }
   }
 
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {

@@ -19624,6 +19624,53 @@ body.is-work-order-document-category-open {
   white-space: nowrap;
 }
 
+.measurement-save-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.measurement-save-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.measurement-save-status.is-saved {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.measurement-save-status.is-dirty {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.measurement-save-status.is-saving {
+  border-color: rgba(37, 99, 235, 0.3);
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.measurement-save-status.is-error {
+  border-color: rgba(220, 38, 38, 0.3);
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .measurement-sheet-meta {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
