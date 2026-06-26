@@ -45200,6 +45200,72 @@ function getMeasurementFormulaInputElement() {
   );
 }
 
+function syncMeasurementEditorLiveValue({
+  rowId = "",
+  columnId = "",
+  value = "",
+  source = "cell",
+} = {}) {
+  if (!rowId || !columnId) {
+    return;
+  }
+
+  state.measurementSheet.editingCell = { rowId, columnId };
+  state.measurementSheet.editorSource = source;
+
+  if (source === "formula-bar") {
+    const cellInput = getMeasurementInputElement(rowId, columnId);
+    if (cellInput instanceof HTMLInputElement && cellInput !== document.activeElement) {
+      cellInput.value = value;
+    }
+    return;
+  }
+
+  if (measurementFormulaInput instanceof HTMLInputElement && measurementFormulaInput !== document.activeElement) {
+    measurementFormulaInput.value = value;
+  }
+}
+
+function commitMeasurementPendingEditorValue() {
+  const editingCell = state.measurementSheet.editingCell;
+
+  if (!editingCell) {
+    return false;
+  }
+
+  const rowIndex = getMeasurementRowIndex(editingCell.rowId);
+  const columnIndex = getMeasurementColumnIndex(editingCell.columnId);
+  const row = state.measurementSheet.rows[rowIndex];
+  const column = state.measurementSheet.columns[columnIndex];
+
+  if (!row || !column || column.computed) {
+    return false;
+  }
+
+  const input = state.measurementSheet.editorSource === "formula-bar"
+    ? measurementFormulaInput
+    : getMeasurementInputElement(editingCell.rowId, editingCell.columnId);
+
+  if (!(input instanceof HTMLInputElement)) {
+    return false;
+  }
+
+  let nextValue = input.value;
+
+  if (!isMeasurementValidationValueAllowed(column, nextValue)) {
+    nextValue = "";
+    input.value = "";
+    if (measurementFormulaInput instanceof HTMLInputElement && measurementFormulaInput !== input) {
+      measurementFormulaInput.value = "";
+    }
+  }
+
+  const changed = setMeasurementCellRawValueAt(rowIndex, columnIndex, nextValue);
+  flushMeasurementCellMutation();
+  updateMeasurementEditingCellPreviewAt(rowIndex, columnIndex);
+  return changed;
+}
+
 function isMeasurementFormulaEditingActive() {
   const formulaInput = getMeasurementFormulaInputElement();
   return formulaInput instanceof HTMLInputElement && isMeasurementFormula(formulaInput.value);
@@ -48677,18 +48743,13 @@ function insertMeasurementFormulaReference(reference) {
   input.value = nextValue;
   input.setSelectionRange(start + reference.length, start + reference.length);
 
-  setMeasurementCellRawValue(
-    state.measurementSheet.editingCell.rowId,
-    state.measurementSheet.editingCell.columnId,
-    nextValue,
-  );
-
+  syncMeasurementEditorLiveValue({
+    rowId: state.measurementSheet.editingCell.rowId,
+    columnId: state.measurementSheet.editingCell.columnId,
+    value: nextValue,
+    source: state.measurementSheet.editorSource || "cell",
+  });
   syncMeasurementFormulaEditState();
-  updateMeasurementEditingCellPreview(
-    state.measurementSheet.editingCell.rowId,
-    state.measurementSheet.editingCell.columnId,
-  );
-  scheduleMeasurementSheetComputedRefresh();
   input.focus({ preventScroll: true });
 }
 
@@ -48777,10 +48838,12 @@ function startMeasurementTypingInActiveCell(initialValue) {
 
   input.value = initialValue;
   input.setSelectionRange(initialValue.length, initialValue.length);
-  setMeasurementCellRawValue(activeCell.rowId, activeCell.columnId, initialValue);
-  syncMeasurementFormulaEditState();
-  updateMeasurementEditingCellPreview(activeCell.rowId, activeCell.columnId);
-  scheduleMeasurementSheetComputedRefresh();
+  syncMeasurementEditorLiveValue({
+    rowId: activeCell.rowId,
+    columnId: activeCell.columnId,
+    value: initialValue,
+    source: "cell",
+  });
   return true;
 }
 
@@ -48793,6 +48856,7 @@ function isMeasurementDirectTypingKey(event) {
 
 function exitMeasurementEditMode() {
   const shouldRestoreLightCells = isMeasurementSheetLightCellRenderEnabled();
+  commitMeasurementPendingEditorValue();
 
   if (state.measurementSheet.editingCell) {
     const { rowId, columnId } = state.measurementSheet.editingCell;
@@ -51500,47 +51564,20 @@ function renderMeasurementSheet(options = {}) {
           setMeasurementSelection(row.id, column.id);
         });
         input.addEventListener("blur", () => {
-          if (!isMeasurementValidationValueAllowed(column, input.value)) {
-            input.value = "";
-            setMeasurementCellRawValue(row.id, column.id, "");
-          }
-          flushMeasurementCellMutation();
+          commitMeasurementPendingEditorValue();
           if (isMeasurementEditingCell(row.id, column.id)) {
             exitMeasurementEditMode();
           }
         });
         input.addEventListener("input", (event) => {
           const nextValue = event.currentTarget.value;
-          const previousValue = row.cells?.[column.id] ?? "";
-          const formulaTouched = isMeasurementFormula(previousValue) || isMeasurementFormula(nextValue);
-          state.measurementSheet.editingCell = {
+          syncMeasurementEditorLiveValue({
             rowId: row.id,
             columnId: column.id,
-          };
-          state.measurementSheet.editorSource = "cell";
-          const shouldRefreshComputed = shouldScheduleMeasurementComputedRefreshForInput({
-            rowIndex: index,
-            columnIndex,
-            formulaTouched,
-          });
-          setMeasurementCellRawValueAt(index, columnIndex, nextValue, {
-            deferMutation: !shouldRefreshComputed,
-            skipFormulaInvalidation: !shouldRefreshComputed,
+            value: nextValue,
+            source: "cell",
           });
           syncMeasurementInputListSource(input);
-          if (formulaTouched) {
-            syncMeasurementFormulaEditState(input);
-          } else {
-            syncMeasurementPlainTextEditState(input);
-          }
-          updateMeasurementEditingCellPreviewAt(index, columnIndex);
-          if (shouldRefreshComputed) {
-            scheduleMeasurementSheetComputedRefresh({
-              delay: getMeasurementTypingComputeDelay({ formulaTouched }),
-              partialCell: formulaTouched ? null : { rowIndex: index, columnIndex },
-              formulaTouched,
-            });
-          }
         });
         shell.append(input);
       } else {
@@ -135656,51 +135693,18 @@ measurementFormulaInput?.addEventListener("input", (event) => {
   }
 
   const nextValue = event.currentTarget.value;
-  const previousValue = getMeasurementActiveCellRawValue();
-  const formulaTouched = isMeasurementFormula(previousValue) || isMeasurementFormula(nextValue);
-  state.measurementSheet.editingCell = {
+  const editingCell = {
     rowId: state.measurementSheet.activeCell.rowId,
     columnId: state.measurementSheet.activeCell.columnId,
   };
-  state.measurementSheet.editorSource = "formula-bar";
-  const rowIndex = getMeasurementRowIndex(state.measurementSheet.activeCell.rowId);
-  const columnIndex = getMeasurementColumnIndex(state.measurementSheet.activeCell.columnId);
-  const shouldRefreshComputed = shouldScheduleMeasurementComputedRefreshForInput({
-    rowIndex,
-    columnIndex,
-    formulaTouched,
+  syncMeasurementEditorLiveValue({
+    ...editingCell,
+    value: nextValue,
+    source: "formula-bar",
   });
-  setMeasurementCellRawValue(
-    state.measurementSheet.activeCell.rowId,
-    state.measurementSheet.activeCell.columnId,
-    nextValue,
-    {
-      deferMutation: !shouldRefreshComputed,
-      skipFormulaInvalidation: !shouldRefreshComputed,
-    },
-  );
-  if (formulaTouched) {
-    syncMeasurementFormulaEditState();
-  } else {
-    syncMeasurementPlainTextEditState(event.currentTarget);
-  }
-  updateMeasurementEditingCellPreview(
-    state.measurementSheet.activeCell.rowId,
-    state.measurementSheet.activeCell.columnId,
-  );
-  if (shouldRefreshComputed) {
-    scheduleMeasurementSheetComputedRefresh({
-      delay: getMeasurementTypingComputeDelay({ formulaTouched }),
-      partialCell: formulaTouched ? null : {
-        rowIndex,
-        columnIndex,
-      },
-      formulaTouched,
-    });
-  }
 });
 measurementFormulaInput?.addEventListener("blur", () => {
-  flushMeasurementCellMutation();
+  commitMeasurementPendingEditorValue();
   if (state.measurementSheet.editorSource === "formula-bar") {
     exitMeasurementEditMode();
   }
