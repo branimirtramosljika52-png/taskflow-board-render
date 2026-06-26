@@ -103,6 +103,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
 const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.219.apk";
+const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const DOCUMENT_TEMPLATE_CONCLUSION_POSITIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivani sustav na dan predmetnog ispitivanja ne zadovoljava zahtjeve propisanih odnosno dopustenih parametara.";
 const rootDir = resolve(process.cwd());
@@ -826,7 +827,7 @@ function buildIsznrRoRecordPdfBridgePage({
 }
 
 async function writeAndroidApkDownload(response, {
-  contentType = "application/octet-stream",
+  contentType = MOBILE_ANDROID_APK_CONTENT_TYPE,
 } = {}) {
   const rootApkPath = resolve(rootDir, "assets", "mobile", MOBILE_ANDROID_APK_FILE_NAME);
   const distApkPath = resolve(staticRoot, "assets", "mobile", MOBILE_ANDROID_APK_FILE_NAME);
@@ -835,7 +836,11 @@ async function writeAndroidApkDownload(response, {
   writeBufferResponse(response, 200, apkBuffer, {
     contentType,
     fileName: MOBILE_ANDROID_APK_FILE_NAME,
-    headers: NO_STORE_HEADERS,
+    headers: {
+      ...NO_STORE_HEADERS,
+      "Content-Description": "SafeNexus Android APK",
+      "Content-Transfer-Encoding": "binary",
+    },
   });
 }
 
@@ -34597,7 +34602,14 @@ const server = createServer(async (request, response) => {
   }
 
   if ((request.method === "GET" || request.method === "HEAD")
-    && ["/apk", "/download-apk", "/mobile/apk", "/android.apk"].includes(url.pathname)) {
+    && [
+      "/apk",
+      "/download-apk",
+      "/mobile/apk",
+      "/android.apk",
+      "/SafeNexus.apk",
+      `/${MOBILE_ANDROID_APK_FILE_NAME}`,
+    ].includes(url.pathname)) {
     await writeAndroidApkDownload(response);
     return;
   }
