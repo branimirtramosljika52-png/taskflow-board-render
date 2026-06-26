@@ -47140,7 +47140,7 @@ function syncMeasurementToolbar() {
   if (measurementAiButton instanceof HTMLButtonElement) {
     measurementAiButton.disabled = !aiColumn;
     measurementAiButton.classList.toggle("is-active", hasAiMapping);
-    measurementAiButton.textContent = hasAiMapping ? "NexAI*" : "NexAI";
+    measurementAiButton.textContent = hasAiMapping ? "AI unos*" : "AI unos";
     measurementAiButton.title = hasAiMapping
       ? "NexAI opis kolone je postavljen"
       : "NexAI opis kolone";
