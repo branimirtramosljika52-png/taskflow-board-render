@@ -1727,6 +1727,8 @@ let workOrderLeafletMarkers = new Map();
 let workOrderCalendarShellHeightFrame = 0;
 let periodicsCalendarShellHeightFrame = 0;
 let measurementQuickFillDraftCounter = 0;
+let measurementSelectedClassElements = new Set();
+let measurementActiveCellElement = null;
 const COMPANIES_SEARCH_DEBOUNCE_MS = 140;
 const LOCATIONS_SEARCH_DEBOUNCE_MS = 140;
 const WORK_ORDER_VIEW_MODES = [
@@ -43597,8 +43599,11 @@ function isMeasurementSheetLightCellRenderEnabled() {
     return isPhysicalFactorsRoF3MeasurementSheet(sheet);
   }
 
-  return (ownerKind === "template_field" || ownerKind === "document_template_runtime_field")
-    && cellCount >= 240;
+  if (ownerKind === "template_field" || ownerKind === "document_template_runtime_field") {
+    return cellCount >= 120;
+  }
+
+  return cellCount >= 240;
 }
 
 const measurementSheetViewport = createMeasurementSheetViewportController({
@@ -47123,6 +47128,81 @@ function renderMeasurementQuickFillColumnMap() {
   renderMeasurementQuickFillStructure(currentDraft);
 }
 
+function syncMeasurementToolbarHeavyPanels({
+  aiColumn,
+  activeAiMapping,
+  hasEditableMeasurementColumns,
+} = {}) {
+  const aiPopoverOpen = Boolean(state.measurementSheet.aiPopoverOpen && hasEditableMeasurementColumns);
+
+  if (measurementAiPopover instanceof HTMLElement) {
+    measurementAiPopover.hidden = !aiPopoverOpen;
+  }
+
+  if (measurementAiColumnLabel && aiPopoverOpen) {
+    measurementAiColumnLabel.textContent = aiColumn
+      ? `Kolona: ${aiColumn.label || aiColumn.id}`
+      : "Odaberi kolonu";
+  }
+
+  if (aiPopoverOpen) {
+    syncOpenAiIntegrationStatusTargets(measurementAiConnectionStatus);
+    renderMeasurementAiImportPanel();
+  }
+
+  const setAiInputState = (input, value, disabled = !aiColumn) => {
+    if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLTextAreaElement) && !(input instanceof HTMLSelectElement)) {
+      return;
+    }
+    input.value = value;
+    input.disabled = disabled;
+  };
+
+  if (aiPopoverOpen) {
+    if (measurementAiEnabledInput instanceof HTMLInputElement) {
+      measurementAiEnabledInput.checked = Boolean(activeAiMapping.enabled);
+      measurementAiEnabledInput.disabled = !aiColumn;
+    }
+    setAiInputState(measurementAiKeyInput, activeAiMapping.key || (aiColumn?.id ?? ""));
+    setAiInputState(measurementAiLabelInput, activeAiMapping.label || (aiColumn?.label ?? ""));
+    setAiInputState(measurementAiFormatInput, activeAiMapping.type || activeAiMapping.format || "text");
+    setAiInputState(measurementAiUnitInput, activeAiMapping.unit);
+    setAiInputState(measurementAiDescriptionInput, activeAiMapping.aiDescription || activeAiMapping.description);
+    setAiInputState(measurementAiPlaceholderInput, activeAiMapping.placeholder);
+    setAiInputState(measurementAiHelpTextInput, activeAiMapping.helpText);
+    setAiInputState(
+      measurementAiSynonymsInput,
+      (activeAiMapping.aiLookFor.length ? activeAiMapping.aiLookFor : activeAiMapping.synonyms).join(", "),
+    );
+    setAiInputState(measurementAiAllowedValuesInput, activeAiMapping.allowedValues.join(", "));
+    setAiInputState(measurementAiCommonValuesInput, activeAiMapping.commonValues.join(", "));
+    setAiInputState(measurementAiExamplesInput, activeAiMapping.examples.join(", "));
+    setAiInputState(measurementAiAvoidInput, activeAiMapping.aiAvoid || activeAiMapping.avoid);
+    setAiInputState(measurementAiFallbackValueInput, activeAiMapping.fallbackValue);
+    setAiInputState(measurementAiDefaultValueInput, activeAiMapping.defaultValue);
+    if (measurementAiRequiredInput instanceof HTMLInputElement) {
+      measurementAiRequiredInput.checked = Boolean(activeAiMapping.required);
+      measurementAiRequiredInput.disabled = !aiColumn;
+    }
+    if (measurementAiSourceTrackingInput instanceof HTMLInputElement) {
+      measurementAiSourceTrackingInput.checked = Boolean(activeAiMapping.sourceTracking);
+      measurementAiSourceTrackingInput.disabled = !aiColumn;
+    }
+    setAiInputState(measurementAiConfidenceRequiredInput, activeAiMapping.confidenceRequired || "medium");
+    setAiInputState(measurementAiGroupInput, activeAiMapping.group);
+    setAiInputState(measurementAiDisplayOrderInput, activeAiMapping.displayOrder ? String(activeAiMapping.displayOrder) : "");
+    setAiInputState(measurementAiValidationRulesInput, activeAiMapping.validationRules);
+  }
+
+  if (measurementQuickFillPopover instanceof HTMLElement) {
+    measurementQuickFillPopover.hidden = !(state.measurementSheet.quickFillPopoverOpen && state.measurementSheet.isOpen);
+  }
+
+  if (state.measurementSheet.quickFillPopoverOpen) {
+    renderMeasurementQuickFillColumnMap();
+  }
+}
+
 function mutateMeasurementQuickStructure(mutator) {
   const structure = normalizeMeasurementQuickFillStructure(getMeasurementQuickFillStructureState());
   mutator(structure);
@@ -48031,7 +48111,11 @@ function focusMeasurementCell(rowId, columnId, options = {}) {
   }
 }
 
-function syncMeasurementToolbar() {
+function syncMeasurementToolbar(options = {}) {
+  const {
+    light = false,
+  } = options;
+
   if (measurementNameBoxInput) {
     measurementNameBoxInput.value = getMeasurementSelectionLabel();
   }
@@ -48242,132 +48326,18 @@ function syncMeasurementToolbar() {
     measurementAiPopover.hidden = !(state.measurementSheet.aiPopoverOpen && hasEditableMeasurementColumns);
   }
 
-  if (measurementAiColumnLabel) {
-    measurementAiColumnLabel.textContent = aiColumn
-      ? `Kolona: ${aiColumn.label || aiColumn.id}`
-      : "Odaberi kolonu";
-  }
-
-  syncOpenAiIntegrationStatusTargets(measurementAiConnectionStatus);
-  renderMeasurementAiImportPanel();
-
-  if (measurementAiEnabledInput) {
-    measurementAiEnabledInput.checked = Boolean(activeAiMapping.enabled);
-    measurementAiEnabledInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiKeyInput) {
-    measurementAiKeyInput.value = activeAiMapping.key || (aiColumn?.id ?? "");
-    measurementAiKeyInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiLabelInput) {
-    measurementAiLabelInput.value = activeAiMapping.label || (aiColumn?.label ?? "");
-    measurementAiLabelInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiFormatInput) {
-    measurementAiFormatInput.value = activeAiMapping.type || activeAiMapping.format || "text";
-    measurementAiFormatInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiUnitInput) {
-    measurementAiUnitInput.value = activeAiMapping.unit;
-    measurementAiUnitInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiDescriptionInput) {
-    measurementAiDescriptionInput.value = activeAiMapping.aiDescription || activeAiMapping.description;
-    measurementAiDescriptionInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiPlaceholderInput) {
-    measurementAiPlaceholderInput.value = activeAiMapping.placeholder;
-    measurementAiPlaceholderInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiHelpTextInput) {
-    measurementAiHelpTextInput.value = activeAiMapping.helpText;
-    measurementAiHelpTextInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiSynonymsInput) {
-    measurementAiSynonymsInput.value = (activeAiMapping.aiLookFor.length
-      ? activeAiMapping.aiLookFor
-      : activeAiMapping.synonyms).join(", ");
-    measurementAiSynonymsInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiAllowedValuesInput) {
-    measurementAiAllowedValuesInput.value = activeAiMapping.allowedValues.join(", ");
-    measurementAiAllowedValuesInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiCommonValuesInput) {
-    measurementAiCommonValuesInput.value = activeAiMapping.commonValues.join(", ");
-    measurementAiCommonValuesInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiExamplesInput) {
-    measurementAiExamplesInput.value = activeAiMapping.examples.join(", ");
-    measurementAiExamplesInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiAvoidInput) {
-    measurementAiAvoidInput.value = activeAiMapping.aiAvoid || activeAiMapping.avoid;
-    measurementAiAvoidInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiFallbackValueInput) {
-    measurementAiFallbackValueInput.value = activeAiMapping.fallbackValue;
-    measurementAiFallbackValueInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiDefaultValueInput) {
-    measurementAiDefaultValueInput.value = activeAiMapping.defaultValue;
-    measurementAiDefaultValueInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiRequiredInput) {
-    measurementAiRequiredInput.checked = Boolean(activeAiMapping.required);
-    measurementAiRequiredInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiSourceTrackingInput) {
-    measurementAiSourceTrackingInput.checked = Boolean(activeAiMapping.sourceTracking);
-    measurementAiSourceTrackingInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiConfidenceRequiredInput) {
-    measurementAiConfidenceRequiredInput.value = activeAiMapping.confidenceRequired || "medium";
-    measurementAiConfidenceRequiredInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiGroupInput) {
-    measurementAiGroupInput.value = activeAiMapping.group;
-    measurementAiGroupInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiDisplayOrderInput) {
-    measurementAiDisplayOrderInput.value = activeAiMapping.displayOrder ? String(activeAiMapping.displayOrder) : "";
-    measurementAiDisplayOrderInput.disabled = !aiColumn;
-  }
-
-  if (measurementAiValidationRulesInput) {
-    measurementAiValidationRulesInput.value = activeAiMapping.validationRules;
-    measurementAiValidationRulesInput.disabled = !aiColumn;
-  }
-
   if (measurementQuickFillButton instanceof HTMLButtonElement) {
     measurementQuickFillButton.disabled = !state.measurementSheet.isOpen || getEditableMeasurementColumnIndexes().length <= 0;
     measurementQuickFillButton.classList.toggle("is-active", Boolean(state.measurementSheet.quickFillPopoverOpen));
   }
 
-  if (measurementQuickFillPopover instanceof HTMLElement) {
-    measurementQuickFillPopover.hidden = !(state.measurementSheet.quickFillPopoverOpen && state.measurementSheet.isOpen);
+  if (!light || state.measurementSheet.aiPopoverOpen || state.measurementSheet.quickFillPopoverOpen) {
+    syncMeasurementToolbarHeavyPanels({
+      aiColumn,
+      activeAiMapping,
+      hasEditableMeasurementColumns,
+    });
   }
-
-  renderMeasurementQuickFillColumnMap();
 
   if (measurementFormatFontFamilyInput) {
     measurementFormatFontFamilyInput.value = activeFormat.fontFamily;
@@ -49229,19 +49199,15 @@ function clearMeasurementFillPreview() {
 }
 
 function clearMeasurementSelectionClasses() {
-  measurementSheetBody
-    ?.querySelectorAll(".is-selected-cell, .is-fill-origin, .is-selected-row")
-    .forEach((cell) => cell.classList.remove("is-selected-cell", "is-fill-origin", "is-selected-row"));
-
-  measurementSheetHead
-    ?.querySelectorAll(".is-selected-column")
-    .forEach((cell) => cell.classList.remove("is-selected-column"));
+  measurementSelectedClassElements.forEach((element) => {
+    element.classList?.remove("is-selected-cell", "is-fill-origin", "is-selected-row", "is-selected-column");
+  });
+  measurementSelectedClassElements.clear();
 }
 
 function renderMeasurementActiveCell() {
-  measurementSheetBody
-    ?.querySelectorAll(".is-active-cell")
-    .forEach((cell) => cell.classList.remove("is-active-cell"));
+  measurementActiveCellElement?.classList?.remove("is-active-cell");
+  measurementActiveCellElement = null;
 
   const activeCell = state.measurementSheet.activeCell;
 
@@ -49249,7 +49215,9 @@ function renderMeasurementActiveCell() {
     return;
   }
 
-  getMeasurementCellElement(activeCell.rowId, activeCell.columnId)?.classList.add("is-active-cell");
+  const element = getMeasurementCellElement(activeCell.rowId, activeCell.columnId);
+  element?.classList.add("is-active-cell");
+  measurementActiveCellElement = element || null;
 }
 
 function renderMeasurementSelection() {
@@ -49272,9 +49240,12 @@ function renderMeasurementSelection() {
       continue;
     }
 
-    measurementSheetHead
-      ?.querySelector(`th[data-column-id="${CSS.escape(column.id)}"]`)
-      ?.classList.add("is-selected-column");
+    const headCell = measurementSheetHead
+      ?.querySelector(`th[data-column-id="${CSS.escape(column.id)}"]`);
+    if (headCell) {
+      headCell.classList.add("is-selected-column");
+      measurementSelectedClassElements.add(headCell);
+    }
   }
 
   const renderedBounds = getMeasurementRenderedRowIndexBounds();
@@ -49288,9 +49259,12 @@ function renderMeasurementSelection() {
       continue;
     }
 
-    measurementSheetBody
-      ?.querySelector(`tr[data-row-id="${CSS.escape(row.id)}"] > th`)
-      ?.classList.add("is-selected-row");
+    const rowHeader = measurementSheetBody
+      ?.querySelector(`tr[data-row-id="${CSS.escape(row.id)}"] > th`);
+    rowHeader?.classList.add("is-selected-row");
+    if (rowHeader) {
+      measurementSelectedClassElements.add(rowHeader);
+    }
 
     for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
       const column = state.measurementSheet.columns[columnIndex];
@@ -49299,13 +49273,21 @@ function renderMeasurementSelection() {
         continue;
       }
 
-      getMeasurementCellElement(row.id, column.id)?.classList.add("is-selected-cell");
+      const cell = getMeasurementCellElement(row.id, column.id);
+      cell?.classList.add("is-selected-cell");
+      if (cell) {
+        measurementSelectedClassElements.add(cell);
+      }
     }
   }
 
   const fillOriginRow = state.measurementSheet.rows[selectedRange.endRowIndex];
   const fillOriginColumn = state.measurementSheet.columns[selectedRange.endColumnIndex];
-  getMeasurementCellElement(fillOriginRow?.id, fillOriginColumn?.id)?.classList.add("is-fill-origin");
+  const fillOrigin = getMeasurementCellElement(fillOriginRow?.id, fillOriginColumn?.id);
+  fillOrigin?.classList.add("is-fill-origin");
+  if (fillOrigin) {
+    measurementSelectedClassElements.add(fillOrigin);
+  }
 }
 
 function setMeasurementSelectionByIndex(rowIndex, columnIndex, options = {}) {
@@ -49346,7 +49328,7 @@ function setMeasurementSelectionByIndex(rowIndex, columnIndex, options = {}) {
     renderMeasurementActiveCell();
     renderMeasurementContextMenu();
   }
-  syncMeasurementToolbar();
+  syncMeasurementToolbar({ light: true });
 
   if (focus) {
     focusMeasurementCell(row.id, column.id, { selectAll });

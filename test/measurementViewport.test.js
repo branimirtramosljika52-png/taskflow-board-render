@@ -30,7 +30,7 @@ function createColumn(index) {
 test("measurement viewport virtualizes wide columns even when rows are not virtual", () => {
   const sheet = {
     isOpen: true,
-    rows: Array.from({ length: 72 }, (_, index) => ({ id: `r${index}`, cells: {} })),
+    rows: Array.from({ length: 24 }, (_, index) => ({ id: `r${index}`, cells: {} })),
     columns: Array.from({ length: 40 }, (_, index) => createColumn(index)),
     merges: [],
     viewport: {},
@@ -63,7 +63,7 @@ test("measurement viewport virtualizes wide columns even when rows are not virtu
 test("measurement viewport schedules rerender for horizontal-only virtual scroll", () => {
   const sheet = {
     isOpen: true,
-    rows: Array.from({ length: 72 }, (_, index) => ({ id: `r${index}`, cells: {} })),
+    rows: Array.from({ length: 24 }, (_, index) => ({ id: `r${index}`, cells: {} })),
     columns: Array.from({ length: 40 }, (_, index) => createColumn(index)),
     merges: [],
     viewport: {},

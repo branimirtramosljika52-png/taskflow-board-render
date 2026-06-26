@@ -169,6 +169,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -3029,8 +3030,16 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
         viewModel.registerPushToken()
     }
     var documentationActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
-    var documentationWizardTarget by remember { mutableStateOf<WorkOrder?>(null) }
-    var documentationWizardObjectId by remember { mutableStateOf("") }
+    var documentationWizardTargetId by rememberSaveable { mutableStateOf("") }
+    var documentationWizardObjectId by rememberSaveable { mutableStateOf("") }
+    val documentationWizardTarget = remember(documentationWizardTargetId, state.selectedWorkOrder, state.workOrders, state.data.workOrders) {
+        if (documentationWizardTargetId.isBlank()) {
+            null
+        } else {
+            (listOfNotNull(state.selectedWorkOrder) + state.workOrders + state.data.workOrders)
+                .firstOrNull { it.id == documentationWizardTargetId }
+        }
+    }
     var signatureActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var serviceManagementTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var pendingTrainingImportTarget by remember { mutableStateOf<WorkOrder?>(null) }
@@ -3338,7 +3347,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onWatchersChange = viewModel::updateWorkOrderWatchers,
                     onManageServices = { workOrder -> serviceManagementTarget = workOrder },
                     onGenerateDocumentation = { workOrder ->
-                        documentationWizardTarget = workOrder
+                        documentationWizardTargetId = workOrder.id
                         documentationWizardObjectId = workOrder.objectId
                         viewModel.loadWorkOrderDocumentationContext(workOrder, documentationWizardObjectId)
                     },
@@ -3414,7 +3423,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
             isLoading = state.isLoading,
             workEquipmentSubmitResult = state.workEquipmentSubmitResults[workOrder.id] ?: IsznrWorkEquipmentSubmitResult(),
             physicalFactorsSubmitResult = state.physicalFactorsSubmitResults[workOrder.id] ?: IsznrWorkEquipmentSubmitResult(),
-            onDismiss = { documentationWizardTarget = null },
+            onDismiss = { documentationWizardTargetId = "" },
             onObjectSelectionChange = { objectId ->
                 documentationWizardObjectId = objectId
                 viewModel.loadWorkOrderDocumentationContext(workOrder, objectId)
@@ -3470,7 +3479,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                 viewModel.addTrainingPersonManually(workOrder, draft, documentationWizardObjectId)
             },
             onConfirm = { draft ->
-                documentationWizardTarget = null
+                documentationWizardTargetId = ""
                 viewModel.generateWorkOrderDocumentation(workOrder, draft)
             },
         )
@@ -23634,7 +23643,7 @@ private fun WorkOrderDocumentationWizardDialog(
             )
         }
     }
-    var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
+    var selectedFlowService by rememberSaveable(workOrder.id) {
         mutableStateOf(DOCUMENTATION_BASICS_FLOW_KEY)
     }
     LaunchedEffect(flowTabs, selectedFlowService) {
@@ -27702,9 +27711,11 @@ private fun MeasurementTableEditor(
     DisposableEffect(table.key, table.id) {
         val activity = context.findFragmentActivity()
         val previousOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         onDispose {
-            activity?.requestedOrientation = previousOrientation
+            if (activity?.isChangingConfigurations != true) {
+                activity?.requestedOrientation = previousOrientation
+            }
         }
     }
     val historyLimit = 24
