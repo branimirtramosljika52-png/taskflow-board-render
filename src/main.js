@@ -2803,6 +2803,8 @@ const state = {
     persistTimer: 0,
     localDraftTimer: 0,
     previewSyncTimer: 0,
+    pendingCellMutationTimer: 0,
+    pendingCellMutation: null,
     lastPersistFingerprint: "",
     viewport: {
       virtual: false,
@@ -28843,6 +28845,65 @@ function scheduleMeasurementSheetDocumentPreviewSync({ rerenderFieldRows = false
   }, 900);
 }
 
+function clearScheduledMeasurementCellMutation() {
+  if (!state.measurementSheet.pendingCellMutationTimer) {
+    return;
+  }
+
+  window.clearTimeout(state.measurementSheet.pendingCellMutationTimer);
+  state.measurementSheet.pendingCellMutationTimer = 0;
+}
+
+function mergeMeasurementCellMutationRequest(current = null, next = null) {
+  if (!current) {
+    return next;
+  }
+
+  if (!next) {
+    return current;
+  }
+
+  const currentCell = current.changedCell;
+  const nextCell = next.changedCell;
+  const sameCell = currentCell
+    && nextCell
+    && currentCell.rowIndex === nextCell.rowIndex
+    && currentCell.columnIndex === nextCell.columnIndex;
+
+  return {
+    immediate: Boolean(current.immediate || next.immediate),
+    changedCell: sameCell ? nextCell : null,
+    formulaChanged: Boolean(current.formulaChanged || next.formulaChanged),
+    skipFormulaInvalidation: sameCell
+      ? Boolean(current.skipFormulaInvalidation && next.skipFormulaInvalidation)
+      : false,
+  };
+}
+
+function flushMeasurementCellMutation() {
+  const request = state.measurementSheet.pendingCellMutation;
+  clearScheduledMeasurementCellMutation();
+  state.measurementSheet.pendingCellMutation = null;
+
+  if (!request) {
+    return;
+  }
+
+  handleMeasurementSheetMutation(request);
+}
+
+function scheduleMeasurementCellMutation(request = {}) {
+  state.measurementSheet.pendingCellMutation = mergeMeasurementCellMutationRequest(
+    state.measurementSheet.pendingCellMutation,
+    request,
+  );
+  clearScheduledMeasurementCellMutation();
+  state.measurementSheet.pendingCellMutationTimer = window.setTimeout(() => {
+    state.measurementSheet.pendingCellMutationTimer = 0;
+    flushMeasurementCellMutation();
+  }, 560);
+}
+
 function handleMeasurementSheetMutation({
   immediate = false,
   changedCell = null,
@@ -46341,6 +46402,74 @@ function normalizeMeasurementQuickColumnSettings(settings = null) {
   return new Map();
 }
 
+function cloneMeasurementQuickColumnSettings(settings = null) {
+  return new Map(Array.from(normalizeMeasurementQuickColumnSettings(settings).entries()).map(([columnId, setting]) => [
+    columnId,
+    {
+      mode: String(setting?.mode || "empty"),
+      customValue: String(setting?.customValue ?? ""),
+    },
+  ]));
+}
+
+function createMeasurementQuickDefaultColumnSettings() {
+  return new Map(getMeasurementQuickEditableColumns().map((column) => [
+    column.id,
+    {
+      mode: getDefaultMeasurementQuickFillColumnMode(column),
+      customValue: "",
+    },
+  ]));
+}
+
+function findMeasurementQuickReusableColumnSettings(structure = null) {
+  const floors = Array.isArray(structure?.floors) ? structure.floors : [];
+  for (let floorIndex = floors.length - 1; floorIndex >= 0; floorIndex -= 1) {
+    const rooms = Array.isArray(floors[floorIndex]?.rooms) ? floors[floorIndex].rooms : [];
+    for (let roomIndex = rooms.length - 1; roomIndex >= 0; roomIndex -= 1) {
+      const items = Array.isArray(rooms[roomIndex]?.items) ? rooms[roomIndex].items : [];
+      for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const settings = normalizeMeasurementQuickColumnSettings(items[itemIndex]?.settings);
+        if (settings.size) {
+          return settings;
+        }
+      }
+    }
+  }
+
+  return new Map();
+}
+
+function hydrateMeasurementQuickFillStructureSettings(structure = null) {
+  const fallbackSettings = findMeasurementQuickReusableColumnSettings(structure);
+  const defaultSettings = fallbackSettings.size ? fallbackSettings : createMeasurementQuickDefaultColumnSettings();
+  const editableColumns = getMeasurementQuickEditableColumns();
+
+  (structure?.floors || []).forEach((floor) => {
+    (floor.rooms || []).forEach((room) => {
+      (room.items || []).forEach((item) => {
+        const settings = cloneMeasurementQuickColumnSettings(item.settings);
+        editableColumns.forEach((column) => {
+          if (settings.has(column.id)) {
+            return;
+          }
+          const fallback = defaultSettings.get(column.id) || {
+            mode: getDefaultMeasurementQuickFillColumnMode(column),
+            customValue: "",
+          };
+          settings.set(column.id, {
+            mode: String(fallback.mode || getDefaultMeasurementQuickFillColumnMode(column)),
+            customValue: String(fallback.customValue ?? ""),
+          });
+        });
+        item.settings = settings;
+      });
+    });
+  });
+
+  return structure;
+}
+
 function createMeasurementQuickDraftId(prefix = "quick") {
   measurementQuickFillDraftCounter += 1;
   return `${prefix}-${Date.now().toString(36)}-${measurementQuickFillDraftCounter}`;
@@ -46406,7 +46535,7 @@ function normalizeMeasurementQuickFillStructure(structure = {}) {
     floors.push(normalizeMeasurementQuickFloorDraft());
   }
 
-  return { floors };
+  return hydrateMeasurementQuickFillStructureSettings({ floors });
 }
 
 function createDefaultMeasurementQuickFillStructure() {
@@ -46519,10 +46648,10 @@ function scheduleMeasurementQuickFillTemplatePersist() {
   }, 900);
 }
 
-function cloneMeasurementQuickItemDraftForNewRoom(item = {}) {
+function cloneMeasurementQuickItemDraftForNewRoom(item = {}, { keepName = true } = {}) {
   const normalizedItem = normalizeMeasurementQuickItemDraft(item);
   return normalizeMeasurementQuickItemDraft({
-    name: normalizedItem.name,
+    name: keepName ? normalizedItem.name : "",
     count: normalizedItem.count,
     settings: new Map(normalizedItem.settings),
   });
@@ -46560,9 +46689,11 @@ function collectMeasurementQuickFillColumnSettings(root = null) {
   return settings;
 }
 
-function createMeasurementQuickFillColumnMapElement(previousSettings = new Map()) {
+function createMeasurementQuickFillColumnMapElement(previousSettings = new Map(), options = {}) {
+  const { compact = false } = options;
   const map = document.createElement("div");
   map.className = "measurement-quick-column-map";
+  map.classList.toggle("is-compact", compact);
   map.dataset.measurementQuickColumnMap = "true";
 
   const editableColumns = getMeasurementQuickEditableColumns();
@@ -46574,15 +46705,17 @@ function createMeasurementQuickFillColumnMapElement(previousSettings = new Map()
     return map;
   }
 
-  const title = document.createElement("div");
-  title.className = "measurement-quick-column-map-title";
-  title.textContent = "Vrijednosti po kolonama";
-  map.append(title);
+  if (!compact) {
+    const title = document.createElement("div");
+    title.className = "measurement-quick-column-map-title";
+    title.textContent = "Vrijednosti po kolonama";
+    map.append(title);
 
-  const subtitle = document.createElement("p");
-  subtitle.className = "measurement-quick-column-map-copy";
-  subtitle.textContent = "Odaberi redni broj, formulu ili fiksnu vrijednost za svaku kolonu. Formula može biti Excel stil, npr. =RANDBETWEEN(1;100).";
-  map.append(subtitle);
+    const subtitle = document.createElement("p");
+    subtitle.className = "measurement-quick-column-map-copy";
+    subtitle.textContent = "Odaberi redni broj, formulu ili fiksnu vrijednost za svaku kolonu. Formula može biti Excel stil, npr. =RANDBETWEEN(1;100).";
+    map.append(subtitle);
+  }
 
   const header = document.createElement("div");
   header.className = "measurement-quick-column-grid-head";
@@ -46725,17 +46858,31 @@ function collectMeasurementQuickFillStructure() {
   return normalizeMeasurementQuickFillStructure({ floors });
 }
 
-function renderMeasurementQuickItemCard(item = {}) {
+function renderMeasurementQuickItemCard(item = {}, context = {}) {
   const normalizedItem = normalizeMeasurementQuickItemDraft(item);
   const card = document.createElement("article");
-  card.className = "measurement-quick-item-card";
+  card.className = "measurement-quick-item-card is-sheet-row";
   card.dataset.measurementQuickItemId = normalizedItem.id;
 
   const head = document.createElement("div");
   head.className = "measurement-quick-card-head";
 
   const fields = document.createElement("div");
-  fields.className = "measurement-quick-item-fields";
+  fields.className = "measurement-quick-item-fields measurement-quick-row-fields";
+
+  const floorNameInput = createMeasurementQuickTextInput(
+    context.floorName || "",
+    "Opcionalno",
+  );
+  floorNameInput.dataset.measurementQuickFloorName = "true";
+  fields.append(createMeasurementQuickField("Etaža", floorNameInput));
+
+  const roomNameInput = createMeasurementQuickTextInput(
+    context.roomName || "",
+    "Ured, hodnik, prodaja...",
+  );
+  roomNameInput.dataset.measurementQuickRoomName = "true";
+  fields.append(createMeasurementQuickField("Prostorija", roomNameInput));
 
   const itemNameInput = createMeasurementQuickTextInput(
     normalizedItem.name,
@@ -46758,11 +46905,11 @@ function renderMeasurementQuickItemCard(item = {}) {
   actions.append(removeButton);
 
   head.append(fields, actions);
-  card.append(head, createMeasurementQuickFillColumnMapElement(normalizedItem.settings));
+  card.append(head, createMeasurementQuickFillColumnMapElement(normalizedItem.settings, { compact: true }));
   return card;
 }
 
-function renderMeasurementQuickRoomCard(room = {}) {
+function renderMeasurementQuickRoomCard(room = {}, context = {}) {
   const normalizedRoom = normalizeMeasurementQuickRoomDraft(room);
   const card = document.createElement("section");
   card.className = "measurement-quick-room-card";
@@ -46806,7 +46953,10 @@ function renderMeasurementQuickRoomCard(room = {}) {
   itemList.className = "measurement-quick-item-list";
   itemList.dataset.measurementQuickItemList = "true";
   normalizedRoom.items.forEach((item) => {
-    itemList.append(renderMeasurementQuickItemCard(item));
+    itemList.append(renderMeasurementQuickItemCard(item, {
+      floorName: context.floorName || "",
+      roomName: normalizedRoom.name,
+    }));
   });
 
   card.append(head, itemList);
@@ -46857,7 +47007,7 @@ function renderMeasurementQuickFloorCard(floor = {}) {
   roomList.className = "measurement-quick-room-list";
   roomList.dataset.measurementQuickRoomList = "true";
   normalizedFloor.rooms.forEach((room) => {
-    roomList.append(renderMeasurementQuickRoomCard(room));
+    roomList.append(renderMeasurementQuickRoomCard(room, { floorName: normalizedFloor.name }));
   });
 
   card.append(head, roomList);
@@ -46984,13 +47134,31 @@ function updateMeasurementQuickStructureDraftFromControl(target = null) {
   const item = room && itemIndex >= 0 ? room.items[itemIndex] : null;
 
   if (target.matches("[data-measurement-quick-floor-name]") && floor) {
-    floor.name = target instanceof HTMLInputElement ? target.value : "";
+    const nextValue = target instanceof HTMLInputElement ? target.value : "";
+    floor.name = nextValue;
+    target
+      .closest("[data-measurement-quick-floor-id]")
+      ?.querySelectorAll("[data-measurement-quick-floor-name]")
+      .forEach((input) => {
+        if (input instanceof HTMLInputElement && input !== target) {
+          input.value = nextValue;
+        }
+      });
     touchMeasurementQuickFillStructureState();
     return true;
   }
 
   if (target.matches("[data-measurement-quick-room-name]") && room) {
-    room.name = target instanceof HTMLInputElement ? target.value : "";
+    const nextValue = target instanceof HTMLInputElement ? target.value : "";
+    room.name = nextValue;
+    target
+      .closest("[data-measurement-quick-room-id]")
+      ?.querySelectorAll("[data-measurement-quick-room-name]")
+      .forEach((input) => {
+        if (input instanceof HTMLInputElement && input !== target) {
+          input.value = nextValue;
+        }
+      });
     touchMeasurementQuickFillStructureState();
     return true;
   }
@@ -47480,19 +47648,26 @@ function setMeasurementCellRawValueAt(rowIndex, columnIndex, value, options = {}
 
   pushMeasurementSheetHistorySnapshot({ coalesceKey: `cell:${row.id}:${column.id}` });
   row.cells[column.id] = value;
-  handleMeasurementSheetMutation({
+  const mutationRequest = {
     changedCell: { rowIndex, columnIndex },
     formulaChanged: isMeasurementFormula(previousValue) || isMeasurementFormula(value),
     skipFormulaInvalidation: Boolean(options.skipFormulaInvalidation),
-  });
+  };
+  if (options.deferMutation) {
+    scheduleMeasurementCellMutation(mutationRequest);
+  } else {
+    flushMeasurementCellMutation();
+    handleMeasurementSheetMutation(mutationRequest);
+  }
   return true;
 }
 
-function setMeasurementCellRawValue(rowId, columnId, value) {
+function setMeasurementCellRawValue(rowId, columnId, value, options = {}) {
   return setMeasurementCellRawValueAt(
     getMeasurementRowIndex(rowId),
     getMeasurementColumnIndex(columnId),
     value,
+    options,
   );
 }
 
@@ -51329,6 +51504,7 @@ function renderMeasurementSheet(options = {}) {
             input.value = "";
             setMeasurementCellRawValue(row.id, column.id, "");
           }
+          flushMeasurementCellMutation();
           if (isMeasurementEditingCell(row.id, column.id)) {
             exitMeasurementEditMode();
           }
@@ -51348,6 +51524,7 @@ function renderMeasurementSheet(options = {}) {
             formulaTouched,
           });
           setMeasurementCellRawValueAt(index, columnIndex, nextValue, {
+            deferMutation: !shouldRefreshComputed,
             skipFormulaInvalidation: !shouldRefreshComputed,
           });
           syncMeasurementInputListSource(input);
@@ -135486,10 +135663,21 @@ measurementFormulaInput?.addEventListener("input", (event) => {
     columnId: state.measurementSheet.activeCell.columnId,
   };
   state.measurementSheet.editorSource = "formula-bar";
+  const rowIndex = getMeasurementRowIndex(state.measurementSheet.activeCell.rowId);
+  const columnIndex = getMeasurementColumnIndex(state.measurementSheet.activeCell.columnId);
+  const shouldRefreshComputed = shouldScheduleMeasurementComputedRefreshForInput({
+    rowIndex,
+    columnIndex,
+    formulaTouched,
+  });
   setMeasurementCellRawValue(
     state.measurementSheet.activeCell.rowId,
     state.measurementSheet.activeCell.columnId,
     nextValue,
+    {
+      deferMutation: !shouldRefreshComputed,
+      skipFormulaInvalidation: !shouldRefreshComputed,
+    },
   );
   if (formulaTouched) {
     syncMeasurementFormulaEditState();
@@ -135500,16 +135688,19 @@ measurementFormulaInput?.addEventListener("input", (event) => {
     state.measurementSheet.activeCell.rowId,
     state.measurementSheet.activeCell.columnId,
   );
-  scheduleMeasurementSheetComputedRefresh({
-    delay: getMeasurementTypingComputeDelay({ formulaTouched }),
-    partialCell: formulaTouched ? null : {
-      rowIndex: getMeasurementRowIndex(state.measurementSheet.activeCell.rowId),
-      columnIndex: getMeasurementColumnIndex(state.measurementSheet.activeCell.columnId),
-    },
-    formulaTouched,
-  });
+  if (shouldRefreshComputed) {
+    scheduleMeasurementSheetComputedRefresh({
+      delay: getMeasurementTypingComputeDelay({ formulaTouched }),
+      partialCell: formulaTouched ? null : {
+        rowIndex,
+        columnIndex,
+      },
+      formulaTouched,
+    });
+  }
 });
 measurementFormulaInput?.addEventListener("blur", () => {
+  flushMeasurementCellMutation();
   if (state.measurementSheet.editorSource === "formula-bar") {
     exitMeasurementEditMode();
   }
@@ -135964,7 +136155,12 @@ measurementQuickStructure?.addEventListener("click", (event) => {
     structure.floors.splice(floorIndex, 1);
   } else if (action === "add-item" && floorIndex >= 0 && roomIndex >= 0) {
     structure.floors[floorIndex].rooms[roomIndex].collapsed = false;
-    structure.floors[floorIndex].rooms[roomIndex].items.push(normalizeMeasurementQuickItemDraft());
+    const sourceItem = structure.floors[floorIndex].rooms[roomIndex].items.at(-1);
+    structure.floors[floorIndex].rooms[roomIndex].items.push(
+      sourceItem
+        ? cloneMeasurementQuickItemDraftForNewRoom(sourceItem, { keepName: false })
+        : normalizeMeasurementQuickItemDraft({ settings: createMeasurementQuickDefaultColumnSettings() }),
+    );
   } else if (action === "remove-room" && floorIndex >= 0 && roomIndex >= 0) {
     structure.floors[floorIndex].rooms.splice(roomIndex, 1);
   } else if (action === "remove-item" && floorIndex >= 0 && roomIndex >= 0 && itemIndex >= 0) {

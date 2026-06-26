@@ -11,6 +11,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -161,6 +162,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -27696,8 +27698,17 @@ private fun MeasurementTableEditor(
     requireSpaceSelection: Boolean = false,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
+    val context = LocalContext.current
+    DisposableEffect(table.key, table.id) {
+        val activity = context.findFragmentActivity()
+        val previousOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        onDispose {
+            activity?.requestedOrientation = previousOrientation
+        }
+    }
     val historyLimit = 24
-    val columnWindowSize = 8
+    val columnWindowSize = 10
     var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
     var undoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
     var redoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
@@ -27733,6 +27744,7 @@ private fun MeasurementTableEditor(
     }
     var extraRowWindow by remember(table.key, table.id) { mutableStateOf(0) }
     var quickFillOpen by remember(table.key, table.id) { mutableStateOf(false) }
+    var lastQuickFillDraft by remember(table.key, table.id) { mutableStateOf<MeasurementQuickFillDraft?>(null) }
     val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex) {
         if (sheet.rows.isEmpty()) {
             0
@@ -27813,8 +27825,10 @@ private fun MeasurementTableEditor(
                 visibleColumns
             },
             enabled = enabled,
+            initialDraft = lastQuickFillDraft,
             onDismiss = { quickFillOpen = false },
             onApply = { draft ->
+                lastQuickFillDraft = draft
                 commitSheetChange(applyMeasurementQuickFill(sheetWithPendingCellValue(sheet), draft))
                 extraRowWindow = extraRowWindow.coerceAtLeast(20)
                 quickFillOpen = false
@@ -28169,19 +28183,26 @@ private fun MeasurementTableEditor(
 private fun MeasurementQuickFillDialog(
     columns: List<WorkOrderMeasurementColumn>,
     enabled: Boolean,
+    initialDraft: MeasurementQuickFillDraft? = null,
     onDismiss: () -> Unit,
     onApply: (MeasurementQuickFillDraft) -> Unit,
 ) {
     val editableColumns = remember(columns) { columns.filter { it.isEditableMeasurementColumn() } }
     val columnSignature = remember(editableColumns) { editableColumns.joinToString("|") { "${it.id}:${it.label}" } }
-    var floor by remember { mutableStateOf("") }
-    var room by remember { mutableStateOf("") }
-    var itemsText by remember { mutableStateOf("") }
-    var defaultCount by remember { mutableStateOf("1") }
+    val editableColumnIds = remember(columnSignature) { editableColumns.map { it.id }.toSet() }
+    var floor by remember(initialDraft) { mutableStateOf(initialDraft?.floor.orEmpty()) }
+    var room by remember(initialDraft) { mutableStateOf(initialDraft?.room.orEmpty()) }
+    var itemsText by remember(initialDraft) { mutableStateOf(initialDraft?.itemsText.orEmpty()) }
+    var defaultCount by remember(initialDraft) { mutableStateOf((initialDraft?.defaultCount ?: 1).coerceIn(1, 500).toString()) }
     var columnModes by remember(columnSignature) {
-        mutableStateOf(editableColumns.associate { it.id to defaultMeasurementQuickFillColumnModeMobile(it) })
+        mutableStateOf(
+            editableColumns.associate { it.id to defaultMeasurementQuickFillColumnModeMobile(it) } +
+                initialDraft?.columnModes.orEmpty().filterKeys { it in editableColumnIds },
+        )
     }
-    var customValues by remember(columnSignature) { mutableStateOf(emptyMap<String, String>()) }
+    var customValues by remember(columnSignature) {
+        mutableStateOf(initialDraft?.customValues.orEmpty().filterKeys { it in editableColumnIds })
+    }
     val modeOptions = listOf(
         "itemIndex" to "Redni broj",
         "floor" to "Etaža",
@@ -28194,6 +28215,7 @@ private fun MeasurementQuickFillDialog(
     )
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxWidth(0.98f),
         confirmButton = {
             Button(
                 onClick = {
@@ -28223,7 +28245,7 @@ private fun MeasurementQuickFillDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 540.dp)
+                    .heightIn(max = 640.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
