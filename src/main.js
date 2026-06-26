@@ -1914,6 +1914,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Pregled periodicnih obveza, kontrola i ponavljajucih naloga za organizaciju i klijente.",
     chips: ["Cycles", "Recurring", "Service plans"],
   },
+  "documentation-workbench": {
+    kicker: "Operations",
+    title: "Izrada dokumentacije",
+    description: "Brzi browser-only Gridline editor za unos i pripremu dokumentacije bez backend poziva pri tipkanju.",
+    chips: ["Gridline", "Browser unos", "JSON model"],
+  },
   signatures: {
     kicker: "Operations",
     title: "Signatures",
@@ -2003,6 +2009,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "public-procurement": { group: "operations", view: "module", module: "public-procurement" },
   "purchase-orders": { group: "operations", view: "module", module: "offers" },
   periodics: { group: "operations", view: "module", module: "periodics" },
+  "documentation-workbench": { group: "operations", view: "module", module: "documentation-workbench" },
   signatures: { group: "operations", view: "module", module: "signatures" },
   "drawing-studio": { group: "operations", view: "module", module: "drawing-studio" },
   "list-company": { group: "company", view: "companies", focus: "list" },
@@ -2061,6 +2068,7 @@ const SIDEBAR_ITEM_LABELS = {
   "public-procurement": "Public Procurement",
   "purchase-orders": "Purchase Orders",
   periodics: "Periodics",
+  "documentation-workbench": "Izrada dokumentacije",
   "drawing-studio": "Drawing Studio",
   "list-company": "List Company",
   "add-company": "Add New",
@@ -3924,6 +3932,7 @@ const moduleViewDescription = document.querySelector("#module-view-description")
 const moduleViewChips = document.querySelector("#module-view-chips");
 const modulePanel = document.querySelector("#module-view > .module-panel");
 const documentsModule = document.querySelector("#documents-module");
+const documentationWorkbenchModule = document.querySelector("#documentation-workbench-module");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -21859,6 +21868,7 @@ function renderModuleView() {
     : state.activeModuleItem;
   const moduleDefinition = MODULE_VIEW_DEFINITIONS[moduleDefinitionKey] ?? MODULE_VIEW_DEFINITIONS.documents;
   const isDocumentsModule = state.activeModuleItem === "documents";
+  const isDocumentationWorkbenchModule = state.activeModuleItem === "documentation-workbench";
   const isSettingsModule = state.activeModuleItem === "settings";
   const isOffersModule = state.activeModuleItem === "offers";
   const isPublicProcurementModule = state.activeModuleItem === "public-procurement";
@@ -21881,6 +21891,7 @@ function renderModuleView() {
   const isTemplateDevelopmentModule = state.activeModuleItem === "template-development";
   const moduleHeading = moduleViewKicker?.closest(".section-heading");
   const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
+    && !isDocumentationWorkbenchModule
     && !isDocumentsModule
     && !isOffersModule
     && !isPublicProcurementModule
@@ -21939,6 +21950,10 @@ function renderModuleView() {
 
   if (documentsModule) {
     documentsModule.hidden = !isDocumentsModule;
+  }
+
+  if (documentationWorkbenchModule) {
+    documentationWorkbenchModule.hidden = !isDocumentationWorkbenchModule;
   }
 
   if (settingsModule) {

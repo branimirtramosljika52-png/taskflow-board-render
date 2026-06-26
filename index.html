@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260625-excel-perf-v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260626-documentation-workbench-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -591,6 +591,17 @@
                     </svg>
                   </span>
                   <strong>RN</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="documentation-workbench">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M6 4h8l4 4v12H6z"></path>
+                      <path d="M14 4v5h5"></path>
+                      <path d="M9 13h6M9 16h4"></path>
+                      <path d="M4 20h16"></path>
+                    </svg>
+                  </span>
+                  <strong>Izrada dokumentacije</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="offers">
                   <span class="tab-button-icon" aria-hidden="true">
@@ -6441,6 +6452,44 @@
               </div>
             </section>
 
+            <section id="documentation-workbench-module" class="documentation-workbench-module" hidden>
+              <section class="panel documentation-gridline-module">
+                <header class="documentation-gridline-topbar">
+                  <div class="documentation-gridline-title">
+                    <span class="documentation-gridline-mark" aria-hidden="true">
+                      <svg class="icon-svg" viewBox="0 0 24 24">
+                        <path d="M6 4h8l4 4v12H6z"></path>
+                        <path d="M14 4v5h5"></path>
+                        <path d="M9 13h6M9 16h4"></path>
+                      </svg>
+                    </span>
+                    <div>
+                      <p class="section-kicker">Operations</p>
+                      <h3>Izrada dokumentacije</h3>
+                      <span>Brzi Gridline editor radi u browseru, bez backend poziva kod unosa.</span>
+                    </div>
+                  </div>
+                  <div class="documentation-gridline-actions">
+                    <span id="status" class="status is-saved">Spremno</span>
+                    <button type="button" id="add-row" class="ghost-button">+ 20 redova</button>
+                    <button type="button" id="clear" class="ghost-button">Očisti</button>
+                    <button type="button" id="download" class="primary-button">Preuzmi JSON</button>
+                  </div>
+                </header>
+
+                <section class="documentation-gridline-formula" aria-label="Formula bar">
+                  <div id="cell-ref" class="cell-ref">A1</div>
+                  <input id="formula-input" type="text" autocomplete="off" spellcheck="false" placeholder="Vrijednost aktivne ćelije" />
+                </section>
+
+                <section class="documentation-gridline-shell" aria-label="Gridline editor">
+                  <div id="grid-scroll" class="documentation-gridline-scroll">
+                    <table id="grid" aria-label="Gridline tablica"></table>
+                  </div>
+                </section>
+              </section>
+            </section>
+
             <section id="signatures-module" class="signatures-module" hidden>
               <section class="panel signatures-hero-panel">
                 <div class="section-heading offers-section-heading">
@@ -10842,8 +10891,9 @@
 
     <script src="/assets/vendor/leaflet.js"></script>
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
+    <script src="/gridline.js?v=20260626-documentation-module"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260625-excel-perf-v2"></script>
+    <script type="module" src="/src/main.js?v=20260626-documentation-workbench-v1"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>
