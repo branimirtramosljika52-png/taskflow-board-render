@@ -20330,6 +20330,7 @@ body.is-work-order-document-category-open {
   min-height: min(820px, calc(100dvh - 28px));
   max-height: calc(100dvh - 20px);
   grid-template-columns: minmax(0, 1fr);
+  contain: layout paint style;
 }
 
 .measurement-quick-toolbar-row {
@@ -20367,6 +20368,7 @@ body.is-work-order-document-category-open {
   min-height: 260px;
   overflow: auto;
   padding: 2px 4px 6px 2px;
+  contain: layout paint style;
 }
 
 .measurement-quick-empty {
@@ -20389,6 +20391,7 @@ body.is-work-order-document-category-open {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 16px 34px rgba(31, 46, 78, 0.08);
+  contain: layout paint style;
 }
 
 .measurement-quick-floor-card {
@@ -20514,6 +20517,9 @@ body.is-work-order-document-category-open {
   background: linear-gradient(180deg, rgba(248, 251, 255, 0.96), rgba(255, 255, 255, 0.96));
   max-height: min(44vh, 430px);
   overflow: auto;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 620px 430px;
 }
 
 .measurement-quick-column-map-title {
@@ -20559,6 +20565,7 @@ body.is-work-order-document-category-open {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.92);
   transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  contain: layout paint style;
 }
 
 .measurement-quick-column-row.uses-custom {
@@ -47639,6 +47646,7 @@ body.is-measurement-equipment-export-open {
   border: 1px solid rgba(214, 89, 173, 0.24);
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(255, 251, 255, 0.98), rgba(248, 244, 252, 0.96));
+  contain: layout paint style;
 }
 
 .document-template-inline-excel-editor-toolbar {
@@ -47675,6 +47683,7 @@ body.is-measurement-equipment-export-open {
   border: 1px solid rgba(196, 168, 231, 0.35);
   border-radius: 12px;
   background: #fff;
+  contain: layout paint style;
 }
 
 .document-template-inline-excel-editor-summary {
@@ -47695,6 +47704,7 @@ body.is-measurement-equipment-export-open {
   min-width: 100%;
   border-collapse: collapse;
   font-size: 0.78rem;
+  contain: layout style;
 }
 
 .document-template-inline-excel-editor-grid thead th {
