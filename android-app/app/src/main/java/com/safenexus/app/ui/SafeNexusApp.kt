@@ -27749,6 +27749,28 @@ private fun MeasurementTableEditor(
         MeasurementCellSelection(0, columnIndex)
     }
     var selectedCell by remember(table.key, table.id) { mutableStateOf(initialSelection) }
+    var editingRowId by remember(table.key, table.id) { mutableStateOf("") }
+    var editingColumnId by remember(table.key, table.id) { mutableStateOf("") }
+    var editingValue by remember(table.key, table.id) { mutableStateOf("") }
+    fun sheetWithPendingCellValue(baseSheet: WorkOrderMeasurementSheet = sheet): WorkOrderMeasurementSheet {
+        if (editingRowId.isBlank() || editingColumnId.isBlank()) return baseSheet
+        val column = baseSheet.columns.firstOrNull { it.id == editingColumnId } ?: return baseSheet
+        if (!column.isEditableMeasurementColumn()) return baseSheet
+        val row = baseSheet.rows.firstOrNull { it.id == editingRowId } ?: return baseSheet
+        if (row.cells[editingColumnId].orEmpty() == editingValue) return baseSheet
+        return updateMeasurementSheetCell(baseSheet, editingRowId, editingColumnId, editingValue)
+    }
+    fun flushPendingCellValue(): WorkOrderMeasurementSheet {
+        val nextSheet = sheetWithPendingCellValue(sheet)
+        if (nextSheet != sheet) {
+            commitSheetChange(nextSheet)
+        }
+        return nextSheet
+    }
+    fun selectMeasurementCell(rowIndex: Int, columnIndex: Int) {
+        flushPendingCellValue()
+        selectedCell = MeasurementCellSelection(rowIndex, columnIndex)
+    }
     LaunchedEffect(sheet.rows.size, sheet.columns.size) {
         val safeRow = selectedCell.rowIndex.coerceIn(0, (sheet.rows.size - 1).coerceAtLeast(0))
         val safeColumn = selectedCell.columnIndex.coerceIn(0, (sheet.columns.size - 1).coerceAtLeast(0))
@@ -27769,6 +27791,20 @@ private fun MeasurementTableEditor(
     val selectedRequiresSpaceSelection = requireSpaceSelection && selectedColumn?.isPhysicalFactorsSpaceSelectorColumn() == true
     val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+    LaunchedEffect(selectedRow?.id.orEmpty(), selectedColumn?.id.orEmpty()) {
+        val nextSheet = sheetWithPendingCellValue(sheet)
+        if (nextSheet != sheet) {
+            commitSheetChange(nextSheet)
+        }
+        editingRowId = selectedRow?.id.orEmpty()
+        editingColumnId = selectedColumn?.id.orEmpty()
+        editingValue = selectedRaw
+    }
+    LaunchedEffect(editingRowId, editingColumnId, editingValue) {
+        if (editingRowId.isBlank() || editingColumnId.isBlank()) return@LaunchedEffect
+        delay(420)
+        flushPendingCellValue()
+    }
     if (quickFillOpen) {
         MeasurementQuickFillDialog(
             columns = if (requireSpaceSelection) {
@@ -27779,7 +27815,7 @@ private fun MeasurementTableEditor(
             enabled = enabled,
             onDismiss = { quickFillOpen = false },
             onApply = { draft ->
-                commitSheetChange(applyMeasurementQuickFill(sheet, draft))
+                commitSheetChange(applyMeasurementQuickFill(sheetWithPendingCellValue(sheet), draft))
                 extraRowWindow = extraRowWindow.coerceAtLeast(20)
                 quickFillOpen = false
             },
@@ -27860,6 +27896,7 @@ private fun MeasurementTableEditor(
                                     val row = selectedRow
                                     val column = selectedColumn
                                     if (row != null && column != null) {
+                                        editingValue = value
                                         commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
                                     }
                                 },
@@ -27867,12 +27904,10 @@ private fun MeasurementTableEditor(
                         }
                     } else {
                         OutlinedTextField(
-                            value = selectedRaw,
+                            value = editingValue,
                             onValueChange = { value ->
-                                val row = selectedRow
-                                val column = selectedColumn
-                                if (row != null && column != null && selectedEditable) {
-                                    commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                if (selectedEditable) {
+                                    editingValue = value
                                 }
                             },
                             modifier = Modifier.weight(1f),
@@ -27889,32 +27924,35 @@ private fun MeasurementTableEditor(
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     AssistChip(
-                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheet, 1)) },
+                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheetWithPendingCellValue(sheet), 1)) },
                         enabled = enabled,
                         label = { Text("+ Red") },
                     )
                     AssistChip(
-                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheet, 5)) },
+                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheetWithPendingCellValue(sheet), 5)) },
                         enabled = enabled,
                         label = { Text("+ 5") },
                     )
                     AssistChip(
-                        onClick = { quickFillOpen = true },
+                        onClick = {
+                            flushPendingCellValue()
+                            quickFillOpen = true
+                        },
                         enabled = enabled && visibleColumns.any { it.isEditableMeasurementColumn() },
                         label = { Text("Brzi unos") },
                     )
                     AssistChip(
-                        onClick = { commitSheetChange(duplicateLastMeasurementRow(sheet)) },
+                        onClick = { commitSheetChange(duplicateLastMeasurementRow(sheetWithPendingCellValue(sheet))) },
                         enabled = enabled,
                         label = { Text("Kopiraj zadnji") },
                     )
                     AssistChip(
-                        onClick = { commitSheetChange(fillMeasurementRowNumbers(sheet)) },
+                        onClick = { commitSheetChange(fillMeasurementRowNumbers(sheetWithPendingCellValue(sheet))) },
                         enabled = enabled,
                         label = { Text("R.br.") },
                     )
                     AssistChip(
-                        onClick = { commitSheetChange(appendMeasurementColumn(sheet)) },
+                        onClick = { commitSheetChange(appendMeasurementColumn(sheetWithPendingCellValue(sheet))) },
                         enabled = enabled,
                         label = { Text("+ Kolona") },
                     )
@@ -27945,11 +27983,12 @@ private fun MeasurementTableEditor(
                         formulaSeeds.forEach { seed ->
                             AssistChip(
                                 onClick = {
-                                    val nextValue = if (selectedRaw.trim().startsWith("=")) {
-                                        selectedRaw + seed + "("
+                                    val nextValue = if (editingValue.trim().startsWith("=")) {
+                                        editingValue + seed + "("
                                     } else {
                                         "=$seed("
                                     }
+                                    editingValue = nextValue
                                     commitSheetChange(updateMeasurementSheetCell(sheet, selectedRow.id, selectedColumn.id, nextValue))
                                 },
                                 enabled = enabled,
@@ -28000,6 +28039,7 @@ private fun MeasurementTableEditor(
                         ).forEach { (value, color) ->
                             AssistChip(
                                 onClick = {
+                                    editingValue = value
                                     commitSheetChange(
                                         updateMeasurementCellFill(
                                             updateMeasurementSheetCell(sheet, selectedRow.id, selectedColumn.id, value),
@@ -28014,19 +28054,19 @@ private fun MeasurementTableEditor(
                             )
                         }
                         MeasurementColorChip("Zelena", "#d9ead3", enabled) {
-                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#d9ead3"))
+                            commitSheetChange(updateMeasurementCellFill(sheetWithPendingCellValue(sheet), selectedRow.id, selectedColumn.id, "#d9ead3"))
                         }
                         MeasurementColorChip("Žuta", "#fff2cc", enabled) {
-                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#fff2cc"))
+                            commitSheetChange(updateMeasurementCellFill(sheetWithPendingCellValue(sheet), selectedRow.id, selectedColumn.id, "#fff2cc"))
                         }
                         MeasurementColorChip("Crvena", "#f4cccc", enabled) {
-                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#f4cccc"))
+                            commitSheetChange(updateMeasurementCellFill(sheetWithPendingCellValue(sheet), selectedRow.id, selectedColumn.id, "#f4cccc"))
                         }
                         MeasurementColorChip("Siva", "#eeeeee", enabled) {
-                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, "#eeeeee"))
+                            commitSheetChange(updateMeasurementCellFill(sheetWithPendingCellValue(sheet), selectedRow.id, selectedColumn.id, "#eeeeee"))
                         }
                         MeasurementColorChip("Bez", null, enabled) {
-                            commitSheetChange(updateMeasurementCellFill(sheet, selectedRow.id, selectedColumn.id, null))
+                            commitSheetChange(updateMeasurementCellFill(sheetWithPendingCellValue(sheet), selectedRow.id, selectedColumn.id, null))
                         }
                     }
                 }
@@ -28076,17 +28116,21 @@ private fun MeasurementTableEditor(
                                     MeasurementGridCell(
                                         column = column,
                                         displayValue = sheet.measurementCellDisplay(rowIndex, absoluteColumnIndex),
-                                        rawValue = row.cells[column.id].orEmpty(),
+                                        rawValue = if (selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex) {
+                                            editingValue
+                                        } else {
+                                            row.cells[column.id].orEmpty()
+                                        },
                                         cellFormat = row.formats[column.id],
                                         headerRow = sheet.headerRows.contains(row.id),
                                         selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex,
                                         enabled = enabled,
                                         onClick = {
-                                            selectedCell = MeasurementCellSelection(rowIndex, absoluteColumnIndex)
+                                            selectMeasurementCell(rowIndex, absoluteColumnIndex)
                                         },
                                         onChange = { value ->
                                             if (!(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn())) {
-                                                commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                                editingValue = value
                                             }
                                         },
                                         directEditable = !(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn()),

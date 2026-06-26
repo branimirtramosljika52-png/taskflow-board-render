@@ -13,13 +13,13 @@ android {
         applicationId = "com.safenexus.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 216
-        versionName = "0.1.216"
+        versionCode = 217
+        versionName = "0.1.217"
 
         buildConfigField(
             "String",
             "SAFE_NEXUS_BASE_URL",
-            "\"https://taskflow-board-do-cai56.ondigitalocean.app\"",
+            "\"https://www.safe-nexus.org\"",
         )
     }
 
