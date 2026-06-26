@@ -1,39 +1,225 @@
 (function () {
-  var STORAGE_KEY = "safenexus-gridline-standalone-v1";
-  var INITIAL_ROWS = 80;
-  var INITIAL_COLUMNS = 14;
+  var GLOBAL_NAME = "SafeNexusGridline";
+  var DEFAULT_STORAGE_KEY = "safenexus-gridline-standalone-v1";
+  var DEFAULT_ROWS = 80;
+  var DEFAULT_COLUMNS = 14;
+  var MIN_ROWS = 1;
+  var MAX_ROWS = 1000;
+  var MIN_COLUMNS = 1;
+  var MAX_COLUMNS = 60;
 
-  function start() {
-    var grid = document.querySelector("#grid");
-    var status = document.querySelector("#status");
-    var formulaInput = document.querySelector("#formula-input");
-    var cellRef = document.querySelector("#cell-ref");
-    var addRowButton = document.querySelector("#add-row");
-    var clearButton = document.querySelector("#clear");
-    var downloadButton = document.querySelector("#download");
+  function clampInteger(value, fallback, min, max) {
+    var numeric = Math.round(Number(value));
+    if (!Number.isFinite(numeric)) {
+      numeric = fallback;
+    }
+    return Math.max(min, Math.min(max, numeric));
+  }
 
-    if (!grid || !status || !formulaInput || !cellRef) {
+  function clearNode(node) {
+    while (node && node.firstChild) {
+      node.removeChild(node.firstChild);
+    }
+  }
+
+  function columnLabel(index) {
+    var label = "";
+    var current = index + 1;
+    var mod;
+    while (current > 0) {
+      mod = (current - 1) % 26;
+      label = String.fromCharCode(65 + mod) + label;
+      current = Math.floor((current - mod) / 26);
+    }
+    return label;
+  }
+
+  function cellKey(row, column) {
+    return row + ":" + column;
+  }
+
+  function normalizeDataMap(value) {
+    var source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var data = Object.create(null);
+    Object.keys(source).forEach(function (key) {
+      var match = /^(\d+):(\d+)$/.exec(key);
+      var nextValue;
+      if (!match) {
+        return;
+      }
+      nextValue = String(source[key] == null ? "" : source[key]);
+      if (nextValue) {
+        data[Number(match[1]) + ":" + Number(match[2])] = nextValue;
+      }
+    });
+    return data;
+  }
+
+  function createDefaultModel(options) {
+    var rowCount = clampInteger(
+      options && (options.rowCount || options.defaultRows),
+      DEFAULT_ROWS,
+      MIN_ROWS,
+      MAX_ROWS
+    );
+    var columnCount = clampInteger(
+      options && (options.columnCount || options.defaultColumns),
+      DEFAULT_COLUMNS,
+      MIN_COLUMNS,
+      MAX_COLUMNS
+    );
+    return {
+      rowCount: rowCount,
+      columnCount: columnCount,
+      data: Object.create(null),
+    };
+  }
+
+  function rowsToModel(rows, options) {
+    var source = Array.isArray(rows) ? rows : [];
+    var rowCount = clampInteger(
+      options && options.rowCount,
+      Math.max(source.length, options && options.defaultRows ? options.defaultRows : 5),
+      MIN_ROWS,
+      MAX_ROWS
+    );
+    var columnCount = clampInteger(
+      options && options.columnCount,
+      Math.max(
+        source.reduce(function (max, row) {
+          return Math.max(max, Array.isArray(row) ? row.length : 0);
+        }, 0),
+        options && options.defaultColumns ? options.defaultColumns : 3
+      ),
+      MIN_COLUMNS,
+      MAX_COLUMNS
+    );
+    var data = Object.create(null);
+
+    source.slice(0, rowCount).forEach(function (row, rowIndex) {
+      if (!Array.isArray(row)) {
+        return;
+      }
+      row.slice(0, columnCount).forEach(function (value, columnIndex) {
+        var text = String(value == null ? "" : value);
+        if (text) {
+          data[cellKey(rowIndex, columnIndex)] = text;
+        }
+      });
+    });
+
+    return {
+      rowCount: rowCount,
+      columnCount: columnCount,
+      data: data,
+    };
+  }
+
+  function modelToRows(model, options) {
+    var normalized = normalizeModel(model, options);
+    return Array.from({ length: normalized.rowCount }, function (_, rowIndex) {
+      return Array.from({ length: normalized.columnCount }, function (_, columnIndex) {
+        return normalized.data[cellKey(rowIndex, columnIndex)] || "";
+      });
+    });
+  }
+
+  function normalizeModel(value, options) {
+    var source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var fallbackRows = options && options.defaultRows ? options.defaultRows : DEFAULT_ROWS;
+    var fallbackColumns = options && options.defaultColumns ? options.defaultColumns : DEFAULT_COLUMNS;
+    var rowCount = clampInteger(source.rowCount, fallbackRows, MIN_ROWS, MAX_ROWS);
+    var columnCount = clampInteger(source.columnCount, fallbackColumns, MIN_COLUMNS, MAX_COLUMNS);
+    var data = normalizeDataMap(source.data);
+
+    Object.keys(data).forEach(function (key) {
+      var parts = key.split(":");
+      var row = Number(parts[0]);
+      var column = Number(parts[1]);
+      if (row >= rowCount || column >= columnCount) {
+        delete data[key];
+      }
+    });
+
+    return {
+      rowCount: rowCount,
+      columnCount: columnCount,
+      data: data,
+    };
+  }
+
+  function cloneModel(model) {
+    return {
+      rowCount: model.rowCount,
+      columnCount: model.columnCount,
+      data: Object.assign(Object.create(null), model.data),
+    };
+  }
+
+  function getClosestCellInput(target) {
+    if (!target || typeof target.closest !== "function") {
+      return null;
+    }
+    return target.closest("input.cell");
+  }
+
+  function resolveElement(root, selector, fallbackSelector) {
+    if (!root || typeof root.querySelector !== "function") {
+      return null;
+    }
+    return root.querySelector(selector) || (fallbackSelector ? root.querySelector(fallbackSelector) : null);
+  }
+
+  function readStoredModel(storageKey, options) {
+    if (!storageKey || !window.localStorage) {
+      return null;
+    }
+    try {
+      return normalizeModel(JSON.parse(window.localStorage.getItem(storageKey) || "null"), options);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeStoredModel(storageKey, model) {
+    if (!storageKey || !window.localStorage) {
       return;
     }
+    window.localStorage.setItem(storageKey, JSON.stringify(cloneModel(model)));
+  }
 
-    var rowCount = INITIAL_ROWS;
-    var columnCount = INITIAL_COLUMNS;
-    var data = Object.create(null);
+  function mount(root, options) {
+    var host = root && root.nodeType === 9 ? root : root || document;
+    var grid = resolveElement(host, "[data-gridline-role='grid']", "#grid");
+    var status = resolveElement(host, "[data-gridline-role='status']", "#status");
+    var formulaInput = resolveElement(host, "[data-gridline-role='formula']", "#formula-input");
+    var cellRef = resolveElement(host, "[data-gridline-role='cell-ref']", "#cell-ref");
+    var addRowButton = resolveElement(host, "[data-gridline-action='add-row']", "#add-row");
+    var addColumnButton = resolveElement(host, "[data-gridline-action='add-column']", "#add-column");
+    var clearButton = resolveElement(host, "[data-gridline-action='clear']", "#clear");
+    var downloadButton = resolveElement(host, "[data-gridline-action='download']", "#download");
+    var rootElement = grid ? grid.closest("[data-gridline-instance]") || host : host;
+    var model;
     var active = { row: 0, column: 0 };
     var saveTimer = 0;
+    var saveDelay = clampInteger(options && options.saveDelayMs, 450, 0, 60000);
+    var storageKey = options && Object.prototype.hasOwnProperty.call(options, "storageKey")
+      ? options.storageKey
+      : (rootElement && rootElement.dataset ? rootElement.dataset.gridlineStorageKey : "") || DEFAULT_STORAGE_KEY;
+    var onChange = options && typeof options.onChange === "function" ? options.onChange : null;
+    var autoGrow = !(options && options.autoGrow === false);
 
-    function clearNode(node) {
-      while (node.firstChild) {
-        node.removeChild(node.firstChild);
-      }
+    if (!grid || !status || !formulaInput || !cellRef) {
+      return null;
     }
 
-    function getClosestCellInput(target) {
-      if (!target || typeof target.closest !== "function") {
-        return null;
-      }
-      return target.closest("input.cell");
+    if (rootElement && rootElement.__safeNexusGridlineDestroy) {
+      rootElement.__safeNexusGridlineDestroy();
     }
+
+    model = options && options.model
+      ? normalizeModel(options.model, options)
+      : (readStoredModel(storageKey, options) || createDefaultModel(options));
 
     function setStatus(text, className) {
       status.textContent = text;
@@ -41,11 +227,11 @@
     }
 
     function showGridError(error) {
-      clearNode(grid);
       var tbody = document.createElement("tbody");
       var tr = document.createElement("tr");
       var td = document.createElement("td");
       var box = document.createElement("div");
+      clearNode(grid);
       td.colSpan = 2;
       box.className = "grid-error";
       box.textContent = "Grid se nije mogao nacrtati na ovom browseru: " + (error && error.message ? error.message : "nepoznata greska");
@@ -56,59 +242,17 @@
       setStatus("Greska prikaza", "is-saving");
     }
 
-    function columnLabel(index) {
-      var label = "";
-      var current = index + 1;
-      var mod;
-      while (current > 0) {
-        mod = (current - 1) % 26;
-        label = String.fromCharCode(65 + mod) + label;
-        current = Math.floor((current - mod) / 26);
-      }
-      return label;
-    }
-
-    function key(row, column) {
-      return row + ":" + column;
-    }
-
     function getValue(row, column) {
-      return data[key(row, column)] || "";
+      return model.data[cellKey(row, column)] || "";
     }
 
     function setValue(row, column, value) {
-      var id = key(row, column);
-      var next = String(value || "");
+      var key = cellKey(row, column);
+      var next = String(value == null ? "" : value);
       if (next) {
-        data[id] = next;
+        model.data[key] = next;
       } else {
-        delete data[id];
-      }
-    }
-
-    function scheduleSave() {
-      setStatus("Lokalna izmjena", "is-saving");
-      if (saveTimer) {
-        window.clearTimeout(saveTimer);
-      }
-      saveTimer = window.setTimeout(function () {
-        saveTimer = 0;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ rowCount: rowCount, columnCount: columnCount, data: data }));
-        setStatus("Spremljeno lokalno", "is-saved");
-      }, 450);
-    }
-
-    function load() {
-      var saved;
-      try {
-        saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-        if (saved && typeof saved === "object") {
-          rowCount = Math.max(INITIAL_ROWS, Number(saved.rowCount) || INITIAL_ROWS);
-          columnCount = Math.max(INITIAL_COLUMNS, Number(saved.columnCount) || INITIAL_COLUMNS);
-          data = saved.data && typeof saved.data === "object" ? Object.assign(Object.create(null), saved.data) : Object.create(null);
-        }
-      } catch (error) {
-        data = Object.create(null);
+        delete model.data[key];
       }
     }
 
@@ -116,13 +260,52 @@
       return grid.querySelector('input[data-row="' + row + '"][data-column="' + column + '"]');
     }
 
-    function selectCell(row, column, options) {
-      var focus = !options || options.focus !== false;
+    function emitChange() {
+      if (onChange) {
+        onChange(cloneModel(model));
+      }
+    }
+
+    function scheduleSave() {
+      setStatus(storageKey ? "Lokalna izmjena" : "Izmjena", "is-saving");
+      emitChange();
+      if (saveTimer) {
+        window.clearTimeout(saveTimer);
+      }
+      saveTimer = window.setTimeout(function () {
+        saveTimer = 0;
+        writeStoredModel(storageKey, model);
+        setStatus(storageKey ? "Spremljeno lokalno" : "Spremno", "is-saved");
+      }, saveDelay);
+    }
+
+    function ensureSize(row, column) {
+      var nextRowCount = model.rowCount;
+      var nextColumnCount = model.columnCount;
+      if (!autoGrow) {
+        return false;
+      }
+      if (row >= nextRowCount) {
+        nextRowCount = clampInteger(row + 1, nextRowCount, MIN_ROWS, MAX_ROWS);
+      }
+      if (column >= nextColumnCount) {
+        nextColumnCount = clampInteger(column + 1, nextColumnCount, MIN_COLUMNS, MAX_COLUMNS);
+      }
+      if (nextRowCount === model.rowCount && nextColumnCount === model.columnCount) {
+        return false;
+      }
+      model.rowCount = nextRowCount;
+      model.columnCount = nextColumnCount;
+      return true;
+    }
+
+    function selectCell(row, column, selectOptions) {
+      var focus = !selectOptions || selectOptions.focus !== false;
       var input;
       var td;
       active = {
-        row: Math.max(0, Math.min(rowCount - 1, row)),
-        column: Math.max(0, Math.min(columnCount - 1, column)),
+        row: Math.max(0, Math.min(model.rowCount - 1, row)),
+        column: Math.max(0, Math.min(model.columnCount - 1, column)),
       };
       Array.prototype.forEach.call(grid.querySelectorAll("td.is-selected"), function (cell) {
         cell.classList.remove("is-selected");
@@ -156,7 +339,7 @@
 
       corner.className = "corner";
       headRow.appendChild(corner);
-      for (column = 0; column < columnCount; column += 1) {
+      for (column = 0; column < model.columnCount; column += 1) {
         th = document.createElement("th");
         th.textContent = columnLabel(column);
         headRow.appendChild(th);
@@ -164,12 +347,12 @@
       thead.appendChild(headRow);
       fragment.appendChild(thead);
 
-      for (row = 0; row < rowCount; row += 1) {
+      for (row = 0; row < model.rowCount; row += 1) {
         tr = document.createElement("tr");
         rowHead = document.createElement("th");
         rowHead.textContent = String(row + 1);
         tr.appendChild(rowHead);
-        for (column = 0; column < columnCount; column += 1) {
+        for (column = 0; column < model.columnCount; column += 1) {
           td = document.createElement("td");
           td.dataset.row = String(row);
           td.dataset.column = String(column);
@@ -194,6 +377,7 @@
     function handlePaste(event) {
       var text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
       var rows;
+      var changedSize = false;
       if (text.indexOf("\t") === -1 && text.indexOf("\n") === -1) {
         return;
       }
@@ -206,7 +390,10 @@
           var row = active.row + rowOffset;
           var column = active.column + columnOffset;
           var input;
-          if (row >= rowCount || column >= columnCount) {
+          if (row >= model.rowCount || column >= model.columnCount) {
+            changedSize = ensureSize(row, column) || changedSize;
+          }
+          if (row >= model.rowCount || column >= model.columnCount) {
             return;
           }
           setValue(row, column, value);
@@ -216,19 +403,22 @@
           }
         });
       });
+      if (changedSize) {
+        render();
+      }
       formulaInput.value = getValue(active.row, active.column);
       scheduleSave();
     }
 
-    grid.addEventListener("focusin", function (event) {
+    function handleFocusIn(event) {
       var input = getClosestCellInput(event.target);
       if (!input) {
         return;
       }
       selectCell(Number(input.dataset.row), Number(input.dataset.column), { focus: false });
-    });
+    }
 
-    grid.addEventListener("input", function (event) {
+    function handleInput(event) {
       var input = getClosestCellInput(event.target);
       var row;
       var column;
@@ -242,14 +432,17 @@
         formulaInput.value = input.value;
       }
       scheduleSave();
-    });
+    }
 
-    grid.addEventListener("keydown", function (event) {
+    function handleKeydown(event) {
       var input = getClosestCellInput(event.target);
       var row;
       var column;
       function move(nextRow, nextColumn) {
         event.preventDefault();
+        if (ensureSize(nextRow, nextColumn)) {
+          render();
+        }
         selectCell(nextRow, nextColumn);
       }
       if (!input) {
@@ -266,11 +459,9 @@
       } else if (event.key === "ArrowUp" && input.selectionStart === 0) {
         move(row - 1, column);
       }
-    });
+    }
 
-    grid.addEventListener("paste", handlePaste);
-
-    formulaInput.addEventListener("input", function () {
+    function handleFormulaInput() {
       var input;
       setValue(active.row, active.column, formulaInput.value);
       input = getInput(active.row, active.column);
@@ -278,53 +469,126 @@
         input.value = formulaInput.value;
       }
       scheduleSave();
-    });
+    }
 
+    function addRows(count) {
+      model.rowCount = clampInteger(model.rowCount + count, model.rowCount, MIN_ROWS, MAX_ROWS);
+      render();
+      scheduleSave();
+    }
+
+    function addColumns(count) {
+      model.columnCount = clampInteger(model.columnCount + count, model.columnCount, MIN_COLUMNS, MAX_COLUMNS);
+      render();
+      scheduleSave();
+    }
+
+    function clearGrid() {
+      if (!confirm("Ocistiti cijelu tablicu?")) {
+        return;
+      }
+      model.data = Object.create(null);
+      active = { row: 0, column: 0 };
+      render();
+      scheduleSave();
+    }
+
+    function downloadJson() {
+      var blob = new Blob([JSON.stringify(cloneModel(model), null, 2)], {
+        type: "application/json",
+      });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "safenexus-gridline.json";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    grid.addEventListener("focusin", handleFocusIn);
+    grid.addEventListener("input", handleInput);
+    grid.addEventListener("keydown", handleKeydown);
+    grid.addEventListener("paste", handlePaste);
+    formulaInput.addEventListener("input", handleFormulaInput);
     if (addRowButton) {
-      addRowButton.addEventListener("click", function () {
-        rowCount += 20;
-        render();
-        scheduleSave();
-      });
+      addRowButton.addEventListener("click", function () { addRows(20); });
     }
-
+    if (addColumnButton) {
+      addColumnButton.addEventListener("click", function () { addColumns(4); });
+    }
     if (clearButton) {
-      clearButton.addEventListener("click", function () {
-        if (!confirm("Ocistiti cijelu tablicu?")) {
-          return;
-        }
-        data = Object.create(null);
-        active = { row: 0, column: 0 };
-        render();
-        scheduleSave();
-      });
+      clearButton.addEventListener("click", clearGrid);
     }
-
     if (downloadButton) {
-      downloadButton.addEventListener("click", function () {
-        var blob = new Blob([JSON.stringify({ rowCount: rowCount, columnCount: columnCount, data: data }, null, 2)], {
-          type: "application/json",
-        });
-        var url = URL.createObjectURL(blob);
-        var link = document.createElement("a");
-        link.href = url;
-        link.download = "safenexus-gridline.json";
-        link.click();
-        URL.revokeObjectURL(url);
-      });
+      downloadButton.addEventListener("click", downloadJson);
     }
 
-    load();
+    function destroy() {
+      if (saveTimer) {
+        window.clearTimeout(saveTimer);
+        saveTimer = 0;
+      }
+      grid.removeEventListener("focusin", handleFocusIn);
+      grid.removeEventListener("input", handleInput);
+      grid.removeEventListener("keydown", handleKeydown);
+      grid.removeEventListener("paste", handlePaste);
+      formulaInput.removeEventListener("input", handleFormulaInput);
+      if (rootElement) {
+        rootElement.__safeNexusGridlineDestroy = null;
+      }
+    }
+
     try {
       render();
+      setStatus(storageKey ? "Spremljeno lokalno" : "Spremno", "is-saved");
     } catch (error) {
       showGridError(error);
     }
+
+    if (rootElement) {
+      rootElement.__safeNexusGridlineDestroy = destroy;
+    }
+
+    return {
+      destroy: destroy,
+      getModel: function () { return cloneModel(model); },
+      setModel: function (nextModel) {
+        model = normalizeModel(nextModel, options);
+        render();
+        emitChange();
+      },
+      addRows: addRows,
+      addColumns: addColumns,
+    };
   }
 
+  function autoStart() {
+    var standaloneGrid = document.querySelector("#grid");
+    if (standaloneGrid) {
+      mount(document, {
+        defaultRows: DEFAULT_ROWS,
+        defaultColumns: DEFAULT_COLUMNS,
+      });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll("[data-gridline-auto='true']"), function (root) {
+      mount(root, {
+        storageKey: root.dataset.gridlineStorageKey || "",
+      });
+    });
+  }
+
+  window[GLOBAL_NAME] = {
+    mount: mount,
+    normalizeModel: normalizeModel,
+    createDefaultModel: createDefaultModel,
+    rowsToModel: rowsToModel,
+    modelToRows: modelToRows,
+    columnLabel: columnLabel,
+  };
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start);
+    document.addEventListener("DOMContentLoaded", autoStart);
   } else {
-    start();
+    autoStart();
   }
 })();

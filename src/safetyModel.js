@@ -2769,6 +2769,50 @@ function normalizeDocumentTemplateGridlineRows(value = []) {
   return Array.from({ length: 5 }, () => ["", "", ""]);
 }
 
+function normalizeDocumentTemplateGridlineModel(value = null, fallbackRows = []) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const fallbackRowData = normalizeDocumentTemplateGridlineRows(fallbackRows);
+  const rowCount = Math.max(1, Math.min(1000, Math.round(normalizeFiniteNumber(source.rowCount, Math.max(24, fallbackRowData.length || 24)))));
+  const columnCount = Math.max(1, Math.min(60, Math.round(normalizeFiniteNumber(source.columnCount, Math.max(8, fallbackRowData[0]?.length || 8)))));
+  const dataSource = source.data && typeof source.data === "object" && !Array.isArray(source.data)
+    ? source.data
+    : {};
+  const data = {};
+
+  Object.entries(dataSource).forEach(([key, rawValue]) => {
+    const match = /^(\d+):(\d+)$/.exec(String(key || ""));
+    if (!match) {
+      return;
+    }
+    const row = Number(match[1]);
+    const column = Number(match[2]);
+    if (row < 0 || row >= rowCount || column < 0 || column >= columnCount) {
+      return;
+    }
+    const valueText = normalizeText(rawValue).slice(0, 2000);
+    if (valueText) {
+      data[`${row}:${column}`] = valueText;
+    }
+  });
+
+  if (Object.keys(data).length === 0 && fallbackRowData.length > 0) {
+    fallbackRowData.slice(0, rowCount).forEach((row, rowIndex) => {
+      row.slice(0, columnCount).forEach((rawValue, columnIndex) => {
+        const valueText = normalizeText(rawValue).slice(0, 2000);
+        if (valueText) {
+          data[`${rowIndex}:${columnIndex}`] = valueText;
+        }
+      });
+    });
+  }
+
+  return {
+    rowCount,
+    columnCount,
+    data,
+  };
+}
+
 function normalizeDocumentTemplateFields(fields = []) {
   const source = Array.isArray(fields) ? fields : [];
   const seenKeys = new Set();
@@ -2863,6 +2907,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       gridlineRows: type === "gridline"
         ? normalizeDocumentTemplateGridlineRows(field?.gridlineRows ?? field?.rows ?? [])
         : [],
+      gridlineModel: type === "gridline"
+        ? normalizeDocumentTemplateGridlineModel(field?.gridlineModel ?? field?.gridline ?? null, field?.gridlineRows ?? field?.rows ?? [])
+        : null,
       columns: type === "measurement_table"
         ? (normalizedSheet?.columns?.map((column) => column.label).filter(Boolean).slice(0, 16)
           ?? (columns.length > 0 ? columns.slice(0, 16) : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]))
