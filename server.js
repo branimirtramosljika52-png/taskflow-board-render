@@ -34612,7 +34612,10 @@ const server = createServer(async (request, response) => {
 
   if ((request.method === "GET" || request.method === "HEAD")
     && ["/apk", "/download-apk", "/mobile/apk"].includes(url.pathname)) {
-    redirect(response, `/SafeNexus.apk?v=${encodeURIComponent(MOBILE_ANDROID_APK_VERSION_LABEL)}`, 302);
+    await writeAndroidApkDownload(response, {
+      contentType: "application/octet-stream",
+      fileName: MOBILE_ANDROID_APK_PUBLIC_FILE_NAME,
+    });
     return;
   }
 
