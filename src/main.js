@@ -2653,6 +2653,7 @@ const state = {
     trainingBusy: false,
     isznrWorkEquipment: {},
     isznrWorkEnvironment: {},
+    sprRecordSources: {},
   },
   workOrderBatch: {
     pending: false,
@@ -58443,6 +58444,331 @@ function getDocumentationSprBatchGroups(workOrders = []) {
   return getDocumentationSprBatchGroupsFromEntries(getDocumentationSprBatchEntriesForWorkOrders(workOrders));
 }
 
+function getDocumentationSprBatchEntrySourceKey(entry = {}) {
+  const workOrderId = String(entry.workOrderId || entry.workOrder?.id || entry.workOrder?.workOrderNumber || "").trim();
+  const serviceKey = String(entry.serviceKey || getDocumentationSprServiceBindingKey(entry.serviceBinding) || entry.id || "").trim();
+  return [workOrderId || "rn", serviceKey || "service"].join("::");
+}
+
+function getDocumentationSprPreviousRecordSourceState(entry = {}) {
+  const key = getDocumentationSprBatchEntrySourceKey(entry);
+  return key
+    ? state.workOrderDocumentWizard.sprRecordSources?.[key] ?? null
+    : null;
+}
+
+function setDocumentationSprPreviousRecordSourceState(entry = {}, nextState = {}) {
+  const key = getDocumentationSprBatchEntrySourceKey(entry);
+  if (!key) {
+    return;
+  }
+  state.workOrderDocumentWizard.sprRecordSources = {
+    ...(state.workOrderDocumentWizard.sprRecordSources ?? {}),
+    [key]: nextState,
+  };
+}
+
+function getDocumentationSprRecordSourceSearchText(record = {}) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  return [
+    record.templateTitle,
+    record.documentType,
+    record.title,
+    record.documentTitle,
+    record.recordNumber,
+    fieldValues.SERVICE_CODE,
+    fieldValues.WORK_ORDER_SERVICE_CODE,
+    fieldValues.USLUGA_SIFRA,
+    fieldValues.SERVICE_NAME,
+    fieldValues.WORK_ORDER_SERVICE_NAME,
+    fieldValues.USLUGA_NAZIV,
+    fieldValues.SPR_SERVICE_CODE,
+    fieldValues.DOCUMENTATION_SPR_SERVICE_CODE,
+    fieldValues.DOCUMENTATION_SPR_SERVICE_NAME,
+    fieldValues.DOCUMENTATION_SPR_RECORD_NUMBER,
+    fieldValues.RECORD_NUMBER,
+    fieldValues.BROJ_ZAPISNIKA,
+  ].map((value) => String(value || "")).join(" ");
+}
+
+function scoreDocumentationSprPreviousRecord(entry = {}, record = {}) {
+  const sourceText = normalizeLooseName(getDocumentationSprRecordSourceSearchText(record));
+  if (!sourceText) {
+    return 0;
+  }
+  const serviceCode = normalizeLooseName(entry.serviceCode || entry.serviceBinding?.serviceCode || "");
+  const serviceName = normalizeLooseName(entry.serviceName || entry.serviceBinding?.serviceName || "");
+  let score = 0;
+  if (serviceCode && sourceText.includes(serviceCode)) {
+    score += 80;
+  }
+  if (serviceName && sourceText.includes(serviceName)) {
+    score += 50;
+  }
+  if (sourceText.includes("spr")) {
+    score += 35;
+  }
+  if (sourceText.includes("panik") || sourceText.includes("sigurnosna rasvjeta")) {
+    score += 35;
+  }
+  if (record?.fieldSheets && Object.keys(record.fieldSheets).length > 0) {
+    score += 10;
+  }
+  return score;
+}
+
+function findDocumentationSprPreviousRecord(entry = {}, records = []) {
+  return (Array.isArray(records) ? records : [])
+    .map((record, index) => ({
+      record,
+      index,
+      score: scoreDocumentationSprPreviousRecord(entry, record),
+      date: getDocumentTemplatePreviousRecordDateValue(record),
+    }))
+    .filter((candidate) => candidate.score >= 35)
+    .sort((left, right) => (
+      right.score - left.score
+      || String(right.date || "").localeCompare(String(left.date || ""))
+      || left.index - right.index
+    ))
+    [0]?.record || null;
+}
+
+function getDocumentationSprPreviousRecordFieldValue(record = {}, keys = []) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  const normalizedKeys = (Array.isArray(keys) ? keys : [])
+    .map((key) => normalizeLooseName(key))
+    .filter(Boolean);
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(fieldValues, key)) {
+      return fieldValues[key];
+    }
+  }
+  for (const [key, value] of Object.entries(fieldValues)) {
+    if (normalizedKeys.includes(normalizeLooseName(key))) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function getDocumentationSprPreviousRecordSheet(record = {}) {
+  const directGridline = getDocumentationSprPreviousRecordFieldValue(record, [
+    "DOCUMENTATION_SPR_GRIDLINE_MODEL",
+    "SPR_GRIDLINE_MODEL",
+    "GRIDLINE_MODEL",
+  ]);
+  if (directGridline && typeof directGridline === "object") {
+    return directGridline;
+  }
+  const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
+    ? record.fieldSheets
+    : {};
+  const entries = Object.entries(fieldSheets);
+  if (entries.length === 0) {
+    return null;
+  }
+  const preferred = entries.find(([key]) => {
+    const normalizedKey = normalizeLooseName(key);
+    return normalizedKey.includes("spr")
+      || normalizedKey.includes("mjeren")
+      || normalizedKey.includes("measurement")
+      || normalizedKey.includes("tablica")
+      || normalizedKey.includes("grid");
+  }) || entries[0];
+  return preferred?.[1] || null;
+}
+
+function buildDocumentationSprGridlineModelFromPreviousSheet(sheet = null) {
+  const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+  if (sheet && typeof sheet === "object" && !Array.isArray(sheet) && sheet.data && sheet.rowCount && sheet.columnCount) {
+    return normalizeDocumentationSprGridlineModel(sheet);
+  }
+  const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalizedSheet) {
+    return null;
+  }
+  const columns = normalizedSheet.columns.filter((column) => !column.computed);
+  if (columns.length === 0) {
+    return null;
+  }
+  const rows = [
+    columns.map((column) => column.label || column.id || ""),
+    columns.map((column) => column.placeholder || ""),
+    ...normalizedSheet.rows.map((row, rowIndex) => (
+      columns.map((column, columnIndex) => {
+        const value = String(row.cells?.[column.id] ?? "").trim();
+        return columnIndex === 0 && !value ? String(rowIndex + 1) : value;
+      })
+    )),
+  ];
+  if (gridlineApi?.rowsToModel) {
+    return gridlineApi.rowsToModel(rows, {
+      defaultRows: DOCUMENTATION_SPR_GRID_ROW_COUNT,
+      defaultColumns: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+    });
+  }
+  return buildDocumentationSprGridlineModelFromRows(rows);
+}
+
+function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, record = null) {
+  if (!record) {
+    return model;
+  }
+  const next = { ...model };
+  const fieldText = (keys) => {
+    const value = getDocumentationSprPreviousRecordFieldValue(record, keys);
+    return typeof value === "string" || typeof value === "number" ? String(value || "").trim() : "";
+  };
+  const previousLabel = buildDocumentTemplatePreviousRecordCandidateLabel(record);
+  const previousSheet = getDocumentationSprPreviousRecordSheet(record);
+  const previousGridlineModel = buildDocumentationSprGridlineModelFromPreviousSheet(previousSheet);
+  if (previousGridlineModel) {
+    next.gridlineModel = previousGridlineModel;
+  }
+  next.projectDocumentation = fieldText(["PROJECT_DOCUMENTATION", "KORISTENA_DOKUMENTACIJA", "TEHNICKA_DOKUMENTACIJA"])
+    || next.projectDocumentation
+    || `Prethodni zapisnik ${previousLabel}`;
+  next.resultsText = fieldText([
+    "DOCUMENTATION_SPR_RESULTS_TEXT",
+    "SPR_RESULTS_TEXT",
+    "RESULTS_TEXT",
+    "MEASUREMENT_RESULTS",
+    "OPIS_SUSTAVA",
+    "OPIS_ISPITIVANJA",
+    "REZULTATI_ISPITIVANJA",
+    "SYSTEM_DESCRIPTION",
+  ])
+    || next.resultsText;
+  next.resultStatus = fieldText(["DOCUMENTATION_SPR_RESULT_STATUS", "SPR_RESULT_STATUS", "RESULT_STATUS", "ZAKLJUCNA_OCJENA", "OCJENA", "ZADOVOLJAVA"])
+    || next.resultStatus;
+  next.defects = fieldText(["DOCUMENTATION_SPR_DEFECTS", "SPR_DEFECTS", "DEFECTS", "NEDOSTACI"])
+    || next.defects;
+  next.recommendations = fieldText(["DOCUMENTATION_SPR_RECOMMENDATIONS", "SPR_RECOMMENDATIONS", "RECOMMENDATIONS", "PREPORUKE"])
+    || next.recommendations;
+  next.sourceType = "previous_inspection";
+  next.sourceRecordId = String(record.id || "").trim();
+  next.sourceRecordLabel = previousLabel;
+  next.sourceRecordWorkOrderNumber = getDocumentTemplatePreviousRecordWorkOrderNumber(record);
+  void entry;
+  return next;
+}
+
+function applyDocumentationSprPreviousRecordSourcesToEntries(entries = []) {
+  return (Array.isArray(entries) ? entries : []).map((entry) => {
+    const sourceState = getDocumentationSprPreviousRecordSourceState(entry);
+    const record = sourceState?.record || null;
+    if (!record) {
+      return entry;
+    }
+    const template = entry.templateId
+      ? getDocumentationSprTemplateById(entry.templateId)
+      : getDocumentationSprTemplateForService(entry.service);
+    const baseModel = entry.model
+      ? mergeDocumentationSprModelWithWorkOrderContext(entry.model, entry.workOrder, entry.service, template)
+      : buildDocumentationSprModelFromWorkOrderService(entry.workOrder, entry.service, template);
+    const withContext = mergeDocumentationSprModelWithWorkOrderContext(baseModel, entry.workOrder, entry.service, template);
+    entry.model = cloneDocumentationSprModelForBatch(applyDocumentationSprPreviousRecordToModel(withContext, entry, record));
+    entry.sourceType = "previous_inspection";
+    entry.sourceRecordId = String(record.id || "").trim();
+    entry.sourceRecordLabel = sourceState.label || buildDocumentTemplatePreviousRecordCandidateLabel(record);
+    return entry;
+  });
+}
+
+async function ensureDocumentationSprPreviousRecordSourceForEntry(entry = {}, { render = false } = {}) {
+  const key = getDocumentationSprBatchEntrySourceKey(entry);
+  if (!key || !entry?.workOrder?.companyId || !entry?.workOrder?.locationId) {
+    return null;
+  }
+  const current = getDocumentationSprPreviousRecordSourceState(entry);
+  if (current?.status === "loading" || current?.status === "loaded") {
+    return current;
+  }
+
+  setDocumentationSprPreviousRecordSourceState(entry, { status: "loading", record: null, label: "", error: "" });
+  if (render && state.workOrderDocumentWizard.open) {
+    renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+  }
+
+  try {
+    const objectId = String(
+      entry.workOrder.objectId
+      || entry.workOrder.locationObjectId
+      || getDocumentationSprWorkOrderObject(entry.workOrder)?.id
+      || "",
+    ).trim();
+    const objectQuery = objectId ? `&objectId=${encodeURIComponent(objectId)}` : "";
+    const payload = await apiRequest(
+      `/document-records?companyId=${encodeURIComponent(String(entry.workOrder.companyId || "").trim())}&locationId=${encodeURIComponent(String(entry.workOrder.locationId || "").trim())}${objectQuery}&limit=24&periodics=1`,
+    );
+    const records = Array.isArray(payload?.items) ? payload.items : [];
+    const record = findDocumentationSprPreviousRecord(entry, records);
+    const nextState = {
+      status: "loaded",
+      record,
+      label: record ? buildDocumentTemplatePreviousRecordCandidateLabel(record) : "Predložak",
+      error: "",
+    };
+    setDocumentationSprPreviousRecordSourceState(entry, nextState);
+    return nextState;
+  } catch (error) {
+    const nextState = {
+      status: "error",
+      record: null,
+      label: "Predložak",
+      error: error?.message || "Ne mogu učitati prethodne zapisnike.",
+    };
+    setDocumentationSprPreviousRecordSourceState(entry, nextState);
+    return nextState;
+  } finally {
+    if (render && state.workOrderDocumentWizard.open) {
+      renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+      renderWorkOrderDocumentWizardSprSheet(getAllSelectedWorkOrdersForDocumentWizard());
+    }
+  }
+}
+
+async function ensureDocumentationSprPreviousRecordSources(entries = [], { render = false } = {}) {
+  const normalizedEntries = (Array.isArray(entries) ? entries : []).filter((entry) => entry?.workOrder && entry?.service);
+  await Promise.all(normalizedEntries.map((entry) =>
+    ensureDocumentationSprPreviousRecordSourceForEntry(entry, { render }),
+  ));
+  return applyDocumentationSprPreviousRecordSourcesToEntries(normalizedEntries);
+}
+
+function getDocumentationSprEntrySourceLabel(entry = {}) {
+  const sourceState = getDocumentationSprPreviousRecordSourceState(entry);
+  if (sourceState?.status === "loading") {
+    return "Tražim prethodni zapisnik";
+  }
+  if (sourceState?.record) {
+    return `Prethodni zapisnik: ${sourceState.label || buildDocumentTemplatePreviousRecordCandidateLabel(sourceState.record)}`;
+  }
+  if (sourceState?.status === "error") {
+    return "Predložak (prethodni zapisnik nije učitan)";
+  }
+  return "Predložak";
+}
+
+function getDocumentationSprGroupSourceSummary(group = {}) {
+  const entries = Array.isArray(group.entries) ? group.entries : [];
+  const loadedSources = entries.map((entry) => getDocumentationSprPreviousRecordSourceState(entry));
+  const previousCount = loadedSources.filter((source) => source?.record).length;
+  const loadingCount = loadedSources.filter((source) => source?.status === "loading").length;
+  if (loadingCount > 0) {
+    return `Tražim prethodne zapisnike (${loadingCount})`;
+  }
+  if (previousCount > 0) {
+    return `${previousCount}/${entries.length} iz prethodnih zapisnika`;
+  }
+  return "Koristi predložak";
+}
+
 function getDocumentationSprWorkOrderCompany(workOrder = {}) {
   return getCompany(workOrder.companyId) ?? {};
 }
@@ -58820,7 +59146,11 @@ function createDocumentationSprModelForBatchEntry(entry = {}) {
   const template = entry.templateId
     ? getDocumentationSprTemplateById(entry.templateId)
     : getDocumentationSprTemplateForService(entry.service);
-  return buildDocumentationSprModelFromWorkOrderService(entry.workOrder, entry.service, template);
+  const model = buildDocumentationSprModelFromWorkOrderService(entry.workOrder, entry.service, template);
+  const sourceState = getDocumentationSprPreviousRecordSourceState(entry);
+  return sourceState?.record
+    ? applyDocumentationSprPreviousRecordToModel(model, entry, sourceState.record)
+    : model;
 }
 
 function getDocumentationSprBatchEntryModel(entry = {}, { create = false } = {}) {
@@ -59275,9 +59605,10 @@ function openDocumentationSprWorkbenchFromBatchEntries(entries = [], { activeInd
     return false;
   }
   documentationSprTemplateLibrary = loadDocumentationSprTemplateLibrary();
+  const sourcedEntries = applyDocumentationSprPreviousRecordSourcesToEntries(normalizedEntries);
   documentationSprWorkOrderBatch = {
-    entries: normalizedEntries,
-    activeIndex: Math.max(0, Math.min(normalizedEntries.length - 1, Number(activeIndex) || 0)),
+    entries: sourcedEntries,
+    activeIndex: Math.max(0, Math.min(sourcedEntries.length - 1, Number(activeIndex) || 0)),
     summaryVisible: false,
   };
   setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
@@ -59293,6 +59624,11 @@ function openDocumentationSprWorkbenchFromBatchEntries(entries = [], { activeInd
     documentationWorkbenchModule?.scrollIntoView({ block: "start", behavior: "smooth" });
   });
   return true;
+}
+
+async function openDocumentationSprWorkbenchFromBatchEntriesWithSources(entries = [], options = {}) {
+  const sourcedEntries = await ensureDocumentationSprPreviousRecordSources(entries, { render: true });
+  return openDocumentationSprWorkbenchFromBatchEntries(sourcedEntries, options);
 }
 
 function loadDocumentationSprModel() {
@@ -130121,6 +130457,9 @@ function renderWorkOrderDocumentWizardSprSheet(workOrders = getAllSelectedWorkOr
     return;
   }
   workOrderDocumentWizardSprServiceGroups.replaceChildren(...groups.map((group) => {
+    group.entries.forEach((entry) => {
+      void ensureDocumentationSprPreviousRecordSourceForEntry(entry, { render: true });
+    });
     const card = document.createElement("article");
     card.className = "work-order-document-wizard-spr-card";
 
@@ -130132,7 +130471,8 @@ function renderWorkOrderDocumentWizardSprSheet(workOrders = getAllSelectedWorkOr
     meta.textContent = [
       `${group.entries.length} zapisnika`,
       `${group.workOrderNumbers.size} RN`,
-      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Novi browser predložak",
+      getDocumentationSprGroupSourceSummary(group),
+      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Browser predložak",
     ].filter(Boolean).join(" · ");
     copy.append(title, meta);
 
@@ -130152,9 +130492,9 @@ function renderWorkOrderDocumentWizardSprSheet(workOrders = getAllSelectedWorkOr
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.className = "primary-button";
-    openButton.textContent = "Otvori u browseru";
+    openButton.textContent = "Otvori zapisnike";
     openButton.addEventListener("click", () => {
-      openDocumentationSprWorkbenchFromBatchEntries(group.entries);
+      void openDocumentationSprWorkbenchFromBatchEntriesWithSources(group.entries);
     });
 
     card.append(copy, workOrdersWrap, openButton);
@@ -134806,6 +135146,9 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   }
 
   workOrderDocumentWizardTemplateList.replaceChildren(...browserGroups.map((group) => {
+    group.entries.forEach((entry) => {
+      void ensureDocumentationSprPreviousRecordSourceForEntry(entry, { render: true });
+    });
     const card = document.createElement("article");
     card.className = "work-order-document-template-card work-order-document-browser-template-card";
 
@@ -134822,7 +135165,8 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     meta.textContent = [
       `${group.entries.length} zapisnika`,
       `${group.workOrderNumbers.size} RN`,
-      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Novi browser predložak",
+      getDocumentationSprGroupSourceSummary(group),
+      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Browser predložak",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
@@ -134845,6 +135189,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
         getWorkOrderDocumentWizardSourceValue(entry.workOrder?.id, "inspectionDate")
           ? `Ispitivanje ${formatCompactDate(getWorkOrderDocumentWizardSourceValue(entry.workOrder.id, "inspectionDate"))}`
           : "",
+        getDocumentationSprEntrySourceLabel(entry),
       ].filter(Boolean).join(" · ");
       workOrderList.append(chip);
     });
@@ -134853,16 +135198,16 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     footer.className = "work-order-document-template-card-footer";
 
     const note = document.createElement("span");
-    note.textContent = group.templateNames.size > 0
-      ? "Predložak se puni iz RN usluge, tvrtke, lokacije, mjerne opreme, pravilnika i People osoba."
-      : "Nema spremljenog predloška za ovu uslugu; otvorit će se novi browser predložak vezan na tu šifru usluge.";
+    note.textContent = group.entries.some((entry) => getDocumentationSprPreviousRecordSourceState(entry)?.record)
+      ? "Ako postoji prethodni zapisnik, preuzima se kao izvor za rezultate ispitivanja i tablicu; ostala polja se osvježavaju iz RN-a."
+      : "Ako nema prethodnog zapisnika, koristi se predložak povezan s ovom šifrom usluge i puni podacima iz RN-a.";
 
     const openButton = document.createElement("button");
     openButton.type = "button";
     openButton.className = "primary-button";
-    openButton.textContent = "Otvori u browseru";
+    openButton.textContent = "Otvori zapisnike";
     openButton.addEventListener("click", () => {
-      openDocumentationSprWorkbenchFromBatchEntries(group.entries);
+      void openDocumentationSprWorkbenchFromBatchEntriesWithSources(group.entries);
     });
 
     footer.append(note, openButton);
@@ -135050,7 +135395,10 @@ function renderWorkOrderDocumentWizard() {
   }
   if (workOrderDocumentWizardNextButton) {
     const trainingModeOption = getWorkOrderDocumentTrainingModeOption();
-    workOrderDocumentWizardNextButton.textContent = isInspectionMode ? "Otvori zapisnik" : trainingModeOption.actionLabel;
+    const hasBrowserEntries = isInspectionMode && getDocumentationSprBatchEntriesForWorkOrders(workOrders).length > 0;
+    workOrderDocumentWizardNextButton.textContent = isInspectionMode
+      ? (hasBrowserEntries ? "Nastavi na zapisnike" : "Otvori zapisnik")
+      : trainingModeOption.actionLabel;
     workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates";
     workOrderDocumentWizardNextButton.disabled = !isInspectionMode && state.workOrderDocumentWizard.trainingBusy;
   }
@@ -141024,7 +141372,8 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const browserEntries = getDocumentationSprBatchEntriesForWorkOrders(selectedWorkOrders);
   if (browserEntries.length > 0) {
-    openDocumentationSprWorkbenchFromBatchEntries(browserEntries);
+    setWorkOrderDocumentWizardStep("templates");
+    void ensureDocumentationSprPreviousRecordSources(browserEntries, { render: true });
     return;
   }
   const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
