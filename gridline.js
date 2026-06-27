@@ -246,6 +246,24 @@
     return data;
   }
 
+  function normalizeMerges(value, rowCount, columnCount) {
+    var source = Array.isArray(value) ? value : [];
+    return source.map(function (entry) {
+      var row = clampInteger(entry && entry.row, 0, 0, rowCount - 1);
+      var column = clampInteger(entry && entry.column, 0, 0, columnCount - 1);
+      var rowSpan = clampInteger(entry && (entry.rowSpan || entry.rowspan), 1, 1, rowCount - row);
+      var columnSpan = clampInteger(entry && (entry.columnSpan || entry.colSpan || entry.colspan), 1, 1, columnCount - column);
+      return {
+        row: row,
+        column: column,
+        rowSpan: rowSpan,
+        columnSpan: columnSpan,
+      };
+    }).filter(function (entry) {
+      return entry.rowSpan > 1 || entry.columnSpan > 1;
+    });
+  }
+
   function createDefaultModel(options) {
     var rowCount = clampInteger(
       options && (options.rowCount || options.defaultRows),
@@ -263,6 +281,7 @@
       rowCount: rowCount,
       columnCount: columnCount,
       data: Object.create(null),
+      merges: [],
     };
   }
 
@@ -303,6 +322,7 @@
       rowCount: rowCount,
       columnCount: columnCount,
       data: data,
+      merges: [],
     };
   }
 
@@ -334,6 +354,7 @@
     var rowCount = clampInteger(source.rowCount, fallbackRows, MIN_ROWS, MAX_ROWS);
     var columnCount = clampInteger(source.columnCount, fallbackColumns, MIN_COLUMNS, MAX_COLUMNS);
     var data = normalizeDataMap(source.data);
+    var merges = normalizeMerges(source.merges, rowCount, columnCount);
 
     Object.keys(data).forEach(function (key) {
       var parts = key.split(":");
@@ -348,6 +369,7 @@
       rowCount: rowCount,
       columnCount: columnCount,
       data: data,
+      merges: merges,
     };
   }
 
@@ -356,6 +378,7 @@
       rowCount: model.rowCount,
       columnCount: model.columnCount,
       data: Object.assign(Object.create(null), model.data),
+      merges: normalizeMerges(model.merges, model.rowCount, model.columnCount),
     };
   }
 
@@ -530,6 +553,36 @@
 
     function getInput(row, column) {
       return grid.querySelector('input[data-row="' + row + '"][data-column="' + column + '"]');
+    }
+
+    function getCoveringMerge(row, column) {
+      var index;
+      var merge;
+      for (index = 0; index < (model.merges || []).length; index += 1) {
+        merge = model.merges[index];
+        if (
+          row >= merge.row
+          && row < merge.row + merge.rowSpan
+          && column >= merge.column
+          && column < merge.column + merge.columnSpan
+        ) {
+          return merge;
+        }
+      }
+      return null;
+    }
+
+    function getMergeStart(row, column) {
+      var merge = getCoveringMerge(row, column);
+      if (!merge) {
+        return { row: row, column: column };
+      }
+      return { row: merge.row, column: merge.column };
+    }
+
+    function isCoveredByMerge(row, column) {
+      var merge = getCoveringMerge(row, column);
+      return Boolean(merge && (merge.row !== row || merge.column !== column));
     }
 
     function emitChange() {
@@ -805,9 +858,13 @@
       var focus = !selectOptions || selectOptions.focus !== false;
       var input;
       var td;
+      var start = getMergeStart(
+        Math.max(0, Math.min(model.rowCount - 1, row)),
+        Math.max(0, Math.min(model.columnCount - 1, column))
+      );
       active = {
-        row: Math.max(0, Math.min(model.rowCount - 1, row)),
-        column: Math.max(0, Math.min(model.columnCount - 1, column)),
+        row: start.row,
+        column: start.column,
       };
       if (selectedCell) {
         selectedCell.classList.remove("is-selected");
@@ -864,11 +921,20 @@
         rowHead.textContent = String(row + 1);
         tr.appendChild(rowHead);
         for (column = 0; column < model.columnCount; column += 1) {
+          var merge = getCoveringMerge(row, column);
+          if (isCoveredByMerge(row, column)) {
+            continue;
+          }
           td = document.createElement("td");
           td.dataset.row = String(row);
           td.dataset.column = String(column);
+          if (merge) {
+            td.colSpan = merge.columnSpan;
+            td.rowSpan = merge.rowSpan;
+            td.classList.add("is-merged-cell");
+          }
           input = document.createElement("input");
-          input.className = "cell";
+          input.className = merge ? "cell is-merged-input" : "cell";
           input.autocomplete = "off";
           input.spellcheck = false;
           input.dataset.row = String(row);
@@ -1042,51 +1108,166 @@
       return [text];
     }
 
-    function buildQuickFillRows(floor, room, itemsText, startRowIndex) {
+    function normalizeQuickFillHeader(value) {
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    function getQuickFillDefaultColumnMode(columnIndex) {
+      var header = normalizeQuickFillHeader(getValue(0, columnIndex) || getValue(1, columnIndex) || columnLabel(columnIndex));
+      if (columnIndex === 0 || /(^|\s)(r|red)\.?\s*br|redni/.test(header)) {
+        return "sequence";
+      }
+      if (/mjesto|lokacija|pozicija/.test(header)) {
+        return "place";
+      }
+      if (/etaza|kat/.test(header)) {
+        return "floor";
+      }
+      if (/prostor|prostorija/.test(header)) {
+        return "room";
+      }
+      if (/broj|kom|kolic|lamp/.test(header)) {
+        return "quantity";
+      }
+      if (/eimin|min/.test(header)) {
+        return "custom";
+      }
+      if (/\bei\b|izmjeren/.test(header)) {
+        return "custom";
+      }
+      if (/zadovolj|ocjena|status/.test(header)) {
+        return "custom";
+      }
+      return "empty";
+    }
+
+    function getQuickFillDefaultColumnValue(columnIndex) {
+      var header = normalizeQuickFillHeader(getValue(0, columnIndex) || getValue(1, columnIndex) || columnLabel(columnIndex));
+      if (/eimin|min/.test(header)) {
+        return "1";
+      }
+      if (/\bei\b|izmjeren/.test(header)) {
+        return ">2";
+      }
+      if (/zadovolj|ocjena|status/.test(header)) {
+        return "DA";
+      }
+      return "";
+    }
+
+    function normalizeQuickFillColumnSettings(settings) {
+      var source = Array.isArray(settings) && settings.length
+        ? settings
+        : Array.from({ length: model.columnCount }, function (_, columnIndex) {
+          return {
+            columnIndex: columnIndex,
+            mode: getQuickFillDefaultColumnMode(columnIndex),
+            value: getQuickFillDefaultColumnValue(columnIndex),
+          };
+        });
+      return source.map(function (setting, columnIndex) {
+        return {
+          columnIndex: clampInteger(setting && setting.columnIndex, columnIndex, 0, model.columnCount - 1),
+          mode: String(setting && setting.mode || "empty"),
+          value: String(setting && setting.value || ""),
+        };
+      });
+    }
+
+    function getQuickFillHeaderRow(label) {
+      var row = Array.from({ length: model.columnCount }, function () { return ""; });
+      if (model.columnCount > 0) {
+        row[0] = label;
+      }
+      return {
+        values: row,
+        mergeAcross: true,
+      };
+    }
+
+    function getQuickFillColumnText(setting, context) {
+      var mode = String(setting && setting.mode || "empty");
+      var value = String(setting && setting.value || "");
+      if (mode === "sequence") {
+        return String(context.sequence);
+      }
+      if (mode === "place") {
+        return context.place;
+      }
+      if (mode === "floor") {
+        return context.floor;
+      }
+      if (mode === "room") {
+        return context.room;
+      }
+      if (mode === "item") {
+        return context.itemName;
+      }
+      if (mode === "quantity") {
+        return context.quantity;
+      }
+      if (mode === "custom") {
+        return value;
+      }
+      if (mode === "formula") {
+        return shiftFormulaValue(value, context.index, 0);
+      }
+      return "";
+    }
+
+    function buildQuickFillRows(floor, room, itemsText, startRowIndex, columnSettings) {
       var lines = String(itemsText || "")
         .split(/\r?\n/)
         .map(function (line) { return line.trim(); })
         .filter(Boolean);
-      var sequence = getNextSequenceNumber(startRowIndex);
+      var settings = normalizeQuickFillColumnSettings(columnSettings);
+      var rows = [];
+      var firstDataRowIndex;
+      var sequence;
       if (!lines.length) {
         lines = [room || floor || "Mjerno mjesto"];
       }
-      return lines.map(function (line, index) {
+      if (String(floor || "").trim()) {
+        rows.push(getQuickFillHeaderRow("Etaza: " + String(floor).trim()));
+      }
+      if (String(room || "").trim()) {
+        rows.push(getQuickFillHeaderRow("Prostorija: " + String(room).trim()));
+      }
+      firstDataRowIndex = startRowIndex + rows.length;
+      sequence = getNextSequenceNumber(firstDataRowIndex);
+      lines.forEach(function (line, index) {
         var parts = splitQuickFillLine(line);
         var itemName = parts[0] || room || floor || "Mjerno mjesto";
         var place = [floor, room, itemName].map(function (part) { return String(part || "").trim(); }).filter(Boolean).join(" - ");
         var row = Array.from({ length: model.columnCount }, function () { return ""; });
-        if (model.columnCount > 0) {
-          row[0] = String(sequence + index);
-        }
-        if (model.columnCount > 1) {
-          row[1] = place || itemName;
-        }
-        if (model.columnCount > 2) {
-          row[2] = parts[1] || "1";
-        }
-        if (model.columnCount > 3) {
-          row[3] = parts[2] || ">2";
-        }
-        if (model.columnCount > 4) {
-          row[4] = parts[3] || "1";
-        }
-        if (model.columnCount > 5) {
-          row[5] = parts[4] || "DA";
-        }
-        parts.slice(5).forEach(function (value, valueIndex) {
-          var column = valueIndex + 6;
-          if (column < model.columnCount) {
-            row[column] = value;
+        var context = {
+          index: index,
+          sequence: sequence + index,
+          floor: String(floor || "").trim(),
+          room: String(room || "").trim(),
+          itemName: itemName,
+          place: place || itemName,
+          quantity: parts[1] || "1",
+          parts: parts,
+        };
+        settings.forEach(function (setting) {
+          if (setting.columnIndex < model.columnCount) {
+            row[setting.columnIndex] = getQuickFillColumnText(setting, context);
           }
         });
-        return row;
+        rows.push(row);
       });
+      return rows;
     }
 
     function insertMatrixRows(startRowIndex, rows) {
       var rowCount = Array.isArray(rows) ? rows.length : 0;
       var nextData = Object.create(null);
+      var nextMerges = [];
       var previousRowCount = model.rowCount;
       if (!rowCount) {
         return;
@@ -1099,21 +1280,39 @@
         var nextRow = row >= startRowIndex ? row + rowCount : row;
         nextData[cellKey(nextRow, column)] = model.data[key];
       });
+      (model.merges || []).forEach(function (merge) {
+        nextMerges.push({
+          row: merge.row >= startRowIndex ? merge.row + rowCount : merge.row,
+          column: merge.column,
+          rowSpan: merge.rowSpan,
+          columnSpan: merge.columnSpan,
+        });
+      });
       model.rowCount = clampInteger(
         Math.max(previousRowCount + rowCount, startRowIndex + rowCount),
         previousRowCount + rowCount,
         MIN_ROWS,
         MAX_ROWS
       );
-      rows.forEach(function (rowValues, rowOffset) {
+      rows.forEach(function (rowEntry, rowOffset) {
+        var rowValues = Array.isArray(rowEntry) ? rowEntry : Array.isArray(rowEntry && rowEntry.values) ? rowEntry.values : [];
         rowValues.slice(0, model.columnCount).forEach(function (value, columnIndex) {
           var text = String(value == null ? "" : value);
           if (text) {
             nextData[cellKey(startRowIndex + rowOffset, columnIndex)] = text;
           }
         });
+        if (rowEntry && !Array.isArray(rowEntry) && rowEntry.mergeAcross && model.columnCount > 1) {
+          nextMerges.push({
+            row: startRowIndex + rowOffset,
+            column: 0,
+            rowSpan: 1,
+            columnSpan: model.columnCount,
+          });
+        }
       });
       model.data = nextData;
+      model.merges = normalizeMerges(nextMerges, model.rowCount, model.columnCount);
       render();
       selectCell(startRowIndex + rowCount - 1, Math.min(1, model.columnCount - 1), { focus: false });
       scheduleSave();
@@ -1149,11 +1348,73 @@
       return label;
     }
 
+    function createQuickFillColumnModeSelect(mode) {
+      var select = document.createElement("select");
+      [
+        ["sequence", "Redni broj"],
+        ["place", "Mjesto (etaža + prostorija + stavka)"],
+        ["floor", "Etaža"],
+        ["room", "Prostorija"],
+        ["item", "Stavka"],
+        ["quantity", "Količina"],
+        ["custom", "Stalna vrijednost"],
+        ["formula", "Formula"],
+        ["empty", "Prazno"],
+      ].forEach(function (optionData) {
+        var option = document.createElement("option");
+        option.value = optionData[0];
+        option.textContent = optionData[1];
+        select.appendChild(option);
+      });
+      select.value = mode || "empty";
+      select.dataset.gridlineQuickColumnMode = "true";
+      return select;
+    }
+
+    function renderQuickFillColumnMap(container) {
+      if (!container) {
+        return;
+      }
+      clearNode(container);
+      Array.from({ length: model.columnCount }, function (_, columnIndex) {
+        var row = document.createElement("div");
+        var label = document.createElement("strong");
+        var select = createQuickFillColumnModeSelect(getQuickFillDefaultColumnMode(columnIndex));
+        var input = document.createElement("input");
+        row.className = "gridline-quick-column-row";
+        row.dataset.gridlineQuickColumn = String(columnIndex);
+        label.textContent = columnLabel(columnIndex) + " · " + (getValue(0, columnIndex) || getValue(1, columnIndex) || "Kolona");
+        input.type = "text";
+        input.autocomplete = "off";
+        input.placeholder = "Vrijednost ili formula";
+        input.value = getQuickFillDefaultColumnValue(columnIndex);
+        input.dataset.gridlineQuickColumnValue = "true";
+        row.append(label, select, input);
+        container.appendChild(row);
+      });
+    }
+
+    function collectQuickFillColumnSettings(panel) {
+      return Array.prototype.map.call(
+        panel ? panel.querySelectorAll("[data-gridline-quick-column]") : [],
+        function (row, fallbackIndex) {
+          var mode = row.querySelector("[data-gridline-quick-column-mode]");
+          var value = row.querySelector("[data-gridline-quick-column-value]");
+          return {
+            columnIndex: clampInteger(row.dataset.gridlineQuickColumn, fallbackIndex, 0, model.columnCount - 1),
+            mode: mode ? mode.value : "empty",
+            value: value ? value.value : "",
+          };
+        }
+      );
+    }
+
     function ensureQuickFillPanel() {
       var startInput;
       var floorInput;
       var roomInput;
       var itemsInput;
+      var columnMap;
       var closeButton;
       var insertButton;
       if (quickFillPanel || !rootElement) {
@@ -1189,6 +1450,11 @@
       itemsInput.placeholder = "Izlaz;1;>2;1;DA\nSredina;2;>2;1;DA";
       itemsInput.dataset.gridlineQuickItems = "true";
 
+      columnMap = document.createElement("div");
+      columnMap.className = "gridline-quick-columns";
+      columnMap.dataset.gridlineQuickColumns = "true";
+      renderQuickFillColumnMap(columnMap);
+
       closeButton = document.createElement("button");
       closeButton.type = "button";
       closeButton.className = "ghost-button";
@@ -1207,6 +1473,7 @@
         createLabeledControl("Etaza", floorInput),
         createLabeledControl("Prostorija", roomInput),
         createLabeledControl("Stavke", itemsInput),
+        createLabeledControl("Punjenje kolona", columnMap),
         createPopoverActions([closeButton, insertButton])
       );
       quickFillPanel.addEventListener("click", handleQuickFillPanelClick);
@@ -1217,13 +1484,16 @@
     function openQuickFillPanel() {
       var panel = ensureQuickFillPanel();
       var startInput;
+      var columnMap;
       if (!panel) {
         return;
       }
       startInput = panel.querySelector("[data-gridline-quick-start]");
+      columnMap = panel.querySelector("[data-gridline-quick-columns]");
       if (startInput) {
         startInput.value = String(getQuickFillDefaultStartRow());
       }
+      renderQuickFillColumnMap(columnMap);
       panel.hidden = false;
     }
 
@@ -1239,12 +1509,14 @@
       var floorInput = panel && panel.querySelector("[data-gridline-quick-floor]");
       var roomInput = panel && panel.querySelector("[data-gridline-quick-room]");
       var itemsInput = panel && panel.querySelector("[data-gridline-quick-items]");
+      var columnSettings = collectQuickFillColumnSettings(panel);
       var startRow = clampInteger(startInput && startInput.value, getQuickFillDefaultStartRow(), 1, MAX_ROWS) - 1;
       var rows = buildQuickFillRows(
         floorInput ? floorInput.value : "",
         roomInput ? roomInput.value : "",
         itemsInput ? itemsInput.value : "",
-        startRow
+        startRow,
+        columnSettings
       );
       insertMatrixRows(startRow, rows);
       closeQuickFillPanel();
@@ -1939,6 +2211,7 @@
         return;
       }
       model.data = Object.create(null);
+      model.merges = [];
       active = { row: 0, column: 0 };
       render();
       scheduleSave();

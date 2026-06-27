@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260627-spr-workbench-v9" />
+    <link rel="stylesheet" href="/styles.css?v=20260627-spr-workbench-v10" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -6526,7 +6526,7 @@
                 </section>
 
                 <section class="documentation-spr-template-manager" aria-label="Predlošci izrade dokumentacije">
-                  <label class="documentation-spr-template-field">
+                  <label class="documentation-spr-template-field is-library" hidden>
                     <span>Popis predložaka</span>
                     <select id="documentation-spr-template-library" aria-label="Odaberi spremljeni predložak">
                       <option value="">Novi predložak</option>
@@ -6551,7 +6551,7 @@
                   <span id="documentation-spr-template-meta" class="documentation-spr-template-meta">0 predložaka</span>
                 </section>
 
-                <section class="documentation-spr-context" aria-label="Kontekst dokumentacije">
+                <section class="documentation-spr-context" hidden aria-label="Kontekst dokumentacije">
                   <label class="documentation-spr-context-field">
                     <span>Predložak</span>
                     <input id="documentation-spr-template-code" data-documentation-spr-field="templateCode" type="text" />
@@ -6576,16 +6576,17 @@
 
                 <section class="documentation-spr-shell">
                   <form id="documentation-spr-form" class="documentation-spr-editor">
-                    <section class="documentation-spr-section">
+                    <section class="documentation-spr-section documentation-spr-section-basic">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
                           <span>1</span>
-                          <strong>Poveznice</strong>
+                          <strong>Osnovni podaci</strong>
                         </div>
+                        <span id="documentation-spr-people-summary" class="documentation-spr-section-meta">Ispitivači i potpisnici</span>
                       </div>
                       <div class="documentation-spr-field-grid">
                         <label class="field documentation-spr-field">
-                          <span>Company</span>
+                          <span>Tvrtka</span>
                           <input data-documentation-spr-field="companyName" type="text" />
                         </label>
                         <label class="field documentation-spr-field">
@@ -6597,39 +6598,16 @@
                           <input data-documentation-spr-field="companyAddress" type="text" />
                         </label>
                         <label class="field documentation-spr-field">
-                          <span>Ponuda</span>
-                          <input data-documentation-spr-field="offerNumber" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Narudžbenica</span>
-                          <input data-documentation-spr-field="purchaseOrderNumber" type="text" />
-                        </label>
-                      </div>
-                    </section>
-
-                    <section class="documentation-spr-section">
-                      <div class="documentation-spr-section-head">
-                        <div class="documentation-spr-section-title">
-                          <span>2</span>
-                          <strong>Opći podaci</strong>
-                        </div>
-                      </div>
-                      <div class="documentation-spr-field-grid">
-                        <label class="field documentation-spr-field">
-                          <span>Korisnik prostora</span>
+                          <span>Korisnik</span>
                           <input data-documentation-spr-field="spaceUser" type="text" />
                         </label>
                         <label class="field documentation-spr-field">
-                          <span>Mjesto ispitivanja</span>
+                          <span>Mjesto</span>
                           <input data-documentation-spr-field="inspectionPlace" type="text" />
                         </label>
                         <label class="field documentation-spr-field is-wide">
-                          <span>Objekt ispitivanja</span>
+                          <span>Objekt</span>
                           <input data-documentation-spr-field="inspectionObject" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Vrsta ispitivanja</span>
-                          <input data-documentation-spr-field="inspectionType" type="text" />
                         </label>
                         <label class="field documentation-spr-field">
                           <span>Datum ispitivanja</span>
@@ -6640,26 +6618,77 @@
                           <input data-documentation-spr-field="issueDate" type="text" inputmode="numeric" />
                         </label>
                         <label class="field documentation-spr-field">
+                          <span>Broj zapisnika</span>
+                          <input data-documentation-spr-field="recordNumber" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Vrsta ispitivanja</span>
+                          <input data-documentation-spr-field="inspectionType" type="text" />
+                        </label>
+                      </div>
+                      <div class="documentation-spr-basic-links" aria-label="Poveznice">
+                        <label class="field documentation-spr-field">
+                          <span>Ponuda</span>
+                          <input data-documentation-spr-field="offerNumber" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Narudžbenica</span>
+                          <input data-documentation-spr-field="purchaseOrderNumber" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
                           <span>Vrijedi do</span>
                           <input data-documentation-spr-field="validUntil" type="text" inputmode="numeric" />
                         </label>
+                      </div>
+                      <label class="field documentation-spr-field documentation-spr-picker-search">
+                        <span>Pretraži People</span>
+                        <input id="documentation-spr-people-search" type="search" autocomplete="off" placeholder="Ime, email, ovlaštenje, OIB..." />
+                      </label>
+                      <div class="documentation-spr-people-picker is-basic">
+                        <section class="documentation-spr-person-lane" aria-label="Ispitivači iz People modula">
+                          <div class="documentation-spr-person-lane-head">
+                            <div>
+                              <span>Ispitivači</span>
+                              <strong>Više osoba</strong>
+                            </div>
+                            <small>People</small>
+                          </div>
+                          <div id="documentation-spr-inspector-user-list" class="documentation-spr-picker-list is-compact" role="listbox" aria-label="Ispitivači iz People modula"></div>
+                          <select id="documentation-spr-inspector-users" class="documentation-spr-native-select" multiple size="5" aria-label="Odaberi ispitivače iz People modula" hidden></select>
+                        </section>
+                        <section class="documentation-spr-person-lane" aria-label="Odgovorna osoba iz People modula">
+                          <div class="documentation-spr-person-lane-head">
+                            <div>
+                              <span>Odgovorne osobe</span>
+                              <strong>Potpisnik zapisnika</strong>
+                            </div>
+                            <small>Potpis</small>
+                          </div>
+                          <div id="documentation-spr-responsible-user-list" class="documentation-spr-picker-list is-compact" role="listbox" aria-label="Odgovorna osoba iz People modula"></div>
+                          <select id="documentation-spr-responsible-user" class="documentation-spr-native-select" aria-label="Odaberi odgovornu osobu iz People modula" hidden></select>
+                        </section>
+                      </div>
+                      <div id="documentation-spr-people-chips" class="documentation-spr-source-chips"></div>
+                      <div class="documentation-spr-source-actions">
+                        <button type="button" id="documentation-spr-people-apply" class="ghost-button">Primijeni People odabir</button>
+                        <button type="button" id="documentation-spr-people-clear" class="ghost-button">Očisti odabir</button>
                       </div>
                     </section>
 
                     <section class="documentation-spr-section">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
-                          <span>3</span>
-                          <strong>Oprema, propisi i dokumentacija</strong>
+                          <span>2</span>
+                          <strong>Odabir instrumenata</strong>
                         </div>
                         <span id="documentation-spr-source-summary" class="documentation-spr-section-meta">Izvori iz modula</span>
                       </div>
-                      <div class="documentation-spr-source-grid">
+                      <div class="documentation-spr-source-grid is-equipment-only">
                         <section class="documentation-spr-source-block" aria-label="Mjerna oprema iz modula">
                           <div class="documentation-spr-source-head">
                             <div>
                               <span>Mjerna oprema</span>
-                              <strong>Iz modula Mjerna oprema</strong>
+                              <strong>Preselektiraj opremu za zapisnik</strong>
                             </div>
                             <small id="documentation-spr-equipment-source-count">0 stavki</small>
                           </div>
@@ -6671,17 +6700,28 @@
                           <select id="documentation-spr-equipment-select" class="documentation-spr-native-select" multiple size="6" aria-label="Odaberi mjernu opremu za zapisnik" hidden></select>
                           <div id="documentation-spr-equipment-chips" class="documentation-spr-source-chips"></div>
                           <div class="documentation-spr-source-actions">
-                            <button type="button" id="documentation-spr-equipment-apply" class="ghost-button">Umetni odabrano</button>
+                            <button type="button" id="documentation-spr-equipment-apply" class="ghost-button">Primijeni preselektirano</button>
                             <button type="button" id="documentation-spr-equipment-all" class="ghost-button">Sva oprema</button>
                             <button type="button" id="documentation-spr-equipment-clear" class="ghost-button">Očisti</button>
                           </div>
                         </section>
+                      </div>
+                      <textarea data-documentation-spr-field="equipment" rows="7" hidden></textarea>
+                    </section>
 
+                    <section class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span>3</span>
+                          <strong>Propisi</strong>
+                        </div>
+                      </div>
+                      <div class="documentation-spr-source-grid">
                         <section class="documentation-spr-source-block" aria-label="Propisi iz Legal Framework modula">
                           <div class="documentation-spr-source-head">
                             <div>
                               <span>Legal Framework</span>
-                              <strong>Propisi i norme</strong>
+                              <strong>Preselektiraj propise i norme</strong>
                             </div>
                             <small id="documentation-spr-legal-source-count">0 propisa</small>
                           </div>
@@ -6693,22 +6733,20 @@
                           <select id="documentation-spr-legal-select" class="documentation-spr-native-select" multiple size="6" aria-label="Odaberi propise za zapisnik" hidden></select>
                           <div id="documentation-spr-legal-chips" class="documentation-spr-source-chips"></div>
                           <div class="documentation-spr-source-actions">
-                            <button type="button" id="documentation-spr-legal-apply" class="ghost-button">Umetni odabrano</button>
+                            <button type="button" id="documentation-spr-legal-apply" class="ghost-button">Primijeni preselektirano</button>
                             <button type="button" id="documentation-spr-legal-active" class="ghost-button">Aktivni propisi</button>
                             <button type="button" id="documentation-spr-legal-clear" class="ghost-button">Očisti</button>
                           </div>
+                          <div class="documentation-spr-inline-add">
+                            <label class="field documentation-spr-field">
+                              <span>Dodaj propis ručno</span>
+                              <input id="documentation-spr-legal-custom-input" type="text" autocomplete="off" placeholder="Naziv propisa ili norme..." />
+                            </label>
+                            <button type="button" id="documentation-spr-legal-custom-add" class="ghost-button">Dodaj</button>
+                          </div>
                         </section>
                       </div>
-                      <div class="documentation-spr-two-col">
-                        <label class="field documentation-spr-field">
-                          <span>Mjerna i ispitna oprema - tekst u zapisniku</span>
-                          <textarea data-documentation-spr-field="equipment" rows="7"></textarea>
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Primijenjeni propisi - tekst u zapisniku</span>
-                          <textarea data-documentation-spr-field="regulations" rows="7"></textarea>
-                        </label>
-                      </div>
+                      <textarea data-documentation-spr-field="regulations" rows="7" hidden></textarea>
                       <label class="field documentation-spr-field">
                         <span>Korištena tehničko-projektna dokumentacija</span>
                         <textarea data-documentation-spr-field="projectDocumentation" rows="2"></textarea>
@@ -6719,23 +6757,15 @@
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
                           <span>4</span>
-                          <strong>Rezultati ispitivanja</strong>
+                          <strong>Opis sustava</strong>
                         </div>
                       </div>
                       <label class="field documentation-spr-field">
-                        <span>Opis</span>
+                        <span>Opis sustava i ispitivanja</span>
                         <textarea data-documentation-spr-field="resultsText" rows="10"></textarea>
                       </label>
-                      <div class="documentation-spr-two-col">
-                        <label class="field documentation-spr-field">
-                          <span>Ei</span>
-                          <textarea data-documentation-spr-field="eiNote" rows="2"></textarea>
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Eimin</span>
-                          <textarea data-documentation-spr-field="eiminNote" rows="2"></textarea>
-                        </label>
-                      </div>
+                      <textarea data-documentation-spr-field="eiNote" rows="2" hidden></textarea>
+                      <textarea data-documentation-spr-field="eiminNote" rows="2" hidden></textarea>
                     </section>
 
                     <section class="documentation-spr-section">
@@ -6778,53 +6808,18 @@
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
                           <span>6</span>
-                          <strong>Zaključak i potpis</strong>
+                          <strong>Nedostaci, preporuke i zaključna ocjena</strong>
                         </div>
-                        <span id="documentation-spr-people-summary" class="documentation-spr-section-meta">People modul</span>
                       </div>
-                      <label class="field documentation-spr-field documentation-spr-picker-search">
-                        <span>Pretraži People</span>
-                        <input id="documentation-spr-people-search" type="search" autocomplete="off" placeholder="Ime, email, ovlaštenje, OIB..." />
-                      </label>
-                      <div class="documentation-spr-people-picker">
-                        <section class="documentation-spr-person-lane" aria-label="Ispitivači iz People modula">
-                          <div class="documentation-spr-person-lane-head">
-                            <div>
-                              <span>Ispitivači</span>
-                              <strong>Više osoba</strong>
-                            </div>
-                            <small>Inspect</small>
-                          </div>
-                          <div id="documentation-spr-inspector-user-list" class="documentation-spr-picker-list is-compact" role="listbox" aria-label="Ispitivači iz People modula"></div>
-                          <select id="documentation-spr-inspector-users" class="documentation-spr-native-select" multiple size="5" aria-label="Odaberi ispitivače iz People modula" hidden></select>
-                          <small>Prednost imaju aktivne osobe s People ovlaštenjem za ispitivanje.</small>
-                        </section>
-                        <section class="documentation-spr-person-lane" aria-label="Odgovorna osoba iz People modula">
-                          <div class="documentation-spr-person-lane-head">
-                            <div>
-                              <span>Odgovorna osoba</span>
-                              <strong>Jedan potpisnik</strong>
-                            </div>
-                            <small>Authorize</small>
-                          </div>
-                          <div id="documentation-spr-responsible-user-list" class="documentation-spr-picker-list is-compact" role="listbox" aria-label="Odgovorna osoba iz People modula"></div>
-                          <select id="documentation-spr-responsible-user" class="documentation-spr-native-select" aria-label="Odaberi odgovornu osobu iz People modula" hidden></select>
-                          <small>Odabir puni potpis, KLASU i urudžbeni broj kada su podaci upisani u People.</small>
-                        </section>
-                      </div>
-                      <div id="documentation-spr-people-chips" class="documentation-spr-source-chips"></div>
-                      <div class="documentation-spr-source-actions">
-                        <button type="button" id="documentation-spr-people-apply" class="ghost-button">Primijeni People odabir</button>
-                        <button type="button" id="documentation-spr-people-clear" class="ghost-button">Očisti odabir</button>
-                      </div>
-                      <div class="documentation-spr-field-grid">
-                        <label class="field documentation-spr-field">
-                          <span>Ispitivanje obavili - tekst u zapisniku</span>
-                          <input data-documentation-spr-field="inspectors" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Odgovorna osoba - potpis</span>
-                          <input data-documentation-spr-field="responsiblePerson" type="text" />
+                      <input data-documentation-spr-field="inspectors" type="hidden" />
+                      <input data-documentation-spr-field="responsiblePerson" type="hidden" />
+                      <div class="documentation-spr-conclusion-grid">
+                        <label class="field documentation-spr-field documentation-spr-status-field">
+                          <span>Zaključna ocjena</span>
+                          <select data-documentation-spr-field="resultStatus">
+                            <option value="ZADOVOLJAVA">ZADOVOLJAVA</option>
+                            <option value="NE ZADOVOLJAVA">NE ZADOVOLJAVA</option>
+                          </select>
                         </label>
                         <label class="field documentation-spr-field">
                           <span>KLASA</span>
@@ -6833,13 +6828,6 @@
                         <label class="field documentation-spr-field">
                           <span>Urudžbeni broj</span>
                           <input data-documentation-spr-field="signatureNumber" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Ocjena</span>
-                          <select data-documentation-spr-field="resultStatus">
-                            <option value="ZADOVOLJAVA">ZADOVOLJAVA</option>
-                            <option value="NE ZADOVOLJAVA">NE ZADOVOLJAVA</option>
-                          </select>
                         </label>
                         <label class="field documentation-spr-field">
                           <span>Signature field</span>
@@ -6851,11 +6839,11 @@
                         </label>
                         <label class="field documentation-spr-field is-wide">
                           <span>Nedostaci</span>
-                          <textarea data-documentation-spr-field="defects" rows="2"></textarea>
+                          <textarea data-documentation-spr-field="defects" rows="4" placeholder="Upiši nedostatke ili ostavi prazno ako ih nema."></textarea>
                         </label>
                         <label class="field documentation-spr-field is-wide">
                           <span>Preporuke</span>
-                          <textarea data-documentation-spr-field="recommendations" rows="2"></textarea>
+                          <textarea data-documentation-spr-field="recommendations" rows="4" placeholder="Upiši preporuke ili napomene za korisnika."></textarea>
                         </label>
                       </div>
                     </section>
@@ -11277,9 +11265,9 @@
 
     <script src="/assets/vendor/leaflet.js"></script>
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
-    <script src="/gridline.js?v=20260627-gridline-excel-v2"></script>
+    <script src="/gridline.js?v=20260627-gridline-excel-v3"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260627-gridline-excel-v2"></script>
+    <script type="module" src="/src/main.js?v=20260627-gridline-excel-v3"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

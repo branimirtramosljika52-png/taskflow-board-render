@@ -3989,6 +3989,8 @@ const documentationSprLegalSourceCount = document.querySelector("#documentation-
 const documentationSprLegalApplyButton = document.querySelector("#documentation-spr-legal-apply");
 const documentationSprLegalActiveButton = document.querySelector("#documentation-spr-legal-active");
 const documentationSprLegalClearButton = document.querySelector("#documentation-spr-legal-clear");
+const documentationSprLegalCustomInput = document.querySelector("#documentation-spr-legal-custom-input");
+const documentationSprLegalCustomAddButton = document.querySelector("#documentation-spr-legal-custom-add");
 const documentationSprInspectorUsersSelect = document.querySelector("#documentation-spr-inspector-users");
 const documentationSprPeopleSearchInput = document.querySelector("#documentation-spr-people-search");
 const documentationSprInspectorUserList = document.querySelector("#documentation-spr-inspector-user-list");
@@ -57721,13 +57723,11 @@ function renderDocumentationSprEquipmentPicker() {
       item.manufacturer || "",
       item.deviceType || "",
       item.deviceCode ? `Oznaka ${item.deviceCode}` : "",
-    ].filter(Boolean).join(" · ");
-    const tags = [
       item.serialNumber ? `Ser. ${item.serialNumber}` : "",
       item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
       item.calibrationDate ? `Umjereno ${formatCompactDate(item.calibrationDate)}` : "",
       item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
-    ];
+    ].filter(Boolean).join(" · ");
     return `
       <button
         type="button"
@@ -57736,11 +57736,10 @@ function renderDocumentationSprEquipmentPicker() {
         aria-pressed="${isSelected ? "true" : "false"}"
         ${id ? "" : "disabled"}
       >
-        <span class="documentation-spr-picker-state">${isSelected ? "Odabrano" : "Dodaj"}</span>
+        <span class="documentation-spr-picker-state">${isSelected ? "Preselektirano" : "Dodaj"}</span>
         <span class="documentation-spr-picker-main">
           <strong>${escapeHtml(title)}</strong>
           ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
-          ${renderDocumentationSprPickerTags(tags)}
         </span>
       </button>
     `;
@@ -57774,11 +57773,9 @@ function renderDocumentationSprLegalPicker() {
       item.referenceCode || "",
       item.versionLabel || "",
       item.authority || "",
-    ].filter(Boolean).join(" · ");
-    const tags = [
       getLegalFrameworkStatusLabel(item.status),
       item.effectiveFrom ? `Od ${formatCompactDate(item.effectiveFrom)}` : "",
-    ];
+    ].filter(Boolean).join(" · ");
     return `
       <button
         type="button"
@@ -57787,11 +57784,10 @@ function renderDocumentationSprLegalPicker() {
         aria-pressed="${isSelected ? "true" : "false"}"
         ${id ? "" : "disabled"}
       >
-        <span class="documentation-spr-picker-state">${isSelected ? "U zapisniku" : "Dodaj"}</span>
+        <span class="documentation-spr-picker-state">${isSelected ? "Preselektirano" : "Dodaj"}</span>
         <span class="documentation-spr-picker-main">
           <strong>${escapeHtml(title)}</strong>
           ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
-          ${renderDocumentationSprPickerTags(tags)}
         </span>
       </button>
     `;
@@ -58045,6 +58041,23 @@ function applyDocumentationSprLegalSelection(ids = getDocumentationSprSelectValu
   scheduleDocumentationSprSave();
 }
 
+function appendDocumentationSprCustomRegulation() {
+  if (!documentationSprModel || !(documentationSprLegalCustomInput instanceof HTMLInputElement)) {
+    return;
+  }
+  const value = documentationSprLegalCustomInput.value.trim();
+  if (!value) {
+    documentationSprLegalCustomInput.focus();
+    return;
+  }
+  const current = String(documentationSprModel.regulations || "").trim();
+  setDocumentationSprFieldValue("regulations", [current, value].filter(Boolean).join("\n"));
+  documentationSprLegalCustomInput.value = "";
+  syncDocumentationSprSourceSummary();
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+}
+
 function applyDocumentationSprPeopleSelection({
   inspectorIds = getDocumentationSprSelectValues(documentationSprInspectorUsersSelect),
   responsibleUserId = documentationSprResponsibleUserSelect instanceof HTMLSelectElement ? documentationSprResponsibleUserSelect.value : "",
@@ -58228,6 +58241,29 @@ function getDocumentationSprWorkOrderDate(workOrder = {}, fieldName = "inspectio
   );
 }
 
+function getDocumentationSprInspectorIdsFromExecutors(workOrder = {}) {
+  const allowedInspectorIds = new Set(getDocumentationSprInspectorUsers().map((user) => String(user.id || "").trim()).filter(Boolean));
+  return normalizeDocumentationSprIdList(
+    getWorkOrderExecutors(workOrder)
+      .map((executorName) => findUserForExecutor(executorName))
+      .filter((user) => user && allowedInspectorIds.has(String(user.id || "").trim()))
+      .map((user) => user.id),
+  );
+}
+
+function getDocumentationSprFilteredLinkedIds(preselectedIds = [], linkedIds = []) {
+  const preselected = normalizeDocumentationSprIdList(preselectedIds);
+  const linked = normalizeDocumentationSprIdList(linkedIds);
+  if (linked.length === 0) {
+    return preselected;
+  }
+  if (preselected.length === 0) {
+    return linked;
+  }
+  const linkedSet = new Set(linked);
+  return preselected.filter((id) => linkedSet.has(id));
+}
+
 function getDocumentationSprValidityMonthsForService(service = {}) {
   const serviceKey = getWorkOrderServiceValidityKey(service);
   const serviceValidityMap = getWorkOrderDocumentWizardServiceValidityMap();
@@ -58253,6 +58289,8 @@ function getDocumentationSprWizardPeopleContext(workOrder = {}) {
         workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalInspectorUserId") : "",
         workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "inspectorUserId") : "",
       ]);
+  const executorInspectorIds = getDocumentationSprInspectorIdsFromExecutors(workOrder);
+  const resolvedInspectorIds = inspectorIds.length > 0 ? inspectorIds : executorInspectorIds;
   const responsibleUserId = workOrderId
     ? (
       getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalAuthorizationHolderUserId")
@@ -58260,7 +58298,7 @@ function getDocumentationSprWizardPeopleContext(workOrder = {}) {
     )
     : "";
   return {
-    inspectorIds,
+    inspectorIds: resolvedInspectorIds,
     responsibleUserId: String(responsibleUserId || "").trim(),
   };
 }
@@ -58294,8 +58332,10 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
   const peopleContext = getDocumentationSprWizardPeopleContext(workOrder);
   const inspectorUsers = getDocumentationSprUsersByIds(peopleContext.inspectorIds);
   const responsibleUser = getDocumentationSprUsersByIds([peopleContext.responsibleUserId])[0] || null;
-  const equipmentIds = getDocumentationSprLinkedItemIdsForService(getDocumentationSprMeasurementEquipmentItems(), service);
-  const legalFrameworkIds = getDocumentationSprLinkedItemIdsForService(getDocumentationSprLegalFrameworkItems(), service);
+  const linkedEquipmentIds = getDocumentationSprLinkedItemIdsForService(getDocumentationSprMeasurementEquipmentItems(), service);
+  const linkedLegalFrameworkIds = getDocumentationSprLinkedItemIdsForService(getDocumentationSprLegalFrameworkItems(), service);
+  const equipmentIds = getDocumentationSprFilteredLinkedIds(baseModel.measurementEquipmentIds, linkedEquipmentIds);
+  const legalFrameworkIds = getDocumentationSprFilteredLinkedIds(baseModel.legalFrameworkIds, linkedLegalFrameworkIds);
   const nextModel = normalizeDocumentationSprModel({
     ...baseModel,
     serviceBinding,
@@ -58853,11 +58893,6 @@ function renderDocumentationSprPageTwo(model) {
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
       ${renderDocumentationSprSectionTitle(5, "REZULTATI ISPITIVANJA")}
       <div class="documentation-spr-paper-text">${escapeHtml(model.resultsText)}</div>
-      <div class="documentation-spr-paper-note-title">Značenje oznaka:</div>
-      <div class="documentation-spr-paper-list">
-        <div>${escapeHtml(model.eiNote)}</div>
-        <div>${escapeHtml(model.eiminNote)}</div>
-      </div>
       <div class="documentation-spr-paper-footer">SPR-2/4</div>
     </section>
   `;
@@ -58927,7 +58962,7 @@ function renderDocumentationSprPageFour(model) {
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model, false)}
-      <strong>Pregled i ispitivanje sukladno Tablici 1 obavili:</strong>
+      <strong>Potpis odgovorne osobe:</strong>
       <div class="documentation-spr-paper-signature-area">
         <div></div>
         ${renderDocumentationSprSignature(model)}
@@ -59610,12 +59645,11 @@ function mountDocumentationSprGridline() {
     changeMode: "debounced",
     saveDelayMs: 220,
     enableQuickFill: true,
-    enableAiContextMenu: true,
+    enableAiContextMenu: false,
     aiFieldLabel: "Tablica mjernih mjesta",
     organizationId: state.activeOrganizationId || "",
     templateId: getDocumentationSprTemplateById()?.id || "",
     workOrderNumber: documentationSprModel.workOrderNumber || "",
-    onAiPrefill: runDocumentationSprGridlineAiPrefill,
     onFormulaReady: () => {
       renderDocumentationSprPreview();
     },
@@ -59801,6 +59835,16 @@ function initDocumentationSprWorkbench() {
     });
     documentationSprLegalClearButton?.addEventListener("click", () => {
       applyDocumentationSprLegalSelection([]);
+    });
+    documentationSprLegalCustomAddButton?.addEventListener("click", () => {
+      appendDocumentationSprCustomRegulation();
+    });
+    documentationSprLegalCustomInput?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      appendDocumentationSprCustomRegulation();
     });
     documentationSprInspectorUsersSelect?.addEventListener("change", () => {
       documentationSprModel.inspectorUserIds = getDocumentationSprSelectValues(documentationSprInspectorUsersSelect);
