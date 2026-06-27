@@ -58364,6 +58364,15 @@ function triggerDocumentationSprHtmlDownload(html = "", fileName = "spr-zapisnik
   }, 1_000);
 }
 
+let documentationSprPdfGeneratorPromise = null;
+
+function loadDocumentationSprPdfGenerator() {
+  if (!documentationSprPdfGeneratorPromise) {
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260627-app-download-v1");
+  }
+  return documentationSprPdfGeneratorPromise;
+}
+
 function buildDocumentationSprPdfHtml(model = documentationSprModel, rows = getDocumentationSprMeasurementRows()) {
   const title = getDocumentationSprPdfFileName(model).replace(/\.pdf$/i, "");
   const pagesHtml = [
@@ -58406,20 +58415,7 @@ function buildDocumentationSprPdfHtml(model = documentationSprModel, rows = getD
 </html>`;
 }
 
-function exportDocumentationSprPdf() {
-  if (!documentationSprModel) {
-    return;
-  }
-  readDocumentationSprFormIntoModel();
-  if (documentationSprGridlineApi?.getModel) {
-    documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(documentationSprGridlineApi.getModel());
-  }
-  renderDocumentationSprPreview();
-  scheduleDocumentationSprSave();
-
-  const fileName = getDocumentationSprPdfFileName(documentationSprModel);
-  const rows = getDocumentationSprMeasurementRows();
-  const html = buildDocumentationSprPdfHtml(documentationSprModel, rows);
+function openDocumentationSprPrintPdfFallback(html = "", fileName = "spr-zapisnik.pdf") {
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     setDocumentationSprStatus("Dopusti popup za PDF", "saving");
@@ -58436,6 +58432,51 @@ function exportDocumentationSprPdf() {
     console.error("Ne mogu otvoriti PDF export prozor.", error);
     printWindow.close();
     setDocumentationSprStatus("PDF export nije otvoren", "saving");
+  }
+}
+
+async function exportDocumentationSprPdf() {
+  if (!documentationSprModel) {
+    return;
+  }
+  readDocumentationSprFormIntoModel();
+  if (documentationSprGridlineApi?.getModel) {
+    documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(documentationSprGridlineApi.getModel());
+  }
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+
+  const fileName = getDocumentationSprPdfFileName(documentationSprModel);
+  const rows = getDocumentationSprMeasurementRows();
+  const previousButtonText = documentationSprPdfButton?.textContent || "Preuzmi PDF";
+  if (documentationSprPdfButton) {
+    documentationSprPdfButton.disabled = true;
+    documentationSprPdfButton.textContent = "Generiram PDF";
+  }
+  setDocumentationSprStatus("Generiram PDF u browseru", "saving");
+  try {
+    const generator = await loadDocumentationSprPdfGenerator();
+    const result = await generator.generateDocumentationSprPdfBlob({
+      model: documentationSprModel,
+      rows,
+      fileName,
+    });
+    triggerBlobDownload(result.blob, result.fileName || fileName);
+    setDocumentationSprStatus(
+      result.signatureFieldCount
+        ? "PDF preuzet sa signature fieldom"
+        : "PDF preuzet",
+      "saved",
+    );
+  } catch (error) {
+    console.error("Browser PDF download nije uspio, otvaram print fallback.", error);
+    const html = buildDocumentationSprPdfHtml(documentationSprModel, rows);
+    openDocumentationSprPrintPdfFallback(html, fileName);
+  } finally {
+    if (documentationSprPdfButton) {
+      documentationSprPdfButton.disabled = false;
+      documentationSprPdfButton.textContent = previousButtonText;
+    }
   }
 }
 
@@ -58673,7 +58714,7 @@ function initDocumentationSprWorkbench() {
       scheduleDocumentationSprSave();
     });
     documentationSprPdfButton?.addEventListener("click", () => {
-      exportDocumentationSprPdf();
+      void exportDocumentationSprPdf();
     });
     documentationSprDownloadButton?.addEventListener("click", () => {
       readDocumentationSprFormIntoModel();

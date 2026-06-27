@@ -7959,6 +7959,7 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".pdf": "application/pdf",
+  ".ttf": "font/ttf",
   ".apk": "application/vnd.android.package-archive",
   ".svg": "image/svg+xml; charset=utf-8",
   ".wasm": "application/wasm",

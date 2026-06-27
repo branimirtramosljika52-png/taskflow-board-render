@@ -156,6 +156,26 @@ async function buildOzoPanelBundle() {
   });
 }
 
+async function buildDocumentationSprPdfBundle() {
+  await esbuild.build({
+    entryPoints: [resolve(rootDir, "src", "documentationSprPdf.js")],
+    outfile: resolve(distDir, "assets", "documentation-spr-pdf.js"),
+    bundle: true,
+    format: "esm",
+    target: "es2020",
+    minify: true,
+    sourcemap: false,
+  });
+}
+
+async function copyBrowserPdfFonts() {
+  const sourceDir = resolve(rootDir, "node_modules", "dejavu-fonts-ttf", "ttf");
+  const targetDir = resolve(distDir, "assets", "fonts");
+  await mkdir(targetDir, { recursive: true });
+  await cp(resolve(sourceDir, "DejaVuSans.ttf"), resolve(targetDir, "DejaVuSans.ttf"));
+  await cp(resolve(sourceDir, "DejaVuSans-Bold.ttf"), resolve(targetDir, "DejaVuSans-Bold.ttf"));
+}
+
 async function buildOzoTailwindCss() {
   const executable = resolve(rootDir, "node_modules", ".bin", process.platform === "win32" ? "tailwindcss.cmd" : "tailwindcss");
   const args = [
@@ -199,6 +219,7 @@ await cp(resolve(rootDir, "browser-extension"), resolve(distDir, "browser-extens
 await cp(resolve(rootDir, "src", "styles"), resolve(distDir, "src", "styles"), { recursive: true });
 await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "assets", "safenexus-logo.png"));
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
+await copyBrowserPdfFonts();
 await copyMobileAssets();
 await copyOptionalDirectory(resolve(rootDir, "assets", "exports"), resolve(distDir, "assets", "exports"));
 await copyOptionalDirectory(resolve(rootDir, "assets", "ozo"), resolve(distDir, "assets", "ozo"));
@@ -231,5 +252,6 @@ for (const entryModulePath of browserEntryModules) {
 }
 
 await buildOzoPanelBundle();
+await buildDocumentationSprPdfBundle();
 await buildOzoTailwindCss();
 await compressDistAssets();
