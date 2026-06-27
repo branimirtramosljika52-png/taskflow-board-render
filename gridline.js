@@ -38,6 +38,197 @@
     return row + ":" + column;
   }
 
+  var formulaTools = window.SafeNexusMeasurementFormula || null;
+  var formulaToolsPromise = null;
+
+  function loadFormulaTools() {
+    if (formulaTools) {
+      return Promise.resolve(formulaTools);
+    }
+    if (!formulaToolsPromise) {
+      formulaToolsPromise = import("/src/measurementFormula.js")
+        .then(function (module) {
+          formulaTools = module || null;
+          window.SafeNexusMeasurementFormula = formulaTools;
+          window.dispatchEvent(new CustomEvent("SafeNexusMeasurementFormulaReady"));
+          return formulaTools;
+        })
+        .catch(function () {
+          formulaTools = null;
+          return null;
+        });
+    }
+    return formulaToolsPromise;
+  }
+
+  function normalizeFormulaText(value) {
+    return String(value == null ? "" : value)
+      .replace(/RAND\s*BETWEEN/gi, "RANDBETWEEN")
+      .replace(/RANDBE+TWI+N/gi, "RANDBETWEEN")
+      .replace(/RANDBE+TWEEN/gi, "RANDBETWEEN");
+  }
+
+  function isFormulaText(value) {
+    if (formulaTools && typeof formulaTools.isMeasurementFormula === "function") {
+      return formulaTools.isMeasurementFormula(value);
+    }
+    return typeof value === "string" && value.trim().charAt(0) === "=";
+  }
+
+  function parseCellReferenceText(reference) {
+    var text = String(reference && typeof reference === "object" ? reference.reference : reference || "")
+      .replace(/^.*!/, "")
+      .replace(/\$/g, "")
+      .toUpperCase()
+      .trim();
+    var match = /^([A-Z]+)(\d+)$/.exec(text);
+    var columnIndex = 0;
+    var index;
+    if (!match) {
+      return null;
+    }
+    for (index = 0; index < match[1].length; index += 1) {
+      columnIndex = (columnIndex * 26) + (match[1].charCodeAt(index) - 64);
+    }
+    return {
+      rowIndex: Number(match[2]) - 1,
+      columnIndex: columnIndex - 1,
+    };
+  }
+
+  function formatFormulaResult(value) {
+    if (formulaTools && typeof formulaTools.formatMeasurementFormulaResult === "function") {
+      return formulaTools.formatMeasurementFormulaResult(value);
+    }
+    if (value == null || value === "") {
+      return "";
+    }
+    return String(value);
+  }
+
+  function getRawModelValue(model, row, column) {
+    return model && model.data ? model.data[cellKey(row, column)] || "" : "";
+  }
+
+  function createFormulaContext(model, options) {
+    var cache = Object.create(null);
+    var resolving = Object.create(null);
+    var randomBetween = options && typeof options.randomBetween === "function"
+      ? options.randomBetween
+      : function (start, end) {
+        var min = Math.ceil(Number(start));
+        var max = Math.floor(Number(end));
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      };
+
+    function evaluateCell(row, column) {
+      var key = cellKey(row, column);
+      var rawValue = getRawModelValue(model, row, column);
+      var result;
+      if (!isFormulaText(rawValue) || !formulaTools || typeof formulaTools.evaluateMeasurementFormula !== "function") {
+        return rawValue;
+      }
+      if (Object.prototype.hasOwnProperty.call(cache, key)) {
+        return cache[key];
+      }
+      if (resolving[key]) {
+        throw new Error("Kruzna formula.");
+      }
+      resolving[key] = true;
+      try {
+        result = formulaTools.evaluateMeasurementFormula(normalizeFormulaText(rawValue), {
+          currentRowIndex: row,
+          currentColumnIndex: column,
+          randomBetween: randomBetween,
+          resolveCellReference: function (reference) {
+            var parsed = formulaTools && typeof formulaTools.parseMeasurementCellReference === "function"
+              ? formulaTools.parseMeasurementCellReference(reference)
+              : parseCellReferenceText(reference);
+            if (!parsed || parsed.rowIndex < 0 || parsed.columnIndex < 0) {
+              return "";
+            }
+            if (parsed.rowIndex >= model.rowCount || parsed.columnIndex >= model.columnCount) {
+              return "";
+            }
+            return evaluateCell(parsed.rowIndex, parsed.columnIndex);
+          },
+          resolveRange: function (startReference, endReference) {
+            var start = formulaTools && typeof formulaTools.parseMeasurementCellReference === "function"
+              ? formulaTools.parseMeasurementCellReference(startReference)
+              : parseCellReferenceText(startReference);
+            var end = formulaTools && typeof formulaTools.parseMeasurementCellReference === "function"
+              ? formulaTools.parseMeasurementCellReference(endReference)
+              : parseCellReferenceText(endReference);
+            var top;
+            var bottom;
+            var left;
+            var right;
+            var rows = [];
+            var rowIndex;
+            var columnIndex;
+            if (!start || !end) {
+              return rows;
+            }
+            top = Math.max(0, Math.min(start.rowIndex, end.rowIndex));
+            bottom = Math.min(model.rowCount - 1, Math.max(start.rowIndex, end.rowIndex));
+            left = Math.max(0, Math.min(start.columnIndex, end.columnIndex));
+            right = Math.min(model.columnCount - 1, Math.max(start.columnIndex, end.columnIndex));
+            for (rowIndex = top; rowIndex <= bottom; rowIndex += 1) {
+              rows.push([]);
+              for (columnIndex = left; columnIndex <= right; columnIndex += 1) {
+                rows[rows.length - 1].push(evaluateCell(rowIndex, columnIndex));
+              }
+            }
+            return rows;
+          },
+        });
+      } finally {
+        delete resolving[key];
+      }
+      cache[key] = result;
+      return result;
+    }
+
+    return {
+      evaluateCell: evaluateCell,
+    };
+  }
+
+  function getModelCellDisplayValue(model, row, column, options) {
+    var rawValue = getRawModelValue(model, row, column);
+    if (!isFormulaText(rawValue)) {
+      return rawValue;
+    }
+    if (!formulaTools || typeof formulaTools.evaluateMeasurementFormula !== "function") {
+      return rawValue;
+    }
+    try {
+      return formatFormulaResult(createFormulaContext(model, options).evaluateCell(row, column));
+    } catch (error) {
+      return "#ERROR";
+    }
+  }
+
+  function shiftFormulaValue(value, rowOffset, columnOffset) {
+    var text = normalizeFormulaText(value);
+    if (!isFormulaText(text)) {
+      return text;
+    }
+    if (formulaTools && typeof formulaTools.shiftMeasurementFormulaReferences === "function") {
+      try {
+        return formulaTools.shiftMeasurementFormulaReferences(text, rowOffset, columnOffset);
+      } catch (error) {
+        return text;
+      }
+    }
+    return text.replace(/(^|[^A-Z0-9_])(\$?)([A-Z]+)(\$?)(\d+)/gi, function (match, prefix, absoluteColumn, letters, absoluteRow, rowText) {
+      var parsed = parseCellReferenceText(letters + rowText);
+      var nextRow = absoluteRow ? parsed.rowIndex : Math.max(0, parsed.rowIndex + rowOffset);
+      var nextColumn = absoluteColumn ? parsed.columnIndex : Math.max(0, parsed.columnIndex + columnOffset);
+      return prefix + (absoluteColumn || "") + columnLabel(nextColumn) + (absoluteRow || "") + String(nextRow + 1);
+    });
+  }
+
   function normalizeDataMap(value) {
     var source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     var data = Object.create(null);
@@ -117,9 +308,21 @@
 
   function modelToRows(model, options) {
     var normalized = normalizeModel(model, options);
+    var formulaContext = options && options.raw ? null : createFormulaContext(normalized, options);
     return Array.from({ length: normalized.rowCount }, function (_, rowIndex) {
       return Array.from({ length: normalized.columnCount }, function (_, columnIndex) {
-        return normalized.data[cellKey(rowIndex, columnIndex)] || "";
+        var rawValue = normalized.data[cellKey(rowIndex, columnIndex)] || "";
+        if (options && options.raw) {
+          return rawValue;
+        }
+        if (!isFormulaText(rawValue) || !formulaTools || typeof formulaTools.evaluateMeasurementFormula !== "function") {
+          return rawValue;
+        }
+        try {
+          return formatFormulaResult(formulaContext.evaluateCell(rowIndex, columnIndex));
+        } catch (error) {
+          return "#ERROR";
+        }
       });
     });
   }
@@ -198,19 +401,36 @@
     var addColumnButton = resolveElement(host, "[data-gridline-action='add-column']", "#add-column");
     var clearButton = resolveElement(host, "[data-gridline-action='clear']", "#clear");
     var downloadButton = resolveElement(host, "[data-gridline-action='download']", "#download");
+    var quickFillButton = resolveElement(host, "[data-gridline-action='quick-fill']", "#quick-fill");
     var rootElement = grid ? grid.closest("[data-gridline-instance]") || host : host;
     var model;
     var active = { row: 0, column: 0 };
     var selectedCell = null;
     var saveTimer = 0;
+    var computedRefreshFrame = 0;
     var saveDelay = clampInteger(options && options.saveDelayMs, 450, 0, 60000);
     var storageKey = options && Object.prototype.hasOwnProperty.call(options, "storageKey")
       ? options.storageKey
       : (rootElement && rootElement.dataset ? rootElement.dataset.gridlineStorageKey : "") || DEFAULT_STORAGE_KEY;
     var onChange = options && typeof options.onChange === "function" ? options.onChange : null;
+    var onFormulaReady = options && typeof options.onFormulaReady === "function" ? options.onFormulaReady : null;
+    var onAiPrefill = options && typeof options.onAiPrefill === "function" ? options.onAiPrefill : null;
     var changeMode = String(options && (options.changeMode || options.emitChangeMode) || "input").toLowerCase();
     var autoGrow = !(options && options.autoGrow === false);
+    var enableQuickFill = Boolean(quickFillButton || options && options.enableQuickFill);
+    var enableAiContextMenu = Boolean(options && options.enableAiContextMenu);
     var pendingExternalChange = false;
+    var fillDrag = null;
+    var quickFillPanel = null;
+    var contextMenu = null;
+    var aiPanel = null;
+    var aiState = {
+      mode: "table",
+      files: [],
+      previewRows: [],
+      status: "idle",
+      message: "",
+    };
 
     if (!grid || !status || !formulaInput || !cellRef) {
       return null;
@@ -253,6 +473,51 @@
       return model.data[cellKey(row, column)] || "";
     }
 
+    function getDisplayValue(row, column) {
+      return getModelCellDisplayValue(model, row, column, options);
+    }
+
+    function isInputEditing(input) {
+      return input && document.activeElement === input;
+    }
+
+    function syncInputDisplay(input, forceRaw) {
+      var row;
+      var column;
+      var rawValue;
+      var displayValue;
+      if (!input) {
+        return;
+      }
+      row = Number(input.dataset.row);
+      column = Number(input.dataset.column);
+      rawValue = getValue(row, column);
+      displayValue = forceRaw || isInputEditing(input)
+        ? rawValue
+        : getDisplayValue(row, column);
+      input.value = displayValue;
+      input.dataset.rawValue = rawValue;
+      input.classList.toggle("is-formula", isFormulaText(rawValue));
+      input.classList.toggle("is-formula-error", isFormulaText(rawValue) && displayValue === "#ERROR");
+      input.title = isFormulaText(rawValue) && displayValue === "#ERROR"
+        ? "Formula se ne moze izracunati."
+        : "";
+    }
+
+    function refreshComputedCells() {
+      computedRefreshFrame = 0;
+      Array.prototype.forEach.call(grid.querySelectorAll("input.cell"), function (input) {
+        syncInputDisplay(input, false);
+      });
+    }
+
+    function queueComputedRefresh() {
+      if (computedRefreshFrame) {
+        return;
+      }
+      computedRefreshFrame = window.requestAnimationFrame(refreshComputedCells);
+    }
+
     function setValue(row, column, value) {
       var key = cellKey(row, column);
       var next = String(value == null ? "" : value);
@@ -289,6 +554,7 @@
     function scheduleSave() {
       setStatus(storageKey ? "Lokalna izmjena" : "Izmjena", "is-saving");
       pendingExternalChange = true;
+      queueComputedRefresh();
       if (changeMode !== "debounced") {
         pendingExternalChange = false;
         emitChange();
@@ -321,6 +587,220 @@
       return true;
     }
 
+    function attachFillHandle(td) {
+      var handle;
+      if (!td) {
+        return;
+      }
+      Array.prototype.forEach.call(td.querySelectorAll(".gridline-fill-handle"), function (node) {
+        node.remove();
+      });
+      handle = document.createElement("button");
+      handle.type = "button";
+      handle.className = "gridline-fill-handle";
+      handle.title = "Povuci za Excel fill. Dvoklik kopira prema dolje.";
+      handle.setAttribute("aria-label", "Excel fill");
+      td.appendChild(handle);
+    }
+
+    function clearFillPreview() {
+      Array.prototype.forEach.call(grid.querySelectorAll("td.is-fill-preview"), function (td) {
+        td.classList.remove("is-fill-preview");
+      });
+    }
+
+    function getCellFromPoint(clientX, clientY) {
+      var element = document.elementFromPoint(clientX, clientY);
+      var td = element && typeof element.closest === "function"
+        ? element.closest("td[data-row][data-column]")
+        : null;
+      return td && grid.contains(td) ? td : null;
+    }
+
+    function markFillPreview(targetRow, targetColumn) {
+      var source;
+      var start;
+      var end;
+      var index;
+      var td;
+      clearFillPreview();
+      if (!fillDrag) {
+        return;
+      }
+      source = fillDrag.source;
+      if (targetRow !== source.row) {
+        start = Math.min(source.row, targetRow);
+        end = Math.max(source.row, targetRow);
+        for (index = start; index <= end; index += 1) {
+          if (index === source.row) {
+            continue;
+          }
+          td = grid.querySelector('td[data-row="' + index + '"][data-column="' + source.column + '"]');
+          if (td) {
+            td.classList.add("is-fill-preview");
+          }
+        }
+        return;
+      }
+      if (targetColumn !== source.column) {
+        start = Math.min(source.column, targetColumn);
+        end = Math.max(source.column, targetColumn);
+        for (index = start; index <= end; index += 1) {
+          if (index === source.column) {
+            continue;
+          }
+          td = grid.querySelector('td[data-row="' + source.row + '"][data-column="' + index + '"]');
+          if (td) {
+            td.classList.add("is-fill-preview");
+          }
+        }
+      }
+    }
+
+    function applyFillRange(targetRow, targetColumn) {
+      var source;
+      var sourceValue;
+      var start;
+      var end;
+      var index;
+      var rowOffset;
+      var columnOffset;
+      var changedSize = false;
+      if (!fillDrag) {
+        return;
+      }
+      source = fillDrag.source;
+      sourceValue = getValue(source.row, source.column);
+      if (targetRow !== source.row) {
+        start = Math.min(source.row, targetRow);
+        end = Math.max(source.row, targetRow);
+        if (ensureSize(end, source.column)) {
+          changedSize = true;
+        }
+        for (index = start; index <= end; index += 1) {
+          if (index === source.row) {
+            continue;
+          }
+          rowOffset = index - source.row;
+          setValue(index, source.column, shiftFormulaValue(sourceValue, rowOffset, 0));
+        }
+      } else if (targetColumn !== source.column) {
+        start = Math.min(source.column, targetColumn);
+        end = Math.max(source.column, targetColumn);
+        if (ensureSize(source.row, end)) {
+          changedSize = true;
+        }
+        for (index = start; index <= end; index += 1) {
+          if (index === source.column) {
+            continue;
+          }
+          columnOffset = index - source.column;
+          setValue(source.row, index, shiftFormulaValue(sourceValue, 0, columnOffset));
+        }
+      }
+      if (changedSize) {
+        render();
+      } else {
+        refreshComputedCells();
+      }
+      scheduleSave();
+    }
+
+    function getLastNonEmptyRowInColumn(column, startRow) {
+      var row;
+      var last = startRow;
+      for (row = startRow + 1; row < model.rowCount; row += 1) {
+        if (String(getValue(row, column)).trim()) {
+          last = row;
+        } else if (last > startRow) {
+          break;
+        }
+      }
+      return last;
+    }
+
+    function getDoubleClickFillEndRow(source) {
+      var leftEnd = source.column > 0 ? getLastNonEmptyRowInColumn(source.column - 1, source.row) : source.row;
+      var rightEnd = source.column + 1 < model.columnCount ? getLastNonEmptyRowInColumn(source.column + 1, source.row) : source.row;
+      var anyEnd = source.row;
+      var row;
+      for (row = source.row + 1; row < model.rowCount; row += 1) {
+        if (Array.from({ length: model.columnCount }, function (_, column) {
+          return column === source.column ? "" : getValue(row, column);
+        }).some(function (value) { return String(value).trim(); })) {
+          anyEnd = row;
+        }
+      }
+      return Math.max(leftEnd, rightEnd, anyEnd);
+    }
+
+    function handleFillPointerMove(event) {
+      var td;
+      var targetRow;
+      var targetColumn;
+      if (!fillDrag) {
+        return;
+      }
+      td = getCellFromPoint(event.clientX, event.clientY);
+      if (!td) {
+        return;
+      }
+      targetRow = Number(td.dataset.row);
+      targetColumn = Number(td.dataset.column);
+      if (Math.abs(targetRow - fillDrag.source.row) >= Math.abs(targetColumn - fillDrag.source.column)) {
+        targetColumn = fillDrag.source.column;
+      } else {
+        targetRow = fillDrag.source.row;
+      }
+      fillDrag.target = { row: targetRow, column: targetColumn };
+      markFillPreview(targetRow, targetColumn);
+    }
+
+    function handleFillPointerUp() {
+      var target = fillDrag && fillDrag.target;
+      document.removeEventListener("pointermove", handleFillPointerMove);
+      document.removeEventListener("pointerup", handleFillPointerUp);
+      clearFillPreview();
+      if (target) {
+        applyFillRange(target.row, target.column);
+      }
+      fillDrag = null;
+    }
+
+    function handleFillPointerDown(event) {
+      var handle = event.target && event.target.closest ? event.target.closest(".gridline-fill-handle") : null;
+      if (!handle) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      fillDrag = {
+        source: { row: active.row, column: active.column },
+        target: null,
+      };
+      document.addEventListener("pointermove", handleFillPointerMove);
+      document.addEventListener("pointerup", handleFillPointerUp, { once: true });
+    }
+
+    function handleFillDoubleClick(event) {
+      var handle = event.target && event.target.closest ? event.target.closest(".gridline-fill-handle") : null;
+      var endRow;
+      if (!handle) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      fillDrag = {
+        source: { row: active.row, column: active.column },
+        target: null,
+      };
+      endRow = getDoubleClickFillEndRow(fillDrag.source);
+      if (endRow > fillDrag.source.row) {
+        applyFillRange(endRow, fillDrag.source.column);
+      }
+      fillDrag = null;
+    }
+
     function selectCell(row, column, selectOptions) {
       var focus = !selectOptions || selectOptions.focus !== false;
       var input;
@@ -331,6 +811,9 @@
       };
       if (selectedCell) {
         selectedCell.classList.remove("is-selected");
+        Array.prototype.forEach.call(selectedCell.querySelectorAll(".gridline-fill-handle"), function (node) {
+          node.remove();
+        });
         selectedCell = null;
       }
       input = getInput(active.row, active.column);
@@ -338,9 +821,13 @@
       if (td) {
         td.classList.add("is-selected");
         selectedCell = td;
+        attachFillHandle(td);
       }
       cellRef.textContent = columnLabel(active.column) + (active.row + 1);
       formulaInput.value = getValue(active.row, active.column);
+      if (input) {
+        syncInputDisplay(input, focus || isInputEditing(input));
+      }
       if (focus && input) {
         input.focus();
         input.select();
@@ -382,11 +869,11 @@
           td.dataset.column = String(column);
           input = document.createElement("input");
           input.className = "cell";
-          input.value = getValue(row, column);
           input.autocomplete = "off";
           input.spellcheck = false;
           input.dataset.row = String(row);
           input.dataset.column = String(column);
+          syncInputDisplay(input, false);
           td.appendChild(input);
           tr.appendChild(td);
         }
@@ -424,7 +911,7 @@
           setValue(row, column, value);
           input = getInput(row, column);
           if (input) {
-            input.value = value;
+            syncInputDisplay(input, row === active.row && column === active.column);
           }
         });
       });
@@ -441,6 +928,18 @@
         return;
       }
       selectCell(Number(input.dataset.row), Number(input.dataset.column), { focus: false });
+    }
+
+    function handleFocusOut(event) {
+      var input = getClosestCellInput(event.target);
+      if (!input) {
+        return;
+      }
+      window.setTimeout(function () {
+        if (!isInputEditing(input)) {
+          syncInputDisplay(input, false);
+        }
+      }, 0);
     }
 
     function handleInput(event) {
@@ -492,8 +991,935 @@
       input = getInput(active.row, active.column);
       if (input) {
         input.value = formulaInput.value;
+        input.dataset.rawValue = formulaInput.value;
+        input.classList.toggle("is-formula", isFormulaText(formulaInput.value));
       }
       scheduleSave();
+    }
+
+    function getLastMeaningfulRowIndex() {
+      var row;
+      var column;
+      var last = -1;
+      for (row = 0; row < model.rowCount; row += 1) {
+        for (column = 0; column < model.columnCount; column += 1) {
+          if (String(getValue(row, column)).trim()) {
+            last = row;
+            break;
+          }
+        }
+      }
+      return last;
+    }
+
+    function getQuickFillDefaultStartRow() {
+      return Math.max(1, getLastMeaningfulRowIndex() + 2);
+    }
+
+    function getNextSequenceNumber(startRow) {
+      var row;
+      var maxNumber = 0;
+      for (row = 0; row < Math.max(0, startRow); row += 1) {
+        maxNumber = Math.max(maxNumber, Number.parseInt(String(getValue(row, 0) || "").replace(/\D+/g, ""), 10) || 0);
+      }
+      return maxNumber + 1;
+    }
+
+    function splitQuickFillLine(line) {
+      var text = String(line || "").trim();
+      if (!text) {
+        return [];
+      }
+      if (text.indexOf("\t") >= 0) {
+        return text.split("\t").map(function (part) { return part.trim(); });
+      }
+      if (text.indexOf(";") >= 0) {
+        return text.split(";").map(function (part) { return part.trim(); });
+      }
+      if (text.indexOf(",") >= 0) {
+        return text.split(",").map(function (part) { return part.trim(); });
+      }
+      return [text];
+    }
+
+    function buildQuickFillRows(floor, room, itemsText, startRowIndex) {
+      var lines = String(itemsText || "")
+        .split(/\r?\n/)
+        .map(function (line) { return line.trim(); })
+        .filter(Boolean);
+      var sequence = getNextSequenceNumber(startRowIndex);
+      if (!lines.length) {
+        lines = [room || floor || "Mjerno mjesto"];
+      }
+      return lines.map(function (line, index) {
+        var parts = splitQuickFillLine(line);
+        var itemName = parts[0] || room || floor || "Mjerno mjesto";
+        var place = [floor, room, itemName].map(function (part) { return String(part || "").trim(); }).filter(Boolean).join(" - ");
+        var row = Array.from({ length: model.columnCount }, function () { return ""; });
+        if (model.columnCount > 0) {
+          row[0] = String(sequence + index);
+        }
+        if (model.columnCount > 1) {
+          row[1] = place || itemName;
+        }
+        if (model.columnCount > 2) {
+          row[2] = parts[1] || "1";
+        }
+        if (model.columnCount > 3) {
+          row[3] = parts[2] || ">2";
+        }
+        if (model.columnCount > 4) {
+          row[4] = parts[3] || "1";
+        }
+        if (model.columnCount > 5) {
+          row[5] = parts[4] || "DA";
+        }
+        parts.slice(5).forEach(function (value, valueIndex) {
+          var column = valueIndex + 6;
+          if (column < model.columnCount) {
+            row[column] = value;
+          }
+        });
+        return row;
+      });
+    }
+
+    function insertMatrixRows(startRowIndex, rows) {
+      var rowCount = Array.isArray(rows) ? rows.length : 0;
+      var nextData = Object.create(null);
+      var previousRowCount = model.rowCount;
+      if (!rowCount) {
+        return;
+      }
+      ensureSize(startRowIndex + rowCount - 1, model.columnCount - 1);
+      Object.keys(model.data).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        var nextRow = row >= startRowIndex ? row + rowCount : row;
+        nextData[cellKey(nextRow, column)] = model.data[key];
+      });
+      model.rowCount = clampInteger(
+        Math.max(previousRowCount + rowCount, startRowIndex + rowCount),
+        previousRowCount + rowCount,
+        MIN_ROWS,
+        MAX_ROWS
+      );
+      rows.forEach(function (rowValues, rowOffset) {
+        rowValues.slice(0, model.columnCount).forEach(function (value, columnIndex) {
+          var text = String(value == null ? "" : value);
+          if (text) {
+            nextData[cellKey(startRowIndex + rowOffset, columnIndex)] = text;
+          }
+        });
+      });
+      model.data = nextData;
+      render();
+      selectCell(startRowIndex + rowCount - 1, Math.min(1, model.columnCount - 1), { focus: false });
+      scheduleSave();
+    }
+
+    function createPopoverHeader(titleText, copyText) {
+      var header = document.createElement("div");
+      var title = document.createElement("strong");
+      var copy = document.createElement("span");
+      header.className = "gridline-popover-head";
+      title.textContent = titleText;
+      copy.textContent = copyText || "";
+      header.append(title, copy);
+      return header;
+    }
+
+    function createPopoverActions(buttons) {
+      var actions = document.createElement("div");
+      actions.className = "gridline-popover-actions";
+      (buttons || []).forEach(function (button) {
+        actions.appendChild(button);
+      });
+      return actions;
+    }
+
+    function createLabeledControl(labelText, control) {
+      var label = document.createElement("label");
+      var span = document.createElement("span");
+      label.className = "gridline-popover-field";
+      span.textContent = labelText;
+      label.appendChild(span);
+      label.appendChild(control);
+      return label;
+    }
+
+    function ensureQuickFillPanel() {
+      var startInput;
+      var floorInput;
+      var roomInput;
+      var itemsInput;
+      var closeButton;
+      var insertButton;
+      if (quickFillPanel || !rootElement) {
+        return quickFillPanel;
+      }
+      quickFillPanel = document.createElement("section");
+      quickFillPanel.className = "gridline-popover gridline-quick-fill-panel";
+      quickFillPanel.hidden = true;
+      quickFillPanel.setAttribute("role", "dialog");
+      quickFillPanel.setAttribute("aria-label", "Brzi generator redova");
+
+      startInput = document.createElement("input");
+      startInput.type = "number";
+      startInput.min = "1";
+      startInput.max = String(MAX_ROWS);
+      startInput.step = "1";
+      startInput.dataset.gridlineQuickStart = "true";
+
+      floorInput = document.createElement("input");
+      floorInput.type = "text";
+      floorInput.autocomplete = "off";
+      floorInput.placeholder = "npr. Prizemlje";
+      floorInput.dataset.gridlineQuickFloor = "true";
+
+      roomInput = document.createElement("input");
+      roomInput.type = "text";
+      roomInput.autocomplete = "off";
+      roomInput.placeholder = "npr. Hodnik, ured 12";
+      roomInput.dataset.gridlineQuickRoom = "true";
+
+      itemsInput = document.createElement("textarea");
+      itemsInput.rows = 6;
+      itemsInput.placeholder = "Izlaz;1;>2;1;DA\nSredina;2;>2;1;DA";
+      itemsInput.dataset.gridlineQuickItems = "true";
+
+      closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "ghost-button";
+      closeButton.textContent = "Zatvori";
+      closeButton.dataset.gridlineQuickClose = "true";
+
+      insertButton = document.createElement("button");
+      insertButton.type = "button";
+      insertButton.className = "primary-button";
+      insertButton.textContent = "Umetni redove";
+      insertButton.dataset.gridlineQuickInsert = "true";
+
+      quickFillPanel.append(
+        createPopoverHeader("Brzi generator redova", "Etaza, prostorija i stavke idu direktno u Gridline."),
+        createLabeledControl("Pocetni red", startInput),
+        createLabeledControl("Etaza", floorInput),
+        createLabeledControl("Prostorija", roomInput),
+        createLabeledControl("Stavke", itemsInput),
+        createPopoverActions([closeButton, insertButton])
+      );
+      quickFillPanel.addEventListener("click", handleQuickFillPanelClick);
+      rootElement.appendChild(quickFillPanel);
+      return quickFillPanel;
+    }
+
+    function openQuickFillPanel() {
+      var panel = ensureQuickFillPanel();
+      var startInput;
+      if (!panel) {
+        return;
+      }
+      startInput = panel.querySelector("[data-gridline-quick-start]");
+      if (startInput) {
+        startInput.value = String(getQuickFillDefaultStartRow());
+      }
+      panel.hidden = false;
+    }
+
+    function closeQuickFillPanel() {
+      if (quickFillPanel) {
+        quickFillPanel.hidden = true;
+      }
+    }
+
+    function applyQuickFillPanel() {
+      var panel = ensureQuickFillPanel();
+      var startInput = panel && panel.querySelector("[data-gridline-quick-start]");
+      var floorInput = panel && panel.querySelector("[data-gridline-quick-floor]");
+      var roomInput = panel && panel.querySelector("[data-gridline-quick-room]");
+      var itemsInput = panel && panel.querySelector("[data-gridline-quick-items]");
+      var startRow = clampInteger(startInput && startInput.value, getQuickFillDefaultStartRow(), 1, MAX_ROWS) - 1;
+      var rows = buildQuickFillRows(
+        floorInput ? floorInput.value : "",
+        roomInput ? roomInput.value : "",
+        itemsInput ? itemsInput.value : "",
+        startRow
+      );
+      insertMatrixRows(startRow, rows);
+      closeQuickFillPanel();
+    }
+
+    function handleQuickFillPanelClick(event) {
+      var target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (target.closest("[data-gridline-quick-close]")) {
+        closeQuickFillPanel();
+      } else if (target.closest("[data-gridline-quick-insert]")) {
+        applyQuickFillPanel();
+      }
+    }
+
+    function handleQuickFillButtonClick() {
+      if (quickFillPanel && !quickFillPanel.hidden) {
+        closeQuickFillPanel();
+      } else {
+        openQuickFillPanel();
+      }
+    }
+
+    function canInlineAiFile(file) {
+      var type = String(file && file.type || "").toLowerCase();
+      var name = String(file && file.name || "").toLowerCase();
+      var size = Number(file && file.size || 0);
+      if (!file || !name || size <= 0 || size > 8 * 1024 * 1024) {
+        return false;
+      }
+      return type === "application/pdf"
+        || type.indexOf("image/") === 0
+        || type.indexOf("text/") === 0
+        || type.indexOf("json") >= 0
+        || type.indexOf("xml") >= 0
+        || [".txt", ".csv", ".json", ".xml", ".md"].some(function (extension) {
+          return name.endsWith(extension);
+        });
+    }
+
+    function readAiFileAsDataUrl(file) {
+      return new Promise(function (resolveRead) {
+        var reader;
+        if (!canInlineAiFile(file)) {
+          resolveRead("");
+          return;
+        }
+        reader = new FileReader();
+        reader.addEventListener("load", function () {
+          resolveRead(typeof reader.result === "string" ? reader.result : "");
+        }, { once: true });
+        reader.addEventListener("error", function () {
+          resolveRead("");
+        }, { once: true });
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function createAiFileMeta(file) {
+      return readAiFileAsDataUrl(file).then(function (contentDataUrl) {
+        return {
+          id: [file.name || "datoteka", file.size || 0, file.lastModified || 0].join("::"),
+          name: file.name || "datoteka",
+          type: file.type || "",
+          size: Number(file.size || 0),
+          lastModified: Number(file.lastModified || 0),
+          inlineReady: Boolean(contentDataUrl),
+          contentDataUrl: contentDataUrl,
+        };
+      });
+    }
+
+    function getAiPayloadFiles(files) {
+      var inlineCount = 0;
+      return (Array.isArray(files) ? files : []).map(function (file) {
+        var base = {
+          id: String(file.id || file.name || ""),
+          name: String(file.name || ""),
+          type: String(file.type || ""),
+          size: Number(file.size || 0),
+          lastModified: Number(file.lastModified || 0),
+          inlineReady: Boolean(file.inlineReady || file.contentDataUrl),
+        };
+        if (file.contentDataUrl && inlineCount < 5) {
+          inlineCount += 1;
+          base.contentDataUrl = String(file.contentDataUrl);
+        }
+        return base;
+      });
+    }
+
+    function getAiColumns() {
+      return Array.from({ length: model.columnCount }, function (_, columnIndex) {
+        var header = String(getValue(0, columnIndex) || "").trim();
+        var letter = columnLabel(columnIndex);
+        return {
+          fieldId: "gridline",
+          fieldKey: "documentation_gridline",
+          fieldLabel: options && options.aiFieldLabel || "Gridline",
+          columnId: "col_" + columnIndex,
+          columnIndex: columnIndex,
+          columnLetter: letter,
+          key: "col_" + columnIndex,
+          label: header || letter,
+          type: "text",
+          required: false,
+          placeholder: header || letter,
+          helpText: "Popuni samo ako je vrijednost vidljiva u projektu ili starom zapisniku.",
+          aiMapping: {
+            enabled: true,
+            key: "col_" + columnIndex,
+            label: header || letter,
+            sourceTracking: true,
+          },
+        };
+      });
+    }
+
+    function parseAiTextRows(text) {
+      return String(text || "")
+        .split(/\r?\n/)
+        .map(function (line) { return splitQuickFillLine(line); })
+        .filter(function (row) {
+          return row.some(function (cell) { return String(cell || "").trim(); });
+        })
+        .map(function (row) {
+          return Array.from({ length: model.columnCount }, function (_, columnIndex) {
+            return String(row[columnIndex] || "").trim();
+          });
+        });
+    }
+
+    function parseAiResultObject(payload) {
+      var text;
+      var match;
+      if (payload && payload.result && typeof payload.result === "object") {
+        return payload.result;
+      }
+      if (payload && typeof payload === "object" && (payload.measurementSuggestions || payload.rows || payload.tableRows)) {
+        return payload;
+      }
+      text = String(payload && (payload.outputText || payload.output_text) || "").trim();
+      if (!text) {
+        return payload && typeof payload === "object" ? payload : {};
+      }
+      try {
+        return JSON.parse(text);
+      } catch (error) {
+        match = text.match(/\{[\s\S]*\}/);
+        if (!match) {
+          return {};
+        }
+        try {
+          return JSON.parse(match[0]);
+        } catch (innerError) {
+          return {};
+        }
+      }
+    }
+
+    function getAiSuggestionRows(result) {
+      var suggestions = []
+        .concat(Array.isArray(result && result.measurementSuggestions) ? result.measurementSuggestions : [])
+        .concat(Array.isArray(result && result.measurement_suggestions) ? result.measurement_suggestions : [])
+        .concat(Array.isArray(result && result.excelSuggestions) ? result.excelSuggestions : [])
+        .concat(Array.isArray(result && result.excel_suggestions) ? result.excel_suggestions : []);
+      var suggestionIndex;
+      for (suggestionIndex = 0; suggestionIndex < suggestions.length; suggestionIndex += 1) {
+        if (Array.isArray(suggestions[suggestionIndex].rows)) {
+          return suggestions[suggestionIndex].rows;
+        }
+        if (Array.isArray(suggestions[suggestionIndex].tableRows)) {
+          return suggestions[suggestionIndex].tableRows;
+        }
+      }
+      return Array.isArray(result && result.rows) ? result.rows
+        : Array.isArray(result && result.tableRows) ? result.tableRows
+          : Array.isArray(result && result.table_rows) ? result.table_rows
+            : Array.isArray(result && result.items) ? result.items
+              : [];
+    }
+
+    function getAiSuggestionCell(row, column, index) {
+      var values = row && typeof row === "object" ? row.values || row.cells || row.data : null;
+      var ordered = row && (row.orderedValues || row.ordered_values || row.valuesArray);
+      var keys = [
+        column.columnId,
+        column.key,
+        column.columnLetter,
+        column.label,
+        String(index),
+      ];
+      var keyIndex;
+      if (Array.isArray(row)) {
+        return row[index] == null ? "" : String(row[index]);
+      }
+      if (Array.isArray(ordered)) {
+        return ordered[index] == null ? "" : String(ordered[index]);
+      }
+      if (values && typeof values === "object") {
+        for (keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
+          if (Object.prototype.hasOwnProperty.call(values, keys[keyIndex])) {
+            return values[keys[keyIndex]] == null ? "" : String(values[keys[keyIndex]]);
+          }
+        }
+      }
+      return "";
+    }
+
+    function buildAiRowsFromPayload(payload) {
+      var result = parseAiResultObject(payload);
+      var columns = getAiColumns();
+      return getAiSuggestionRows(result).slice(0, 200).map(function (row) {
+        return columns.map(function (column, index) {
+          return getAiSuggestionCell(row, column, index);
+        });
+      }).filter(function (row) {
+        return row.some(function (cell) { return String(cell || "").trim(); });
+      });
+    }
+
+    function renderAiPanel() {
+      var panel = aiPanel;
+      var status;
+      var fileList;
+      var preview;
+      var applyButton;
+      var runButton;
+      if (!panel) {
+        return;
+      }
+      status = panel.querySelector("[data-gridline-ai-status]");
+      fileList = panel.querySelector("[data-gridline-ai-files]");
+      preview = panel.querySelector("[data-gridline-ai-preview]");
+      applyButton = panel.querySelector("[data-gridline-ai-apply]");
+      runButton = panel.querySelector("[data-gridline-ai-run]");
+      if (status) {
+        status.textContent = aiState.message || "Spremno";
+        status.className = "gridline-ai-status " + (aiState.status || "idle");
+      }
+      if (fileList) {
+        fileList.replaceChildren();
+        if (!aiState.files.length) {
+          var empty = document.createElement("span");
+          empty.textContent = "Nema dodanih datoteka.";
+          fileList.appendChild(empty);
+        } else {
+          aiState.files.forEach(function (file) {
+            var chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "gridline-ai-file-chip";
+            chip.dataset.gridlineAiRemoveFile = file.id || file.name || "";
+            chip.textContent = (file.inlineReady ? "OK " : "") + (file.name || "datoteka");
+            fileList.appendChild(chip);
+          });
+        }
+      }
+      if (preview) {
+        preview.replaceChildren();
+        if (!aiState.previewRows.length) {
+          var note = document.createElement("p");
+          note.textContent = "Preview ce se prikazati prije upisa.";
+          preview.appendChild(note);
+        } else {
+          var table = document.createElement("table");
+          var tbody = document.createElement("tbody");
+          aiState.previewRows.slice(0, 8).forEach(function (row) {
+            var tr = document.createElement("tr");
+            row.slice(0, Math.min(model.columnCount, 8)).forEach(function (cell) {
+              var td = document.createElement("td");
+              td.textContent = String(cell || "");
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          preview.appendChild(table);
+        }
+      }
+      if (applyButton) {
+        applyButton.disabled = aiState.status === "loading" || !aiState.previewRows.length;
+      }
+      if (runButton) {
+        runButton.disabled = aiState.status === "loading";
+        runButton.textContent = aiState.status === "loading" ? "Pripremam..." : "Predlozi";
+      }
+    }
+
+    function ensureAiPanel() {
+      var textInput;
+      var modelSelect;
+      var startInput;
+      var fileInput;
+      var addFilesButton;
+      var runButton;
+      var applyButton;
+      var closeButton;
+      var clearButton;
+      if (aiPanel || !rootElement) {
+        return aiPanel;
+      }
+      aiPanel = document.createElement("section");
+      aiPanel.className = "gridline-popover gridline-ai-panel";
+      aiPanel.hidden = true;
+      aiPanel.setAttribute("role", "dialog");
+      aiPanel.setAttribute("aria-label", "NexAI Gridline unos");
+
+      textInput = document.createElement("textarea");
+      textInput.rows = 5;
+      textInput.placeholder = "Zalijepi tekst, CSV ili dodatnu uputu za AI...";
+      textInput.dataset.gridlineAiText = "true";
+
+      modelSelect = document.createElement("select");
+      modelSelect.dataset.gridlineAiModel = "true";
+      [
+        ["fast", "Brzi"],
+        ["standard", "Standard"],
+        ["strong", "Jaki"],
+        ["max", "Najjaci"],
+      ].forEach(function (entry) {
+        var optionNode = document.createElement("option");
+        optionNode.value = entry[0];
+        optionNode.textContent = entry[1];
+        modelSelect.appendChild(optionNode);
+      });
+      modelSelect.value = "standard";
+
+      startInput = document.createElement("input");
+      startInput.type = "number";
+      startInput.min = "1";
+      startInput.max = String(MAX_ROWS);
+      startInput.step = "1";
+      startInput.dataset.gridlineAiStart = "true";
+
+      fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.multiple = true;
+      fileInput.accept = ".pdf,.doc,.docx,.txt,.csv,.json,.xml,.jpg,.jpeg,.png,.webp,application/pdf,text/*,image/*";
+      fileInput.hidden = true;
+      fileInput.dataset.gridlineAiFilesInput = "true";
+
+      addFilesButton = document.createElement("button");
+      addFilesButton.type = "button";
+      addFilesButton.className = "ghost-button";
+      addFilesButton.dataset.gridlineAiAddFiles = "true";
+      addFilesButton.textContent = "Dodaj projekt/zapisnik";
+
+      runButton = document.createElement("button");
+      runButton.type = "button";
+      runButton.className = "primary-button";
+      runButton.dataset.gridlineAiRun = "true";
+      runButton.textContent = "Predlozi";
+
+      applyButton = document.createElement("button");
+      applyButton.type = "button";
+      applyButton.className = "ghost-button";
+      applyButton.dataset.gridlineAiApply = "true";
+      applyButton.textContent = "Upisi preview";
+      applyButton.disabled = true;
+
+      closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "ghost-button";
+      closeButton.dataset.gridlineAiClose = "true";
+      closeButton.textContent = "Zatvori";
+
+      clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "ghost-button";
+      clearButton.dataset.gridlineAiClear = "true";
+      clearButton.textContent = "Ocisti";
+
+      aiPanel.append(
+        createPopoverHeader("NexAI za Gridline", "Desni klik odreduje punim li celiju, red ili tablicu."),
+        createLabeledControl("Uputa / zalijepljeni tekst", textInput),
+        createLabeledControl("Model", modelSelect),
+        createLabeledControl("Pocetni red", startInput),
+        fileInput,
+        createPopoverActions([addFilesButton, runButton, applyButton, clearButton, closeButton])
+      );
+      var status = document.createElement("div");
+      status.className = "gridline-ai-status idle";
+      status.dataset.gridlineAiStatus = "true";
+      status.textContent = "Spremno";
+      var files = document.createElement("div");
+      files.className = "gridline-ai-files";
+      files.dataset.gridlineAiFiles = "true";
+      var preview = document.createElement("div");
+      preview.className = "gridline-ai-preview";
+      preview.dataset.gridlineAiPreview = "true";
+      aiPanel.append(status, files, preview);
+      aiPanel.addEventListener("click", handleAiPanelClick);
+      fileInput.addEventListener("change", handleAiPanelFileChange);
+      rootElement.appendChild(aiPanel);
+      renderAiPanel();
+      return aiPanel;
+    }
+
+    function openAiPanel(mode) {
+      var panel = ensureAiPanel();
+      var startInput;
+      if (!panel) {
+        return;
+      }
+      aiState.mode = mode || "table";
+      aiState.status = "idle";
+      aiState.message = mode === "cell"
+        ? "NexAI ce predloziti vrijednost za aktivnu celiju."
+        : mode === "row"
+          ? "NexAI ce predloziti vrijednosti za aktivni red."
+          : "NexAI ce predloziti redove za tablicu.";
+      startInput = panel.querySelector("[data-gridline-ai-start]");
+      if (startInput) {
+        startInput.value = String(active.row + 1);
+      }
+      panel.hidden = false;
+      renderAiPanel();
+    }
+
+    function closeAiPanel() {
+      if (aiPanel) {
+        aiPanel.hidden = true;
+      }
+    }
+
+    function addAiFiles(files) {
+      var incoming = Array.from(files || []);
+      if (!incoming.length) {
+        return Promise.resolve();
+      }
+      aiState.status = "loading";
+      aiState.message = "Ucitavam datoteke...";
+      renderAiPanel();
+      return Promise.all(incoming.map(createAiFileMeta)).then(function (metas) {
+        var map = new Map(aiState.files.map(function (file) {
+          return [String(file.id || file.name), file];
+        }));
+        metas.forEach(function (file) {
+          if (file.name) {
+            map.set(String(file.id || file.name), file);
+          }
+        });
+        aiState.files = Array.from(map.values()).slice(0, 12);
+        aiState.status = "idle";
+        aiState.message = aiState.files.length + " datoteka spremno.";
+        renderAiPanel();
+      });
+    }
+
+    function buildAiRequestBody() {
+      var panel = ensureAiPanel();
+      var textInput = panel && panel.querySelector("[data-gridline-ai-text]");
+      var modelInput = panel && panel.querySelector("[data-gridline-ai-model]");
+      var pastedText = textInput ? textInput.value.trim() : "";
+      var columns = getAiColumns();
+      return {
+        purpose: "documentation-gridline-ai-prefill",
+        organizationId: options && options.organizationId || "",
+        templateId: options && options.templateId || "",
+        workOrderId: options && options.workOrderId || "",
+        workOrderNumber: options && options.workOrderNumber || "",
+        files: getAiPayloadFiles(aiState.files),
+        columns: columns,
+        context: {
+          mode: aiState.mode,
+          activeCell: {
+            rowIndex: active.row,
+            columnIndex: active.column,
+            reference: columnLabel(active.column) + String(active.row + 1),
+          },
+          pastedText: pastedText,
+          sheet: {
+            rowCount: model.rowCount,
+            columnCount: model.columnCount,
+            headers: columns.map(function (column) { return column.label; }),
+            rows: modelToRows(model, { raw: true }).slice(0, 80),
+          },
+        },
+        expectedJsonShape: {
+          measurementSuggestions: [
+            {
+              fieldId: "gridline",
+              rows: [
+                {
+                  values: columns.reduce(function (acc, column) {
+                    acc[column.columnId] = "vrijednost za " + column.label;
+                    return acc;
+                  }, {}),
+                  confidence: "high | medium | low",
+                  reason: "kratko objasnjenje",
+                  sourceFile: "ime datoteke",
+                },
+              ],
+            },
+          ],
+          warnings: ["sto treba rucno provjeriti"],
+          summary: "kratak sazetak",
+        },
+        modelTier: modelInput ? modelInput.value : "standard",
+        dryRun: false,
+      };
+    }
+
+    function defaultAiPrefillRequest(body) {
+      return fetch("/api/ai/openai/prepare", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function (response) {
+        if (!response.ok) {
+          return response.text().then(function (text) {
+            throw new Error(text || "NexAI poziv nije uspio.");
+          });
+        }
+        return response.json().catch(function () { return {}; });
+      });
+    }
+
+    function runAiPanel() {
+      var panel = ensureAiPanel();
+      var textInput = panel && panel.querySelector("[data-gridline-ai-text]");
+      var localRows = parseAiTextRows(textInput ? textInput.value : "");
+      var body;
+      if (!localRows.length && !aiState.files.length) {
+        aiState.status = "error";
+        aiState.message = "Dodaj datoteku ili zalijepi tekst.";
+        renderAiPanel();
+        return;
+      }
+      aiState.status = "loading";
+      aiState.message = "Pripremam NexAI prijedlog...";
+      aiState.previewRows = [];
+      renderAiPanel();
+      body = buildAiRequestBody();
+      (onAiPrefill ? onAiPrefill(body, { mode: aiState.mode, active: active, model: cloneModel(model) }) : defaultAiPrefillRequest(body))
+        .then(function (payload) {
+          var aiRows = payload && !payload.dryRun ? buildAiRowsFromPayload(payload) : [];
+          aiState.previewRows = aiRows.length ? aiRows : localRows;
+          aiState.status = aiState.previewRows.length ? "success" : "error";
+          aiState.message = aiState.previewRows.length
+            ? aiState.previewRows.length + " redaka spremno za preview."
+            : "NexAI nije vratio redove. Provjeri uputu ili datoteke.";
+          renderAiPanel();
+        })
+        .catch(function (error) {
+          aiState.previewRows = localRows;
+          aiState.status = localRows.length ? "success" : "error";
+          aiState.message = localRows.length
+            ? "AI nije dostupan, koristim lokalni parser teksta."
+            : (error && error.message ? error.message : "NexAI nije dostupan.");
+          renderAiPanel();
+        });
+    }
+
+    function applyAiPreview() {
+      var panel = ensureAiPanel();
+      var startInput = panel && panel.querySelector("[data-gridline-ai-start]");
+      var rows = aiState.previewRows;
+      var startRow = clampInteger(startInput && startInput.value, active.row + 1, 1, MAX_ROWS) - 1;
+      var columnIndex;
+      if (!rows.length) {
+        return;
+      }
+      if (aiState.mode === "cell") {
+        var value = rows[0][active.column] || rows[0].find(function (cell) { return String(cell || "").trim(); }) || "";
+        setValue(active.row, active.column, value);
+        render();
+        selectCell(active.row, active.column, { focus: false });
+        scheduleSave();
+      } else if (aiState.mode === "row") {
+        ensureSize(active.row, model.columnCount - 1);
+        for (columnIndex = 0; columnIndex < model.columnCount; columnIndex += 1) {
+          if (String(rows[0][columnIndex] || "").trim()) {
+            setValue(active.row, columnIndex, rows[0][columnIndex]);
+          }
+        }
+        refreshComputedCells();
+        scheduleSave();
+      } else {
+        insertMatrixRows(startRow, rows);
+      }
+      aiState.previewRows = [];
+      aiState.status = "success";
+      aiState.message = "Preview je upisan u Gridline.";
+      renderAiPanel();
+    }
+
+    function hideContextMenu() {
+      if (contextMenu) {
+        contextMenu.remove();
+        contextMenu = null;
+      }
+    }
+
+    function createContextMenuButton(label, mode) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", function () {
+        hideContextMenu();
+        openAiPanel(mode);
+      });
+      return button;
+    }
+
+    function showAiContextMenu(event, row, column) {
+      if (!enableAiContextMenu) {
+        return;
+      }
+      event.preventDefault();
+      selectCell(row, column, { focus: false });
+      hideContextMenu();
+      contextMenu = document.createElement("div");
+      contextMenu.className = "gridline-context-menu";
+      contextMenu.style.left = event.clientX + "px";
+      contextMenu.style.top = event.clientY + "px";
+      contextMenu.append(
+        createContextMenuButton("NexAI popuni celiju", "cell"),
+        createContextMenuButton("NexAI popuni red", "row"),
+        createContextMenuButton("NexAI popuni tablicu", "table")
+      );
+      document.body.appendChild(contextMenu);
+    }
+
+    function handleGridContextMenu(event) {
+      var input = getClosestCellInput(event.target);
+      if (!input) {
+        return;
+      }
+      showAiContextMenu(event, Number(input.dataset.row), Number(input.dataset.column));
+    }
+
+    function handleAiPanelClick(event) {
+      var target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (target.closest("[data-gridline-ai-add-files]")) {
+        var fileInput = aiPanel && aiPanel.querySelector("[data-gridline-ai-files-input]");
+        if (fileInput) {
+          fileInput.click();
+        }
+      } else if (target.closest("[data-gridline-ai-run]")) {
+        runAiPanel();
+      } else if (target.closest("[data-gridline-ai-apply]")) {
+        applyAiPreview();
+      } else if (target.closest("[data-gridline-ai-clear]")) {
+        aiState.files = [];
+        aiState.previewRows = [];
+        aiState.status = "idle";
+        aiState.message = "Ocisceno.";
+        renderAiPanel();
+      } else if (target.closest("[data-gridline-ai-close]")) {
+        closeAiPanel();
+      } else {
+        var removeButton = target.closest("[data-gridline-ai-remove-file]");
+        if (removeButton) {
+          var fileId = removeButton.dataset.gridlineAiRemoveFile || "";
+          aiState.files = aiState.files.filter(function (file) {
+            return String(file.id || file.name) !== fileId;
+          });
+          renderAiPanel();
+        }
+      }
+    }
+
+    function handleAiPanelFileChange(event) {
+      addAiFiles(event.target && event.target.files).then(function () {
+        if (event.target) {
+          event.target.value = "";
+        }
+      });
     }
 
     function addRows(count) {
@@ -531,9 +1957,15 @@
     }
 
     grid.addEventListener("focusin", handleFocusIn);
+    grid.addEventListener("focusout", handleFocusOut);
     grid.addEventListener("input", handleInput);
     grid.addEventListener("keydown", handleKeydown);
     grid.addEventListener("paste", handlePaste);
+    grid.addEventListener("pointerdown", handleFillPointerDown);
+    grid.addEventListener("dblclick", handleFillDoubleClick);
+    if (enableAiContextMenu) {
+      grid.addEventListener("contextmenu", handleGridContextMenu);
+    }
     formulaInput.addEventListener("input", handleFormulaInput);
     if (addRowButton) {
       addRowButton.addEventListener("click", function () { addRows(20); });
@@ -547,14 +1979,39 @@
     if (downloadButton) {
       downloadButton.addEventListener("click", downloadJson);
     }
+    if (quickFillButton) {
+      quickFillButton.addEventListener("click", handleQuickFillButtonClick);
+    }
+    document.addEventListener("click", hideContextMenu);
 
     function destroy() {
       flushPendingChange();
+      if (computedRefreshFrame) {
+        window.cancelAnimationFrame(computedRefreshFrame);
+        computedRefreshFrame = 0;
+      }
+      hideContextMenu();
+      if (quickFillPanel) {
+        quickFillPanel.remove();
+        quickFillPanel = null;
+      }
+      if (aiPanel) {
+        aiPanel.remove();
+        aiPanel = null;
+      }
       grid.removeEventListener("focusin", handleFocusIn);
+      grid.removeEventListener("focusout", handleFocusOut);
       grid.removeEventListener("input", handleInput);
       grid.removeEventListener("keydown", handleKeydown);
       grid.removeEventListener("paste", handlePaste);
+      grid.removeEventListener("pointerdown", handleFillPointerDown);
+      grid.removeEventListener("dblclick", handleFillDoubleClick);
+      grid.removeEventListener("contextmenu", handleGridContextMenu);
       formulaInput.removeEventListener("input", handleFormulaInput);
+      if (quickFillButton) {
+        quickFillButton.removeEventListener("click", handleQuickFillButtonClick);
+      }
+      document.removeEventListener("click", hideContextMenu);
       if (rootElement) {
         rootElement.__safeNexusGridlineDestroy = null;
       }
@@ -563,6 +2020,15 @@
     try {
       render();
       setStatus(storageKey ? "Spremljeno lokalno" : "Spremno", "is-saved");
+      loadFormulaTools().then(function (tools) {
+        if (!tools) {
+          return;
+        }
+        refreshComputedCells();
+        if (onFormulaReady) {
+          onFormulaReady();
+        }
+      });
     } catch (error) {
       showGridError(error);
     }

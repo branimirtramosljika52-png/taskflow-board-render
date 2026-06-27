@@ -59545,6 +59545,46 @@ async function exportDocumentationSprPdf() {
   }
 }
 
+async function runDocumentationSprGridlineAiPrefill(requestBody = {}) {
+  const modelTier = normalizeDocumentTemplateRuntimeAiModelTier(requestBody.modelTier || "standard");
+  const modelOption = getDocumentTemplateRuntimeAiModelTierOption(modelTier);
+  const activeTemplate = getDocumentationSprTemplateById();
+  const body = {
+    ...requestBody,
+    purpose: requestBody.purpose || "documentation-gridline-ai-prefill",
+    organizationId: state.activeOrganizationId || requestBody.organizationId || "",
+    templateId: activeTemplate?.id || requestBody.templateId || "",
+    workOrderNumber: documentationSprModel?.workOrderNumber || requestBody.workOrderNumber || "",
+    context: {
+      ...(requestBody.context && typeof requestBody.context === "object" ? requestBody.context : {}),
+      document: {
+        templateCode: documentationSprModel?.templateCode || "",
+        recordNumber: documentationSprModel?.recordNumber || "",
+        companyName: documentationSprModel?.companyName || "",
+        inspectionPlace: documentationSprModel?.inspectionPlace || "",
+        inspectionObject: documentationSprModel?.inspectionObject || "",
+        inspectionType: documentationSprModel?.inspectionType || "",
+      },
+    },
+    modelTier: modelOption.value,
+    modelPreference: {
+      label: modelOption.label,
+      strength: modelOption.strength,
+      description: modelOption.description,
+    },
+    dryRun: false,
+  };
+
+  setDocumentationSprStatus("NexAI priprema Gridline prijedlog", "saving");
+  await loadOpenAiIntegrationStatus({ force: true });
+  const payload = await apiRequest("/ai/openai/prepare", {
+    method: "POST",
+    body,
+  });
+  setDocumentationSprStatus(payload?.dryRun ? "NexAI je u dry-run modu" : "NexAI prijedlog je spreman", "saved");
+  return payload;
+}
+
 function mountDocumentationSprGridline() {
   if (!documentationSprGridline || !documentationSprModel) {
     return;
@@ -59569,6 +59609,16 @@ function mountDocumentationSprGridline() {
     model: documentationSprModel.gridlineModel,
     changeMode: "debounced",
     saveDelayMs: 220,
+    enableQuickFill: true,
+    enableAiContextMenu: true,
+    aiFieldLabel: "Tablica mjernih mjesta",
+    organizationId: state.activeOrganizationId || "",
+    templateId: getDocumentationSprTemplateById()?.id || "",
+    workOrderNumber: documentationSprModel.workOrderNumber || "",
+    onAiPrefill: runDocumentationSprGridlineAiPrefill,
+    onFormulaReady: () => {
+      renderDocumentationSprPreview();
+    },
     onChange: (nextModel) => {
       documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(nextModel);
       renderDocumentationSprPreview();
