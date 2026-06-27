@@ -2589,6 +2589,15 @@
                 </div>
 
                 <div id="work-order-document-wizard-sheet-spr-panel" class="work-order-document-wizard-sheet-panel" hidden>
+                  <section class="work-order-document-wizard-spr-block field-span-full">
+                    <div class="work-order-document-wizard-subblock-head">
+                      <div class="work-order-document-wizard-subblock-copy">
+                        <strong>Izrada dokumentacije po šiframa usluga</strong>
+                        <span>Browser predlošci iz modula Izrada dokumentacije.</span>
+                      </div>
+                    </div>
+                    <div id="work-order-document-wizard-spr-service-groups" class="work-order-document-wizard-spr-groups"></div>
+                  </section>
                 </div>
 
                 <div id="work-order-document-wizard-sheet-ro-panel" class="work-order-document-wizard-sheet-panel work-order-document-wizard-service-sheet-panel" hidden>
@@ -6482,6 +6491,20 @@
                   </div>
                 </header>
 
+                <section id="documentation-spr-batch-context" class="documentation-spr-batch-context" hidden aria-label="Kontekst radnog naloga">
+                  <div class="documentation-spr-batch-copy">
+                    <span id="documentation-spr-batch-kicker">RN kontekst</span>
+                    <strong id="documentation-spr-batch-title">Radni nalog</strong>
+                    <small id="documentation-spr-batch-meta">Usluga</small>
+                  </div>
+                  <div id="documentation-spr-batch-track" class="documentation-spr-batch-track"></div>
+                  <div class="documentation-spr-batch-actions" aria-label="Navigacija po RN zapisnicima">
+                    <button type="button" id="documentation-spr-batch-prev" class="ghost-button">Prethodni</button>
+                    <button type="button" id="documentation-spr-batch-next" class="ghost-button">Sljedeći</button>
+                    <button type="button" id="documentation-spr-batch-clear" class="ghost-button">Makni RN kontekst</button>
+                  </div>
+                </section>
+
                 <section class="documentation-spr-template-manager" aria-label="Predlošci izrade dokumentacije">
                   <label class="documentation-spr-template-field">
                     <span>Popis predložaka</span>
@@ -6492,6 +6515,12 @@
                   <label class="documentation-spr-template-field is-name">
                     <span>Naziv predloška</span>
                     <input id="documentation-spr-template-name" type="text" maxlength="120" autocomplete="off" placeholder="npr. SPR benzinska postaja" />
+                  </label>
+                  <label class="documentation-spr-template-field is-service">
+                    <span>Usluga</span>
+                    <select id="documentation-spr-template-service" aria-label="Veži predložak na uslugu">
+                      <option value="">Bez vezane usluge</option>
+                    </select>
                   </label>
                   <div class="documentation-spr-template-actions" aria-label="Akcije predložaka">
                     <button type="button" id="documentation-spr-template-new" class="ghost-button">Novi</button>

@@ -23378,6 +23378,76 @@ body.is-document-template-editor-open .chat-dock {
   line-height: 1.4;
 }
 
+.work-order-document-wizard-spr-block {
+  display: grid;
+  gap: 12px;
+}
+
+.work-order-document-wizard-spr-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.work-order-document-wizard-spr-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.8fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.work-order-document-wizard-spr-card-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-document-wizard-spr-card-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #17213a;
+  font-size: 0.94rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-wizard-spr-card-copy span {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.work-order-document-wizard-spr-card-rns {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.work-order-document-wizard-spr-card-rns span {
+  display: inline-flex;
+  max-width: 140px;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-document-browser-template-card {
+  border-color: rgba(23, 107, 206, 0.24);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(248, 251, 255, 0.96) 100%);
+}
+
 .work-order-document-wizard-common-toggle {
   width: 36px;
   min-width: 36px;
@@ -37914,6 +37984,7 @@ body.is-vehicle-usage-open {
 }
 
 .documentation-spr-topbar,
+.documentation-spr-batch-context,
 .documentation-spr-template-manager,
 .documentation-spr-context,
 .documentation-spr-section,
@@ -38008,9 +38079,82 @@ body.is-vehicle-usage-open {
   white-space: nowrap;
 }
 
+.documentation-spr-batch-context {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(260px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, rgba(248, 251, 255, 0.96) 100%);
+}
+
+.documentation-spr-batch-context[hidden] {
+  display: none;
+}
+
+.documentation-spr-batch-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.documentation-spr-batch-copy span,
+.documentation-spr-batch-copy small {
+  color: var(--documentation-spr-muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.documentation-spr-batch-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--documentation-spr-text);
+  font-size: 0.94rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentation-spr-batch-track {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.documentation-spr-batch-chip {
+  flex: 0 0 auto;
+  max-width: 220px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.documentation-spr-batch-chip.is-active {
+  border-color: rgba(23, 107, 206, 0.42);
+  background: var(--documentation-spr-blue-soft);
+  color: var(--documentation-spr-blue);
+}
+
+.documentation-spr-batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .documentation-spr-template-manager {
   display: grid;
-  grid-template-columns: minmax(180px, 0.9fr) minmax(220px, 1.1fr) auto auto;
+  grid-template-columns: minmax(170px, 0.8fr) minmax(210px, 1fr) minmax(190px, 0.9fr) auto auto;
   align-items: end;
   gap: 10px;
   padding: 12px;
@@ -38971,6 +39115,15 @@ body.is-vehicle-usage-open {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
+  .documentation-spr-batch-context {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .documentation-spr-batch-actions {
+    justify-content: flex-start;
+  }
+
   .documentation-spr-context,
   .documentation-spr-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -38998,6 +39151,10 @@ body.is-vehicle-usage-open {
   }
 
   .documentation-spr-actions button {
+    flex: 1;
+  }
+
+  .documentation-spr-batch-actions button {
     flex: 1;
   }
 
@@ -51194,6 +51351,11 @@ body.is-measurement-equipment-export-open {
 
   .work-order-document-carousel-track .work-order-document-selection-card {
     flex-basis: calc((100% - 12px) / 2);
+  }
+
+  .work-order-document-wizard-spr-card {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
   }
 
   .measurement-equipment-activity-grid {
