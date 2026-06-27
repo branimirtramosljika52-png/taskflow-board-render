@@ -3947,6 +3947,13 @@ const documentationSprHeaderFileInput = document.querySelector("#documentation-s
 const documentationSprResetButton = document.querySelector("#documentation-spr-reset");
 const documentationSprPdfButton = document.querySelector("#documentation-spr-pdf");
 const documentationSprDownloadButton = document.querySelector("#documentation-spr-download");
+const documentationSprTemplateLibrarySelect = document.querySelector("#documentation-spr-template-library");
+const documentationSprTemplateNameInput = document.querySelector("#documentation-spr-template-name");
+const documentationSprTemplateNewButton = document.querySelector("#documentation-spr-template-new");
+const documentationSprTemplateSaveButton = document.querySelector("#documentation-spr-template-save");
+const documentationSprTemplateLoadButton = document.querySelector("#documentation-spr-template-load");
+const documentationSprTemplateDeleteButton = document.querySelector("#documentation-spr-template-delete");
+const documentationSprTemplateMeta = document.querySelector("#documentation-spr-template-meta");
 const documentationSprGridline = document.querySelector("#documentation-spr-gridline");
 const documentationSprGridSummary = document.querySelector("#documentation-spr-grid-summary");
 const documentationSprSourceStatus = document.querySelector("#documentation-spr-source-status");
@@ -56774,9 +56781,12 @@ function triggerBlobDownload(blob, fileName) {
 }
 
 const DOCUMENTATION_SPR_STORAGE_KEY = "safenexus.documentation-workbench.spr.v1";
+const DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY = "safenexus.documentation-workbench.spr.templates.v1";
+const DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID = "spr-v1-0-0";
 const DOCUMENTATION_SPR_GRID_ROW_COUNT = 24;
 const DOCUMENTATION_SPR_GRID_COLUMN_COUNT = 6;
 let documentationSprModel = null;
+let documentationSprTemplateLibrary = { version: 1, activeTemplateId: "", templates: [] };
 let documentationSprGridlineApi = null;
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
@@ -56799,6 +56809,13 @@ function getDocumentationSprDefaultRows() {
     ["11", "Strojarnica autopraone", "1", ">2", "1", "DA"],
     ["12", "WC invalidi", "1", ">2", "1", "DA"],
     ["13", "Ulaz sanitarni prostori M, Ž i Invalidi", "1", ">2", "1", "DA"],
+  ];
+}
+
+function getDocumentationSprBlankRows() {
+  return [
+    ["R. br.", "Mjesto ispitivanja", "Broj lampi", "Ei", "Eimin", "ZADOVOLJAVA"],
+    ["", "", "", "lux", "lux", "DA/NE"],
   ];
 }
 
@@ -56897,6 +56914,49 @@ function createDefaultDocumentationSprModel() {
   };
 }
 
+function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
+  return {
+    templateCode: String(name || "Novi predložak"),
+    workOrderNumber: "",
+    recordNumber: "",
+    documentStatus: "U izradi",
+    companyName: "",
+    companyAddress: "",
+    companyOib: "",
+    offerNumber: "",
+    purchaseOrderNumber: "",
+    spaceUser: "",
+    inspectionPlace: "",
+    inspectionObject: "",
+    inspectionType: "",
+    inspectionDate: "",
+    issueDate: "",
+    validUntil: "",
+    equipment: "",
+    regulations: "",
+    projectDocumentation: "",
+    resultsText: "",
+    eiNote: "",
+    eiminNote: "",
+    inspectors: "",
+    responsiblePerson: "",
+    signatureClass: "",
+    signatureNumber: "",
+    resultStatus: "ZADOVOLJAVA",
+    signatureMode: "digital",
+    defects: "",
+    recommendations: "",
+    previewHidden: false,
+    headerImageDataUrl: "",
+    headerImageName: "",
+    measurementEquipmentIds: [],
+    legalFrameworkIds: [],
+    inspectorUserIds: [],
+    responsiblePersonUserId: "",
+    gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
+  };
+}
+
 function normalizeDocumentationSprGridlineModel(model) {
   const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
   if (gridlineApi?.normalizeModel) {
@@ -56934,6 +56994,156 @@ function normalizeDocumentationSprIdList(value = []) {
       .split(",")
       .map((entry) => entry.trim());
   return Array.from(new Set(values.map((entry) => String(entry || "").trim()).filter(Boolean)));
+}
+
+function createDocumentationSprTemplateId() {
+  if (globalThis.crypto?.randomUUID) {
+    return `spr-template-${globalThis.crypto.randomUUID()}`;
+  }
+  return `spr-template-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function cloneDocumentationSprModelForTemplate(model = documentationSprModel) {
+  const normalized = normalizeDocumentationSprModel(model);
+  return JSON.parse(JSON.stringify({
+    ...normalized,
+    gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
+  }));
+}
+
+function normalizeDocumentationSprTemplateEntry(entry = null, index = 0) {
+  const source = entry && typeof entry === "object" ? entry : {};
+  const rawName = String(source.name || source.title || source.templateName || source.model?.templateCode || "").trim();
+  const name = rawName || `Predložak ${index + 1}`;
+  const id = String(source.id || source.templateId || "").trim() || createDocumentationSprTemplateId();
+  const now = new Date().toISOString();
+  return {
+    id,
+    name,
+    createdAt: String(source.createdAt || now),
+    updatedAt: String(source.updatedAt || source.createdAt || now),
+    model: cloneDocumentationSprModelForTemplate({
+      ...normalizeDocumentationSprModel(source.model || source.document || source),
+      templateCode: name,
+    }),
+  };
+}
+
+function createInitialDocumentationSprTemplateLibrary() {
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    activeTemplateId: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
+    templates: [{
+      id: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
+      name: "SPR v1.0.0",
+      createdAt: now,
+      updatedAt: now,
+      model: cloneDocumentationSprModelForTemplate(createDefaultDocumentationSprModel()),
+    }],
+  };
+}
+
+function normalizeDocumentationSprTemplateLibrary(value = null) {
+  const source = value && typeof value === "object" ? value : null;
+  if (!source || !Array.isArray(source.templates)) {
+    return createInitialDocumentationSprTemplateLibrary();
+  }
+  const seenIds = new Set();
+  const templates = source.templates
+    .map((entry, index) => normalizeDocumentationSprTemplateEntry(entry, index))
+    .map((entry) => {
+      if (!seenIds.has(entry.id)) {
+        seenIds.add(entry.id);
+        return entry;
+      }
+      const id = createDocumentationSprTemplateId();
+      seenIds.add(id);
+      return { ...entry, id };
+    })
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+  if (!templates.length) {
+    return {
+      version: 1,
+      activeTemplateId: "",
+      templates: [],
+    };
+  }
+  const activeTemplateId = templates.some((entry) => entry.id === source.activeTemplateId)
+    ? String(source.activeTemplateId)
+    : templates[0].id;
+  return {
+    version: 1,
+    activeTemplateId,
+    templates,
+  };
+}
+
+function loadDocumentationSprTemplateLibrary() {
+  try {
+    return normalizeDocumentationSprTemplateLibrary(
+      JSON.parse(window.localStorage.getItem(DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY) || "null"),
+    );
+  } catch {
+    return createInitialDocumentationSprTemplateLibrary();
+  }
+}
+
+function persistDocumentationSprTemplateLibrary() {
+  try {
+    window.localStorage.setItem(
+      DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY,
+      JSON.stringify(documentationSprTemplateLibrary),
+    );
+    return true;
+  } catch {
+    setDocumentationSprStatus("Predlošci nisu spremljeni", "saving");
+    return false;
+  }
+}
+
+function getDocumentationSprTemplateById(templateId = documentationSprTemplateLibrary.activeTemplateId) {
+  const id = String(templateId || "").trim();
+  return documentationSprTemplateLibrary.templates.find((entry) => entry.id === id) || null;
+}
+
+function syncDocumentationSprTemplateManager() {
+  if (documentationSprTemplateLibrarySelect instanceof HTMLSelectElement) {
+    const selectedId = String(documentationSprTemplateLibrary.activeTemplateId || "");
+    const options = [
+      { value: "", label: "Novi predložak" },
+      ...documentationSprTemplateLibrary.templates.map((entry) => ({
+        value: entry.id,
+        label: entry.name,
+      })),
+    ];
+    documentationSprTemplateLibrarySelect.replaceChildren(...options.map((entry) => {
+      const option = document.createElement("option");
+      option.value = entry.value;
+      option.textContent = entry.label;
+      option.selected = entry.value === selectedId;
+      return option;
+    }));
+    documentationSprTemplateLibrarySelect.value = selectedId;
+  }
+
+  const activeTemplate = getDocumentationSprTemplateById();
+  if (documentationSprTemplateNameInput instanceof HTMLInputElement) {
+    documentationSprTemplateNameInput.value = activeTemplate?.name || documentationSprModel?.templateCode || "";
+  }
+  if (documentationSprTemplateDeleteButton instanceof HTMLButtonElement) {
+    documentationSprTemplateDeleteButton.disabled = !activeTemplate;
+  }
+  if (documentationSprTemplateLoadButton instanceof HTMLButtonElement) {
+    documentationSprTemplateLoadButton.disabled = !activeTemplate;
+  }
+  if (documentationSprTemplateMeta) {
+    const count = documentationSprTemplateLibrary.templates.length;
+    const label = count === 1 ? "1 predložak" : `${count} predložaka`;
+    documentationSprTemplateMeta.textContent = activeTemplate
+      ? `${label} · ${activeTemplate.name}`
+      : label;
+  }
 }
 
 function getDocumentationSprSelectValues(select) {
@@ -57552,6 +57762,24 @@ function loadDocumentationSprModel() {
   }
 }
 
+function persistDocumentationSprModelNow(statusText = "Spremljeno lokalno") {
+  if (!documentationSprModel) {
+    return false;
+  }
+  if (documentationSprSaveTimer) {
+    window.clearTimeout(documentationSprSaveTimer);
+    documentationSprSaveTimer = 0;
+  }
+  try {
+    window.localStorage.setItem(DOCUMENTATION_SPR_STORAGE_KEY, JSON.stringify(documentationSprModel));
+    setDocumentationSprStatus(statusText, "saved");
+    return true;
+  } catch {
+    setDocumentationSprStatus("Nije spremljeno", "saving");
+    return false;
+  }
+}
+
 function setDocumentationSprStatus(text, tone = "saved") {
   if (!documentationSprStatus) {
     return;
@@ -57570,13 +57798,127 @@ function scheduleDocumentationSprSave() {
   }
   documentationSprSaveTimer = window.setTimeout(() => {
     documentationSprSaveTimer = 0;
-    try {
-      window.localStorage.setItem(DOCUMENTATION_SPR_STORAGE_KEY, JSON.stringify(documentationSprModel));
-      setDocumentationSprStatus("Spremljeno lokalno", "saved");
-    } catch {
-      setDocumentationSprStatus("Nije spremljeno", "saving");
-    }
+    persistDocumentationSprModelNow("Spremljeno lokalno");
   }, 350);
+}
+
+function syncDocumentationSprGridlineIntoModel() {
+  if (!documentationSprModel) {
+    return;
+  }
+  if (documentationSprGridlineApi?.getModel) {
+    documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(documentationSprGridlineApi.getModel());
+  }
+}
+
+function applyDocumentationSprModel(nextModel, {
+  templateId = documentationSprTemplateLibrary.activeTemplateId,
+  statusText = "Predložak učitan",
+} = {}) {
+  documentationSprModel = normalizeDocumentationSprModel(nextModel);
+  documentationSprTemplateLibrary.activeTemplateId = String(templateId || "").trim();
+  writeDocumentationSprModelToForm();
+  renderDocumentationSprSourceControls();
+  syncDocumentationSprPreviewControls();
+  if (documentationSprGridlineApi?.setModel) {
+    documentationSprGridlineApi.setModel(documentationSprModel.gridlineModel);
+  } else {
+    mountDocumentationSprGridline();
+  }
+  renderDocumentationSprPreview();
+  persistDocumentationSprModelNow(statusText);
+  syncDocumentationSprTemplateManager();
+}
+
+function startNewDocumentationSprTemplateDraft() {
+  const nextModel = createBlankDocumentationSprTemplateModel("Novi predložak");
+  applyDocumentationSprModel(nextModel, {
+    templateId: "",
+    statusText: "Novi predložak",
+  });
+}
+
+function saveCurrentDocumentationSprTemplate() {
+  if (!documentationSprModel) {
+    return;
+  }
+  readDocumentationSprFormIntoModel();
+  syncDocumentationSprGridlineIntoModel();
+  const existingTemplate = getDocumentationSprTemplateById();
+  const name = String(
+    documentationSprTemplateNameInput instanceof HTMLInputElement
+      ? documentationSprTemplateNameInput.value
+      : "",
+  ).trim() || String(documentationSprModel.templateCode || existingTemplate?.name || "").trim();
+
+  if (!name) {
+    setDocumentationSprStatus("Upiši naziv predloška", "saving");
+    documentationSprTemplateNameInput?.focus();
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const templateId = existingTemplate?.id || createDocumentationSprTemplateId();
+  documentationSprModel.templateCode = name;
+  const nextEntry = {
+    id: templateId,
+    name,
+    createdAt: existingTemplate?.createdAt || now,
+    updatedAt: now,
+    model: cloneDocumentationSprModelForTemplate(documentationSprModel),
+  };
+  const withoutCurrent = documentationSprTemplateLibrary.templates.filter((entry) => entry.id !== templateId);
+  documentationSprTemplateLibrary = normalizeDocumentationSprTemplateLibrary({
+    version: 1,
+    activeTemplateId: templateId,
+    templates: [nextEntry, ...withoutCurrent],
+  });
+  writeDocumentationSprModelToForm();
+  persistDocumentationSprTemplateLibrary();
+  persistDocumentationSprModelNow("Predložak spremljen");
+  syncDocumentationSprTemplateManager();
+}
+
+function loadSelectedDocumentationSprTemplate() {
+  const templateId = documentationSprTemplateLibrarySelect instanceof HTMLSelectElement
+    ? documentationSprTemplateLibrarySelect.value
+    : documentationSprTemplateLibrary.activeTemplateId;
+  if (!templateId) {
+    startNewDocumentationSprTemplateDraft();
+    return;
+  }
+  const template = getDocumentationSprTemplateById(templateId);
+  if (!template) {
+    setDocumentationSprStatus("Predložak nije pronađen", "saving");
+    syncDocumentationSprTemplateManager();
+    return;
+  }
+  documentationSprTemplateLibrary.activeTemplateId = template.id;
+  persistDocumentationSprTemplateLibrary();
+  applyDocumentationSprModel(template.model, {
+    templateId: template.id,
+    statusText: "Predložak učitan",
+  });
+}
+
+function deleteSelectedDocumentationSprTemplate() {
+  const templateId = documentationSprTemplateLibrarySelect instanceof HTMLSelectElement
+    ? documentationSprTemplateLibrarySelect.value
+    : documentationSprTemplateLibrary.activeTemplateId;
+  const template = getDocumentationSprTemplateById(templateId);
+  if (!template) {
+    setDocumentationSprStatus("Nema odabranog predloška", "saving");
+    return;
+  }
+  documentationSprTemplateLibrary = normalizeDocumentationSprTemplateLibrary({
+    version: 1,
+    activeTemplateId: "",
+    templates: documentationSprTemplateLibrary.templates.filter((entry) => entry.id !== template.id),
+  });
+  documentationSprTemplateLibrary.activeTemplateId = "";
+  persistDocumentationSprTemplateLibrary();
+  startNewDocumentationSprTemplateDraft();
+  setDocumentationSprStatus("Predložak obrisan", "saved");
 }
 
 function syncDocumentationSprPreviewControls() {
@@ -58516,11 +58858,13 @@ function initDocumentationSprWorkbench() {
   if (!documentationWorkbenchModule || !documentationSprForm) {
     return;
   }
+  documentationSprTemplateLibrary = loadDocumentationSprTemplateLibrary();
   if (!documentationSprModel) {
     documentationSprModel = loadDocumentationSprModel();
     writeDocumentationSprModelToForm();
   }
   renderDocumentationSprSourceControls();
+  syncDocumentationSprTemplateManager();
   if (!documentationSprInitialized) {
     documentationSprInitialized = true;
     documentationWorkbenchModule.addEventListener("input", (event) => {
@@ -58568,6 +58912,21 @@ function initDocumentationSprWorkbench() {
       syncDocumentationSprPreviewControls();
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
+    });
+    documentationSprTemplateLibrarySelect?.addEventListener("change", () => {
+      loadSelectedDocumentationSprTemplate();
+    });
+    documentationSprTemplateNewButton?.addEventListener("click", () => {
+      startNewDocumentationSprTemplateDraft();
+    });
+    documentationSprTemplateSaveButton?.addEventListener("click", () => {
+      saveCurrentDocumentationSprTemplate();
+    });
+    documentationSprTemplateLoadButton?.addEventListener("click", () => {
+      loadSelectedDocumentationSprTemplate();
+    });
+    documentationSprTemplateDeleteButton?.addEventListener("click", () => {
+      deleteSelectedDocumentationSprTemplate();
     });
     documentationSprEquipmentSelect?.addEventListener("change", () => {
       documentationSprModel.measurementEquipmentIds = getDocumentationSprSelectValues(documentationSprEquipmentSelect);
@@ -58701,17 +59060,10 @@ function initDocumentationSprWorkbench() {
       applyDocumentationSprPeopleSelection({ inspectorIds: [], responsibleUserId: "" });
     });
     documentationSprResetButton?.addEventListener("click", () => {
-      documentationSprModel = createDefaultDocumentationSprModel();
-      writeDocumentationSprModelToForm();
-      renderDocumentationSprSourceControls();
-      syncDocumentationSprPreviewControls();
-      if (documentationSprGridlineApi?.setModel) {
-        documentationSprGridlineApi.setModel(documentationSprModel.gridlineModel);
-      } else {
-        mountDocumentationSprGridline();
-      }
-      renderDocumentationSprPreview();
-      scheduleDocumentationSprSave();
+      applyDocumentationSprModel(createDefaultDocumentationSprModel(), {
+        templateId: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
+        statusText: "Primjer učitan",
+      });
     });
     documentationSprPdfButton?.addEventListener("click", () => {
       void exportDocumentationSprPdf();

@@ -6482,12 +6482,30 @@
                   </div>
                 </header>
 
+                <section class="documentation-spr-template-manager" aria-label="Predlošci izrade dokumentacije">
+                  <label class="documentation-spr-template-field">
+                    <span>Popis predložaka</span>
+                    <select id="documentation-spr-template-library" aria-label="Odaberi spremljeni predložak">
+                      <option value="">Novi predložak</option>
+                    </select>
+                  </label>
+                  <label class="documentation-spr-template-field is-name">
+                    <span>Naziv predloška</span>
+                    <input id="documentation-spr-template-name" type="text" maxlength="120" autocomplete="off" placeholder="npr. SPR benzinska postaja" />
+                  </label>
+                  <div class="documentation-spr-template-actions" aria-label="Akcije predložaka">
+                    <button type="button" id="documentation-spr-template-new" class="ghost-button">Novi</button>
+                    <button type="button" id="documentation-spr-template-save" class="primary-button">Spremi</button>
+                    <button type="button" id="documentation-spr-template-load" class="ghost-button">Učitaj</button>
+                    <button type="button" id="documentation-spr-template-delete" class="ghost-button card-danger">Obriši</button>
+                  </div>
+                  <span id="documentation-spr-template-meta" class="documentation-spr-template-meta">0 predložaka</span>
+                </section>
+
                 <section class="documentation-spr-context" aria-label="Kontekst dokumentacije">
                   <label class="documentation-spr-context-field">
                     <span>Predložak</span>
-                    <select id="documentation-spr-template-code" data-documentation-spr-field="templateCode">
-                      <option value="SPR v1.0.0">SPR v1.0.0</option>
-                    </select>
+                    <input id="documentation-spr-template-code" data-documentation-spr-field="templateCode" type="text" />
                   </label>
                   <label class="documentation-spr-context-field">
                     <span>RN</span>
