@@ -4004,6 +4004,10 @@ const documentationSprPeopleApplyButton = document.querySelector("#documentation
 const documentationSprPeopleClearButton = document.querySelector("#documentation-spr-people-clear");
 const documentationSprConclusionSection = document.querySelector("#documentation-spr-conclusion-section");
 const documentationSprResultHelper = document.querySelector("#documentation-spr-result-helper");
+const documentationSprAttachmentUploadButton = document.querySelector("#documentation-spr-attachment-upload");
+const documentationSprAttachmentFileInput = document.querySelector("#documentation-spr-attachment-file");
+const documentationSprAttachmentDrop = document.querySelector("#documentation-spr-attachment-drop");
+const documentationSprAttachmentList = document.querySelector("#documentation-spr-attachment-list");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -56975,6 +56979,7 @@ function createDefaultDocumentationSprModel() {
     inspectorUserIds: [],
     responsiblePersonUserId: "",
     fieldSettings: {},
+    attachments: [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(),
   };
 }
@@ -57022,6 +57027,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     inspectorUserIds: [],
     responsiblePersonUserId: "",
     fieldSettings: {},
+    attachments: [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
   };
 }
@@ -57057,6 +57063,7 @@ function normalizeDocumentationSprModel(value) {
     inspectorUserIds: normalizeDocumentationSprIdList(source.inspectorUserIds),
     responsiblePersonUserId: String(source.responsiblePersonUserId || "").trim(),
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
+    attachments: normalizeDocumentationSprAttachments(source.attachments),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
     headerImageName: String(source.headerImageName || "").trim(),
@@ -57138,6 +57145,38 @@ function normalizeDocumentationSprFieldSettings(value = {}) {
       })
       .filter(Boolean),
   );
+}
+
+function normalizeDocumentationSprAttachments(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return source.map((entry, index) => {
+    const item = entry && typeof entry === "object" ? entry : {};
+    const fileName = String(item.fileName || item.name || "").trim();
+    const dataUrl = String(item.dataUrl || "").trim();
+    const fileType = String(item.fileType || item.type || "").trim().toLowerCase();
+    const isPdf = fileType === "application/pdf" || /^data:application\/pdf;base64,/i.test(dataUrl) || /\.pdf$/i.test(fileName);
+    const isImage = /^image\/(?:png|jpeg|jpg)$/i.test(fileType)
+      || /^data:image\/(?:png|jpeg|jpg);base64,/i.test(dataUrl)
+      || /\.(?:png|jpe?g)$/i.test(fileName);
+    if (!fileName || !dataUrl || (!isPdf && !isImage)) {
+      return null;
+    }
+    const id = String(item.id || `spr-attachment-${index}-${slugifyValue(fileName)}`).trim();
+    if (!id || seen.has(id)) {
+      return null;
+    }
+    seen.add(id);
+    return {
+      id,
+      fileName,
+      fileType: isPdf ? "application/pdf" : (fileType.includes("png") ? "image/png" : "image/jpeg"),
+      fileSize: Number(item.fileSize || item.size || 0) || 0,
+      dataUrl,
+      pageCount: Math.max(1, Number.parseInt(String(item.pageCount || ""), 10) || 1),
+      createdAt: String(item.createdAt || item.uploadedAt || new Date().toISOString()).trim(),
+    };
+  }).filter(Boolean);
 }
 
 function normalizeDocumentationSprServiceBinding(value = null) {
@@ -57313,6 +57352,16 @@ function cloneDocumentationSprModelForTemplate(model = documentationSprModel) {
   const normalized = normalizeDocumentationSprModel(model);
   return JSON.parse(JSON.stringify({
     ...normalized,
+    attachments: [],
+    gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
+  }));
+}
+
+function cloneDocumentationSprModelForLocalDraft(model = documentationSprModel) {
+  const normalized = normalizeDocumentationSprModel(model);
+  return JSON.parse(JSON.stringify({
+    ...normalized,
+    attachments: [],
     gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
   }));
 }
@@ -58751,7 +58800,10 @@ function persistDocumentationSprModelNow(statusText = "Spremljeno lokalno") {
     documentationSprSaveTimer = 0;
   }
   try {
-    window.localStorage.setItem(DOCUMENTATION_SPR_STORAGE_KEY, JSON.stringify(documentationSprModel));
+    window.localStorage.setItem(
+      DOCUMENTATION_SPR_STORAGE_KEY,
+      JSON.stringify(cloneDocumentationSprModelForLocalDraft(documentationSprModel)),
+    );
     setDocumentationSprStatus(statusText, "saved");
     return true;
   } catch {
@@ -58974,6 +59026,107 @@ async function handleDocumentationSprHeaderUpload(file) {
   } catch {
     setDocumentationSprStatus("Header nije učitan", "saving");
   }
+}
+
+function estimateDocumentationSprPdfPageCount(dataUrl = "") {
+  const text = String(dataUrl || "");
+  const match = text.match(/^data:application\/pdf;base64,([a-z0-9+/=]+)$/i);
+  if (!match) {
+    return 1;
+  }
+  try {
+    const binary = atob(match[1]);
+    const count = (binary.match(/\/Type\s*\/Page\b/g) || []).length;
+    return Math.max(1, count);
+  } catch {
+    return 1;
+  }
+}
+
+function getDocumentationSprAttachmentPageCount(attachments = documentationSprModel?.attachments ?? []) {
+  return normalizeDocumentationSprAttachments(attachments)
+    .reduce((sum, attachment) => sum + Math.max(1, Number(attachment.pageCount) || 1), 0);
+}
+
+function renderDocumentationSprAttachmentList() {
+  if (!(documentationSprAttachmentList instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const attachments = normalizeDocumentationSprAttachments(documentationSprModel.attachments);
+  documentationSprModel.attachments = attachments;
+  if (!attachments.length) {
+    documentationSprAttachmentList.innerHTML = '<div class="documentation-spr-attachment-empty">Nema dodanih priloga.</div>';
+    return;
+  }
+  documentationSprAttachmentList.innerHTML = attachments.map((attachment) => `
+    <div class="documentation-spr-attachment-row" data-documentation-spr-attachment-id="${escapeHtml(attachment.id)}">
+      <div>
+        <strong>${escapeHtml(attachment.fileName)}</strong>
+        <span>${escapeHtml(attachment.fileType === "application/pdf" ? "PDF" : "Slika")} · ${escapeHtml(formatFileSize(attachment.fileSize) || "datoteka")} · ${attachment.pageCount} ${attachment.pageCount === 1 ? "stranica" : "stranice"}</span>
+      </div>
+      <button type="button" class="ghost-button" data-documentation-spr-attachment-remove="${escapeHtml(attachment.id)}">Ukloni</button>
+    </div>
+  `).join("");
+}
+
+async function appendDocumentationSprAttachments(files = []) {
+  if (!documentationSprModel) {
+    return;
+  }
+  const fileList = Array.from(files || []);
+  if (!fileList.length) {
+    return;
+  }
+  const accepted = [];
+  for (const file of fileList) {
+    const type = String(file.type || "").toLowerCase();
+    const name = String(file.name || "prilog").trim();
+    const isSupported = type === "application/pdf"
+      || type === "image/png"
+      || type === "image/jpeg"
+      || /\.(?:pdf|png|jpe?g)$/i.test(name);
+    if (!isSupported) {
+      setDocumentationSprStatus("Prilog mora biti PDF, PNG ili JPG", "saving");
+      continue;
+    }
+    const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati prilog ${name}.`);
+    accepted.push({
+      id: createClientSideId("spr-attachment"),
+      fileName: name || "prilog",
+      fileType: type || (/\.pdf$/i.test(name) ? "application/pdf" : /\.png$/i.test(name) ? "image/png" : "image/jpeg"),
+      fileSize: Number(file.size || 0) || 0,
+      dataUrl,
+      pageCount: type === "application/pdf" || /\.pdf$/i.test(name)
+        ? estimateDocumentationSprPdfPageCount(dataUrl)
+        : 1,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  if (!accepted.length) {
+    return;
+  }
+  documentationSprModel.attachments = normalizeDocumentationSprAttachments([
+    ...(documentationSprModel.attachments || []),
+    ...accepted,
+  ]);
+  renderDocumentationSprAttachmentList();
+  renderDocumentationSprPreview();
+  setDocumentationSprStatus(
+    `${accepted.length} ${accepted.length === 1 ? "prilog dodan za export" : "priloga dodano za export"}`,
+    "saved",
+  );
+}
+
+function removeDocumentationSprAttachment(id = "") {
+  if (!documentationSprModel) {
+    return;
+  }
+  const attachmentId = String(id || "").trim();
+  documentationSprModel.attachments = normalizeDocumentationSprAttachments(documentationSprModel.attachments)
+    .filter((attachment) => String(attachment.id) !== attachmentId);
+  renderDocumentationSprAttachmentList();
+  renderDocumentationSprPreview();
+  setDocumentationSprStatus("Prilog uklonjen iz exporta", "saved");
 }
 
 function getDocumentationSprFieldSetting(fieldKey = "") {
@@ -59239,7 +59392,7 @@ function handleDocumentationSprFieldContextMenu(event) {
 }
 
 function isDocumentationSprFailingResult() {
-  return String(documentationSprModel?.resultStatus || "").trim().toUpperCase() === "NE ZADOVOLJAVA";
+  return isDocumentationSprFailingModel(documentationSprModel);
 }
 
 function syncDocumentationSprConclusionUi() {
@@ -59251,8 +59404,14 @@ function syncDocumentationSprConclusionUi() {
   const defectsField = documentationSprConclusionSection.querySelector(".documentation-spr-defects-field");
   const defectsTextarea = defectsField?.querySelector("[data-documentation-spr-field='defects']");
   const icon = documentationSprConclusionSection.querySelector(".documentation-spr-result-icon");
+  const title = documentationSprConclusionSection.querySelector(".documentation-spr-section-title strong");
   documentationSprConclusionSection.classList.toggle("is-failing", failing);
   documentationSprConclusionSection.classList.toggle("is-passing", !failing);
+  if (title) {
+    title.textContent = failing
+      ? "Nedostaci, preporuke i zaključna ocjena"
+      : "Preporuke i zaključna ocjena";
+  }
   if (icon) {
     icon.textContent = failing ? "!" : "OK";
   }
@@ -59350,6 +59509,7 @@ function writeDocumentationSprModelToForm() {
   renderDocumentationSprObjectSelect();
   syncDocumentationSprConclusionUi();
   syncDocumentationSprFieldSettingsUi();
+  renderDocumentationSprAttachmentList();
 }
 
 function getDocumentationSprRowsFromGridlineModel(model) {
@@ -59446,7 +59606,29 @@ function renderDocumentationSprSectionTitle(number, title) {
   return `<div class="documentation-spr-paper-section-title"><span>${number}.</span><span>${escapeHtml(title)}</span></div>`;
 }
 
-function renderDocumentationSprPageOne(model) {
+function getDocumentationSprServiceCode(model = documentationSprModel) {
+  const bindingCode = String(model?.serviceBinding?.serviceCode || model?.serviceCode || "").trim();
+  if (bindingCode) {
+    return bindingCode;
+  }
+  const templateCode = String(model?.templateCode || "").trim();
+  const templateMatch = templateCode.match(/[A-ZČĆŽŠĐ]{2,6}/i);
+  if (templateMatch) {
+    return templateMatch[0].toUpperCase();
+  }
+  const recordMatch = String(model?.recordNumber || "").match(/[A-ZČĆŽŠĐ]{2,6}$/i);
+  return recordMatch ? recordMatch[0].toUpperCase() : "SPR";
+}
+
+function renderDocumentationSprPaperFooter(model, pageNumber, totalPages) {
+  return `<div class="documentation-spr-paper-footer">${escapeHtml(getDocumentationSprServiceCode(model))}-${pageNumber}/${totalPages}</div>`;
+}
+
+function isDocumentationSprFailingModel(model = documentationSprModel) {
+  return String(model?.resultStatus || "").trim().toUpperCase() === "NE ZADOVOLJAVA";
+}
+
+function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
   return `
     <section class="documentation-spr-paper documentation-spr-paper-first">
       ${renderDocumentationSprPaperHeader(model, { useUploadedHeader: true })}
@@ -59469,12 +59651,12 @@ function renderDocumentationSprPageOne(model) {
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.equipment)}</div>
       ${renderDocumentationSprSectionTitle(3, "PRIMJENJENI PROPISI")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.regulations)}</div>
-      <div class="documentation-spr-paper-footer">SPR-1/4</div>
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
 }
 
-function renderDocumentationSprPageTwo(model) {
+function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprPaperHeader(model)}
@@ -59482,7 +59664,7 @@ function renderDocumentationSprPageTwo(model) {
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
       ${renderDocumentationSprSectionTitle(5, "REZULTATI ISPITIVANJA")}
       <div class="documentation-spr-paper-text">${escapeHtml(model.resultsText)}</div>
-      <div class="documentation-spr-paper-footer">SPR-2/4</div>
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
 }
@@ -59500,7 +59682,7 @@ function renderDocumentationSprMeasurementTableRows(rows) {
   `).join("");
 }
 
-function renderDocumentationSprPageThree(model, rows) {
+function renderDocumentationSprPageThree(model, rows, pageNumber = 3, totalPages = 4) {
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model, true)}
@@ -59523,7 +59705,7 @@ function renderDocumentationSprPageThree(model, rows) {
         </thead>
         <tbody>${renderDocumentationSprMeasurementTableRows(rows)}</tbody>
       </table>
-      <div class="documentation-spr-paper-footer">SPR-3/4</div>
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
 }
@@ -59545,8 +59727,9 @@ function renderDocumentationSprSignature(model) {
   `;
 }
 
-function renderDocumentationSprPageFour(model) {
-  const defects = renderDocumentationSprLineList(model.defects);
+function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
+  const showDefects = isDocumentationSprFailingModel(model);
+  const defects = showDefects ? renderDocumentationSprLineList(model.defects) : "";
   const recommendations = renderDocumentationSprLineList(model.recommendations);
   return `
     <section class="documentation-spr-paper">
@@ -59556,8 +59739,7 @@ function renderDocumentationSprPageFour(model) {
         <div></div>
         ${renderDocumentationSprSignature(model)}
       </div>
-      ${renderDocumentationSprSectionTitle(6, "NEDOSTATCI")}
-      <div class="documentation-spr-paper-list">${defects}</div>
+      ${showDefects ? `${renderDocumentationSprSectionTitle(6, "NEDOSTATCI")}<div class="documentation-spr-paper-list">${defects}</div>` : ""}
       ${renderDocumentationSprSectionTitle(7, "PREPORUKE")}
       <div class="documentation-spr-paper-list">${recommendations}</div>
       ${renderDocumentationSprSectionTitle(8, "OCJENA REZULTATA ISPITIVANJA")}
@@ -59582,9 +59764,48 @@ function renderDocumentationSprPageFour(model) {
           <i aria-hidden="true"></i>
         </div>
       </div>
-      <div class="documentation-spr-paper-footer">SPR-4/4</div>
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
+}
+
+function renderDocumentationSprAttachmentPreviewPages(model, startPageNumber = 5, totalPages = 4) {
+  const attachments = normalizeDocumentationSprAttachments(model?.attachments);
+  let pageNumber = startPageNumber;
+  return attachments.flatMap((attachment, attachmentIndex) => {
+    const pageCount = Math.max(1, Number(attachment.pageCount) || 1);
+    return Array.from({ length: pageCount }, (_, pageOffset) => {
+      const isImage = /^image\//i.test(attachment.fileType);
+      const title = `PRILOG ${attachmentIndex + 1}${pageCount > 1 ? `/${pageOffset + 1}` : ""}`;
+      const content = isImage && pageOffset === 0
+        ? `<img src="${escapeHtml(attachment.dataUrl)}" alt="${escapeHtml(attachment.fileName)}" />`
+        : `<div class="documentation-spr-paper-attachment-placeholder"><strong>${escapeHtml(attachment.fileName)}</strong><span>${escapeHtml(attachment.fileType === "application/pdf" ? "PDF prilog" : "Prilog")} · stranica ${pageOffset + 1}/${pageCount}</span></div>`;
+      const html = `
+        <section class="documentation-spr-paper documentation-spr-paper-attachment">
+          <div class="documentation-spr-paper-attachment-head">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(attachment.fileName)}</span>
+          </div>
+          <div class="documentation-spr-paper-attachment-body">${content}</div>
+          ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
+        </section>
+      `;
+      pageNumber += 1;
+      return html;
+    });
+  });
+}
+
+function renderDocumentationSprPages(model, rows) {
+  const attachmentPageCount = getDocumentationSprAttachmentPageCount(model?.attachments);
+  const totalPages = 4 + attachmentPageCount;
+  return [
+    renderDocumentationSprPageOne(model, 1, totalPages),
+    renderDocumentationSprPageTwo(model, 2, totalPages),
+    renderDocumentationSprPageThree(model, rows, 3, totalPages),
+    renderDocumentationSprPageFour(model, 4, totalPages),
+    ...renderDocumentationSprAttachmentPreviewPages(model, 5, totalPages),
+  ];
 }
 
 function renderDocumentationSprPreview() {
@@ -59592,15 +59813,11 @@ function renderDocumentationSprPreview() {
     return;
   }
   const rows = getDocumentationSprMeasurementRows();
-  documentationSprPreview.innerHTML = [
-    renderDocumentationSprPageOne(documentationSprModel),
-    renderDocumentationSprPageTwo(documentationSprModel),
-    renderDocumentationSprPageThree(documentationSprModel, rows),
-    renderDocumentationSprPageFour(documentationSprModel),
-  ].join("");
+  const pages = renderDocumentationSprPages(documentationSprModel, rows);
+  documentationSprPreview.innerHTML = pages.join("");
 
   if (documentationSprPreviewSummary) {
-    documentationSprPreviewSummary.textContent = `${rows.length} mjernih mjesta · 4 stranice`;
+    documentationSprPreviewSummary.textContent = `${rows.length} mjernih mjesta · ${pages.length} ${pages.length === 1 ? "stranica" : "stranice"}`;
   }
   if (documentationSprGridSummary) {
     documentationSprGridSummary.textContent = `${rows.length} mjernih mjesta iz Gridline tablice`;
@@ -59689,7 +59906,7 @@ function buildDocumentationSprPdfStyles() {
       height: 296.5mm;
       min-height: 0;
       margin: 0 auto;
-      padding: 12mm 10mm 10mm;
+      padding: 12mm 10mm 18mm;
       background: #fff;
       color: #101010;
       font-family: Arial, Helvetica, sans-serif;
@@ -59989,9 +60206,69 @@ function buildDocumentationSprPdfStyles() {
     }
 
     .documentation-spr-paper-footer {
-      margin-top: 22px;
+      position: absolute;
+      left: 10mm;
+      bottom: 8mm;
       color: #111;
       font-size: 10pt;
+    }
+
+    .documentation-spr-paper-attachment {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 10mm;
+    }
+
+    .documentation-spr-paper-attachment-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #0f74bd;
+      color: #111;
+    }
+
+    .documentation-spr-paper-attachment-head strong {
+      font-size: 12pt;
+    }
+
+    .documentation-spr-paper-attachment-head span {
+      max-width: 120mm;
+      overflow: hidden;
+      color: #6e7379;
+      font-size: 9pt;
+      text-align: right;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .documentation-spr-paper-attachment-body {
+      min-height: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    .documentation-spr-paper-attachment-body img {
+      display: block;
+      max-width: 100%;
+      max-height: 238mm;
+      object-fit: contain;
+    }
+
+    .documentation-spr-paper-attachment-placeholder {
+      display: grid;
+      gap: 6px;
+      place-items: center;
+      padding: 18mm;
+      border: 1px dashed #9aa9ba;
+      color: #6e7379;
+      text-align: center;
+    }
+
+    .documentation-spr-paper-attachment-placeholder strong {
+      color: #111;
+      font-size: 13pt;
     }
 
     @media screen {
@@ -60057,19 +60334,14 @@ let documentationSprPdfGeneratorPromise = null;
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260627-app-download-v1");
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260627-spr-attachments-v1");
   }
   return documentationSprPdfGeneratorPromise;
 }
 
 function buildDocumentationSprPdfHtml(model = documentationSprModel, rows = getDocumentationSprMeasurementRows()) {
   const title = getDocumentationSprPdfFileName(model).replace(/\.pdf$/i, "");
-  const pagesHtml = [
-    renderDocumentationSprPageOne(model),
-    renderDocumentationSprPageTwo(model),
-    renderDocumentationSprPageThree(model, rows),
-    renderDocumentationSprPageFour(model),
-  ].join("");
+  const pagesHtml = renderDocumentationSprPages(model, rows).join("");
 
   return `<!doctype html>
 <html lang="hr">
@@ -60323,6 +60595,37 @@ function initDocumentationSprWorkbench() {
       syncDocumentationSprPreviewControls();
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
+    });
+    documentationSprAttachmentUploadButton?.addEventListener("click", () => {
+      documentationSprAttachmentFileInput?.click();
+    });
+    documentationSprAttachmentFileInput?.addEventListener("change", () => {
+      const files = documentationSprAttachmentFileInput.files;
+      if (documentationSprAttachmentFileInput instanceof HTMLInputElement) {
+        documentationSprAttachmentFileInput.value = "";
+      }
+      void appendDocumentationSprAttachments(files);
+    });
+    documentationSprAttachmentDrop?.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      documentationSprAttachmentDrop.classList.add("is-dragging");
+    });
+    documentationSprAttachmentDrop?.addEventListener("dragleave", () => {
+      documentationSprAttachmentDrop.classList.remove("is-dragging");
+    });
+    documentationSprAttachmentDrop?.addEventListener("drop", (event) => {
+      event.preventDefault();
+      documentationSprAttachmentDrop.classList.remove("is-dragging");
+      void appendDocumentationSprAttachments(event.dataTransfer?.files);
+    });
+    documentationSprAttachmentList?.addEventListener("click", (event) => {
+      const button = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-attachment-remove]")
+        : null;
+      if (!button) {
+        return;
+      }
+      removeDocumentationSprAttachment(button.getAttribute("data-documentation-spr-attachment-remove") || "");
     });
     documentationSprLibraryBackButton?.addEventListener("click", () => {
       openDocumentationSprLibraryMode();

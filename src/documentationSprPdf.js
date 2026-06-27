@@ -180,12 +180,41 @@ function drawSectionTitle(page, number, title, y, fonts) {
 }
 
 function drawFooter(page, text, fonts) {
-  drawTextLine(page, text, {
-    x: MARGIN_X,
-    y: 32,
-    font: fonts.regular,
-    size: 8.4,
+  void page;
+  void text;
+  void fonts;
+}
+
+function getServiceCode(model = {}) {
+  const bindingCode = clean(model?.serviceBinding?.serviceCode || model?.serviceCode || "");
+  if (bindingCode) {
+    return bindingCode;
+  }
+  const templateCode = clean(model?.templateCode || "");
+  const templateMatch = templateCode.match(/[A-ZČĆŽŠĐ]{2,6}/i);
+  if (templateMatch) {
+    return templateMatch[0].toUpperCase();
+  }
+  const recordMatch = clean(model?.recordNumber || "").match(/[A-ZČĆŽŠĐ]{2,6}$/i);
+  return recordMatch ? recordMatch[0].toUpperCase() : "SPR";
+}
+
+function stampFooters(pdfDoc, model, fonts) {
+  const pages = pdfDoc.getPages();
+  const totalPages = pages.length;
+  const serviceCode = getServiceCode(model);
+  pages.forEach((page, index) => {
+    drawTextLine(page, `${serviceCode}-${index + 1}/${totalPages}`, {
+      x: MARGIN_X,
+      y: 32,
+      font: fonts.regular,
+      size: 8.4,
+    });
   });
+}
+
+function isFailingResult(model = {}) {
+  return clean(model.resultStatus).toUpperCase() === "NE ZADOVOLJAVA";
 }
 
 function drawDefaultHeader(page, model, fonts, y = TOP_Y) {
@@ -773,9 +802,11 @@ function drawPageFour(pdfDoc, model, fonts) {
     }, fieldName);
   }
   y -= 128;
+  if (isFailingResult(model)) {
   y = drawSectionTitle(page, 6, "NEDOSTATCI", y, fonts);
   y = drawPlainList(page, model.defects || "Nema utvrđenih nedostataka.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
   y -= 6;
+  }
   y = drawSectionTitle(page, 7, "PREPORUKE", y, fonts);
   y = drawPlainList(page, model.recommendations || "Redovito održavati i provjeravati sigurnosnu rasvjetu.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
   y -= 8;
@@ -866,6 +897,157 @@ function drawPageFour(pdfDoc, model, fonts) {
   return page;
 }
 
+function normalizeAttachments(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? entry : {};
+      const fileName = clean(item.fileName || item.name || `Prilog ${index + 1}`);
+      const dataUrl = String(item.dataUrl || "").trim();
+      const fileType = clean(item.fileType || item.type || "").toLowerCase();
+      const isPdf = fileType === "application/pdf" || /^data:application\/pdf;base64,/i.test(dataUrl) || /\.pdf$/i.test(fileName);
+      const isPng = fileType === "image/png" || /^data:image\/png;base64,/i.test(dataUrl) || /\.png$/i.test(fileName);
+      const isJpg = fileType === "image/jpeg" || fileType === "image/jpg" || /^data:image\/jpe?g;base64,/i.test(dataUrl) || /\.jpe?g$/i.test(fileName);
+      if (!fileName || !dataUrl || (!isPdf && !isPng && !isJpg)) {
+        return null;
+      }
+      return {
+        fileName,
+        dataUrl,
+        fileType: isPdf ? "application/pdf" : isPng ? "image/png" : "image/jpeg",
+      };
+    })
+    .filter(Boolean);
+}
+
+function dataUrlToBytes(dataUrl = "") {
+  const text = String(dataUrl || "").trim();
+  const match = text.match(/^data:[^;]+;base64,([a-z0-9+/=]+)$/i);
+  if (!match) {
+    return null;
+  }
+  const binary = atob(match[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function drawAttachmentPlaceholder(page, attachment, fonts, title = "PRILOG") {
+  drawTextLine(page, title, {
+    x: MARGIN_X,
+    y: TOP_Y,
+    font: fonts.bold,
+    size: 13,
+  });
+  page.drawLine({
+    start: { x: MARGIN_X, y: TOP_Y - 24 },
+    end: { x: PAGE_WIDTH - MARGIN_X, y: TOP_Y - 24 },
+    thickness: 1.6,
+    color: BLUE,
+  });
+  page.drawRectangle({
+    x: MARGIN_X,
+    y: 280,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    height: 190,
+    borderColor: TABLE_GRAY,
+    borderWidth: 0.9,
+  });
+  drawTextBlock(page, clean(attachment.fileName), {
+    x: MARGIN_X + 24,
+    y: 430,
+    width: PAGE_WIDTH - (MARGIN_X * 2) - 48,
+    font: fonts.bold,
+    size: 12,
+    lineHeight: 16,
+    align: "center",
+    maxLines: 3,
+  });
+  drawTextLine(page, attachment.fileType === "application/pdf" ? "PDF prilog" : "Prilog", {
+    x: MARGIN_X + 24,
+    y: 360,
+    width: PAGE_WIDTH - (MARGIN_X * 2) - 48,
+    align: "center",
+    font: fonts.regular,
+    size: 9,
+    color: MUTED,
+  });
+}
+
+async function appendImageAttachmentPage(pdfDoc, attachment, fonts, index) {
+  const bytes = dataUrlToBytes(attachment.dataUrl);
+  if (!bytes) {
+    throw new Error("Attachment image is not a data URL.");
+  }
+  const image = attachment.fileType === "image/png"
+    ? await pdfDoc.embedPng(bytes)
+    : await pdfDoc.embedJpg(bytes);
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  drawTextLine(page, `PRILOG ${index + 1}`, {
+    x: MARGIN_X,
+    y: TOP_Y,
+    font: fonts.bold,
+    size: 13,
+  });
+  drawTextLine(page, clean(attachment.fileName), {
+    x: MARGIN_X + 112,
+    y: TOP_Y,
+    width: PAGE_WIDTH - (MARGIN_X * 2) - 112,
+    align: "right",
+    font: fonts.regular,
+    size: 8.4,
+    color: MUTED,
+  });
+  page.drawLine({
+    start: { x: MARGIN_X, y: TOP_Y - 24 },
+    end: { x: PAGE_WIDTH - MARGIN_X, y: TOP_Y - 24 },
+    thickness: 1.6,
+    color: BLUE,
+  });
+  const maxWidth = PAGE_WIDTH - (MARGIN_X * 2);
+  const maxHeight = PAGE_HEIGHT - 150;
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  const x = MARGIN_X + ((maxWidth - width) / 2);
+  const y = 68 + ((maxHeight - height) / 2);
+  page.drawImage(image, { x, y, width, height });
+}
+
+async function appendPdfAttachmentPages(pdfDoc, attachment) {
+  const bytes = dataUrlToBytes(attachment.dataUrl);
+  if (!bytes) {
+    throw new Error("Attachment PDF is not a data URL.");
+  }
+  const sourcePdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const sourcePages = await pdfDoc.copyPages(sourcePdf, sourcePdf.getPageIndices());
+  sourcePages.forEach((page) => {
+    pdfDoc.addPage(page);
+  });
+}
+
+async function appendAttachmentPlaceholderPage(pdfDoc, attachment, fonts, index) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  drawAttachmentPlaceholder(page, attachment, fonts, `PRILOG ${index + 1}`);
+}
+
+async function appendAttachments(pdfDoc, model, fonts) {
+  const attachments = normalizeAttachments(model.attachments);
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    try {
+      if (attachment.fileType === "application/pdf") {
+        await appendPdfAttachmentPages(pdfDoc, attachment);
+      } else {
+        await appendImageAttachmentPage(pdfDoc, attachment, fonts, index);
+      }
+    } catch {
+      await appendAttachmentPlaceholderPage(pdfDoc, attachment, fonts, index);
+    }
+  }
+}
+
 async function loadFontBytes() {
   if (!fontBytesPromise) {
     fontBytesPromise = Promise.all([
@@ -918,6 +1100,8 @@ export async function generateDocumentationSprPdfBlob({
   drawPageTwo(pdfDoc, model, fonts);
   drawPageThree(pdfDoc, model, safeRows, fonts);
   drawPageFour(pdfDoc, model, fonts);
+  await appendAttachments(pdfDoc, model, fonts);
+  stampFooters(pdfDoc, model, fonts);
 
   const bytes = await pdfDoc.save({ useObjectStreams: false });
   const blob = new Blob([bytes], { type: "application/pdf" });
