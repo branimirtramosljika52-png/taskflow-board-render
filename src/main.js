@@ -3991,6 +3991,8 @@ const documentationSprLegalActiveButton = document.querySelector("#documentation
 const documentationSprLegalClearButton = document.querySelector("#documentation-spr-legal-clear");
 const documentationSprLegalCustomInput = document.querySelector("#documentation-spr-legal-custom-input");
 const documentationSprLegalCustomAddButton = document.querySelector("#documentation-spr-legal-custom-add");
+const documentationSprObjectSelect = document.querySelector("#documentation-spr-object-select");
+const documentationSprObjectAddButton = document.querySelector("#documentation-spr-object-add");
 const documentationSprInspectorUsersSelect = document.querySelector("#documentation-spr-inspector-users");
 const documentationSprPeopleSearchInput = document.querySelector("#documentation-spr-people-search");
 const documentationSprInspectorUserList = document.querySelector("#documentation-spr-inspector-user-list");
@@ -4000,6 +4002,8 @@ const documentationSprPeopleSummary = document.querySelector("#documentation-spr
 const documentationSprPeopleChips = document.querySelector("#documentation-spr-people-chips");
 const documentationSprPeopleApplyButton = document.querySelector("#documentation-spr-people-apply");
 const documentationSprPeopleClearButton = document.querySelector("#documentation-spr-people-clear");
+const documentationSprConclusionSection = document.querySelector("#documentation-spr-conclusion-section");
+const documentationSprResultHelper = document.querySelector("#documentation-spr-result-helper");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -56806,6 +56810,34 @@ const DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY = "safenexus.documentation-
 const DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID = "spr-v1-0-0";
 const DOCUMENTATION_SPR_GRID_ROW_COUNT = 24;
 const DOCUMENTATION_SPR_GRID_COLUMN_COUNT = 6;
+const DOCUMENTATION_SPR_DATE_FIELDS = new Set(["inspectionDate", "issueDate", "validUntil"]);
+const DOCUMENTATION_SPR_INSPECTION_TYPE_OPTIONS = Object.freeze([
+  "Periodično ispitivanje",
+  "Početno ispitivanje",
+  "Izvanredno ispitivanje",
+]);
+const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
+  companyName: "Tvrtka",
+  companyOib: "OIB",
+  companyAddress: "Sjedište",
+  spaceUser: "Korisnik",
+  inspectionPlace: "Mjesto",
+  inspectionObject: "Objekt",
+  inspectionDate: "Datum ispitivanja",
+  issueDate: "Datum izdavanja",
+  validUntil: "Vrijedi do",
+  recordNumber: "Broj zapisnika",
+  inspectionType: "Vrsta ispitivanja",
+  projectDocumentation: "Korištena tehničko-projektna dokumentacija",
+  resultsText: "Opis sustava i ispitivanja",
+  measurementEquipmentIds: "Mjerna oprema",
+  legalFrameworkIds: "Propisi",
+  inspectorUserIds: "Ispitivači",
+  responsiblePersonUserId: "Odgovorna osoba",
+  resultStatus: "Zaključna ocjena",
+  defects: "Nedostaci",
+  recommendations: "Preporuke",
+});
 let documentationSprModel = null;
 let documentationSprTemplateLibrary = { version: 1, activeTemplateId: "", templates: [] };
 let documentationSprGridlineApi = null;
@@ -56814,6 +56846,8 @@ let documentationSprSaveTimer = 0;
 let documentationSprGridlineRetryTimer = 0;
 let documentationSprWorkbenchMode = "library";
 let documentationSprDraftServiceBinding = null;
+let documentationSprFieldContextMenu = null;
+let documentationSprFieldSettingsPanel = null;
 let documentationSprWorkOrderBatch = {
   entries: [],
   activeIndex: 0,
@@ -56888,6 +56922,7 @@ function createDefaultDocumentationSprModel() {
     spaceUser: "PETROL d.o.o.",
     inspectionPlace: "PM Rijeka, Obilaznica",
     inspectionObject: "Prostor benzinske postaje sa pratećim sadržajem",
+    inspectionObjectId: "",
     inspectionType: "Periodično ispitivanje",
     inspectionDate: "20.2.2026",
     issueDate: "20.2.2026",
@@ -56936,8 +56971,10 @@ function createDefaultDocumentationSprModel() {
     measurementEquipmentIds: [],
     legalFrameworkIds: [],
     customRegulations: [],
+    customObjects: [],
     inspectorUserIds: [],
     responsiblePersonUserId: "",
+    fieldSettings: {},
     gridlineModel: buildDocumentationSprGridlineModelFromRows(),
   };
 }
@@ -56956,6 +56993,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     spaceUser: "",
     inspectionPlace: "",
     inspectionObject: "",
+    inspectionObjectId: "",
     inspectionType: "",
     inspectionDate: "",
     issueDate: "",
@@ -56980,8 +57018,10 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     measurementEquipmentIds: [],
     legalFrameworkIds: [],
     customRegulations: [],
+    customObjects: [],
     inspectorUserIds: [],
     responsiblePersonUserId: "",
+    fieldSettings: {},
     gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
   };
 }
@@ -57005,11 +57045,18 @@ function normalizeDocumentationSprModel(value) {
   return {
     ...fallback,
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
+    inspectionObjectId: String(source.inspectionObjectId || "").trim(),
+    inspectionType: normalizeDocumentationSprInspectionType(source.inspectionType || fallback.inspectionType),
+    inspectionDate: formatDocumentationSprDateFromSource(source.inspectionDate || fallback.inspectionDate),
+    issueDate: formatDocumentationSprDateFromSource(source.issueDate || fallback.issueDate),
+    validUntil: formatDocumentationSprDateFromSource(source.validUntil || fallback.validUntil),
     measurementEquipmentIds: normalizeDocumentationSprIdList(source.measurementEquipmentIds),
     legalFrameworkIds: normalizeDocumentationSprIdList(source.legalFrameworkIds),
     customRegulations: normalizeDocumentationSprTextList(source.customRegulations),
+    customObjects: normalizeDocumentationSprCustomObjects(source.customObjects),
     inspectorUserIds: normalizeDocumentationSprIdList(source.inspectorUserIds),
     responsiblePersonUserId: String(source.responsiblePersonUserId || "").trim(),
+    fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
     headerImageName: String(source.headerImageName || "").trim(),
@@ -57033,6 +57080,64 @@ function normalizeDocumentationSprTextList(value = []) {
       .split(/\r?\n/)
       .map((entry) => entry.trim());
   return Array.from(new Set(values.map((entry) => String(entry || "").trim()).filter(Boolean)));
+}
+
+function normalizeDocumentationSprInspectionType(value = "") {
+  const normalized = normalizeLooseName(value);
+  const exact = DOCUMENTATION_SPR_INSPECTION_TYPE_OPTIONS.find((option) => normalizeLooseName(option) === normalized);
+  if (exact) {
+    return exact;
+  }
+  if (normalized.includes("pocet")) {
+    return "Početno ispitivanje";
+  }
+  if (normalized.includes("izvan")) {
+    return "Izvanredno ispitivanje";
+  }
+  return "Periodično ispitivanje";
+}
+
+function normalizeDocumentationSprCustomObjects(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return source.map((entry, index) => {
+    const item = entry && typeof entry === "object" ? entry : { name: entry };
+    const name = String(item.name || item.title || "").trim();
+    if (!name) {
+      return null;
+    }
+    const id = String(item.id || `custom-object-${index}-${slugifyValue(name)}`).trim();
+    if (seen.has(id)) {
+      return null;
+    }
+    seen.add(id);
+    return {
+      id,
+      name,
+      isCustom: true,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeDocumentationSprFieldSettings(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, rawEntry]) => {
+        const normalizedKey = String(key || "").trim();
+        const entry = rawEntry && typeof rawEntry === "object" ? rawEntry : {};
+        if (!normalizedKey) {
+          return null;
+        }
+        return [normalizedKey, {
+          aiEnabled: Boolean(entry.aiEnabled || entry.nexAiEnabled),
+          required: Boolean(entry.required),
+          prompt: String(entry.prompt || entry.aiPrompt || "").trim(),
+          guardrails: String(entry.guardrails || entry.aiGuardrails || "").trim(),
+        }];
+      })
+      .filter(Boolean),
+  );
 }
 
 function normalizeDocumentationSprServiceBinding(value = null) {
@@ -57527,10 +57632,13 @@ function setDocumentationSprFieldValue(fieldName = "", value = "") {
   if (!documentationSprModel || !documentationWorkbenchModule) {
     return;
   }
-  documentationSprModel[fieldName] = String(value ?? "");
+  const normalizedValue = DOCUMENTATION_SPR_DATE_FIELDS.has(fieldName)
+    ? formatDocumentationSprDateFromSource(value)
+    : String(value ?? "");
+  documentationSprModel[fieldName] = normalizedValue;
   const field = documentationWorkbenchModule.querySelector(`[data-documentation-spr-field="${CSS.escape(fieldName)}"]`);
   if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement) {
-    field.value = documentationSprModel[fieldName];
+    writeDocumentationSprControlValue(field, fieldName, normalizedValue);
   }
 }
 
@@ -57967,6 +58075,7 @@ function renderDocumentationSprSourceControls() {
   if (!documentationSprModel) {
     return;
   }
+  renderDocumentationSprObjectSelect();
   const equipmentItems = getDocumentationSprMeasurementEquipmentItems();
   replaceDocumentationSprSelectOptions(
     documentationSprEquipmentSelect,
@@ -58022,6 +58131,8 @@ function renderDocumentationSprSourceControls() {
 
   renderDocumentationSprSourcePickers();
   syncDocumentationSprSourceSummary();
+  syncDocumentationSprFieldSettingsUi();
+  syncDocumentationSprConclusionUi();
 }
 
 function applyDocumentationSprEquipmentSelection(ids = getDocumentationSprSelectValues(documentationSprEquipmentSelect)) {
@@ -58245,6 +58356,101 @@ function getDocumentationSprWorkOrderObject(workOrder = {}) {
   return getLocationObject(workOrder.objectId || workOrder.locationObjectId || workOrder.locationObject?.id || "");
 }
 
+function getDocumentationSprObjectItems() {
+  const moduleObjects = (state.locationObjects ?? [])
+    .filter((item) => item && item.isActive !== false)
+    .map((item) => ({
+      id: String(item.id || "").trim(),
+      name: String(item.name || item.title || item.code || "Objekt").trim(),
+      code: String(item.code || "").trim(),
+      companyId: String(item.companyId || "").trim(),
+      locationId: String(item.locationId || "").trim(),
+      isCustom: false,
+    }))
+    .filter((item) => item.id && item.name);
+  const customObjects = normalizeDocumentationSprCustomObjects(documentationSprModel?.customObjects ?? []);
+  return [...moduleObjects, ...customObjects]
+    .sort((left, right) => (
+      Number(left.isCustom) - Number(right.isCustom)
+      || left.name.localeCompare(right.name, "hr", { numeric: true, sensitivity: "base" })
+    ));
+}
+
+function getDocumentationSprObjectOptionLabel(item = {}) {
+  const parts = [
+    item.name || "Objekt",
+    item.code ? `Šifra ${item.code}` : "",
+    item.locationId ? getLocation(item.locationId)?.name || "" : "",
+    item.companyId ? getCompany(item.companyId)?.name || "" : "",
+    item.isCustom ? "ručno" : "",
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function renderDocumentationSprObjectSelect() {
+  if (!(documentationSprObjectSelect instanceof HTMLSelectElement) || !documentationSprModel) {
+    return;
+  }
+  const items = getDocumentationSprObjectItems();
+  const selectedId = String(documentationSprModel.inspectionObjectId || "").trim();
+  const currentText = String(documentationSprModel.inspectionObject || "").trim();
+  const options = [
+    {
+      value: "",
+      label: currentText ? `Ručno: ${currentText}` : "Odaberi objekt",
+    },
+    ...items.map((item) => ({
+      value: item.id,
+      label: getDocumentationSprObjectOptionLabel(item),
+    })),
+    {
+      value: "__add_new__",
+      label: "+ Dodaj novi objekt u zapisnik",
+    },
+  ];
+  documentationSprObjectSelect.replaceChildren(...options.map((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.value;
+    option.textContent = entry.label;
+    return option;
+  }));
+  documentationSprObjectSelect.value = items.some((item) => item.id === selectedId) ? selectedId : "";
+}
+
+function applyDocumentationSprObjectSelection(objectId = "") {
+  if (!documentationSprModel) {
+    return;
+  }
+  const normalizedId = String(objectId || "").trim();
+  if (normalizedId === "__add_new__") {
+    const name = window.prompt("Naziv objekta za ovaj zapisnik", documentationSprModel.inspectionObject || "");
+    if (!String(name || "").trim()) {
+      renderDocumentationSprObjectSelect();
+      return;
+    }
+    const objectName = String(name || "").trim();
+    const id = `custom-object-${Date.now().toString(36)}-${slugifyValue(objectName)}`;
+    documentationSprModel.customObjects = normalizeDocumentationSprCustomObjects([
+      ...(documentationSprModel.customObjects || []),
+      { id, name: objectName },
+    ]);
+    documentationSprModel.inspectionObjectId = id;
+    setDocumentationSprFieldValue("inspectionObject", objectName);
+    renderDocumentationSprObjectSelect();
+    renderDocumentationSprPreview();
+    scheduleDocumentationSprSave();
+    return;
+  }
+  const item = getDocumentationSprObjectItems().find((entry) => entry.id === normalizedId);
+  documentationSprModel.inspectionObjectId = item?.id || "";
+  if (item?.name) {
+    setDocumentationSprFieldValue("inspectionObject", item.name);
+  }
+  renderDocumentationSprObjectSelect();
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+}
+
 function formatDocumentationSprDateFromSource(value = "") {
   const normalized = normalizeDateInputValue(value);
   return normalized ? formatDateInputDisplayValue(normalized) : String(value || "").trim();
@@ -58379,7 +58585,13 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
     spaceUser: companyName || baseModel.spaceUser,
     inspectionPlace: [locationName, locationAddress].filter(Boolean).join(", ") || baseModel.inspectionPlace,
     inspectionObject: objectName || serviceBinding?.serviceName || service.name || baseModel.inspectionObject,
-    inspectionType: service.name || serviceBinding?.serviceName || serviceCode || baseModel.inspectionType,
+    inspectionObjectId: String(object?.id || workOrder.objectId || workOrder.locationObjectId || baseModel.inspectionObjectId || "").trim(),
+    inspectionType: normalizeDocumentationSprInspectionType(
+      workOrder.inspectionType
+      || service.inspectionType
+      || baseModel.inspectionType
+      || "Periodično ispitivanje",
+    ),
     inspectionDate: formatDocumentationSprDateFromSource(inspectionDate),
     issueDate: formatDocumentationSprDateFromSource(issuedDate),
     validUntil: formatDocumentationSprDateFromSource(validUntil),
@@ -58590,6 +58802,8 @@ function applyDocumentationSprModel(nextModel, {
     || documentationSprDraftServiceBinding;
   writeDocumentationSprModelToForm();
   renderDocumentationSprSourceControls();
+  syncDocumentationSprFieldSettingsUi();
+  syncDocumentationSprConclusionUi();
   syncDocumentationSprPreviewControls();
   if (documentationSprGridlineApi?.setModel) {
     documentationSprGridlineApi.setModel(documentationSprModel.gridlineModel);
@@ -58762,15 +58976,365 @@ async function handleDocumentationSprHeaderUpload(file) {
   }
 }
 
+function getDocumentationSprFieldSetting(fieldKey = "") {
+  const key = String(fieldKey || "").trim();
+  if (!documentationSprModel || !key) {
+    return {
+      aiEnabled: false,
+      required: false,
+      prompt: "",
+      guardrails: "",
+    };
+  }
+  documentationSprModel.fieldSettings = normalizeDocumentationSprFieldSettings(documentationSprModel.fieldSettings);
+  return documentationSprModel.fieldSettings[key] || {
+    aiEnabled: false,
+    required: false,
+    prompt: "",
+    guardrails: "",
+  };
+}
+
+function updateDocumentationSprFieldSetting(fieldKey = "", patch = {}) {
+  const key = String(fieldKey || "").trim();
+  if (!documentationSprModel || !key) {
+    return;
+  }
+  documentationSprModel.fieldSettings = normalizeDocumentationSprFieldSettings({
+    ...documentationSprModel.fieldSettings,
+    [key]: {
+      ...getDocumentationSprFieldSetting(key),
+      ...patch,
+    },
+  });
+  syncDocumentationSprFieldSettingsUi();
+  syncDocumentationSprConclusionUi();
+  scheduleDocumentationSprSave();
+}
+
+function getDocumentationSprFieldLabel(fieldKey = "", sourceElement = null) {
+  const key = String(fieldKey || "").trim();
+  if (DOCUMENTATION_SPR_FIELD_LABELS[key]) {
+    return DOCUMENTATION_SPR_FIELD_LABELS[key];
+  }
+  const field = sourceElement instanceof Element
+    ? sourceElement.closest(".documentation-spr-field")
+    : documentationWorkbenchModule?.querySelector(`[data-documentation-spr-field="${CSS.escape(key)}"]`)?.closest(".documentation-spr-field");
+  const labelText = field?.querySelector("span")?.textContent?.trim();
+  return labelText || key || "Polje";
+}
+
+function closeDocumentationSprFieldContextMenu() {
+  if (documentationSprFieldContextMenu) {
+    documentationSprFieldContextMenu.remove();
+    documentationSprFieldContextMenu = null;
+  }
+}
+
+function closeDocumentationSprFieldSettingsPanel() {
+  if (documentationSprFieldSettingsPanel) {
+    documentationSprFieldSettingsPanel.remove();
+    documentationSprFieldSettingsPanel = null;
+  }
+}
+
+function resolveDocumentationSprContextTarget(event) {
+  const element = event?.target instanceof Element ? event.target : null;
+  if (!element || !documentationWorkbenchModule?.contains(element)) {
+    return null;
+  }
+  const control = element.closest("[data-documentation-spr-field]");
+  if (control) {
+    const fieldKey = control.getAttribute("data-documentation-spr-field") || "";
+    return {
+      fieldKey,
+      label: getDocumentationSprFieldLabel(fieldKey, control),
+    };
+  }
+  if (element.closest("[data-documentation-spr-equipment-id]") || element.closest("#documentation-spr-equipment-list")) {
+    return {
+      fieldKey: "measurementEquipmentIds",
+      label: "Mjerna oprema",
+    };
+  }
+  if (element.closest("[data-documentation-spr-legal-id]") || element.closest("#documentation-spr-legal-list")) {
+    return {
+      fieldKey: "legalFrameworkIds",
+      label: "Propisi",
+    };
+  }
+  if (element.closest("[data-documentation-spr-inspector-user-id]")) {
+    return {
+      fieldKey: "inspectorUserIds",
+      label: "Ispitivači",
+    };
+  }
+  if (element.closest("[data-documentation-spr-responsible-user-id]")) {
+    return {
+      fieldKey: "responsiblePersonUserId",
+      label: "Odgovorna osoba",
+    };
+  }
+  return null;
+}
+
+function positionDocumentationSprFloatingPanel(panel, clientX = 0, clientY = 0) {
+  if (!(panel instanceof HTMLElement)) {
+    return;
+  }
+  const gap = 10;
+  const width = panel.offsetWidth || 260;
+  const height = panel.offsetHeight || 180;
+  const left = Math.max(gap, Math.min(clientX, window.innerWidth - width - gap));
+  const top = Math.max(gap, Math.min(clientY, window.innerHeight - height - gap));
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+}
+
+function openDocumentationSprFieldSettingsPanel(fieldKey = "", label = "") {
+  const setting = getDocumentationSprFieldSetting(fieldKey);
+  const backdrop = document.createElement("div");
+  const panel = document.createElement("section");
+  const head = document.createElement("div");
+  const kicker = document.createElement("span");
+  const title = document.createElement("strong");
+  const closeButton = document.createElement("button");
+  const aiToggleLabel = document.createElement("label");
+  const aiToggle = document.createElement("input");
+  const requiredLabel = document.createElement("label");
+  const requiredToggle = document.createElement("input");
+  const promptLabel = document.createElement("label");
+  const promptLabelText = document.createElement("span");
+  const promptInput = document.createElement("textarea");
+  const guardrailsLabel = document.createElement("label");
+  const guardrailsLabelText = document.createElement("span");
+  const guardrailsInput = document.createElement("textarea");
+  const actions = document.createElement("div");
+  const removeAiButton = document.createElement("button");
+  const saveButton = document.createElement("button");
+
+  closeDocumentationSprFieldContextMenu();
+  closeDocumentationSprFieldSettingsPanel();
+
+  backdrop.className = "documentation-spr-field-panel-backdrop";
+  panel.className = "documentation-spr-field-panel";
+  head.className = "documentation-spr-field-panel-head";
+  kicker.textContent = "NexAI polje";
+  title.textContent = label || getDocumentationSprFieldLabel(fieldKey);
+  closeButton.type = "button";
+  closeButton.className = "ghost-button";
+  closeButton.textContent = "Zatvori";
+
+  aiToggleLabel.className = "documentation-spr-checkbox-line";
+  aiToggle.type = "checkbox";
+  aiToggle.checked = Boolean(setting.aiEnabled);
+  aiToggleLabel.append(aiToggle, document.createTextNode(" NexAI smije popuniti ovo polje"));
+
+  promptLabel.className = "field documentation-spr-field";
+  promptLabelText.textContent = "Kako se popunjava";
+  promptInput.rows = 4;
+  promptInput.placeholder = "Što NexAI treba tražiti u projektu, starom zapisniku, slici ili PDF-u.";
+  promptInput.value = setting.prompt || "";
+  promptLabel.append(promptLabelText, promptInput);
+
+  guardrailsLabel.className = "field documentation-spr-field";
+  guardrailsLabelText.textContent = "NexAI ne smije";
+  guardrailsInput.rows = 3;
+  guardrailsInput.placeholder = "Npr. ne zaključuj ako nije vidljivo, ne izmišljaj vrijednosti.";
+  guardrailsInput.value = setting.guardrails || "";
+  guardrailsLabel.append(guardrailsLabelText, guardrailsInput);
+
+  requiredLabel.className = "documentation-spr-checkbox-line";
+  requiredToggle.type = "checkbox";
+  requiredToggle.checked = Boolean(setting.required);
+  requiredLabel.append(requiredToggle, document.createTextNode(" Polje je obavezno"));
+
+  removeAiButton.type = "button";
+  removeAiButton.className = "ghost-button";
+  removeAiButton.textContent = "Makni NexAI";
+  saveButton.type = "button";
+  saveButton.className = "primary-button";
+  saveButton.textContent = "Spremi postavke";
+
+  closeButton.addEventListener("click", closeDocumentationSprFieldSettingsPanel);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closeDocumentationSprFieldSettingsPanel();
+    }
+  });
+  removeAiButton.addEventListener("click", () => {
+    updateDocumentationSprFieldSetting(fieldKey, {
+      aiEnabled: false,
+      prompt: "",
+      guardrails: guardrailsInput.value,
+      required: requiredToggle.checked,
+    });
+    closeDocumentationSprFieldSettingsPanel();
+  });
+  saveButton.addEventListener("click", () => {
+    updateDocumentationSprFieldSetting(fieldKey, {
+      aiEnabled: aiToggle.checked,
+      prompt: promptInput.value,
+      guardrails: guardrailsInput.value,
+      required: requiredToggle.checked,
+    });
+    closeDocumentationSprFieldSettingsPanel();
+  });
+
+  head.append(kicker, title, closeButton);
+  actions.className = "documentation-spr-field-panel-actions";
+  actions.append(removeAiButton, saveButton);
+  panel.append(head, aiToggleLabel, promptLabel, guardrailsLabel, requiredLabel, actions);
+  backdrop.appendChild(panel);
+  document.body.appendChild(backdrop);
+  documentationSprFieldSettingsPanel = backdrop;
+}
+
+function showDocumentationSprFieldContextMenu(event, target) {
+  const setting = getDocumentationSprFieldSetting(target.fieldKey);
+  const menu = document.createElement("div");
+  const title = document.createElement("strong");
+  const aiButton = document.createElement("button");
+  const fillButton = document.createElement("button");
+  const requiredButton = document.createElement("button");
+
+  closeDocumentationSprFieldContextMenu();
+  menu.className = "documentation-spr-field-context-menu";
+  title.textContent = target.label;
+
+  aiButton.type = "button";
+  aiButton.textContent = setting.aiEnabled ? "Uredi NexAI popunjavanje" : "NexAI popunjavanje";
+  aiButton.addEventListener("click", () => {
+    openDocumentationSprFieldSettingsPanel(target.fieldKey, target.label);
+  });
+
+  fillButton.type = "button";
+  fillButton.textContent = "AI popuni iz uploada";
+  fillButton.addEventListener("click", () => {
+    updateDocumentationSprFieldSetting(target.fieldKey, { aiEnabled: true });
+    closeDocumentationSprFieldContextMenu();
+    setDocumentationSprStatus("NexAI postavke spremljene za polje", "saved");
+  });
+
+  requiredButton.type = "button";
+  requiredButton.textContent = setting.required ? "Makni obavezno polje" : "Polje je obavezno";
+  requiredButton.addEventListener("click", () => {
+    updateDocumentationSprFieldSetting(target.fieldKey, { required: !setting.required });
+    closeDocumentationSprFieldContextMenu();
+  });
+
+  menu.append(title, aiButton, fillButton, requiredButton);
+  document.body.appendChild(menu);
+  documentationSprFieldContextMenu = menu;
+  positionDocumentationSprFloatingPanel(menu, event.clientX, event.clientY);
+}
+
+function handleDocumentationSprFieldContextMenu(event) {
+  const target = resolveDocumentationSprContextTarget(event);
+  if (!target?.fieldKey) {
+    return;
+  }
+  event.preventDefault();
+  showDocumentationSprFieldContextMenu(event, target);
+}
+
+function isDocumentationSprFailingResult() {
+  return String(documentationSprModel?.resultStatus || "").trim().toUpperCase() === "NE ZADOVOLJAVA";
+}
+
+function syncDocumentationSprConclusionUi() {
+  if (!documentationSprModel || !documentationSprConclusionSection) {
+    return;
+  }
+  const failing = isDocumentationSprFailingResult();
+  const defectsSetting = getDocumentationSprFieldSetting("defects");
+  const defectsField = documentationSprConclusionSection.querySelector(".documentation-spr-defects-field");
+  const defectsTextarea = defectsField?.querySelector("[data-documentation-spr-field='defects']");
+  const icon = documentationSprConclusionSection.querySelector(".documentation-spr-result-icon");
+  documentationSprConclusionSection.classList.toggle("is-failing", failing);
+  documentationSprConclusionSection.classList.toggle("is-passing", !failing);
+  if (icon) {
+    icon.textContent = failing ? "!" : "OK";
+  }
+  if (documentationSprResultHelper) {
+    documentationSprResultHelper.textContent = failing
+      ? "Unesi nedostatke prije završetka zapisnika."
+      : "Zapisnik je spreman bez obveznog unosa nedostataka.";
+  }
+  if (defectsField instanceof HTMLElement) {
+    defectsField.hidden = !(failing || defectsSetting.required);
+  }
+  if (defectsTextarea instanceof HTMLTextAreaElement) {
+    defectsTextarea.required = failing || defectsSetting.required;
+    defectsTextarea.setAttribute("aria-required", String(defectsTextarea.required));
+  }
+}
+
+function syncDocumentationSprFieldSettingsUi() {
+  if (!documentationSprModel || !documentationWorkbenchModule) {
+    return;
+  }
+  documentationSprModel.fieldSettings = normalizeDocumentationSprFieldSettings(documentationSprModel.fieldSettings);
+  documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
+    if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) {
+      return;
+    }
+    const fieldKey = control.dataset.documentationSprField || "";
+    const setting = getDocumentationSprFieldSetting(fieldKey);
+    const field = control.closest(".documentation-spr-field");
+    const isHiddenControl = control instanceof HTMLInputElement && control.type === "hidden";
+    if (!isHiddenControl && fieldKey !== "defects") {
+      control.required = Boolean(setting.required);
+      control.setAttribute("aria-required", String(Boolean(setting.required)));
+    }
+    field?.classList.toggle("is-required-by-template", Boolean(setting.required));
+    field?.classList.toggle("has-ai-source", Boolean(setting.aiEnabled));
+  });
+  [
+    ["measurementEquipmentIds", documentationSprEquipmentList],
+    ["legalFrameworkIds", documentationSprLegalList],
+    ["inspectorUserIds", documentationSprInspectorUserList],
+    ["responsiblePersonUserId", documentationSprResponsibleUserList],
+  ].forEach(([fieldKey, element]) => {
+    if (element instanceof HTMLElement) {
+      const setting = getDocumentationSprFieldSetting(fieldKey);
+      element.classList.toggle("is-required-by-template", Boolean(setting.required));
+      element.classList.toggle("has-ai-source", Boolean(setting.aiEnabled));
+    }
+  });
+}
+
+function readDocumentationSprControlValue(control, fieldName = "") {
+  const rawValue = control?.value ?? "";
+  if (DOCUMENTATION_SPR_DATE_FIELDS.has(fieldName)) {
+    return formatDocumentationSprDateFromSource(rawValue);
+  }
+  if (fieldName === "inspectionType") {
+    return normalizeDocumentationSprInspectionType(rawValue);
+  }
+  return String(rawValue ?? "");
+}
+
+function writeDocumentationSprControlValue(control, fieldName = "", value = "") {
+  if (DOCUMENTATION_SPR_DATE_FIELDS.has(fieldName) && control instanceof HTMLInputElement) {
+    const normalizedDate = normalizeDateInputValue(value);
+    control.value = /^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) ? normalizedDate : "";
+    return;
+  }
+  control.value = String(value ?? "");
+}
+
 function readDocumentationSprFormIntoModel() {
   if (!documentationSprModel || !documentationWorkbenchModule) {
     return;
   }
   documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
     if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
-      documentationSprModel[control.dataset.documentationSprField] = control.value;
+      const fieldName = control.dataset.documentationSprField || "";
+      documentationSprModel[fieldName] = readDocumentationSprControlValue(control, fieldName);
     }
   });
+  documentationSprModel.inspectionObjectId = String(documentationSprModel.inspectionObjectId || "").trim();
 }
 
 function writeDocumentationSprModelToForm() {
@@ -58779,9 +59343,13 @@ function writeDocumentationSprModelToForm() {
   }
   documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
     if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
-      control.value = documentationSprModel[control.dataset.documentationSprField] ?? "";
+      const fieldName = control.dataset.documentationSprField || "";
+      writeDocumentationSprControlValue(control, fieldName, documentationSprModel[fieldName] ?? "");
     }
   });
+  renderDocumentationSprObjectSelect();
+  syncDocumentationSprConclusionUi();
+  syncDocumentationSprFieldSettingsUi();
 }
 
 function getDocumentationSprRowsFromGridlineModel(model) {
@@ -59701,6 +60269,12 @@ function initDocumentationSprWorkbench() {
         return;
       }
       readDocumentationSprFormIntoModel();
+      if (event.target.dataset.documentationSprField === "inspectionObject") {
+        documentationSprModel.inspectionObjectId = "";
+      }
+      renderDocumentationSprObjectSelect();
+      syncDocumentationSprConclusionUi();
+      syncDocumentationSprFieldSettingsUi();
       renderDocumentationSprPreview();
       syncDocumentationSprSourceSummary();
       scheduleDocumentationSprSave();
@@ -59710,10 +60284,18 @@ function initDocumentationSprWorkbench() {
         return;
       }
       readDocumentationSprFormIntoModel();
+      if (event.target.dataset.documentationSprField === "inspectionObject") {
+        documentationSprModel.inspectionObjectId = "";
+      }
+      renderDocumentationSprObjectSelect();
+      syncDocumentationSprConclusionUi();
+      syncDocumentationSprFieldSettingsUi();
       renderDocumentationSprPreview();
       syncDocumentationSprSourceSummary();
       scheduleDocumentationSprSave();
     });
+    documentationWorkbenchModule.addEventListener("contextmenu", handleDocumentationSprFieldContextMenu);
+    document.addEventListener("click", closeDocumentationSprFieldContextMenu);
     documentationSprPreviewToggleButton?.addEventListener("click", () => {
       setDocumentationSprPreviewHidden(!documentationSprModel?.previewHidden);
     });
@@ -59866,6 +60448,12 @@ function initDocumentationSprWorkbench() {
       }
       event.preventDefault();
       appendDocumentationSprCustomRegulation();
+    });
+    documentationSprObjectSelect?.addEventListener("change", () => {
+      applyDocumentationSprObjectSelection(documentationSprObjectSelect.value);
+    });
+    documentationSprObjectAddButton?.addEventListener("click", () => {
+      applyDocumentationSprObjectSelection("__add_new__");
     });
     documentationSprInspectorUsersSelect?.addEventListener("change", () => {
       documentationSprModel.inspectorUserIds = getDocumentationSprSelectValues(documentationSprInspectorUsersSelect);

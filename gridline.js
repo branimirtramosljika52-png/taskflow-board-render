@@ -7,6 +7,12 @@
   var MAX_ROWS = 1000;
   var MIN_COLUMNS = 1;
   var MAX_COLUMNS = 60;
+  var MIN_COLUMN_WIDTH = 72;
+  var MAX_COLUMN_WIDTH = 320;
+  var DEFAULT_COLUMN_WIDTH = 132;
+  var MIN_ROW_HEIGHT = 28;
+  var MAX_ROW_HEIGHT = 96;
+  var DEFAULT_ROW_HEIGHT = 36;
 
   function clampInteger(value, fallback, min, max) {
     var numeric = Math.round(Number(value));
@@ -264,6 +270,47 @@
     });
   }
 
+  function normalizeNumberMap(value, maxIndex, minValue, maxValue) {
+    var source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var normalized = Object.create(null);
+    Object.keys(source).forEach(function (key) {
+      var index = Number(key);
+      var numericValue = Number(source[key]);
+      if (!Number.isInteger(index) || index < 0 || index >= maxIndex || !Number.isFinite(numericValue)) {
+        return;
+      }
+      normalized[String(index)] = Math.max(minValue, Math.min(maxValue, Math.round(numericValue)));
+    });
+    return normalized;
+  }
+
+  function normalizeCellStyles(value, rowCount, columnCount) {
+    var source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var normalized = Object.create(null);
+    Object.keys(source).forEach(function (key) {
+      var parts = key.split(":");
+      var row = Number(parts[0]);
+      var column = Number(parts[1]);
+      var entry = source[key] && typeof source[key] === "object" ? source[key] : {};
+      var backgroundColor = String(entry.backgroundColor || "").trim();
+      if (
+        !Number.isInteger(row)
+        || !Number.isInteger(column)
+        || row < 0
+        || column < 0
+        || row >= rowCount
+        || column >= columnCount
+        || !/^#[0-9a-f]{6}$/i.test(backgroundColor)
+      ) {
+        return;
+      }
+      normalized[cellKey(row, column)] = {
+        backgroundColor: backgroundColor,
+      };
+    });
+    return normalized;
+  }
+
   function createDefaultModel(options) {
     var rowCount = clampInteger(
       options && (options.rowCount || options.defaultRows),
@@ -282,6 +329,9 @@
       columnCount: columnCount,
       data: Object.create(null),
       merges: [],
+      columnWidths: Object.create(null),
+      rowHeights: Object.create(null),
+      cellStyles: Object.create(null),
     };
   }
 
@@ -323,6 +373,9 @@
       columnCount: columnCount,
       data: data,
       merges: [],
+      columnWidths: Object.create(null),
+      rowHeights: Object.create(null),
+      cellStyles: Object.create(null),
     };
   }
 
@@ -355,6 +408,9 @@
     var columnCount = clampInteger(source.columnCount, fallbackColumns, MIN_COLUMNS, MAX_COLUMNS);
     var data = normalizeDataMap(source.data);
     var merges = normalizeMerges(source.merges, rowCount, columnCount);
+    var columnWidths = normalizeNumberMap(source.columnWidths, columnCount, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+    var rowHeights = normalizeNumberMap(source.rowHeights, rowCount, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+    var cellStyles = normalizeCellStyles(source.cellStyles, rowCount, columnCount);
 
     Object.keys(data).forEach(function (key) {
       var parts = key.split(":");
@@ -370,6 +426,9 @@
       columnCount: columnCount,
       data: data,
       merges: merges,
+      columnWidths: columnWidths,
+      rowHeights: rowHeights,
+      cellStyles: cellStyles,
     };
   }
 
@@ -379,6 +438,9 @@
       columnCount: model.columnCount,
       data: Object.assign(Object.create(null), model.data),
       merges: normalizeMerges(model.merges, model.rowCount, model.columnCount),
+      columnWidths: normalizeNumberMap(model.columnWidths, model.columnCount, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH),
+      rowHeights: normalizeNumberMap(model.rowHeights, model.rowCount, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT),
+      cellStyles: normalizeCellStyles(model.cellStyles, model.rowCount, model.columnCount),
     };
   }
 
@@ -422,6 +484,13 @@
     var cellRef = resolveElement(host, "[data-gridline-role='cell-ref']", "#cell-ref");
     var addRowButton = resolveElement(host, "[data-gridline-action='add-row']", "#add-row");
     var addColumnButton = resolveElement(host, "[data-gridline-action='add-column']", "#add-column");
+    var widenColumnButton = resolveElement(host, "[data-gridline-action='widen-column']");
+    var narrowColumnButton = resolveElement(host, "[data-gridline-action='narrow-column']");
+    var tallerRowButton = resolveElement(host, "[data-gridline-action='taller-row']");
+    var shorterRowButton = resolveElement(host, "[data-gridline-action='shorter-row']");
+    var backgroundColorButtons = host && typeof host.querySelectorAll === "function"
+      ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='background-color']"))
+      : [];
     var clearButton = resolveElement(host, "[data-gridline-action='clear']", "#clear");
     var downloadButton = resolveElement(host, "[data-gridline-action='download']", "#download");
     var quickFillButton = resolveElement(host, "[data-gridline-action='quick-fill']", "#quick-fill");
@@ -498,6 +567,27 @@
 
     function getDisplayValue(row, column) {
       return getModelCellDisplayValue(model, row, column, options);
+    }
+
+    function getColumnWidth(column) {
+      return clampInteger(model.columnWidths && model.columnWidths[String(column)], DEFAULT_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+    }
+
+    function getColumnSpanWidth(column, columnSpan) {
+      var width = 0;
+      var index;
+      for (index = 0; index < Math.max(1, columnSpan || 1); index += 1) {
+        width += getColumnWidth(column + index);
+      }
+      return width;
+    }
+
+    function getRowHeight(row) {
+      return clampInteger(model.rowHeights && model.rowHeights[String(row)], DEFAULT_ROW_HEIGHT, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+    }
+
+    function getCellStyle(row, column) {
+      return model.cellStyles && model.cellStyles[cellKey(row, column)] || null;
     }
 
     function isInputEditing(input) {
@@ -910,6 +1000,8 @@
       for (column = 0; column < model.columnCount; column += 1) {
         th = document.createElement("th");
         th.textContent = columnLabel(column);
+        th.style.width = getColumnWidth(column) + "px";
+        th.style.minWidth = getColumnWidth(column) + "px";
         headRow.appendChild(th);
       }
       thead.appendChild(headRow);
@@ -917,21 +1009,30 @@
 
       for (row = 0; row < model.rowCount; row += 1) {
         tr = document.createElement("tr");
+        tr.style.height = getRowHeight(row) + "px";
         rowHead = document.createElement("th");
         rowHead.textContent = String(row + 1);
+        rowHead.style.height = getRowHeight(row) + "px";
         tr.appendChild(rowHead);
         for (column = 0; column < model.columnCount; column += 1) {
           var merge = getCoveringMerge(row, column);
+          var cellStyle = getCellStyle(row, column);
           if (isCoveredByMerge(row, column)) {
             continue;
           }
           td = document.createElement("td");
           td.dataset.row = String(row);
           td.dataset.column = String(column);
+          td.style.width = getColumnSpanWidth(column, merge ? merge.columnSpan : 1) + "px";
+          td.style.minWidth = td.style.width;
+          td.style.height = getRowHeight(row) + "px";
           if (merge) {
             td.colSpan = merge.columnSpan;
             td.rowSpan = merge.rowSpan;
             td.classList.add("is-merged-cell");
+          }
+          if (cellStyle && cellStyle.backgroundColor) {
+            td.style.backgroundColor = cellStyle.backgroundColor;
           }
           input = document.createElement("input");
           input.className = merge ? "cell is-merged-input" : "cell";
@@ -939,6 +1040,9 @@
           input.spellcheck = false;
           input.dataset.row = String(row);
           input.dataset.column = String(column);
+          if (cellStyle && cellStyle.backgroundColor) {
+            input.style.backgroundColor = cellStyle.backgroundColor;
+          }
           syncInputDisplay(input, false);
           td.appendChild(input);
           tr.appendChild(td);
@@ -1219,7 +1323,7 @@
       return "";
     }
 
-    function buildQuickFillRows(floor, room, itemsText, startRowIndex, columnSettings) {
+    function buildQuickFillRows(floor, room, itemsText, startRowIndex, columnSettings, rowCountOverride) {
       var lines = String(itemsText || "")
         .split(/\r?\n/)
         .map(function (line) { return line.trim(); })
@@ -1229,7 +1333,13 @@
       var firstDataRowIndex;
       var sequence;
       if (!lines.length) {
-        lines = [room || floor || "Mjerno mjesto"];
+        lines = Array.from(
+          { length: clampInteger(rowCountOverride, 1, 1, 200) },
+          function (_, index) {
+            var base = room || floor || "Mjerno mjesto";
+            return rowCountOverride > 1 ? base + " " + (index + 1) : base;
+          }
+        );
       }
       if (String(floor || "").trim()) {
         rows.push(getQuickFillHeaderRow("Etaza: " + String(floor).trim()));
@@ -1268,6 +1378,8 @@
       var rowCount = Array.isArray(rows) ? rows.length : 0;
       var nextData = Object.create(null);
       var nextMerges = [];
+      var nextRowHeights = Object.create(null);
+      var nextCellStyles = Object.create(null);
       var previousRowCount = model.rowCount;
       if (!rowCount) {
         return;
@@ -1279,6 +1391,18 @@
         var column = Number(parts[1]);
         var nextRow = row >= startRowIndex ? row + rowCount : row;
         nextData[cellKey(nextRow, column)] = model.data[key];
+      });
+      Object.keys(model.rowHeights || {}).forEach(function (key) {
+        var row = Number(key);
+        var nextRow = row >= startRowIndex ? row + rowCount : row;
+        nextRowHeights[String(nextRow)] = model.rowHeights[key];
+      });
+      Object.keys(model.cellStyles || {}).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        var nextRow = row >= startRowIndex ? row + rowCount : row;
+        nextCellStyles[cellKey(nextRow, column)] = model.cellStyles[key];
       });
       (model.merges || []).forEach(function (merge) {
         nextMerges.push({
@@ -1313,6 +1437,8 @@
       });
       model.data = nextData;
       model.merges = normalizeMerges(nextMerges, model.rowCount, model.columnCount);
+      model.rowHeights = normalizeNumberMap(nextRowHeights, model.rowCount, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+      model.cellStyles = normalizeCellStyles(nextCellStyles, model.rowCount, model.columnCount);
       render();
       selectCell(startRowIndex + rowCount - 1, Math.min(1, model.columnCount - 1), { focus: false });
       scheduleSave();
@@ -1352,7 +1478,7 @@
       var select = document.createElement("select");
       [
         ["sequence", "Redni broj"],
-        ["place", "Mjesto (etaža + prostorija + stavka)"],
+        ["place", "Mjesto (etaža + prostorija)"],
         ["floor", "Etaža"],
         ["room", "Prostorija"],
         ["item", "Stavka"],
@@ -1413,7 +1539,7 @@
       var startInput;
       var floorInput;
       var roomInput;
-      var itemsInput;
+      var countInput;
       var columnMap;
       var closeButton;
       var insertButton;
@@ -1445,10 +1571,13 @@
       roomInput.placeholder = "npr. Hodnik, ured 12";
       roomInput.dataset.gridlineQuickRoom = "true";
 
-      itemsInput = document.createElement("textarea");
-      itemsInput.rows = 6;
-      itemsInput.placeholder = "Izlaz;1;>2;1;DA\nSredina;2;>2;1;DA";
-      itemsInput.dataset.gridlineQuickItems = "true";
+      countInput = document.createElement("input");
+      countInput.type = "number";
+      countInput.min = "1";
+      countInput.max = "200";
+      countInput.step = "1";
+      countInput.value = "1";
+      countInput.dataset.gridlineQuickCount = "true";
 
       columnMap = document.createElement("div");
       columnMap.className = "gridline-quick-columns";
@@ -1468,11 +1597,11 @@
       insertButton.dataset.gridlineQuickInsert = "true";
 
       quickFillPanel.append(
-        createPopoverHeader("Brzi generator redova", "Etaza, prostorija i stavke idu direktno u Gridline."),
+        createPopoverHeader("Brzi generator redova", "Etaza i prostorija se umeću kao spojeni redovi, a kolone definiraš ispod."),
         createLabeledControl("Pocetni red", startInput),
         createLabeledControl("Etaza", floorInput),
         createLabeledControl("Prostorija", roomInput),
-        createLabeledControl("Stavke", itemsInput),
+        createLabeledControl("Broj redova", countInput),
         createLabeledControl("Punjenje kolona", columnMap),
         createPopoverActions([closeButton, insertButton])
       );
@@ -1508,15 +1637,17 @@
       var startInput = panel && panel.querySelector("[data-gridline-quick-start]");
       var floorInput = panel && panel.querySelector("[data-gridline-quick-floor]");
       var roomInput = panel && panel.querySelector("[data-gridline-quick-room]");
-      var itemsInput = panel && panel.querySelector("[data-gridline-quick-items]");
+      var countInput = panel && panel.querySelector("[data-gridline-quick-count]");
       var columnSettings = collectQuickFillColumnSettings(panel);
       var startRow = clampInteger(startInput && startInput.value, getQuickFillDefaultStartRow(), 1, MAX_ROWS) - 1;
+      var rowCount = clampInteger(countInput && countInput.value, 1, 1, 200);
       var rows = buildQuickFillRows(
         floorInput ? floorInput.value : "",
         roomInput ? roomInput.value : "",
-        itemsInput ? itemsInput.value : "",
+        "",
         startRow,
-        columnSettings
+        columnSettings,
+        rowCount
       );
       insertMatrixRows(startRow, rows);
       closeQuickFillPanel();
@@ -2206,12 +2337,54 @@
       scheduleSave();
     }
 
+    function resizeActiveColumn(delta) {
+      var column = Math.max(0, Math.min(model.columnCount - 1, active.column));
+      var nextWidth = clampInteger(getColumnWidth(column) + delta, DEFAULT_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+      if (!model.columnWidths) {
+        model.columnWidths = Object.create(null);
+      }
+      model.columnWidths[String(column)] = nextWidth;
+      render();
+      scheduleSave();
+    }
+
+    function resizeActiveRow(delta) {
+      var row = Math.max(0, Math.min(model.rowCount - 1, active.row));
+      var nextHeight = clampInteger(getRowHeight(row) + delta, DEFAULT_ROW_HEIGHT, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+      if (!model.rowHeights) {
+        model.rowHeights = Object.create(null);
+      }
+      model.rowHeights[String(row)] = nextHeight;
+      render();
+      scheduleSave();
+    }
+
+    function setActiveCellBackground(color) {
+      var key = cellKey(active.row, active.column);
+      var normalizedColor = String(color || "").trim();
+      if (!model.cellStyles) {
+        model.cellStyles = Object.create(null);
+      }
+      if (!normalizedColor) {
+        delete model.cellStyles[key];
+      } else if (/^#[0-9a-f]{6}$/i.test(normalizedColor)) {
+        model.cellStyles[key] = {
+          backgroundColor: normalizedColor,
+        };
+      }
+      render();
+      scheduleSave();
+    }
+
     function clearGrid() {
       if (!confirm("Ocistiti cijelu tablicu?")) {
         return;
       }
       model.data = Object.create(null);
       model.merges = [];
+      model.columnWidths = Object.create(null);
+      model.rowHeights = Object.create(null);
+      model.cellStyles = Object.create(null);
       active = { row: 0, column: 0 };
       render();
       scheduleSave();
@@ -2246,6 +2419,23 @@
     if (addColumnButton) {
       addColumnButton.addEventListener("click", function () { addColumns(4); });
     }
+    if (widenColumnButton) {
+      widenColumnButton.addEventListener("click", function () { resizeActiveColumn(18); });
+    }
+    if (narrowColumnButton) {
+      narrowColumnButton.addEventListener("click", function () { resizeActiveColumn(-18); });
+    }
+    if (tallerRowButton) {
+      tallerRowButton.addEventListener("click", function () { resizeActiveRow(8); });
+    }
+    if (shorterRowButton) {
+      shorterRowButton.addEventListener("click", function () { resizeActiveRow(-8); });
+    }
+    backgroundColorButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        setActiveCellBackground(button.dataset.gridlineColor || "");
+      });
+    });
     if (clearButton) {
       clearButton.addEventListener("click", clearGrid);
     }

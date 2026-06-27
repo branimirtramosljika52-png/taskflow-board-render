@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260627-spr-workbench-v10" />
+    <link rel="stylesheet" href="/styles.css?v=20260627-doc-workbench-premium-v11" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -6584,60 +6584,58 @@
                         </div>
                         <span id="documentation-spr-people-summary" class="documentation-spr-section-meta">Ispitivači i potpisnici</span>
                       </div>
-                      <div class="documentation-spr-field-grid">
-                        <label class="field documentation-spr-field">
+                      <div class="documentation-spr-field-grid documentation-spr-basic-grid">
+                        <label class="field documentation-spr-field is-span-4">
                           <span>Tvrtka</span>
                           <input data-documentation-spr-field="companyName" type="text" />
                         </label>
-                        <label class="field documentation-spr-field">
+                        <label class="field documentation-spr-field is-span-2">
                           <span>OIB</span>
                           <input data-documentation-spr-field="companyOib" type="text" />
                         </label>
-                        <label class="field documentation-spr-field is-wide">
+                        <label class="field documentation-spr-field is-span-6">
                           <span>Sjedište</span>
                           <input data-documentation-spr-field="companyAddress" type="text" />
                         </label>
-                        <label class="field documentation-spr-field">
+                        <label class="field documentation-spr-field is-span-4">
                           <span>Korisnik</span>
                           <input data-documentation-spr-field="spaceUser" type="text" />
                         </label>
-                        <label class="field documentation-spr-field">
+                        <label class="field documentation-spr-field is-span-4">
                           <span>Mjesto</span>
                           <input data-documentation-spr-field="inspectionPlace" type="text" />
                         </label>
-                        <label class="field documentation-spr-field is-wide">
+                        <label class="field documentation-spr-field is-span-4">
                           <span>Objekt</span>
-                          <input data-documentation-spr-field="inspectionObject" type="text" />
+                          <div class="documentation-spr-object-control">
+                            <select id="documentation-spr-object-select" aria-label="Odaberi objekt"></select>
+                            <button type="button" id="documentation-spr-object-add" class="ghost-button" title="Dodaj objekt u ovaj zapisnik">+</button>
+                          </div>
+                          <input data-documentation-spr-field="inspectionObject" type="text" placeholder="Naziv objekta" />
                         </label>
-                        <label class="field documentation-spr-field">
+                        <label class="field documentation-spr-field is-span-3">
                           <span>Datum ispitivanja</span>
-                          <input data-documentation-spr-field="inspectionDate" type="text" inputmode="numeric" />
+                          <input data-documentation-spr-field="inspectionDate" type="date" />
                         </label>
-                        <label class="field documentation-spr-field">
+                        <label class="field documentation-spr-field is-span-3">
                           <span>Datum izdavanja</span>
-                          <input data-documentation-spr-field="issueDate" type="text" inputmode="numeric" />
+                          <input data-documentation-spr-field="issueDate" type="date" />
                         </label>
-                        <label class="field documentation-spr-field">
+                        <label class="field documentation-spr-field is-span-3">
+                          <span>Vrijedi do</span>
+                          <input data-documentation-spr-field="validUntil" type="date" />
+                        </label>
+                        <label class="field documentation-spr-field is-span-3">
                           <span>Broj zapisnika</span>
                           <input data-documentation-spr-field="recordNumber" type="text" />
                         </label>
-                        <label class="field documentation-spr-field">
+                        <label class="field documentation-spr-field is-span-4">
                           <span>Vrsta ispitivanja</span>
-                          <input data-documentation-spr-field="inspectionType" type="text" />
-                        </label>
-                      </div>
-                      <div class="documentation-spr-basic-links" aria-label="Poveznice">
-                        <label class="field documentation-spr-field">
-                          <span>Ponuda</span>
-                          <input data-documentation-spr-field="offerNumber" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Narudžbenica</span>
-                          <input data-documentation-spr-field="purchaseOrderNumber" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Vrijedi do</span>
-                          <input data-documentation-spr-field="validUntil" type="text" inputmode="numeric" />
+                          <select data-documentation-spr-field="inspectionType">
+                            <option value="Periodično ispitivanje">Periodično ispitivanje</option>
+                            <option value="Početno ispitivanje">Početno ispitivanje</option>
+                            <option value="Izvanredno ispitivanje">Izvanredno ispitivanje</option>
+                          </select>
                         </label>
                       </div>
                       <label class="field documentation-spr-field documentation-spr-picker-search">
@@ -6675,7 +6673,7 @@
                       </div>
                     </section>
 
-                    <section class="documentation-spr-section">
+                    <section class="documentation-spr-section documentation-spr-section-legal">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
                           <span>2</span>
@@ -6699,7 +6697,7 @@
                           <div id="documentation-spr-equipment-list" class="documentation-spr-picker-list" role="listbox" aria-label="Mjerna oprema za zapisnik"></div>
                           <select id="documentation-spr-equipment-select" class="documentation-spr-native-select" multiple size="6" aria-label="Odaberi mjernu opremu za zapisnik" hidden></select>
                           <div id="documentation-spr-equipment-chips" class="documentation-spr-source-chips"></div>
-                          <div class="documentation-spr-source-actions">
+                          <div class="documentation-spr-source-actions documentation-spr-source-actions-compact">
                             <button type="button" id="documentation-spr-equipment-apply" class="ghost-button">Primijeni preselektirano</button>
                             <button type="button" id="documentation-spr-equipment-all" class="ghost-button">Sva oprema</button>
                             <button type="button" id="documentation-spr-equipment-clear" class="ghost-button">Očisti</button>
@@ -6709,7 +6707,7 @@
                       <textarea data-documentation-spr-field="equipment" rows="7" hidden></textarea>
                     </section>
 
-                    <section class="documentation-spr-section">
+                    <section id="documentation-spr-conclusion-section" class="documentation-spr-section documentation-spr-section-conclusion">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
                           <span>3</span>
@@ -6789,6 +6787,18 @@
                             <span class="status is-saved" data-gridline-role="status">Spremno</span>
                             <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
                             <button type="button" class="ghost-button" data-gridline-action="add-row">+ 20 redova</button>
+                            <button type="button" class="ghost-button" data-gridline-action="add-column" title="Dodaj 4 kolone">+ kolone</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="widen-column" title="Proširi aktivnu kolonu">Š+</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="narrow-column" title="Smanji aktivnu kolonu">Š-</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="taller-row" title="Povećaj aktivni red">V+</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="shorter-row" title="Smanji aktivni red">V-</button>
+                            <span class="documentation-gridline-colors" aria-label="Pozadinska boja ćelije">
+                              <button type="button" data-gridline-action="background-color" data-gridline-color="" title="Bez boje"></button>
+                              <button type="button" data-gridline-action="background-color" data-gridline-color="#fff3bf" title="Žuta"></button>
+                              <button type="button" data-gridline-action="background-color" data-gridline-color="#d3f9d8" title="Zelena"></button>
+                              <button type="button" data-gridline-action="background-color" data-gridline-color="#ffe3e3" title="Crvena"></button>
+                              <button type="button" data-gridline-action="background-color" data-gridline-color="#d0ebff" title="Plava"></button>
+                            </span>
                             <button type="button" class="ghost-button" data-gridline-action="clear">Očisti</button>
                           </div>
                         </header>
@@ -6813,31 +6823,22 @@
                       </div>
                       <input data-documentation-spr-field="inspectors" type="hidden" />
                       <input data-documentation-spr-field="responsiblePerson" type="hidden" />
+                      <input data-documentation-spr-field="signatureClass" type="hidden" />
+                      <input data-documentation-spr-field="signatureNumber" type="hidden" />
+                      <input data-documentation-spr-field="signatureMode" type="hidden" />
                       <div class="documentation-spr-conclusion-grid">
-                        <label class="field documentation-spr-field documentation-spr-status-field">
-                          <span>Zaključna ocjena</span>
-                          <select data-documentation-spr-field="resultStatus">
-                            <option value="ZADOVOLJAVA">ZADOVOLJAVA</option>
-                            <option value="NE ZADOVOLJAVA">NE ZADOVOLJAVA</option>
-                          </select>
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>KLASA</span>
-                          <input data-documentation-spr-field="signatureClass" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Urudžbeni broj</span>
-                          <input data-documentation-spr-field="signatureNumber" type="text" />
-                        </label>
-                        <label class="field documentation-spr-field">
-                          <span>Signature field</span>
-                          <select data-documentation-spr-field="signatureMode">
-                            <option value="digital">Certificirani digitalni potpis</option>
-                            <option value="scan">Skenirani potpis</option>
-                            <option value="empty">Prazno polje</option>
-                          </select>
-                        </label>
-                        <label class="field documentation-spr-field is-wide">
+                        <div class="documentation-spr-result-card">
+                          <div class="documentation-spr-result-icon" aria-hidden="true">OK</div>
+                          <label class="field documentation-spr-field documentation-spr-status-field">
+                            <span>Zaključna ocjena</span>
+                            <select data-documentation-spr-field="resultStatus">
+                              <option value="ZADOVOLJAVA">ZADOVOLJAVA</option>
+                              <option value="NE ZADOVOLJAVA">NE ZADOVOLJAVA</option>
+                            </select>
+                          </label>
+                          <p id="documentation-spr-result-helper">Zapisnik je spreman bez obveznog unosa nedostataka.</p>
+                        </div>
+                        <label class="field documentation-spr-field documentation-spr-defects-field is-wide">
                           <span>Nedostaci</span>
                           <textarea data-documentation-spr-field="defects" rows="4" placeholder="Upiši nedostatke ili ostavi prazno ako ih nema."></textarea>
                         </label>
@@ -11265,9 +11266,9 @@
 
     <script src="/assets/vendor/leaflet.js"></script>
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
-    <script src="/gridline.js?v=20260627-gridline-excel-v4"></script>
+    <script src="/gridline.js?v=20260627-gridline-excel-v5"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260627-gridline-excel-v4"></script>
+    <script type="module" src="/src/main.js?v=20260627-doc-workbench-premium-v11"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>
