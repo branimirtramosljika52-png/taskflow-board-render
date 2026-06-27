@@ -3947,6 +3947,12 @@ const documentationSprHeaderFileInput = document.querySelector("#documentation-s
 const documentationSprResetButton = document.querySelector("#documentation-spr-reset");
 const documentationSprPdfButton = document.querySelector("#documentation-spr-pdf");
 const documentationSprDownloadButton = document.querySelector("#documentation-spr-download");
+const documentationSprLibraryBackButton = document.querySelector("#documentation-spr-library-back");
+const documentationSprLibraryPanel = document.querySelector("#documentation-spr-library");
+const documentationSprLibrarySearchInput = document.querySelector("#documentation-spr-library-search");
+const documentationSprLibraryNewButton = document.querySelector("#documentation-spr-library-new");
+const documentationSprLibraryList = document.querySelector("#documentation-spr-library-list");
+const documentationSprLibraryEmpty = document.querySelector("#documentation-spr-library-empty");
 const documentationSprTemplateLibrarySelect = document.querySelector("#documentation-spr-template-library");
 const documentationSprTemplateNameInput = document.querySelector("#documentation-spr-template-name");
 const documentationSprTemplateServiceSelect = document.querySelector("#documentation-spr-template-service");
@@ -25210,6 +25216,9 @@ function activateSidebarItem(itemName, options = {}) {
     }
     if (itemConfig.module === "jobs" && !getCanViewJobs()) {
       return;
+    }
+    if (itemConfig.module === "documentation-workbench") {
+      openDocumentationSprLibraryMode();
     }
     state.activeModuleItem = itemConfig.module;
     state.activeView = "module";
@@ -56801,6 +56810,7 @@ let documentationSprGridlineApi = null;
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
 let documentationSprGridlineRetryTimer = 0;
+let documentationSprWorkbenchMode = "library";
 let documentationSprDraftServiceBinding = null;
 let documentationSprWorkOrderBatch = {
   entries: [],
@@ -57296,6 +57306,131 @@ function getDocumentationSprTemplateById(templateId = documentationSprTemplateLi
   return documentationSprTemplateLibrary.templates.find((entry) => entry.id === id) || null;
 }
 
+function setDocumentationSprWorkbenchMode(mode = "library", { renderLibrary = true } = {}) {
+  documentationSprWorkbenchMode = mode === "editor" ? "editor" : "library";
+  const isLibraryMode = documentationSprWorkbenchMode === "library";
+  documentationSprLibraryPanel?.toggleAttribute("hidden", !isLibraryMode);
+  documentationSprLibraryBackButton?.toggleAttribute("hidden", isLibraryMode);
+  documentationWorkbenchModule
+    ?.querySelector(".documentation-spr-workbench")
+    ?.classList.toggle("is-library-mode", isLibraryMode);
+  if (renderLibrary && isLibraryMode) {
+    renderDocumentationSprLibrary();
+  }
+  if (!isLibraryMode) {
+    renderDocumentationSprBatchContext();
+  }
+}
+
+function openDocumentationSprLibraryMode() {
+  documentationSprWorkOrderBatch = {
+    entries: [],
+    activeIndex: 0,
+  };
+  setDocumentationSprWorkbenchMode("library");
+}
+
+function getDocumentationSprLibrarySearchText(entry = {}) {
+  const binding = getDocumentationSprTemplateServiceBinding(entry);
+  return [
+    entry.name,
+    entry.model?.templateCode,
+    entry.model?.inspectionType,
+    entry.model?.inspectionObject,
+    binding?.serviceCode,
+    binding?.serviceName,
+  ].filter(Boolean).join(" ");
+}
+
+function getDocumentationSprLibraryEntries() {
+  const query = normalizeDocumentationSprPickerQuery(
+    documentationSprLibrarySearchInput instanceof HTMLInputElement
+      ? documentationSprLibrarySearchInput.value
+      : "",
+  );
+  return (documentationSprTemplateLibrary.templates ?? []).filter((entry) => {
+    if (!query) {
+      return true;
+    }
+    return normalizeDocumentationSprPickerQuery(getDocumentationSprLibrarySearchText(entry)).includes(query);
+  });
+}
+
+function createDocumentationSprLibraryCard(entry = null) {
+  const card = document.createElement("article");
+  card.className = "documentation-spr-library-card";
+  const binding = getDocumentationSprTemplateServiceBinding(entry);
+
+  const copy = document.createElement("div");
+  copy.className = "documentation-spr-library-card-copy";
+
+  const title = document.createElement("strong");
+  title.textContent = entry?.name || "Predložak bez naziva";
+
+  const meta = document.createElement("span");
+  meta.textContent = [
+    getDocumentationSprServiceBindingLabel(binding),
+    entry?.updatedAt ? `Ažurirano ${formatCompactDateTime(entry.updatedAt)}` : "",
+  ].filter(Boolean).join(" · ");
+
+  const description = document.createElement("small");
+  description.textContent = [
+    entry?.model?.inspectionType || "",
+    entry?.model?.inspectionObject || "",
+  ].filter(Boolean).join(" · ") || "Browser predložak dokumentacije";
+
+  copy.append(title, meta, description);
+
+  const actions = document.createElement("div");
+  actions.className = "documentation-spr-library-card-actions";
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "primary-button";
+  openButton.textContent = "Otvori";
+  openButton.addEventListener("click", () => {
+    openDocumentationSprTemplateFromLibrary(entry?.id || "");
+  });
+
+  actions.append(openButton);
+  card.append(copy, actions);
+  card.addEventListener("dblclick", () => {
+    openDocumentationSprTemplateFromLibrary(entry?.id || "");
+  });
+  return card;
+}
+
+function renderDocumentationSprLibrary() {
+  if (!documentationSprLibraryList) {
+    return;
+  }
+  const entries = getDocumentationSprLibraryEntries();
+  documentationSprLibraryList.replaceChildren(...entries.map((entry) => createDocumentationSprLibraryCard(entry)));
+  if (documentationSprLibraryEmpty) {
+    documentationSprLibraryEmpty.hidden = entries.length > 0;
+  }
+}
+
+function openDocumentationSprTemplateFromLibrary(templateId = "") {
+  const template = getDocumentationSprTemplateById(templateId);
+  if (!template) {
+    setDocumentationSprStatus("Predložak nije pronađen", "saving");
+    return false;
+  }
+  documentationSprTemplateLibrary.activeTemplateId = template.id;
+  documentationSprDraftServiceBinding = getDocumentationSprTemplateServiceBinding(template);
+  persistDocumentationSprTemplateLibrary();
+  setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
+  applyDocumentationSprModel(template.model, {
+    templateId: template.id,
+    statusText: "Predložak učitan",
+  });
+  requestAnimationFrame(() => {
+    documentationSprTemplateNameInput?.focus({ preventScroll: true });
+  });
+  return true;
+}
+
 function syncDocumentationSprTemplateManager() {
   if (documentationSprTemplateLibrarySelect instanceof HTMLSelectElement) {
     const selectedId = String(documentationSprTemplateLibrary.activeTemplateId || "");
@@ -57334,6 +57469,7 @@ function syncDocumentationSprTemplateManager() {
       ? `${label} · ${activeTemplate.name}`
       : label;
   }
+  renderDocumentationSprLibrary();
 }
 
 function getDocumentationSprSelectValues(select) {
@@ -58310,6 +58446,7 @@ function openDocumentationSprWorkbenchFromBatchEntries(entries = [], { activeInd
     entries: normalizedEntries,
     activeIndex: Math.max(0, Math.min(normalizedEntries.length - 1, Number(activeIndex) || 0)),
   };
+  setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
   state.activeSidebarGroup = "operations";
   state.activeSidebarItem = "documentation-workbench";
   state.activeView = "module";
@@ -58406,6 +58543,7 @@ function applyDocumentationSprModel(nextModel, {
 function startNewDocumentationSprTemplateDraft(options = {}) {
   const serviceBinding = normalizeDocumentationSprServiceBinding(options.serviceBinding);
   documentationSprDraftServiceBinding = serviceBinding;
+  setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
   const templateName = String(options.name || "").trim()
     || (serviceBinding ? `Predložak ${getDocumentationSprServiceBindingLabel(serviceBinding)}` : "Novi predložak");
   const nextModel = createBlankDocumentationSprTemplateModel(templateName);
@@ -59450,6 +59588,7 @@ function initDocumentationSprWorkbench() {
   }
   renderDocumentationSprSourceControls();
   syncDocumentationSprTemplateManager();
+  setDocumentationSprWorkbenchMode(documentationSprWorkbenchMode, { renderLibrary: false });
   if (!documentationSprInitialized) {
     documentationSprInitialized = true;
     documentationWorkbenchModule.addEventListener("input", (event) => {
@@ -59497,6 +59636,19 @@ function initDocumentationSprWorkbench() {
       syncDocumentationSprPreviewControls();
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
+    });
+    documentationSprLibraryBackButton?.addEventListener("click", () => {
+      openDocumentationSprLibraryMode();
+    });
+    documentationSprLibrarySearchInput?.addEventListener("input", () => {
+      renderDocumentationSprLibrary();
+    });
+    documentationSprLibraryNewButton?.addEventListener("click", () => {
+      documentationSprWorkOrderBatch = {
+        entries: [],
+        activeIndex: 0,
+      };
+      startNewDocumentationSprTemplateDraft();
     });
     documentationSprBatchPrevButton?.addEventListener("click", () => {
       applyDocumentationSprBatchEntry((documentationSprWorkOrderBatch.activeIndex || 0) - 1);

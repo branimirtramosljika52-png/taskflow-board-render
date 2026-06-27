@@ -6481,6 +6481,7 @@
                   <div class="documentation-spr-actions">
                     <span id="documentation-spr-source-status" class="documentation-spr-source-status">Izvori se učitavaju</span>
                     <span id="documentation-spr-status" class="documentation-spr-status is-saved">Spremljeno lokalno</span>
+                    <button type="button" id="documentation-spr-library-back" class="ghost-button">Predlošci</button>
                     <button type="button" id="documentation-spr-preview-toggle" class="ghost-button" aria-pressed="false">Sakrij preview</button>
                     <button type="button" id="documentation-spr-header-upload" class="ghost-button">Upload headera</button>
                     <button type="button" id="documentation-spr-header-clear" class="ghost-button" hidden>Makni header</button>
@@ -6490,6 +6491,25 @@
                     <input id="documentation-spr-header-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
                   </div>
                 </header>
+
+                <section id="documentation-spr-library" class="documentation-spr-library" aria-label="Popis predložaka izrade dokumentacije">
+                  <div class="documentation-spr-library-head">
+                    <div class="documentation-spr-library-copy">
+                      <p class="section-kicker">Predlošci</p>
+                      <h4>Odaberi predložak dokumentacije</h4>
+                      <span>Pretraži postojeće predloške ili kreni s novim praznim zapisnikom.</span>
+                    </div>
+                    <div class="documentation-spr-library-controls">
+                      <label class="documentation-spr-library-search">
+                        <span>Pretraga</span>
+                        <input id="documentation-spr-library-search" type="search" autocomplete="off" placeholder="Naziv, šifra usluge, opis..." />
+                      </label>
+                      <button type="button" id="documentation-spr-library-new" class="primary-button">Novi predložak</button>
+                    </div>
+                  </div>
+                  <div id="documentation-spr-library-list" class="documentation-spr-library-list"></div>
+                  <p id="documentation-spr-library-empty" class="helper-copy module-copy" hidden>Nema predložaka za trenutnu pretragu.</p>
+                </section>
 
                 <section id="documentation-spr-batch-context" class="documentation-spr-batch-context" hidden aria-label="Kontekst radnog naloga">
                   <div class="documentation-spr-batch-copy">
