@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260627-gridline-fast-template-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260627-spr-workbench-v2" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -6453,10 +6453,10 @@
             </section>
 
             <section id="documentation-workbench-module" class="documentation-workbench-module" hidden>
-              <section class="panel documentation-gridline-module">
-                <header class="documentation-gridline-topbar">
-                  <div class="documentation-gridline-title">
-                    <span class="documentation-gridline-mark" aria-hidden="true">
+              <section class="panel documentation-spr-workbench">
+                <header class="documentation-spr-topbar">
+                  <div class="documentation-spr-title">
+                    <span class="documentation-spr-mark" aria-hidden="true">
                       <svg class="icon-svg" viewBox="0 0 24 24">
                         <path d="M6 4h8l4 4v12H6z"></path>
                         <path d="M14 4v5h5"></path>
@@ -6466,25 +6466,258 @@
                     <div>
                       <p class="section-kicker">Operations</p>
                       <h3>Izrada dokumentacije</h3>
-                      <span>Brzi Gridline editor radi u browseru, bez backend poziva kod unosa.</span>
+                      <span>SPR zapisnik radi u browseru, s Gridline tablicom i A4 previewom.</span>
                     </div>
                   </div>
-                  <div class="documentation-gridline-actions">
-                    <span id="status" class="status is-saved">Spremno</span>
-                    <button type="button" id="add-row" class="ghost-button">+ 20 redova</button>
-                    <button type="button" id="clear" class="ghost-button">Očisti</button>
-                    <button type="button" id="download" class="primary-button">Preuzmi JSON</button>
+                  <div class="documentation-spr-actions">
+                    <span id="documentation-spr-status" class="documentation-spr-status is-saved">Spremljeno lokalno</span>
+                    <button type="button" id="documentation-spr-reset" class="ghost-button">Vrati primjer</button>
+                    <button type="button" id="documentation-spr-download" class="primary-button">Preuzmi JSON</button>
                   </div>
                 </header>
 
-                <section class="documentation-gridline-formula" aria-label="Formula bar">
-                  <div id="cell-ref" class="cell-ref">A1</div>
-                  <input id="formula-input" type="text" autocomplete="off" spellcheck="false" placeholder="Vrijednost aktivne ćelije" />
+                <section class="documentation-spr-context" aria-label="Kontekst dokumentacije">
+                  <label class="documentation-spr-context-field">
+                    <span>Predložak</span>
+                    <select id="documentation-spr-template-code" data-documentation-spr-field="templateCode">
+                      <option value="SPR v1.0.0">SPR v1.0.0</option>
+                    </select>
+                  </label>
+                  <label class="documentation-spr-context-field">
+                    <span>RN</span>
+                    <input id="documentation-spr-work-order-number" data-documentation-spr-field="workOrderNumber" type="text" />
+                  </label>
+                  <label class="documentation-spr-context-field">
+                    <span>Zapisnik</span>
+                    <input id="documentation-spr-record-number" data-documentation-spr-field="recordNumber" type="text" />
+                  </label>
+                  <label class="documentation-spr-context-field">
+                    <span>Status</span>
+                    <select id="documentation-spr-document-status" data-documentation-spr-field="documentStatus">
+                      <option value="U izradi">U izradi</option>
+                      <option value="Za pregled">Za pregled</option>
+                      <option value="Spremno za potpis">Spremno za potpis</option>
+                    </select>
+                  </label>
                 </section>
 
-                <section class="documentation-gridline-shell" aria-label="Gridline editor">
-                  <div id="grid-scroll" class="documentation-gridline-scroll">
-                    <table id="grid" aria-label="Gridline tablica"></table>
+                <section class="documentation-spr-shell">
+                  <form id="documentation-spr-form" class="documentation-spr-editor">
+                    <section class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span>1</span>
+                          <strong>Poveznice</strong>
+                        </div>
+                      </div>
+                      <div class="documentation-spr-field-grid">
+                        <label class="field documentation-spr-field">
+                          <span>Company</span>
+                          <input data-documentation-spr-field="companyName" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>OIB</span>
+                          <input data-documentation-spr-field="companyOib" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field is-wide">
+                          <span>Sjedište</span>
+                          <input data-documentation-spr-field="companyAddress" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Ponuda</span>
+                          <input data-documentation-spr-field="offerNumber" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Narudžbenica</span>
+                          <input data-documentation-spr-field="purchaseOrderNumber" type="text" />
+                        </label>
+                      </div>
+                    </section>
+
+                    <section class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span>2</span>
+                          <strong>Opći podaci</strong>
+                        </div>
+                      </div>
+                      <div class="documentation-spr-field-grid">
+                        <label class="field documentation-spr-field">
+                          <span>Korisnik prostora</span>
+                          <input data-documentation-spr-field="spaceUser" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Mjesto ispitivanja</span>
+                          <input data-documentation-spr-field="inspectionPlace" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field is-wide">
+                          <span>Objekt ispitivanja</span>
+                          <input data-documentation-spr-field="inspectionObject" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Vrsta ispitivanja</span>
+                          <input data-documentation-spr-field="inspectionType" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Datum ispitivanja</span>
+                          <input data-documentation-spr-field="inspectionDate" type="text" inputmode="numeric" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Datum izdavanja</span>
+                          <input data-documentation-spr-field="issueDate" type="text" inputmode="numeric" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Vrijedi do</span>
+                          <input data-documentation-spr-field="validUntil" type="text" inputmode="numeric" />
+                        </label>
+                      </div>
+                    </section>
+
+                    <section class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span>3</span>
+                          <strong>Oprema, propisi i dokumentacija</strong>
+                        </div>
+                      </div>
+                      <div class="documentation-spr-two-col">
+                        <label class="field documentation-spr-field">
+                          <span>Mjerna i ispitna oprema</span>
+                          <textarea data-documentation-spr-field="equipment" rows="7"></textarea>
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Primijenjeni propisi</span>
+                          <textarea data-documentation-spr-field="regulations" rows="7"></textarea>
+                        </label>
+                      </div>
+                      <label class="field documentation-spr-field">
+                        <span>Korištena tehničko-projektna dokumentacija</span>
+                        <textarea data-documentation-spr-field="projectDocumentation" rows="2"></textarea>
+                      </label>
+                    </section>
+
+                    <section class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span>4</span>
+                          <strong>Rezultati ispitivanja</strong>
+                        </div>
+                      </div>
+                      <label class="field documentation-spr-field">
+                        <span>Opis</span>
+                        <textarea data-documentation-spr-field="resultsText" rows="10"></textarea>
+                      </label>
+                      <div class="documentation-spr-two-col">
+                        <label class="field documentation-spr-field">
+                          <span>Ei</span>
+                          <textarea data-documentation-spr-field="eiNote" rows="2"></textarea>
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Eimin</span>
+                          <textarea data-documentation-spr-field="eiminNote" rows="2"></textarea>
+                        </label>
+                      </div>
+                    </section>
+
+                    <section class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span>5</span>
+                          <strong>Mjerna mjesta</strong>
+                        </div>
+                        <span id="documentation-spr-grid-summary" class="documentation-spr-section-meta">Gridline tablica</span>
+                      </div>
+                      <div id="documentation-spr-gridline" class="documentation-gridline-module documentation-spr-gridline" data-gridline-instance="documentation-spr-gridline">
+                        <header class="documentation-gridline-topbar">
+                          <div class="documentation-gridline-title">
+                            <span class="documentation-gridline-mark" aria-hidden="true">GL</span>
+                            <div>
+                              <h3>Tablica 1.</h3>
+                              <span>Mjerna mjesta sigurnosne protupanične rasvjete</span>
+                            </div>
+                          </div>
+                          <div class="documentation-gridline-actions">
+                            <span class="status is-saved" data-gridline-role="status">Spremno</span>
+                            <button type="button" class="ghost-button" data-gridline-action="add-row">+ 20 redova</button>
+                            <button type="button" class="ghost-button" data-gridline-action="clear">Očisti</button>
+                          </div>
+                        </header>
+                        <section class="documentation-gridline-formula" aria-label="Formula bar">
+                          <div class="cell-ref" data-gridline-role="cell-ref">A1</div>
+                          <input data-gridline-role="formula" type="text" autocomplete="off" spellcheck="false" placeholder="Vrijednost aktivne ćelije" />
+                        </section>
+                        <section class="documentation-gridline-shell" aria-label="Gridline editor">
+                          <div class="documentation-gridline-scroll">
+                            <table data-gridline-role="grid" aria-label="Mjerna mjesta sigurnosne protupanične rasvjete"></table>
+                          </div>
+                        </section>
+                      </div>
+                    </section>
+
+                    <section class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span>6</span>
+                          <strong>Zaključak i potpis</strong>
+                        </div>
+                      </div>
+                      <div class="documentation-spr-field-grid">
+                        <label class="field documentation-spr-field">
+                          <span>Ispitivanje obavili</span>
+                          <input data-documentation-spr-field="inspectors" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Odgovorna osoba</span>
+                          <input data-documentation-spr-field="responsiblePerson" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>KLASA</span>
+                          <input data-documentation-spr-field="signatureClass" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Urudžbeni broj</span>
+                          <input data-documentation-spr-field="signatureNumber" type="text" />
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Ocjena</span>
+                          <select data-documentation-spr-field="resultStatus">
+                            <option value="ZADOVOLJAVA">ZADOVOLJAVA</option>
+                            <option value="NE ZADOVOLJAVA">NE ZADOVOLJAVA</option>
+                          </select>
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Signature field</span>
+                          <select data-documentation-spr-field="signatureMode">
+                            <option value="digital">Certificirani digitalni potpis</option>
+                            <option value="scan">Skenirani potpis</option>
+                            <option value="empty">Prazno polje</option>
+                          </select>
+                        </label>
+                        <label class="field documentation-spr-field is-wide">
+                          <span>Nedostaci</span>
+                          <textarea data-documentation-spr-field="defects" rows="2"></textarea>
+                        </label>
+                        <label class="field documentation-spr-field is-wide">
+                          <span>Preporuke</span>
+                          <textarea data-documentation-spr-field="recommendations" rows="2"></textarea>
+                        </label>
+                      </div>
+                    </section>
+                  </form>
+
+                  <aside class="documentation-spr-preview-panel">
+                    <div class="documentation-spr-preview-head">
+                      <div>
+                        <p class="section-kicker">Preview</p>
+                        <strong>A4 pregled</strong>
+                        <span id="documentation-spr-preview-summary">4 stranice</span>
+                      </div>
+                    </div>
+                    <div id="documentation-spr-preview" class="documentation-spr-preview"></div>
+                  </aside>
+                </section>
+              </section>
+            </section>
                   </div>
                 </section>
               </section>
@@ -10891,9 +11124,9 @@
 
     <script src="/assets/vendor/leaflet.js"></script>
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
-    <script src="/gridline.js?v=20260627-gridline-fast-template-v1"></script>
+    <script src="/gridline.js?v=20260627-spr-workbench-v2"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260627-gridline-fast-template-v1"></script>
+    <script type="module" src="/src/main.js?v=20260627-spr-workbench-v2"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

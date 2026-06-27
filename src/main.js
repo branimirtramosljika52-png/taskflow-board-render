@@ -3933,6 +3933,14 @@ const moduleViewChips = document.querySelector("#module-view-chips");
 const modulePanel = document.querySelector("#module-view > .module-panel");
 const documentsModule = document.querySelector("#documents-module");
 const documentationWorkbenchModule = document.querySelector("#documentation-workbench-module");
+const documentationSprForm = document.querySelector("#documentation-spr-form");
+const documentationSprPreview = document.querySelector("#documentation-spr-preview");
+const documentationSprPreviewSummary = document.querySelector("#documentation-spr-preview-summary");
+const documentationSprStatus = document.querySelector("#documentation-spr-status");
+const documentationSprResetButton = document.querySelector("#documentation-spr-reset");
+const documentationSprDownloadButton = document.querySelector("#documentation-spr-download");
+const documentationSprGridline = document.querySelector("#documentation-spr-gridline");
+const documentationSprGridSummary = document.querySelector("#documentation-spr-grid-summary");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -21955,6 +21963,9 @@ function renderModuleView() {
 
   if (documentationWorkbenchModule) {
     documentationWorkbenchModule.hidden = !isDocumentationWorkbenchModule;
+    if (isDocumentationWorkbenchModule) {
+      initDocumentationSprWorkbench();
+    }
   }
 
   if (settingsModule) {
@@ -56725,6 +56736,548 @@ function triggerBlobDownload(blob, fileName) {
   window.setTimeout(() => {
     URL.revokeObjectURL(url);
   }, 1_000);
+}
+
+const DOCUMENTATION_SPR_STORAGE_KEY = "safenexus.documentation-workbench.spr.v1";
+const DOCUMENTATION_SPR_GRID_ROW_COUNT = 24;
+const DOCUMENTATION_SPR_GRID_COLUMN_COUNT = 6;
+let documentationSprModel = null;
+let documentationSprGridlineApi = null;
+let documentationSprInitialized = false;
+let documentationSprSaveTimer = 0;
+let documentationSprGridlineRetryTimer = 0;
+
+function getDocumentationSprDefaultRows() {
+  return [
+    ["R. br.", "Mjesto ispitivanja", "Broj lampi", "Ei", "Eimin", "ZADOVOLJAVA"],
+    ["", "", "", "lux", "lux", "DA/NE"],
+    ["1", "Prodajni prostor - izlaz", "1", ">2", "1", "DA"],
+    ["2", "Prodajni prostor - sredina", "2", ">2", "1", "DA"],
+    ["3", "Prodajni prostor - izlaz osoblje", "1", ">2", "1", "DA"],
+    ["4", "Tehnička soba - izlaz", "1", ">2", "1", "DA"],
+    ["5", "Hodnik ispred komore", "1", ">2", "1", "DA"],
+    ["6", "Kotlovnica", "1", ">2", "1", "DA"],
+    ["7", "Spremišta kod kotlovnice", "2", ">2", "1", "DA"],
+    ["8", "Garderoba i WC osoblje", "2", ">2", "1", "DA"],
+    ["9", "Skladište caffe", "1", ">2", "1", "DA"],
+    ["10", "Caffe bar izlaz", "1", ">2", "1", "DA"],
+    ["11", "Strojarnica autopraone", "1", ">2", "1", "DA"],
+    ["12", "WC invalidi", "1", ">2", "1", "DA"],
+    ["13", "Ulaz sanitarni prostori M, Ž i Invalidi", "1", ">2", "1", "DA"],
+  ];
+}
+
+function buildDocumentationSprGridlineModelFromRows(rows = getDocumentationSprDefaultRows()) {
+  const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+  if (gridlineApi?.rowsToModel) {
+    return gridlineApi.rowsToModel(rows, {
+      rowCount: Math.max(DOCUMENTATION_SPR_GRID_ROW_COUNT, rows.length),
+      columnCount: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+      defaultRows: DOCUMENTATION_SPR_GRID_ROW_COUNT,
+      defaultColumns: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+    });
+  }
+
+  const rowCount = Math.max(DOCUMENTATION_SPR_GRID_ROW_COUNT, rows.length);
+  const model = {
+    rowCount,
+    columnCount: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+    data: {},
+  };
+  rows.slice(0, rowCount).forEach((row, rowIndex) => {
+    row.slice(0, DOCUMENTATION_SPR_GRID_COLUMN_COUNT).forEach((value, columnIndex) => {
+      const text = String(value ?? "");
+      if (text) {
+        model.data[`${rowIndex}:${columnIndex}`] = text;
+      }
+    });
+  });
+  return model;
+}
+
+function createDefaultDocumentationSprModel() {
+  return {
+    templateCode: "SPR v1.0.0",
+    workOrderNumber: "25-1287",
+    recordNumber: "25-1287-SPR",
+    documentStatus: "U izradi",
+    companyName: "PETROL d.o.o.",
+    companyAddress: "Savska Opatovina 36, 10000 Zagreb",
+    companyOib: "75550985023",
+    offerNumber: "PON-25-1287",
+    purchaseOrderNumber: "NAR-25-1287",
+    spaceUser: "PETROL d.o.o.",
+    inspectionPlace: "PM Rijeka, Obilaznica",
+    inspectionObject: "Prostor benzinske postaje sa pratećim sadržajem",
+    inspectionType: "Periodično ispitivanje",
+    inspectionDate: "20.2.2026",
+    issueDate: "20.2.2026",
+    validUntil: "20.2.2027",
+    equipment: [
+      "Elektronski mjerni ispitni instrument METREL EUROTEST 61557 ser. Br. 09340197",
+      "Mjerilo vremena, Rucanor, inv. br. 77",
+      "Uređaj za mjerenje osvijetljenosti, proizvođač Extech, tip HD 450, inv.br. 106",
+    ].join("\n"),
+    regulations: [
+      "Tehnički propis za niskonaponske električne instalacije (NN 05/10)",
+      "Zakon o normizaciji (NN 80/13)",
+      "Zakon o gradnji (NN 153/13, 20/17, 39/19, 125/19)",
+      "Zakon o zaštiti na radu (NN 71/14, 118/14, 94/18, 96/18)",
+      "Pravilnik o sigurnosti i zdravlju pri radu s električnom energijom (NN 88/12),",
+      "Zakon o zaštiti od požara (NN 92/10, 114/22),",
+      "Pravilnik o zaštiti na radu za mjesta rada (NN 29/13)",
+      "Pravilnik o zaštiti od požara ugostiteljskih objekata (NN 100/99)",
+      "Norma HRN IEC 60598-2-22 Svjetiljke za sigurnosnu rasvjetu",
+      "Norma EN 1838 Emergency lighting",
+      "Norma EN 50172 Emergency escape lighting system",
+      "ISO 3864-1 Grafički simboli",
+      "NFPA 101/2006 Fire safety code",
+    ].join("\n"),
+    projectDocumentation: "Zapisnik od prethodnog ispitivanja od strane Abeceda zaštite d.o.o.",
+    resultsText: [
+      "Sigurnosnu rasvjetu prema normi EN 1838 dijelimo na sigurnosnu rasvjetu i pomoćnu rasvjetu. Pomoćna rasvjeta nema sigurnosnu ulogu. Možemo imati i nužnu rasvjetu koja je potrebna osvijetliti prostor u slučaju ispada primarnog izvora napona, koristi se npr. u velikim proizvodnim pogonima. Sigurnosna rasvjeta se dijeli na rasvjetu za osvjetljenje evakuacijskih puteva, antipanična rasvjeta koja sprječava paniku i omogućava dolazak do mjesta odakle se može uočiti put evakuacije.",
+      "Sigurnosna rasvjeta se inače postavlja na mjesta (prostore) gdje nije moguće odmah identificirati ili doći na put evakuacije, gdje se može okupiti veći broj ljudi ili u prostorima većim od 60 m2.",
+      "Panik (sigurnosna) rasvjeta mora osvjetljavati prostor izlaza minimalnim osvijetljenjem od 1 luksa, mjereno na podu prostorije, u vremenu od najmanje 1 sat po uključenju.",
+      "Ispitivanje djelotvornosti obavljeno je simuliranjem nestanka električne energije kako bi se uzrokovalo uključenje svih rasvjetnih tijela sigurnosne (panik) rasvjete i provjerio njihov rad u trajanju od 1 sata.",
+      "Pregledom i ispitivanjem panik i sigurnosne rasvjete utvrđeni su slijedeći podaci i rezultati:",
+    ].join("\n\n"),
+    eiNote: "Ei - izmjereno osvijetljenje sigurnosne rasvjete duž evakuacijskih puteva, te kod izlaza iz prostorija na visini 0,20 m od poda prostorije [Lux]",
+    eiminNote: "Eimin - zahtijevano minimalno osvijetljenje sigurnosne rasvjete na visini 0.20 m od poda prostorije [Lux]",
+    inspectors: "Nikola Lovrenčević",
+    responsiblePerson: "Nikola Lovrenčević, el.teh.; 89627512970",
+    signatureClass: "UP/I-133-02/25-02/26",
+    signatureNumber: "1392/25",
+    resultStatus: "ZADOVOLJAVA",
+    signatureMode: "digital",
+    defects: "",
+    recommendations: "",
+    gridlineModel: buildDocumentationSprGridlineModelFromRows(),
+  };
+}
+
+function normalizeDocumentationSprGridlineModel(model) {
+  const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+  if (gridlineApi?.normalizeModel) {
+    return gridlineApi.normalizeModel(model, {
+      defaultRows: DOCUMENTATION_SPR_GRID_ROW_COUNT,
+      defaultColumns: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+    });
+  }
+  return model && typeof model === "object"
+    ? model
+    : buildDocumentationSprGridlineModelFromRows();
+}
+
+function normalizeDocumentationSprModel(value) {
+  const fallback = createDefaultDocumentationSprModel();
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    ...fallback,
+    ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
+    gridlineModel: normalizeDocumentationSprGridlineModel(source.gridlineModel || fallback.gridlineModel),
+  };
+}
+
+function loadDocumentationSprModel() {
+  try {
+    return normalizeDocumentationSprModel(JSON.parse(window.localStorage.getItem(DOCUMENTATION_SPR_STORAGE_KEY) || "null"));
+  } catch {
+    return createDefaultDocumentationSprModel();
+  }
+}
+
+function setDocumentationSprStatus(text, tone = "saved") {
+  if (!documentationSprStatus) {
+    return;
+  }
+  documentationSprStatus.textContent = text;
+  documentationSprStatus.className = `documentation-spr-status ${tone === "saving" ? "is-saving" : "is-saved"}`;
+}
+
+function scheduleDocumentationSprSave() {
+  if (!documentationSprModel) {
+    return;
+  }
+  setDocumentationSprStatus("Lokalna izmjena", "saving");
+  if (documentationSprSaveTimer) {
+    window.clearTimeout(documentationSprSaveTimer);
+  }
+  documentationSprSaveTimer = window.setTimeout(() => {
+    documentationSprSaveTimer = 0;
+    try {
+      window.localStorage.setItem(DOCUMENTATION_SPR_STORAGE_KEY, JSON.stringify(documentationSprModel));
+      setDocumentationSprStatus("Spremljeno lokalno", "saved");
+    } catch {
+      setDocumentationSprStatus("Nije spremljeno", "saving");
+    }
+  }, 350);
+}
+
+function readDocumentationSprFormIntoModel() {
+  if (!documentationSprModel || !documentationWorkbenchModule) {
+    return;
+  }
+  documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
+    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
+      documentationSprModel[control.dataset.documentationSprField] = control.value;
+    }
+  });
+}
+
+function writeDocumentationSprModelToForm() {
+  if (!documentationSprModel || !documentationWorkbenchModule) {
+    return;
+  }
+  documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
+    if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
+      control.value = documentationSprModel[control.dataset.documentationSprField] ?? "";
+    }
+  });
+}
+
+function getDocumentationSprRowsFromGridlineModel(model) {
+  const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+  if (gridlineApi?.modelToRows) {
+    return gridlineApi.modelToRows(model, {
+      defaultRows: DOCUMENTATION_SPR_GRID_ROW_COUNT,
+      defaultColumns: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+    });
+  }
+  const normalized = normalizeDocumentationSprGridlineModel(model);
+  return Array.from({ length: normalized.rowCount || DOCUMENTATION_SPR_GRID_ROW_COUNT }, (_, rowIndex) => (
+    Array.from({ length: normalized.columnCount || DOCUMENTATION_SPR_GRID_COLUMN_COUNT }, (_, columnIndex) => (
+      normalized.data?.[`${rowIndex}:${columnIndex}`] || ""
+    ))
+  ));
+}
+
+function getDocumentationSprActiveGridlineModel() {
+  if (documentationSprGridlineApi?.getModel) {
+    return documentationSprGridlineApi.getModel();
+  }
+  return documentationSprModel?.gridlineModel || buildDocumentationSprGridlineModelFromRows();
+}
+
+function getDocumentationSprMeasurementRows() {
+  const rows = getDocumentationSprRowsFromGridlineModel(getDocumentationSprActiveGridlineModel());
+  return rows.slice(2)
+    .map((row, index) => ({
+      number: String(row[0] || index + 1).trim(),
+      place: String(row[1] || "").trim(),
+      lampCount: String(row[2] || "").trim(),
+      ei: String(row[3] || "").trim(),
+      eimin: String(row[4] || "").trim(),
+      pass: String(row[5] || "").trim(),
+    }))
+    .filter((row) => row.place || row.lampCount || row.ei || row.eimin || row.pass);
+}
+
+function getDocumentationSprTextLines(value = "") {
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function renderDocumentationSprLineList(value = "") {
+  const lines = getDocumentationSprTextLines(value);
+  if (lines.length === 0) {
+    return "<div>&nbsp;</div>";
+  }
+  return lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
+}
+
+function renderDocumentationSprPaperHeader(model) {
+  return `
+    <div class="documentation-spr-paper-header">
+      <div class="documentation-spr-paper-logo">
+        <span class="documentation-spr-paper-logo-mark">AG</span>
+        <span>ADRIA GRUPA<small>FACILITY MANAGEMENT</small></span>
+      </div>
+      <div class="documentation-spr-paper-company">
+        <strong>Sektor: ZAŠTITNI SUSTAVI</strong>
+        <strong>Zaštita na radu · Zaštita od požara · Zaštita okoliša</strong>
+        <span>ADRIA GRUPA d.o.o., Heinzelova 53a, 10000 Zagreb, tel: 01 2359 942, fax: 01 2359 908</span>
+        <span>e-mail: zastitni.sustavi@adria-grupa.hr, web: www.adria-grupa.hr, MB: 1759906, OIB: 06637660960</span>
+      </div>
+      <div class="documentation-spr-paper-number">${escapeHtml(model.workOrderNumber)}</div>
+    </div>
+  `;
+}
+
+function renderDocumentationSprSimpleHeader(model, showCode = true) {
+  return `
+    <div class="documentation-spr-paper-simple-header">
+      <span class="documentation-spr-paper-rn">${escapeHtml(model.workOrderNumber)}</span>
+      <strong>ISPITNI IZVJEŠTAJ</strong>
+      <strong>ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE</strong>
+      ${showCode ? "<span>IL - SPR</span>" : ""}
+      <span class="documentation-spr-paper-place">${escapeHtml(model.inspectionPlace)}</span>
+    </div>
+  `;
+}
+
+function renderDocumentationSprSectionTitle(number, title) {
+  return `<div class="documentation-spr-paper-section-title"><span>${number}.</span><span>${escapeHtml(title)}</span></div>`;
+}
+
+function renderDocumentationSprPageOne(model) {
+  return `
+    <section class="documentation-spr-paper">
+      ${renderDocumentationSprPaperHeader(model)}
+      <div class="documentation-spr-paper-title">
+        <h2>ZAPISNIK</h2>
+        <strong>O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE</strong>
+      </div>
+      ${renderDocumentationSprSectionTitle(1, "OPĆI PODACI")}
+      <table class="documentation-spr-paper-kv">
+        <tr><td>Naručitelj:</td><td><strong>${escapeHtml(model.companyName)}; ${escapeHtml(model.companyAddress)}; OIB: ${escapeHtml(model.companyOib)}</strong></td></tr>
+        <tr><td>Korisnik prostora:</td><td>${escapeHtml(model.spaceUser)}</td></tr>
+        <tr><td>Mjesto ispitivanja:</td><td><strong>${escapeHtml(model.inspectionPlace)}</strong></td></tr>
+        <tr><td>Objekt ispitivanja:</td><td>${escapeHtml(model.inspectionObject)}</td></tr>
+        <tr><td>Vrsta ispitivanja:</td><td>${escapeHtml(model.inspectionType)}</td></tr>
+        <tr><td>Datum ispitivanja:</td><td><strong>${escapeHtml(model.inspectionDate)}</strong></td></tr>
+        <tr><td>Broj zapisnika:</td><td>${escapeHtml(model.recordNumber)}</td></tr>
+        <tr><td>Ispitivanje obavili:</td><td>${escapeHtml(model.inspectors)}</td></tr>
+      </table>
+      ${renderDocumentationSprSectionTitle(2, "MJERNA I ISPITNA OPREMA")}
+      <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.equipment)}</div>
+      ${renderDocumentationSprSectionTitle(3, "PRIMJENJENI PROPISI")}
+      <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.regulations)}</div>
+      <div class="documentation-spr-paper-footer">SPR-1/4</div>
+    </section>
+  `;
+}
+
+function renderDocumentationSprPageTwo(model) {
+  return `
+    <section class="documentation-spr-paper">
+      ${renderDocumentationSprPaperHeader(model)}
+      ${renderDocumentationSprSectionTitle(4, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA")}
+      <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
+      ${renderDocumentationSprSectionTitle(5, "REZULTATI ISPITIVANJA")}
+      <div class="documentation-spr-paper-text">${escapeHtml(model.resultsText)}</div>
+      <div class="documentation-spr-paper-note-title">Značenje oznaka:</div>
+      <div class="documentation-spr-paper-list">
+        <div>${escapeHtml(model.eiNote)}</div>
+        <div>${escapeHtml(model.eiminNote)}</div>
+      </div>
+      <div class="documentation-spr-paper-footer">SPR-2/4</div>
+    </section>
+  `;
+}
+
+function renderDocumentationSprMeasurementTableRows(rows) {
+  return rows.map((row, index) => `
+    <tr>
+      <td>${escapeHtml(row.number || index + 1)}</td>
+      <td>${escapeHtml(row.place)}</td>
+      <td>${escapeHtml(row.lampCount)}</td>
+      <td>${escapeHtml(row.ei)}</td>
+      <td>${escapeHtml(row.eimin)}</td>
+      <td>${escapeHtml(row.pass)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderDocumentationSprPageThree(model, rows) {
+  return `
+    <section class="documentation-spr-paper">
+      ${renderDocumentationSprSimpleHeader(model, true)}
+      <div class="documentation-spr-paper-measure-title">Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete</div>
+      <table class="documentation-spr-paper-measure-table">
+        <thead>
+          <tr>
+            <th rowspan="2">R. br.</th>
+            <th rowspan="2">Mjesto ispitivanja</th>
+            <th rowspan="2">Broj lampi</th>
+            <th>Ei</th>
+            <th>Eimin</th>
+            <th>ZADOVOLJAVA</th>
+          </tr>
+          <tr>
+            <th>lux</th>
+            <th>lux</th>
+            <th>DA/NE</th>
+          </tr>
+        </thead>
+        <tbody>${renderDocumentationSprMeasurementTableRows(rows)}</tbody>
+      </table>
+      <div class="documentation-spr-paper-footer">SPR-3/4</div>
+    </section>
+  `;
+}
+
+function renderDocumentationSprSignature(model) {
+  if (model.signatureMode === "empty") {
+    return '<div class="documentation-spr-signature-box"><span>Signature field</span></div>';
+  }
+  return `
+    <div class="documentation-spr-signature-box">
+      <div>
+        <span>Ispitivač</span>
+        <strong>${escapeHtml(model.responsiblePerson)}</strong>
+        <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
+        <span>${escapeHtml(model.signatureNumber)}</span>
+        <i aria-hidden="true"></i>
+      </div>
+    </div>
+  `;
+}
+
+function renderDocumentationSprPageFour(model) {
+  const defects = renderDocumentationSprLineList(model.defects);
+  const recommendations = renderDocumentationSprLineList(model.recommendations);
+  return `
+    <section class="documentation-spr-paper">
+      ${renderDocumentationSprSimpleHeader(model, false)}
+      <strong>Pregled i ispitivanje sukladno Tablici 1 obavili:</strong>
+      <div class="documentation-spr-paper-signature-area">
+        <div></div>
+        ${renderDocumentationSprSignature(model)}
+      </div>
+      ${renderDocumentationSprSectionTitle(6, "NEDOSTATCI")}
+      <div class="documentation-spr-paper-list">${defects}</div>
+      ${renderDocumentationSprSectionTitle(7, "PREPORUKE")}
+      <div class="documentation-spr-paper-list">${recommendations}</div>
+      ${renderDocumentationSprSectionTitle(8, "OCJENA REZULTATA ISPITIVANJA")}
+      <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:</p>
+      <table class="documentation-spr-paper-kv">
+        <tr><td>Funkcionalnost sigurnosne protupanične rasvjete</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>
+      </table>
+      ${renderDocumentationSprSectionTitle(9, "ZAKLJUČAK")}
+      <p>Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja može se zaključiti da ispitivana panik (sigurnosna) rasvjeta na dan predmetnog ispitivanja</p>
+      <div class="documentation-spr-paper-conclusion">${escapeHtml(model.resultStatus)}</div>
+      <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
+      <p class="documentation-spr-paper-center"><strong>${escapeHtml(model.recordNumber)}</strong></p>
+      <p class="documentation-spr-paper-center">Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do <strong>${escapeHtml(model.validUntil)}</strong></p>
+      <p class="documentation-spr-paper-right">U Zagrebu, <strong>${escapeHtml(model.issueDate)}</strong></p>
+      <div class="documentation-spr-paper-signature-area is-bottom">
+        <div class="documentation-spr-paper-center"><strong>M.P.</strong></div>
+        <div>
+          <span>Dokaze iz Zapisnika ocjenio:</span>
+          <strong>${escapeHtml(model.responsiblePerson)}</strong>
+          <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
+          <span>${escapeHtml(model.signatureNumber)}</span>
+          <i aria-hidden="true"></i>
+        </div>
+      </div>
+      <div class="documentation-spr-paper-footer">SPR-4/4</div>
+    </section>
+  `;
+}
+
+function renderDocumentationSprPreview() {
+  if (!documentationSprPreview || !documentationSprModel) {
+    return;
+  }
+  const rows = getDocumentationSprMeasurementRows();
+  documentationSprPreview.innerHTML = [
+    renderDocumentationSprPageOne(documentationSprModel),
+    renderDocumentationSprPageTwo(documentationSprModel),
+    renderDocumentationSprPageThree(documentationSprModel, rows),
+    renderDocumentationSprPageFour(documentationSprModel),
+  ].join("");
+
+  if (documentationSprPreviewSummary) {
+    documentationSprPreviewSummary.textContent = `${rows.length} mjernih mjesta · 4 stranice`;
+  }
+  if (documentationSprGridSummary) {
+    documentationSprGridSummary.textContent = `${rows.length} mjernih mjesta iz Gridline tablice`;
+  }
+}
+
+function mountDocumentationSprGridline() {
+  if (!documentationSprGridline || !documentationSprModel) {
+    return;
+  }
+  const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+  if (!gridlineApi?.mount) {
+    if (!documentationSprGridlineRetryTimer) {
+      documentationSprGridlineRetryTimer = window.setTimeout(() => {
+        documentationSprGridlineRetryTimer = 0;
+        mountDocumentationSprGridline();
+      }, 250);
+    }
+    return;
+  }
+
+  documentationSprGridlineApi = gridlineApi.mount(documentationSprGridline, {
+    storageKey: "",
+    defaultRows: DOCUMENTATION_SPR_GRID_ROW_COUNT,
+    defaultColumns: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+    rowCount: DOCUMENTATION_SPR_GRID_ROW_COUNT,
+    columnCount: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+    model: documentationSprModel.gridlineModel,
+    changeMode: "debounced",
+    saveDelayMs: 220,
+    onChange: (nextModel) => {
+      documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(nextModel);
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    },
+  });
+}
+
+function initDocumentationSprWorkbench() {
+  if (!documentationWorkbenchModule || !documentationSprForm) {
+    return;
+  }
+  if (!documentationSprModel) {
+    documentationSprModel = loadDocumentationSprModel();
+    writeDocumentationSprModelToForm();
+  }
+  if (!documentationSprInitialized) {
+    documentationSprInitialized = true;
+    documentationWorkbenchModule.addEventListener("input", (event) => {
+      if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-documentation-spr-field]")) {
+        return;
+      }
+      readDocumentationSprFormIntoModel();
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    });
+    documentationWorkbenchModule.addEventListener("change", (event) => {
+      if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-documentation-spr-field]")) {
+        return;
+      }
+      readDocumentationSprFormIntoModel();
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    });
+    documentationSprResetButton?.addEventListener("click", () => {
+      documentationSprModel = createDefaultDocumentationSprModel();
+      writeDocumentationSprModelToForm();
+      if (documentationSprGridlineApi?.setModel) {
+        documentationSprGridlineApi.setModel(documentationSprModel.gridlineModel);
+      } else {
+        mountDocumentationSprGridline();
+      }
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    });
+    documentationSprDownloadButton?.addEventListener("click", () => {
+      readDocumentationSprFormIntoModel();
+      if (documentationSprGridlineApi?.getModel) {
+        documentationSprModel.gridlineModel = documentationSprGridlineApi.getModel();
+      }
+      const payload = {
+        kind: "documentation-workbench-spr",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        document: documentationSprModel,
+        measurementRows: getDocumentationSprMeasurementRows(),
+      };
+      triggerBlobDownload(
+        new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+        `${documentationSprModel.recordNumber || "spr"}-browser-model.json`,
+      );
+    });
+  }
+  if (!documentationSprGridlineApi) {
+    mountDocumentationSprGridline();
+  }
+  renderDocumentationSprPreview();
 }
 
 function triggerBlobPrint(blob, fileName = "zapisnici.pdf") {
