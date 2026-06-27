@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260627-spr-workbench-v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260627-spr-workbench-v6" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -6470,6 +6470,7 @@
                     </div>
                   </div>
                   <div class="documentation-spr-actions">
+                    <span id="documentation-spr-source-status" class="documentation-spr-source-status">Izvori se učitavaju</span>
                     <span id="documentation-spr-status" class="documentation-spr-status is-saved">Spremljeno lokalno</span>
                     <button type="button" id="documentation-spr-reset" class="ghost-button">Vrati primjer</button>
                     <button type="button" id="documentation-spr-download" class="primary-button">Preuzmi JSON</button>
@@ -6579,14 +6580,56 @@
                           <span>3</span>
                           <strong>Oprema, propisi i dokumentacija</strong>
                         </div>
+                        <span id="documentation-spr-source-summary" class="documentation-spr-section-meta">Izvori iz modula</span>
+                      </div>
+                      <div class="documentation-spr-source-grid">
+                        <section class="documentation-spr-source-block" aria-label="Mjerna oprema iz modula">
+                          <div class="documentation-spr-source-head">
+                            <div>
+                              <span>Mjerna oprema</span>
+                              <strong>Iz modula Mjerna oprema</strong>
+                            </div>
+                            <small id="documentation-spr-equipment-source-count">0 stavki</small>
+                          </div>
+                          <label class="field documentation-spr-field">
+                            <span>Odaberi opremu</span>
+                            <select id="documentation-spr-equipment-select" multiple size="6" aria-label="Odaberi mjernu opremu za zapisnik"></select>
+                          </label>
+                          <div id="documentation-spr-equipment-chips" class="documentation-spr-source-chips"></div>
+                          <div class="documentation-spr-source-actions">
+                            <button type="button" id="documentation-spr-equipment-apply" class="ghost-button">Umetni odabrano</button>
+                            <button type="button" id="documentation-spr-equipment-all" class="ghost-button">Sva oprema</button>
+                            <button type="button" id="documentation-spr-equipment-clear" class="ghost-button">Očisti</button>
+                          </div>
+                        </section>
+
+                        <section class="documentation-spr-source-block" aria-label="Propisi iz Legal Framework modula">
+                          <div class="documentation-spr-source-head">
+                            <div>
+                              <span>Legal Framework</span>
+                              <strong>Propisi i norme</strong>
+                            </div>
+                            <small id="documentation-spr-legal-source-count">0 propisa</small>
+                          </div>
+                          <label class="field documentation-spr-field">
+                            <span>Odaberi pravilnike</span>
+                            <select id="documentation-spr-legal-select" multiple size="6" aria-label="Odaberi propise za zapisnik"></select>
+                          </label>
+                          <div id="documentation-spr-legal-chips" class="documentation-spr-source-chips"></div>
+                          <div class="documentation-spr-source-actions">
+                            <button type="button" id="documentation-spr-legal-apply" class="ghost-button">Umetni odabrano</button>
+                            <button type="button" id="documentation-spr-legal-active" class="ghost-button">Aktivni propisi</button>
+                            <button type="button" id="documentation-spr-legal-clear" class="ghost-button">Očisti</button>
+                          </div>
+                        </section>
                       </div>
                       <div class="documentation-spr-two-col">
                         <label class="field documentation-spr-field">
-                          <span>Mjerna i ispitna oprema</span>
+                          <span>Mjerna i ispitna oprema - tekst u zapisniku</span>
                           <textarea data-documentation-spr-field="equipment" rows="7"></textarea>
                         </label>
                         <label class="field documentation-spr-field">
-                          <span>Primijenjeni propisi</span>
+                          <span>Primijenjeni propisi - tekst u zapisniku</span>
                           <textarea data-documentation-spr-field="regulations" rows="7"></textarea>
                         </label>
                       </div>
@@ -6660,14 +6703,32 @@
                           <span>6</span>
                           <strong>Zaključak i potpis</strong>
                         </div>
+                        <span id="documentation-spr-people-summary" class="documentation-spr-section-meta">People modul</span>
+                      </div>
+                      <div class="documentation-spr-people-grid">
+                        <label class="field documentation-spr-field">
+                          <span>Ispitivači iz People</span>
+                          <select id="documentation-spr-inspector-users" multiple size="5" aria-label="Odaberi ispitivače iz People modula"></select>
+                          <small>Prednost imaju aktivne osobe s People ovlaštenjem za ispitivanje.</small>
+                        </label>
+                        <label class="field documentation-spr-field">
+                          <span>Odgovorna osoba iz People</span>
+                          <select id="documentation-spr-responsible-user" aria-label="Odaberi odgovornu osobu iz People modula"></select>
+                          <small>Odabir puni potpis, KLASU i urudžbeni broj kada su podaci upisani u People.</small>
+                        </label>
+                      </div>
+                      <div id="documentation-spr-people-chips" class="documentation-spr-source-chips"></div>
+                      <div class="documentation-spr-source-actions">
+                        <button type="button" id="documentation-spr-people-apply" class="ghost-button">Primijeni People odabir</button>
+                        <button type="button" id="documentation-spr-people-clear" class="ghost-button">Očisti odabir</button>
                       </div>
                       <div class="documentation-spr-field-grid">
                         <label class="field documentation-spr-field">
-                          <span>Ispitivanje obavili</span>
+                          <span>Ispitivanje obavili - tekst u zapisniku</span>
                           <input data-documentation-spr-field="inspectors" type="text" />
                         </label>
                         <label class="field documentation-spr-field">
-                          <span>Odgovorna osoba</span>
+                          <span>Odgovorna osoba - potpis</span>
                           <input data-documentation-spr-field="responsiblePerson" type="text" />
                         </label>
                         <label class="field documentation-spr-field">
@@ -6715,10 +6776,6 @@
                     </div>
                     <div id="documentation-spr-preview" class="documentation-spr-preview"></div>
                   </aside>
-                </section>
-              </section>
-            </section>
-                  </div>
                 </section>
               </section>
             </section>
@@ -11124,9 +11181,9 @@
 
     <script src="/assets/vendor/leaflet.js"></script>
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
-    <script src="/gridline.js?v=20260627-spr-workbench-v2"></script>
+    <script src="/gridline.js?v=20260627-spr-workbench-v6"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260627-spr-workbench-v2"></script>
+    <script type="module" src="/src/main.js?v=20260627-spr-workbench-v6"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

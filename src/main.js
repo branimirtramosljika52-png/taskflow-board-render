@@ -3941,6 +3941,26 @@ const documentationSprResetButton = document.querySelector("#documentation-spr-r
 const documentationSprDownloadButton = document.querySelector("#documentation-spr-download");
 const documentationSprGridline = document.querySelector("#documentation-spr-gridline");
 const documentationSprGridSummary = document.querySelector("#documentation-spr-grid-summary");
+const documentationSprSourceStatus = document.querySelector("#documentation-spr-source-status");
+const documentationSprSourceSummary = document.querySelector("#documentation-spr-source-summary");
+const documentationSprEquipmentSelect = document.querySelector("#documentation-spr-equipment-select");
+const documentationSprEquipmentChips = document.querySelector("#documentation-spr-equipment-chips");
+const documentationSprEquipmentSourceCount = document.querySelector("#documentation-spr-equipment-source-count");
+const documentationSprEquipmentApplyButton = document.querySelector("#documentation-spr-equipment-apply");
+const documentationSprEquipmentAllButton = document.querySelector("#documentation-spr-equipment-all");
+const documentationSprEquipmentClearButton = document.querySelector("#documentation-spr-equipment-clear");
+const documentationSprLegalSelect = document.querySelector("#documentation-spr-legal-select");
+const documentationSprLegalChips = document.querySelector("#documentation-spr-legal-chips");
+const documentationSprLegalSourceCount = document.querySelector("#documentation-spr-legal-source-count");
+const documentationSprLegalApplyButton = document.querySelector("#documentation-spr-legal-apply");
+const documentationSprLegalActiveButton = document.querySelector("#documentation-spr-legal-active");
+const documentationSprLegalClearButton = document.querySelector("#documentation-spr-legal-clear");
+const documentationSprInspectorUsersSelect = document.querySelector("#documentation-spr-inspector-users");
+const documentationSprResponsibleUserSelect = document.querySelector("#documentation-spr-responsible-user");
+const documentationSprPeopleSummary = document.querySelector("#documentation-spr-people-summary");
+const documentationSprPeopleChips = document.querySelector("#documentation-spr-people-chips");
+const documentationSprPeopleApplyButton = document.querySelector("#documentation-spr-people-apply");
+const documentationSprPeopleClearButton = document.querySelector("#documentation-spr-people-clear");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -56851,6 +56871,10 @@ function createDefaultDocumentationSprModel() {
     signatureMode: "digital",
     defects: "",
     recommendations: "",
+    measurementEquipmentIds: [],
+    legalFrameworkIds: [],
+    inspectorUserIds: [],
+    responsiblePersonUserId: "",
     gridlineModel: buildDocumentationSprGridlineModelFromRows(),
   };
 }
@@ -56874,8 +56898,352 @@ function normalizeDocumentationSprModel(value) {
   return {
     ...fallback,
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
+    measurementEquipmentIds: normalizeDocumentationSprIdList(source.measurementEquipmentIds),
+    legalFrameworkIds: normalizeDocumentationSprIdList(source.legalFrameworkIds),
+    inspectorUserIds: normalizeDocumentationSprIdList(source.inspectorUserIds),
+    responsiblePersonUserId: String(source.responsiblePersonUserId || "").trim(),
     gridlineModel: normalizeDocumentationSprGridlineModel(source.gridlineModel || fallback.gridlineModel),
   };
+}
+
+function normalizeDocumentationSprIdList(value = []) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || "")
+      .split(",")
+      .map((entry) => entry.trim());
+  return Array.from(new Set(values.map((entry) => String(entry || "").trim()).filter(Boolean)));
+}
+
+function getDocumentationSprSelectValues(select) {
+  if (!(select instanceof HTMLSelectElement)) {
+    return [];
+  }
+  return Array.from(select.selectedOptions ?? [])
+    .map((option) => String(option.value || "").trim())
+    .filter(Boolean);
+}
+
+function setDocumentationSprSelectValues(select, values = []) {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const selected = new Set(normalizeDocumentationSprIdList(values));
+  Array.from(select.options).forEach((option) => {
+    option.selected = selected.has(String(option.value || "").trim());
+  });
+}
+
+function replaceDocumentationSprSelectOptions(select, options = [], selectedValues = []) {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const selected = new Set(normalizeDocumentationSprIdList(selectedValues));
+  const nodes = options.map((entry) => {
+    const option = document.createElement("option");
+    option.value = String(entry.value || "");
+    option.textContent = entry.label || entry.value || "";
+    option.selected = selected.has(option.value);
+    if (entry.meta) {
+      option.dataset.meta = entry.meta;
+    }
+    return option;
+  });
+  select.replaceChildren(...nodes);
+}
+
+function setDocumentationSprFieldValue(fieldName = "", value = "") {
+  if (!documentationSprModel || !documentationWorkbenchModule) {
+    return;
+  }
+  documentationSprModel[fieldName] = String(value ?? "");
+  const field = documentationWorkbenchModule.querySelector(`[data-documentation-spr-field="${CSS.escape(fieldName)}"]`);
+  if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement) {
+    field.value = documentationSprModel[fieldName];
+  }
+}
+
+function getDocumentationSprMeasurementEquipmentItems() {
+  return sortMeasurementEquipmentItems(state.measurementEquipment ?? []);
+}
+
+function getDocumentationSprLegalFrameworkItems() {
+  return sortLegalFrameworks(state.legalFrameworks ?? []);
+}
+
+function getDocumentationSprUserName(user = {}) {
+  return getUserDocumentDisplayName(user) || user.fullName || user.email || user.username || "Osoba";
+}
+
+function getDocumentationSprInspectorUsers() {
+  const qualified = getQualifiedUsersForSignatureArea("inspect", "elektro");
+  return qualified.length > 0 ? qualified : getActiveOrganizationUsers();
+}
+
+function getDocumentationSprResponsibleUsers() {
+  const qualified = getQualifiedUsersForSignatureArea("authorize", "elektro");
+  return qualified.length > 0 ? qualified : getActiveOrganizationUsers();
+}
+
+function formatDocumentationSprEquipmentLine(item = {}) {
+  const title = String(item.name || item.deviceCode || "Mjerna oprema").trim();
+  const details = [
+    item.manufacturer || "",
+    item.deviceType || "",
+    item.deviceCode ? `ozn. ${item.deviceCode}` : "",
+    item.serialNumber ? `ser. br. ${item.serialNumber}` : "",
+    item.inventoryNumber ? `inv. br. ${item.inventoryNumber}` : "",
+    item.validUntil ? `vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+  ].filter(Boolean);
+  return details.length > 0 ? `${title}, ${details.join(", ")}` : title;
+}
+
+function formatDocumentationSprLegalFrameworkLine(item = {}) {
+  const title = String(item.title || "Propis").trim();
+  const details = [
+    item.referenceCode || "",
+    item.versionLabel || "",
+    item.authority || "",
+    item.effectiveFrom ? `na snazi od ${formatCompactDate(item.effectiveFrom)}` : "",
+  ].filter(Boolean);
+  return details.length > 0 ? `${title} (${details.join(", ")})` : title;
+}
+
+function formatDocumentationSprResponsiblePerson(user = null) {
+  if (!user) {
+    return "";
+  }
+  const name = getDocumentationSprUserName(user);
+  const details = [
+    user.title || "",
+    getPeopleUserOib(user) ? `OIB ${getPeopleUserOib(user)}` : "",
+  ].filter(Boolean);
+  return details.length > 0 ? `${name}, ${details.join("; ")}` : name;
+}
+
+function getDocumentationSprEquipmentByIds(ids = documentationSprModel?.measurementEquipmentIds ?? []) {
+  const selected = new Set(normalizeDocumentationSprIdList(ids));
+  return getDocumentationSprMeasurementEquipmentItems().filter((item) => selected.has(String(item.id)));
+}
+
+function getDocumentationSprLegalFrameworksByIds(ids = documentationSprModel?.legalFrameworkIds ?? []) {
+  const selected = new Set(normalizeDocumentationSprIdList(ids));
+  return getDocumentationSprLegalFrameworkItems().filter((item) => selected.has(String(item.id)));
+}
+
+function getDocumentationSprUsersByIds(ids = [], users = state.users ?? []) {
+  const userById = new Map((users ?? []).map((user) => [String(user.id), user]));
+  return normalizeDocumentationSprIdList(ids)
+    .map((id) => userById.get(String(id)) || null)
+    .filter(Boolean);
+}
+
+function renderDocumentationSprChips(container, items = [], {
+  emptyText = "Nije odabrano",
+  getLabel = (item) => String(item?.label || item?.name || item?.title || ""),
+  getMeta = () => "",
+} = {}) {
+  if (!(container instanceof HTMLElement)) {
+    return;
+  }
+  if (!items.length) {
+    container.innerHTML = `<span class="documentation-spr-chip is-empty">${escapeHtml(emptyText)}</span>`;
+    return;
+  }
+  container.innerHTML = items.map((item) => {
+    const label = getLabel(item);
+    const meta = getMeta(item);
+    return `
+      <span class="documentation-spr-chip">
+        <strong>${escapeHtml(label)}</strong>
+        ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
+      </span>
+    `;
+  }).join("");
+}
+
+function syncDocumentationSprSourceSummary() {
+  if (!documentationSprModel) {
+    return;
+  }
+  const equipmentItems = getDocumentationSprMeasurementEquipmentItems();
+  const legalItems = getDocumentationSprLegalFrameworkItems();
+  const peopleItems = getActiveOrganizationUsers();
+  const selectedEquipment = getDocumentationSprEquipmentByIds();
+  const selectedLegal = getDocumentationSprLegalFrameworksByIds();
+  const selectedInspectors = getDocumentationSprUsersByIds(documentationSprModel.inspectorUserIds);
+  const selectedResponsible = getDocumentationSprUsersByIds([documentationSprModel.responsiblePersonUserId]);
+
+  if (documentationSprEquipmentSourceCount) {
+    documentationSprEquipmentSourceCount.textContent = `${equipmentItems.length} stavki`;
+  }
+  if (documentationSprLegalSourceCount) {
+    documentationSprLegalSourceCount.textContent = `${legalItems.length} propisa`;
+  }
+  if (documentationSprSourceStatus) {
+    documentationSprSourceStatus.textContent = `${equipmentItems.length} opreme · ${legalItems.length} propisa · ${peopleItems.length} osoba`;
+  }
+  if (documentationSprSourceSummary) {
+    documentationSprSourceSummary.textContent = `${selectedEquipment.length} opreme · ${selectedLegal.length} propisa`;
+  }
+  if (documentationSprPeopleSummary) {
+    const totalPeople = peopleItems.length;
+    documentationSprPeopleSummary.textContent = `${selectedInspectors.length} ispitivača · ${selectedResponsible.length ? "1 odgovorna" : "0 odgovornih"} · ${totalPeople} People`;
+  }
+
+  renderDocumentationSprChips(documentationSprEquipmentChips, selectedEquipment, {
+    emptyText: "Odaberi mjernu opremu iz modula.",
+    getLabel: (item) => item.name || item.deviceCode || "Oprema",
+    getMeta: (item) => [
+      item.serialNumber ? `Ser. ${item.serialNumber}` : "",
+      item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
+      item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+    ].filter(Boolean).join(" · "),
+  });
+  renderDocumentationSprChips(documentationSprLegalChips, selectedLegal, {
+    emptyText: "Odaberi propise iz Legal Framework modula.",
+    getLabel: (item) => item.title || "Propis",
+    getMeta: (item) => [
+      item.referenceCode || "",
+      getLegalFrameworkStatusLabel(item.status),
+    ].filter(Boolean).join(" · "),
+  });
+  renderDocumentationSprChips(documentationSprPeopleChips, [...selectedInspectors, ...selectedResponsible], {
+    emptyText: "Odaberi ispitivače i odgovornu osobu iz People modula.",
+    getLabel: (user) => getDocumentationSprUserName(user),
+    getMeta: (user) => [
+      user.title || "",
+      getPeopleUserOib(user) ? `OIB ${getPeopleUserOib(user)}` : "",
+    ].filter(Boolean).join(" · "),
+  });
+}
+
+function renderDocumentationSprSourceControls() {
+  if (!documentationSprModel) {
+    return;
+  }
+  const equipmentItems = getDocumentationSprMeasurementEquipmentItems();
+  replaceDocumentationSprSelectOptions(
+    documentationSprEquipmentSelect,
+    equipmentItems.map((item) => ({
+      value: item.id,
+      label: [
+        item.name || "Mjerna oprema",
+        item.serialNumber ? `Ser. ${item.serialNumber}` : "",
+        item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
+      ].filter(Boolean).join(" | "),
+      meta: formatDocumentationSprEquipmentLine(item),
+    })),
+    documentationSprModel.measurementEquipmentIds,
+  );
+
+  const legalItems = getDocumentationSprLegalFrameworkItems();
+  replaceDocumentationSprSelectOptions(
+    documentationSprLegalSelect,
+    legalItems.map((item) => ({
+      value: item.id,
+      label: [
+        item.title || "Propis",
+        item.referenceCode || "",
+        getLegalFrameworkStatusLabel(item.status),
+      ].filter(Boolean).join(" | "),
+      meta: formatDocumentationSprLegalFrameworkLine(item),
+    })),
+    documentationSprModel.legalFrameworkIds,
+  );
+
+  const inspectorUsers = getDocumentationSprInspectorUsers();
+  replaceDocumentationSprSelectOptions(
+    documentationSprInspectorUsersSelect,
+    inspectorUsers.map((user) => ({
+      value: user.id,
+      label: getQualifiedUserSelectLabel(user, "inspect", "elektro"),
+    })),
+    documentationSprModel.inspectorUserIds,
+  );
+
+  const responsibleUsers = getDocumentationSprResponsibleUsers();
+  replaceDocumentationSprSelectOptions(
+    documentationSprResponsibleUserSelect,
+    [
+      { value: "", label: "Odaberi odgovornu osobu" },
+      ...responsibleUsers.map((user) => ({
+        value: user.id,
+        label: getQualifiedUserSelectLabel(user, "authorize", "elektro"),
+      })),
+    ],
+    [documentationSprModel.responsiblePersonUserId],
+  );
+
+  syncDocumentationSprSourceSummary();
+}
+
+function applyDocumentationSprEquipmentSelection(ids = getDocumentationSprSelectValues(documentationSprEquipmentSelect)) {
+  if (!documentationSprModel) {
+    return;
+  }
+  documentationSprModel.measurementEquipmentIds = normalizeDocumentationSprIdList(ids);
+  setDocumentationSprSelectValues(documentationSprEquipmentSelect, documentationSprModel.measurementEquipmentIds);
+  setDocumentationSprFieldValue(
+    "equipment",
+    getDocumentationSprEquipmentByIds(documentationSprModel.measurementEquipmentIds)
+      .map((item) => formatDocumentationSprEquipmentLine(item))
+      .join("\n"),
+  );
+  syncDocumentationSprSourceSummary();
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+}
+
+function applyDocumentationSprLegalSelection(ids = getDocumentationSprSelectValues(documentationSprLegalSelect)) {
+  if (!documentationSprModel) {
+    return;
+  }
+  documentationSprModel.legalFrameworkIds = normalizeDocumentationSprIdList(ids);
+  setDocumentationSprSelectValues(documentationSprLegalSelect, documentationSprModel.legalFrameworkIds);
+  setDocumentationSprFieldValue(
+    "regulations",
+    getDocumentationSprLegalFrameworksByIds(documentationSprModel.legalFrameworkIds)
+      .map((item) => formatDocumentationSprLegalFrameworkLine(item))
+      .join("\n"),
+  );
+  syncDocumentationSprSourceSummary();
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+}
+
+function applyDocumentationSprPeopleSelection({
+  inspectorIds = getDocumentationSprSelectValues(documentationSprInspectorUsersSelect),
+  responsibleUserId = documentationSprResponsibleUserSelect instanceof HTMLSelectElement ? documentationSprResponsibleUserSelect.value : "",
+} = {}) {
+  if (!documentationSprModel) {
+    return;
+  }
+  documentationSprModel.inspectorUserIds = normalizeDocumentationSprIdList(inspectorIds);
+  documentationSprModel.responsiblePersonUserId = String(responsibleUserId || "").trim();
+  setDocumentationSprSelectValues(documentationSprInspectorUsersSelect, documentationSprModel.inspectorUserIds);
+  setDocumentationSprSelectValues(documentationSprResponsibleUserSelect, [documentationSprModel.responsiblePersonUserId]);
+
+  const inspectorUsers = getDocumentationSprUsersByIds(documentationSprModel.inspectorUserIds);
+  setDocumentationSprFieldValue("inspectors", inspectorUsers.map((user) => getDocumentationSprUserName(user)).join(", "));
+
+  const responsibleUser = getDocumentationSprUsersByIds([documentationSprModel.responsiblePersonUserId])[0] || null;
+  if (responsibleUser) {
+    setDocumentationSprFieldValue("responsiblePerson", formatDocumentationSprResponsiblePerson(responsibleUser));
+    const qualification = getUserElectricalQualification(responsibleUser, "elektro");
+    if (qualification.data1) {
+      setDocumentationSprFieldValue("signatureClass", qualification.data1);
+    }
+    if (qualification.data2) {
+      setDocumentationSprFieldValue("signatureNumber", qualification.data2);
+    }
+  } else {
+    setDocumentationSprFieldValue("responsiblePerson", "");
+  }
+
+  syncDocumentationSprSourceSummary();
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
 }
 
 function loadDocumentationSprModel() {
@@ -57227,6 +57595,7 @@ function initDocumentationSprWorkbench() {
     documentationSprModel = loadDocumentationSprModel();
     writeDocumentationSprModelToForm();
   }
+  renderDocumentationSprSourceControls();
   if (!documentationSprInitialized) {
     documentationSprInitialized = true;
     documentationWorkbenchModule.addEventListener("input", (event) => {
@@ -57235,6 +57604,7 @@ function initDocumentationSprWorkbench() {
       }
       readDocumentationSprFormIntoModel();
       renderDocumentationSprPreview();
+      syncDocumentationSprSourceSummary();
       scheduleDocumentationSprSave();
     });
     documentationWorkbenchModule.addEventListener("change", (event) => {
@@ -57243,11 +57613,59 @@ function initDocumentationSprWorkbench() {
       }
       readDocumentationSprFormIntoModel();
       renderDocumentationSprPreview();
+      syncDocumentationSprSourceSummary();
       scheduleDocumentationSprSave();
+    });
+    documentationSprEquipmentSelect?.addEventListener("change", () => {
+      documentationSprModel.measurementEquipmentIds = getDocumentationSprSelectValues(documentationSprEquipmentSelect);
+      applyDocumentationSprEquipmentSelection(documentationSprModel.measurementEquipmentIds);
+    });
+    documentationSprEquipmentApplyButton?.addEventListener("click", () => {
+      applyDocumentationSprEquipmentSelection();
+    });
+    documentationSprEquipmentAllButton?.addEventListener("click", () => {
+      applyDocumentationSprEquipmentSelection(getDocumentationSprMeasurementEquipmentItems().map((item) => item.id));
+    });
+    documentationSprEquipmentClearButton?.addEventListener("click", () => {
+      applyDocumentationSprEquipmentSelection([]);
+    });
+    documentationSprLegalSelect?.addEventListener("change", () => {
+      documentationSprModel.legalFrameworkIds = getDocumentationSprSelectValues(documentationSprLegalSelect);
+      applyDocumentationSprLegalSelection(documentationSprModel.legalFrameworkIds);
+    });
+    documentationSprLegalApplyButton?.addEventListener("click", () => {
+      applyDocumentationSprLegalSelection();
+    });
+    documentationSprLegalActiveButton?.addEventListener("click", () => {
+      applyDocumentationSprLegalSelection(
+        getDocumentationSprLegalFrameworkItems()
+          .filter((item) => String(item.status || "active") === "active")
+          .map((item) => item.id),
+      );
+    });
+    documentationSprLegalClearButton?.addEventListener("click", () => {
+      applyDocumentationSprLegalSelection([]);
+    });
+    documentationSprInspectorUsersSelect?.addEventListener("change", () => {
+      documentationSprModel.inspectorUserIds = getDocumentationSprSelectValues(documentationSprInspectorUsersSelect);
+      applyDocumentationSprPeopleSelection({ inspectorIds: documentationSprModel.inspectorUserIds });
+    });
+    documentationSprResponsibleUserSelect?.addEventListener("change", () => {
+      applyDocumentationSprPeopleSelection({
+        inspectorIds: documentationSprModel.inspectorUserIds,
+        responsibleUserId: documentationSprResponsibleUserSelect.value,
+      });
+    });
+    documentationSprPeopleApplyButton?.addEventListener("click", () => {
+      applyDocumentationSprPeopleSelection();
+    });
+    documentationSprPeopleClearButton?.addEventListener("click", () => {
+      applyDocumentationSprPeopleSelection({ inspectorIds: [], responsibleUserId: "" });
     });
     documentationSprResetButton?.addEventListener("click", () => {
       documentationSprModel = createDefaultDocumentationSprModel();
       writeDocumentationSprModelToForm();
+      renderDocumentationSprSourceControls();
       if (documentationSprGridlineApi?.setModel) {
         documentationSprGridlineApi.setModel(documentationSprModel.gridlineModel);
       } else {
@@ -57277,6 +57695,7 @@ function initDocumentationSprWorkbench() {
   if (!documentationSprGridlineApi) {
     mountDocumentationSprGridline();
   }
+  syncDocumentationSprSourceSummary();
   renderDocumentationSprPreview();
 }
 
