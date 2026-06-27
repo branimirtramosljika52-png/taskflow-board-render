@@ -3934,29 +3934,44 @@ const modulePanel = document.querySelector("#module-view > .module-panel");
 const documentsModule = document.querySelector("#documents-module");
 const documentationWorkbenchModule = document.querySelector("#documentation-workbench-module");
 const documentationSprForm = document.querySelector("#documentation-spr-form");
+const documentationSprShell = document.querySelector(".documentation-spr-shell");
+const documentationSprPreviewPanel = document.querySelector("#documentation-spr-preview-panel");
 const documentationSprPreview = document.querySelector("#documentation-spr-preview");
 const documentationSprPreviewSummary = document.querySelector("#documentation-spr-preview-summary");
 const documentationSprStatus = document.querySelector("#documentation-spr-status");
+const documentationSprPreviewToggleButton = document.querySelector("#documentation-spr-preview-toggle");
+const documentationSprPreviewPanelToggleButton = document.querySelector("#documentation-spr-preview-panel-toggle");
+const documentationSprHeaderUploadButton = document.querySelector("#documentation-spr-header-upload");
+const documentationSprHeaderClearButton = document.querySelector("#documentation-spr-header-clear");
+const documentationSprHeaderFileInput = document.querySelector("#documentation-spr-header-file");
 const documentationSprResetButton = document.querySelector("#documentation-spr-reset");
+const documentationSprPdfButton = document.querySelector("#documentation-spr-pdf");
 const documentationSprDownloadButton = document.querySelector("#documentation-spr-download");
 const documentationSprGridline = document.querySelector("#documentation-spr-gridline");
 const documentationSprGridSummary = document.querySelector("#documentation-spr-grid-summary");
 const documentationSprSourceStatus = document.querySelector("#documentation-spr-source-status");
 const documentationSprSourceSummary = document.querySelector("#documentation-spr-source-summary");
 const documentationSprEquipmentSelect = document.querySelector("#documentation-spr-equipment-select");
+const documentationSprEquipmentSearchInput = document.querySelector("#documentation-spr-equipment-search");
+const documentationSprEquipmentList = document.querySelector("#documentation-spr-equipment-list");
 const documentationSprEquipmentChips = document.querySelector("#documentation-spr-equipment-chips");
 const documentationSprEquipmentSourceCount = document.querySelector("#documentation-spr-equipment-source-count");
 const documentationSprEquipmentApplyButton = document.querySelector("#documentation-spr-equipment-apply");
 const documentationSprEquipmentAllButton = document.querySelector("#documentation-spr-equipment-all");
 const documentationSprEquipmentClearButton = document.querySelector("#documentation-spr-equipment-clear");
 const documentationSprLegalSelect = document.querySelector("#documentation-spr-legal-select");
+const documentationSprLegalSearchInput = document.querySelector("#documentation-spr-legal-search");
+const documentationSprLegalList = document.querySelector("#documentation-spr-legal-list");
 const documentationSprLegalChips = document.querySelector("#documentation-spr-legal-chips");
 const documentationSprLegalSourceCount = document.querySelector("#documentation-spr-legal-source-count");
 const documentationSprLegalApplyButton = document.querySelector("#documentation-spr-legal-apply");
 const documentationSprLegalActiveButton = document.querySelector("#documentation-spr-legal-active");
 const documentationSprLegalClearButton = document.querySelector("#documentation-spr-legal-clear");
 const documentationSprInspectorUsersSelect = document.querySelector("#documentation-spr-inspector-users");
+const documentationSprPeopleSearchInput = document.querySelector("#documentation-spr-people-search");
+const documentationSprInspectorUserList = document.querySelector("#documentation-spr-inspector-user-list");
 const documentationSprResponsibleUserSelect = document.querySelector("#documentation-spr-responsible-user");
+const documentationSprResponsibleUserList = document.querySelector("#documentation-spr-responsible-user-list");
 const documentationSprPeopleSummary = document.querySelector("#documentation-spr-people-summary");
 const documentationSprPeopleChips = document.querySelector("#documentation-spr-people-chips");
 const documentationSprPeopleApplyButton = document.querySelector("#documentation-spr-people-apply");
@@ -56871,6 +56886,9 @@ function createDefaultDocumentationSprModel() {
     signatureMode: "digital",
     defects: "",
     recommendations: "",
+    previewHidden: false,
+    headerImageDataUrl: "",
+    headerImageName: "",
     measurementEquipmentIds: [],
     legalFrameworkIds: [],
     inspectorUserIds: [],
@@ -56902,6 +56920,9 @@ function normalizeDocumentationSprModel(value) {
     legalFrameworkIds: normalizeDocumentationSprIdList(source.legalFrameworkIds),
     inspectorUserIds: normalizeDocumentationSprIdList(source.inspectorUserIds),
     responsiblePersonUserId: String(source.responsiblePersonUserId || "").trim(),
+    previewHidden: Boolean(source.previewHidden),
+    headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
+    headerImageName: String(source.headerImageName || "").trim(),
     gridlineModel: normalizeDocumentationSprGridlineModel(source.gridlineModel || fallback.gridlineModel),
   };
 }
@@ -57062,6 +57083,275 @@ function renderDocumentationSprChips(container, items = [], {
   }).join("");
 }
 
+function normalizeDocumentationSprPickerQuery(value = "") {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function documentationSprMatchesPickerQuery(parts = [], query = "") {
+  const normalizedQuery = normalizeDocumentationSprPickerQuery(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+  return normalizeDocumentationSprPickerQuery(parts.filter(Boolean).join(" ")).includes(normalizedQuery);
+}
+
+function renderDocumentationSprPickerEmpty(title = "Nema stavki", copy = "") {
+  return `
+    <div class="documentation-spr-picker-empty">
+      <strong>${escapeHtml(title)}</strong>
+      ${copy ? `<span>${escapeHtml(copy)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderDocumentationSprPickerTags(tags = []) {
+  const cleanTags = tags.map((tag) => String(tag || "").trim()).filter(Boolean);
+  if (!cleanTags.length) {
+    return "";
+  }
+  return `
+    <span class="documentation-spr-picker-tags">
+      ${cleanTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
+    </span>
+  `;
+}
+
+function getDocumentationSprEquipmentSearchParts(item = {}) {
+  return [
+    item.name,
+    item.manufacturer,
+    item.deviceType,
+    item.deviceCode,
+    item.serialNumber,
+    item.inventoryNumber,
+    item.calibrationDate,
+    item.validUntil,
+  ];
+}
+
+function getDocumentationSprLegalSearchParts(item = {}) {
+  return [
+    item.title,
+    item.referenceCode,
+    item.versionLabel,
+    item.authority,
+    getLegalFrameworkStatusLabel(item.status),
+    item.effectiveFrom,
+  ];
+}
+
+function getDocumentationSprUserSearchParts(user = {}) {
+  const qualification = getUserElectricalQualification(user, "elektro");
+  return [
+    getDocumentationSprUserName(user),
+    user.email,
+    user.username,
+    user.title,
+    getPeopleUserOib(user),
+    qualification.examTitle,
+    qualification.classCode,
+    qualification.urbroj,
+  ];
+}
+
+function renderDocumentationSprEquipmentPicker() {
+  if (!(documentationSprEquipmentList instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const query = documentationSprEquipmentSearchInput instanceof HTMLInputElement ? documentationSprEquipmentSearchInput.value : "";
+  const selected = new Set(normalizeDocumentationSprIdList(documentationSprModel.measurementEquipmentIds));
+  const items = getDocumentationSprMeasurementEquipmentItems()
+    .filter((item) => documentationSprMatchesPickerQuery(getDocumentationSprEquipmentSearchParts(item), query));
+
+  if (!items.length) {
+    documentationSprEquipmentList.innerHTML = renderDocumentationSprPickerEmpty(
+      getDocumentationSprMeasurementEquipmentItems().length ? "Nema rezultata" : "Nema mjerne opreme",
+      getDocumentationSprMeasurementEquipmentItems().length
+        ? "Promijeni pretragu ili očisti filter."
+        : "Dodaj opremu u modulu Mjerna oprema i pojavit će se ovdje.",
+    );
+    return;
+  }
+
+  documentationSprEquipmentList.innerHTML = items.map((item) => {
+    const id = String(item.id || "").trim();
+    const isSelected = selected.has(id);
+    const title = item.name || item.deviceCode || "Mjerna oprema";
+    const subtitle = [
+      item.manufacturer || "",
+      item.deviceType || "",
+      item.deviceCode ? `Oznaka ${item.deviceCode}` : "",
+    ].filter(Boolean).join(" · ");
+    const tags = [
+      item.serialNumber ? `Ser. ${item.serialNumber}` : "",
+      item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
+      item.calibrationDate ? `Umjereno ${formatCompactDate(item.calibrationDate)}` : "",
+      item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "",
+    ];
+    return `
+      <button
+        type="button"
+        class="documentation-spr-picker-row ${isSelected ? "is-selected" : ""}"
+        data-documentation-spr-equipment-id="${escapeHtml(id)}"
+        aria-pressed="${isSelected ? "true" : "false"}"
+        ${id ? "" : "disabled"}
+      >
+        <span class="documentation-spr-picker-state">${isSelected ? "Odabrano" : "Dodaj"}</span>
+        <span class="documentation-spr-picker-main">
+          <strong>${escapeHtml(title)}</strong>
+          ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+          ${renderDocumentationSprPickerTags(tags)}
+        </span>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderDocumentationSprLegalPicker() {
+  if (!(documentationSprLegalList instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const query = documentationSprLegalSearchInput instanceof HTMLInputElement ? documentationSprLegalSearchInput.value : "";
+  const selected = new Set(normalizeDocumentationSprIdList(documentationSprModel.legalFrameworkIds));
+  const allItems = getDocumentationSprLegalFrameworkItems();
+  const items = allItems.filter((item) => documentationSprMatchesPickerQuery(getDocumentationSprLegalSearchParts(item), query));
+
+  if (!items.length) {
+    documentationSprLegalList.innerHTML = renderDocumentationSprPickerEmpty(
+      allItems.length ? "Nema rezultata" : "Nema propisa",
+      allItems.length
+        ? "Promijeni pretragu ili očisti filter."
+        : "Dodaj pravilnike u Legal Framework i pojavit će se ovdje.",
+    );
+    return;
+  }
+
+  documentationSprLegalList.innerHTML = items.map((item) => {
+    const id = String(item.id || "").trim();
+    const isSelected = selected.has(id);
+    const title = item.title || "Propis";
+    const subtitle = [
+      item.referenceCode || "",
+      item.versionLabel || "",
+      item.authority || "",
+    ].filter(Boolean).join(" · ");
+    const tags = [
+      getLegalFrameworkStatusLabel(item.status),
+      item.effectiveFrom ? `Od ${formatCompactDate(item.effectiveFrom)}` : "",
+    ];
+    return `
+      <button
+        type="button"
+        class="documentation-spr-picker-row ${isSelected ? "is-selected" : ""}"
+        data-documentation-spr-legal-id="${escapeHtml(id)}"
+        aria-pressed="${isSelected ? "true" : "false"}"
+        ${id ? "" : "disabled"}
+      >
+        <span class="documentation-spr-picker-state">${isSelected ? "U zapisniku" : "Dodaj"}</span>
+        <span class="documentation-spr-picker-main">
+          <strong>${escapeHtml(title)}</strong>
+          ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+          ${renderDocumentationSprPickerTags(tags)}
+        </span>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderDocumentationSprPersonRows(container, users = [], selectedIds = [], {
+  emptyTitle = "Nema osoba",
+  emptyCopy = "",
+  dataAttribute = "data-documentation-spr-user-id",
+  selectedLabel = "Odabrano",
+  actionLabel = "Odaberi",
+} = {}) {
+  if (!(container instanceof HTMLElement)) {
+    return;
+  }
+  const query = documentationSprPeopleSearchInput instanceof HTMLInputElement ? documentationSprPeopleSearchInput.value : "";
+  const selected = new Set(normalizeDocumentationSprIdList(selectedIds));
+  const visibleUsers = users.filter((user) => documentationSprMatchesPickerQuery(getDocumentationSprUserSearchParts(user), query));
+  if (!visibleUsers.length) {
+    container.innerHTML = renderDocumentationSprPickerEmpty(
+      users.length ? "Nema rezultata" : emptyTitle,
+      users.length ? "Promijeni pretragu ili očisti filter." : emptyCopy,
+    );
+    return;
+  }
+  container.innerHTML = visibleUsers.map((user) => {
+    const id = String(user.id || "").trim();
+    const isSelected = selected.has(id);
+    const qualification = getUserElectricalQualification(user, "elektro");
+    const title = getDocumentationSprUserName(user);
+    const subtitle = [
+      user.email || "",
+      qualification.examTitle || qualification.examType || "",
+    ].filter(Boolean).join(" · ");
+    const tags = [
+      user.title || "",
+      getPeopleUserOib(user) ? `OIB ${getPeopleUserOib(user)}` : "",
+      qualification.classCode ? `KLASA ${qualification.classCode}` : "",
+      qualification.validUntil ? `Vrijedi do ${formatCompactDate(qualification.validUntil)}` : "",
+    ];
+    return `
+      <button
+        type="button"
+        class="documentation-spr-picker-row ${isSelected ? "is-selected" : ""}"
+        ${dataAttribute}="${escapeHtml(id)}"
+        aria-pressed="${isSelected ? "true" : "false"}"
+        ${id ? "" : "disabled"}
+      >
+        <span class="documentation-spr-picker-state">${isSelected ? selectedLabel : actionLabel}</span>
+        <span class="documentation-spr-picker-main">
+          <strong>${escapeHtml(title)}</strong>
+          ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+          ${renderDocumentationSprPickerTags(tags)}
+        </span>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderDocumentationSprPeoplePicker() {
+  if (!documentationSprModel) {
+    return;
+  }
+  renderDocumentationSprPersonRows(
+    documentationSprInspectorUserList,
+    getDocumentationSprInspectorUsers(),
+    documentationSprModel.inspectorUserIds,
+    {
+      emptyTitle: "Nema ispitivača",
+      emptyCopy: "Dodaj osobe ili ovlaštenja u People modulu.",
+      dataAttribute: "data-documentation-spr-inspector-user-id",
+      selectedLabel: "Ispitivač",
+      actionLabel: "Dodaj",
+    },
+  );
+  renderDocumentationSprPersonRows(
+    documentationSprResponsibleUserList,
+    getDocumentationSprResponsibleUsers(),
+    [documentationSprModel.responsiblePersonUserId],
+    {
+      emptyTitle: "Nema odgovornih osoba",
+      emptyCopy: "Dodaj osobu s ovlaštenjem za autorizaciju u People modulu.",
+      dataAttribute: "data-documentation-spr-responsible-user-id",
+      selectedLabel: "Odgovorna",
+      actionLabel: "Postavi",
+    },
+  );
+}
+
+function renderDocumentationSprSourcePickers() {
+  renderDocumentationSprEquipmentPicker();
+  renderDocumentationSprLegalPicker();
+  renderDocumentationSprPeoplePicker();
+}
+
 function syncDocumentationSprSourceSummary() {
   if (!documentationSprModel) {
     return;
@@ -57075,10 +57365,14 @@ function syncDocumentationSprSourceSummary() {
   const selectedResponsible = getDocumentationSprUsersByIds([documentationSprModel.responsiblePersonUserId]);
 
   if (documentationSprEquipmentSourceCount) {
-    documentationSprEquipmentSourceCount.textContent = `${equipmentItems.length} stavki`;
+    documentationSprEquipmentSourceCount.textContent = selectedEquipment.length
+      ? `${selectedEquipment.length} / ${equipmentItems.length} odabrano`
+      : `${equipmentItems.length} stavki`;
   }
   if (documentationSprLegalSourceCount) {
-    documentationSprLegalSourceCount.textContent = `${legalItems.length} propisa`;
+    documentationSprLegalSourceCount.textContent = selectedLegal.length
+      ? `${selectedLegal.length} / ${legalItems.length} odabrano`
+      : `${legalItems.length} propisa`;
   }
   if (documentationSprSourceStatus) {
     documentationSprSourceStatus.textContent = `${equipmentItems.length} opreme · ${legalItems.length} propisa · ${peopleItems.length} osoba`;
@@ -57175,6 +57469,7 @@ function renderDocumentationSprSourceControls() {
     [documentationSprModel.responsiblePersonUserId],
   );
 
+  renderDocumentationSprSourcePickers();
   syncDocumentationSprSourceSummary();
 }
 
@@ -57184,6 +57479,7 @@ function applyDocumentationSprEquipmentSelection(ids = getDocumentationSprSelect
   }
   documentationSprModel.measurementEquipmentIds = normalizeDocumentationSprIdList(ids);
   setDocumentationSprSelectValues(documentationSprEquipmentSelect, documentationSprModel.measurementEquipmentIds);
+  renderDocumentationSprEquipmentPicker();
   setDocumentationSprFieldValue(
     "equipment",
     getDocumentationSprEquipmentByIds(documentationSprModel.measurementEquipmentIds)
@@ -57201,6 +57497,7 @@ function applyDocumentationSprLegalSelection(ids = getDocumentationSprSelectValu
   }
   documentationSprModel.legalFrameworkIds = normalizeDocumentationSprIdList(ids);
   setDocumentationSprSelectValues(documentationSprLegalSelect, documentationSprModel.legalFrameworkIds);
+  renderDocumentationSprLegalPicker();
   setDocumentationSprFieldValue(
     "regulations",
     getDocumentationSprLegalFrameworksByIds(documentationSprModel.legalFrameworkIds)
@@ -57223,6 +57520,7 @@ function applyDocumentationSprPeopleSelection({
   documentationSprModel.responsiblePersonUserId = String(responsibleUserId || "").trim();
   setDocumentationSprSelectValues(documentationSprInspectorUsersSelect, documentationSprModel.inspectorUserIds);
   setDocumentationSprSelectValues(documentationSprResponsibleUserSelect, [documentationSprModel.responsiblePersonUserId]);
+  renderDocumentationSprPeoplePicker();
 
   const inspectorUsers = getDocumentationSprUsersByIds(documentationSprModel.inspectorUserIds);
   setDocumentationSprFieldValue("inspectors", inspectorUsers.map((user) => getDocumentationSprUserName(user)).join(", "));
@@ -57279,6 +57577,63 @@ function scheduleDocumentationSprSave() {
       setDocumentationSprStatus("Nije spremljeno", "saving");
     }
   }, 350);
+}
+
+function syncDocumentationSprPreviewControls() {
+  const isHidden = Boolean(documentationSprModel?.previewHidden);
+  documentationSprShell?.classList.toggle("is-preview-hidden", isHidden);
+  if (documentationSprPreviewPanel) {
+    documentationSprPreviewPanel.hidden = isHidden;
+  }
+  [documentationSprPreviewToggleButton, documentationSprPreviewPanelToggleButton].forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    button.setAttribute("aria-pressed", isHidden ? "true" : "false");
+    button.textContent = isHidden ? "Prikaži preview" : (button === documentationSprPreviewPanelToggleButton ? "Sakrij" : "Sakrij preview");
+  });
+  if (documentationSprHeaderClearButton) {
+    documentationSprHeaderClearButton.hidden = !documentationSprModel?.headerImageDataUrl;
+  }
+  if (documentationSprHeaderUploadButton) {
+    documentationSprHeaderUploadButton.textContent = documentationSprModel?.headerImageDataUrl
+      ? `Header: ${documentationSprModel.headerImageName || "učitan"}`
+      : "Upload headera";
+  }
+}
+
+function setDocumentationSprPreviewHidden(isHidden) {
+  if (!documentationSprModel) {
+    return;
+  }
+  documentationSprModel.previewHidden = Boolean(isHidden);
+  syncDocumentationSprPreviewControls();
+  scheduleDocumentationSprSave();
+}
+
+async function handleDocumentationSprHeaderUpload(file) {
+  if (!documentationSprModel || !file) {
+    return;
+  }
+  if (!/^image\/(png|jpeg|webp)$/i.test(file.type || "")) {
+    setDocumentationSprStatus("Header mora biti PNG, JPG ili WebP", "saving");
+    return;
+  }
+  const maxBytes = 5 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    setDocumentationSprStatus("Header je veći od 5 MB", "saving");
+    return;
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati header.");
+    documentationSprModel.headerImageDataUrl = dataUrl;
+    documentationSprModel.headerImageName = file.name || "header";
+    syncDocumentationSprPreviewControls();
+    renderDocumentationSprPreview();
+    scheduleDocumentationSprSave();
+  } catch {
+    setDocumentationSprStatus("Header nije učitan", "saving");
+  }
 }
 
 function readDocumentationSprFormIntoModel() {
@@ -57355,7 +57710,15 @@ function renderDocumentationSprLineList(value = "") {
   return lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
 }
 
-function renderDocumentationSprPaperHeader(model) {
+function renderDocumentationSprPaperHeader(model, { useUploadedHeader = false } = {}) {
+  if (useUploadedHeader && model.headerImageDataUrl) {
+    return `
+      <div class="documentation-spr-paper-header is-uploaded">
+        <img src="${escapeHtml(model.headerImageDataUrl)}" alt="${escapeHtml(model.headerImageName || "Header dokumenta")}" />
+        <div class="documentation-spr-paper-number">${escapeHtml(model.workOrderNumber)}</div>
+      </div>
+    `;
+  }
   return `
     <div class="documentation-spr-paper-header">
       <div class="documentation-spr-paper-logo">
@@ -57391,8 +57754,8 @@ function renderDocumentationSprSectionTitle(number, title) {
 
 function renderDocumentationSprPageOne(model) {
   return `
-    <section class="documentation-spr-paper">
-      ${renderDocumentationSprPaperHeader(model)}
+    <section class="documentation-spr-paper documentation-spr-paper-first">
+      ${renderDocumentationSprPaperHeader(model, { useUploadedHeader: true })}
       <div class="documentation-spr-paper-title">
         <h2>ZAPISNIK</h2>
         <strong>O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE</strong>
@@ -57555,6 +57918,527 @@ function renderDocumentationSprPreview() {
   }
 }
 
+function getDocumentationSprPdfFileName(model = documentationSprModel) {
+  const rawName = [
+    model?.issueDate || "",
+    model?.recordNumber || "",
+    model?.templateCode || "SPR",
+  ].filter(Boolean).join("-");
+  const baseName = String(rawName || "spr-zapisnik")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120)
+    || "spr-zapisnik";
+  return `${baseName}.pdf`;
+}
+
+function buildDocumentationSprPdfStyles() {
+  return `
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      color: #101010;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #fff;
+    }
+
+    body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .documentation-spr-pdf-toolbar {
+      position: fixed;
+      z-index: 10;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .documentation-spr-pdf-toolbar button {
+      min-height: 36px;
+      padding: 0 14px;
+      border: 1px solid #b7c7da;
+      border-radius: 8px;
+      background: #fff;
+      color: #142037;
+      font: 700 13px Arial, sans-serif;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    }
+
+    .documentation-spr-pdf-toolbar button:first-child {
+      border-color: #176bce;
+      background: #176bce;
+      color: #fff;
+    }
+
+    .documentation-spr-pdf-export {
+      width: 210mm;
+      margin: 0 auto;
+      background: #fff;
+    }
+
+    .documentation-spr-paper {
+      position: relative;
+      width: 210mm;
+      height: 296.5mm;
+      min-height: 0;
+      margin: 0 auto;
+      padding: 12mm 10mm 10mm;
+      background: #fff;
+      color: #101010;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11pt;
+      line-height: 1.28;
+      overflow: hidden;
+      break-after: page;
+      page-break-after: always;
+    }
+
+    .documentation-spr-paper:last-child {
+      break-after: auto;
+      page-break-after: auto;
+    }
+
+    .documentation-spr-paper-first::before {
+      content: "";
+      position: absolute;
+      top: 12mm;
+      bottom: 10mm;
+      left: 5mm;
+      width: 3px;
+      border-radius: 999px;
+      background: #0f74bd;
+    }
+
+    .documentation-spr-paper-header {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr) 74px;
+      align-items: start;
+      gap: 14px;
+      padding-bottom: 12px;
+      border-bottom: 3px solid #0f74bd;
+      color: #0067b1;
+    }
+
+    .documentation-spr-paper-header.is-uploaded {
+      position: relative;
+      display: block;
+      min-height: 29mm;
+      padding-bottom: 9px;
+      border-bottom: 0;
+    }
+
+    .documentation-spr-paper-header.is-uploaded img {
+      display: block;
+      width: 100%;
+      max-height: 31mm;
+      object-fit: contain;
+      object-position: top center;
+    }
+
+    .documentation-spr-paper-header.is-uploaded .documentation-spr-paper-number {
+      position: absolute;
+      top: 2mm;
+      right: 0;
+      padding: 2px 4px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .documentation-spr-paper-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #2c73b8;
+      font-weight: 900;
+    }
+
+    .documentation-spr-paper-logo-mark {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border: 2px solid #2c73b8;
+      border-radius: 50%;
+      font-size: 13px;
+    }
+
+    .documentation-spr-paper-logo small {
+      display: block;
+      margin-top: 2px;
+      color: #6f8aae;
+      font-size: 7pt;
+      letter-spacing: 0.12em;
+    }
+
+    .documentation-spr-paper-company {
+      display: grid;
+      gap: 1px;
+      text-align: center;
+      font-size: 8.5pt;
+    }
+
+    .documentation-spr-paper-company strong {
+      color: #005da8;
+      font-size: 8.5pt;
+    }
+
+    .documentation-spr-paper-number {
+      color: #6e7379;
+      font-size: 9pt;
+      text-align: right;
+    }
+
+    .documentation-spr-paper-title {
+      margin: 20px 0 14px;
+      text-align: center;
+    }
+
+    .documentation-spr-paper-title h2 {
+      margin: 0 0 8px;
+      color: #000;
+      font-size: 23pt;
+      letter-spacing: 0.26em;
+    }
+
+    .documentation-spr-paper-title strong {
+      font-size: 12pt;
+    }
+
+    .documentation-spr-paper-section-title {
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr);
+      align-items: center;
+      min-height: 18px;
+      margin: 11px 0 9px;
+      padding: 2px 8px;
+      background: #c9cccf;
+      color: #000;
+      font-weight: 900;
+    }
+
+    .documentation-spr-paper-kv {
+      width: 100%;
+      margin-bottom: 8px;
+      border-collapse: collapse;
+    }
+
+    .documentation-spr-paper-kv td {
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+
+    .documentation-spr-paper-kv td:first-child {
+      width: 190px;
+      font-weight: 900;
+    }
+
+    .documentation-spr-paper-list {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 10px;
+    }
+
+    .documentation-spr-paper-list div {
+      min-height: 15px;
+    }
+
+    .documentation-spr-paper-text {
+      white-space: pre-line;
+      text-align: justify;
+    }
+
+    .documentation-spr-paper-note-title {
+      margin: 14px 0 8px;
+      padding: 3px 4px;
+      background: #c9cccf;
+      font-weight: 900;
+    }
+
+    .documentation-spr-paper-simple-header {
+      position: relative;
+      min-height: 82px;
+      padding: 19px 90px 8px;
+      border: 1px solid #111;
+      text-align: center;
+    }
+
+    .documentation-spr-paper-simple-header strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12pt;
+    }
+
+    .documentation-spr-paper-rn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      color: #6e7379;
+      font-size: 9pt;
+    }
+
+    .documentation-spr-paper-place {
+      position: absolute;
+      left: 2px;
+      bottom: 6px;
+      color: #777;
+      font-size: 9pt;
+    }
+
+    .documentation-spr-paper-measure-title {
+      margin: 4px 0 2px;
+      font-style: italic;
+    }
+
+    .documentation-spr-paper-measure-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 10.5pt;
+    }
+
+    .documentation-spr-paper-measure-table th,
+    .documentation-spr-paper-measure-table td {
+      padding: 6px 5px;
+      border: 1px solid #111;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .documentation-spr-paper-measure-table th {
+      background: #bfc1c3;
+      font-weight: 900;
+    }
+
+    .documentation-spr-paper-measure-table th:nth-child(1) {
+      width: 52px;
+    }
+
+    .documentation-spr-paper-measure-table th:nth-child(3) {
+      width: 78px;
+    }
+
+    .documentation-spr-paper-measure-table th:nth-child(4),
+    .documentation-spr-paper-measure-table th:nth-child(5) {
+      width: 74px;
+    }
+
+    .documentation-spr-paper-measure-table th:nth-child(6) {
+      width: 118px;
+    }
+
+    .documentation-spr-paper-signature-area {
+      min-height: 132px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .documentation-spr-paper-signature-area.is-bottom {
+      min-height: 120px;
+      grid-template-columns: minmax(0, 1fr) 300px;
+    }
+
+    .documentation-spr-paper-signature-area span,
+    .documentation-spr-signature-box span,
+    .documentation-spr-paper-signature-area strong,
+    .documentation-spr-signature-box strong {
+      display: block;
+      text-align: center;
+    }
+
+    .documentation-spr-signature-box {
+      min-height: 98px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .documentation-spr-signature-box i,
+    .documentation-spr-paper-signature-area i {
+      width: 190px;
+      height: 42px;
+      display: block;
+      margin: 2px auto 0;
+      border-bottom: 2px solid rgba(65, 92, 180, 0.42);
+      transform: rotate(-5deg);
+    }
+
+    .documentation-spr-paper-conclusion {
+      margin: 22px 0;
+      font-size: 14pt;
+      font-weight: 900;
+      letter-spacing: 0.38em;
+      text-align: center;
+    }
+
+    .documentation-spr-paper-center {
+      text-align: center;
+    }
+
+    .documentation-spr-paper-right {
+      text-align: right;
+    }
+
+    .documentation-spr-paper-footer {
+      margin-top: 22px;
+      color: #111;
+      font-size: 10pt;
+    }
+
+    @media screen {
+      html,
+      body {
+        background: #dfe7f0;
+      }
+
+      body {
+        padding: 18px 0;
+      }
+
+      .documentation-spr-paper {
+        margin-bottom: 18px;
+        box-shadow: 0 18px 36px rgba(10, 22, 40, 0.2);
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        width: 210mm;
+        min-width: 210mm;
+        background: #fff;
+      }
+
+      body {
+        padding: 0;
+      }
+
+      .documentation-spr-pdf-toolbar {
+        display: none !important;
+      }
+
+      .documentation-spr-pdf-export {
+        width: 210mm;
+        margin: 0;
+      }
+
+      .documentation-spr-paper {
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+  `;
+}
+
+function triggerDocumentationSprHtmlDownload(html = "", fileName = "spr-zapisnik.html") {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1_000);
+}
+
+function buildDocumentationSprPdfHtml(model = documentationSprModel, rows = getDocumentationSprMeasurementRows()) {
+  const title = getDocumentationSprPdfFileName(model).replace(/\.pdf$/i, "");
+  const pagesHtml = [
+    renderDocumentationSprPageOne(model),
+    renderDocumentationSprPageTwo(model),
+    renderDocumentationSprPageThree(model, rows),
+    renderDocumentationSprPageFour(model),
+  ].join("");
+
+  return `<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>${buildDocumentationSprPdfStyles()}</style>
+  </head>
+  <body>
+    <nav class="documentation-spr-pdf-toolbar" aria-label="PDF akcije">
+      <button type="button" onclick="window.print()">PDF</button>
+      <button type="button" onclick="window.close()">Zatvori</button>
+    </nav>
+    <main class="documentation-spr-pdf-export">${pagesHtml}</main>
+    <script>
+      (function () {
+        function printDocument() {
+          window.setTimeout(function () {
+            window.focus();
+            window.print();
+          }, 350);
+        }
+        if (document.readyState === "complete") {
+          printDocument();
+        } else {
+          window.addEventListener("load", printDocument, { once: true });
+        }
+      }());
+    </script>
+  </body>
+</html>`;
+}
+
+function exportDocumentationSprPdf() {
+  if (!documentationSprModel) {
+    return;
+  }
+  readDocumentationSprFormIntoModel();
+  if (documentationSprGridlineApi?.getModel) {
+    documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(documentationSprGridlineApi.getModel());
+  }
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+
+  const fileName = getDocumentationSprPdfFileName(documentationSprModel);
+  const rows = getDocumentationSprMeasurementRows();
+  const html = buildDocumentationSprPdfHtml(documentationSprModel, rows);
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    setDocumentationSprStatus("Dopusti popup za PDF", "saving");
+    triggerDocumentationSprHtmlDownload(html, fileName.replace(/\.pdf$/i, ".html"));
+    return;
+  }
+
+  try {
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    setDocumentationSprStatus("PDF prozor otvoren", "saved");
+  } catch (error) {
+    console.error("Ne mogu otvoriti PDF export prozor.", error);
+    printWindow.close();
+    setDocumentationSprStatus("PDF export nije otvoren", "saving");
+  }
+}
+
 function mountDocumentationSprGridline() {
   if (!documentationSprGridline || !documentationSprModel) {
     return;
@@ -57616,9 +58500,59 @@ function initDocumentationSprWorkbench() {
       syncDocumentationSprSourceSummary();
       scheduleDocumentationSprSave();
     });
+    documentationSprPreviewToggleButton?.addEventListener("click", () => {
+      setDocumentationSprPreviewHidden(!documentationSprModel?.previewHidden);
+    });
+    documentationSprPreviewPanelToggleButton?.addEventListener("click", () => {
+      setDocumentationSprPreviewHidden(true);
+    });
+    documentationSprHeaderUploadButton?.addEventListener("click", () => {
+      documentationSprHeaderFileInput?.click();
+    });
+    documentationSprHeaderFileInput?.addEventListener("change", () => {
+      const file = documentationSprHeaderFileInput.files?.[0] || null;
+      if (documentationSprHeaderFileInput instanceof HTMLInputElement) {
+        documentationSprHeaderFileInput.value = "";
+      }
+      if (file) {
+        void handleDocumentationSprHeaderUpload(file);
+      }
+    });
+    documentationSprHeaderClearButton?.addEventListener("click", () => {
+      if (!documentationSprModel) {
+        return;
+      }
+      documentationSprModel.headerImageDataUrl = "";
+      documentationSprModel.headerImageName = "";
+      syncDocumentationSprPreviewControls();
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    });
     documentationSprEquipmentSelect?.addEventListener("change", () => {
       documentationSprModel.measurementEquipmentIds = getDocumentationSprSelectValues(documentationSprEquipmentSelect);
       applyDocumentationSprEquipmentSelection(documentationSprModel.measurementEquipmentIds);
+    });
+    documentationSprEquipmentSearchInput?.addEventListener("input", () => {
+      renderDocumentationSprEquipmentPicker();
+    });
+    documentationSprEquipmentList?.addEventListener("click", (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-equipment-id]")
+        : null;
+      if (!target || !documentationSprModel) {
+        return;
+      }
+      const id = String(target.getAttribute("data-documentation-spr-equipment-id") || "").trim();
+      if (!id) {
+        return;
+      }
+      const selected = new Set(normalizeDocumentationSprIdList(documentationSprModel.measurementEquipmentIds));
+      if (selected.has(id)) {
+        selected.delete(id);
+      } else {
+        selected.add(id);
+      }
+      applyDocumentationSprEquipmentSelection(Array.from(selected));
     });
     documentationSprEquipmentApplyButton?.addEventListener("click", () => {
       applyDocumentationSprEquipmentSelection();
@@ -57632,6 +58566,28 @@ function initDocumentationSprWorkbench() {
     documentationSprLegalSelect?.addEventListener("change", () => {
       documentationSprModel.legalFrameworkIds = getDocumentationSprSelectValues(documentationSprLegalSelect);
       applyDocumentationSprLegalSelection(documentationSprModel.legalFrameworkIds);
+    });
+    documentationSprLegalSearchInput?.addEventListener("input", () => {
+      renderDocumentationSprLegalPicker();
+    });
+    documentationSprLegalList?.addEventListener("click", (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-legal-id]")
+        : null;
+      if (!target || !documentationSprModel) {
+        return;
+      }
+      const id = String(target.getAttribute("data-documentation-spr-legal-id") || "").trim();
+      if (!id) {
+        return;
+      }
+      const selected = new Set(normalizeDocumentationSprIdList(documentationSprModel.legalFrameworkIds));
+      if (selected.has(id)) {
+        selected.delete(id);
+      } else {
+        selected.add(id);
+      }
+      applyDocumentationSprLegalSelection(Array.from(selected));
     });
     documentationSprLegalApplyButton?.addEventListener("click", () => {
       applyDocumentationSprLegalSelection();
@@ -57650,10 +58606,51 @@ function initDocumentationSprWorkbench() {
       documentationSprModel.inspectorUserIds = getDocumentationSprSelectValues(documentationSprInspectorUsersSelect);
       applyDocumentationSprPeopleSelection({ inspectorIds: documentationSprModel.inspectorUserIds });
     });
+    documentationSprPeopleSearchInput?.addEventListener("input", () => {
+      renderDocumentationSprPeoplePicker();
+    });
+    documentationSprInspectorUserList?.addEventListener("click", (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-inspector-user-id]")
+        : null;
+      if (!target || !documentationSprModel) {
+        return;
+      }
+      const id = String(target.getAttribute("data-documentation-spr-inspector-user-id") || "").trim();
+      if (!id) {
+        return;
+      }
+      const selected = new Set(normalizeDocumentationSprIdList(documentationSprModel.inspectorUserIds));
+      if (selected.has(id)) {
+        selected.delete(id);
+      } else {
+        selected.add(id);
+      }
+      applyDocumentationSprPeopleSelection({
+        inspectorIds: Array.from(selected),
+        responsibleUserId: documentationSprModel.responsiblePersonUserId,
+      });
+    });
     documentationSprResponsibleUserSelect?.addEventListener("change", () => {
       applyDocumentationSprPeopleSelection({
         inspectorIds: documentationSprModel.inspectorUserIds,
         responsibleUserId: documentationSprResponsibleUserSelect.value,
+      });
+    });
+    documentationSprResponsibleUserList?.addEventListener("click", (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-responsible-user-id]")
+        : null;
+      if (!target || !documentationSprModel) {
+        return;
+      }
+      const id = String(target.getAttribute("data-documentation-spr-responsible-user-id") || "").trim();
+      if (!id) {
+        return;
+      }
+      applyDocumentationSprPeopleSelection({
+        inspectorIds: documentationSprModel.inspectorUserIds,
+        responsibleUserId: documentationSprModel.responsiblePersonUserId === id ? "" : id,
       });
     });
     documentationSprPeopleApplyButton?.addEventListener("click", () => {
@@ -57666,6 +58663,7 @@ function initDocumentationSprWorkbench() {
       documentationSprModel = createDefaultDocumentationSprModel();
       writeDocumentationSprModelToForm();
       renderDocumentationSprSourceControls();
+      syncDocumentationSprPreviewControls();
       if (documentationSprGridlineApi?.setModel) {
         documentationSprGridlineApi.setModel(documentationSprModel.gridlineModel);
       } else {
@@ -57673,6 +58671,9 @@ function initDocumentationSprWorkbench() {
       }
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
+    });
+    documentationSprPdfButton?.addEventListener("click", () => {
+      exportDocumentationSprPdf();
     });
     documentationSprDownloadButton?.addEventListener("click", () => {
       readDocumentationSprFormIntoModel();
@@ -57696,6 +58697,7 @@ function initDocumentationSprWorkbench() {
     mountDocumentationSprGridline();
   }
   syncDocumentationSprSourceSummary();
+  syncDocumentationSprPreviewControls();
   renderDocumentationSprPreview();
 }
 
