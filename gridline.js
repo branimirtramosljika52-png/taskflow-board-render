@@ -201,13 +201,16 @@
     var rootElement = grid ? grid.closest("[data-gridline-instance]") || host : host;
     var model;
     var active = { row: 0, column: 0 };
+    var selectedCell = null;
     var saveTimer = 0;
     var saveDelay = clampInteger(options && options.saveDelayMs, 450, 0, 60000);
     var storageKey = options && Object.prototype.hasOwnProperty.call(options, "storageKey")
       ? options.storageKey
       : (rootElement && rootElement.dataset ? rootElement.dataset.gridlineStorageKey : "") || DEFAULT_STORAGE_KEY;
     var onChange = options && typeof options.onChange === "function" ? options.onChange : null;
+    var changeMode = String(options && (options.changeMode || options.emitChangeMode) || "input").toLowerCase();
     var autoGrow = !(options && options.autoGrow === false);
+    var pendingExternalChange = false;
 
     if (!grid || !status || !formulaInput || !cellRef) {
       return null;
@@ -222,8 +225,12 @@
       : (readStoredModel(storageKey, options) || createDefaultModel(options));
 
     function setStatus(text, className) {
+      var nextClassName = ("status " + (className || "")).trim();
+      if (status.textContent === text && status.className === nextClassName) {
+        return;
+      }
       status.textContent = text;
-      status.className = ("status " + (className || "")).trim();
+      status.className = nextClassName;
     }
 
     function showGridError(error) {
@@ -266,16 +273,31 @@
       }
     }
 
+    function flushPendingChange() {
+      if (saveTimer) {
+        window.clearTimeout(saveTimer);
+        saveTimer = 0;
+      }
+      writeStoredModel(storageKey, model);
+      if (pendingExternalChange) {
+        pendingExternalChange = false;
+        emitChange();
+      }
+      setStatus(storageKey ? "Spremljeno lokalno" : "Spremno", "is-saved");
+    }
+
     function scheduleSave() {
       setStatus(storageKey ? "Lokalna izmjena" : "Izmjena", "is-saving");
-      emitChange();
+      pendingExternalChange = true;
+      if (changeMode !== "debounced") {
+        pendingExternalChange = false;
+        emitChange();
+      }
       if (saveTimer) {
         window.clearTimeout(saveTimer);
       }
       saveTimer = window.setTimeout(function () {
-        saveTimer = 0;
-        writeStoredModel(storageKey, model);
-        setStatus(storageKey ? "Spremljeno lokalno" : "Spremno", "is-saved");
+        flushPendingChange();
       }, saveDelay);
     }
 
@@ -307,13 +329,15 @@
         row: Math.max(0, Math.min(model.rowCount - 1, row)),
         column: Math.max(0, Math.min(model.columnCount - 1, column)),
       };
-      Array.prototype.forEach.call(grid.querySelectorAll("td.is-selected"), function (cell) {
-        cell.classList.remove("is-selected");
-      });
+      if (selectedCell) {
+        selectedCell.classList.remove("is-selected");
+        selectedCell = null;
+      }
       input = getInput(active.row, active.column);
       td = input ? input.parentElement : null;
       if (td) {
         td.classList.add("is-selected");
+        selectedCell = td;
       }
       cellRef.textContent = columnLabel(active.column) + (active.row + 1);
       formulaInput.value = getValue(active.row, active.column);
@@ -370,6 +394,7 @@
       }
       fragment.appendChild(tbody);
       clearNode(grid);
+      selectedCell = null;
       grid.appendChild(fragment);
       selectCell(active.row, active.column, { focus: false });
     }
@@ -524,10 +549,7 @@
     }
 
     function destroy() {
-      if (saveTimer) {
-        window.clearTimeout(saveTimer);
-        saveTimer = 0;
-      }
+      flushPendingChange();
       grid.removeEventListener("focusin", handleFocusIn);
       grid.removeEventListener("input", handleInput);
       grid.removeEventListener("keydown", handleKeydown);
@@ -551,6 +573,7 @@
 
     return {
       destroy: destroy,
+      flush: flushPendingChange,
       getModel: function () { return cloneModel(model); },
       setModel: function (nextModel) {
         model = normalizeModel(nextModel, options);

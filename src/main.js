@@ -5205,6 +5205,7 @@ let documentTemplateHtmlBuilderEngine = null;
 let documentTemplateHtmlCodeDirty = false;
 let collapsedDocumentTemplateChapterIds = new Set();
 let documentTemplateMeasurementInlineHosts = new Map();
+let documentTemplateGridlineDesignerEditors = new Map();
 let workOrderDocumentWorkEnvironmentMeasurementInlineHosts = new Map();
 let learningTestMaterialDrafts = [];
 let learningTestPreviewSlideIndex = 0;
@@ -59672,12 +59673,55 @@ function buildDocumentTemplateGridlineText(model = null) {
     .join("\n");
 }
 
+function cloneDocumentTemplateGridlineModelForEditor(model = null) {
+  const source = model && typeof model === "object" && !Array.isArray(model) ? model : {};
+  const rowCount = Math.max(1, Math.min(1000, Math.round(Number(source.rowCount) || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_ROWS)));
+  const columnCount = Math.max(1, Math.min(60, Math.round(Number(source.columnCount) || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_COLUMNS)));
+  const dataSource = source.data && typeof source.data === "object" && !Array.isArray(source.data)
+    ? source.data
+    : {};
+  const data = {};
+
+  Object.entries(dataSource).forEach(([key, rawValue]) => {
+    const value = String(rawValue ?? "");
+    if (value) {
+      data[key] = value.slice(0, 2000);
+    }
+  });
+
+  return { rowCount, columnCount, data };
+}
+
+function getDocumentTemplateGridlineSummaryFast(model = null) {
+  const normalized = cloneDocumentTemplateGridlineModelForEditor(model);
+  return `${normalized.rowCount} redova · ${normalized.columnCount} kolona · ${Object.keys(normalized.data ?? {}).length} popunjeno`;
+}
+
+function flushDocumentTemplateGridlineDesignerEditors() {
+  documentTemplateGridlineDesignerEditors.forEach((entry, key) => {
+    if (!entry?.shell?.isConnected) {
+      documentTemplateGridlineDesignerEditors.delete(key);
+      return;
+    }
+    if (typeof entry.api?.flush === "function") {
+      entry.api.flush();
+    }
+    if (typeof entry.syncDraft === "function") {
+      entry.syncDraft(entry.api?.getModel?.() ?? entry.latestModel, { force: true });
+    }
+  });
+}
+
 function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
   const rows = normalizeDocumentTemplateGridlineRows(field.gridlineRows);
   const model = normalizeDocumentTemplateGridlineModel(field.gridlineModel, rows);
   if (draftIndex >= 0 && documentTemplateFieldDrafts[draftIndex]) {
-    documentTemplateFieldDrafts[draftIndex].gridlineRows = rows;
-    documentTemplateFieldDrafts[draftIndex].gridlineModel = model;
+    if (!documentTemplateFieldDrafts[draftIndex].gridlineRows?.length) {
+      documentTemplateFieldDrafts[draftIndex].gridlineRows = rows;
+    }
+    if (!documentTemplateFieldDrafts[draftIndex].gridlineModel) {
+      documentTemplateFieldDrafts[draftIndex].gridlineModel = model;
+    }
   }
 
   const shell = document.createElement("div");
@@ -59716,7 +59760,15 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
   addColumnButton.dataset.gridlineAction = "add-column";
   const clearButton = createActionButton("Očisti", "ghost-button");
   clearButton.dataset.gridlineAction = "clear";
-  actions.append(status, summary, addRowButton, addColumnButton, clearButton);
+  const applyButton = createActionButton("Primijeni", "ghost-button", () => {
+    const entry = documentTemplateGridlineDesignerEditors.get(editorKey);
+    entry?.api?.flush?.();
+    syncDesignerModelToDraft(entry?.api?.getModel?.() ?? latestModel, {
+      force: true,
+      refreshPreview: true,
+    });
+  });
+  actions.append(status, summary, addRowButton, addColumnButton, clearButton, applyButton);
   topbar.append(titleWrap, actions);
 
   const formula = document.createElement("div");
@@ -59743,22 +59795,51 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
   shell.append(topbar, formula, gridShell);
 
   let latestModel = model;
-  let previewTimer = 0;
-  const persistDesignerModel = (nextModel) => {
-    latestModel = normalizeDocumentTemplateGridlineModel(nextModel, rows);
-    summary.textContent = getDocumentTemplateGridlineSummary(latestModel);
+  let summaryAnimationFrame = 0;
+  const editorKey = String(field.id || `gridline-template-${draftIndex}`);
+  const scheduleSummaryUpdate = () => {
+    if (summaryAnimationFrame) {
+      return;
+    }
+    summaryAnimationFrame = window.requestAnimationFrame(() => {
+      summaryAnimationFrame = 0;
+      summary.textContent = getDocumentTemplateGridlineSummaryFast(latestModel);
+    });
+  };
+  const syncDesignerModelToDraft = (nextModel, { force = false, refreshPreview = false } = {}) => {
+    latestModel = cloneDocumentTemplateGridlineModelForEditor(nextModel);
+    const registryEntry = documentTemplateGridlineDesignerEditors.get(editorKey);
+    if (registryEntry) {
+      registryEntry.latestModel = latestModel;
+    }
+    scheduleSummaryUpdate();
     if (draftIndex >= 0 && documentTemplateFieldDrafts[draftIndex]) {
       documentTemplateFieldDrafts[draftIndex].gridlineRows = rows;
       documentTemplateFieldDrafts[draftIndex].gridlineModel = latestModel;
+      invalidateDocumentTemplateDraftCache();
     }
-    if (previewTimer) {
-      window.clearTimeout(previewTimer);
+    if (force && summaryAnimationFrame) {
+      window.cancelAnimationFrame(summaryAnimationFrame);
+      summaryAnimationFrame = 0;
+      summary.textContent = getDocumentTemplateGridlineSummaryFast(latestModel);
     }
-    previewTimer = window.setTimeout(() => {
-      previewTimer = 0;
+    if (refreshPreview) {
       renderDocumentTemplatePreviewContent();
-    }, 650);
+    }
   };
+
+  shell.addEventListener("focusout", () => {
+    window.setTimeout(() => {
+      if (!shell.contains(document.activeElement)) {
+        const entry = documentTemplateGridlineDesignerEditors.get(editorKey);
+        entry?.api?.flush?.();
+        syncDesignerModelToDraft(entry?.api?.getModel?.() ?? latestModel, {
+          force: true,
+          refreshPreview: false,
+        });
+      }
+    }, 0);
+  });
 
   requestAnimationFrame(() => {
     if (!shell.isConnected) {
@@ -59772,13 +59853,23 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
       gridShell.replaceChildren(error);
       return;
     }
-    gridlineApi.mount(shell, {
+    const api = gridlineApi.mount(shell, {
       model: latestModel,
       storageKey: "",
       defaultRows: latestModel.rowCount || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_ROWS,
       defaultColumns: latestModel.columnCount || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_COLUMNS,
-      saveDelayMs: 350,
-      onChange: persistDesignerModel,
+      saveDelayMs: 900,
+      changeMode: "debounced",
+      onChange: (nextModel) => {
+        syncDesignerModelToDraft(nextModel);
+      },
+    });
+    documentTemplateGridlineDesignerEditors.set(editorKey, {
+      api,
+      shell,
+      draftIndex,
+      latestModel,
+      syncDraft: syncDesignerModelToDraft,
     });
   });
 
@@ -64125,6 +64216,7 @@ function buildDocumentTemplateDraft() {
 }
 
 function buildDocumentTemplatePayload() {
+  flushDocumentTemplateGridlineDesignerEditors();
   return buildDocumentTemplateDraft();
 }
 
@@ -87724,7 +87816,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
   }
 
   invalidateDocumentTemplateDraftCache();
+  flushDocumentTemplateGridlineDesignerEditors();
   documentTemplateMeasurementInlineHosts = new Map();
+  documentTemplateGridlineDesignerEditors = new Map();
 
   if (isDocumentTemplateRuntimeFillMode()) {
     renderDocumentTemplateRuntimeFieldRows();

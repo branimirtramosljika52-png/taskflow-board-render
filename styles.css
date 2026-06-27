@@ -48017,6 +48017,9 @@ body.is-measurement-equipment-export-open {
 
 .document-template-item-card.is-gridline-block {
   cursor: default;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 560px;
 }
 
 .document-template-item-card.is-gridline-block:hover {
@@ -48139,6 +48142,7 @@ body.is-measurement-equipment-export-open {
   min-height: 500px;
   padding: 12px;
   border-radius: 16px;
+  contain: layout paint style;
   background:
     radial-gradient(circle at 14% 0%, rgba(31, 111, 255, 0.13), transparent 24rem),
     linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.97));
@@ -48188,6 +48192,15 @@ body.is-measurement-equipment-export-open {
 .document-template-gridline-demo.is-template-editor .documentation-gridline-scroll {
   min-height: 300px;
   max-height: 430px;
+  overscroll-behavior: contain;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-shell {
+  contain: strict;
+}
+
+.document-template-gridline-demo.is-template-editor .documentation-gridline-formula {
+  contain: layout paint style;
 }
 
 .document-template-gridline-demo.is-template-editor table {
