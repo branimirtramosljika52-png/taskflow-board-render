@@ -200,6 +200,7 @@ await cp(resolve(rootDir, "src", "styles"), resolve(distDir, "src", "styles"), {
 await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "assets", "safenexus-logo.png"));
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
 await copyMobileAssets();
+await copyOptionalDirectory(resolve(rootDir, "assets", "exports"), resolve(distDir, "assets", "exports"));
 await copyOptionalDirectory(resolve(rootDir, "assets", "ozo"), resolve(distDir, "assets", "ozo"));
 await cp(resolve(rootDir, "node_modules", "three", "build", "three.module.js"), resolve(distDir, "assets", "vendor", "three.module.js"));
 await cp(resolve(rootDir, "node_modules", "leaflet", "dist", "leaflet.js"), resolve(distDir, "assets", "vendor", "leaflet.js"));
