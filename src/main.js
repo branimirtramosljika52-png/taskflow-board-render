@@ -58899,6 +58899,162 @@ function getDocumentationSprBatchSummaries() {
   return getDocumentationSprBatchEntries().map((entry, index) => getDocumentationSprBatchEntrySummary(entry, index));
 }
 
+function getDocumentationSprBatchDockGroups(entries = getDocumentationSprBatchEntries()) {
+  return groupDocumentTemplateRuntimeDockEntries((Array.isArray(entries) ? entries : []).map((entry, index) => {
+    const summary = getDocumentationSprBatchEntrySummary(entry, index);
+    const workOrderId = String(entry.workOrderId || entry.workOrder?.id || summary.workOrderNumber || `rn-${index + 1}`).trim();
+    return {
+      workOrderId,
+      workOrderNumber: summary.workOrderNumber,
+      templateTitle: summary.serviceCode || summary.serviceName || entry.templateName || "SPR zapisnik",
+      serviceCode: summary.serviceCode,
+      serviceName: summary.serviceName,
+      recordNumber: summary.recordNumber,
+      companyName: summary.companyName,
+      locationName: summary.inspectionPlace,
+      objectName: summary.objectName,
+      completion: summary.completion,
+      rowsCount: summary.rowsCount,
+      entryId: entry.id,
+    };
+  }));
+}
+
+function openDocumentationSprBatchDockIndex(index = 0) {
+  const entries = getDocumentationSprBatchEntries();
+  if (!entries.length) {
+    return;
+  }
+  const safeIndex = Math.max(0, Math.min(entries.length - 1, Number(index) || 0));
+  documentationSprWorkOrderBatch.summaryVisible = false;
+  applyDocumentationSprBatchEntry(safeIndex);
+  requestAnimationFrame(() => {
+    const activeCard = documentationSprBatchDockTrack?.querySelector(".work-order-bottom-card.is-active");
+    activeCard?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  });
+}
+
+function createDocumentationSprBatchDockCard(group = {}, activeIndex = 0) {
+  const items = Array.isArray(group.items) ? group.items : [];
+  const isActive = !documentationSprWorkOrderBatch.summaryVisible
+    && items.some((item) => Number(item.dockIndex) === activeIndex);
+  const allComplete = items.length > 0 && items.every((item) => item.completion?.ok);
+  const hasProblem = items.some((item) => !item.completion?.ok);
+
+  const card = document.createElement("div");
+  card.className = "document-template-runtime-dock-group work-order-bottom-card documentation-spr-bottom-card";
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.classList.toggle("is-active", isActive);
+  card.classList.toggle("is-complete", allComplete);
+  card.classList.toggle("is-warning", hasProblem);
+  card.setAttribute("aria-label", `Otvori RN ${group.workOrderNumber || "bez broja"}`);
+
+  const openFirstItem = () => {
+    const firstIndex = Number(items[0]?.dockIndex);
+    if (Number.isFinite(firstIndex) && firstIndex >= 0) {
+      openDocumentationSprBatchDockIndex(firstIndex);
+    }
+  };
+  card.addEventListener("click", openFirstItem);
+  card.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    openFirstItem();
+  });
+
+  const head = document.createElement("span");
+  head.className = "work-order-bottom-card-head";
+  const dot = document.createElement("span");
+  dot.className = `work-order-bottom-card-dot ${allComplete ? "is-ok" : (hasProblem ? "is-error" : "is-neutral")}`;
+  dot.setAttribute("aria-hidden", "true");
+  const title = document.createElement("strong");
+  title.textContent = `RN: ${group.workOrderNumber || "bez broja"}`;
+  head.append(dot, title);
+
+  const serviceRow = document.createElement("span");
+  serviceRow.className = "work-order-bottom-card-services";
+  const visibleItems = items.length > 3 ? items.slice(0, 2) : items.slice(0, 3);
+  visibleItems.forEach((item) => {
+    const badge = document.createElement("button");
+    const index = Number(item.dockIndex);
+    const isItemActive = Number.isFinite(index) && index === activeIndex && !documentationSprWorkOrderBatch.summaryVisible;
+    badge.type = "button";
+    badge.className = "work-order-bottom-card-service is-sequence";
+    badge.classList.toggle("is-active-report", isItemActive);
+    badge.classList.toggle("is-error", !item.completion?.ok);
+    badge.textContent = item.serviceCode || item.timelineLabel || item.serviceName || "SPR";
+    badge.title = [
+      group.workOrderNumber ? `RN ${group.workOrderNumber}` : "",
+      item.serviceName || item.serviceCode || "SPR zapisnik",
+      item.recordNumber ? `Zapisnik ${item.recordNumber}` : "",
+      item.completion?.ok ? "Spremno" : (item.completion?.missing || []).join(", "),
+    ].filter(Boolean).join(" · ");
+    badge.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (Number.isFinite(index) && index >= 0) {
+        openDocumentationSprBatchDockIndex(index);
+      }
+    });
+    serviceRow.append(badge);
+  });
+  if (items.length > visibleItems.length) {
+    const more = document.createElement("span");
+    more.className = "work-order-bottom-card-service is-neutral";
+    more.textContent = `+${items.length - visibleItems.length}`;
+    serviceRow.append(more);
+  }
+  if (!items.length) {
+    const empty = document.createElement("span");
+    empty.className = "work-order-bottom-card-service is-neutral";
+    empty.textContent = "N/A";
+    serviceRow.append(empty);
+  }
+
+  card.append(head, serviceRow);
+  return card;
+}
+
+function createDocumentationSprBatchSummaryDockCard(groups = [], summaries = []) {
+  const readyCount = summaries.filter((item) => item.completion.ok).length;
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "document-template-runtime-dock-group work-order-bottom-card documentation-spr-bottom-card is-summary";
+  card.classList.toggle("is-active", Boolean(documentationSprWorkOrderBatch.summaryVisible));
+  card.setAttribute("aria-label", "Otvori sažetak i primopredajni zapisnik");
+
+  const head = document.createElement("span");
+  head.className = "work-order-bottom-card-head";
+  const dot = document.createElement("span");
+  dot.className = "work-order-bottom-card-dot is-neutral";
+  dot.setAttribute("aria-hidden", "true");
+  const title = document.createElement("strong");
+  title.textContent = "Svi nalozi";
+  head.append(dot, title);
+
+  const serviceRow = document.createElement("span");
+  serviceRow.className = "work-order-bottom-card-services";
+  [
+    `${groups.length} RN`,
+    `${summaries.length} zap.`,
+    `${readyCount}/${summaries.length}`,
+  ].forEach((label) => {
+    const badge = document.createElement("span");
+    badge.className = "work-order-bottom-card-service is-neutral";
+    badge.textContent = label;
+    serviceRow.append(badge);
+  });
+
+  card.append(head, serviceRow);
+  card.addEventListener("click", () => {
+    toggleDocumentationSprBatchSummary(true);
+  });
+  return card;
+}
+
 function renderDocumentationSprBatchDock() {
   const entries = getDocumentationSprBatchEntries();
   const isVisible = isDocumentationSprBatchMode();
@@ -58915,15 +59071,20 @@ function renderDocumentationSprBatchDock() {
 
   const activeIndex = Math.max(0, Math.min(entries.length - 1, Number(documentationSprWorkOrderBatch.activeIndex || 0)));
   const activeSummary = getDocumentationSprBatchEntrySummary(entries[activeIndex], activeIndex);
-  const readyCount = getDocumentationSprBatchSummaries().filter((item) => item.completion.ok).length;
+  const summaries = getDocumentationSprBatchSummaries();
+  const readyCount = summaries.filter((item) => item.completion.ok).length;
+  const groupedEntries = getDocumentationSprBatchDockGroups(entries);
 
   if (documentationSprBatchDockTitle) {
-    documentationSprBatchDockTitle.textContent = `RN ${activeSummary.workOrderNumber}`;
+    documentationSprBatchDockTitle.textContent = documentationSprWorkOrderBatch.summaryVisible
+      ? "Radni nalozi"
+      : `RN ${activeSummary.workOrderNumber}`;
   }
   if (documentationSprBatchDockMeta) {
     documentationSprBatchDockMeta.textContent = [
-      `${activeIndex + 1}/${entries.length}`,
-      activeSummary.serviceCode || activeSummary.serviceName || "Zapisnik",
+      `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-ova"}`,
+      `${activeIndex + 1}/${entries.length} zapisnik`,
+      activeSummary.serviceCode || activeSummary.serviceName || "Usluga",
       `${readyCount}/${entries.length} spremno`,
     ].filter(Boolean).join(" · ");
   }
@@ -58939,45 +59100,10 @@ function renderDocumentationSprBatchDock() {
   });
 
   if (documentationSprBatchDockTrack) {
-    documentationSprBatchDockTrack.replaceChildren(...entries.map((entry, index) => {
-      const summary = getDocumentationSprBatchEntrySummary(entry, index);
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "work-order-bottom-card documentation-spr-bottom-card";
-      card.classList.toggle("is-active", index === activeIndex);
-      card.classList.toggle("is-complete", summary.completion.ok);
-      card.classList.toggle("is-warning", !summary.completion.ok);
-      card.setAttribute("aria-label", `Otvori RN ${summary.workOrderNumber}`);
-
-      const head = document.createElement("span");
-      head.className = "work-order-bottom-card-head";
-      const dot = document.createElement("span");
-      dot.className = `work-order-bottom-card-dot ${summary.completion.ok ? "is-ok" : "is-error"}`;
-      dot.setAttribute("aria-hidden", "true");
-      const title = document.createElement("strong");
-      title.textContent = `RN: ${summary.workOrderNumber}`;
-      head.append(dot, title);
-
-      const services = document.createElement("span");
-      services.className = "work-order-bottom-card-services";
-      const code = document.createElement("span");
-      code.className = "work-order-bottom-card-service is-sequence";
-      code.textContent = summary.serviceCode || "DOC";
-      const status = document.createElement("span");
-      status.className = `work-order-bottom-card-service ${summary.completion.ok ? "is-ok" : "is-error"}`;
-      status.textContent = summary.completion.ok ? "OK" : "!";
-      const rows = document.createElement("span");
-      rows.className = "work-order-bottom-card-service is-neutral";
-      rows.textContent = `${summary.rowsCount || 0}r`;
-      services.append(code, status, rows);
-
-      card.append(head, services);
-      card.addEventListener("click", () => {
-        documentationSprWorkOrderBatch.summaryVisible = false;
-        applyDocumentationSprBatchEntry(index);
-      });
-      return card;
-    }));
+    documentationSprBatchDockTrack.replaceChildren(
+      ...groupedEntries.map((group) => createDocumentationSprBatchDockCard(group, activeIndex)),
+      createDocumentationSprBatchSummaryDockCard(groupedEntries, summaries),
+    );
   }
 
   renderDocumentationSprBatchSummary();
