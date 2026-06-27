@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260627-spr-attachments-v12" />
+    <link rel="stylesheet" href="/styles.css?v=20260627-spr-signature-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -6487,6 +6487,7 @@
                     <button type="button" id="documentation-spr-header-clear" class="ghost-button" hidden>Makni header</button>
                     <button type="button" id="documentation-spr-reset" class="ghost-button">Vrati primjer</button>
                     <button type="button" id="documentation-spr-pdf" class="primary-button">Preuzmi PDF</button>
+                    <button type="button" id="documentation-spr-signature" class="ghost-button">Spremi za potpis</button>
                     <button type="button" id="documentation-spr-download" class="ghost-button">JSON</button>
                     <input id="documentation-spr-header-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
                   </div>
@@ -6876,6 +6877,38 @@
                     </div>
                     <div id="documentation-spr-preview" class="documentation-spr-preview"></div>
                   </aside>
+                </section>
+                <section id="documentation-spr-batch-summary" class="documentation-spr-batch-summary" hidden aria-label="Sažetak batch zapisnika">
+                  <div class="documentation-spr-batch-summary-head">
+                    <div>
+                      <p class="section-kicker">Batch sažetak</p>
+                      <h4>Zapisnici i primopredaja</h4>
+                    </div>
+                    <div class="documentation-spr-batch-summary-actions">
+                      <button type="button" id="documentation-spr-batch-summary-signature" class="ghost-button">Spremi za potpis</button>
+                      <button type="button" id="documentation-spr-batch-summary-export" class="primary-button">Preuzmi sve</button>
+                    </div>
+                  </div>
+                  <div id="documentation-spr-batch-summary-body" class="documentation-spr-batch-summary-body"></div>
+                </section>
+                <section id="documentation-spr-batch-dock" class="documentation-spr-batch-dock work-order-bottom-bar" hidden aria-label="Radni nalozi u izradi dokumentacije">
+                  <div class="document-template-runtime-dock-summary">
+                    <span class="document-template-runtime-dock-kicker">Izrada dokumentacije</span>
+                    <strong id="documentation-spr-batch-dock-title">Aktivni RN</strong>
+                    <span id="documentation-spr-batch-dock-meta">RN i zapisnik u tijeku</span>
+                  </div>
+                  <div class="document-template-runtime-dock-track-shell">
+                    <button id="documentation-spr-batch-dock-scroll-prev" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni radne naloge lijevo">&#8592;</button>
+                    <div id="documentation-spr-batch-dock-track" class="document-template-runtime-dock-track"></div>
+                    <button id="documentation-spr-batch-dock-scroll-next" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni radne naloge desno">&#8594;</button>
+                  </div>
+                  <div class="document-template-runtime-dock-actions">
+                    <button type="button" id="documentation-spr-batch-dock-prev" class="ghost-button document-template-runtime-dock-nav" aria-label="Prethodni zapisnik">&#8249;</button>
+                    <button type="button" id="documentation-spr-batch-dock-next" class="ghost-button document-template-runtime-dock-nav" aria-label="Sljedeći zapisnik">&#8250;</button>
+                    <button type="button" id="documentation-spr-batch-dock-summary" class="ghost-button">Sažetak</button>
+                    <button type="button" id="documentation-spr-batch-dock-export" class="ghost-button">Preuzmi sve</button>
+                    <button type="button" id="documentation-spr-batch-dock-signature" class="ghost-button">Spremi za potpis</button>
+                  </div>
                 </section>
               </section>
             </section>
@@ -11283,7 +11316,7 @@
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
     <script src="/gridline.js?v=20260627-gridline-excel-v5"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260627-spr-attachments-v12"></script>
+    <script type="module" src="/src/main.js?v=20260627-spr-signature-v1"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

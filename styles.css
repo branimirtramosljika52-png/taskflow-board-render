@@ -38620,6 +38620,274 @@ body.is-vehicle-usage-open {
   gap: 8px;
 }
 
+.documentation-spr-batch-summary {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+}
+
+.documentation-spr-batch-summary[hidden] {
+  display: none;
+}
+
+.documentation-spr-batch-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.documentation-spr-batch-summary-head h4 {
+  margin: 2px 0 0;
+  color: var(--documentation-spr-text);
+  font-size: 1rem;
+}
+
+.documentation-spr-batch-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.documentation-spr-batch-summary-body {
+  display: grid;
+  gap: 14px;
+}
+
+.documentation-spr-batch-summary-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.documentation-spr-batch-summary-stats article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(23, 107, 206, 0.16);
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.8);
+}
+
+.documentation-spr-batch-summary-stats span {
+  color: var(--documentation-spr-muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.documentation-spr-batch-summary-stats strong {
+  color: var(--documentation-spr-text);
+  font-size: 1.05rem;
+}
+
+.documentation-spr-batch-summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.documentation-spr-batch-summary-row {
+  display: grid;
+  grid-template-columns: 34px minmax(120px, 0.65fr) minmax(220px, 1fr) minmax(140px, 0.7fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--documentation-spr-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.documentation-spr-batch-summary-row:hover,
+.documentation-spr-batch-summary-row:focus-visible {
+  outline: none;
+  border-color: rgba(23, 107, 206, 0.36);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.08);
+}
+
+.documentation-spr-batch-summary-row span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: rgba(23, 107, 206, 0.1);
+  color: var(--documentation-spr-blue);
+  font-weight: 950;
+}
+
+.documentation-spr-batch-summary-row strong,
+.documentation-spr-batch-summary-row small,
+.documentation-spr-batch-summary-row em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentation-spr-batch-summary-row small {
+  color: var(--documentation-spr-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 760;
+}
+
+.documentation-spr-batch-summary-row em {
+  justify-self: end;
+  color: #64748b;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.documentation-spr-batch-summary-row.is-complete em {
+  color: #047857;
+}
+
+.documentation-spr-batch-summary-row.is-warning em {
+  color: #b45309;
+}
+
+.documentation-spr-batch-handover {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.38fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 16px;
+  background: rgba(240, 253, 250, 0.76);
+}
+
+.documentation-spr-batch-handover > div:first-child {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
+.documentation-spr-batch-handover span {
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 920;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.documentation-spr-batch-handover strong {
+  color: #134e4a;
+  font-size: 0.92rem;
+}
+
+.documentation-spr-batch-handover-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.documentation-spr-batch-handover-rows span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(13, 148, 136, 0.2);
+  border-radius: 12px;
+  background: #ffffff;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.documentation-spr-batch-handover-rows small {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentation-spr-batch-dock[hidden] {
+  display: none;
+}
+
+.documentation-spr-batch-dock .document-template-runtime-dock-summary {
+  min-width: 180px;
+}
+
+.documentation-spr-bottom-card.is-warning {
+  border-color: rgba(245, 158, 11, 0.34);
+}
+
+.documentation-spr-bottom-card.is-complete {
+  border-color: rgba(34, 197, 94, 0.34);
+}
+
+.documentation-spr-bottom-card .work-order-bottom-card-service {
+  max-width: 72px;
+}
+
+@media (max-width: 980px) {
+  .documentation-spr-batch-summary-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .documentation-spr-batch-summary-row {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .documentation-spr-batch-summary-row small,
+  .documentation-spr-batch-summary-row em {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .documentation-spr-batch-handover {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .documentation-spr-batch-dock {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .documentation-spr-batch-summary {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .documentation-spr-batch-summary-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .documentation-spr-batch-summary-actions {
+    justify-content: stretch;
+  }
+
+  .documentation-spr-batch-summary-actions button {
+    flex: 1 1 150px;
+  }
+
+  .documentation-spr-batch-summary-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .documentation-spr-template-manager {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(210px, 0.8fr) auto auto;

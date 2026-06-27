@@ -3946,6 +3946,7 @@ const documentationSprHeaderClearButton = document.querySelector("#documentation
 const documentationSprHeaderFileInput = document.querySelector("#documentation-spr-header-file");
 const documentationSprResetButton = document.querySelector("#documentation-spr-reset");
 const documentationSprPdfButton = document.querySelector("#documentation-spr-pdf");
+const documentationSprSignatureButton = document.querySelector("#documentation-spr-signature");
 const documentationSprDownloadButton = document.querySelector("#documentation-spr-download");
 const documentationSprLibraryBackButton = document.querySelector("#documentation-spr-library-back");
 const documentationSprLibraryPanel = document.querySelector("#documentation-spr-library");
@@ -3969,6 +3970,21 @@ const documentationSprBatchTrack = document.querySelector("#documentation-spr-ba
 const documentationSprBatchPrevButton = document.querySelector("#documentation-spr-batch-prev");
 const documentationSprBatchNextButton = document.querySelector("#documentation-spr-batch-next");
 const documentationSprBatchClearButton = document.querySelector("#documentation-spr-batch-clear");
+const documentationSprBatchSummaryPanel = document.querySelector("#documentation-spr-batch-summary");
+const documentationSprBatchSummaryBody = document.querySelector("#documentation-spr-batch-summary-body");
+const documentationSprBatchSummaryExportButton = document.querySelector("#documentation-spr-batch-summary-export");
+const documentationSprBatchDock = document.querySelector("#documentation-spr-batch-dock");
+const documentationSprBatchDockTitle = document.querySelector("#documentation-spr-batch-dock-title");
+const documentationSprBatchDockMeta = document.querySelector("#documentation-spr-batch-dock-meta");
+const documentationSprBatchDockTrack = document.querySelector("#documentation-spr-batch-dock-track");
+const documentationSprBatchDockScrollPrev = document.querySelector("#documentation-spr-batch-dock-scroll-prev");
+const documentationSprBatchDockScrollNext = document.querySelector("#documentation-spr-batch-dock-scroll-next");
+const documentationSprBatchDockPrevButton = document.querySelector("#documentation-spr-batch-dock-prev");
+const documentationSprBatchDockNextButton = document.querySelector("#documentation-spr-batch-dock-next");
+const documentationSprBatchDockSummaryButton = document.querySelector("#documentation-spr-batch-dock-summary");
+const documentationSprBatchDockExportButton = document.querySelector("#documentation-spr-batch-dock-export");
+const documentationSprBatchDockSignatureButton = document.querySelector("#documentation-spr-batch-dock-signature");
+const documentationSprBatchSummarySignatureButton = document.querySelector("#documentation-spr-batch-summary-signature");
 const documentationSprGridline = document.querySelector("#documentation-spr-gridline");
 const documentationSprGridSummary = document.querySelector("#documentation-spr-grid-summary");
 const documentationSprSourceStatus = document.querySelector("#documentation-spr-source-status");
@@ -18579,6 +18595,19 @@ function readFileAsDataUrl(file, errorMessage = "Ne mogu učitati datoteku.") {
       reject(new Error(errorMessage));
     });
     reader.readAsDataURL(file);
+  });
+}
+
+function readBlobAsDataUrl(blob, errorMessage = "Ne mogu učitati dokument.") {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      resolve(String(reader.result ?? ""));
+    });
+    reader.addEventListener("error", () => {
+      reject(new Error(errorMessage));
+    });
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -56855,6 +56884,7 @@ let documentationSprFieldSettingsPanel = null;
 let documentationSprWorkOrderBatch = {
   entries: [],
   activeIndex: 0,
+  summaryVisible: false,
 };
 
 function getDocumentationSprDefaultRows() {
@@ -56915,7 +56945,11 @@ function buildDocumentationSprGridlineModelFromRows(rows = getDocumentationSprDe
 function createDefaultDocumentationSprModel() {
   return {
     templateCode: "SPR v1.0.0",
+    workOrderId: "",
     workOrderNumber: "25-1287",
+    serviceId: "",
+    serviceCode: "SPR",
+    serviceName: "Sigurnosna panik rasvjeta",
     recordNumber: "25-1287-SPR",
     documentStatus: "U izradi",
     companyName: "PETROL d.o.o.",
@@ -56987,7 +57021,11 @@ function createDefaultDocumentationSprModel() {
 function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
   return {
     templateCode: String(name || "Novi predložak"),
+    workOrderId: "",
     workOrderNumber: "",
+    serviceId: "",
+    serviceCode: "",
+    serviceName: "",
     recordNumber: "",
     documentStatus: "U izradi",
     companyName: "",
@@ -57366,6 +57404,15 @@ function cloneDocumentationSprModelForLocalDraft(model = documentationSprModel) 
   }));
 }
 
+function cloneDocumentationSprModelForBatch(model = documentationSprModel) {
+  const normalized = normalizeDocumentationSprModel(model);
+  return JSON.parse(JSON.stringify({
+    ...normalized,
+    attachments: normalizeDocumentationSprAttachments(normalized.attachments),
+    gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
+  }));
+}
+
 function normalizeDocumentationSprTemplateEntry(entry = null, index = 0) {
   const source = entry && typeof entry === "object" ? entry : {};
   const rawName = String(source.name || source.title || source.templateName || source.model?.templateCode || "").trim();
@@ -57487,6 +57534,8 @@ function setDocumentationSprWorkbenchMode(mode = "library", { renderLibrary = tr
   }
   if (!isLibraryMode) {
     renderDocumentationSprBatchContext();
+  } else {
+    renderDocumentationSprBatchDock();
   }
 }
 
@@ -57494,6 +57543,7 @@ function openDocumentationSprLibraryMode() {
   documentationSprWorkOrderBatch = {
     entries: [],
     activeIndex: 0,
+    summaryVisible: false,
   };
   setDocumentationSprWorkbenchMode("library");
 }
@@ -58553,12 +58603,20 @@ function getDocumentationSprValidityMonthsForService(service = {}) {
 
 function getDocumentationSprWizardPeopleContext(workOrder = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
-  const electricalInspectors = workOrderId
+  const commonElectricalInspectors = normalizeDocumentationSprIdList(state.workOrderDocumentWizard.common?.electricalInspectorUserIds ?? []);
+  const commonGenericInspectors = normalizeDocumentationSprIdList(state.workOrderDocumentWizard.common?.inspectorUserIds ?? []);
+  const electricalInspectorsFromSource = workOrderId
     ? getWorkOrderDocumentWizardSourceValues(workOrderId, "electricalInspectorUserIds")
     : [];
-  const genericInspectors = workOrderId
+  const genericInspectorsFromSource = workOrderId
     ? getWorkOrderDocumentWizardSourceValues(workOrderId, "inspectorUserIds")
     : [];
+  const electricalInspectors = electricalInspectorsFromSource.length > 0
+    ? electricalInspectorsFromSource
+    : commonElectricalInspectors;
+  const genericInspectors = genericInspectorsFromSource.length > 0
+    ? genericInspectorsFromSource
+    : commonGenericInspectors;
   const inspectorIds = electricalInspectors.length > 0
     ? electricalInspectors
     : genericInspectors.length > 0
@@ -58566,6 +58624,8 @@ function getDocumentationSprWizardPeopleContext(workOrder = {}) {
       : normalizeDocumentationSprIdList([
         workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalInspectorUserId") : "",
         workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "inspectorUserId") : "",
+        state.workOrderDocumentWizard.common?.electricalInspectorUserId,
+        state.workOrderDocumentWizard.common?.inspectorUserId,
       ]);
   const executorInspectorIds = getDocumentationSprInspectorIdsFromExecutors(workOrder);
   const resolvedInspectorIds = inspectorIds.length > 0 ? inspectorIds : executorInspectorIds;
@@ -58573,8 +58633,14 @@ function getDocumentationSprWizardPeopleContext(workOrder = {}) {
     ? (
       getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalAuthorizationHolderUserId")
       || getWorkOrderDocumentWizardSourceValue(workOrderId, "authorizationHolderUserId")
+      || state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId
+      || state.workOrderDocumentWizard.common?.authorizationHolderUserId
     )
-    : "";
+    : (
+      state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId
+      || state.workOrderDocumentWizard.common?.authorizationHolderUserId
+      || ""
+    );
   return {
     inspectorIds: resolvedInspectorIds,
     responsibleUserId: String(responsibleUserId || "").trim(),
@@ -58605,8 +58671,11 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
   const locationName = String(location.name || workOrder.locationName || "").trim();
   const locationAddress = String(location.address || workOrder.locationAddress || "").trim();
   const objectName = String(object?.name || workOrder.objectName || workOrder.locationObjectName || "").trim();
+  const workOrderId = String(workOrder.id || "").trim();
   const workOrderNumber = String(workOrder.workOrderNumber || workOrder.number || "").trim();
   const serviceCode = String(serviceBinding?.serviceCode || service.serviceCode || "").trim();
+  const serviceId = String(service.serviceId || service.id || serviceBinding?.serviceId || "").trim();
+  const serviceName = String(serviceBinding?.serviceName || service.name || service.title || "").trim();
   const peopleContext = getDocumentationSprWizardPeopleContext(workOrder);
   const inspectorUsers = getDocumentationSprUsersByIds(peopleContext.inspectorIds);
   const responsibleUser = getDocumentationSprUsersByIds([peopleContext.responsibleUserId])[0] || null;
@@ -58618,7 +58687,11 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
     ...baseModel,
     serviceBinding,
     templateCode: templateName,
+    workOrderId,
     workOrderNumber,
+    serviceId,
+    serviceCode,
+    serviceName,
     recordNumber: [workOrderNumber, serviceCode || "SPR"].filter(Boolean).join("-"),
     companyName,
     companyAddress,
@@ -58671,10 +58744,312 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
   return nextModel;
 }
 
-function renderDocumentationSprBatchContext() {
-  const entries = Array.isArray(documentationSprWorkOrderBatch.entries)
+function mergeDocumentationSprModelWithWorkOrderContext(model = {}, workOrder = {}, service = {}, templateEntry = null) {
+  const current = normalizeDocumentationSprModel(model);
+  const fromContext = buildDocumentationSprModelFromWorkOrderService(workOrder, service, templateEntry);
+  return normalizeDocumentationSprModel({
+    ...current,
+    workOrderId: fromContext.workOrderId,
+    workOrderNumber: fromContext.workOrderNumber,
+    serviceId: fromContext.serviceId,
+    serviceCode: fromContext.serviceCode,
+    serviceName: fromContext.serviceName,
+    serviceBinding: fromContext.serviceBinding,
+    companyName: fromContext.companyName,
+    companyAddress: fromContext.companyAddress,
+    companyOib: fromContext.companyOib,
+    spaceUser: fromContext.spaceUser,
+    inspectionPlace: fromContext.inspectionPlace,
+    inspectionObject: fromContext.inspectionObject,
+    inspectionObjectId: fromContext.inspectionObjectId,
+    inspectionType: fromContext.inspectionType,
+    inspectionDate: fromContext.inspectionDate,
+    issueDate: fromContext.issueDate,
+    validUntil: fromContext.validUntil,
+    inspectorUserIds: fromContext.inspectorUserIds,
+    responsiblePersonUserId: fromContext.responsiblePersonUserId,
+    inspectors: fromContext.inspectors,
+    responsiblePerson: fromContext.responsiblePerson,
+    signatureClass: fromContext.signatureClass || current.signatureClass,
+    signatureNumber: fromContext.signatureNumber || current.signatureNumber,
+    signatureMode: fromContext.signatureMode || current.signatureMode || "digital",
+  });
+}
+
+function refreshDocumentationSprBatchModelsFromWorkOrderContext({ readActiveForm = false, renderActive = false } = {}) {
+  const entries = getDocumentationSprBatchEntries();
+  if (entries.length === 0) {
+    return;
+  }
+  if (readActiveForm) {
+    syncDocumentationSprActiveBatchEntryModel({ readForm: true });
+  }
+  const activeIndex = Math.max(0, Math.min(entries.length - 1, Number(documentationSprWorkOrderBatch.activeIndex || 0)));
+  entries.forEach((entry, index) => {
+    if (!entry?.workOrder || !entry?.service) {
+      return;
+    }
+    const template = entry.templateId
+      ? getDocumentationSprTemplateById(entry.templateId)
+      : getDocumentationSprTemplateForService(entry.service);
+    const sourceModel = getDocumentationSprBatchEntryModel(entry, { create: true });
+    const nextModel = mergeDocumentationSprModelWithWorkOrderContext(sourceModel, entry.workOrder, entry.service, template);
+    entry.model = cloneDocumentationSprModelForBatch(nextModel);
+    if (index === activeIndex && documentationSprModel) {
+      documentationSprModel = cloneDocumentationSprModelForBatch(nextModel);
+    }
+  });
+  if (renderActive && documentationSprModel) {
+    applyDocumentationSprModel(documentationSprModel, {
+      statusText: "RN podaci osvježeni iz Osnovno",
+    });
+  }
+}
+
+function getDocumentationSprBatchEntries() {
+  return Array.isArray(documentationSprWorkOrderBatch.entries)
     ? documentationSprWorkOrderBatch.entries
     : [];
+}
+
+function isDocumentationSprBatchMode() {
+  return getDocumentationSprBatchEntries().length > 1 && documentationSprWorkbenchMode !== "library";
+}
+
+function createDocumentationSprModelForBatchEntry(entry = {}) {
+  const template = entry.templateId
+    ? getDocumentationSprTemplateById(entry.templateId)
+    : getDocumentationSprTemplateForService(entry.service);
+  return buildDocumentationSprModelFromWorkOrderService(entry.workOrder, entry.service, template);
+}
+
+function getDocumentationSprBatchEntryModel(entry = {}, { create = false } = {}) {
+  if (entry?.model) {
+    return cloneDocumentationSprModelForBatch(entry.model);
+  }
+  if (!create || !entry?.workOrder || !entry?.service) {
+    return null;
+  }
+  const model = createDocumentationSprModelForBatchEntry(entry);
+  entry.model = cloneDocumentationSprModelForBatch(model);
+  return cloneDocumentationSprModelForBatch(entry.model);
+}
+
+function syncDocumentationSprActiveBatchEntryModel({ readForm = false } = {}) {
+  const entries = getDocumentationSprBatchEntries();
+  const activeIndex = Number(documentationSprWorkOrderBatch.activeIndex || 0);
+  const activeEntry = entries[activeIndex];
+  if (!activeEntry || !documentationSprModel) {
+    return false;
+  }
+  if (readForm) {
+    readDocumentationSprFormIntoModel();
+  }
+  if (documentationSprGridlineApi?.getModel) {
+    documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(documentationSprGridlineApi.getModel());
+  }
+  activeEntry.model = cloneDocumentationSprModelForBatch(documentationSprModel);
+  activeEntry.updatedAt = new Date().toISOString();
+  return true;
+}
+
+function getDocumentationSprBatchCompletion(model = {}) {
+  const normalized = normalizeDocumentationSprModel(model);
+  const missing = [
+    !String(normalized.companyName || "").trim() ? "tvrtka" : "",
+    !String(normalized.recordNumber || "").trim() ? "broj zapisnika" : "",
+    !String(normalized.inspectionDate || "").trim() ? "datum ispitivanja" : "",
+    !String(normalized.resultStatus || "").trim() ? "zaključna ocjena" : "",
+    isDocumentationSprFailingModel(normalized) && !String(normalized.defects || "").trim() ? "nedostaci" : "",
+  ].filter(Boolean);
+  const rows = getDocumentationSprMeasurementRowsForModel(normalized);
+  if (rows.length === 0) {
+    missing.push("Gridline mjerenja");
+  }
+  return {
+    ok: missing.length === 0,
+    missing,
+    rowsCount: rows.length,
+    label: missing.length === 0 ? "Spremno" : `Provjeri ${missing.length}`,
+  };
+}
+
+function getDocumentationSprBatchEntrySummary(entry = {}, index = 0) {
+  const model = getDocumentationSprBatchEntryModel(entry, { create: true }) || {};
+  const completion = getDocumentationSprBatchCompletion(model);
+  const workOrderNumber = String(entry.workOrder?.workOrderNumber || model.workOrderNumber || `RN ${index + 1}`).trim();
+  const serviceCode = String(entry.serviceCode || model.serviceBinding?.serviceCode || model.serviceCode || "").trim();
+  const serviceName = String(entry.serviceName || model.serviceBinding?.serviceName || entry.service?.name || "").trim();
+  return {
+    entry,
+    model,
+    completion,
+    workOrderNumber,
+    serviceCode,
+    serviceName,
+    recordNumber: String(model.recordNumber || "").trim(),
+    companyName: String(model.companyName || entry.workOrder?.companyName || "").trim(),
+    inspectionPlace: String(model.inspectionPlace || entry.workOrder?.locationName || "").trim(),
+    objectName: String(model.inspectionObject || entry.workOrder?.objectName || "").trim(),
+    rowsCount: completion.rowsCount,
+  };
+}
+
+function getDocumentationSprBatchSummaries() {
+  return getDocumentationSprBatchEntries().map((entry, index) => getDocumentationSprBatchEntrySummary(entry, index));
+}
+
+function renderDocumentationSprBatchDock() {
+  const entries = getDocumentationSprBatchEntries();
+  const isVisible = isDocumentationSprBatchMode();
+  if (documentationSprBatchDock) {
+    documentationSprBatchDock.hidden = !isVisible;
+  }
+  if (!isVisible) {
+    documentationSprBatchDockTrack?.replaceChildren();
+    if (documentationSprBatchSummaryPanel) {
+      documentationSprBatchSummaryPanel.hidden = true;
+    }
+    return;
+  }
+
+  const activeIndex = Math.max(0, Math.min(entries.length - 1, Number(documentationSprWorkOrderBatch.activeIndex || 0)));
+  const activeSummary = getDocumentationSprBatchEntrySummary(entries[activeIndex], activeIndex);
+  const readyCount = getDocumentationSprBatchSummaries().filter((item) => item.completion.ok).length;
+
+  if (documentationSprBatchDockTitle) {
+    documentationSprBatchDockTitle.textContent = `RN ${activeSummary.workOrderNumber}`;
+  }
+  if (documentationSprBatchDockMeta) {
+    documentationSprBatchDockMeta.textContent = [
+      `${activeIndex + 1}/${entries.length}`,
+      activeSummary.serviceCode || activeSummary.serviceName || "Zapisnik",
+      `${readyCount}/${entries.length} spremno`,
+    ].filter(Boolean).join(" · ");
+  }
+  [documentationSprBatchPrevButton, documentationSprBatchDockPrevButton].forEach((button) => {
+    if (button) {
+      button.disabled = activeIndex <= 0;
+    }
+  });
+  [documentationSprBatchNextButton, documentationSprBatchDockNextButton].forEach((button) => {
+    if (button) {
+      button.disabled = activeIndex >= entries.length - 1;
+    }
+  });
+
+  if (documentationSprBatchDockTrack) {
+    documentationSprBatchDockTrack.replaceChildren(...entries.map((entry, index) => {
+      const summary = getDocumentationSprBatchEntrySummary(entry, index);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "work-order-bottom-card documentation-spr-bottom-card";
+      card.classList.toggle("is-active", index === activeIndex);
+      card.classList.toggle("is-complete", summary.completion.ok);
+      card.classList.toggle("is-warning", !summary.completion.ok);
+      card.setAttribute("aria-label", `Otvori RN ${summary.workOrderNumber}`);
+
+      const head = document.createElement("span");
+      head.className = "work-order-bottom-card-head";
+      const dot = document.createElement("span");
+      dot.className = `work-order-bottom-card-dot ${summary.completion.ok ? "is-ok" : "is-error"}`;
+      dot.setAttribute("aria-hidden", "true");
+      const title = document.createElement("strong");
+      title.textContent = `RN: ${summary.workOrderNumber}`;
+      head.append(dot, title);
+
+      const services = document.createElement("span");
+      services.className = "work-order-bottom-card-services";
+      const code = document.createElement("span");
+      code.className = "work-order-bottom-card-service is-sequence";
+      code.textContent = summary.serviceCode || "DOC";
+      const status = document.createElement("span");
+      status.className = `work-order-bottom-card-service ${summary.completion.ok ? "is-ok" : "is-error"}`;
+      status.textContent = summary.completion.ok ? "OK" : "!";
+      const rows = document.createElement("span");
+      rows.className = "work-order-bottom-card-service is-neutral";
+      rows.textContent = `${summary.rowsCount || 0}r`;
+      services.append(code, status, rows);
+
+      card.append(head, services);
+      card.addEventListener("click", () => {
+        documentationSprWorkOrderBatch.summaryVisible = false;
+        applyDocumentationSprBatchEntry(index);
+      });
+      return card;
+    }));
+  }
+
+  renderDocumentationSprBatchSummary();
+}
+
+function renderDocumentationSprBatchSummary() {
+  const isVisible = Boolean(isDocumentationSprBatchMode() && documentationSprWorkOrderBatch.summaryVisible);
+  if (documentationSprBatchSummaryPanel) {
+    documentationSprBatchSummaryPanel.hidden = !isVisible;
+  }
+  if (!isVisible || !documentationSprBatchSummaryBody) {
+    return;
+  }
+  const summaries = getDocumentationSprBatchSummaries();
+  const readyCount = summaries.filter((item) => item.completion.ok).length;
+  const workOrderCount = new Set(summaries.map((item) => item.entry.workOrderId || item.workOrderNumber)).size;
+  const handoverRows = summaries.map((item, index) => ({
+    service: item.serviceName || item.serviceCode || "Usluga",
+    documentNumber: item.recordNumber || item.workOrderNumber,
+    quantity: getDocumentTemplateHandoverServiceQuantity(item.entry.service || {}) || String(item.rowsCount || 1),
+    objectName: item.objectName,
+    note: item.inspectionPlace,
+    id: item.entry.id || `spr-handover-${index + 1}`,
+  }));
+  documentationSprBatchSummaryBody.innerHTML = `
+    <div class="documentation-spr-batch-summary-stats">
+      <article><span>RN-ovi</span><strong>${escapeHtml(String(workOrderCount))}</strong></article>
+      <article><span>Zapisnici</span><strong>${escapeHtml(String(summaries.length))}</strong></article>
+      <article><span>Spremno</span><strong>${escapeHtml(`${readyCount}/${summaries.length}`)}</strong></article>
+      <article><span>Primopredaja</span><strong>${escapeHtml(String(handoverRows.length))}</strong></article>
+    </div>
+    <div class="documentation-spr-batch-summary-list">
+      ${summaries.map((item, index) => `
+        <button type="button" class="documentation-spr-batch-summary-row ${item.completion.ok ? "is-complete" : "is-warning"}" data-documentation-spr-batch-summary-index="${index}">
+          <span>${escapeHtml(String(index + 1))}</span>
+          <strong>${escapeHtml(`RN ${item.workOrderNumber}`)}</strong>
+          <small>${escapeHtml([item.serviceCode || item.serviceName, item.recordNumber, item.companyName].filter(Boolean).join(" · "))}</small>
+          <em>${escapeHtml(item.completion.ok ? "Spremno" : item.completion.missing.join(", "))}</em>
+        </button>
+      `).join("")}
+    </div>
+    <div class="documentation-spr-batch-handover">
+      <div>
+        <span>Primopredajni zapisnik</span>
+        <strong>Dodaje se na kraj batch PDF-a</strong>
+      </div>
+      <div class="documentation-spr-batch-handover-rows">
+        ${handoverRows.map((row) => `
+          <span>
+            <strong>${escapeHtml(row.service)}</strong>
+            <small>${escapeHtml([row.documentNumber, row.quantity ? `Kol. ${row.quantity}` : "", row.objectName].filter(Boolean).join(" · "))}</small>
+          </span>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function toggleDocumentationSprBatchSummary(forceVisible = null) {
+  documentationSprWorkOrderBatch.summaryVisible = forceVisible === null
+    ? !documentationSprWorkOrderBatch.summaryVisible
+    : Boolean(forceVisible);
+  renderDocumentationSprBatchDock();
+  if (documentationSprWorkOrderBatch.summaryVisible) {
+    requestAnimationFrame(() => {
+      documentationSprBatchSummaryPanel?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }
+}
+
+function renderDocumentationSprBatchContext() {
+  const entries = getDocumentationSprBatchEntries();
   const activeIndex = Math.max(0, Math.min(entries.length - 1, documentationSprWorkOrderBatch.activeIndex || 0));
   const activeEntry = entries[activeIndex] || null;
   if (documentationSprBatchContext) {
@@ -58682,6 +59057,7 @@ function renderDocumentationSprBatchContext() {
   }
   if (!activeEntry) {
     documentationSprBatchTrack?.replaceChildren();
+    renderDocumentationSprBatchDock();
     return;
   }
   if (documentationSprBatchKicker) {
@@ -58720,37 +59096,46 @@ function renderDocumentationSprBatchContext() {
       return button;
     }));
   }
+  renderDocumentationSprBatchDock();
 }
 
 function clearDocumentationSprBatchContext() {
   documentationSprWorkOrderBatch = {
     entries: [],
     activeIndex: 0,
+    summaryVisible: false,
   };
   renderDocumentationSprBatchContext();
+  renderDocumentationSprBatchDock();
   setDocumentationSprStatus("RN kontekst maknut", "saved");
 }
 
 function applyDocumentationSprBatchEntry(index = 0) {
-  const entries = Array.isArray(documentationSprWorkOrderBatch.entries)
-    ? documentationSprWorkOrderBatch.entries
-    : [];
+  const entries = getDocumentationSprBatchEntries();
   if (entries.length === 0) {
     renderDocumentationSprBatchContext();
     return false;
   }
+  const previousIndex = Math.max(0, Math.min(entries.length - 1, Number(documentationSprWorkOrderBatch.activeIndex || 0)));
+  if (previousIndex !== Number(index)) {
+    syncDocumentationSprActiveBatchEntryModel({ readForm: true });
+  }
   const activeIndex = Math.max(0, Math.min(entries.length - 1, Number(index) || 0));
   const entry = entries[activeIndex];
   documentationSprWorkOrderBatch.activeIndex = activeIndex;
+  documentationSprWorkOrderBatch.summaryVisible = false;
   documentationSprDraftServiceBinding = entry.serviceBinding;
   const template = entry.templateId
     ? getDocumentationSprTemplateById(entry.templateId)
     : getDocumentationSprTemplateForService(entry.service);
-  const nextModel = buildDocumentationSprModelFromWorkOrderService(entry.workOrder, entry.service, template);
+  const sourceModel = getDocumentationSprBatchEntryModel(entry, { create: true })
+    || buildDocumentationSprModelFromWorkOrderService(entry.workOrder, entry.service, template);
+  const nextModel = mergeDocumentationSprModelWithWorkOrderContext(sourceModel, entry.workOrder, entry.service, template);
   applyDocumentationSprModel(nextModel, {
     templateId: template?.id || "",
     statusText: `RN ${entry.workOrder?.workOrderNumber || ""} učitan`.trim(),
   });
+  entry.model = cloneDocumentationSprModelForBatch(documentationSprModel);
   renderDocumentationSprBatchContext();
   return true;
 }
@@ -58767,6 +59152,7 @@ function openDocumentationSprWorkbenchFromBatchEntries(entries = [], { activeInd
   documentationSprWorkOrderBatch = {
     entries: normalizedEntries,
     activeIndex: Math.max(0, Math.min(normalizedEntries.length - 1, Number(activeIndex) || 0)),
+    summaryVisible: false,
   };
   setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
   state.activeSidebarGroup = "operations";
@@ -58824,6 +59210,8 @@ function scheduleDocumentationSprSave() {
   if (!documentationSprModel) {
     return;
   }
+  syncDocumentationSprActiveBatchEntryModel({ readForm: false });
+  renderDocumentationSprBatchDock();
   setDocumentationSprStatus("Lokalna izmjena", "saving");
   if (documentationSprSaveTimer) {
     window.clearTimeout(documentationSprSaveTimer);
@@ -59536,7 +59924,14 @@ function getDocumentationSprActiveGridlineModel() {
 }
 
 function getDocumentationSprMeasurementRows() {
-  const rows = getDocumentationSprRowsFromGridlineModel(getDocumentationSprActiveGridlineModel());
+  return getDocumentationSprMeasurementRowsForModel({
+    ...(documentationSprModel || {}),
+    gridlineModel: getDocumentationSprActiveGridlineModel(),
+  });
+}
+
+function getDocumentationSprMeasurementRowsForModel(model = documentationSprModel) {
+  const rows = getDocumentationSprRowsFromGridlineModel(model?.gridlineModel || buildDocumentationSprGridlineModelFromRows());
   return rows.slice(2)
     .map((row, index) => ({
       number: String(row[0] || index + 1).trim(),
@@ -60334,7 +60729,7 @@ let documentationSprPdfGeneratorPromise = null;
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260627-spr-attachments-v1");
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260627-spr-batch-v1");
   }
   return documentationSprPdfGeneratorPromise;
 }
@@ -60438,6 +60833,285 @@ async function exportDocumentationSprPdf() {
       documentationSprPdfButton.disabled = false;
       documentationSprPdfButton.textContent = previousButtonText;
     }
+  }
+}
+
+function getDocumentationSprBatchPdfFileName(entries = getDocumentationSprBatchEntries()) {
+  const numbers = (Array.isArray(entries) ? entries : [])
+    .map((entry) => String(entry.workOrder?.workOrderNumber || "").trim())
+    .filter(Boolean);
+  const firstNumber = numbers[0] || "rn";
+  const suffix = numbers.length > 1 ? `-${numbers.length}-rn` : "";
+  return `${sanitizeDocumentTemplateFileName(`spr-batch-${firstNumber}${suffix}`, "spr-batch")}.pdf`;
+}
+
+function buildDocumentationSprBatchExportEntries() {
+  refreshDocumentationSprBatchModelsFromWorkOrderContext({ readActiveForm: true });
+  return getDocumentationSprBatchSummaries().map((summary, index) => ({
+    id: summary.entry.id || `spr-batch-${index + 1}`,
+    workOrderId: summary.entry.workOrderId || "",
+    workOrderNumber: summary.workOrderNumber,
+    serviceCode: summary.serviceCode,
+    serviceName: summary.serviceName,
+    recordNumber: summary.recordNumber,
+    companyName: summary.companyName,
+    inspectionPlace: summary.inspectionPlace,
+    objectName: summary.objectName,
+    quantity: getDocumentTemplateHandoverServiceQuantity(summary.entry.service || {}) || String(summary.rowsCount || 1),
+    model: summary.model,
+    rows: getDocumentationSprMeasurementRowsForModel(summary.model),
+  }));
+}
+
+function normalizeDocumentationSprSignatureOib(value = "") {
+  const digits = String(value || "").replace(/\D/g, "");
+  return /^\d{11}$/.test(digits) ? digits : "";
+}
+
+function sanitizeDocumentationSprSignatureSuffix(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+}
+
+function getDocumentationSprPdfSignatureFieldName(model = {}) {
+  const responsibleUser = getDocumentationSprUsersByIds([model.responsiblePersonUserId])[0] || null;
+  const oib = normalizeDocumentationSprSignatureOib(getPeopleUserOib(responsibleUser) || model.responsiblePerson);
+  const suffix = sanitizeDocumentationSprSignatureSuffix(model.signatureFieldSuffix || "");
+  return oib ? `SIGN_SPR_${oib}${suffix ? `_${suffix}` : ""}` : "";
+}
+
+function buildDocumentationSprSignatureMetadata(model = {}) {
+  const responsibleUser = getDocumentationSprUsersByIds([model.responsiblePersonUserId])[0] || null;
+  const oib = normalizeDocumentationSprSignatureOib(getPeopleUserOib(responsibleUser) || model.responsiblePerson);
+  const fieldName = getDocumentationSprPdfSignatureFieldName(model);
+  if (!oib || !fieldName || model.signatureMode !== "digital") {
+    return {
+      primary: null,
+      fields: [],
+      signatureFieldsJson: "",
+    };
+  }
+  const name = responsibleUser
+    ? getDocumentationSprUserName(responsibleUser)
+    : String(model.responsiblePerson || "").replace(/\bOIB\s*\d{11}\b/gi, "").replace(/\b\d{11}\b/g, "").replace(/[;,]\s*$/g, "").trim() || "Potpisnik";
+  const organization = String(
+    responsibleUser?.organizationName
+    || responsibleUser?.organization?.name
+    || state.currentOrganization?.name
+    || state.activeOrganizationName
+    || "",
+  ).trim();
+  const primary = {
+    fieldName,
+    label: name,
+    name,
+    roleLabel: "Ispitivač SPR",
+    signerTitle: String(responsibleUser?.title || "").trim(),
+    signerOrganization: organization,
+    signerUserId: String(responsibleUser?.id || model.responsiblePersonUserId || "").trim(),
+    signerEmail: String(responsibleUser?.email || "").trim(),
+    page: "",
+    x: null,
+    y: null,
+    width: null,
+    height: null,
+    anchorText: "",
+    role: "SPR",
+    oib,
+    status: "available",
+    standard: "SIGN_SPR_{OIB}",
+  };
+  return {
+    primary,
+    fields: [primary],
+    signatureFieldsJson: JSON.stringify([primary]),
+  };
+}
+
+function getDocumentationSprWorkOrderIdForExport(entry = {}, model = {}) {
+  const explicitId = String(entry.workOrderId || entry.workOrder?.id || model.workOrderId || "").trim();
+  if (explicitId) {
+    return explicitId;
+  }
+  const number = String(entry.workOrderNumber || model.workOrderNumber || "").trim();
+  return String((state.workOrders || []).find((item) => String(item.workOrderNumber || "").trim() === number)?.id || "").trim();
+}
+
+function getDocumentationSprSingleExportEntry() {
+  if (!documentationSprModel) {
+    return null;
+  }
+  readDocumentationSprFormIntoModel();
+  syncDocumentationSprGridlineIntoModel();
+  const model = normalizeDocumentationSprModel(documentationSprModel);
+  return {
+    id: model.recordNumber || "spr-zapisnik",
+    workOrderId: getDocumentationSprWorkOrderIdForExport({}, model),
+    workOrderNumber: model.workOrderNumber,
+    serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || "SPR",
+    serviceName: model.serviceName || model.serviceBinding?.serviceName || "Sigurnosna panik rasvjeta",
+    recordNumber: model.recordNumber,
+    companyName: model.companyName,
+    inspectionPlace: model.inspectionPlace,
+    objectName: model.inspectionObject,
+    quantity: "1",
+    model,
+    rows: getDocumentationSprMeasurementRowsForModel(model),
+  };
+}
+
+function getDocumentationSprSignatureExportEntries() {
+  const batchEntries = getDocumentationSprBatchEntries();
+  if (batchEntries.length > 0) {
+    return buildDocumentationSprBatchExportEntries();
+  }
+  const singleEntry = getDocumentationSprSingleExportEntry();
+  return singleEntry ? [singleEntry] : [];
+}
+
+async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, generator = null) {
+  const workOrderId = getDocumentationSprWorkOrderIdForExport(exportEntry, exportEntry.model);
+  if (!workOrderId) {
+    throw new Error(`RN ${exportEntry.workOrderNumber || exportEntry.recordNumber || ""} nema vezu na radni nalog.`);
+  }
+  const model = normalizeDocumentationSprModel(exportEntry.model);
+  const signatureMetadata = buildDocumentationSprSignatureMetadata(model);
+  if (!signatureMetadata.primary) {
+    throw new Error(`RN ${exportEntry.workOrderNumber || model.workOrderNumber || ""}: odaberi odgovornu osobu s OIB-om za digitalni potpis.`);
+  }
+  const pdfGenerator = generator || await loadDocumentationSprPdfGenerator();
+  const fileName = getDocumentationSprPdfFileName(model);
+  const result = await pdfGenerator.generateDocumentationSprPdfBlob({
+    model,
+    rows: exportEntry.rows || getDocumentationSprMeasurementRowsForModel(model),
+    fileName,
+  });
+  const dataUrl = await readBlobAsDataUrl(result.blob, `Ne mogu pripremiti ${fileName} za potpis.`);
+  const response = await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/documents`, {
+    method: "POST",
+    body: {
+      sourceType: "pdf",
+      files: [{
+        fileName: result.fileName || fileName,
+        fileType: "application/pdf",
+        fileSize: result.bytes?.length || result.blob?.size || 0,
+        dataUrl,
+        documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+        signatureFieldRole: signatureMetadata.primary.role,
+        signatureFieldOib: signatureMetadata.primary.oib,
+        signerOib: signatureMetadata.primary.oib,
+        preferredField: signatureMetadata.primary.fieldName,
+        signatureFieldsJson: signatureMetadata.signatureFieldsJson,
+        description: [
+          `SPR zapisnik ${model.recordNumber || fileName} za RN ${model.workOrderNumber || exportEntry.workOrderNumber || ""}.`,
+          "PDF je spremljen iz Izrade dokumentacije i čeka digitalni potpis.",
+          `Potpisnik: ${signatureMetadata.primary.name}${signatureMetadata.primary.oib ? ` (OIB ${signatureMetadata.primary.oib})` : ""}.`,
+        ].filter(Boolean).join(" "),
+      }],
+    },
+  });
+  const savedItem = response?.items?.[0] || null;
+  if (savedItem) {
+    upsertDocumentsExplorerWorkOrderDocuments([savedItem]);
+  }
+  return savedItem;
+}
+
+async function queueDocumentationSprForDigitalSignature() {
+  const exportEntries = getDocumentationSprSignatureExportEntries();
+  if (!exportEntries.length) {
+    setDocumentationSprStatus("Nema SPR zapisnika za potpis", "saving");
+    return;
+  }
+  const generator = await loadDocumentationSprPdfGenerator();
+  const actionButtons = [
+    documentationSprSignatureButton,
+    documentationSprBatchDockSignatureButton,
+    documentationSprBatchSummarySignatureButton,
+    documentationSprPdfButton,
+  ].filter(Boolean);
+  const previousLabels = new Map(actionButtons.map((button) => [button, button.textContent]));
+  actionButtons.forEach((button) => {
+    button.disabled = true;
+    button.textContent = "Spremam";
+  });
+  setDocumentationSprStatus(`Spremam ${exportEntries.length} SPR PDF-a za potpis`, "saving");
+  try {
+    const savedItems = [];
+    for (const entry of exportEntries) {
+      savedItems.push(await saveDocumentationSprPdfEntryForSignature(entry, generator));
+    }
+    state.documentsExplorer.loaded = true;
+    state.documentsExplorer.lastRefreshAt = new Date().toISOString();
+    if (state.activeView === "module" && state.activeModuleItem === "signatures") {
+      renderSignaturesModule();
+    }
+    renderNotifications();
+    setDocumentationSprStatus(
+      `Spremljeno za potpis: ${savedItems.filter(Boolean).length}/${exportEntries.length} PDF-a`,
+      "saved",
+    );
+  } catch (error) {
+    console.error("SPR spremanje za potpis nije uspjelo.", error);
+    setDocumentationSprStatus(error?.message || "SPR PDF nije spremljen za potpis", "saving");
+  } finally {
+    actionButtons.forEach((button) => {
+      button.disabled = false;
+      button.textContent = previousLabels.get(button) || "Spremi za potpis";
+    });
+  }
+}
+
+async function exportDocumentationSprBatchPdf() {
+  const entries = getDocumentationSprBatchEntries();
+  if (entries.length <= 1) {
+    await exportDocumentationSprPdf();
+    return;
+  }
+  const exportEntries = buildDocumentationSprBatchExportEntries();
+  if (!exportEntries.length) {
+    setDocumentationSprStatus("Nema RN zapisnika za batch PDF", "saving");
+    return;
+  }
+
+  const actionButtons = [
+    documentationSprBatchDockExportButton,
+    documentationSprBatchSummaryExportButton,
+    documentationSprPdfButton,
+  ].filter(Boolean);
+  const previousLabels = new Map(actionButtons.map((button) => [button, button.textContent]));
+  actionButtons.forEach((button) => {
+    button.disabled = true;
+    button.textContent = "Generiram";
+  });
+  setDocumentationSprStatus(`Generiram batch PDF (${exportEntries.length} zapisnika)`, "saving");
+  try {
+    const generator = await loadDocumentationSprPdfGenerator();
+    if (typeof generator.generateDocumentationSprBatchPdfBlob !== "function") {
+      throw new Error("Batch PDF generator nije dostupan.");
+    }
+    const result = await generator.generateDocumentationSprBatchPdfBlob({
+      entries: exportEntries,
+      fileName: getDocumentationSprBatchPdfFileName(entries),
+    });
+    triggerBlobDownload(result.blob, result.fileName || getDocumentationSprBatchPdfFileName(entries));
+    setDocumentationSprStatus(
+      `Batch PDF preuzet: ${exportEntries.length} zapisnika + sažetak + primopredaja`,
+      "saved",
+    );
+  } catch (error) {
+    console.error("Batch SPR PDF nije uspio.", error);
+    setDocumentationSprStatus(error?.message || "Batch PDF nije izrađen", "saving");
+  } finally {
+    actionButtons.forEach((button) => {
+      button.disabled = false;
+      button.textContent = previousLabels.get(button) || "Preuzmi sve";
+    });
   }
 }
 
@@ -60637,6 +61311,7 @@ function initDocumentationSprWorkbench() {
       documentationSprWorkOrderBatch = {
         entries: [],
         activeIndex: 0,
+        summaryVisible: false,
       };
       startNewDocumentationSprTemplateDraft();
     });
@@ -60648,6 +61323,46 @@ function initDocumentationSprWorkbench() {
     });
     documentationSprBatchClearButton?.addEventListener("click", () => {
       clearDocumentationSprBatchContext();
+    });
+    documentationSprBatchDockPrevButton?.addEventListener("click", () => {
+      applyDocumentationSprBatchEntry((documentationSprWorkOrderBatch.activeIndex || 0) - 1);
+    });
+    documentationSprBatchDockNextButton?.addEventListener("click", () => {
+      applyDocumentationSprBatchEntry((documentationSprWorkOrderBatch.activeIndex || 0) + 1);
+    });
+    documentationSprBatchDockSummaryButton?.addEventListener("click", () => {
+      syncDocumentationSprActiveBatchEntryModel({ readForm: true });
+      toggleDocumentationSprBatchSummary();
+    });
+    documentationSprBatchDockExportButton?.addEventListener("click", () => {
+      void exportDocumentationSprBatchPdf();
+    });
+    documentationSprBatchSummaryExportButton?.addEventListener("click", () => {
+      void exportDocumentationSprBatchPdf();
+    });
+    documentationSprBatchDockSignatureButton?.addEventListener("click", () => {
+      void queueDocumentationSprForDigitalSignature();
+    });
+    documentationSprBatchSummarySignatureButton?.addEventListener("click", () => {
+      void queueDocumentationSprForDigitalSignature();
+    });
+    documentationSprBatchSummaryBody?.addEventListener("click", (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-batch-summary-index]")
+        : null;
+      if (!target) {
+        return;
+      }
+      const index = Number(target.getAttribute("data-documentation-spr-batch-summary-index"));
+      if (Number.isFinite(index)) {
+        applyDocumentationSprBatchEntry(index);
+      }
+    });
+    documentationSprBatchDockScrollPrev?.addEventListener("click", () => {
+      documentationSprBatchDockTrack?.scrollBy({ left: -260, behavior: "smooth" });
+    });
+    documentationSprBatchDockScrollNext?.addEventListener("click", () => {
+      documentationSprBatchDockTrack?.scrollBy({ left: 260, behavior: "smooth" });
     });
     documentationSprTemplateLibrarySelect?.addEventListener("change", () => {
       loadSelectedDocumentationSprTemplate();
@@ -60823,6 +61538,9 @@ function initDocumentationSprWorkbench() {
     });
     documentationSprPdfButton?.addEventListener("click", () => {
       void exportDocumentationSprPdf();
+    });
+    documentationSprSignatureButton?.addEventListener("click", () => {
+      void queueDocumentationSprForDigitalSignature();
     });
     documentationSprDownloadButton?.addEventListener("click", () => {
       readDocumentationSprFormIntoModel();
@@ -70856,6 +71574,10 @@ function applyWorkOrderDocumentWizardCommonSignaturePersonPatch({
     });
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplatePreviewContent();
+  }
+
+  if (normalizedArea === "elektro" && documentationSprModel && getDocumentationSprBatchEntries().length > 0) {
+    refreshDocumentationSprBatchModelsFromWorkOrderContext({ readActiveForm: true, renderActive: true });
   }
 }
 
@@ -140262,6 +140984,9 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
     if (state.workOrderDocumentWizard.step === "templates") {
       renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+    }
+    if (isDateField && documentationSprModel && getDocumentationSprBatchEntries().length > 0) {
+      refreshDocumentationSprBatchModelsFromWorkOrderContext({ readActiveForm: true, renderActive: true });
     }
   });
 });

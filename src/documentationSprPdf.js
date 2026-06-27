@@ -199,11 +199,19 @@ function getServiceCode(model = {}) {
   return recordMatch ? recordMatch[0].toUpperCase() : "SPR";
 }
 
-function stampFooters(pdfDoc, model, fonts) {
+function stampFooters(pdfDoc, model, fonts, {
+  startPageIndex = 0,
+  pageCount = null,
+} = {}) {
   const pages = pdfDoc.getPages();
-  const totalPages = pages.length;
+  const start = Math.max(0, Number(startPageIndex) || 0);
+  const end = pageCount === null
+    ? pages.length
+    : Math.min(pages.length, start + Math.max(0, Number(pageCount) || 0));
+  const targetPages = pages.slice(start, end);
+  const totalPages = targetPages.length || pages.length;
   const serviceCode = getServiceCode(model);
-  pages.forEach((page, index) => {
+  targetPages.forEach((page, index) => {
     drawTextLine(page, `${serviceCode}-${index + 1}/${totalPages}`, {
       x: MARGIN_X,
       y: 32,
@@ -686,7 +694,14 @@ function extractOib(value = "") {
 
 function signatureFieldName(model) {
   const oib = extractOib(model.responsiblePerson);
-  return oib ? `SIGN_SPR_${oib}` : "";
+  const suffix = clean(model.signatureFieldSuffix || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  return oib ? `SIGN_SPR_${oib}${suffix ? `_${suffix}` : ""}` : "";
 }
 
 function addSignatureWidget(pdfDoc, page, rect, fieldName) {
@@ -1068,40 +1083,279 @@ async function loadFontBytes() {
   return fontBytesPromise;
 }
 
-export async function generateDocumentationSprPdfBlob({
-  model = {},
-  rows = [],
-  fileName = "",
-} = {}) {
-  const pdfDoc = await PDFDocument.create();
-  pdfDoc.registerFontkit(fontkit);
-  pdfDoc.setTitle(clean(model.recordNumber || "SPR zapisnik"));
-  pdfDoc.setSubject("SafeNexus Izrada dokumentacije SPR");
-  pdfDoc.setCreator("SafeNexus browser PDF");
-  pdfDoc.setProducer("SafeNexus browser PDF");
+async function createDocumentationSprFonts(pdfDoc) {
   const [regularBytes, boldBytes] = await loadFontBytes();
-  const fonts = {
+  return {
     regular: await pdfDoc.embedFont(regularBytes, { subset: true }),
     bold: await pdfDoc.embedFont(boldBytes, { subset: true }),
   };
+}
+
+function getDefaultSprRows(model = {}) {
+  return [{
+    number: "1",
+    place: clean(model.inspectionPlace),
+    lampCount: "",
+    ei: "",
+    eimin: "",
+    pass: clean(model.resultStatus || "DA"),
+  }];
+}
+
+function normalizeSprRows(rows = [], model = {}) {
+  return Array.isArray(rows) && rows.length ? rows : getDefaultSprRows(model);
+}
+
+async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts) {
+  const startPageIndex = pdfDoc.getPageCount();
   const headerImage = await embedHeaderImage(pdfDoc, model.headerImageDataUrl);
-  const safeRows = Array.isArray(rows) && rows.length
-    ? rows
-    : [{
-      number: "1",
-      place: clean(model.inspectionPlace),
-      lampCount: "",
-      ei: "",
-      eimin: "",
-      pass: clean(model.resultStatus || "DA"),
-    }];
+  const safeRows = normalizeSprRows(rows, model);
 
   drawPageOne(pdfDoc, model, safeRows, fonts, headerImage);
   drawPageTwo(pdfDoc, model, fonts);
   drawPageThree(pdfDoc, model, safeRows, fonts);
   drawPageFour(pdfDoc, model, fonts);
   await appendAttachments(pdfDoc, model, fonts);
-  stampFooters(pdfDoc, model, fonts);
+  const pageCount = pdfDoc.getPageCount() - startPageIndex;
+  stampFooters(pdfDoc, model, fonts, { startPageIndex, pageCount });
+  return {
+    startPageIndex,
+    pageCount,
+    signatureFieldCount: signatureFieldName(model) ? 1 : 0,
+  };
+}
+
+function drawBatchMetric(page, label, value, x, y, width, fonts) {
+  page.drawRectangle({
+    x,
+    y: y - 44,
+    width,
+    height: 44,
+    color: rgb(0.94, 0.97, 1),
+    borderColor: rgb(0.74, 0.82, 0.94),
+    borderWidth: 0.7,
+  });
+  drawTextLine(page, label, {
+    x: x + 10,
+    y: y - 10,
+    font: fonts.regular,
+    size: 7.4,
+    color: MUTED,
+  });
+  drawTextLine(page, value, {
+    x: x + 10,
+    y: y - 25,
+    font: fonts.bold,
+    size: 12.4,
+    color: DARK,
+  });
+}
+
+function drawBatchTable(page, columns, rows, y, fonts, {
+  widths = [],
+  maxRows = 20,
+} = {}) {
+  const x = MARGIN_X;
+  let cursorY = y;
+  let cellX = x;
+  const safeWidths = widths.length ? widths : columns.map(() => (PAGE_WIDTH - (MARGIN_X * 2)) / columns.length);
+  columns.forEach((column, index) => {
+    drawCell(page, {
+      x: cellX,
+      y: cursorY,
+      width: safeWidths[index],
+      height: 24,
+      text: column,
+      fonts,
+      fontSize: 7.3,
+      bold: true,
+      fill: TABLE_GRAY,
+    });
+    cellX += safeWidths[index];
+  });
+  cursorY -= 24;
+  rows.slice(0, maxRows).forEach((row) => {
+    const rowHeight = 30;
+    cellX = x;
+    row.forEach((value, index) => {
+      drawCell(page, {
+        x: cellX,
+        y: cursorY,
+        width: safeWidths[index],
+        height: rowHeight,
+        text: value,
+        fonts,
+        fontSize: index === 4 ? 6.7 : 7,
+        align: index === 0 || index === 3 ? "center" : "left",
+      });
+      cellX += safeWidths[index];
+    });
+    cursorY -= rowHeight;
+  });
+  if (rows.length > maxRows) {
+    drawTextLine(page, `Prikazano ${maxRows} od ${rows.length} stavki.`, {
+      x,
+      y: cursorY - 10,
+      font: fonts.regular,
+      size: 7.4,
+      color: MUTED,
+    });
+  }
+  return cursorY;
+}
+
+function normalizeBatchEntries(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? entry : {};
+      const model = item.model && typeof item.model === "object" ? item.model : {};
+      const rows = normalizeSprRows(item.rows, model);
+      const workOrderNumber = clean(item.workOrderNumber || model.workOrderNumber || `RN ${index + 1}`);
+      const serviceCode = clean(item.serviceCode || model.serviceBinding?.serviceCode || model.serviceCode || getServiceCode(model));
+      const serviceName = clean(item.serviceName || model.serviceBinding?.serviceName || serviceCode || "Usluga");
+      const recordNumber = clean(item.recordNumber || model.recordNumber || `${workOrderNumber}-${serviceCode}`);
+      const signatureSuffix = clean(recordNumber || item.id || `${workOrderNumber}-${index + 1}`);
+      return {
+        id: clean(item.id || `spr-batch-${index + 1}`),
+        workOrderNumber,
+        serviceCode,
+        serviceName,
+        recordNumber,
+        companyName: clean(item.companyName || model.companyName),
+        inspectionPlace: clean(item.inspectionPlace || model.inspectionPlace),
+        objectName: clean(item.objectName || model.inspectionObject),
+        quantity: clean(item.quantity || rows.length || "1"),
+        rows,
+        model: {
+          ...model,
+          workOrderNumber,
+          recordNumber,
+          serviceCode,
+          signatureFieldSuffix: signatureSuffix,
+        },
+      };
+    })
+    .filter((entry) => entry.recordNumber || entry.workOrderNumber || entry.serviceName);
+}
+
+function drawBatchSummaryPage(pdfDoc, entries, fonts) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const firstModel = entries[0]?.model || {};
+  let y = drawDefaultHeader(page, { ...firstModel, workOrderNumber: "Batch" }, fonts);
+  drawTextLine(page, "SAZETAK ZAPISNIKA", {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 17,
+  });
+  y -= 42;
+  const workOrderCount = new Set(entries.map((entry) => entry.workOrderNumber).filter(Boolean)).size;
+  const metricWidth = ((PAGE_WIDTH - (MARGIN_X * 2)) - 24) / 4;
+  [
+    ["RN-ovi", String(workOrderCount)],
+    ["Zapisnici", String(entries.length)],
+    ["Mjerenja", String(entries.reduce((sum, entry) => sum + entry.rows.length, 0))],
+    ["Primopredaja", String(entries.length)],
+  ].forEach(([label, value], index) => {
+    drawBatchMetric(page, label, value, MARGIN_X + (index * (metricWidth + 8)), y, metricWidth, fonts);
+  });
+  y -= 66;
+  drawBatchTable(page, ["#", "RN", "Usluga", "Zapisnik", "Objekt", "Status"], entries.map((entry, index) => [
+    String(index + 1),
+    entry.workOrderNumber,
+    entry.serviceCode || entry.serviceName,
+    entry.recordNumber,
+    entry.objectName || entry.inspectionPlace,
+    entry.rows.length ? "Spremno" : "Provjeri",
+  ]), y, fonts, {
+    widths: [24, 70, 74, 90, 174, 78],
+    maxRows: 18,
+  });
+  return page;
+}
+
+function drawBatchHandoverPage(pdfDoc, entries, fonts) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const firstModel = entries[0]?.model || {};
+  let y = drawDefaultHeader(page, { ...firstModel, workOrderNumber: "Primopredaja" }, fonts);
+  drawTextLine(page, "PRIMOPREDAJNI ZAPISNIK", {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 17,
+  });
+  y -= 34;
+  drawTextBlock(page, "U nastavku je popis izrađenih zapisnika i usluga koje se predaju korisniku u sklopu odabranih radnih naloga.", {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    font: fonts.regular,
+    size: 8.4,
+    lineHeight: 11,
+    maxLines: 3,
+  });
+  y -= 48;
+  drawBatchTable(page, ["#", "Usluga", "Dokument", "Kol.", "Objekt", "Napomena"], entries.map((entry, index) => [
+    String(index + 1),
+    entry.serviceName || entry.serviceCode,
+    entry.recordNumber,
+    entry.quantity,
+    entry.objectName || entry.inspectionPlace,
+    entry.workOrderNumber,
+  ]), y, fonts, {
+    widths: [24, 138, 88, 44, 144, 72],
+    maxRows: 18,
+  });
+  drawTextLine(page, "Preuzeo:", {
+    x: MARGIN_X,
+    y: 128,
+    font: fonts.regular,
+    size: 8.6,
+  });
+  page.drawLine({
+    start: { x: MARGIN_X, y: 84 },
+    end: { x: MARGIN_X + 185, y: 84 },
+    thickness: 0.8,
+    color: DARK,
+  });
+  drawTextLine(page, "Predao:", {
+    x: PAGE_WIDTH - MARGIN_X - 185,
+    y: 128,
+    font: fonts.regular,
+    size: 8.6,
+  });
+  page.drawLine({
+    start: { x: PAGE_WIDTH - MARGIN_X - 185, y: 84 },
+    end: { x: PAGE_WIDTH - MARGIN_X, y: 84 },
+    thickness: 0.8,
+    color: DARK,
+  });
+  return page;
+}
+
+function createSprPdfDocument(title = "SPR zapisnik") {
+  return PDFDocument.create().then((pdfDoc) => {
+    pdfDoc.registerFontkit(fontkit);
+    pdfDoc.setTitle(clean(title || "SPR zapisnik"));
+    pdfDoc.setSubject("SafeNexus Izrada dokumentacije SPR");
+    pdfDoc.setCreator("SafeNexus browser PDF");
+    pdfDoc.setProducer("SafeNexus browser PDF");
+    return pdfDoc;
+  });
+}
+
+export async function generateDocumentationSprPdfBlob({
+  model = {},
+  rows = [],
+  fileName = "",
+} = {}) {
+  const pdfDoc = await createSprPdfDocument(model.recordNumber || "SPR zapisnik");
+  const fonts = await createDocumentationSprFonts(pdfDoc);
+  const record = await appendDocumentationSprRecord(pdfDoc, model, rows, fonts);
 
   const bytes = await pdfDoc.save({ useObjectStreams: false });
   const blob = new Blob([bytes], { type: "application/pdf" });
@@ -1110,6 +1364,49 @@ export async function generateDocumentationSprPdfBlob({
     bytes,
     fileName: safeFileName(fileName || model.recordNumber || "spr-zapisnik.pdf"),
     pageCount: pdfDoc.getPageCount(),
-    signatureFieldCount: signatureFieldName(model) ? 1 : 0,
+    signatureFieldCount: record.signatureFieldCount,
+  };
+}
+
+export async function generateDocumentationSprBatchPdfBlob({
+  entries = [],
+  fileName = "",
+} = {}) {
+  const normalizedEntries = normalizeBatchEntries(entries);
+  if (!normalizedEntries.length) {
+    throw new Error("Nema zapisnika za batch PDF.");
+  }
+  const pdfDoc = await createSprPdfDocument(`SPR batch ${normalizedEntries[0].workOrderNumber || ""}`);
+  const fonts = await createDocumentationSprFonts(pdfDoc);
+  let signatureFieldCount = 0;
+
+  for (const entry of normalizedEntries) {
+    const record = await appendDocumentationSprRecord(pdfDoc, entry.model, entry.rows, fonts);
+    signatureFieldCount += record.signatureFieldCount;
+  }
+
+  const summaryStart = pdfDoc.getPageCount();
+  drawBatchSummaryPage(pdfDoc, normalizedEntries, fonts);
+  stampFooters(pdfDoc, { serviceCode: "SAZETAK" }, fonts, {
+    startPageIndex: summaryStart,
+    pageCount: pdfDoc.getPageCount() - summaryStart,
+  });
+
+  const handoverStart = pdfDoc.getPageCount();
+  drawBatchHandoverPage(pdfDoc, normalizedEntries, fonts);
+  stampFooters(pdfDoc, { serviceCode: "PRIMOPREDAJA" }, fonts, {
+    startPageIndex: handoverStart,
+    pageCount: pdfDoc.getPageCount() - handoverStart,
+  });
+
+  const bytes = await pdfDoc.save({ useObjectStreams: false });
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  return {
+    blob,
+    bytes,
+    fileName: safeFileName(fileName || `spr-batch-${normalizedEntries[0].workOrderNumber || "zapisnici"}.pdf`),
+    pageCount: pdfDoc.getPageCount(),
+    signatureFieldCount,
+    recordCount: normalizedEntries.length,
   };
 }
