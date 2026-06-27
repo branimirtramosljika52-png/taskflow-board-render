@@ -56935,6 +56935,7 @@ function createDefaultDocumentationSprModel() {
     headerImageName: "",
     measurementEquipmentIds: [],
     legalFrameworkIds: [],
+    customRegulations: [],
     inspectorUserIds: [],
     responsiblePersonUserId: "",
     gridlineModel: buildDocumentationSprGridlineModelFromRows(),
@@ -56978,6 +56979,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     headerImageName: "",
     measurementEquipmentIds: [],
     legalFrameworkIds: [],
+    customRegulations: [],
     inspectorUserIds: [],
     responsiblePersonUserId: "",
     gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
@@ -57005,6 +57007,7 @@ function normalizeDocumentationSprModel(value) {
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
     measurementEquipmentIds: normalizeDocumentationSprIdList(source.measurementEquipmentIds),
     legalFrameworkIds: normalizeDocumentationSprIdList(source.legalFrameworkIds),
+    customRegulations: normalizeDocumentationSprTextList(source.customRegulations),
     inspectorUserIds: normalizeDocumentationSprIdList(source.inspectorUserIds),
     responsiblePersonUserId: String(source.responsiblePersonUserId || "").trim(),
     previewHidden: Boolean(source.previewHidden),
@@ -57019,6 +57022,15 @@ function normalizeDocumentationSprIdList(value = []) {
     ? value
     : String(value || "")
       .split(",")
+      .map((entry) => entry.trim());
+  return Array.from(new Set(values.map((entry) => String(entry || "").trim()).filter(Boolean)));
+}
+
+function normalizeDocumentationSprTextList(value = []) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || "")
+      .split(/\r?\n/)
       .map((entry) => entry.trim());
   return Array.from(new Set(values.map((entry) => String(entry || "").trim()).filter(Boolean)));
 }
@@ -57590,6 +57602,13 @@ function getDocumentationSprLegalFrameworksByIds(ids = documentationSprModel?.le
   return getDocumentationSprLegalFrameworkItems().filter((item) => selected.has(String(item.id)));
 }
 
+function buildDocumentationSprRegulationsText(ids = documentationSprModel?.legalFrameworkIds ?? [], customRegulations = documentationSprModel?.customRegulations ?? []) {
+  return [
+    ...getDocumentationSprLegalFrameworksByIds(ids).map((item) => formatDocumentationSprLegalFrameworkLine(item)),
+    ...normalizeDocumentationSprTextList(customRegulations),
+  ].join("\n");
+}
+
 function getDocumentationSprUsersByIds(ids = [], users = state.users ?? []) {
   const userById = new Map((users ?? []).map((user) => [String(user.id), user]));
   return normalizeDocumentationSprIdList(ids)
@@ -58032,9 +58051,7 @@ function applyDocumentationSprLegalSelection(ids = getDocumentationSprSelectValu
   renderDocumentationSprLegalPicker();
   setDocumentationSprFieldValue(
     "regulations",
-    getDocumentationSprLegalFrameworksByIds(documentationSprModel.legalFrameworkIds)
-      .map((item) => formatDocumentationSprLegalFrameworkLine(item))
-      .join("\n"),
+    buildDocumentationSprRegulationsText(documentationSprModel.legalFrameworkIds, documentationSprModel.customRegulations),
   );
   syncDocumentationSprSourceSummary();
   renderDocumentationSprPreview();
@@ -58050,8 +58067,14 @@ function appendDocumentationSprCustomRegulation() {
     documentationSprLegalCustomInput.focus();
     return;
   }
-  const current = String(documentationSprModel.regulations || "").trim();
-  setDocumentationSprFieldValue("regulations", [current, value].filter(Boolean).join("\n"));
+  documentationSprModel.customRegulations = normalizeDocumentationSprTextList([
+    ...(documentationSprModel.customRegulations || []),
+    value,
+  ]);
+  setDocumentationSprFieldValue(
+    "regulations",
+    buildDocumentationSprRegulationsText(documentationSprModel.legalFrameworkIds, documentationSprModel.customRegulations),
+  );
   documentationSprLegalCustomInput.value = "";
   syncDocumentationSprSourceSummary();
   renderDocumentationSprPreview();
@@ -58376,10 +58399,8 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
       .map((item) => formatDocumentationSprEquipmentLine(item))
       .join("\n");
   }
-  if (legalFrameworkIds.length > 0) {
-    nextModel.regulations = getDocumentationSprLegalFrameworksByIds(legalFrameworkIds)
-      .map((item) => formatDocumentationSprLegalFrameworkLine(item))
-      .join("\n");
+  if (legalFrameworkIds.length > 0 || normalizeDocumentationSprTextList(nextModel.customRegulations).length > 0) {
+    nextModel.regulations = buildDocumentationSprRegulationsText(legalFrameworkIds, nextModel.customRegulations);
   }
   if (responsibleUser) {
     const qualification = getUserElectricalQualification(responsibleUser, "elektro");
