@@ -105,7 +105,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.227.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.228.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -19242,6 +19242,36 @@ function addMonthsToMobileDate(value = "", monthsValue = "") {
   return date.toISOString().slice(0, 10);
 }
 
+function normalizeMobileDocumentationAttachments(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, 8)
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? entry : {};
+      const fileName = normalizeInputValue(item.fileName || item.name || `Prilog ${index + 1}`);
+      const dataUrl = normalizeInputValue(item.dataUrl || item.contentDataUrl);
+      const fileType = normalizeInputValue(item.fileType || item.type).toLowerCase();
+      const fileSize = Number(item.fileSize || item.size || 0) || 0;
+      const isPdf = fileType === "application/pdf" || /^data:application\/pdf;base64,/i.test(dataUrl) || /\.pdf$/i.test(fileName);
+      const isPng = fileType === "image/png" || /^data:image\/png;base64,/i.test(dataUrl) || /\.png$/i.test(fileName);
+      const isJpg = fileType === "image/jpeg" || fileType === "image/jpg" || /^data:image\/jpe?g;base64,/i.test(dataUrl) || /\.jpe?g$/i.test(fileName);
+      if (!fileName || !dataUrl || (!isPdf && !isPng && !isJpg)) {
+        return null;
+      }
+      const normalizedType = isPdf ? "application/pdf" : isPng ? "image/png" : "image/jpeg";
+      return {
+        id: normalizeInputValue(item.id) || `mobile-attachment-${index + 1}`,
+        fileName,
+        name: fileName,
+        fileType: normalizedType,
+        type: normalizedType,
+        fileSize,
+        size: fileSize,
+        dataUrl,
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
   const source = input?.common && typeof input.common === "object" && !Array.isArray(input.common)
     ? input.common
@@ -19362,6 +19392,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
       })
       .filter(Boolean))
     : {};
+  const attachments = normalizeMobileDocumentationAttachments(source.attachments || source.documentAttachments || []);
   return {
     objectId: normalizeInputValue(source.objectId || source.locationObjectId || source.selectedObjectId),
     objectName: normalizeInputValue(source.objectName || source.locationObjectName),
@@ -19432,6 +19463,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     templateFieldValues,
     fieldSheets,
     templateFieldSheets,
+    attachments,
   };
 }
 
@@ -23114,6 +23146,34 @@ function normalizeMobileSprLookupText(value = "") {
     .trim();
 }
 
+function normalizeMobileSprResultStatusValue(value = "") {
+  const raw = normalizeInputValue(value);
+  const lookup = normalizeMobileSprLookupText(raw);
+  if (!lookup) {
+    return "";
+  }
+  if (
+    lookup === "false" ||
+    lookup === "0" ||
+    lookup === "ne" ||
+    lookup.includes("ne zadovoljava") ||
+    lookup.includes("nezadovoljava") ||
+    lookup.includes("negativ")
+  ) {
+    return "NE ZADOVOLJAVA";
+  }
+  if (
+    lookup === "true" ||
+    lookup === "1" ||
+    lookup === "da" ||
+    lookup.includes("zadovoljava") ||
+    lookup.includes("pozitiv")
+  ) {
+    return "ZADOVOLJAVA";
+  }
+  return raw;
+}
+
 function isMobileDocumentationSprEntry(entry = {}, template = {}) {
   const explicitKind = normalizeMobileSprLookupText(entry?.exportKind || entry?.renderEngine || entry?.engine);
   if (["documentation spr", "spr browser", "spr"].includes(explicitKind)) {
@@ -23368,6 +23428,19 @@ function buildMobileDocumentationSprModel({
   const issuedDate = normalizeDateOnlyValue(entry.issuedDate || common.issuedDate || inspectionDate);
   const validUntil = normalizeDateOnlyValue(entry.expirationDate)
     || addMonthsToMobileDate(inspectionDate || issuedDate, resolveMobileServiceValidityMonths({ serviceCode }, scopedSnapshot, common));
+  const resultStatus = normalizeMobileSprResultStatusValue(
+    common.resultStatus ||
+      getMobileSprFirstValue(placeholders, [
+        "OCJENA",
+        "ZADOVOLJAVA",
+        "ZAKLJUCNA_OCJENA_DA_NE",
+        "OCJENA_REZULTATA_ISPITIVANJA",
+        "OCJENA_REZULTATA_ISPITIVANJA_STATUS",
+        "ZAKLJUCNA_OCJENA_KRATKO",
+        "ZAKLJUCNA_OCJENA_STATUS",
+      ]) ||
+      "ZADOVOLJAVA",
+  );
 
   return {
     templateCode: normalizeInputValue(template.title || template.documentType || "SPR v1.0.0"),
@@ -23403,7 +23476,7 @@ function buildMobileDocumentationSprModel({
       || getMobileSprQualificationValue(common, scopedSnapshot, "data1"),
     signatureNumber: getMobileSprQualificationValue(common, scopedSnapshot, "urbroj")
       || getMobileSprQualificationValue(common, scopedSnapshot, "data2"),
-    resultStatus: normalizeInputValue(common.resultStatus || placeholders.OCJENA || "ZADOVOLJAVA"),
+    resultStatus: resultStatus || "ZADOVOLJAVA",
     signatureMode: common.signatureMode || "digital",
     signatureFieldOib: signatureOib,
     signatureImageUrl: normalizeInputValue(common.signatureImageUrl || common.signatureDataUrl),
@@ -23418,7 +23491,7 @@ function buildMobileDocumentationSprModel({
     inspectorUserIds: common.electricalInspectorUserIds?.length ? common.electricalInspectorUserIds : common.inspectorUserIds,
     responsiblePersonUserId: common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId,
     fieldSettings: {},
-    attachments: [],
+    attachments: Array.isArray(common.attachments) ? common.attachments : [],
   };
 }
 

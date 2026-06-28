@@ -412,6 +412,7 @@ data class WorkOrderDocumentationDraft(
     val templateFieldValues: Map<String, Map<String, String>> = emptyMap(),
     val fieldSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
     val templateFieldSheets: Map<String, Map<String, WorkOrderMeasurementSheet>> = emptyMap(),
+    val attachments: List<WorkOrderDocumentationAiFile> = emptyList(),
     val additionalRecords: List<WorkOrderDocumentationAdditionalRecord> = emptyList(),
     val includeHandoverProtocol: Boolean = true,
 )

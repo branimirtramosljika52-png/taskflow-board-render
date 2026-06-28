@@ -413,6 +413,8 @@ enum class WorkOrderDocumentCategory(val value: String, val label: String) {
 private const val WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12L * 1024L * 1024L
 private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
 private const val WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES = 5
+private const val WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
+private const val WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES = 8
 private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
 private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILES = 8
 private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
@@ -24127,6 +24129,40 @@ private fun WorkOrderDocumentationWizardDialog(
             aiLoading = false
         }
     }
+    var documentationAttachmentFiles by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<WorkOrderDocumentationAiFile>()) }
+    var documentationAttachmentLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    val documentationAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            documentationAttachmentLoading = true
+            documentationAttachmentMessage = ""
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    buildWorkOrderDocumentationAttachmentFiles(
+                        context = androidContext.applicationContext,
+                        uris = uris,
+                        existingCount = documentationAttachmentFiles.size,
+                    )
+                }
+            }
+                .onSuccess { files ->
+                    val nextFiles = (documentationAttachmentFiles + files)
+                        .distinctBy { it.id }
+                        .take(WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES)
+                    documentationAttachmentFiles = nextFiles
+                    documentationAttachmentMessage = if (files.isEmpty()) {
+                        "Nije dodan nijedan prilog."
+                    } else {
+                        "${files.size} prilog(a) dodano u zapisnik."
+                    }
+                }
+                .onFailure { error ->
+                    documentationAttachmentMessage = error.message ?: "Ne mogu učitati odabrane priloge."
+                }
+            documentationAttachmentLoading = false
+        }
+    }
     val availableLocationObjects = remember(workOrder.companyId, workOrder.locationId, locationObjects) {
         locationObjects
             .filter { item ->
@@ -24845,6 +24881,60 @@ private fun WorkOrderDocumentationWizardDialog(
                     measurementSheets = measurementSheets,
                     onMeasurementSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
                     standardValues = standardValues,
+                    signatureAreaOptions = context.signaturePersonOptions,
+                    selectedInspectorIdsByArea = mapOf(
+                        "elektro" to electricalInspectorUserIds,
+                        "tipkalo" to tipkaloInspectorUserIds,
+                        "tzin" to tipkaloInspectorUserIds,
+                        "radna_oprema" to workEquipmentInspectorUserIds,
+                        "ro" to workEquipmentInspectorUserIds,
+                        "radni_okolis" to workEnvironmentInspectorUserIds,
+                        "fc" to workEnvironmentInspectorUserIds,
+                        "default" to inspectorUserIds,
+                    ),
+                    selectedAuthorizationIdByArea = mapOf(
+                        "elektro" to electricalAuthorizationHolderUserId,
+                        "tipkalo" to tipkaloAuthorizationHolderUserId,
+                        "tzin" to tipkaloAuthorizationHolderUserId,
+                        "radna_oprema" to workEquipmentAuthorizationHolderUserId,
+                        "ro" to workEquipmentAuthorizationHolderUserId,
+                        "radni_okolis" to workEnvironmentAuthorizationHolderUserId,
+                        "fc" to workEnvironmentAuthorizationHolderUserId,
+                        "default" to authorizationHolderUserId,
+                    ),
+                    onInspectorIdsChangeForArea = { area, ids ->
+                        when (normalizeDocumentationSignatureAreaKey(area)) {
+                            "tipkalo", "tzin" -> {
+                                tipkaloInspectorUserIds = ids
+                                tipkaloInspectorUserId = ids.firstOrNull().orEmpty()
+                            }
+                            "elektro" -> {
+                                electricalInspectorUserIds = ids
+                                electricalInspectorUserId = ids.firstOrNull().orEmpty()
+                            }
+                            "radna_oprema", "ro" -> {
+                                workEquipmentInspectorUserIds = ids
+                                workEquipmentInspectorUserId = ids.firstOrNull().orEmpty()
+                            }
+                            "radni_okolis", "fc" -> {
+                                workEnvironmentInspectorUserIds = ids
+                                workEnvironmentInspectorUserId = ids.firstOrNull().orEmpty()
+                            }
+                            else -> {
+                                inspectorUserIds = ids
+                                inspectorUserId = ids.firstOrNull().orEmpty()
+                            }
+                        }
+                    },
+                    onAuthorizationIdChangeForArea = { area, id ->
+                        when (normalizeDocumentationSignatureAreaKey(area)) {
+                            "tipkalo", "tzin" -> tipkaloAuthorizationHolderUserId = id
+                            "elektro" -> electricalAuthorizationHolderUserId = id
+                            "radna_oprema", "ro" -> workEquipmentAuthorizationHolderUserId = id
+                            "radni_okolis", "fc" -> workEnvironmentAuthorizationHolderUserId = id
+                            else -> authorizationHolderUserId = id
+                        }
+                    },
                     enabled = !formLoading,
                 )
 
@@ -24864,8 +24954,16 @@ private fun WorkOrderDocumentationWizardDialog(
                         selectedPeopleCount = selectedDocumentationPeopleCount,
                         values = effectiveTemplateFieldValues,
                         standardControls = templateControls,
+                        attachmentFiles = documentationAttachmentFiles,
+                        attachmentLoading = documentationAttachmentLoading,
+                        attachmentMessage = documentationAttachmentMessage,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
+                        onPickAttachments = { documentationAttachmentPicker.launch(arrayOf("application/pdf", "image/png", "image/jpeg")) },
+                        onRemoveAttachment = { fileId ->
+                            documentationAttachmentFiles = documentationAttachmentFiles.filterNot { it.id == fileId }
+                            documentationAttachmentMessage = if (documentationAttachmentFiles.isEmpty()) "" else "${documentationAttachmentFiles.size} prilog(a) u zapisniku."
+                        },
                         onFieldChange = { template, field, value ->
                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                         },
@@ -25113,6 +25211,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             templateFieldValues = templatePayload.second,
                             fieldSheets = sheetPayload.first,
                             templateFieldSheets = sheetPayload.second,
+                            attachments = documentationAttachmentFiles,
                             additionalRecords = additionalRecords.map { record ->
                                 WorkOrderDocumentationAdditionalRecord(
                                     serviceKey = record.serviceKey,
@@ -28946,8 +29045,13 @@ private fun DocumentationSprMobileWorkspace(
     selectedPeopleCount: Int,
     values: Map<String, String>,
     standardControls: DocumentationTemplateStandardControls,
+    attachmentFiles: List<WorkOrderDocumentationAiFile>,
+    attachmentLoading: Boolean,
+    attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
+    onPickAttachments: () -> Unit,
+    onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
     val sourceLabel = remember(templates) { documentationSprMobileSourceLabel(templates) }
@@ -29043,6 +29147,9 @@ private fun DocumentationSprMobileWorkspace(
             DocumentationSprStatusChip(Icons.Rounded.Work, "Oprema", selectedEquipmentCount.toString())
             DocumentationSprStatusChip(Icons.Rounded.Lock, "Propisi", selectedLegalCount.toString())
             DocumentationSprStatusChip(Icons.Rounded.Groups, "Osobe", selectedPeopleCount.toString())
+            if (attachmentFiles.isNotEmpty()) {
+                DocumentationSprStatusChip(Icons.Rounded.AttachFile, "Prilozi", attachmentFiles.size.toString())
+            }
             DocumentationSprStatusChip(Icons.Rounded.ListAlt, "Gridline", "$tableCount / $rowCount")
         }
 
@@ -29079,8 +29186,13 @@ private fun DocumentationSprMobileWorkspace(
                                 standardControls = standardControls,
                                 tableCount = tableCount,
                                 rowCount = rowCount,
+                                attachmentFiles = attachmentFiles,
+                                attachmentLoading = attachmentLoading,
+                                attachmentMessage = attachmentMessage,
                                 enabled = enabled,
                                 onOpenMeasurements = onOpenMeasurements,
+                                onPickAttachments = onPickAttachments,
+                                onRemoveAttachment = onRemoveAttachment,
                                 onFieldChange = onFieldChange,
                             )
                         }
@@ -29103,41 +29215,6 @@ private fun DocumentationSprMobileWorkspace(
                 }
             }
         }
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.ListAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("$templateLabel Gridline", fontWeight = FontWeight.Black)
-                        Text(
-                            if (tableCount == 0) "Nema povezane tablice za ovu uslugu." else "$tableCount tablica · $rowCount redaka",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = onOpenMeasurements,
-                        enabled = enabled && measurementTemplates.isNotEmpty(),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Text("Otvori", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -29155,11 +29232,20 @@ private fun DocumentationSprTemplateSectionPanel(
     standardControls: DocumentationTemplateStandardControls,
     tableCount: Int,
     rowCount: Int,
+    attachmentFiles: List<WorkOrderDocumentationAiFile>,
+    attachmentLoading: Boolean,
+    attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
+    onPickAttachments: () -> Unit,
+    onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
     var expanded by rememberSaveable(entry.key) { mutableStateOf(false) }
+    val isAttachmentSection = remember(entry.section) { isDocumentationAttachmentTemplateSection(entry.section) }
+    val hideDefects = remember(entry.template, entry.section.blocks, values) {
+        shouldHideDocumentationDefects(entry.template, entry.section.blocks, values)
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -29223,7 +29309,24 @@ private fun DocumentationSprTemplateSectionPanel(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         )
                     }
+                    if (isAttachmentSection) {
+                        DocumentationSprAttachmentsCard(
+                            files = attachmentFiles,
+                            loading = attachmentLoading,
+                            message = attachmentMessage,
+                            enabled = enabled,
+                            onPick = onPickAttachments,
+                            onRemove = onRemoveAttachment,
+                        )
+                    }
                     entry.section.blocks.forEach { block ->
+                        if (isAttachmentSection && block.type.equals("measurement_table", ignoreCase = true)) {
+                            return@forEach
+                        }
+                        val editableField = findTemplateFieldForBlock(entry.template, block)
+                        if (editableField != null && hideDefects && isDocumentationDefectsTemplateField(editableField, block)) {
+                            return@forEach
+                        }
                         when (block.type.lowercase(Locale.getDefault())) {
                             "equipment_list" -> TemplateEquipmentControls(standardControls)
                             "legal_list" -> TemplateLegalControls(standardControls)
@@ -29234,13 +29337,13 @@ private fun DocumentationSprTemplateSectionPanel(
                                 onOpenMeasurements = onOpenMeasurements,
                             )
                             else -> {
-                                val editableField = findTemplateFieldForBlock(entry.template, block)
                                 TemplateBlockDetailRow(
                                     template = entry.template,
                                     block = block,
                                     editableField = editableField,
                                     value = editableField?.let { field -> values[templateFieldStateKey(entry.template, field)] }.orEmpty(),
                                     standardValues = standardControls.standardValues,
+                                    standardControls = standardControls,
                                     enabled = enabled,
                                     onChange = { field, value -> onFieldChange(entry.template, field, value) },
                                 )
@@ -29285,6 +29388,117 @@ private fun DocumentationSprGridlineInlineCard(
                 shape = RoundedCornerShape(13.dp),
             ) {
                 Text("Otvori", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSprAttachmentsCard(
+    files: List<WorkOrderDocumentationAiFile>,
+    loading: Boolean,
+    message: String,
+    enabled: Boolean,
+    onPick: () -> Unit,
+    onRemove: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                    Icon(
+                        Icons.Rounded.AttachFile,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(9.dp)
+                            .size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Prilozi uz zapisnik", fontWeight = FontWeight.Black)
+                    Text(
+                        if (files.isEmpty()) "Dodaj PDF ili slike koje idu iza zapisnika." else "${files.size} prilog(a) nastavlja se u PDF-u.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                OutlinedButton(
+                    onClick = onPick,
+                    enabled = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES,
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    if (loading) {
+                        CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Rounded.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (loading) "Učitavam" else "Dodaj", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (loading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (files.isEmpty()) {
+                Text(
+                    "Nema dodanih priloga.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    files.forEach { file ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                if (file.type.equals("application/pdf", ignoreCase = true)) Icons.Rounded.PictureAsPdf else Icons.Rounded.Image,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(file.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOf(file.type, formatFileSizeLabel(file.size)).filter { it.isNotBlank() }.joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                                )
+                            }
+                            IconButton(onClick = { onRemove(file.id) }, enabled = enabled && !loading) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni prilog", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+            if (message.isNotBlank()) {
+                Text(
+                    message,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }
@@ -29382,6 +29596,11 @@ private data class DocumentationTemplateStandardControls(
     val measurementSheets: Map<String, WorkOrderMeasurementSheet>,
     val onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
     val standardValues: DocumentationStandardValues,
+    val signatureAreaOptions: List<WorkOrderDocumentationSignatureAreaOptions> = emptyList(),
+    val selectedInspectorIdsByArea: Map<String, Set<String>> = emptyMap(),
+    val selectedAuthorizationIdByArea: Map<String, String> = emptyMap(),
+    val onInspectorIdsChangeForArea: (String, Set<String>) -> Unit = { _, _ -> },
+    val onAuthorizationIdChangeForArea: (String, String) -> Unit = { _, _ -> },
     val enabled: Boolean,
 )
 
@@ -31241,6 +31460,264 @@ private fun documentationSignatureBlockSelectionSummary(
         .ifBlank { "Odaberi osobu u bloku Osobe i ovlaštenja." }
 }
 
+private fun isDocumentationAttachmentTemplateSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return lookup.contains("dodaj dokument") ||
+        lookup.contains("dokumenti") ||
+        lookup.contains("prilog") ||
+        lookup.contains("privit") ||
+        lookup.contains("skic")
+}
+
+private fun documentationFieldLookup(
+    field: WorkOrderDocumentationField?,
+    block: WorkOrderDocumentationTemplateBlock,
+): String =
+    normalizeTemplateSectionLookup(
+        listOf(
+            field?.id.orEmpty(),
+            field?.key.orEmpty(),
+            field?.tokenKey.orEmpty(),
+            field?.label.orEmpty(),
+            field?.helpText.orEmpty(),
+            field?.defaultValue.orEmpty(),
+            block.id,
+            block.key,
+            block.tokenKey,
+            block.label,
+            block.typeLabel,
+            block.helpText,
+        ).joinToString(" "),
+    )
+
+private fun isDocumentationSatisfactoryTemplateField(
+    field: WorkOrderDocumentationField,
+    block: WorkOrderDocumentationTemplateBlock,
+): Boolean {
+    val lookup = documentationFieldLookup(field, block)
+    return lookup.contains("zadovoljava") ||
+        (lookup.contains("zakljuc") && lookup.contains("ocjen")) ||
+        lookup.contains("ocjena rezultata") ||
+        lookup.contains("ocjena ispitivanja")
+}
+
+private fun isDocumentationDefectsTemplateField(
+    field: WorkOrderDocumentationField,
+    block: WorkOrderDocumentationTemplateBlock,
+): Boolean =
+    documentationFieldLookup(field, block).let { lookup ->
+        lookup.contains("nedostat") || lookup.contains("nepravilnost")
+    }
+
+private fun isDocumentationRecommendationsTemplateField(
+    field: WorkOrderDocumentationField,
+    block: WorkOrderDocumentationTemplateBlock,
+): Boolean =
+    documentationFieldLookup(field, block).let { lookup ->
+        lookup.contains("preporuk") || lookup.contains("napomen")
+    }
+
+private fun documentationSatisfactoryValueIsPositive(value: String): Boolean {
+    val lookup = normalizeTemplateSectionLookup(value)
+    if (lookup.isBlank()) return true
+    return !(lookup == "false" ||
+        lookup == "0" ||
+        lookup == "ne" ||
+        lookup.contains("ne zadovoljava") ||
+        lookup.contains("nezadovoljava") ||
+        lookup.contains("negativ"))
+}
+
+private fun shouldHideDocumentationDefects(
+    template: WorkOrderDocumentationTemplate,
+    blocks: List<WorkOrderDocumentationTemplateBlock>,
+    values: Map<String, String>,
+): Boolean {
+    blocks.forEach { block ->
+        val field = findTemplateFieldForBlock(template, block) ?: return@forEach
+        if (isDocumentationSatisfactoryTemplateField(field, block)) {
+            val value = values[templateFieldStateKey(template, field)].orEmpty()
+            return documentationSatisfactoryValueIsPositive(value)
+        }
+    }
+    return false
+}
+
+private fun DocumentationTemplateStandardControls.selectedInspectorsForArea(area: String): Set<String> {
+    val normalizedArea = normalizeDocumentationSignatureAreaKey(area)
+    return selectedInspectorIdsByArea[normalizedArea].orEmpty()
+        .ifEmpty { selectedInspectorIdsByArea["default"].orEmpty() }
+}
+
+private fun DocumentationTemplateStandardControls.selectedAuthorizationForArea(area: String): String {
+    val normalizedArea = normalizeDocumentationSignatureAreaKey(area)
+    return selectedAuthorizationIdByArea[normalizedArea].orEmpty()
+        .ifBlank { selectedAuthorizationIdByArea["default"].orEmpty() }
+}
+
+@Composable
+private fun DocumentationSignatureBlockSelector(
+    block: WorkOrderDocumentationTemplateBlock,
+    standardControls: DocumentationTemplateStandardControls,
+    enabled: Boolean,
+) {
+    val area = normalizeDocumentationSignatureAreaKey(block.signatureArea)
+    val role = normalizeDocumentationSignatureRole(block.signatureRole, block.type)
+    val options = standardControls.signatureAreaOptions.areaOptions(area)
+    when (role) {
+        "company_responsible" -> {
+            Text(
+                "Odgovorna osoba naručitelja popunjava se iz podataka tvrtke/lokacije.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+            )
+        }
+        "authorize" -> {
+            val selectedId = standardControls.selectedAuthorizationForArea(area)
+            val selectedLabel = options.authorizationOptions.firstOrNull { it.id == selectedId }?.label.orEmpty()
+            Text(
+                selectedLabel.ifBlank { "Odaberi odgovornu osobu za ${options.label}." },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                fontWeight = FontWeight.SemiBold,
+            )
+            DocumentationMultiSelectField(
+                label = "Odgovorna osoba",
+                options = options.authorizationOptions,
+                selectedIds = selectedId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty(),
+                enabled = enabled,
+                emptyText = "Nema aktivnih odgovornih osoba s ovlaštenjem za ovu uslugu.",
+                singleSelection = true,
+                maxVisibleItems = options.authorizationOptions.size,
+                onChange = { selected -> standardControls.onAuthorizationIdChangeForArea(area, selected.firstOrNull().orEmpty()) },
+            )
+        }
+        else -> {
+            val selectedIds = standardControls.selectedInspectorsForArea(area)
+            val selectedLabel = options.inspectorOptions
+                .filter { it.id in selectedIds }
+                .joinToString(", ") { it.label }
+            Text(
+                selectedLabel.ifBlank { "Odaberi ispitivače za ${options.label}." },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                fontWeight = FontWeight.SemiBold,
+            )
+            DocumentationMultiSelectField(
+                label = "Ispitivači",
+                options = options.inspectorOptions,
+                selectedIds = selectedIds,
+                enabled = enabled,
+                emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                maxVisibleItems = options.inspectorOptions.size,
+                onChange = { selected -> standardControls.onInspectorIdsChangeForArea(area, selected) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSatisfactoryTemplateInput(
+    field: WorkOrderDocumentationField,
+    value: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+) {
+    val positive = documentationSatisfactoryValueIsPositive(value)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (field.required) "${field.label} *" else field.label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            DocumentationSatisfactoryChoice(
+                modifier = Modifier.weight(1f),
+                selected = positive,
+                label = "Zadovoljava",
+                icon = Icons.Rounded.CheckCircle,
+                accent = Color(0xFF059669),
+                enabled = enabled,
+                onClick = { onChange("true") },
+            )
+            DocumentationSatisfactoryChoice(
+                modifier = Modifier.weight(1f),
+                selected = !positive,
+                label = "Ne zadovoljava",
+                icon = Icons.Rounded.ErrorOutline,
+                accent = Color(0xFFDC2626),
+                enabled = enabled,
+                onClick = { onChange("false") },
+            )
+        }
+        Text(
+            if (positive) "Nedostaci se ne prikazuju za pozitivnu ocjenu." else "Nedostaci su obavezni za negativnu ocjenu.",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (positive) Color(0xFF047857) else Color(0xFFB91C1C),
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun DocumentationSatisfactoryChoice(
+    modifier: Modifier,
+    selected: Boolean,
+    label: String,
+    icon: ImageVector,
+    accent: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) accent.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, if (selected) accent.copy(alpha = 0.82f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 11.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                color = if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocumentationPremiumLongTextInput(
+    field: WorkOrderDocumentationField,
+    value: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+    icon: ImageVector,
+    accent: Color,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+            Text(if (field.required) "${field.label} *" else field.label, fontWeight = FontWeight.Black)
+        }
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            maxLines = 6,
+            enabled = enabled,
+            placeholder = { Text(field.defaultValue.ifBlank { field.label }) },
+            shape = RoundedCornerShape(16.dp),
+        )
+    }
+}
+
 @Composable
 private fun TemplateBlockDetailRow(
     template: WorkOrderDocumentationTemplate,
@@ -31248,6 +31725,7 @@ private fun TemplateBlockDetailRow(
     editableField: WorkOrderDocumentationField?,
     value: String,
     standardValues: DocumentationStandardValues,
+    standardControls: DocumentationTemplateStandardControls? = null,
     enabled: Boolean,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
 ) {
@@ -31291,13 +31769,43 @@ private fun TemplateBlockDetailRow(
                     )
                 }
             }
-            if (editableField != null) {
-                TemplateFieldInput(
-                    field = editableField,
-                    value = value,
+            if (standardControls != null && signatureSummary != null && isDocumentationSignatureFieldType(block.type)) {
+                DocumentationSignatureBlockSelector(
+                    block = block,
+                    standardControls = standardControls,
                     enabled = enabled,
-                    onChange = { onChange(editableField, it) },
                 )
+            } else if (editableField != null) {
+                when {
+                    isDocumentationSatisfactoryTemplateField(editableField, block) -> DocumentationSatisfactoryTemplateInput(
+                        field = editableField,
+                        value = value,
+                        enabled = enabled,
+                        onChange = { onChange(editableField, it) },
+                    )
+                    isDocumentationRecommendationsTemplateField(editableField, block) -> DocumentationPremiumLongTextInput(
+                        field = editableField,
+                        value = value,
+                        enabled = enabled,
+                        onChange = { onChange(editableField, it) },
+                        icon = Icons.Rounded.CheckCircle,
+                        accent = Color(0xFF2563EB),
+                    )
+                    isDocumentationDefectsTemplateField(editableField, block) -> DocumentationPremiumLongTextInput(
+                        field = editableField,
+                        value = value,
+                        enabled = enabled,
+                        onChange = { onChange(editableField, it) },
+                        icon = Icons.Rounded.ErrorOutline,
+                        accent = Color(0xFFDC2626),
+                    )
+                    else -> TemplateFieldInput(
+                        field = editableField,
+                        value = value,
+                        enabled = enabled,
+                        onChange = { onChange(editableField, it) },
+                    )
+                }
             } else {
                 Text(
                     signatureSummary ?: block.summary.ifBlank {
@@ -32174,6 +32682,39 @@ private suspend fun buildWorkOrderDocumentationAiFiles(
         val mimeType = resolveUriMimeType(context, uri, name).ifBlank { "application/octet-stream" }
         WorkOrderDocumentationAiFile(
             id = "${System.currentTimeMillis()}-${existingCount + index}-${name.hashCode()}",
+            name = name.withFallbackExtension(mimeType),
+            type = mimeType,
+            size = bytes.size.toLong(),
+            contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
+        )
+    }
+}
+
+private suspend fun buildWorkOrderDocumentationAttachmentFiles(
+    context: Context,
+    uris: List<Uri>,
+    existingCount: Int,
+): List<WorkOrderDocumentationAiFile> = withContext(Dispatchers.IO) {
+    val availableSlots = (WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
+    if (availableSlots <= 0) {
+        error("Možeš dodati najviše $WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES priloga u zapisnik.")
+    }
+    uris.take(availableSlots).mapIndexed { index, uri ->
+        val bytes = readUriBytes(context, uri)
+        val name = resolveUriDisplayName(context, uri, existingCount + index, WorkOrderDocumentInputMode.File)
+        if (bytes.size.toLong() > WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILE_BYTES) {
+            error("Prilog $name mora biti manji od 8 MB.")
+        }
+        val detectedType = resolveUriMimeType(context, uri, name).ifBlank { "application/octet-stream" }
+        val mimeType = when {
+            detectedType.equals("application/pdf", ignoreCase = true) || name.endsWith(".pdf", ignoreCase = true) -> "application/pdf"
+            detectedType.equals("image/png", ignoreCase = true) || name.endsWith(".png", ignoreCase = true) -> "image/png"
+            detectedType.equals("image/jpeg", ignoreCase = true) || detectedType.equals("image/jpg", ignoreCase = true) ||
+                name.endsWith(".jpg", ignoreCase = true) || name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+            else -> error("Prilog $name mora biti PDF, PNG ili JPG.")
+        }
+        WorkOrderDocumentationAiFile(
+            id = "${System.currentTimeMillis()}-attachment-${existingCount + index}-${name.hashCode()}",
             name = name.withFallbackExtension(mimeType),
             type = mimeType,
             size = bytes.size.toLong(),
