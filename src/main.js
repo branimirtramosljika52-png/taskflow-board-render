@@ -138,6 +138,13 @@ import {
   normalizeMeasurementBorder,
 } from "./measurementFormatting.js";
 import {
+  createDocumentationGridlineRowsForService,
+  createDocumentationMeasurementTablesForService,
+  createDocumentationReportModelDefaults,
+  getDocumentationNativeReportPreset,
+  getDocumentationNativeTemplateSeedPresets,
+} from "./documentationNativePresets.js";
+import {
   DEFAULT_MEASUREMENT_COLUMNS,
   DEFAULT_MEASUREMENT_ROW_COUNT,
   MEASUREMENT_BORDER_BUTTON_META,
@@ -56890,62 +56897,7 @@ const DOCUMENTATION_SPR_LAYOUT_PRESETS = Object.freeze([
   },
 ]);
 const DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET = "basic";
-const DOCUMENTATION_NATIVE_TEMPLATE_PRESETS = Object.freeze([
-  Object.freeze({
-    id: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
-    name: "SPR v1.0.0",
-    serviceCode: "SPR",
-    serviceName: "Sigurnosna panik rasvjeta",
-    reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE",
-    coverSubtitle: "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE",
-    measurementTableTitle: "Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete",
-  }),
-  Object.freeze({
-    id: "szomv-v1-0-0",
-    name: "SZOMV v1.0.0",
-    serviceCode: "SZOMV",
-    serviceName: "Vizualni pregled sustava za zaštitu od djelovanja munje",
-    reportTitle: "VIZUALNI PREGLED SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE",
-    coverSubtitle: "O VIZUALNOM PREGLEDU SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE NA GRAĐEVINAMA",
-    measurementTableTitle: "Tablica 1. - rezultati vizualnog pregleda sustava zaštite od munje",
-  }),
-  Object.freeze({
-    id: "tzin-v1-0-0",
-    name: "TZIN v1.0.0",
-    serviceCode: "TZIN",
-    serviceName: "Tipkalo za isklop električne instalacije",
-    reportTitle: "ISPITIVANJE TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE",
-    coverSubtitle: "O ISPITIVANJU TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE U SLUČAJU HITNOSTI",
-    measurementTableTitle: "Tablica 1. - rezultati ispitivanja tipkala za isklop",
-  }),
-  Object.freeze({
-    id: "ves-v1-0-0",
-    name: "VES v1.0.0",
-    serviceCode: "VES",
-    serviceName: "Vježba evakuacije i spašavanja",
-    reportTitle: "IZVRŠENJE VJEŽBE EVAKUACIJE I SPAŠAVANJA",
-    coverSubtitle: "O IZVRŠENJU VJEŽBE EVAKUACIJE I SPAŠAVANJA",
-    measurementTableTitle: "Tablica 1. - pregled vježbe evakuacije i spašavanja",
-  }),
-  Object.freeze({
-    id: "eiz-v1-0-0",
-    name: "EIZ v1.0.0",
-    serviceCode: "EIZ",
-    serviceName: "Električne instalacije",
-    reportTitle: "ISPITIVANJE ELEKTRIČNIH INSTALACIJA",
-    coverSubtitle: "O ISPITIVANJU ELEKTRIČNIH INSTALACIJA",
-    measurementTableTitle: "Tablica 1. - rezultati ispitivanja električnih instalacija",
-  }),
-  Object.freeze({
-    id: "szom-v1-0-0",
-    name: "SZOM v1.0.0",
-    serviceCode: "SZOM",
-    serviceName: "Sustav za zaštitu od djelovanja munje",
-    reportTitle: "PREGLED SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE",
-    coverSubtitle: "O PREGLEDU SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE NA GRAĐEVINAMA",
-    measurementTableTitle: "Tablica 1. - rezultati pregleda sustava zaštite od munje",
-  }),
-]);
+const DOCUMENTATION_NATIVE_TEMPLATE_PRESETS = Object.freeze(getDocumentationNativeTemplateSeedPresets());
 const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   companyName: "Tvrtka",
   companyOib: "OIB",
@@ -57041,17 +56993,18 @@ function buildDocumentationSprGridlineModelFromRows(rows = getDocumentationSprDe
 }
 
 function createDefaultDocumentationSprModel() {
+  const reportDefaults = createDocumentationReportModelDefaults("SPR");
   return {
     templateCode: "SPR v1.0.0",
     layoutPreset: DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET,
     workOrderId: "",
     workOrderNumber: "25-1287",
     serviceId: "",
-    serviceCode: "SPR",
-    serviceName: "Sigurnosna panik rasvjeta",
-    reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE",
-    coverSubtitle: "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE",
-    measurementTableTitle: "Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete",
+    serviceCode: reportDefaults.serviceCode,
+    serviceName: reportDefaults.serviceName,
+    reportTitle: reportDefaults.reportTitle,
+    coverSubtitle: reportDefaults.coverSubtitle,
+    measurementTableTitle: reportDefaults.measurementTableTitle,
     recordNumber: "25-1287-SPR",
     documentStatus: "U izradi",
     companyName: "PETROL d.o.o.",
@@ -57088,15 +57041,12 @@ function createDefaultDocumentationSprModel() {
       "NFPA 101/2006 Fire safety code",
     ].join("\n"),
     projectDocumentation: "Zapisnik od prethodnog ispitivanja od strane Abeceda zaštite d.o.o.",
-    resultsText: [
-      "Sigurnosnu rasvjetu prema normi EN 1838 dijelimo na sigurnosnu rasvjetu i pomoćnu rasvjetu. Pomoćna rasvjeta nema sigurnosnu ulogu. Možemo imati i nužnu rasvjetu koja je potrebna osvijetliti prostor u slučaju ispada primarnog izvora napona, koristi se npr. u velikim proizvodnim pogonima. Sigurnosna rasvjeta se dijeli na rasvjetu za osvjetljenje evakuacijskih puteva, antipanična rasvjeta koja sprječava paniku i omogućava dolazak do mjesta odakle se može uočiti put evakuacije.",
-      "Sigurnosna rasvjeta se inače postavlja na mjesta (prostore) gdje nije moguće odmah identificirati ili doći na put evakuacije, gdje se može okupiti veći broj ljudi ili u prostorima većim od 60 m2.",
-      "Panik (sigurnosna) rasvjeta mora osvjetljavati prostor izlaza minimalnim osvijetljenjem od 1 luksa, mjereno na podu prostorije, u vremenu od najmanje 1 sat po uključenju.",
-      "Ispitivanje djelotvornosti obavljeno je simuliranjem nestanka električne energije kako bi se uzrokovalo uključenje svih rasvjetnih tijela sigurnosne (panik) rasvjete i provjerio njihov rad u trajanju od 1 sata.",
-      "Pregledom i ispitivanjem panik i sigurnosne rasvjete utvrđeni su slijedeći podaci i rezultati:",
-    ].join("\n\n"),
-    eiNote: "Ei - izmjereno osvijetljenje sigurnosne rasvjete duž evakuacijskih puteva, te kod izlaza iz prostorija na visini 0,20 m od poda prostorije [Lux]",
-    eiminNote: "Eimin - zahtijevano minimalno osvijetljenje sigurnosne rasvjete na visini 0.20 m od poda prostorije [Lux]",
+    resultsText: reportDefaults.resultsText,
+    eiNote: reportDefaults.eiNote,
+    eiminNote: reportDefaults.eiminNote,
+    assessmentLabel: reportDefaults.assessmentLabel,
+    conclusionLead: reportDefaults.conclusionLead,
+    validitySentence: reportDefaults.validitySentence,
     inspectors: "Nikola Lovrenčević",
     responsiblePerson: "Nikola Lovrenčević, el.teh.; 89627512970",
     signatureClass: "UP/I-133-02/25-02/26",
@@ -57118,7 +57068,8 @@ function createDefaultDocumentationSprModel() {
     responsiblePersonUserId: "",
     fieldSettings: {},
     attachments: [],
-    gridlineModel: buildDocumentationSprGridlineModelFromRows(),
+    measurementTables: reportDefaults.measurementTables,
+    gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService("SPR")),
   };
 }
 
@@ -57155,6 +57106,9 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     resultsText: "",
     eiNote: "",
     eiminNote: "",
+    assessmentLabel: "",
+    conclusionLead: "",
+    validitySentence: "",
     inspectors: "",
     responsiblePerson: "",
     signatureClass: "",
@@ -57176,6 +57130,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     responsiblePersonUserId: "",
     fieldSettings: {},
     attachments: [],
+    measurementTables: [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
   };
 }
@@ -57191,6 +57146,46 @@ function normalizeDocumentationSprGridlineModel(model) {
   return model && typeof model === "object"
     ? model
     : buildDocumentationSprGridlineModelFromRows();
+}
+
+function cloneDocumentationSprMeasurementSheet(sheet = {}) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet) || {
+    columns: [],
+    rows: [],
+    merges: [],
+    headerRows: [],
+  };
+  return {
+    columns: normalized.columns.map((column) => ({ ...column })),
+    rows: normalized.rows.map((row, index) => ({
+      id: row.id || `measurement-row-${index + 1}`,
+      cells: { ...(row.cells || {}) },
+      formats: { ...(row.formats || {}) },
+    })),
+    merges: Array.isArray(normalized.merges) ? normalized.merges.map((merge) => ({ ...merge })) : [],
+    headerRows: Array.isArray(normalized.headerRows) ? [...normalized.headerRows] : [],
+  };
+}
+
+function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
+  const key = String(table.key || table.id || `measurement-table-${index + 1}`).trim();
+  return {
+    id: String(table.id || key || `measurement-table-${index + 1}`).trim(),
+    key,
+    tokenKey: String(table.tokenKey || key.toUpperCase().replace(/[^A-Z0-9]+/g, "_")).trim(),
+    label: String(table.label || table.summary || `Tablica ${index + 1}`).trim(),
+    helpText: String(table.helpText || "").trim(),
+    summary: String(table.summary || table.label || `Tablica ${index + 1}`).trim(),
+    sheet: cloneDocumentationSprMeasurementSheet(table.sheet),
+  };
+}
+
+function normalizeDocumentationSprMeasurementTables(value = [], model = {}) {
+  const serviceCode = getDocumentationSprServiceCode(model);
+  const source = Array.isArray(value) && value.length > 0
+    ? value
+    : createDocumentationMeasurementTablesForService(serviceCode);
+  return source.map((table, index) => cloneDocumentationSprMeasurementTable(table, index));
 }
 
 function normalizeDocumentationSprLayoutPreset(value = "") {
@@ -57231,6 +57226,7 @@ function normalizeDocumentationSprModel(value) {
     signatureImageUrl: String(source.signatureImageUrl || source.signatureDataUrl || "").trim(),
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
+    measurementTables: normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
     headerImageName: String(source.headerImageName || "").trim(),
@@ -57371,11 +57367,19 @@ function normalizeDocumentationSprServiceBinding(value = null) {
 
 function inferDocumentationSprServiceBindingFromTemplate(name = "", id = "") {
   const haystack = normalizeLooseName(`${name} ${id}`);
-  if (haystack.includes("spr")) {
+  const nativePreset = DOCUMENTATION_NATIVE_TEMPLATE_PRESETS.find((preset) => {
+    const code = normalizeLooseName(preset.serviceCode || "");
+    const title = normalizeLooseName(preset.name || "");
+    const serviceName = normalizeLooseName(preset.serviceName || "");
+    return (code && haystack.includes(code))
+      || (title && haystack.includes(title))
+      || (serviceName && haystack.includes(serviceName));
+  });
+  if (nativePreset) {
     return {
       serviceId: "",
-      serviceCode: "SPR",
-      serviceName: "Sigurnosna panik rasvjeta",
+      serviceCode: nativePreset.serviceCode,
+      serviceName: nativePreset.serviceName,
     };
   }
   return null;
@@ -57594,15 +57598,85 @@ function normalizeDocumentationSprTemplateEntry(entry = null, index = 0) {
 
 function buildDocumentationNativeTemplateModel(preset = {}) {
   const base = createDefaultDocumentationSprModel();
+  const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode || base.serviceCode || "SPR");
   return {
     ...base,
     templateCode: preset.name || base.templateCode,
-    serviceCode: preset.serviceCode || base.serviceCode,
-    serviceName: preset.serviceName || base.serviceName,
-    reportTitle: preset.reportTitle || base.reportTitle,
-    coverSubtitle: preset.coverSubtitle || base.coverSubtitle,
-    measurementTableTitle: preset.measurementTableTitle || base.measurementTableTitle,
+    serviceCode: reportDefaults.serviceCode,
+    serviceName: preset.serviceName || reportDefaults.serviceName,
+    reportTitle: preset.reportTitle || reportDefaults.reportTitle,
+    coverSubtitle: preset.coverSubtitle || reportDefaults.coverSubtitle,
+    measurementTableTitle: preset.measurementTableTitle || reportDefaults.measurementTableTitle,
+    resultsText: preset.resultsText || reportDefaults.resultsText,
+    eiNote: preset.eiNote || reportDefaults.eiNote,
+    eiminNote: preset.eiminNote || reportDefaults.eiminNote,
+    assessmentLabel: preset.assessmentLabel || reportDefaults.assessmentLabel,
+    conclusionLead: preset.conclusionLead || reportDefaults.conclusionLead,
+    validitySentence: preset.validitySentence || reportDefaults.validitySentence,
+    measurementTables: reportDefaults.measurementTables,
+    gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService(reportDefaults.serviceCode)),
     recordNumber: `25-1287-${preset.serviceCode || "SPR"}`,
+  };
+}
+
+function getDocumentationNativeTemplatePresetByCode(serviceCode = "") {
+  const normalizedCode = normalizeLooseName(serviceCode);
+  return DOCUMENTATION_NATIVE_TEMPLATE_PRESETS.find((preset) =>
+    normalizeLooseName(preset.serviceCode || "") === normalizedCode
+  ) || null;
+}
+
+function isDocumentationNativeSeedLikeEntry(entry = {}, preset = {}) {
+  const haystack = normalizeLooseName([
+    entry.id,
+    entry.name,
+    entry.model?.templateCode,
+    entry.model?.serviceCode,
+    entry.serviceBinding?.serviceCode,
+  ].join(" "));
+  const code = normalizeLooseName(preset.serviceCode || "");
+  const presetId = normalizeLooseName(preset.id || "");
+  const presetName = normalizeLooseName(preset.name || "");
+  return Boolean(code && (
+    haystack.includes(code)
+    || (presetId && haystack.includes(presetId))
+    || (presetName && haystack.includes(presetName))
+  ));
+}
+
+function refreshDocumentationNativeTemplateEntry(entry = {}) {
+  const code = entry.serviceBinding?.serviceCode || entry.model?.serviceCode || "";
+  const preset = getDocumentationNativeTemplatePresetByCode(code);
+  if (!preset || !isDocumentationNativeSeedLikeEntry(entry, preset)) {
+    return entry;
+  }
+  const nativeModel = buildDocumentationNativeTemplateModel(preset);
+  const currentModel = normalizeDocumentationSprModel(entry.model);
+  return {
+    ...entry,
+    name: entry.name || preset.name,
+    serviceBinding: {
+      serviceId: "",
+      serviceCode: preset.serviceCode,
+      serviceName: preset.serviceName,
+    },
+    model: cloneDocumentationSprModelForTemplate({
+      ...currentModel,
+      templateCode: entry.name || preset.name,
+      serviceCode: nativeModel.serviceCode,
+      serviceName: nativeModel.serviceName,
+      reportTitle: nativeModel.reportTitle,
+      coverSubtitle: nativeModel.coverSubtitle,
+      measurementTableTitle: nativeModel.measurementTableTitle,
+      resultsText: nativeModel.resultsText,
+      eiNote: nativeModel.eiNote,
+      eiminNote: nativeModel.eiminNote,
+      assessmentLabel: nativeModel.assessmentLabel,
+      conclusionLead: nativeModel.conclusionLead,
+      validitySentence: nativeModel.validitySentence,
+      measurementTables: nativeModel.measurementTables,
+      gridlineModel: nativeModel.gridlineModel,
+    }),
   };
 }
 
@@ -57658,6 +57732,7 @@ function normalizeDocumentationSprTemplateLibrary(value = null) {
   const seenIds = new Set();
   const templates = mergeDocumentationNativeTemplateSeeds(source.templates
     .map((entry, index) => normalizeDocumentationSprTemplateEntry(entry, index))
+    .map((entry) => refreshDocumentationNativeTemplateEntry(entry))
     .map((entry) => {
       if (!seenIds.has(entry.id)) {
         seenIds.add(entry.id);
@@ -58794,10 +58869,10 @@ function scoreDocumentationSprPreviousRecord(entry = {}, record = {}) {
   if (serviceName && sourceText.includes(serviceName)) {
     score += 50;
   }
-  if (sourceText.includes("spr")) {
+  if (serviceCode === "spr" && sourceText.includes("spr")) {
     score += 35;
   }
-  if (sourceText.includes("panik") || sourceText.includes("sigurnosna rasvjeta")) {
+  if (serviceCode === "spr" && (sourceText.includes("panik") || sourceText.includes("sigurnosna rasvjeta"))) {
     score += 35;
   }
   if (record?.fieldSheets && Object.keys(record.fieldSheets).length > 0) {
@@ -58870,6 +58945,44 @@ function getDocumentationSprPreviousRecordSheet(record = {}) {
   return preferred?.[1] || null;
 }
 
+function getDocumentationSprPreviousRecordMeasurementTables(record = {}, model = {}) {
+  const storedTables = getDocumentationSprPreviousRecordFieldValue(record, [
+    "DOCUMENTATION_NATIVE_MEASUREMENT_TABLES",
+    "DOCUMENTATION_MEASUREMENT_TABLES",
+  ]);
+  if (Array.isArray(storedTables) && storedTables.length > 0) {
+    return normalizeDocumentationSprMeasurementTables(storedTables, model);
+  }
+  const defaults = normalizeDocumentationSprMeasurementTables(model?.measurementTables, model);
+  const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
+    ? record.fieldSheets
+    : {};
+  return defaults.map((table, index) => {
+    const keys = [table.key, table.id, table.tokenKey]
+      .map((key) => String(key || "").trim())
+      .filter(Boolean);
+    const sheet = keys
+      .map((key) => normalizeWorkOrderMeasurementSheet(fieldSheets[key]))
+      .find((candidate) => candidate?.rows?.length > 0);
+    if (sheet) {
+      return {
+        ...table,
+        sheet,
+      };
+    }
+    if (index === 0) {
+      const legacySheet = getDocumentationSprPreviousRecordSheet(record);
+      if (legacySheet) {
+        return {
+          ...table,
+          sheet: cloneDocumentationSprMeasurementSheet(legacySheet),
+        };
+      }
+    }
+    return table;
+  });
+}
+
 function getDocumentationSprPreviousRecordAttachments(record = {}) {
   const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
     ? record.fieldValues
@@ -58926,7 +59039,11 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
   const previousLabel = buildDocumentTemplatePreviousRecordCandidateLabel(record);
   const previousSheet = getDocumentationSprPreviousRecordSheet(record);
   const previousGridlineModel = buildDocumentationSprGridlineModelFromPreviousSheet(previousSheet);
+  const previousMeasurementTables = getDocumentationSprPreviousRecordMeasurementTables(record, next);
   const previousAttachments = getDocumentationSprPreviousRecordAttachments(record);
+  if (previousMeasurementTables.length > 0) {
+    next.measurementTables = previousMeasurementTables;
+  }
   if (previousGridlineModel) {
     next.gridlineModel = previousGridlineModel;
   }
@@ -60715,17 +60832,82 @@ function getDocumentationSprMeasurementRows() {
 }
 
 function getDocumentationSprMeasurementRowsForModel(model = documentationSprModel) {
+  const firstTable = getDocumentationSprMeasurementTablesForModel(model)[0];
+  const columns = firstTable?.sheet?.columns || [];
+  const rows = getDocumentationSprMeasurementTableRowsForRender(firstTable);
+  return rows.map((row, index) => ({
+    number: row.cells.number || row.cells[columns[0]?.id] || String(index + 1),
+    place: row.cells.place || row.cells[columns[1]?.id] || "",
+    lampCount: row.cells.lampCount || row.cells.buttonCount || row.cells[columns[2]?.id] || "",
+    ei: row.cells.ei || row.cells.riz || row.cells[columns[3]?.id] || "",
+    eimin: row.cells.eimin || row.cells.rdop || row.cells[columns[4]?.id] || "",
+    pass: row.cells.pass || row.cells.result || row.cells[columns[columns.length - 1]?.id] || "",
+  }));
+}
+
+function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fallbackTable = null) {
   const rows = getDocumentationSprRowsFromGridlineModel(model?.gridlineModel || buildDocumentationSprGridlineModelFromRows());
-  return rows.slice(2)
+  const fallbackColumns = fallbackTable?.sheet?.columns || [];
+  const headerRow = rows[0] || fallbackColumns.map((column) => column.label || column.id || "");
+  const unitRow = rows[1] || fallbackColumns.map((column) => column.placeholder || "");
+  const columnCount = Math.max(fallbackColumns.length, headerRow.length);
+  const columns = Array.from({ length: columnCount }, (_, columnIndex) => {
+    const fallbackColumn = fallbackColumns[columnIndex] || {};
+    return {
+      id: String(fallbackColumn.id || `col_${columnIndex + 1}`).trim(),
+      label: String(headerRow[columnIndex] || fallbackColumn.label || `Kolona ${columnIndex + 1}`).trim(),
+      placeholder: String(unitRow[columnIndex] || fallbackColumn.placeholder || "").trim(),
+      width: Number(fallbackColumn.width) || [70, 240, 100, 90, 90, 130][columnIndex] || 130,
+      computed: String(fallbackColumn.computed || "").trim(),
+      readonly: Boolean(fallbackColumn.readonly),
+    };
+  });
+  const sheetRows = rows.slice(2)
+    .filter((row) => Array.from({ length: columnCount }).some((_, columnIndex) => String(row[columnIndex] || "").trim()))
+    .map((row, rowIndex) => ({
+      id: `measurement-row-${rowIndex + 1}`,
+      cells: Object.fromEntries(columns.map((column, columnIndex) => [
+        column.id,
+        String(row[columnIndex] ?? "").trim(),
+      ])),
+      formats: {},
+    }));
+  return {
+    columns,
+    rows: sheetRows,
+    merges: [],
+    headerRows: [],
+  };
+}
+
+function getDocumentationSprMeasurementTablesForModel(model = documentationSprModel) {
+  const normalized = normalizeDocumentationSprModel(model);
+  const tables = normalizeDocumentationSprMeasurementTables(normalized.measurementTables, normalized);
+  if (!tables.length) {
+    return [];
+  }
+  const primarySheet = buildDocumentationSprMeasurementSheetFromGridlineModel(normalized, tables[0]);
+  return [
+    {
+      ...tables[0],
+      sheet: primarySheet,
+    },
+    ...tables.slice(1),
+  ];
+}
+
+function getDocumentationSprMeasurementTableRowsForRender(table = {}) {
+  const sheet = cloneDocumentationSprMeasurementSheet(table?.sheet || {});
+  const columns = sheet.columns || [];
+  return (sheet.rows || [])
     .map((row, index) => ({
-      number: String(row[0] || index + 1).trim(),
-      place: String(row[1] || "").trim(),
-      lampCount: String(row[2] || "").trim(),
-      ei: String(row[3] || "").trim(),
-      eimin: String(row[4] || "").trim(),
-      pass: String(row[5] || "").trim(),
+      id: row.id || `measurement-row-${index + 1}`,
+      cells: Object.fromEntries(columns.map((column, columnIndex) => {
+        const value = String(row.cells?.[column.id] ?? "").trim();
+        return [column.id, columnIndex === 0 && !value ? String(index + 1) : value];
+      })),
     }))
-    .filter((row) => row.place || row.lampCount || row.ei || row.eimin || row.pass);
+    .filter((row) => Object.values(row.cells).some((value) => String(value || "").trim()));
 }
 
 function getDocumentationSprTextLines(value = "") {
@@ -60829,6 +61011,21 @@ function isDocumentationSprFailingModel(model = documentationSprModel) {
   return String(model?.resultStatus || "").trim().toUpperCase() === "NE ZADOVOLJAVA";
 }
 
+function getDocumentationSprAssessmentLabel(model = documentationSprModel) {
+  const preset = getDocumentationNativeReportPreset(getDocumentationSprServiceCode(model));
+  return String(model?.assessmentLabel || preset.assessmentLabel || "Rezultat ispitivanja").trim();
+}
+
+function getDocumentationSprConclusionLead(model = documentationSprModel) {
+  const preset = getDocumentationNativeReportPreset(getDocumentationSprServiceCode(model));
+  return String(model?.conclusionLead || preset.conclusionLead || "Temeljem rezultata pregleda i ispitivanja može se zaključiti da predmetni sustav na dan predmetnog ispitivanja").trim();
+}
+
+function getDocumentationSprValiditySentence(model = documentationSprModel) {
+  const preset = getDocumentationNativeReportPreset(getDocumentationSprServiceCode(model));
+  return String(model?.validitySentence || preset.validitySentence || "Zapisnik o ispitivanju vrijedi do").trim();
+}
+
 function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
   return `
     <section class="documentation-spr-paper documentation-spr-paper-first">
@@ -60870,45 +61067,52 @@ function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
   `;
 }
 
-function renderDocumentationSprMeasurementTableRows(rows) {
-  return rows.map((row, index) => `
+function renderDocumentationSprMeasurementTableHead(table = {}) {
+  const columns = table?.sheet?.columns || [];
+  return `
     <tr>
-      <td>${escapeHtml(row.number || index + 1)}</td>
-      <td>${escapeHtml(row.place)}</td>
-      <td>${escapeHtml(row.lampCount)}</td>
-      <td>${escapeHtml(row.ei)}</td>
-      <td>${escapeHtml(row.eimin)}</td>
-      <td>${escapeHtml(row.pass)}</td>
+      ${columns.map((column) => `
+        <th>
+          <span>${escapeHtml(column.label || column.id || "")}</span>
+          ${column.placeholder ? `<small>${escapeHtml(column.placeholder)}</small>` : ""}
+        </th>
+      `).join("")}
+    </tr>
+  `;
+}
+
+function renderDocumentationSprMeasurementTableRows(table = {}) {
+  const columns = table?.sheet?.columns || [];
+  const rows = getDocumentationSprMeasurementTableRowsForRender(table);
+  const fallbackRows = rows.length ? rows : [{
+    cells: Object.fromEntries(columns.map((column, index) => [column.id, index === 0 ? "1" : ""])),
+  }];
+  return fallbackRows.map((row) => `
+    <tr>
+      ${columns.map((column) => `<td>${escapeHtml(row.cells?.[column.id] || "")}</td>`).join("")}
     </tr>
   `).join("");
 }
 
-function renderDocumentationSprPageThree(model, rows, pageNumber = 3, totalPages = 4) {
+function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4) {
+  const columns = table?.sheet?.columns || [];
+  const title = table?.summary || table?.label || getDocumentationSprMeasurementTableTitle(model);
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model)}
-      <div class="documentation-spr-paper-measure-title">${escapeHtml(getDocumentationSprMeasurementTableTitle(model))}</div>
-      <table class="documentation-spr-paper-measure-table">
-        <thead>
-          <tr>
-            <th rowspan="2">R. br.</th>
-            <th rowspan="2">Mjesto ispitivanja</th>
-            <th rowspan="2">Broj lampi</th>
-            <th>Ei</th>
-            <th>Eimin</th>
-            <th>ZADOVOLJAVA</th>
-          </tr>
-          <tr>
-            <th>lux</th>
-            <th>lux</th>
-            <th>DA/NE</th>
-          </tr>
-        </thead>
-        <tbody>${renderDocumentationSprMeasurementTableRows(rows)}</tbody>
+      <div class="documentation-spr-paper-measure-title">${escapeHtml(title)}</div>
+      <table class="documentation-spr-paper-measure-table is-${columns.length > 8 ? "dense" : "regular"}">
+        <thead>${renderDocumentationSprMeasurementTableHead(table)}</thead>
+        <tbody>${renderDocumentationSprMeasurementTableRows(table)}</tbody>
       </table>
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
+}
+
+function renderDocumentationSprMeasurementPages(model, startPageNumber = 3, totalPages = 4) {
+  return getDocumentationSprMeasurementTablesForModel(model)
+    .map((table, index) => renderDocumentationSprMeasurementPage(model, table, startPageNumber + index, totalPages));
 }
 
 function renderDocumentationSprSignature(model) {
@@ -60946,14 +61150,14 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
       ${renderDocumentationSprSectionTitle(8, "OCJENA REZULTATA ISPITIVANJA")}
       <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:</p>
       <table class="documentation-spr-paper-kv">
-        <tr><td>Funkcionalnost sigurnosne protupanične rasvjete</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>
+        <tr><td>${escapeHtml(getDocumentationSprAssessmentLabel(model))}</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>
       </table>
       ${renderDocumentationSprSectionTitle(9, "ZAKLJUČAK")}
-      <p>Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja može se zaključiti da ispitivana panik (sigurnosna) rasvjeta na dan predmetnog ispitivanja</p>
+      <p>${escapeHtml(getDocumentationSprConclusionLead(model))}</p>
       <div class="documentation-spr-paper-conclusion">${escapeHtml(model.resultStatus)}</div>
       <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
       <p class="documentation-spr-paper-center"><strong>${escapeHtml(model.recordNumber)}</strong></p>
-      <p class="documentation-spr-paper-center">Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do <strong>${escapeHtml(model.validUntil)}</strong></p>
+      <p class="documentation-spr-paper-center">${escapeHtml(getDocumentationSprValiditySentence(model))} <strong>${escapeHtml(model.validUntil)}</strong></p>
       <p class="documentation-spr-paper-right">U Zagrebu, <strong>${escapeHtml(model.issueDate)}</strong></p>
       <div class="documentation-spr-paper-signature-area is-bottom">
         <div class="documentation-spr-paper-center"><strong>M.P.</strong></div>
@@ -60997,16 +61201,19 @@ function renderDocumentationSprAttachmentPreviewPages(model, startPageNumber = 5
   });
 }
 
-function renderDocumentationSprPages(model, rows) {
+function renderDocumentationSprPages(model) {
   const effectiveModel = applyDocumentationSprGlobalHeaderToModel(model);
+  const measurementPages = renderDocumentationSprMeasurementPages(effectiveModel, 3, 4);
   const attachmentPageCount = getDocumentationSprAttachmentPageCount(effectiveModel?.attachments);
-  const totalPages = 4 + attachmentPageCount;
+  const totalPages = 3 + measurementPages.length + attachmentPageCount;
+  const refreshedMeasurementPages = renderDocumentationSprMeasurementPages(effectiveModel, 3, totalPages);
+  const conclusionPageNumber = 3 + refreshedMeasurementPages.length;
   return [
     renderDocumentationSprPageOne(effectiveModel, 1, totalPages),
     renderDocumentationSprPageTwo(effectiveModel, 2, totalPages),
-    renderDocumentationSprPageThree(effectiveModel, rows, 3, totalPages),
-    renderDocumentationSprPageFour(effectiveModel, 4, totalPages),
-    ...renderDocumentationSprAttachmentPreviewPages(effectiveModel, 5, totalPages),
+    ...refreshedMeasurementPages,
+    renderDocumentationSprPageFour(effectiveModel, conclusionPageNumber, totalPages),
+    ...renderDocumentationSprAttachmentPreviewPages(effectiveModel, conclusionPageNumber + 1, totalPages),
   ];
 }
 
@@ -61015,14 +61222,22 @@ function renderDocumentationSprPreview() {
     return;
   }
   const rows = getDocumentationSprMeasurementRows();
-  const pages = renderDocumentationSprPages(documentationSprModel, rows);
+  const tables = getDocumentationSprMeasurementTablesForModel({
+    ...documentationSprModel,
+    gridlineModel: getDocumentationSprActiveGridlineModel(),
+  });
+  const tableRowCount = tables.reduce((sum, table) => sum + getDocumentationSprMeasurementTableRowsForRender(table).length, 0);
+  const pages = renderDocumentationSprPages({
+    ...documentationSprModel,
+    gridlineModel: getDocumentationSprActiveGridlineModel(),
+  });
   documentationSprPreview.innerHTML = pages.join("");
 
   if (documentationSprPreviewSummary) {
-    documentationSprPreviewSummary.textContent = `${rows.length} mjernih mjesta · ${pages.length} ${pages.length === 1 ? "stranica" : "stranice"}`;
+    documentationSprPreviewSummary.textContent = `${tables.length} tablica · ${tableRowCount} redaka · ${pages.length} ${pages.length === 1 ? "stranica" : "stranice"}`;
   }
   if (documentationSprGridSummary) {
-    documentationSprGridSummary.textContent = `${rows.length} mjernih mjesta iz Gridline tablice`;
+    documentationSprGridSummary.textContent = `${rows.length} redaka iz aktivne Gridline tablice`;
   }
 }
 
@@ -61320,20 +61535,41 @@ function buildDocumentationSprPdfStyles() {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      font-size: 10.5pt;
+      font-size: 9pt;
     }
 
     .documentation-spr-paper-measure-table th,
     .documentation-spr-paper-measure-table td {
-      padding: 6px 5px;
+      padding: 5px 4px;
       border: 1px solid #111;
       text-align: center;
       vertical-align: middle;
+      overflow-wrap: anywhere;
     }
 
     .documentation-spr-paper-measure-table th {
       background: #bfc1c3;
       font-weight: 900;
+    }
+
+    .documentation-spr-paper-measure-table th span,
+    .documentation-spr-paper-measure-table th small {
+      display: block;
+    }
+
+    .documentation-spr-paper-measure-table th small {
+      margin-top: 2px;
+      font-size: 7.2pt;
+      font-weight: 700;
+    }
+
+    .documentation-spr-paper-measure-table.is-dense {
+      font-size: 6.7pt;
+    }
+
+    .documentation-spr-paper-measure-table.is-dense th,
+    .documentation-spr-paper-measure-table.is-dense td {
+      padding: 3px 2px;
     }
 
     .documentation-spr-paper-measure-table th:nth-child(1) {
@@ -61536,14 +61772,14 @@ let documentationSprPdfGeneratorPromise = null;
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260628-spr-signature-handover-v1");
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260628-native-tables-v1");
   }
   return documentationSprPdfGeneratorPromise;
 }
 
 function buildDocumentationSprPdfHtml(model = documentationSprModel, rows = getDocumentationSprMeasurementRows()) {
   const title = getDocumentationSprPdfFileName(model).replace(/\.pdf$/i, "");
-  const pagesHtml = renderDocumentationSprPages(model, rows).join("");
+  const pagesHtml = renderDocumentationSprPages(model).join("");
 
   return `<!doctype html>
 <html lang="hr">
@@ -61975,33 +62211,32 @@ function getDocumentationSprSingleExportEntry() {
 }
 
 function buildDocumentationSprMeasurementSheetForRecord(model = {}) {
-  const gridRows = getDocumentationSprRowsFromGridlineModel(model?.gridlineModel || buildDocumentationSprGridlineModelFromRows());
-  const headerRow = gridRows[0] || getDocumentationSprBlankRows()[0];
-  const unitRow = gridRows[1] || [];
-  const columnCount = Math.max(DOCUMENTATION_SPR_GRID_COLUMN_COUNT, headerRow.length);
-  const columns = Array.from({ length: columnCount }, (_, columnIndex) => ({
-    id: `spr_col_${columnIndex + 1}`,
-    label: String(headerRow[columnIndex] || `Kolona ${columnIndex + 1}`).trim(),
-    placeholder: String(unitRow[columnIndex] || "").trim(),
-    width: [70, 240, 100, 90, 90, 130][columnIndex] || 130,
-    computed: "",
-    readonly: false,
-  }));
-  const rows = gridRows.slice(2)
-    .filter((row) => Array.from({ length: columnCount }).some((_, columnIndex) => String(row[columnIndex] || "").trim()))
-    .map((row, rowIndex) => ({
-      id: `spr_row_${rowIndex + 1}`,
-      cells: Object.fromEntries(columns.map((column, columnIndex) => [
-        column.id,
-        String(row[columnIndex] ?? "").trim(),
-      ])),
-      formats: {},
-    }));
-  return {
-    columns,
-    rows,
+  return getDocumentationSprMeasurementTablesForModel(model)[0]?.sheet || {
+    columns: [],
+    rows: [],
     merges: [],
     headerRows: [],
+  };
+}
+
+function buildDocumentationSprMeasurementSheetsForRecord(model = {}) {
+  const sheets = {};
+  getDocumentationSprMeasurementTablesForModel(model).forEach((table) => {
+    const sheet = cloneDocumentationSprMeasurementSheet(table.sheet);
+    [
+      table.key,
+      table.id,
+      table.tokenKey,
+    ].map((key) => String(key || "").trim()).filter(Boolean).forEach((key) => {
+      sheets[key] = sheet;
+    });
+  });
+  const primarySheet = buildDocumentationSprMeasurementSheetForRecord(model);
+  return {
+    DOCUMENTATION_SPR_GRIDLINE_MODEL: primarySheet,
+    SPR_GRIDLINE_MODEL: primarySheet,
+    GRIDLINE_MODEL: primarySheet,
+    ...sheets,
   };
 }
 
@@ -62065,6 +62300,7 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     SIGNATURE_MODE: normalized.signatureMode || "digital",
     NACIN_POTPISA: normalized.signatureMode || "digital",
     DOCUMENTATION_SPR_GRIDLINE_MODEL: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
+    DOCUMENTATION_NATIVE_MEASUREMENT_TABLES: getDocumentationSprMeasurementTablesForModel(normalized),
   };
   if (validUntil) {
     fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY] = [{
@@ -62097,7 +62333,7 @@ function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
   const workOrder = getDocumentationSprWorkOrderForExportEntry(exportEntry, model) || {};
   const object = getDocumentationSprWorkOrderObject(workOrder) || {};
   const fieldValues = buildDocumentationSprRecordFieldValues(model);
-  const measurementSheet = buildDocumentationSprMeasurementSheetForRecord(model);
+  const measurementSheets = buildDocumentationSprMeasurementSheetsForRecord(model);
   const attachments = normalizeDocumentationSprAttachments(model.attachments);
   return {
     recordKind: "documentation_spr",
@@ -62115,11 +62351,7 @@ function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
     issuedDate: normalizeDateInputValue(model.issueDate) || model.issueDate || "",
     expirationDate: normalizeDateInputValue(model.validUntil) || model.validUntil || "",
     fieldValues,
-    fieldSheets: {
-      DOCUMENTATION_SPR_GRIDLINE_MODEL: measurementSheet,
-      SPR_GRIDLINE_MODEL: measurementSheet,
-      GRIDLINE_MODEL: measurementSheet,
-    },
+    fieldSheets: measurementSheets,
     attachments,
   };
 }

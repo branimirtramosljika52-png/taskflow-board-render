@@ -98,6 +98,11 @@ import {
 import {
   generateDocumentationSprPdfBlob,
 } from "./src/documentationSprPdf.js";
+import {
+  createDocumentationMeasurementTablesForService,
+  createDocumentationReportModelDefaults,
+  getDocumentationNativeTemplateSeedPresets,
+} from "./src/documentationNativePresets.js";
 
 const port = Number(process.env.PORT || 3000);
 const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
@@ -22881,7 +22886,7 @@ function buildMobileRulebookOptions(scopedSnapshot = {}) {
     .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
 }
 
-const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze([
+const MOBILE_NATIVE_DOCUMENTATION_PRESETS_LEGACY = Object.freeze([
   Object.freeze({
     serviceCode: "SPR",
     serviceName: "Sigurnosna panik rasvjeta",
@@ -22943,6 +22948,13 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze([
     signatureAreas: ["elektro"],
   }),
 ]);
+
+const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze(
+  getDocumentationNativeTemplateSeedPresets().map((preset) => Object.freeze({
+    ...preset,
+    documentType: preset.serviceName,
+  })),
+);
 
 function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0) {
   const serviceText = normalizeMobileSprLookupText([
@@ -23027,44 +23039,13 @@ function buildMobileNativeDocumentationBlock(id, label, type = "text", {
   };
 }
 
-function buildMobileNativeDocumentationMeasurementTable(preset = {}) {
-  const columns = [
-    ["number", "R. br.", "1", 76],
-    ["place", "Mjesto ispitivanja", "Prostor / mjesto", 220],
-    ["count", "Broj", "Količina", 96],
-    ["measured", "Izmjereno", "Vrijednost", 112],
-    ["required", "Zahtjev", "Minimalno", 112],
-    ["result", "Zadovoljava", "DA/NE", 112],
-  ].map(([id, label, placeholder, width]) => ({
-    id,
-    label,
-    placeholder,
-    width,
-    computed: "",
-    readonly: false,
-  }));
-  return {
-    id: "gridline-results",
-    key: "gridline-results",
-    tokenKey: "GRIDLINE_RESULTS",
-    label: "Rezultati ispitivanja",
-    helpText: "Gridline tablica popunjava rezultate za odabranu uslugu.",
-    summary: preset.measurementTableTitle || "Rezultati ispitivanja",
-    sheet: {
-      columns,
-      rows: [],
-      merges: [],
-      headerRows: [],
-    },
-  };
-}
-
 function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, workOrder = {}, scopedSnapshot = {}) {
   void scopedSnapshot;
   const preset = getMobileNativeDocumentationPresetForService(service, serviceIndex);
   if (!preset) {
     return null;
   }
+  const measurementTables = createDocumentationMeasurementTablesForService(preset.serviceCode);
   const serviceWithCode = {
     ...service,
     serviceCode: preset.serviceCode,
@@ -23130,11 +23111,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     }),
     buildMobileNativeDocumentationBlock("chapter-measurements", "Rezultati ispitivanja", "chapter", {
       typeLabel: "Poglavlje",
-      summary: preset.measurementTableTitle || "Gridline rezultati ispitivanja.",
+      summary: measurementTables.length > 1
+        ? `${measurementTables.length} Gridline tablica za ${preset.serviceCode}.`
+        : (preset.measurementTableTitle || "Gridline rezultati ispitivanja."),
     }),
-    buildMobileNativeDocumentationBlock("gridline-results", "Gridline rezultati", "measurement_table", {
+    buildMobileNativeDocumentationBlock("gridline-results", measurementTables.length > 1 ? "Gridline tablice" : "Gridline rezultati", "measurement_table", {
       group: "Rezultati ispitivanja",
-      summary: "Otvori i popuni Gridline tablicu.",
+      summary: measurementTables.length > 1
+        ? "Otvori i popuni svaku Gridline tablicu za ovu uslugu."
+        : "Otvori i popuni Gridline tablicu.",
     }),
     buildMobileNativeDocumentationBlock("chapter-conclusion", "Preporuke i zaključna ocjena", "chapter", {
       typeLabel: "Poglavlje",
@@ -23183,12 +23168,18 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       { value: "Početno ispitivanje", label: "Početno ispitivanje" },
       { value: "Izvanredno ispitivanje", label: "Izvanredno ispitivanje" },
     ],
-    measurementTables: [buildMobileNativeDocumentationMeasurementTable(preset)],
+    measurementTables,
     aiFields: [],
     aiMeasurementColumns: [],
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle,
+    resultsText: preset.resultsText || "",
+    eiNote: preset.eiNote || "",
+    eiminNote: preset.eiminNote || "",
+    assessmentLabel: preset.assessmentLabel || "",
+    conclusionLead: preset.conclusionLead || "",
+    validitySentence: preset.validitySentence || "",
     exportKind: "documentation_spr",
   };
 }
@@ -24059,6 +24050,64 @@ function getMobileSprRows(entry = {}, template = {}, common = {}) {
   return [];
 }
 
+function isMobileDocumentationMeasurementSheetFilled(sheet = null) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  return Boolean(normalized?.rows?.some((row) =>
+    Object.values(row?.cells || {}).some((value) => normalizeInputValue(value))
+  ));
+}
+
+function getMobileDocumentationMeasurementSheetForTable(table = {}, index = 0, entry = {}, template = {}, common = {}) {
+  const templateId = normalizeInputValue(template?.id);
+  const tableKeys = [
+    table.key,
+    table.id,
+    table.tokenKey,
+    table.fieldKey,
+    index === 0 ? "gridline-results" : "",
+    index === 0 ? "GRIDLINE_RESULTS" : "",
+  ].map(normalizeInputValue).filter(Boolean);
+  const recordSheets = entry?.documentRecord?.fieldSheets && typeof entry.documentRecord.fieldSheets === "object"
+    ? entry.documentRecord.fieldSheets
+    : {};
+  const templateSheets = templateId && common.templateFieldSheets?.[templateId]
+    ? common.templateFieldSheets[templateId]
+    : {};
+  const sheetSources = [templateSheets, common.fieldSheets || {}, recordSheets];
+  for (const source of sheetSources) {
+    for (const key of tableKeys) {
+      const sheet = normalizeWorkOrderMeasurementSheet(source?.[key]);
+      if (isMobileDocumentationMeasurementSheetFilled(sheet)) {
+        return sheet;
+      }
+    }
+  }
+  if (index === 0) {
+    const fallbackSheet = [...Object.values(templateSheets), ...Object.values(common.fieldSheets || {}), ...Object.values(recordSheets)]
+      .map((sheet) => normalizeWorkOrderMeasurementSheet(sheet))
+      .find((sheet) => isMobileDocumentationMeasurementSheetFilled(sheet));
+    if (fallbackSheet) {
+      return fallbackSheet;
+    }
+  }
+  return normalizeWorkOrderMeasurementSheet(table.sheet) || {
+    columns: [],
+    rows: [],
+    merges: [],
+    headerRows: [],
+  };
+}
+
+function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "SPR") {
+  const baseTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
+    ? template.measurementTables
+    : createDocumentationMeasurementTablesForService(serviceCode);
+  return baseTables.map((table, index) => ({
+    ...table,
+    sheet: getMobileDocumentationMeasurementSheetForTable(table, index, entry, template, common),
+  }));
+}
+
 function buildMobileDocumentationSprModel({
   entry = {},
   template = {},
@@ -24086,7 +24135,8 @@ function buildMobileDocumentationSprModel({
   const responsiblePerson = getMobileSprPersonText(common, scopedSnapshot, signatureArea, "authorize")
     || getMobileSprFirstValue(placeholders, ["ODGOVORNA_OSOBA", "RESPONSIBLE_PERSON", "POTPISNIK"]);
   const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot, signatureArea);
-  const serviceCode = normalizeInputValue(entry.serviceCode || placeholders.SIFRA_USLUGE || "SPR");
+  const serviceCode = normalizeInputValue(entry.serviceCode || template.serviceCode || placeholders.SIFRA_USLUGE || "SPR");
+  const reportDefaults = createDocumentationReportModelDefaults(serviceCode);
   const inspectionDate = normalizeDateOnlyValue(entry.inspectionDate || common.inspectionDate);
   const issuedDate = normalizeDateOnlyValue(entry.issuedDate || common.issuedDate || inspectionDate);
   const validUntil = normalizeDateOnlyValue(entry.expirationDate)
@@ -24111,10 +24161,10 @@ function buildMobileDocumentationSprModel({
     workOrderNumber: normalizeInputValue(entry.workOrderNumber || workOrder.workOrderNumber || workOrder.number),
     serviceId: "",
     serviceCode,
-    serviceName: normalizeInputValue(entry.serviceName || template.documentType || "Sigurnosna panik rasvjeta"),
-    reportTitle: normalizeInputValue(template.reportTitle || entry.reportTitle),
-    coverSubtitle: normalizeInputValue(template.coverSubtitle || entry.coverSubtitle),
-    measurementTableTitle: normalizeInputValue(template.measurementTableTitle || entry.measurementTableTitle),
+    serviceName: normalizeInputValue(entry.serviceName || template.documentType || reportDefaults.serviceName),
+    reportTitle: normalizeInputValue(template.reportTitle || entry.reportTitle || reportDefaults.reportTitle),
+    coverSubtitle: normalizeInputValue(template.coverSubtitle || entry.coverSubtitle || reportDefaults.coverSubtitle),
+    measurementTableTitle: normalizeInputValue(template.measurementTableTitle || entry.measurementTableTitle || reportDefaults.measurementTableTitle),
     recordNumber: normalizeInputValue(entry.documentNumber || placeholders.BROJ_ZAPISNIKA || placeholders.DOCUMENT_NUMBER),
     documentStatus: "Generirano",
     companyName: normalizeInputValue(entry.companyName || workOrder.companyName || placeholders.TVRTKA || placeholders.COMPANY_NAME),
@@ -24133,9 +24183,13 @@ function buildMobileDocumentationSprModel({
     equipment: getMobileSprEquipmentText(template, scopedSnapshot, common),
     regulations: getMobileSprRegulationsText(template, scopedSnapshot, common),
     projectDocumentation: normalizeInputValue(common.note || placeholders.KORISTENA_DOKUMENTACIJA),
-    resultsText: getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"]),
-    eiNote: "Ei - izmjereno osvijetljenje sigurnosne rasvjete duž evakuacijskih puteva, te kod izlaza iz prostorija na visini 0,20 m od poda prostorije [Lux]",
-    eiminNote: "Eimin - zahtijevano minimalno osvijetljenje sigurnosne rasvjete na visini 0.20 m od poda prostorije [Lux]",
+    resultsText: getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"])
+      || normalizeInputValue(template.resultsText || reportDefaults.resultsText),
+    eiNote: normalizeInputValue(template.eiNote || reportDefaults.eiNote),
+    eiminNote: normalizeInputValue(template.eiminNote || reportDefaults.eiminNote),
+    assessmentLabel: normalizeInputValue(template.assessmentLabel || reportDefaults.assessmentLabel),
+    conclusionLead: normalizeInputValue(template.conclusionLead || reportDefaults.conclusionLead),
+    validitySentence: normalizeInputValue(template.validitySentence || reportDefaults.validitySentence),
     inspectors: getMobileSprPersonText(common, scopedSnapshot, signatureArea, "inspect"),
     responsiblePerson,
     signatureClass: getMobileSprQualificationValue(common, scopedSnapshot, "classCode", signatureArea)
@@ -24158,6 +24212,7 @@ function buildMobileDocumentationSprModel({
     responsiblePersonUserId: common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId,
     fieldSettings: {},
     attachments: Array.isArray(common.attachments) ? common.attachments : [],
+    measurementTables: buildMobileDocumentationMeasurementTables(entry, template, common, serviceCode),
   };
 }
 

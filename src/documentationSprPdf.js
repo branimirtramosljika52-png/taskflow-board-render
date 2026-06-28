@@ -1,5 +1,9 @@
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFName, PDFNumber, PDFString, rgb } from "pdf-lib";
+import {
+  createDocumentationMeasurementTablesForService,
+  getDocumentationNativeReportPreset,
+} from "./documentationNativePresets.js";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -246,6 +250,22 @@ function getReportCoverSubtitle(model = {}) {
 
 function getMeasurementTableTitle(model = {}) {
   return clean(model.measurementTableTitle || "Tablica 1. - rezultati ispitivanja");
+}
+
+function getReportPreset(model = {}) {
+  return getDocumentationNativeReportPreset(getServiceCode(model));
+}
+
+function getAssessmentLabel(model = {}) {
+  return clean(model.assessmentLabel || getReportPreset(model).assessmentLabel || "Rezultat ispitivanja");
+}
+
+function getConclusionLead(model = {}) {
+  return clean(model.conclusionLead || getReportPreset(model).conclusionLead || "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da predmetni sustav na dan predmetnog ispitivanja");
+}
+
+function getValiditySentence(model = {}) {
+  return clean(model.validitySentence || getReportPreset(model).validitySentence || "Zapisnik o ispitivanju vrijedi do");
 }
 
 function drawDefaultHeader(page, model, fonts, y = TOP_Y) {
@@ -684,56 +704,153 @@ function drawCell(page, {
   });
 }
 
-function drawMeasurementTable(page, rows, y, fonts) {
+function normalizePdfMeasurementSheet(sheet = {}) {
+  const source = sheet && typeof sheet === "object" && !Array.isArray(sheet) ? sheet : {};
+  const columns = Array.isArray(source.columns)
+    ? source.columns.map((column, index) => ({
+      id: clean(column?.id || `col_${index + 1}`),
+      label: clean(column?.label || column?.id || `Kolona ${index + 1}`),
+      placeholder: clean(column?.placeholder || ""),
+      width: Number(column?.width) || 120,
+    })).filter((column) => column.id)
+    : [];
+  const rows = Array.isArray(source.rows)
+    ? source.rows.map((row, rowIndex) => ({
+      id: clean(row?.id || `measurement-row-${rowIndex + 1}`),
+      cells: row?.cells && typeof row.cells === "object" && !Array.isArray(row.cells)
+        ? Object.fromEntries(columns.map((column) => [column.id, clean(row.cells[column.id])]))
+        : {},
+    }))
+    : [];
+  return {
+    columns,
+    rows,
+  };
+}
+
+function mapLegacyRowsToSheet(legacyRows = [], table = {}) {
+  const sheet = normalizePdfMeasurementSheet(table.sheet);
+  if (!Array.isArray(legacyRows) || legacyRows.length === 0 || sheet.columns.length === 0) {
+    return table.sheet;
+  }
+  const readLegacyValue = (row = {}, column = {}, columnIndex = 0) => {
+    const id = column.id;
+    const candidates = [
+      row?.[id],
+      id === "number" ? row?.number : "",
+      id === "place" ? row?.place : "",
+      id === "lampCount" ? row?.lampCount : "",
+      id === "buttonCount" ? (row?.buttonCount || row?.lampCount) : "",
+      id === "ei" ? row?.ei : "",
+      id === "eimin" ? row?.eimin : "",
+      id === "riz" ? row?.ei : "",
+      id === "rdop" ? row?.eimin : "",
+      id === "pass" ? row?.pass : "",
+      columnIndex === 0 ? row?.number : "",
+      columnIndex === 1 ? row?.place : "",
+      columnIndex === sheet.columns.length - 1 ? row?.pass : "",
+    ];
+    return clean(candidates.find((value) => clean(value)) || "");
+  };
+  return {
+    ...table.sheet,
+    rows: legacyRows.map((row, index) => ({
+      id: `measurement-row-${index + 1}`,
+      cells: Object.fromEntries(sheet.columns.map((column, columnIndex) => [
+        column.id,
+        readLegacyValue(row, column, columnIndex),
+      ])),
+      formats: {},
+    })),
+  };
+}
+
+function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
+  const sourceTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
+    ? model.measurementTables
+    : createDocumentationMeasurementTablesForService(getServiceCode(model));
+  return sourceTables.map((table, index) => {
+    const base = table && typeof table === "object" ? table : {};
+    const withLegacyRows = index === 0 && Array.isArray(legacyRows) && legacyRows.length > 0
+      ? { ...base, sheet: mapLegacyRowsToSheet(legacyRows, base) }
+      : base;
+    return {
+      id: clean(withLegacyRows.id || withLegacyRows.key || `measurement-table-${index + 1}`),
+      key: clean(withLegacyRows.key || withLegacyRows.id || `measurement-table-${index + 1}`),
+      label: clean(withLegacyRows.label || withLegacyRows.summary || `Tablica ${index + 1}`),
+      summary: clean(withLegacyRows.summary || withLegacyRows.label || getMeasurementTableTitle(model)),
+      sheet: normalizePdfMeasurementSheet(withLegacyRows.sheet),
+    };
+  });
+}
+
+function getPdfMeasurementTableRows(table = {}) {
+  const sheet = normalizePdfMeasurementSheet(table.sheet);
+  return sheet.rows
+    .map((row, rowIndex) => ({
+      ...row,
+      cells: Object.fromEntries(sheet.columns.map((column, columnIndex) => {
+        const value = clean(row.cells?.[column.id]);
+        return [column.id, columnIndex === 0 && !value ? String(rowIndex + 1) : value];
+      })),
+    }))
+    .filter((row) => Object.values(row.cells).some(Boolean));
+}
+
+function drawMeasurementTable(page, table, y, fonts) {
   const x = MARGIN_X;
-  const widths = [42, 212, 62, 58, 58, 80];
-  const rowHeight = rows.length > 24 ? 15.4 : 17.8;
-  const fontSize = rows.length > 24 ? 6.8 : 7.5;
+  const sheet = normalizePdfMeasurementSheet(table.sheet);
+  const columns = sheet.columns.length ? sheet.columns : [
+    { id: "number", label: "R. br.", width: 70 },
+    { id: "place", label: "Mjesto ispitivanja", width: 240 },
+    { id: "pass", label: "ZADOVOLJAVA", width: 120 },
+  ];
+  const rows = getPdfMeasurementTableRows({ ...table, sheet });
+  const availableWidth = PAGE_WIDTH - (MARGIN_X * 2);
+  const declaredWidth = columns.reduce((sum, column) => sum + (Number(column.width) || 120), 0) || availableWidth;
+  const widths = columns.map((column) => ((Number(column.width) || 120) / declaredWidth) * availableWidth);
+  const dense = columns.length > 8;
+  const rowHeight = dense ? 15.2 : (rows.length > 24 ? 15.4 : 17.8);
+  const headerHeight = dense ? 32 : 38;
+  const fontSize = dense ? 5.8 : (rows.length > 24 ? 6.8 : 7.5);
+  const headerFontSize = dense ? 5.7 : 7.2;
   let cursorY = y;
-  drawCell(page, { x, y: cursorY, width: widths[0], height: 38, text: "R. br.", fonts, bold: true, fill: TABLE_GRAY });
-  drawCell(page, { x: x + widths[0], y: cursorY, width: widths[1], height: 38, text: "Mjesto ispitivanja", fonts, bold: true, fill: TABLE_GRAY });
-  drawCell(page, { x: x + widths[0] + widths[1], y: cursorY, width: widths[2], height: 38, text: "Broj lampi", fonts, bold: true, fill: TABLE_GRAY });
-  let headerX = x + widths[0] + widths[1] + widths[2];
-  ["Ei\nlux", "Eimin\nlux", "ZADOVOLJAVA\nDA/NE"].forEach((header, index) => {
+  let cellX = x;
+  columns.forEach((column, columnIndex) => {
     drawCell(page, {
-      x: headerX,
+      x: cellX,
       y: cursorY,
-      width: widths[index + 3],
-      height: 38,
-      text: header,
+      width: widths[columnIndex],
+      height: headerHeight,
+      text: [column.label, column.placeholder].filter(Boolean).join("\n"),
       fonts,
+      fontSize: headerFontSize,
       bold: true,
       fill: TABLE_GRAY,
     });
-    headerX += widths[index + 3];
+    cellX += widths[columnIndex];
   });
-  cursorY -= 38;
-  rows.slice(0, 32).forEach((row, index) => {
-    let cellX = x;
-    [
-      row.number || String(index + 1),
-      row.place,
-      row.lampCount,
-      row.ei,
-      row.eimin,
-      row.pass,
-    ].forEach((value, cellIndex) => {
+  cursorY -= headerHeight;
+  const maxRows = Math.max(1, Math.floor((cursorY - BOTTOM_Y - 20) / rowHeight));
+  rows.slice(0, maxRows).forEach((row) => {
+    cellX = x;
+    columns.forEach((column, cellIndex) => {
       drawCell(page, {
         x: cellX,
         y: cursorY,
         width: widths[cellIndex],
         height: rowHeight,
-        text: value,
+        text: row.cells?.[column.id] || "",
         fonts,
         fontSize,
-        align: cellIndex === 1 ? "left" : "center",
+        align: cellIndex === 1 || column.id === "item" || column.id.includes("place") || column.id.includes("circuit") ? "left" : "center",
       });
       cellX += widths[cellIndex];
     });
     cursorY -= rowHeight;
   });
-  if (rows.length > 32) {
-    drawTextLine(page, `Prikazano 32 od ${rows.length} mjernih mjesta.`, {
+  if (rows.length > maxRows) {
+    drawTextLine(page, `Prikazano ${maxRows} od ${rows.length} redaka.`, {
       x,
       y: cursorY - 8,
       font: fonts.regular,
@@ -744,19 +861,26 @@ function drawMeasurementTable(page, rows, y, fonts) {
   return cursorY;
 }
 
-function drawPageThree(pdfDoc, model, rows, fonts) {
+function drawMeasurementTablePage(pdfDoc, model, table, fonts) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = drawSimpleHeader(page, model, fonts);
-  drawTextLine(page, getMeasurementTableTitle(model), {
+  drawTextLine(page, table.summary || table.label || getMeasurementTableTitle(model), {
     x: MARGIN_X,
     y: y + 6,
     font: fonts.regular,
     size: 8.2,
     color: DARK,
   });
-  drawMeasurementTable(page, rows, y - 6, fonts);
-  drawFooter(page, "SPR-3/4", fonts);
+  drawMeasurementTable(page, table, y - 6, fonts);
   return page;
+}
+
+function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
+  const tables = normalizePdfMeasurementTables(model, rows);
+  tables.forEach((table) => {
+    drawMeasurementTablePage(pdfDoc, model, table, fonts);
+  });
+  return tables.length;
 }
 
 function extractOib(value = "") {
@@ -773,7 +897,8 @@ function signatureFieldName(model) {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 48);
-  return oib ? `SIGN_SPR_${oib}${suffix ? `_${suffix}` : ""}` : "";
+  const serviceCode = clean(getServiceCode(model)).replace(/[^\w.-]+/g, "_") || "SPR";
+  return oib ? `SIGN_${serviceCode}_${oib}${suffix ? `_${suffix}` : ""}` : "";
 }
 
 function addSignatureWidget(pdfDoc, page, rect, fieldName) {
@@ -905,7 +1030,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   y -= 6;
   }
   y = drawSectionTitle(page, 7, "PREPORUKE", y, fonts);
-  y = drawPlainList(page, model.recommendations || "Redovito održavati i provjeravati sigurnosnu rasvjetu.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
+  y = drawPlainList(page, model.recommendations || "Redovito održavati i provjeravati predmetni sustav.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
   y -= 8;
   y = drawSectionTitle(page, 8, "OCJENA REZULTATA ISPITIVANJA", y, fonts);
   y = drawTextBlock(page, "Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:", {
@@ -919,11 +1044,11 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   });
   y -= 5;
   y = drawKeyValueTable(page, [
-    ["Funkcionalnost sigurnosne protupanične rasvjete", clean(model.resultStatus), true],
+    [getAssessmentLabel(model), clean(model.resultStatus), true],
   ], y, fonts, { keyWidth: 310, fontSize: 8.5, lineHeight: 11 });
   y -= 8;
   y = drawSectionTitle(page, 9, "ZAKLJUČAK", y, fonts);
-  y = drawTextBlock(page, "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja može se zaključiti da ispitivana panik (sigurnosna) rasvjeta na dan predmetnog ispitivanja", {
+  y = drawTextBlock(page, getConclusionLead(model), {
     x: MARGIN_X + 2,
     y,
     width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
@@ -959,7 +1084,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     font: fonts.bold,
     size: 9.6,
   });
-  drawTextLine(page, `Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do ${clean(model.validUntil)}`, {
+  drawTextLine(page, `${getValiditySentence(model)} ${clean(model.validUntil)}`, {
     x: MARGIN_X,
     y: y - 28,
     width: PAGE_WIDTH - (MARGIN_X * 2),
@@ -1198,11 +1323,13 @@ async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts
   const signatureImage = model.signatureMode === "scan"
     ? await embedPdfImage(pdfDoc, model.signatureImageUrl || model.signatureDataUrl)
     : null;
-  const safeRows = normalizeSprRows(rows, model);
+  const safeRows = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
+    ? []
+    : normalizeSprRows(rows, model);
 
   drawPageOne(pdfDoc, model, safeRows, fonts, headerImage);
   drawPageTwo(pdfDoc, model, fonts);
-  drawPageThree(pdfDoc, model, safeRows, fonts);
+  drawMeasurementTablePages(pdfDoc, model, safeRows, fonts);
   drawPageFour(pdfDoc, model, fonts, signatureImage);
   await appendAttachments(pdfDoc, model, fonts);
   const pageCount = pdfDoc.getPageCount() - startPageIndex;
