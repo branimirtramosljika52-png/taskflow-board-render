@@ -3945,6 +3945,7 @@ const documentationSprPreviewPanelToggleButton = document.querySelector("#docume
 const documentationSprHeaderUploadButton = document.querySelector("#documentation-spr-header-upload");
 const documentationSprHeaderClearButton = document.querySelector("#documentation-spr-header-clear");
 const documentationSprHeaderFileInput = document.querySelector("#documentation-spr-header-file");
+const documentationSprHeaderMeta = document.querySelector("#documentation-spr-header-meta");
 const documentationSprResetButton = document.querySelector("#documentation-spr-reset");
 const documentationSprPdfButton = document.querySelector("#documentation-spr-pdf");
 const documentationSprSignatureButton = document.querySelector("#documentation-spr-signature");
@@ -56864,6 +56865,7 @@ function triggerBlobDownload(blob, fileName) {
 
 const DOCUMENTATION_SPR_STORAGE_KEY = "safenexus.documentation-workbench.spr.v1";
 const DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY = "safenexus.documentation-workbench.spr.templates.v1";
+const DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY = "safenexus.documentation-workbench.spr.global-header.v1";
 const DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID = "spr-v1-0-0";
 const DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY = "__mobileDocumentationAttachments";
 const DOCUMENTATION_SPR_GRID_ROW_COUNT = 24;
@@ -56898,6 +56900,7 @@ const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
 });
 let documentationSprModel = null;
 let documentationSprTemplateLibrary = { version: 1, activeTemplateId: "", templates: [] };
+let documentationSprGlobalHeader = { dataUrl: "", name: "", updatedAt: "" };
 let documentationSprGridlineApi = null;
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
@@ -57429,7 +57432,7 @@ function createDocumentationSprTemplateId() {
 function cloneDocumentationSprModelForTemplate(model = documentationSprModel) {
   const normalized = normalizeDocumentationSprModel(model);
   return JSON.parse(JSON.stringify({
-    ...normalized,
+    ...stripDocumentationSprHeaderFromModel(normalized),
     attachments: [],
     gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
   }));
@@ -57438,7 +57441,7 @@ function cloneDocumentationSprModelForTemplate(model = documentationSprModel) {
 function cloneDocumentationSprModelForLocalDraft(model = documentationSprModel) {
   const normalized = normalizeDocumentationSprModel(model);
   return JSON.parse(JSON.stringify({
-    ...normalized,
+    ...stripDocumentationSprHeaderFromModel(normalized),
     attachments: [],
     gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
   }));
@@ -57553,6 +57556,100 @@ function persistDocumentationSprTemplateLibrary() {
   } catch {
     setDocumentationSprStatus("Predlošci nisu spremljeni", "saving");
     return false;
+  }
+}
+
+function normalizeDocumentationSprGlobalHeader(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    dataUrl: String(source.dataUrl || source.headerImageDataUrl || "").trim(),
+    name: String(source.name || source.headerImageName || "").trim(),
+    updatedAt: String(source.updatedAt || "").trim(),
+  };
+}
+
+function hasStoredDocumentationSprGlobalHeader() {
+  try {
+    return window.localStorage.getItem(DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function loadDocumentationSprGlobalHeader() {
+  try {
+    return normalizeDocumentationSprGlobalHeader(
+      JSON.parse(window.localStorage.getItem(DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY) || "null"),
+    );
+  } catch {
+    return normalizeDocumentationSprGlobalHeader();
+  }
+}
+
+function persistDocumentationSprGlobalHeader() {
+  try {
+    window.localStorage.setItem(
+      DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY,
+      JSON.stringify(normalizeDocumentationSprGlobalHeader(documentationSprGlobalHeader)),
+    );
+    return true;
+  } catch {
+    setDocumentationSprStatus("Header nije spremljen", "saving");
+    return false;
+  }
+}
+
+function seedDocumentationSprGlobalHeaderFromLegacySources(model = documentationSprModel) {
+  if (hasStoredDocumentationSprGlobalHeader()) {
+    return;
+  }
+  const legacySources = [
+    model,
+    ...(documentationSprTemplateLibrary.templates || []).map((entry) => entry.model),
+  ];
+  const source = legacySources.find((entry) => String(entry?.headerImageDataUrl || "").trim());
+  if (!source) {
+    return;
+  }
+  documentationSprGlobalHeader = normalizeDocumentationSprGlobalHeader({
+    dataUrl: source.headerImageDataUrl,
+    name: source.headerImageName || "header",
+    updatedAt: new Date().toISOString(),
+  });
+  persistDocumentationSprGlobalHeader();
+}
+
+function stripDocumentationSprHeaderFromModel(model = {}) {
+  return {
+    ...model,
+    headerImageDataUrl: "",
+    headerImageName: "",
+  };
+}
+
+function applyDocumentationSprGlobalHeaderToModel(model = {}) {
+  const normalized = normalizeDocumentationSprModel(model);
+  const header = normalizeDocumentationSprGlobalHeader(documentationSprGlobalHeader);
+  return {
+    ...normalized,
+    headerImageDataUrl: header.dataUrl,
+    headerImageName: header.name,
+  };
+}
+
+function syncDocumentationSprHeaderControls() {
+  const header = normalizeDocumentationSprGlobalHeader(documentationSprGlobalHeader);
+  const hasHeader = Boolean(header.dataUrl);
+  if (documentationSprHeaderClearButton) {
+    documentationSprHeaderClearButton.hidden = !hasHeader;
+  }
+  if (documentationSprHeaderUploadButton) {
+    documentationSprHeaderUploadButton.textContent = hasHeader ? "Promijeni header" : "Upload headera";
+  }
+  if (documentationSprHeaderMeta) {
+    documentationSprHeaderMeta.textContent = hasHeader
+      ? `Aktivan za sve dokumente: ${header.name || "učitani header"}`
+      : "Nema učitanog headera. PDF koristi zadani SafeNexus izgled.";
   }
 }
 
@@ -59891,14 +59988,7 @@ function syncDocumentationSprPreviewControls() {
     button.setAttribute("aria-pressed", isHidden ? "true" : "false");
     button.textContent = isHidden ? "Prikaži preview" : (button === documentationSprPreviewPanelToggleButton ? "Sakrij" : "Sakrij preview");
   });
-  if (documentationSprHeaderClearButton) {
-    documentationSprHeaderClearButton.hidden = !documentationSprModel?.headerImageDataUrl;
-  }
-  if (documentationSprHeaderUploadButton) {
-    documentationSprHeaderUploadButton.textContent = documentationSprModel?.headerImageDataUrl
-      ? `Header: ${documentationSprModel.headerImageName || "učitan"}`
-      : "Upload headera";
-  }
+  syncDocumentationSprHeaderControls();
 }
 
 function setDocumentationSprPreviewHidden(isHidden) {
@@ -59911,7 +60001,7 @@ function setDocumentationSprPreviewHidden(isHidden) {
 }
 
 async function handleDocumentationSprHeaderUpload(file) {
-  if (!documentationSprModel || !file) {
+  if (!file) {
     return;
   }
   if (!/^image\/(png|jpeg|webp)$/i.test(file.type || "")) {
@@ -59925,11 +60015,15 @@ async function handleDocumentationSprHeaderUpload(file) {
   }
   try {
     const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati header.");
-    documentationSprModel.headerImageDataUrl = dataUrl;
-    documentationSprModel.headerImageName = file.name || "header";
+    documentationSprGlobalHeader = normalizeDocumentationSprGlobalHeader({
+      dataUrl,
+      name: file.name || "header",
+      updatedAt: new Date().toISOString(),
+    });
+    persistDocumentationSprGlobalHeader();
     syncDocumentationSprPreviewControls();
     renderDocumentationSprPreview();
-    scheduleDocumentationSprSave();
+    setDocumentationSprStatus("Globalni header je spremljen", "saved");
   } catch {
     setDocumentationSprStatus("Header nije učitan", "saving");
   }
@@ -60726,14 +60820,15 @@ function renderDocumentationSprAttachmentPreviewPages(model, startPageNumber = 5
 }
 
 function renderDocumentationSprPages(model, rows) {
-  const attachmentPageCount = getDocumentationSprAttachmentPageCount(model?.attachments);
+  const effectiveModel = applyDocumentationSprGlobalHeaderToModel(model);
+  const attachmentPageCount = getDocumentationSprAttachmentPageCount(effectiveModel?.attachments);
   const totalPages = 4 + attachmentPageCount;
   return [
-    renderDocumentationSprPageOne(model, 1, totalPages),
-    renderDocumentationSprPageTwo(model, 2, totalPages),
-    renderDocumentationSprPageThree(model, rows, 3, totalPages),
-    renderDocumentationSprPageFour(model, 4, totalPages),
-    ...renderDocumentationSprAttachmentPreviewPages(model, 5, totalPages),
+    renderDocumentationSprPageOne(effectiveModel, 1, totalPages),
+    renderDocumentationSprPageTwo(effectiveModel, 2, totalPages),
+    renderDocumentationSprPageThree(effectiveModel, rows, 3, totalPages),
+    renderDocumentationSprPageFour(effectiveModel, 4, totalPages),
+    ...renderDocumentationSprAttachmentPreviewPages(effectiveModel, 5, totalPages),
   ];
 }
 
@@ -61346,7 +61441,8 @@ async function exportDocumentationSprPdf() {
   renderDocumentationSprPreview();
   scheduleDocumentationSprSave();
 
-  const fileName = getDocumentationSprPdfFileName(documentationSprModel);
+  const exportModel = applyDocumentationSprGlobalHeaderToModel(documentationSprModel);
+  const fileName = getDocumentationSprPdfFileName(exportModel);
   const rows = getDocumentationSprMeasurementRows();
   const previousButtonText = documentationSprPdfButton?.textContent || "Preuzmi PDF";
   if (documentationSprPdfButton) {
@@ -61357,7 +61453,7 @@ async function exportDocumentationSprPdf() {
   try {
     const generator = await loadDocumentationSprPdfGenerator();
     const result = await generator.generateDocumentationSprPdfBlob({
-      model: documentationSprModel,
+      model: exportModel,
       rows,
       fileName,
     });
@@ -61372,7 +61468,7 @@ async function exportDocumentationSprPdf() {
     );
   } catch (error) {
     console.error("Browser PDF download nije uspio, otvaram print fallback.", error);
-    const html = buildDocumentationSprPdfHtml(documentationSprModel, rows);
+    const html = buildDocumentationSprPdfHtml(exportModel, rows);
     openDocumentationSprPrintPdfFallback(html, fileName);
   } finally {
     if (documentationSprPdfButton) {
@@ -61393,21 +61489,24 @@ function getDocumentationSprBatchPdfFileName(entries = getDocumentationSprBatchE
 
 function buildDocumentationSprBatchExportEntries() {
   refreshDocumentationSprBatchModelsFromWorkOrderContext({ readActiveForm: true });
-  return getDocumentationSprBatchSummaries().map((summary, index) => ({
-    id: summary.entry.id || `spr-batch-${index + 1}`,
-    workOrderId: summary.entry.workOrderId || "",
-    workOrderNumber: summary.workOrderNumber,
-    serviceId: summary.entry.service?.serviceId || summary.entry.service?.id || summary.model.serviceId || "",
-    serviceCode: summary.serviceCode,
-    serviceName: summary.serviceName,
-    recordNumber: summary.recordNumber,
-    companyName: summary.companyName,
-    inspectionPlace: summary.inspectionPlace,
-    objectName: summary.objectName,
-    quantity: getDocumentTemplateHandoverServiceQuantity(summary.entry.service || {}) || String(summary.rowsCount || 1),
-    model: summary.model,
-    rows: getDocumentationSprMeasurementRowsForModel(summary.model),
-  }));
+  return getDocumentationSprBatchSummaries().map((summary, index) => {
+    const model = applyDocumentationSprGlobalHeaderToModel(summary.model);
+    return {
+      id: summary.entry.id || `spr-batch-${index + 1}`,
+      workOrderId: summary.entry.workOrderId || "",
+      workOrderNumber: summary.workOrderNumber,
+      serviceId: summary.entry.service?.serviceId || summary.entry.service?.id || model.serviceId || "",
+      serviceCode: summary.serviceCode,
+      serviceName: summary.serviceName,
+      recordNumber: summary.recordNumber,
+      companyName: summary.companyName,
+      inspectionPlace: summary.inspectionPlace,
+      objectName: summary.objectName,
+      quantity: getDocumentTemplateHandoverServiceQuantity(summary.entry.service || {}) || String(summary.rowsCount || 1),
+      model,
+      rows: getDocumentationSprMeasurementRowsForModel(model),
+    };
+  });
 }
 
 function normalizeDocumentationSprSignatureOib(value = "") {
@@ -61679,7 +61778,7 @@ function getDocumentationSprSingleExportEntry() {
   }
   readDocumentationSprFormIntoModel();
   syncDocumentationSprGridlineIntoModel();
-  const model = normalizeDocumentationSprModel(documentationSprModel);
+  const model = applyDocumentationSprGlobalHeaderToModel(documentationSprModel);
   return {
     id: model.recordNumber || "spr-zapisnik",
     workOrderId: getDocumentationSprWorkOrderIdForExport({}, model),
@@ -61815,7 +61914,7 @@ function getDocumentationSprWorkOrderForExportEntry(exportEntry = {}, model = {}
 }
 
 function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
-  const model = normalizeDocumentationSprModel(exportEntry.model || documentationSprModel);
+  const model = applyDocumentationSprGlobalHeaderToModel(exportEntry.model || documentationSprModel);
   const workOrder = getDocumentationSprWorkOrderForExportEntry(exportEntry, model) || {};
   const object = getDocumentationSprWorkOrderObject(workOrder) || {};
   const fieldValues = buildDocumentationSprRecordFieldValues(model);
@@ -61861,7 +61960,7 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
     throw new Error(`RN ${exportEntry.workOrderNumber || exportEntry.recordNumber || ""} nema vezu na radni nalog.`);
   }
   const mode = normalizeDocumentTemplateSignatureMethod(signatureMode || exportEntry.model?.signatureMode || "digital");
-  const model = applyDocumentationSprSignatureModeToModel(exportEntry.model, mode);
+  const model = applyDocumentationSprGlobalHeaderToModel(applyDocumentationSprSignatureModeToModel(exportEntry.model, mode));
   const signatureMetadata = buildDocumentationSprSignatureMetadata(model);
   if (mode === "digital" && !signatureMetadata.primary) {
     throw new Error(`RN ${exportEntry.workOrderNumber || model.workOrderNumber || ""}: odaberi odgovornu osobu s OIB-om za digitalni potpis.`);
@@ -62131,12 +62230,15 @@ function initDocumentationSprWorkbench() {
     return;
   }
   documentationSprTemplateLibrary = loadDocumentationSprTemplateLibrary();
+  documentationSprGlobalHeader = loadDocumentationSprGlobalHeader();
   if (!documentationSprModel) {
     documentationSprModel = loadDocumentationSprModel();
     writeDocumentationSprModelToForm();
   }
+  seedDocumentationSprGlobalHeaderFromLegacySources(documentationSprModel);
   renderDocumentationSprSourceControls();
   syncDocumentationSprTemplateManager();
+  syncDocumentationSprHeaderControls();
   setDocumentationSprWorkbenchMode(documentationSprWorkbenchMode, { renderLibrary: false });
   if (!documentationSprInitialized) {
     documentationSprInitialized = true;
@@ -62191,14 +62293,17 @@ function initDocumentationSprWorkbench() {
       }
     });
     documentationSprHeaderClearButton?.addEventListener("click", () => {
-      if (!documentationSprModel) {
-        return;
+      documentationSprGlobalHeader = normalizeDocumentationSprGlobalHeader({
+        updatedAt: new Date().toISOString(),
+      });
+      persistDocumentationSprGlobalHeader();
+      if (documentationSprModel) {
+        documentationSprModel.headerImageDataUrl = "";
+        documentationSprModel.headerImageName = "";
       }
-      documentationSprModel.headerImageDataUrl = "";
-      documentationSprModel.headerImageName = "";
       syncDocumentationSprPreviewControls();
       renderDocumentationSprPreview();
-      scheduleDocumentationSprSave();
+      setDocumentationSprStatus("Globalni header je maknut", "saved");
     });
     documentationSprAttachmentUploadButton?.addEventListener("click", () => {
       documentationSprAttachmentFileInput?.click();

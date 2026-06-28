@@ -38325,8 +38325,6 @@ body.is-vehicle-usage-open {
 .documentation-spr-workbench.is-library-mode #documentation-spr-status,
 .documentation-spr-workbench.is-library-mode #documentation-spr-library-back,
 .documentation-spr-workbench.is-library-mode #documentation-spr-preview-toggle,
-.documentation-spr-workbench.is-library-mode #documentation-spr-header-upload,
-.documentation-spr-workbench.is-library-mode #documentation-spr-header-clear,
 .documentation-spr-workbench.is-library-mode #documentation-spr-reset,
 .documentation-spr-workbench.is-library-mode #documentation-spr-pdf,
 .documentation-spr-workbench.is-library-mode #documentation-spr-download,
@@ -38512,6 +38510,68 @@ body.is-vehicle-usage-open {
 .documentation-spr-library-search input:focus {
   border-color: rgba(23, 107, 206, 0.72);
   box-shadow: 0 0 0 3px rgba(23, 107, 206, 0.12);
+}
+
+.documentation-spr-global-header-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(23, 107, 206, 0.2);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.documentation-spr-global-header-copy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.documentation-spr-global-header-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(23, 107, 206, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--documentation-spr-blue);
+}
+
+.documentation-spr-global-header-icon .icon-svg {
+  width: 23px;
+  height: 23px;
+}
+
+.documentation-spr-global-header-copy h5 {
+  margin: 0;
+  color: var(--documentation-spr-text);
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.documentation-spr-global-header-copy span:not(.documentation-spr-global-header-icon) {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--documentation-spr-muted);
+  font-size: 0.82rem;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentation-spr-global-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .documentation-spr-library-list {
@@ -40445,6 +40505,19 @@ body.is-vehicle-usage-open {
 
   .documentation-spr-library {
     padding: 10px;
+  }
+
+  .documentation-spr-global-header-card {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .documentation-spr-global-header-actions {
+    justify-content: stretch;
+  }
+
+  .documentation-spr-global-header-actions button {
+    flex: 1;
   }
 
   .documentation-spr-library-card {
