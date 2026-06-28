@@ -56879,12 +56879,12 @@ const DOCUMENTATION_SPR_INSPECTION_TYPE_OPTIONS = Object.freeze([
 ]);
 const DOCUMENTATION_SPR_LAYOUT_PRESETS = Object.freeze([
   {
-    value: "spr-standard",
-    label: "Standardni SPR zapisnik",
-    description: "Prva stranica s plavom crtom, veliki naslov, sivi naslovi poglavlja, kompaktne nastavne stranice i footer sa šifrom usluge.",
+    value: "basic",
+    label: "Osnovni",
+    description: "Osnovni izgled zapisnika: prva stranica s plavom crtom, naslov, poglavlja, nastavne stranice i footer.",
   },
 ]);
-const DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET = "spr-standard";
+const DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET = "basic";
 const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   companyName: "Tvrtka",
   companyOib: "OIB",
@@ -57128,6 +57128,9 @@ function normalizeDocumentationSprGridlineModel(model) {
 
 function normalizeDocumentationSprLayoutPreset(value = "") {
   const text = String(value || "").trim();
+  if (text === "spr-standard") {
+    return DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET;
+  }
   return DOCUMENTATION_SPR_LAYOUT_PRESETS.some((entry) => entry.value === text)
     ? text
     : DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET;
@@ -57135,7 +57138,7 @@ function normalizeDocumentationSprLayoutPreset(value = "") {
 
 function getDocumentationSprLayoutPresetLabel(value = "") {
   const normalized = normalizeDocumentationSprLayoutPreset(value);
-  return DOCUMENTATION_SPR_LAYOUT_PRESETS.find((entry) => entry.value === normalized)?.label || "Standardni SPR zapisnik";
+  return DOCUMENTATION_SPR_LAYOUT_PRESETS.find((entry) => entry.value === normalized)?.label || "Osnovni";
 }
 
 function normalizeDocumentationSprModel(value) {
