@@ -28933,15 +28933,6 @@ private fun DocumentationSprMobileWorkspace(
     val fallbackFieldTemplates = remember(templates) {
         templates.filter { template -> template.fields.isNotEmpty() && template.fieldBlocks.isEmpty() }
     }
-    var selectedMenuKey by remember(templates) { mutableStateOf("") }
-    LaunchedEffect(menuEntries) {
-        if (menuEntries.isNotEmpty() && menuEntries.none { entry -> entry.key == selectedMenuKey }) {
-            selectedMenuKey = menuEntries.first().key
-        }
-    }
-    val selectedEntry = remember(menuEntries, selectedMenuKey) {
-        menuEntries.firstOrNull { entry -> entry.key == selectedMenuKey } ?: menuEntries.firstOrNull()
-    }
     val tableCount = remember(measurementTemplates) {
         measurementTemplates.sumOf { template -> template.measurementTables.size }
     }
@@ -29036,53 +29027,29 @@ private fun DocumentationSprMobileWorkspace(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Predložak $templateLabel", fontWeight = FontWeight.Black)
                         Text(
-                            if (menuEntries.isEmpty()) "Ručna polja" else "${menuEntries.size} poglavlja · odaberi dio za unos",
+                            if (menuEntries.isEmpty()) "Ručna polja" else "${menuEntries.size} poglavlja",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         )
                     }
                 }
                 if (menuEntries.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         menuEntries.forEach { entry ->
-                            FilterChip(
-                                selected = entry.key == selectedEntry?.key,
-                                onClick = { selectedMenuKey = entry.key },
+                            DocumentationSprTemplateSectionPanel(
+                                entry = entry,
+                                values = values,
+                                standardControls = standardControls,
+                                tableCount = tableCount,
+                                rowCount = rowCount,
                                 enabled = enabled,
-                                label = {
-                                    Text(
-                                        "${entry.index + 1}. ${entry.section.title}",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        templateBlockIcon(entry.section.header?.type ?: entry.section.blocks.firstOrNull()?.type.orEmpty()),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                },
+                                onOpenMeasurements = onOpenMeasurements,
+                                onFieldChange = onFieldChange,
                             )
                         }
-                    }
-                    selectedEntry?.let { entry ->
-                        DocumentationSprTemplateSectionPanel(
-                            entry = entry,
-                            values = values,
-                            standardControls = standardControls,
-                            tableCount = tableCount,
-                            rowCount = rowCount,
-                            enabled = enabled,
-                            onOpenMeasurements = onOpenMeasurements,
-                            onFieldChange = onFieldChange,
-                        )
                     }
                 } else if (fallbackFieldTemplates.isNotEmpty()) {
                     fallbackFieldTemplates.forEach { template ->
@@ -29158,6 +29125,7 @@ private fun DocumentationSprTemplateSectionPanel(
     onOpenMeasurements: () -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
+    var expanded by rememberSaveable(entry.key) { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -29169,9 +29137,12 @@ private fun DocumentationSprTemplateSectionPanel(
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(enabled = enabled) { expanded = !expanded },
                 horizontalArrangement = Arrangement.spacedBy(9.dp),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
                     Icon(
@@ -29184,7 +29155,7 @@ private fun DocumentationSprTemplateSectionPanel(
                     )
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(entry.section.title, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${entry.index + 1}. ${entry.section.title}", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
                         listOf(
                             entry.template.title,
@@ -29196,42 +29167,51 @@ private fun DocumentationSprTemplateSectionPanel(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-            entry.section.header?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
-                Text(
-                    summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (expanded) "Sakrij poglavlje" else "Prikaži poglavlje",
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
-            if (entry.section.blocks.isEmpty()) {
-                Text(
-                    "Nema dodatnih polja u ovom poglavlju.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                )
-            }
-            entry.section.blocks.forEach { block ->
-                when (block.type.lowercase(Locale.getDefault())) {
-                    "equipment_list" -> TemplateEquipmentControls(standardControls)
-                    "legal_list" -> TemplateLegalControls(standardControls)
-                    "measurement_table" -> DocumentationSprGridlineInlineCard(
-                        tableCount = tableCount,
-                        rowCount = rowCount,
-                        enabled = enabled,
-                        onOpenMeasurements = onOpenMeasurements,
-                    )
-                    else -> {
-                        val editableField = findTemplateFieldForBlock(entry.template, block)
-                        TemplateBlockDetailRow(
-                            template = entry.template,
-                            block = block,
-                            editableField = editableField,
-                            value = editableField?.let { field -> values[templateFieldStateKey(entry.template, field)] }.orEmpty(),
-                            standardValues = standardControls.standardValues,
-                            enabled = enabled,
-                            onChange = { field, value -> onFieldChange(entry.template, field, value) },
+            AnimatedVisibility(visible = expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    entry.section.header?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
+                        Text(
+                            summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                         )
+                    }
+                    if (entry.section.blocks.isEmpty()) {
+                        Text(
+                            "Nema dodatnih polja u ovom poglavlju.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                    entry.section.blocks.forEach { block ->
+                        when (block.type.lowercase(Locale.getDefault())) {
+                            "equipment_list" -> TemplateEquipmentControls(standardControls)
+                            "legal_list" -> TemplateLegalControls(standardControls)
+                            "measurement_table" -> DocumentationSprGridlineInlineCard(
+                                tableCount = tableCount,
+                                rowCount = rowCount,
+                                enabled = enabled,
+                                onOpenMeasurements = onOpenMeasurements,
+                            )
+                            else -> {
+                                val editableField = findTemplateFieldForBlock(entry.template, block)
+                                TemplateBlockDetailRow(
+                                    template = entry.template,
+                                    block = block,
+                                    editableField = editableField,
+                                    value = editableField?.let { field -> values[templateFieldStateKey(entry.template, field)] }.orEmpty(),
+                                    standardValues = standardControls.standardValues,
+                                    enabled = enabled,
+                                    onChange = { field, value -> onFieldChange(entry.template, field, value) },
+                                )
+                            }
+                        }
                     }
                 }
             }
