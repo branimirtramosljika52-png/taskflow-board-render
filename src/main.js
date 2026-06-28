@@ -57041,6 +57041,7 @@ function createDefaultDocumentationSprModel() {
       "NFPA 101/2006 Fire safety code",
     ].join("\n"),
     projectDocumentation: "Zapisnik od prethodnog ispitivanja od strane Abeceda zaštite d.o.o.",
+    technicalData: "",
     resultsText: reportDefaults.resultsText,
     eiNote: reportDefaults.eiNote,
     eiminNote: reportDefaults.eiminNote,
@@ -57103,6 +57104,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     equipment: "",
     regulations: "",
     projectDocumentation: "",
+    technicalData: "",
     resultsText: "",
     eiNote: "",
     eiminNote: "",
@@ -57203,6 +57205,17 @@ function getDocumentationSprLayoutPresetLabel(value = "") {
   return DOCUMENTATION_SPR_LAYOUT_PRESETS.find((entry) => entry.value === normalized)?.label || "Osnovni";
 }
 
+function formatDocumentationTechnicalDataFields(fields = []) {
+  return (Array.isArray(fields) ? fields : [])
+    .map((field) => {
+      const label = String(field?.label || field?.key || field?.id || "").trim();
+      const value = String(field?.defaultValue || "").trim();
+      return label && value ? `${label}: ${value}` : label;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function normalizeDocumentationSprModel(value) {
   const fallback = createDefaultDocumentationSprModel();
   const source = value && typeof value === "object" ? value : {};
@@ -57226,6 +57239,7 @@ function normalizeDocumentationSprModel(value) {
     signatureImageUrl: String(source.signatureImageUrl || source.signatureDataUrl || "").trim(),
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
+    technicalData: String(source.technicalData || fallback.technicalData || "").trim(),
     measurementTables: normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
@@ -57608,6 +57622,7 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     coverSubtitle: preset.coverSubtitle || reportDefaults.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle || reportDefaults.measurementTableTitle,
     resultsText: preset.resultsText || reportDefaults.resultsText,
+    technicalData: formatDocumentationTechnicalDataFields(preset.technicalDataFields || reportDefaults.technicalDataFields),
     eiNote: preset.eiNote || reportDefaults.eiNote,
     eiminNote: preset.eiminNote || reportDefaults.eiminNote,
     assessmentLabel: preset.assessmentLabel || reportDefaults.assessmentLabel,
@@ -57669,6 +57684,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       coverSubtitle: nativeModel.coverSubtitle,
       measurementTableTitle: nativeModel.measurementTableTitle,
       resultsText: nativeModel.resultsText,
+      technicalData: currentModel.technicalData || nativeModel.technicalData,
       eiNote: nativeModel.eiNote,
       eiminNote: nativeModel.eiminNote,
       assessmentLabel: nativeModel.assessmentLabel,
@@ -59053,6 +59069,8 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
   next.projectDocumentation = fieldText(["PROJECT_DOCUMENTATION", "KORISTENA_DOKUMENTACIJA", "TEHNICKA_DOKUMENTACIJA"])
     || next.projectDocumentation
     || `Prethodni zapisnik ${previousLabel}`;
+  next.technicalData = fieldText(["TECHNICAL_DATA", "TEHNICKI_PODACI", "TEHNICKI_PODACI_SUSTAVA", "DOCUMENTATION_TECHNICAL_DATA"])
+    || next.technicalData;
   next.resultsText = fieldText([
     "DOCUMENTATION_SPR_RESULTS_TEXT",
     "SPR_RESULTS_TEXT",
@@ -61026,7 +61044,21 @@ function getDocumentationSprValiditySentence(model = documentationSprModel) {
   return String(model?.validitySentence || preset.validitySentence || "Zapisnik o ispitivanju vrijedi do").trim();
 }
 
+function getDocumentationSprTechnicalData(model = documentationSprModel) {
+  return String(model?.technicalData || "").trim();
+}
+
+function getDocumentationSprSectionOffset(model = documentationSprModel) {
+  return getDocumentationSprTechnicalData(model) ? 1 : 0;
+}
+
+function getDocumentationSprTechnicalSectionTitle(model = documentationSprModel) {
+  return getDocumentationSprServiceCode(model) === "EIZ" ? "TEHNIČKI PODACI SUSTAVA" : "TEHNIČKI PODACI";
+}
+
 function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
+  const technicalData = getDocumentationSprTechnicalData(model);
+  const sectionOffset = getDocumentationSprSectionOffset(model);
   return `
     <section class="documentation-spr-paper documentation-spr-paper-first">
       ${renderDocumentationSprPaperHeader(model, { useUploadedHeader: true })}
@@ -61045,9 +61077,10 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
         <tr><td>Broj zapisnika:</td><td>${escapeHtml(model.recordNumber)}</td></tr>
         <tr><td>Ispitivanje obavili:</td><td>${escapeHtml(model.inspectors)}</td></tr>
       </table>
-      ${renderDocumentationSprSectionTitle(2, "MJERNA I ISPITNA OPREMA")}
+      ${technicalData ? `${renderDocumentationSprSectionTitle(2, getDocumentationSprTechnicalSectionTitle(model))}<div class="documentation-spr-paper-list">${renderDocumentationSprLineList(technicalData)}</div>` : ""}
+      ${renderDocumentationSprSectionTitle(2 + sectionOffset, "MJERNA I ISPITNA OPREMA")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.equipment)}</div>
-      ${renderDocumentationSprSectionTitle(3, "PRIMJENJENI PROPISI")}
+      ${renderDocumentationSprSectionTitle(3 + sectionOffset, "PRIMJENJENI PROPISI")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.regulations)}</div>
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
@@ -61055,12 +61088,13 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
 }
 
 function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
+  const sectionOffset = getDocumentationSprSectionOffset(model);
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model)}
-      ${renderDocumentationSprSectionTitle(4, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA")}
+      ${renderDocumentationSprSectionTitle(4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
-      ${renderDocumentationSprSectionTitle(5, "REZULTATI ISPITIVANJA")}
+      ${renderDocumentationSprSectionTitle(5 + sectionOffset, "REZULTATI ISPITIVANJA")}
       <div class="documentation-spr-paper-text">${escapeHtml(model.resultsText)}</div>
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
@@ -61087,9 +61121,17 @@ function renderDocumentationSprMeasurementTableRows(table = {}) {
   const fallbackRows = rows.length ? rows : [{
     cells: Object.fromEntries(columns.map((column, index) => [column.id, index === 0 ? "1" : ""])),
   }];
-  return fallbackRows.map((row) => `
+  return fallbackRows.map((row, rowIndex) => `
     <tr>
-      ${columns.map((column) => `<td>${escapeHtml(row.cells?.[column.id] || "")}</td>`).join("")}
+      ${columns.map((column, columnIndex) => {
+        let value = row.cells?.[column.id] || "";
+        try {
+          value = getMeasurementSheetPreviewCellValue(table.sheet, rowIndex, columnIndex, table.formulaContext);
+        } catch {
+          value = row.cells?.[column.id] || "";
+        }
+        return `<td>${escapeHtml(value || "")}</td>`;
+      }).join("")}
     </tr>
   `).join("");
 }
@@ -61136,6 +61178,7 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
   const showDefects = isDocumentationSprFailingModel(model);
   const defects = showDefects ? renderDocumentationSprLineList(model.defects) : "";
   const recommendations = renderDocumentationSprLineList(model.recommendations);
+  const sectionOffset = getDocumentationSprSectionOffset(model);
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model)}
@@ -61144,15 +61187,15 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
         <div></div>
         ${renderDocumentationSprSignature(model)}
       </div>
-      ${showDefects ? `${renderDocumentationSprSectionTitle(6, "NEDOSTATCI")}<div class="documentation-spr-paper-list">${defects}</div>` : ""}
-      ${renderDocumentationSprSectionTitle(7, "PREPORUKE")}
+      ${showDefects ? `${renderDocumentationSprSectionTitle(6 + sectionOffset, "NEDOSTATCI")}<div class="documentation-spr-paper-list">${defects}</div>` : ""}
+      ${renderDocumentationSprSectionTitle(7 + sectionOffset, "PREPORUKE")}
       <div class="documentation-spr-paper-list">${recommendations}</div>
-      ${renderDocumentationSprSectionTitle(8, "OCJENA REZULTATA ISPITIVANJA")}
+      ${renderDocumentationSprSectionTitle(8 + sectionOffset, "OCJENA REZULTATA ISPITIVANJA")}
       <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:</p>
       <table class="documentation-spr-paper-kv">
         <tr><td>${escapeHtml(getDocumentationSprAssessmentLabel(model))}</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>
       </table>
-      ${renderDocumentationSprSectionTitle(9, "ZAKLJUČAK")}
+      ${renderDocumentationSprSectionTitle(9 + sectionOffset, "ZAKLJUČAK")}
       <p>${escapeHtml(getDocumentationSprConclusionLead(model))}</p>
       <div class="documentation-spr-paper-conclusion">${escapeHtml(model.resultStatus)}</div>
       <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
@@ -62286,6 +62329,9 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     DOCUMENTATION_SPR_RESULTS_TEXT: normalized.resultsText || "",
     SPR_RESULTS_TEXT: normalized.resultsText || "",
     OPIS_SUSTAVA: normalized.resultsText || "",
+    TECHNICAL_DATA: normalized.technicalData || "",
+    TEHNICKI_PODACI: normalized.technicalData || "",
+    DOCUMENTATION_TECHNICAL_DATA: normalized.technicalData || "",
     DOCUMENTATION_SPR_RESULT_STATUS: normalized.resultStatus || "",
     SPR_RESULT_STATUS: normalized.resultStatus || "",
     ZAKLJUCNA_OCJENA: normalized.resultStatus || "",

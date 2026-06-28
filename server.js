@@ -110,7 +110,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.242.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.243.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -23046,6 +23046,10 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     return null;
   }
   const measurementTables = createDocumentationMeasurementTablesForService(preset.serviceCode);
+  const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode);
+  const technicalDataFields = Array.isArray(reportDefaults.technicalDataFields)
+    ? reportDefaults.technicalDataFields
+    : [];
   const serviceWithCode = {
     ...service,
     serviceCode: preset.serviceCode,
@@ -23076,6 +23080,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       defaultValue: "Periodično ispitivanje",
       options: inspectionTypeOptions,
     }),
+    ...technicalDataFields.map((field) => buildMobileNativeDocumentationField(
+      `technical-${field.id || field.key}`,
+      field.label || "Tehnički podatak",
+      "text",
+      {
+        defaultValue: field.defaultValue || "",
+        helpText: field.helpText || "Tehnički podatak iz predloška zapisnika.",
+      },
+    )),
     buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
       defaultValue: "Preporuke",
       helpText: "Napomene ili preporuke za korisnika.",
@@ -23095,6 +23108,26 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     }),
   ];
   const area = preset.signatureAreas?.[0] || "elektro";
+  const measurementFieldBlocks = measurementTables.map((table, index) => {
+    const tableKey = normalizeInputValue(table?.key || table?.id || table?.tokenKey || `gridline-results-${index + 1}`)
+      || `gridline-results-${index + 1}`;
+    const tableLabel = normalizeInputValue(table?.label || table?.summary || `Gridline tablica ${index + 1}`);
+    const tableSummary = normalizeInputValue(table?.summary || table?.label || "");
+    return buildMobileNativeDocumentationBlock(tableKey, tableLabel || `Gridline tablica ${index + 1}`, "measurement_table", {
+      group: "Rezultati ispitivanja",
+      summary: tableSummary || "Otvori i popuni ovu Gridline tablicu.",
+      helpText: "Svaka Gridline tablica ima vlastito polje i zasebno se sprema u zapisnik.",
+    });
+  });
+  const technicalFieldBlocks = technicalDataFields.map((field) => {
+    const fieldId = `technical-${field.id || field.key}`;
+    return buildMobileNativeDocumentationBlock(fieldId, field.label || "Tehnički podatak", "text", {
+      group: "Tehnički podaci",
+      editable: true,
+      summary: field.defaultValue || "",
+      helpText: field.helpText || "Tehnički podatak iz predloška zapisnika.",
+    });
+  });
   const fieldBlocks = [
     buildMobileNativeDocumentationBlock("chapter-basic", "Osnovni podaci", "chapter", {
       typeLabel: "Poglavlje",
@@ -23126,6 +23159,13 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       required: true,
       options: inspectionTypeOptions,
     }),
+    ...(technicalFieldBlocks.length > 0 ? [
+      buildMobileNativeDocumentationBlock("chapter-technical", preset.serviceCode === "EIZ" ? "Tehnički podaci sustava" : "Tehnički podaci", "chapter", {
+        typeLabel: "Poglavlje",
+        summary: "Tehnički podaci preuzeti iz predloška zapisnika.",
+      }),
+      ...technicalFieldBlocks,
+    ] : []),
     buildMobileNativeDocumentationBlock("chapter-equipment", "Mjerna i ispitna oprema", "chapter", {
       typeLabel: "Poglavlje",
       summary: "Oprema se bira iz modula Mjerna oprema.",
@@ -23158,12 +23198,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         ? `${measurementTables.length} Gridline tablica za ${preset.serviceCode}.`
         : (preset.measurementTableTitle || "Gridline rezultati ispitivanja."),
     }),
-    buildMobileNativeDocumentationBlock("gridline-results", measurementTables.length > 1 ? "Gridline tablice" : "Gridline rezultati", "measurement_table", {
-      group: "Rezultati ispitivanja",
-      summary: measurementTables.length > 1
-        ? "Otvori i popuni svaku Gridline tablicu za ovu uslugu."
-        : "Otvori i popuni Gridline tablicu.",
-    }),
+    ...measurementFieldBlocks,
     buildMobileNativeDocumentationBlock("chapter-conclusion", "Preporuke i zaključna ocjena", "chapter", {
       typeLabel: "Poglavlje",
       summary: "Ocjena određuje prikaz nedostataka.",
@@ -23210,6 +23245,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     measurementTables,
     aiFields: [],
     aiMeasurementColumns: [],
+    technicalDataFields,
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle,
@@ -24150,6 +24186,65 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
   }));
 }
 
+function normalizeMobileTechnicalFieldToken(value = "") {
+  return normalizeInputValue(value).toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+}
+
+function getMobileDocumentationTemplateFieldValues(common = {}, template = {}, keys = []) {
+  const normalizedTemplateIds = [
+    template?.id,
+    template?.key,
+    template?.serviceCode,
+    template?.title,
+  ].map(normalizeInputValue).filter(Boolean);
+  const sources = [];
+  normalizedTemplateIds.forEach((templateId) => {
+    const values = common.templateFieldValues?.[templateId];
+    if (values && typeof values === "object" && !Array.isArray(values)) {
+      sources.push(values);
+    }
+  });
+  if (common.fieldValues && typeof common.fieldValues === "object" && !Array.isArray(common.fieldValues)) {
+    sources.push(common.fieldValues);
+  }
+  for (const source of sources) {
+    const value = getMobileSprFirstValue(source, keys);
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function buildMobileDocumentationTechnicalDataText(template = {}, reportDefaults = {}, common = {}, placeholders = {}) {
+  const fields = Array.isArray(reportDefaults.technicalDataFields)
+    ? reportDefaults.technicalDataFields
+    : [];
+  return fields.map((field) => {
+    const rawId = normalizeInputValue(field?.id || field?.key);
+    const label = normalizeInputValue(field?.label || rawId);
+    if (!rawId || !label) {
+      return "";
+    }
+    const fieldId = `technical-${rawId}`;
+    const keys = [
+      fieldId,
+      rawId,
+      field?.key,
+      field?.tokenKey,
+      normalizeMobileTechnicalFieldToken(fieldId),
+      normalizeMobileTechnicalFieldToken(rawId),
+      normalizeMobileTechnicalFieldToken(field?.key),
+      normalizeMobileTechnicalFieldToken(field?.label),
+      label,
+    ].map(normalizeInputValue).filter(Boolean);
+    const value = getMobileDocumentationTemplateFieldValues(common, template, keys)
+      || getMobileSprFirstValue(placeholders, keys)
+      || normalizeInputValue(field?.defaultValue);
+    return value ? `${label}: ${value}` : "";
+  }).filter(Boolean).join("\n");
+}
+
 function buildMobileDocumentationSprModel({
   entry = {},
   template = {},
@@ -24230,6 +24325,7 @@ function buildMobileDocumentationSprModel({
     equipment: getMobileSprEquipmentText(template, scopedSnapshot, common),
     regulations: getMobileSprRegulationsText(template, scopedSnapshot, common),
     projectDocumentation: normalizeInputValue(common.note || placeholders.KORISTENA_DOKUMENTACIJA),
+    technicalData: buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders),
     resultsText: getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"])
       || normalizeInputValue(template.resultsText || reportDefaults.resultsText),
     eiNote: normalizeInputValue(template.eiNote || reportDefaults.eiNote),

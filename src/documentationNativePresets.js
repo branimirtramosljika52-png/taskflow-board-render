@@ -41,6 +41,17 @@ function blankRows(columns = [], count = DEFAULT_ROW_COUNT, seed = {}) {
   }, index));
 }
 
+function formulaRows(columns = [], count = DEFAULT_ROW_COUNT, buildValues = () => ({})) {
+  return Array.from({ length: count }, (_, index) => {
+    const rowNumber = index + 1;
+    return makeRow(columns, {
+      number: String(rowNumber),
+      pass: "DA",
+      ...buildValues(rowNumber, index),
+    }, index);
+  });
+}
+
 function tableSpec({
   id,
   label,
@@ -59,6 +70,18 @@ function tableSpec({
     summary: summary || label,
     columns,
     rows: rows || blankRows(columns, blankRowCount, blankSeed),
+  };
+}
+
+function technicalField(id, label, defaultValue = "") {
+  const key = id;
+  return {
+    id,
+    key,
+    tokenKey: normalizeCode(id).replace(/[^A-Z0-9]+/g, "_"),
+    label,
+    defaultValue,
+    helpText: "Tehnički podatak iz predloška zapisnika.",
   };
 }
 
@@ -109,7 +132,8 @@ const EIZ_ZUDS_COLUMNS = [
   makeColumn("number", "R.br.", 54),
   makeColumn("board", "Razdjelnik", 90),
   makeColumn("circuit", "Strujni krug", 110),
-  makeColumn("rated", "Nazivna struja In / IΔn [A] / [mA]", 138),
+  makeColumn("inCurrent", "In [A]", 76),
+  makeColumn("idn", "IΔn [mA]", 86),
   makeColumn("iisk", "Iisk [mA]", 84),
   makeColumn("tisk", "tisk [ms]", 84),
   makeColumn("u0", "U0 [V]", 76),
@@ -162,27 +186,51 @@ const VES_COLUMNS = [
 ];
 
 const EIZ_VISUAL_ITEMS = [
-  "Metoda zastite od elektricnog udara",
-  "Prisutnost protupozarnih pregrada i ostalih mjera opreza protiv sirenja vatre te zastite od toplinskih ucinaka",
-  "Odabir vodica prema strujnom opterecenju",
-  "Odabir, podesavanje, selektivnost i postavljanje zastitnih i nadzornih uredaja",
-  "Odabir, prisutnost i ispravan smjestaj prenaponskih zastitnih uredaja",
-  "Prisutnost i ispravan smjestaj odgovarajucih izolacijskih i sklopnih uredaja",
-  "Odabir opreme i zastitnih mjera prikladnih za vanjske utjecaje i mehanicku otpornost",
-  "Prepoznavanje neutralnog i zastitnog vodica",
-  "Raspolozivost shema, obavijesti upozorenja i ostalih slicnih informacija",
-  "Identifikacija krugova, prekostrujnih zastitnih uredaja, sklopnih uredaja, stezaljki",
-  "Prikladnost spajanja vodica",
-  "Odabir i postavljanje vodica uzemljenja, zastitnih vodica i njihovih spojeva",
-  "Dostupnost opreme za lakse rukovanje, identifikaciju i odrzavanje",
+  "Metoda zaštite od električnog udara",
+  "Prisutnost protupožarnih pregrada i ostalih mjera opreza protiv širenja vatre te zaštite od toplinskih učinaka",
+  "Odabir vodiča prema strujnom opterećenju",
+  "Odabir, podešavanje, selektivnost i postavljanje zaštitnih i nadzornih uređaja",
+  "Odabir, prisutnost i ispravan smještaj prenaponskih zaštitnih uređaja",
+  "Prisutnost i ispravan smještaj odgovarajućih izolacijskih i sklopnih uređaja",
+  "Odabir opreme i zaštitnih mjera prikladnih za vanjske utjecaje i mehaničku otpornost",
+  "Prepoznavanje neutralnog i zaštitnog vodiča",
+  "Raspoloživost shema, obavijesti upozorenja i ostalih sličnih informacija",
+  "Identifikacija krugova, prekostrujnih zaštitnih uređaja, sklopnih uređaja, stezaljki",
+  "Prikladnost spajanja vodiča",
+  "Odabir i postavljanje vodiča uzemljenja, zaštitnih vodiča i njihovih spojeva",
+  "Dostupnost opreme za lakše rukovanje, identifikaciju i održavanje",
   "Mjere protiv elektromagnetskih smetnji",
-  "Povezanost izlozenih vodljivih dijelova na zastitni vodic",
-  "Izbor i postavljanje sustava ozicenja",
+  "Povezanost izloženih vodljivih dijelova na zaštitni vodič",
+  "Izbor i postavljanje sustava ožičenja",
   "Ispitivanje polariteta",
   "Provjera redoslijeda faza",
   "Funkcionalno ispitivanje",
   "Provjera pada napona",
   "Provjera ispitnog tipkala RCD sklopki",
+];
+
+const EIZ_VISUAL_RESULTS = [
+  "DA",
+  "NP",
+  "DA",
+  "DA",
+  "DA",
+  "DA",
+  "DA",
+  "DA",
+  "DA",
+  "DA",
+  "DA",
+  "DA",
+  "NP",
+  "NP",
+  "DA",
+  "DA",
+  "DA",
+  "NP",
+  "DA",
+  "DA",
+  "DA",
 ];
 
 const SZOMV_ITEMS = [
@@ -201,10 +249,38 @@ const SZOMV_ITEMS = [
   "Dogradnje/preinake koje zahtijevaju prosirenje unutarnjeg sustava",
 ];
 
+const SZOM_TECHNICAL_FIELDS = [
+  technicalField("inspectionArea", "Prostor pregleda", "Prostor benzinske postaje sa pratećim sadržajem"),
+  technicalField("weatherConditions", "Vremenski uvjeti", "Vedro"),
+  technicalField("soilResistance", "Otpor tla [Ωm]", "-"),
+  technicalField("soilMoisture", "Vlažnost tla", "Suho"),
+  technicalField("protectionSystemClass", "Vrsta sustava zaštite", "II"),
+  technicalField("airTermination", "Hvataljke", "Aluminijska žica"),
+  technicalField("downConductors", "Odvodi", "Pocinčana traka Fe/Zn, Aluminijska žica"),
+  technicalField("earthing", "Uzemljenje", "Pocinčana traka Fe/Zn"),
+];
+
+const SZOMV_TECHNICAL_FIELDS = [
+  technicalField("inspectionArea", "Prostor pregleda", "Prostor benzinske postaje sa pratećim sadržajem"),
+  technicalField("weatherConditions", "Vremenski uvjeti", "Vedro"),
+  technicalField("soilMoisture", "Vlažnost tla", "Suho"),
+  technicalField("protectionSystemClass", "Vrsta sustava zaštite", "II"),
+  technicalField("airTermination", "Hvataljke", "Aluminijska žica"),
+  technicalField("downConductors", "Odvodi", "Pocinčana traka Fe/Zn, Aluminijska žica"),
+  technicalField("earthing", "Uzemljenje", "Pocinčana traka Fe/Zn"),
+];
+
+const EIZ_TECHNICAL_FIELDS = [
+  technicalField("networkSystem", "Sustav mreže", "TN-S sa ZUDS"),
+  technicalField("voltageFrequency", "Napon/frekvencija", "230/400 V; 50 Hz"),
+  technicalField("protectionType", "Vrsta zaštite", "Zaštitni uređaj diferencijalne struje - ZUDS"),
+  technicalField("protectiveDevices", "Zaštitni uređaji", "Automatski osigurači, ZUDS"),
+];
+
 function rowsFromItems(columns, items, pass = "DA") {
   return items.map((item, index) => makeRow(columns, {
     item,
-    pass,
+    pass: Array.isArray(pass) ? (pass[index] || "DA") : pass,
   }, index));
 }
 
@@ -289,14 +365,48 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     conclusionLead: "Temeljem rezultata pregleda i mjerenja moze se zakljuciti da ispitivani sustav zastite od djelovanja munje na dan predmetnog ispitivanja",
     validitySentence: "Ponovno ispitivanje potrebno je obaviti do",
     signatureAreas: ["elektro"],
+    technicalDataFields: SZOM_TECHNICAL_FIELDS,
     tables: [
       tableSpec({
         id: "szom-measurements",
         label: "Mjerenje sustava zastite od munje",
         summary: "Tablica 1. - rezultati mjerenja sustava zastite od djelovanja munje",
         columns: SZOM_COLUMNS,
-        blankRowCount: 20,
-        blankSeed: { rdop: "<10", pass: "DA" },
+        rows: formulaRows(SZOM_COLUMNS, 24, (rowNumber, index) => ({
+          place: [
+            "Odvod BP",
+            "Odvod BP",
+            "Odvod BP",
+            "Odvod BP",
+            "Agregat",
+            "Agregat",
+            "Agregat",
+            "Agregat",
+            "Spremnik gorivo",
+            "Odzračnici",
+            "Spremnik plina",
+            "Rasvjetni stup",
+            "Skladište boce UNP",
+            "Rasvjetni stup",
+            "Rasvjetni stup",
+            "Rasvjetni stup",
+            "Rasvjetni stup",
+            "Rasvjetni stup",
+            "Rasvjetni stup",
+            "Sklopka AC",
+            "Sklopka AC",
+            "Rasvjetni stup",
+            "",
+            "",
+          ][index] || "",
+          riz: `=IF(B${rowNumber}="","",RANDBETWEEN(200,380)/100)`,
+          rdop: "<10",
+          riz2: `=IF(E${rowNumber}="","",RANDBETWEEN(40,85)/100)`,
+          rdop2: `=IF(E${rowNumber}="","","<1")`,
+          riz3: `=IF(H${rowNumber}="","",RANDBETWEEN(40,135)/100)`,
+          rdop3: `=IF(H${rowNumber}="","","<2")`,
+          pass: "DA",
+        })),
       }),
     ],
   }),
@@ -317,6 +427,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     conclusionLead: "Temeljem rezultata pregleda moze se zakljuciti da predmetni sustav zastite od djelovanja munje na dan predmetnog pregleda",
     validitySentence: "Ponovno ispitivanje potrebno je obaviti do",
     signatureAreas: ["elektro"],
+    technicalDataFields: SZOMV_TECHNICAL_FIELDS,
     tables: [
       tableSpec({
         id: "szomv-visual",
@@ -347,45 +458,85 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     conclusionLead: "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivana elektricna instalacija na dan predmetnog ispitivanja",
     validitySentence: "Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do",
     signatureAreas: ["elektro"],
+    technicalDataFields: EIZ_TECHNICAL_FIELDS,
     tables: [
       tableSpec({
         id: "eiz-visual",
         label: "VIZUALNI PREGLED ELEKTRICNE INSTALACIJE",
         summary: "IL - EIZ.V",
         columns: EIZ_VISUAL_COLUMNS,
-        rows: rowsFromItems(EIZ_VISUAL_COLUMNS, EIZ_VISUAL_ITEMS, "DA"),
+        rows: rowsFromItems(EIZ_VISUAL_COLUMNS, EIZ_VISUAL_ITEMS, EIZ_VISUAL_RESULTS),
       }),
       tableSpec({
         id: "eiz-zuds",
         label: "ISPITIVANJE ZASTITNOG UREDAJA DIFERENCIJALNE STRUJE - ZUDS",
         summary: "IL - EIZ.ZUDS",
         columns: EIZ_ZUDS_COLUMNS,
-        blankRowCount: 8,
-        blankSeed: { pass: "DA" },
+        rows: formulaRows(EIZ_ZUDS_COLUMNS, 8, (rowNumber, index) => ({
+          board: "RO BS",
+          circuit: index < 4 ? `F100.${index + 4}` : ["F140", "F141", "F133", "F142"][index - 4] || "",
+          inCurrent: index === 0 ? "63" : (index < 4 ? "40" : "25"),
+          idn: [300, 30, 30, 30, 300, 300, 300, 300][index] || 30,
+          iisk: `=IF(E${rowNumber}="","",RANDBETWEEN(70,80)*E${rowNumber}/100)`,
+          tisk: `=IF(E${rowNumber}="","",RANDBETWEEN(14,24))`,
+          u0: `=IF(E${rowNumber}="","","<50")`,
+          pass: `=IF(E${rowNumber}="","","DA")`,
+        })),
       }),
       tableSpec({
         id: "eiz-ipk",
         label: "ISPITIVANJE IMPEDANCIJE PETLJE KVARA",
         summary: "IL - EIZ.IPK",
         columns: EIZ_IPK_COLUMNS,
-        blankRowCount: 24,
-        blankSeed: { pass: "DA" },
+        rows: formulaRows(EIZ_IPK_COLUMNS, 24, (rowNumber) => ({
+          place: "Utičnica 230 V",
+          circuit: "-",
+          protectionType: "RCD 40/0,03",
+          idnIa: rowNumber === 1 ? "0.03" : "0.3",
+          td: "0.4",
+          zLpe: `=IF(B${rowNumber}="","",RANDBETWEEN(140,165)/100)`,
+          izem: `=IF(G${rowNumber}="","",RANDBETWEEN(224.25,235.75)/G${rowNumber})`,
+          zLn: `=IF(B${rowNumber}="","",RANDBETWEEN(40,65)/100)`,
+          zLl: "-",
+          u0: `=IF(G${rowNumber}="","",G${rowNumber}*E${rowNumber})`,
+          pass: "DA",
+        })),
       }),
       tableSpec({
         id: "eiz-oi",
         label: "ISPITIVANJE OTPORA IZOLACIJE",
         summary: "IL - EIZ.OI",
         columns: EIZ_OI_COLUMNS,
-        blankRowCount: 24,
-        blankSeed: { l123n: ">30", l123pe: ">30", npe: ">30", rd: ">1", pass: "DA" },
+        rows: formulaRows(EIZ_OI_COLUMNS, 24, (rowNumber) => ({
+          circuit: `Strujni krug ${rowNumber}`,
+          l123n: ">30",
+          l123pe: ">30",
+          npe: ">30",
+          rd: ">1",
+          pass: "DA",
+        })),
       }),
       tableSpec({
         id: "eiz-k",
         label: "ISPITIVANJE KONTINUITETA ZASTITNOG VODICA I VODICA ZA IZJEDNACAVANJE POTENCIJALA",
         summary: "IL - EIZ.K",
         columns: EIZ_K_COLUMNS,
-        blankRowCount: 6,
-        blankSeed: { testCurrent: "0,2", allowedResistance: "<1", pass: "DA", note: "-" },
+        rows: formulaRows(EIZ_K_COLUMNS, 6, (rowNumber, index) => ({
+          place1: "PE sabirnica GRO",
+          place2: [
+            "Uzemljivač objekta",
+            "Agregati za istakanje goriva",
+            "Sklopka za uzemljenje",
+            "Vodovodna instalacija",
+            "",
+            "",
+          ][index] || "",
+          testCurrent: `=IF(C${rowNumber}="","","0,2")`,
+          measuredResistance: `=IF(C${rowNumber}="","","<1")`,
+          allowedResistance: `=IF(C${rowNumber}="","","<1")`,
+          pass: `=IF(C${rowNumber}="","","DA")`,
+          note: `=IF(C${rowNumber}="","","-")`,
+        })),
       }),
     ],
   }),
@@ -471,6 +622,7 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     signatureAreas: [...preset.signatureAreas],
+    technicalDataFields: (preset.technicalDataFields || []).map((field) => ({ ...field })),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
   };
 }
@@ -493,6 +645,7 @@ export function getDocumentationNativeTemplateSeedPresets() {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     signatureAreas: [...preset.signatureAreas],
+    technicalDataFields: (preset.technicalDataFields || []).map((field) => ({ ...field })),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
   }));
 }

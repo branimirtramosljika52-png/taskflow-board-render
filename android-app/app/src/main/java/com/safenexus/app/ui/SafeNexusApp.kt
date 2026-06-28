@@ -29842,12 +29842,21 @@ private fun DocumentationSprTemplateSectionPanel(
                         when (block.type.lowercase(Locale.getDefault())) {
                             "equipment_list" -> TemplateEquipmentControls(standardControls)
                             "legal_list" -> TemplateLegalControls(standardControls)
-                            "measurement_table" -> DocumentationSprGridlineInlineCard(
-                                tableCount = tableCount,
-                                rowCount = rowCount,
-                                enabled = enabled,
-                                onOpenMeasurements = onOpenMeasurements,
-                            )
+                            "measurement_table" -> {
+                                val blockTables = getMeasurementTablesForBlock(entry.template, block)
+                                val blockRowCount = blockTables.sumOf { table ->
+                                    val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
+                                    sheet.rows.size
+                                }
+                                DocumentationSprGridlineInlineCard(
+                                    title = blockTables.firstOrNull()?.label ?: block.label,
+                                    summary = blockTables.firstOrNull()?.summary ?: block.summary,
+                                    tableCount = blockTables.size,
+                                    rowCount = blockRowCount,
+                                    enabled = enabled,
+                                    onOpenMeasurements = onOpenMeasurements,
+                                )
+                            }
                             else -> {
                                 TemplateBlockDetailRow(
                                     template = entry.template,
@@ -29870,6 +29879,8 @@ private fun DocumentationSprTemplateSectionPanel(
 
 @Composable
 private fun DocumentationSprGridlineInlineCard(
+    title: String = "Gridline tablica",
+    summary: String = "",
     tableCount: Int,
     rowCount: Int,
     enabled: Boolean,
@@ -29887,11 +29898,17 @@ private fun DocumentationSprGridlineInlineCard(
         ) {
             Icon(Icons.Rounded.ListAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Column(modifier = Modifier.weight(1f)) {
-                Text("Gridline tablica", fontWeight = FontWeight.Black)
+                Text(title.ifBlank { "Gridline tablica" }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    if (tableCount == 0) "Nema povezane tablice." else "$tableCount tablica · $rowCount redaka",
+                    when {
+                        tableCount == 0 -> "Nema povezane tablice."
+                        summary.isNotBlank() -> "$summary · $rowCount redaka"
+                        else -> "$tableCount tablica · $rowCount redaka"
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             OutlinedButton(
@@ -32092,6 +32109,29 @@ private fun isBasicStandardTemplateBlock(block: WorkOrderDocumentationTemplateBl
         lookup.contains("mjesto ispitivanja")
 }
 
+private fun measurementTableIdentity(table: WorkOrderMeasurementTable): String =
+    table.key.ifBlank { table.id.ifBlank { table.tokenKey.ifBlank { table.label } } }
+
+private fun getMeasurementTablesForBlock(
+    template: WorkOrderDocumentationTemplate,
+    block: WorkOrderDocumentationTemplateBlock,
+): List<WorkOrderMeasurementTable> {
+    if (!block.type.equals("measurement_table", ignoreCase = true)) return emptyList()
+    val blockKeys = listOf(block.id, block.key, block.tokenKey, block.label)
+        .map(::normalizeTemplateSectionLookup)
+        .filter { it.isNotBlank() }
+        .toSet()
+    if (blockKeys.isEmpty()) return emptyList()
+    val matched = template.measurementTables.filter { table ->
+        listOf(table.id, table.key, table.tokenKey, table.label)
+            .map(::normalizeTemplateSectionLookup)
+            .any { it.isNotBlank() && blockKeys.contains(it) }
+    }
+    return matched.ifEmpty {
+        if (blockKeys.contains("gridline results")) template.measurementTables else emptyList()
+    }
+}
+
 private fun getMeasurementTablesForSection(
     template: WorkOrderDocumentationTemplate,
     section: TemplateBlockSection,
@@ -32100,16 +32140,10 @@ private fun getMeasurementTablesForSection(
     if (measurementBlocks.isEmpty()) {
         return if (isMeasurementTemplateSection(section)) template.measurementTables else emptyList()
     }
-    val blockKeys = measurementBlocks
-        .flatMap { block -> listOf(block.id, block.key, block.tokenKey, block.label) }
-        .map(::normalizeTemplateSectionLookup)
-        .filter { it.isNotBlank() }
-        .toSet()
-    return template.measurementTables.filter { table ->
-        listOf(table.id, table.key, table.tokenKey, table.label)
-            .map(::normalizeTemplateSectionLookup)
-            .any { it.isNotBlank() && blockKeys.contains(it) }
-    }.ifEmpty { template.measurementTables }
+    return measurementBlocks
+        .flatMap { block -> getMeasurementTablesForBlock(template, block) }
+        .distinctBy(::measurementTableIdentity)
+        .ifEmpty { template.measurementTables }
 }
 
 private fun documentationSignatureBlockTypeLabel(block: WorkOrderDocumentationTemplateBlock): String {
