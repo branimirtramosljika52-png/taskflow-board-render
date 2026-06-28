@@ -24112,8 +24112,13 @@ private fun WorkOrderDocumentationWizardDialog(
     val selectedAiTemplate = remember(aiCapableTemplates, selectedAiTemplateId) {
         aiCapableTemplates.firstOrNull { it.id == selectedAiTemplateId } ?: aiCapableTemplates.firstOrNull()
     }
-    val aiFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+    var aiUploadSourceDialogOpen by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    fun addAiFiles(
+        uris: List<Uri>,
+        mode: WorkOrderDocumentInputMode,
+        successLabel: String = "datoteka",
+    ) {
+        if (uris.isEmpty()) return
         coroutineScope.launch {
             aiLoading = true
             aiMessage = ""
@@ -24123,6 +24128,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         context = androidContext.applicationContext,
                         uris = uris,
                         existingCount = aiFiles.size,
+                        mode = mode,
                     )
                 }
             }
@@ -24134,13 +24140,70 @@ private fun WorkOrderDocumentationWizardDialog(
                     aiMessage = if (nextFiles.isEmpty()) {
                         "Nije dodana nijedna datoteka."
                     } else {
-                        "${nextFiles.size} datoteka spremno za NexAI."
+                        "${files.size} $successLabel dodano. Ukupno ${nextFiles.size} spremno za NexAI."
                     }
                 }
                 .onFailure { error ->
                     aiMessage = error.message ?: "Ne mogu učitati odabrane datoteke."
                 }
             aiLoading = false
+        }
+    }
+    val aiPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        addAiFiles(uris, WorkOrderDocumentInputMode.Photos, "slika")
+    }
+    val aiPdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        addAiFiles(uris, WorkOrderDocumentInputMode.Pdf, "PDF")
+    }
+    val aiFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        addAiFiles(uris, WorkOrderDocumentInputMode.File)
+    }
+    var pendingAiCameraUri by remember(workOrder.id, selectedObjectId) { mutableStateOf<Uri?>(null) }
+    val aiCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val uri = pendingAiCameraUri
+        pendingAiCameraUri = null
+        if (success && uri != null) {
+            addAiFiles(listOf(uri), WorkOrderDocumentInputMode.Photos, "fotografija")
+        }
+    }
+    val aiScannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+        val pdfUri = scanResult?.pdf?.uri
+        if (pdfUri == null) {
+            aiMessage = "Sken nije vratio PDF dokument."
+        } else {
+            addAiFiles(listOf(pdfUri), WorkOrderDocumentInputMode.Scan, "sken")
+        }
+    }
+    val startAiScan: () -> Unit = {
+        val activity = androidContext.findFragmentActivity()
+        if (activity == null) {
+            aiMessage = "Skeniranje dokumenta nije dostupno u ovom prikazu."
+        } else {
+            val options = GmsDocumentScannerOptions.Builder()
+                .setGalleryImportAllowed(true)
+                .setPageLimit(30)
+                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+                .build()
+            GmsDocumentScanning.getClient(options)
+                .getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    aiScannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+                }
+                .addOnFailureListener { error ->
+                    aiMessage = error.message ?: "Ne mogu pokrenuti skeniranje dokumenta."
+                }
+        }
+    }
+    val startAiCamera: () -> Unit = {
+        val outputUri = createWorkOrderCameraCaptureUri(androidContext.applicationContext)
+        if (outputUri == null) {
+            aiMessage = "Ne mogu pripremiti fotografiju za spremanje."
+        } else {
+            pendingAiCameraUri = outputUri
+            aiCameraLauncher.launch(outputUri)
         }
     }
     var documentationAttachmentFiles by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<WorkOrderDocumentationAiFile>()) }
@@ -24542,6 +24605,33 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
+    if (aiUploadSourceDialogOpen) {
+        DocumentationAiUploadSourceDialog(
+            enabled = !formLoading && !aiLoading && aiFiles.size < WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES,
+            onDismiss = { aiUploadSourceDialogOpen = false },
+            onCamera = {
+                aiUploadSourceDialogOpen = false
+                startAiCamera()
+            },
+            onScan = {
+                aiUploadSourceDialogOpen = false
+                startAiScan()
+            },
+            onPhotos = {
+                aiUploadSourceDialogOpen = false
+                aiPhotoPicker.launch("image/*")
+            },
+            onPdf = {
+                aiUploadSourceDialogOpen = false
+                aiPdfPicker.launch(arrayOf("application/pdf"))
+            },
+            onFile = {
+                aiUploadSourceDialogOpen = false
+                aiFilePicker.launch(workOrderDocumentationAiMimeTypes)
+            },
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier
@@ -24889,7 +24979,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         loading = aiLoading,
                         enabled = !formLoading,
                         onModelTierChange = { aiModelTier = it },
-                        onPickFiles = { aiFilePicker.launch(workOrderDocumentationAiMimeTypes) },
+                        onPickFiles = { aiUploadSourceDialogOpen = true },
                         onRemoveFile = { fileId ->
                             val nextFiles = aiFiles.filterNot { it.id == fileId }
                             aiFiles = nextFiles
@@ -29139,7 +29229,6 @@ private fun DocumentationSprMobileWorkspace(
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
     val sourceLabel = remember(templates) { documentationSprMobileSourceLabel(templates) }
-    val templateLabel = remember(templates) { documentationSprTemplateLabel(templates) }
     val menuEntries = remember(templates) {
         templates.flatMap { template ->
             buildTemplateBlockSections(template.fieldBlocks).mapIndexed { index, section ->
@@ -29211,7 +29300,6 @@ private fun DocumentationSprMobileWorkspace(
                         listOf(
                             formatDatePickerLabel(inspectionDate),
                             inspectionType,
-                            templateLabel,
                             sourceLabel,
                         ).filter { it.isNotBlank() }.distinct().joinToString(" · "),
                         style = MaterialTheme.typography.labelMedium,
@@ -29250,7 +29338,7 @@ private fun DocumentationSprMobileWorkspace(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Rounded.ListAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Predložak $templateLabel", fontWeight = FontWeight.Black)
+                        Text("Poglavlja zapisnika", fontWeight = FontWeight.Black)
                         Text(
                             if (menuEntries.isEmpty()) "Ručna polja" else "${menuEntries.size} poglavlja",
                             style = MaterialTheme.typography.labelMedium,
@@ -29370,7 +29458,6 @@ private fun DocumentationSprTemplateSectionPanel(
                     Text("${entry.index + 1}. ${entry.section.title}", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
                         listOf(
-                            entry.template.title,
                             if (isAttachmentSection) {
                                 "${attachmentFiles.size} prilog(a)"
                             } else if (entry.section.blocks.isNotEmpty()) {
@@ -29806,114 +29893,248 @@ private fun DocumentationAiAssistantSection(
     onRemoveFile: (String) -> Unit,
     onRun: () -> Unit,
 ) {
-    WizardSection(title = "NexAI", icon = Icons.Rounded.Fingerprint) {
-        Text(
-            "Dodaj stari PDF, sliku ili tekst. NexAI popunjava samo polja i Excel kolone označene u Template Developmentu.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-        )
-        if (templates.size > 1) {
-            WorkOrderSelectField(
-                label = "Template",
-                value = selectedTemplateId,
-                valueLabel = selectedTemplate?.title ?: "Odaberi template",
-                options = templates.map { template ->
-                    template.id to listOf(template.serviceCode, template.title)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" - ")
-                },
-                enabled = enabled && !loading,
-                onSelect = onSelectedTemplateChange,
-            )
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(loading, files.size, message) {
+        if (loading || files.isNotEmpty() || message.isNotBlank()) {
+            expanded = true
         }
-        val templateMeta = selectedTemplate?.let { template ->
-            listOf(
-                if (template.aiFields.isNotEmpty()) "${template.aiFields.size} AI polja" else "",
-                if (template.aiMeasurementColumns.isNotEmpty()) "${template.aiMeasurementColumns.size} AI Excel kolona" else "",
-            ).filter { it.isNotBlank() }.joinToString(" · ")
-        }.orEmpty()
-        if (templateMeta.isNotBlank()) {
-            Text(
-                templateMeta,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(
-                onClick = onPickFiles,
-                enabled = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES,
-                shape = RoundedCornerShape(14.dp),
+    }
+    val templateMeta = selectedTemplate?.let { template ->
+        listOf(
+            if (template.aiFields.isNotEmpty()) "${template.aiFields.size} AI polja" else "",
+            if (template.aiMeasurementColumns.isNotEmpty()) "${template.aiMeasurementColumns.size} AI Excel kolona" else "",
+        ).filter { it.isNotBlank() }.joinToString(" · ")
+    }.orEmpty()
+    val summary = listOf(
+        templateMeta.ifBlank { "AI polja nisu označena" },
+        if (files.isEmpty()) "bez datoteka" else "${files.size} datoteka",
+    ).joinToString(" · ")
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(15.dp))
+                    .clickable(enabled = enabled) { expanded = !expanded }
+                    .padding(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Dodaj PDF/sliku")
-            }
-            Button(
-                onClick = onRun,
-                enabled = enabled && !loading && selectedTemplate != null && files.isNotEmpty(),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(6.dp))
-                } else {
-                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                }
-                Text(if (loading) "Čitam..." else "Pokreni NexAI", fontWeight = FontWeight.Bold)
-            }
-        }
-        WorkOrderSelectField(
-            label = "Snaga modela",
-            value = modelTier,
-            valueLabel = documentationAiModelTierOptions.firstOrNull { it.first == modelTier }?.second ?: "Standard",
-            options = documentationAiModelTierOptions,
-            enabled = enabled && !loading,
-            onSelect = onModelTierChange,
-        )
-        if (files.isEmpty()) {
-            Text(
-                "Nema dodanih datoteka. Za početak je dovoljan stari PDF zapisnik.",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-            )
-        } else {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                files.forEach { file ->
-                    AssistChip(
-                        onClick = { onRemoveFile(file.id) },
-                        label = {
-                            Text(
-                                listOf(file.name, formatFileSizeLabel(file.size)).filter { it.isNotBlank() }.joinToString(" · "),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                if (file.type.startsWith("image/", ignoreCase = true)) Icons.Rounded.Image else Icons.Rounded.InsertDriveFile,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        },
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                    Icon(
+                        Icons.Rounded.Fingerprint,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(9.dp),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("NexAI popunjavanje", fontWeight = FontWeight.Black)
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (expanded) "Sakrij NexAI" else "Prikaži NexAI",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Dodaj stari zapisnik, sliku ili tekst. NexAI popunjava samo polja i Excel kolone označene u predlošku.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                    if (templates.size > 1) {
+                        WorkOrderSelectField(
+                            label = "Predložak",
+                            value = selectedTemplateId,
+                            valueLabel = selectedTemplate?.title ?: "Odaberi predložak",
+                            options = templates.map { template ->
+                                template.id to listOf(template.serviceCode, template.title)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" - ")
+                            },
+                            enabled = enabled && !loading,
+                            onSelect = onSelectedTemplateChange,
+                        )
+                    }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = onPickFiles,
+                            enabled = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES,
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Dodaj izvor", fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = onRun,
+                            enabled = enabled && !loading && selectedTemplate != null && files.isNotEmpty(),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                        ) {
+                            if (loading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (loading) "Čitam..." else "Pokreni", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    WorkOrderSelectField(
+                        label = "Snaga modela",
+                        value = modelTier,
+                        valueLabel = documentationAiModelTierOptions.firstOrNull { it.first == modelTier }?.second ?: "Standard",
+                        options = documentationAiModelTierOptions,
+                        enabled = enabled && !loading,
+                        onSelect = onModelTierChange,
+                    )
+                    if (files.isEmpty()) {
+                        Text(
+                            "Nema dodanih datoteka. Za početak je dovoljan stari PDF zapisnik.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        )
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            files.forEach { file ->
+                                AssistChip(
+                                    onClick = { onRemoveFile(file.id) },
+                                    label = {
+                                        Text(
+                                            listOf(file.name, formatFileSizeLabel(file.size)).filter { it.isNotBlank() }.joinToString(" · "),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            when {
+                                                file.type.equals("application/pdf", ignoreCase = true) -> Icons.Rounded.PictureAsPdf
+                                                file.type.startsWith("image/", ignoreCase = true) -> Icons.Rounded.Image
+                                                else -> Icons.Rounded.InsertDriveFile
+                                            },
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    if (message.isNotBlank()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+                        ) {
+                            Text(
+                                message,
+                                modifier = Modifier.padding(10.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
             }
         }
-        if (message.isNotBlank()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
-            ) {
+    }
+}
+
+@Composable
+private fun DocumentationAiUploadSourceDialog(
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onCamera: () -> Unit,
+    onScan: () -> Unit,
+    onPhotos: () -> Unit,
+    onPdf: () -> Unit,
+    onFile: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Dodaj izvor za NexAI", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    message,
-                    modifier = Modifier.padding(10.dp),
+                    "Odaberi kako želiš dodati zapisnik, sliku ili drugi dokument iz kojeg NexAI čita podatke.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
-                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                )
+                DocumentationAiUploadChoice(Icons.Rounded.CameraAlt, "Kamera", "Fotografiraj dokument ili dio zapisnika.", enabled, onCamera)
+                DocumentationAiUploadChoice(WorkOrderDocumentInputMode.Scan.icon, "Sken", "Više stranica u jedan PDF.", enabled, onScan)
+                DocumentationAiUploadChoice(Icons.Rounded.Image, "Slike", "Dodaj jednu ili više slika.", enabled, onPhotos)
+                DocumentationAiUploadChoice(Icons.Rounded.PictureAsPdf, "PDF", "Odaberi postojeći PDF zapisnik.", enabled, onPdf)
+                DocumentationAiUploadChoice(Icons.Rounded.Folder, "Datoteka", "PDF, tekst, CSV, JSON ili druga datoteka.", enabled, onFile)
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Zatvori")
+            }
+        },
+    )
+}
+
+@Composable
+private fun DocumentationAiUploadChoice(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(15.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(15.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(title, fontWeight = FontWeight.Black)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -32799,6 +33020,7 @@ private suspend fun buildWorkOrderDocumentationAiFiles(
     context: Context,
     uris: List<Uri>,
     existingCount: Int,
+    mode: WorkOrderDocumentInputMode = WorkOrderDocumentInputMode.File,
 ): List<WorkOrderDocumentationAiFile> = withContext(Dispatchers.IO) {
     val availableSlots = (WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
     if (availableSlots <= 0) {
@@ -32806,11 +33028,17 @@ private suspend fun buildWorkOrderDocumentationAiFiles(
     }
     uris.take(availableSlots).mapIndexed { index, uri ->
         val bytes = readUriBytes(context, uri)
-        val name = resolveUriDisplayName(context, uri, existingCount + index, WorkOrderDocumentInputMode.File)
+        val name = resolveUriDisplayName(context, uri, existingCount + index, mode)
         if (bytes.size.toLong() > WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILE_BYTES) {
             error("Datoteka $name mora biti manja od 8 MB za NexAI.")
         }
-        val mimeType = resolveUriMimeType(context, uri, name).ifBlank { "application/octet-stream" }
+        val fallbackType = when (mode) {
+            WorkOrderDocumentInputMode.Photos -> "image/jpeg"
+            WorkOrderDocumentInputMode.Pdf,
+            WorkOrderDocumentInputMode.Scan -> "application/pdf"
+            WorkOrderDocumentInputMode.File -> "application/octet-stream"
+        }
+        val mimeType = resolveUriMimeType(context, uri, name).ifBlank { fallbackType }
         WorkOrderDocumentationAiFile(
             id = "${System.currentTimeMillis()}-${existingCount + index}-${name.hashCode()}",
             name = name.withFallbackExtension(mimeType),
