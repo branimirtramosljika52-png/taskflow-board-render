@@ -3959,6 +3959,7 @@ const documentationSprLibraryEmpty = document.querySelector("#documentation-spr-
 const documentationSprTemplateLibrarySelect = document.querySelector("#documentation-spr-template-library");
 const documentationSprTemplateNameInput = document.querySelector("#documentation-spr-template-name");
 const documentationSprTemplateServiceSelect = document.querySelector("#documentation-spr-template-service");
+const documentationSprTemplateLayoutSelect = document.querySelector("#documentation-spr-template-layout");
 const documentationSprTemplateNewButton = document.querySelector("#documentation-spr-template-new");
 const documentationSprTemplateSaveButton = document.querySelector("#documentation-spr-template-save");
 const documentationSprTemplateLoadButton = document.querySelector("#documentation-spr-template-load");
@@ -56876,6 +56877,14 @@ const DOCUMENTATION_SPR_INSPECTION_TYPE_OPTIONS = Object.freeze([
   "Početno ispitivanje",
   "Izvanredno ispitivanje",
 ]);
+const DOCUMENTATION_SPR_LAYOUT_PRESETS = Object.freeze([
+  {
+    value: "spr-standard",
+    label: "Standardni SPR zapisnik",
+    description: "Prva stranica s plavom crtom, veliki naslov, sivi naslovi poglavlja, kompaktne nastavne stranice i footer sa šifrom usluge.",
+  },
+]);
+const DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET = "spr-standard";
 const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   companyName: "Tvrtka",
   companyOib: "OIB",
@@ -56973,6 +56982,7 @@ function buildDocumentationSprGridlineModelFromRows(rows = getDocumentationSprDe
 function createDefaultDocumentationSprModel() {
   return {
     templateCode: "SPR v1.0.0",
+    layoutPreset: DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET,
     workOrderId: "",
     workOrderNumber: "25-1287",
     serviceId: "",
@@ -57051,6 +57061,7 @@ function createDefaultDocumentationSprModel() {
 function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
   return {
     templateCode: String(name || "Novi predložak"),
+    layoutPreset: DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET,
     workOrderId: "",
     workOrderNumber: "",
     serviceId: "",
@@ -57115,12 +57126,25 @@ function normalizeDocumentationSprGridlineModel(model) {
     : buildDocumentationSprGridlineModelFromRows();
 }
 
+function normalizeDocumentationSprLayoutPreset(value = "") {
+  const text = String(value || "").trim();
+  return DOCUMENTATION_SPR_LAYOUT_PRESETS.some((entry) => entry.value === text)
+    ? text
+    : DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET;
+}
+
+function getDocumentationSprLayoutPresetLabel(value = "") {
+  const normalized = normalizeDocumentationSprLayoutPreset(value);
+  return DOCUMENTATION_SPR_LAYOUT_PRESETS.find((entry) => entry.value === normalized)?.label || "Standardni SPR zapisnik";
+}
+
 function normalizeDocumentationSprModel(value) {
   const fallback = createDefaultDocumentationSprModel();
   const source = value && typeof value === "object" ? value : {};
   return {
     ...fallback,
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
+    layoutPreset: normalizeDocumentationSprLayoutPreset(source.layoutPreset || fallback.layoutPreset),
     inspectionObjectId: String(source.inspectionObjectId || "").trim(),
     inspectionType: normalizeDocumentationSprInspectionType(source.inspectionType || fallback.inspectionType),
     inspectionDate: formatDocumentationSprDateFromSource(source.inspectionDate || fallback.inspectionDate),
@@ -57420,6 +57444,23 @@ function renderDocumentationSprTemplateServiceOptions(activeTemplate = null) {
     return option;
   }));
   documentationSprTemplateServiceSelect.value = activeValue || "";
+}
+
+function renderDocumentationSprTemplateLayoutOptions() {
+  if (!(documentationSprTemplateLayoutSelect instanceof HTMLSelectElement)) {
+    return;
+  }
+  const activeValue = normalizeDocumentationSprLayoutPreset(documentationSprModel?.layoutPreset);
+  documentationSprTemplateLayoutSelect.replaceChildren(...DOCUMENTATION_SPR_LAYOUT_PRESETS.map((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.value;
+    option.textContent = entry.label;
+    option.selected = entry.value === activeValue;
+    return option;
+  }));
+  documentationSprTemplateLayoutSelect.value = activeValue;
+  documentationSprTemplateLayoutSelect.title = DOCUMENTATION_SPR_LAYOUT_PRESETS
+    .find((entry) => entry.value === activeValue)?.description || "";
 }
 
 function createDocumentationSprTemplateId() {
@@ -57725,6 +57766,7 @@ function createDocumentationSprLibraryCard(entry = null) {
   const meta = document.createElement("span");
   meta.textContent = [
     getDocumentationSprServiceBindingLabel(binding),
+    getDocumentationSprLayoutPresetLabel(entry?.model?.layoutPreset),
     entry?.updatedAt ? `Ažurirano ${formatCompactDateTime(entry.updatedAt)}` : "",
   ].filter(Boolean).join(" · ");
 
@@ -57811,6 +57853,7 @@ function syncDocumentationSprTemplateManager() {
     documentationSprTemplateNameInput.value = activeTemplate?.name || documentationSprModel?.templateCode || "";
   }
   renderDocumentationSprTemplateServiceOptions(activeTemplate);
+  renderDocumentationSprTemplateLayoutOptions();
   if (documentationSprTemplateDeleteButton instanceof HTMLButtonElement) {
     documentationSprTemplateDeleteButton.disabled = !activeTemplate;
   }
@@ -59911,6 +59954,11 @@ function saveCurrentDocumentationSprTemplate() {
   );
   documentationSprModel.templateCode = name;
   documentationSprModel.serviceBinding = serviceBinding;
+  documentationSprModel.layoutPreset = normalizeDocumentationSprLayoutPreset(
+    documentationSprTemplateLayoutSelect instanceof HTMLSelectElement
+      ? documentationSprTemplateLayoutSelect.value
+      : documentationSprModel.layoutPreset,
+  );
   const nextEntry = {
     id: templateId,
     name,
@@ -61839,6 +61887,7 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     DOCUMENT_NUMBER: normalized.recordNumber || "",
     BROJ_ZAPISNIKA: normalized.recordNumber || "",
     DOCUMENTATION_SPR_RECORD_NUMBER: normalized.recordNumber || "",
+    DOCUMENTATION_SPR_LAYOUT_PRESET: normalizeDocumentationSprLayoutPreset(normalized.layoutPreset),
     SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
     WORK_ORDER_SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
     DOCUMENTATION_SPR_SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
@@ -62412,6 +62461,12 @@ function initDocumentationSprWorkbench() {
     documentationSprTemplateServiceSelect?.addEventListener("change", () => {
       documentationSprDraftServiceBinding = getDocumentationSprTemplateServiceBindingFromSelect(documentationSprDraftServiceBinding);
       setDocumentationSprStatus("Veza s uslugom čeka spremanje", "saving");
+    });
+    documentationSprTemplateLayoutSelect?.addEventListener("change", () => {
+      if (documentationSprModel) {
+        documentationSprModel.layoutPreset = normalizeDocumentationSprLayoutPreset(documentationSprTemplateLayoutSelect.value);
+      }
+      setDocumentationSprStatus("Izgled zapisnika čeka spremanje", "saving");
     });
     documentationSprTemplateNewButton?.addEventListener("click", () => {
       startNewDocumentationSprTemplateDraft();
