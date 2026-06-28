@@ -24847,8 +24847,13 @@ private fun WorkOrderDocumentationWizardDialog(
                         selectedEquipmentCount = selectedEquipmentIds.size,
                         selectedLegalCount = selectedLegalFrameworkIds.size,
                         selectedPeopleCount = selectedDocumentationPeopleCount,
+                        values = effectiveTemplateFieldValues,
+                        standardControls = templateControls,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
+                        onFieldChange = { template, field, value ->
+                            templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                        },
                     )
                 } else {
                     when {
@@ -28905,10 +28910,38 @@ private fun DocumentationSprMobileWorkspace(
     selectedEquipmentCount: Int,
     selectedLegalCount: Int,
     selectedPeopleCount: Int,
+    values: Map<String, String>,
+    standardControls: DocumentationTemplateStandardControls,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
+    onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
     val sourceLabel = remember(templates) { documentationSprMobileSourceLabel(templates) }
+    val templateLabel = remember(templates) { documentationSprTemplateLabel(templates) }
+    val menuEntries = remember(templates) {
+        templates.flatMap { template ->
+            buildTemplateBlockSections(template.fieldBlocks).mapIndexed { index, section ->
+                DocumentationSprMenuEntry(
+                    key = "${template.id}:${section.id}",
+                    template = template,
+                    section = section,
+                    index = index,
+                )
+            }
+        }
+    }
+    val fallbackFieldTemplates = remember(templates) {
+        templates.filter { template -> template.fields.isNotEmpty() && template.fieldBlocks.isEmpty() }
+    }
+    var selectedMenuKey by remember(templates) { mutableStateOf("") }
+    LaunchedEffect(menuEntries) {
+        if (menuEntries.isNotEmpty() && menuEntries.none { entry -> entry.key == selectedMenuKey }) {
+            selectedMenuKey = menuEntries.first().key
+        }
+    }
+    val selectedEntry = remember(menuEntries, selectedMenuKey) {
+        menuEntries.firstOrNull { entry -> entry.key == selectedMenuKey } ?: menuEntries.firstOrNull()
+    }
     val tableCount = remember(measurementTemplates) {
         measurementTemplates.sumOf { template -> template.measurementTables.size }
     }
@@ -28965,8 +28998,9 @@ private fun DocumentationSprMobileWorkspace(
                         listOf(
                             formatDatePickerLabel(inspectionDate),
                             inspectionType,
+                            templateLabel,
                             sourceLabel,
-                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        ).filter { it.isNotBlank() }.distinct().joinToString(" · "),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
@@ -28990,6 +29024,88 @@ private fun DocumentationSprMobileWorkspace(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.ListAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Predložak $templateLabel", fontWeight = FontWeight.Black)
+                        Text(
+                            if (menuEntries.isEmpty()) "Ručna polja" else "${menuEntries.size} poglavlja · odaberi dio za unos",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                }
+                if (menuEntries.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        menuEntries.forEach { entry ->
+                            FilterChip(
+                                selected = entry.key == selectedEntry?.key,
+                                onClick = { selectedMenuKey = entry.key },
+                                enabled = enabled,
+                                label = {
+                                    Text(
+                                        "${entry.index + 1}. ${entry.section.title}",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        templateBlockIcon(entry.section.header?.type ?: entry.section.blocks.firstOrNull()?.type.orEmpty()),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    selectedEntry?.let { entry ->
+                        DocumentationSprTemplateSectionPanel(
+                            entry = entry,
+                            values = values,
+                            standardControls = standardControls,
+                            tableCount = tableCount,
+                            rowCount = rowCount,
+                            enabled = enabled,
+                            onOpenMeasurements = onOpenMeasurements,
+                            onFieldChange = onFieldChange,
+                        )
+                    }
+                } else if (fallbackFieldTemplates.isNotEmpty()) {
+                    fallbackFieldTemplates.forEach { template ->
+                        TemplateFieldGroup(
+                            template = template,
+                            values = values,
+                            enabled = enabled,
+                            onChange = { field, value -> onFieldChange(template, field, value) },
+                        )
+                    }
+                } else {
+                    Text(
+                        "Nema polja za mobilni unos u ovom SPR predlošku.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
         ) {
@@ -29004,7 +29120,7 @@ private fun DocumentationSprMobileWorkspace(
                 ) {
                     Icon(Icons.Rounded.ListAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Gridline mjerenja", fontWeight = FontWeight.Black)
+                        Text("$templateLabel Gridline", fontWeight = FontWeight.Black)
                         Text(
                             if (tableCount == 0) "Nema povezane tablice za ovu uslugu." else "$tableCount tablica · $rowCount redaka",
                             style = MaterialTheme.typography.labelMedium,
@@ -29019,14 +29135,142 @@ private fun DocumentationSprMobileWorkspace(
                         Text("Otvori", fontWeight = FontWeight.Bold)
                     }
                 }
-                if (measurementTemplates.isNotEmpty()) {
-                    DocumentationMeasurementLaunchCard(
-                        measurementTemplates = measurementTemplates,
-                        measurementSheets = measurementSheets,
-                        enabled = enabled,
-                        onOpen = onOpenMeasurements,
+            }
+        }
+    }
+}
+
+private data class DocumentationSprMenuEntry(
+    val key: String,
+    val template: WorkOrderDocumentationTemplate,
+    val section: TemplateBlockSection,
+    val index: Int,
+)
+
+@Composable
+private fun DocumentationSprTemplateSectionPanel(
+    entry: DocumentationSprMenuEntry,
+    values: Map<String, String>,
+    standardControls: DocumentationTemplateStandardControls,
+    tableCount: Int,
+    rowCount: Int,
+    enabled: Boolean,
+    onOpenMeasurements: () -> Unit,
+    onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(11.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                    Icon(
+                        templateBlockIcon(entry.section.header?.type ?: entry.section.blocks.firstOrNull()?.type.orEmpty()),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .padding(8.dp),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(entry.section.title, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(
+                            entry.template.title,
+                            if (entry.section.blocks.isNotEmpty()) "${entry.section.blocks.size} polja" else "Nema polja",
+                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            entry.section.header?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                )
+            }
+            if (entry.section.blocks.isEmpty()) {
+                Text(
+                    "Nema dodatnih polja u ovom poglavlju.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+            entry.section.blocks.forEach { block ->
+                when (block.type.lowercase(Locale.getDefault())) {
+                    "equipment_list" -> TemplateEquipmentControls(standardControls)
+                    "legal_list" -> TemplateLegalControls(standardControls)
+                    "measurement_table" -> DocumentationSprGridlineInlineCard(
+                        tableCount = tableCount,
+                        rowCount = rowCount,
+                        enabled = enabled,
+                        onOpenMeasurements = onOpenMeasurements,
+                    )
+                    else -> {
+                        val editableField = findTemplateFieldForBlock(entry.template, block)
+                        TemplateBlockDetailRow(
+                            template = entry.template,
+                            block = block,
+                            editableField = editableField,
+                            value = editableField?.let { field -> values[templateFieldStateKey(entry.template, field)] }.orEmpty(),
+                            standardValues = standardControls.standardValues,
+                            enabled = enabled,
+                            onChange = { field, value -> onFieldChange(entry.template, field, value) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSprGridlineInlineCard(
+    tableCount: Int,
+    rowCount: Int,
+    enabled: Boolean,
+    onOpenMeasurements: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.ListAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Gridline tablica", fontWeight = FontWeight.Black)
+                Text(
+                    if (tableCount == 0) "Nema povezane tablice." else "$tableCount tablica · $rowCount redaka",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+            OutlinedButton(
+                onClick = onOpenMeasurements,
+                enabled = enabled && tableCount > 0,
+                shape = RoundedCornerShape(13.dp),
+            ) {
+                Text("Otvori", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -29071,6 +29315,12 @@ private fun documentationSprMobileSourceLabel(templates: List<WorkOrderDocumenta
             .ifBlank { "Novi SPR" }
     }.orEmpty().ifBlank { "Novi SPR" }
 }
+
+private fun documentationSprTemplateLabel(templates: List<WorkOrderDocumentationTemplate>): String =
+    templates.firstOrNull { it.title.contains("SPR", ignoreCase = true) }?.title
+        ?: templates.firstOrNull { it.documentName.contains("SPR", ignoreCase = true) }?.documentName
+        ?: templates.firstOrNull()?.title
+        ?: "SPR"
 
 private fun documentationTemplateDataSourceTitle(template: WorkOrderDocumentationTemplate): String {
     val type = template.dataSourceType.trim().lowercase(Locale.getDefault())
