@@ -95,6 +95,9 @@ import {
   formatMeasurementComputedDisplayValue,
   formatMeasurementLiteralDisplayValue,
 } from "./src/measurementFormatting.js";
+import {
+  generateDocumentationSprPdfBlob,
+} from "./src/documentationSprPdf.js";
 
 const port = Number(process.env.PORT || 3000);
 const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
@@ -117,8 +120,42 @@ const DOCUMENT_TEMPLATE_CONCLUSION_NEGATIVE_SENTENCE = "Temeljem rezultata mjere
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
+const localAssetFetch = globalThis.fetch?.bind(globalThis);
 const FIREBASE_MESSAGING_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const FIREBASE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
+if (localAssetFetch && typeof Response !== "undefined") {
+  globalThis.fetch = async (input, init) => {
+    const rawUrl = typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.pathname
+        : "";
+    if (rawUrl === "/assets/fonts/DejaVuSans.ttf" || rawUrl === "/assets/fonts/DejaVuSans-Bold.ttf") {
+      const fontName = rawUrl.split("/").at(-1);
+      const candidates = [
+        resolve(staticRoot, "assets", "fonts", fontName),
+        resolve(rootDir, "assets", "fonts", fontName),
+        resolve(rootDir, "node_modules", "dejavu-fonts-ttf", "ttf", fontName),
+      ];
+      for (const candidate of candidates) {
+        try {
+          const buffer = await readFile(candidate);
+          return new Response(buffer, {
+            status: 200,
+            headers: { "content-type": "font/ttf" },
+          });
+        } catch (error) {
+          if (error?.code !== "ENOENT") {
+            throw error;
+          }
+        }
+      }
+      return new Response("Font not found", { status: 404 });
+    }
+    return localAssetFetch(input, init);
+  };
+}
 let firebaseServiceAccountCache = null;
 let firebaseAccessTokenCache = null;
 
@@ -9239,6 +9276,7 @@ function shouldUseFastTemplateRenderPdf(body = {}) {
 
 async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot = {}) {
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
+  const workOrders = scopedSnapshot.workOrders ?? [];
   const referenceDocumentCache = new Map();
   const pdfBuffers = [];
 
@@ -9249,6 +9287,24 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
       "Template nije pronaden.",
     );
     assertHandoverUsesWordTemplate(entry, template);
+    if (isMobileDocumentationSprEntry(entry, template)) {
+      const workOrder = assertInScope(workOrders, entry?.workOrderId, "Radni nalog nije pronaden.");
+      const fileName = sanitizeGeneratedDocumentFileName(
+        entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}`,
+        { fallback: "zapisnik", extension: "pdf" },
+      );
+      const sprFile = await buildMobileDocumentationSprPdfFile({
+        entry,
+        template,
+        workOrder,
+        scopedSnapshot,
+        common: entry?.mobileCommon,
+        fileName,
+      });
+      pdfBuffers[entryIndex] = sprFile.buffer;
+      continue;
+    }
+
     if (entry?.forceRenderModel && hasTemplateRenderPdfModel(entry?.renderModel)) {
       pdfBuffers[entryIndex] = await buildPdfFromRenderModel(entry.renderModel);
       continue;
@@ -9355,6 +9411,7 @@ function ensureUniqueGeneratedDocumentFileName(fileName = "", usedNames = new Se
 
 async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnapshot = {}, options = {}) {
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
+  const workOrders = scopedSnapshot.workOrders ?? [];
   const referenceDocumentCache = new Map();
   const usedNames = new Set();
   const concurrency = Math.max(
@@ -9373,6 +9430,25 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
       entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}`,
       usedNames,
     );
+
+    if (isMobileDocumentationSprEntry(entry, template)) {
+      const workOrder = assertInScope(workOrders, entry?.workOrderId, "Radni nalog nije pronaden.");
+      const sprFile = await buildMobileDocumentationSprPdfFile({
+        entry,
+        template,
+        workOrder,
+        scopedSnapshot,
+        common: entry?.mobileCommon,
+        fileName,
+        options,
+      });
+      return {
+        entry: sprFile.entry || entry,
+        template,
+        fileName,
+        buffer: sprFile.buffer,
+      };
+    }
 
     if (entry?.forceRenderModel && hasTemplateRenderPdfModel(entry?.renderModel)) {
       return {
@@ -9606,6 +9682,7 @@ async function buildRiskAssessmentGeneratedDocumentFromBody(body = {}, {
 async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnapshot = {}, options = {}) {
   const startedAt = Date.now();
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
+  const workOrders = scopedSnapshot.workOrders ?? [];
   const referenceDocumentCache = new Map();
   const usedPdfNames = new Set();
   const usedDocxNames = new Set();
@@ -9616,6 +9693,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
   let htmlPdfMs = 0;
   let renderModelPdfMs = 0;
   let wordPdfMs = 0;
+  let sprPdfMs = 0;
 
   for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
     const template = assertInScope(
@@ -9636,6 +9714,28 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       files: [],
     };
     bundles.push(bundle);
+
+    if (isMobileDocumentationSprEntry(entry, template)) {
+      const workOrder = assertInScope(workOrders, entry?.workOrderId, "Radni nalog nije pronaden.");
+      const sprPdfStartedAt = Date.now();
+      const sprFile = await buildMobileDocumentationSprPdfFile({
+        entry,
+        template,
+        workOrder,
+        scopedSnapshot,
+        common: entry?.mobileCommon,
+        fileName: pdfFileName,
+        options,
+      });
+      bundle.entry = sprFile.entry || entry;
+      bundle.files.push({
+        kind: "pdf",
+        fileName: pdfFileName,
+        buffer: sprFile.buffer,
+      });
+      sprPdfMs += Date.now() - sprPdfStartedAt;
+      continue;
+    }
 
     if (entry?.forceRenderModel && hasTemplateRenderPdfModel(entry?.renderModel)) {
       const renderModelPdfStartedAt = Date.now();
@@ -9773,6 +9873,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
     wordPdfMs,
     htmlPdfMs,
     renderModelPdfMs,
+    sprPdfMs,
     totalMs: Date.now() - startedAt,
   });
 
@@ -9790,6 +9891,10 @@ async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSna
       entry?.templateId,
       "Template nije pronađen.",
     );
+
+    if (isMobileDocumentationSprEntry(entry, template)) {
+      return null;
+    }
 
     if (isHandoverTemplateExportEntry(entry)) {
       return null;
@@ -17968,6 +18073,7 @@ function getMobileWorkOrderServiceTemplateIds(service = {}, scopedSnapshot = {})
   }
 
   return (scopedSnapshot.documentTemplates ?? [])
+    .filter(isActiveMobileDocumentTemplate)
     .filter((template) => titleKeys.includes(normalizeMobileTemplateLookupKey(template?.title || template?.documentType)))
     .map((template) => String(template.id || "").trim())
     .filter(Boolean);
@@ -22420,7 +22526,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   services.forEach((service, serviceIndex) => {
     getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
       const template = templateById.get(String(templateId));
-      if (!template || String(template.status || "active").toLowerCase() === "archived") {
+      if (!isActiveMobileDocumentTemplate(template)) {
         return;
       }
       const normalizedTemplateId = normalizeInputValue(template.id);
@@ -22982,6 +23088,406 @@ function buildMobileDocumentTemplateFileBaseName(template = {}, workOrder = {}, 
   return fallbackName.replace(/\.(pdf|docx?|dotx|html?)$/i, "");
 }
 
+function normalizeMobileSprLookupText(value = "") {
+  return normalizeInputValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isMobileDocumentationSprEntry(entry = {}, template = {}) {
+  const explicitKind = normalizeMobileSprLookupText(entry?.exportKind || entry?.renderEngine || entry?.engine);
+  if (["documentation spr", "spr browser", "spr"].includes(explicitKind)) {
+    return true;
+  }
+  const lookup = normalizeMobileSprLookupText([
+    entry?.serviceCode,
+    entry?.serviceName,
+    entry?.templateTitle,
+    entry?.documentNumber,
+    template?.title,
+    template?.documentType,
+    template?.serviceCode,
+    template?.serviceName,
+  ].filter(Boolean).join(" "));
+  return /\bspr\b/.test(lookup)
+    || lookup.includes("sigurnosna panik")
+    || lookup.includes("sigurnosna rasvjeta")
+    || lookup.includes("panik rasvjet")
+    || lookup.includes("panic lighting");
+}
+
+function getMobileSprFirstValue(source = {}, keys = []) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      const value = normalizeInputValue(source[key]);
+      if (value) {
+        return value;
+      }
+    }
+  }
+  const normalizedKeys = keys.map((key) => normalizeLookupKey(key)).filter(Boolean);
+  for (const [key, value] of Object.entries(source || {})) {
+    if (normalizedKeys.includes(normalizeLookupKey(key))) {
+      const normalizedValue = normalizeInputValue(value);
+      if (normalizedValue) {
+        return normalizedValue;
+      }
+    }
+  }
+  return "";
+}
+
+function formatMobileSprDate(value = "") {
+  const normalized = normalizeDateOnlyValue(value);
+  return normalized ? formatOfferDocumentDate(normalized) : normalizeInputValue(value);
+}
+
+function formatMobileSprEquipmentLine(item = {}) {
+  const name = normalizeInputValue(item?.name || item?.title || item?.deviceName || "Mjerna oprema");
+  const manufacturer = normalizeInputValue(item?.manufacturer || item?.producer);
+  const type = normalizeInputValue(item?.deviceType || item?.type || item?.kind || item?.model);
+  const serial = normalizeInputValue(item?.serialNumber || item?.serialNo || item?.serial);
+  const inventory = normalizeInputValue(item?.inventoryNumber || item?.inventoryNo || item?.inventoryCode);
+  return [
+    name,
+    manufacturer,
+    type,
+    serial ? `ser. br. ${serial}` : "",
+    inventory ? `inv. br. ${inventory}` : "",
+  ].filter(Boolean).join(", ");
+}
+
+function getMobileSprEquipmentText(template = {}, scopedSnapshot = {}, common = {}) {
+  const selectedItems = findMobileMeasurementEquipmentByIds(scopedSnapshot, common.selectedEquipmentIds, template);
+  const linkedItems = selectedItems.length > 0
+    ? selectedItems
+    : getMobileDocumentTemplateLinkedEquipmentItems(template, scopedSnapshot);
+  return linkedItems.map(formatMobileSprEquipmentLine).filter(Boolean).join("\n");
+}
+
+function getMobileSprRegulationsText(template = {}, scopedSnapshot = {}, common = {}) {
+  const explicitIds = new Set(normalizeMobileDocumentWizardArray(common.selectedLegalFrameworkIds));
+  const candidates = explicitIds.size > 0
+    ? (scopedSnapshot.legalFrameworks ?? []).filter((item) => explicitIds.has(normalizeInputValue(item?.id)))
+    : getMobileDocumentTemplateLegalFrameworkCandidates(template, {}, scopedSnapshot);
+  return candidates.map(formatMobileLegalFrameworkLine).filter(Boolean).join("\n");
+}
+
+function getMobileSprPersonText(common = {}, scopedSnapshot = {}, area = "elektro", capability = "inspect") {
+  const ids = capability === "authorize"
+    ? [common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId]
+    : (common.electricalInspectorUserIds?.length ? common.electricalInspectorUserIds : common.inspectorUserIds);
+  const users = normalizeMobileDocumentWizardArray(ids)
+    .map((id) => findMobileScopedUserById(scopedSnapshot, id))
+    .filter(Boolean);
+  if (capability === "authorize") {
+    const user = users[0] || findMobilePreferredSignatureUser(scopedSnapshot, {}, "authorize", area, [], { allowFirstQualifiedFallback: true });
+    if (!user) {
+      return "";
+    }
+    const title = getMobileUserDocumentTitle(user);
+    const oib = getMobileUserDocumentOib(user, area, scopedSnapshot);
+    return [
+      getMobileUserDocumentName(user),
+      title,
+      oib,
+    ].filter(Boolean).join("; ");
+  }
+  return users
+    .map((user) => getMobileUserDocumentName(user))
+    .filter(Boolean)
+    .join(", ");
+}
+
+function getMobileSprResponsibleUser(common = {}, scopedSnapshot = {}) {
+  return findMobileScopedUserById(
+    scopedSnapshot,
+    common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId,
+  );
+}
+
+function getMobileSprSignatureOib(common = {}, scopedSnapshot = {}) {
+  const user = getMobileSprResponsibleUser(common, scopedSnapshot);
+  return normalizeSignatureFieldOib(
+    getMobileUserDocumentOib(user, "elektro", scopedSnapshot)
+      || getMobileUserDocumentOib(
+        findMobileScopedUserById(scopedSnapshot, common.electricalInspectorUserId || common.inspectorUserId),
+        "elektro",
+        scopedSnapshot,
+      ),
+  );
+}
+
+function getMobileSprQualificationValue(common = {}, scopedSnapshot = {}, key = "") {
+  const user = getMobileSprResponsibleUser(common, scopedSnapshot);
+  if (!user) {
+    return "";
+  }
+  const qualification = getMobileUserQualificationForArea(user, "elektro");
+  return normalizeInputValue(qualification?.[key]);
+}
+
+function normalizeMobileSprSheetColumnKey(column = {}, index = 0) {
+  return normalizeMobileSprLookupText([
+    column?.id,
+    column?.label,
+    column?.placeholder,
+    column?.key,
+    column?.wordLabel,
+    `col-${index + 1}`,
+  ].filter(Boolean).join(" "));
+}
+
+function pickMobileSprSheetCell(row = {}, columns = [], candidates = [], fallbackIndex = -1) {
+  const candidateKeys = candidates.map(normalizeMobileSprLookupText).filter(Boolean);
+  const matchingColumn = columns.find((column, index) => {
+    const key = normalizeMobileSprSheetColumnKey(column, index);
+    return candidateKeys.some((candidate) => key === candidate || key.includes(candidate));
+  });
+  if (matchingColumn?.id && Object.prototype.hasOwnProperty.call(row?.cells || {}, matchingColumn.id)) {
+    return normalizeInputValue(row.cells[matchingColumn.id]);
+  }
+  const fallbackColumn = fallbackIndex >= 0 ? columns[fallbackIndex] : null;
+  return fallbackColumn?.id ? normalizeInputValue(row?.cells?.[fallbackColumn.id]) : "";
+}
+
+function getMobileSprRowsFromSheet(sheet = null) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalized?.columns?.length) {
+    return [];
+  }
+  const columns = normalized.columns.filter((column) => !column.computed);
+  return normalized.rows
+    .map((row, index) => ({
+      number: pickMobileSprSheetCell(row, columns, ["r br", "redni broj", "broj", "rb"], 0) || String(index + 1),
+      place: pickMobileSprSheetCell(row, columns, ["mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"], 1),
+      lampCount: pickMobileSprSheetCell(row, columns, ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"], 2),
+      ei: pickMobileSprSheetCell(row, columns, ["ei", "izmjereno", "izmjerena vrijednost"], 3),
+      eimin: pickMobileSprSheetCell(row, columns, ["eimin", "emin", "minimalno", "zahtijevano"], 4),
+      pass: pickMobileSprSheetCell(row, columns, ["zadovoljava", "ocjena", "ispravno", "pass"], 5),
+    }))
+    .filter((row) => {
+      const lookup = normalizeMobileSprLookupText([
+        row.number,
+        row.place,
+        row.lampCount,
+        row.ei,
+        row.eimin,
+        row.pass,
+      ].join(" "));
+      if (
+        lookup.includes("mjesto ispitivanja")
+        || lookup.includes("broj lampi")
+        || lookup.includes("da ne")
+      ) {
+        return false;
+      }
+      return row.place || row.lampCount || row.ei || row.eimin || row.pass;
+    });
+}
+
+function getMobileSprRows(entry = {}, template = {}, common = {}) {
+  const fieldSheets = entry?.documentRecord?.fieldSheets && typeof entry.documentRecord.fieldSheets === "object"
+    ? entry.documentRecord.fieldSheets
+    : {};
+  const candidateSheets = [
+    ...Object.values(fieldSheets),
+    ...Object.values(common.templateFieldSheets?.[template?.id] || {}),
+    ...Object.values(common.fieldSheets || {}),
+  ];
+  for (const sheet of candidateSheets) {
+    const rows = getMobileSprRowsFromSheet(sheet);
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+  return [];
+}
+
+function buildMobileDocumentationSprModel({
+  entry = {},
+  template = {},
+  workOrder = {},
+  scopedSnapshot = {},
+  common = {},
+} = {}) {
+  const placeholders = entry?.placeholders && typeof entry.placeholders === "object" ? entry.placeholders : {};
+  const organization = getWorkOrderTemplateOrganization(scopedSnapshot);
+  const companyAddress = normalizeInputValue(
+    workOrder.companyAddress
+      || workOrder.companyHeadquarters
+      || placeholders.TVRTKA_SJEDISTE
+      || placeholders.SJEDISTE
+      || placeholders.COMPANY_ADDRESS,
+  );
+  const inspectionPlace = normalizeInputValue(
+    common.testingLocation
+      || placeholders.WORK_ORDER_TESTING_LOCATION
+      || placeholders.MJESTO_ISPITIVANJA
+      || entry.locationName
+      || workOrder.locationName,
+  );
+  const responsiblePerson = getMobileSprPersonText(common, scopedSnapshot, "elektro", "authorize")
+    || getMobileSprFirstValue(placeholders, ["ODGOVORNA_OSOBA", "RESPONSIBLE_PERSON", "POTPISNIK"]);
+  const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot);
+  const serviceCode = normalizeInputValue(entry.serviceCode || placeholders.SIFRA_USLUGE || "SPR");
+  const inspectionDate = normalizeDateOnlyValue(entry.inspectionDate || common.inspectionDate);
+  const issuedDate = normalizeDateOnlyValue(entry.issuedDate || common.issuedDate || inspectionDate);
+  const validUntil = normalizeDateOnlyValue(entry.expirationDate)
+    || addMonthsToMobileDate(inspectionDate || issuedDate, resolveMobileServiceValidityMonths({ serviceCode }, scopedSnapshot, common));
+
+  return {
+    templateCode: normalizeInputValue(template.title || template.documentType || "SPR v1.0.0"),
+    workOrderId: normalizeInputValue(workOrder.id),
+    workOrderNumber: normalizeInputValue(entry.workOrderNumber || workOrder.workOrderNumber || workOrder.number),
+    serviceId: "",
+    serviceCode,
+    serviceName: normalizeInputValue(entry.serviceName || template.documentType || "Sigurnosna panik rasvjeta"),
+    recordNumber: normalizeInputValue(entry.documentNumber || placeholders.BROJ_ZAPISNIKA || placeholders.DOCUMENT_NUMBER),
+    documentStatus: "Generirano",
+    companyName: normalizeInputValue(entry.companyName || workOrder.companyName || placeholders.TVRTKA || placeholders.COMPANY_NAME),
+    companyAddress,
+    companyOib: normalizeInputValue(workOrder.companyOib || placeholders.OIB || placeholders.TVRTKA_OIB || placeholders.COMPANY_OIB),
+    offerNumber: normalizeInputValue(workOrder.offerNumber || workOrder.offerCode || workOrder.linkedOfferNumber),
+    purchaseOrderNumber: normalizeInputValue(workOrder.purchaseOrderNumber || workOrder.purchaseOrderCode || workOrder.clientPurchaseOrderNumber),
+    spaceUser: normalizeInputValue(entry.companyName || workOrder.companyName || placeholders.KORISNIK),
+    inspectionPlace,
+    inspectionObject: normalizeInputValue(entry.objectName || workOrder.objectName || workOrder.locationObjectName || placeholders.OBJEKT),
+    inspectionObjectId: normalizeInputValue(entry.objectId || workOrder.objectId || workOrder.locationObjectId),
+    inspectionType: normalizeInputValue(common.inspectionType || placeholders.VRSTA_ISPITIVANJA || "Periodično ispitivanje"),
+    inspectionDate: formatMobileSprDate(inspectionDate),
+    issueDate: formatMobileSprDate(issuedDate),
+    validUntil: formatMobileSprDate(validUntil),
+    equipment: getMobileSprEquipmentText(template, scopedSnapshot, common),
+    regulations: getMobileSprRegulationsText(template, scopedSnapshot, common),
+    projectDocumentation: normalizeInputValue(common.note || placeholders.KORISTENA_DOKUMENTACIJA),
+    resultsText: getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"]),
+    eiNote: "Ei - izmjereno osvijetljenje sigurnosne rasvjete duž evakuacijskih puteva, te kod izlaza iz prostorija na visini 0,20 m od poda prostorije [Lux]",
+    eiminNote: "Eimin - zahtijevano minimalno osvijetljenje sigurnosne rasvjete na visini 0.20 m od poda prostorije [Lux]",
+    inspectors: getMobileSprPersonText(common, scopedSnapshot, "elektro", "inspect"),
+    responsiblePerson,
+    signatureClass: getMobileSprQualificationValue(common, scopedSnapshot, "classCode")
+      || getMobileSprQualificationValue(common, scopedSnapshot, "data1"),
+    signatureNumber: getMobileSprQualificationValue(common, scopedSnapshot, "urbroj")
+      || getMobileSprQualificationValue(common, scopedSnapshot, "data2"),
+    resultStatus: normalizeInputValue(common.resultStatus || placeholders.OCJENA || "ZADOVOLJAVA"),
+    signatureMode: common.signatureMode || "digital",
+    signatureFieldOib: signatureOib,
+    signatureImageUrl: normalizeInputValue(common.signatureImageUrl || common.signatureDataUrl),
+    defects: normalizeInputValue(common.defects || placeholders.NEDOSTACI),
+    recommendations: normalizeInputValue(common.recommendations || placeholders.PREPORUKE),
+    headerImageDataUrl: normalizeInputValue(common.headerImageDataUrl),
+    headerImageName: normalizeInputValue(common.headerImageName),
+    measurementEquipmentIds: common.selectedEquipmentIds || [],
+    legalFrameworkIds: common.selectedLegalFrameworkIds || [],
+    customRegulations: [],
+    customObjects: [],
+    inspectorUserIds: common.electricalInspectorUserIds?.length ? common.electricalInspectorUserIds : common.inspectorUserIds,
+    responsiblePersonUserId: common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId,
+    fieldSettings: {},
+    attachments: [],
+  };
+}
+
+function buildMobileDocumentationSprSignatureGroup(model = {}, scopedSnapshot = {}) {
+  const signatureMode = normalizeMobileDocumentSignatureMode(model.signatureMode);
+  const oib = normalizeSignatureFieldOib(model.signatureFieldOib);
+  if (signatureMode !== "digital" || !oib) {
+    return null;
+  }
+  const responsibleUser = findMobileScopedUserById(scopedSnapshot, model.responsiblePersonUserId);
+  const fieldName = buildSignatureFieldName("SPR", oib);
+  return {
+    __docxBlockType: "signature_group",
+    type: "signature_group",
+    items: [{
+      name: getMobileUserDocumentName(responsibleUser) || model.responsiblePerson || "Ispitivač SPR",
+      signerUserId: normalizeInputValue(responsibleUser?.id || model.responsiblePersonUserId),
+      signerEmail: normalizeInputValue(responsibleUser?.email),
+      signerOib: oib,
+      signerTitle: getMobileUserDocumentTitle(responsibleUser),
+      signerOrganization: normalizeInputValue(model.companyName),
+      signatureMode: "digital",
+      signatureFieldRole: "SPR",
+      signatureFieldOib: oib,
+      preferredField: fieldName,
+      fieldName,
+      roleLabel: "Ispitivač SPR",
+      anchorText: fieldName,
+      drawPlaceholder: false,
+    }],
+  };
+}
+
+function prepareMobileDocumentationSprEntry(entry = {}, model = {}, scopedSnapshot = {}) {
+  const signatureGroup = buildMobileDocumentationSprSignatureGroup(model, scopedSnapshot);
+  if (!signatureGroup) {
+    return {
+      ...entry,
+      exportKind: "documentation_spr",
+      signatureGroup: null,
+      placeholders: {
+        ...(entry.placeholders || {}),
+      },
+    };
+  }
+  return {
+    ...entry,
+    exportKind: "documentation_spr",
+    signatureGroup,
+    placeholders: {
+      ...(entry.placeholders || {}),
+      SIGNATURES: signatureGroup,
+      POTPISI: signatureGroup,
+      DIGITAL_SIGNATURES: signatureGroup,
+      DIGITALNI_POTPISI: signatureGroup,
+    },
+  };
+}
+
+async function buildMobileDocumentationSprPdfFile({
+  entry = {},
+  template = {},
+  workOrder = {},
+  scopedSnapshot = {},
+  common = {},
+  fileName = "",
+  options = {},
+} = {}) {
+  const effectiveCommon = common && Object.keys(common).length > 0
+    ? common
+    : (entry.mobileCommon && typeof entry.mobileCommon === "object" ? entry.mobileCommon : {});
+  const model = buildMobileDocumentationSprModel({
+    entry,
+    template,
+    workOrder,
+    scopedSnapshot,
+    common: effectiveCommon,
+  });
+  const rows = getMobileSprRows(entry, template, effectiveCommon);
+  const preparedEntry = prepareMobileDocumentationSprEntry(entry, model, scopedSnapshot);
+  const result = await generateDocumentationSprPdfBlob({
+    model,
+    rows,
+    fileName: fileName || entry.fileName || model.recordNumber || "spr-zapisnik.pdf",
+  });
+  const pdfBuffer = Buffer.from(result.bytes ?? []);
+  const stampedPdfBuffer = await addPdfDocumentStampToBuffer(
+    pdfBuffer,
+    getDocumentStampExportSettings(preparedEntry, options.documentStampSettings || options.stampSettings),
+  );
+  return {
+    kind: "pdf",
+    fileName,
+    buffer: stampedPdfBuffer,
+    entry: preparedEntry,
+  };
+}
+
 function setMobileGeneratedDocumentEntryNumber(entry = {}, documentNumber = "") {
   const normalizedDocumentNumber = normalizeInputValue(documentNumber);
   if (!entry || !normalizedDocumentNumber) {
@@ -23177,11 +23683,20 @@ function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, 
 
 function isMobileHandoverTemplate(template = {}) {
   const title = normalizeInputValue(template?.title || template?.documentType).toLowerCase();
-  const status = normalizeInputValue(template?.status || "active").toLowerCase();
-  return status !== "archived"
-    && status !== "inactive"
+  return isActiveMobileDocumentTemplate(template)
     && isWordTemplateFile(template?.referenceDocument)
     && (title.includes("primopredaj") || title.includes("handover"));
+}
+
+function isActiveMobileDocumentTemplate(template = {}) {
+  if (!template || typeof template !== "object" || Array.isArray(template)) {
+    return false;
+  }
+  const status = normalizeInputValue(template?.status || "active").toLowerCase();
+  return template.isActive !== false
+    && template.active !== false
+    && !normalizeInputValue(template?.archivedAt)
+    && !["archived", "inactive", "deleted", "disabled", "neaktivno", "arhivirano"].includes(status);
 }
 
 function findMobileHandoverTemplate(scopedSnapshot = {}) {
@@ -23674,7 +24189,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const appendEntriesForService = (service, serviceIndex, generationWorkOrder = workOrder, options = {}) => {
     getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
       const template = templateById.get(String(templateId));
-      if (!template || String(template.status || "active").toLowerCase() === "archived") {
+      if (!isActiveMobileDocumentTemplate(template)) {
         return;
       }
       const objectId = getMobileWorkOrderLocationObjectId(generationWorkOrder);
@@ -23749,6 +24264,9 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         numberGroupKey: `${String(workOrder.id)}::${serviceIndex}::${String(template.id)}`,
         baseDocumentNumber,
         objectSequence,
+        serviceCode: getMobileDocumentTemplateServiceCode(service, serviceIndex),
+        serviceName: normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode),
+        mobileCommon: common,
         fileName: baseFileName,
         baseFileName,
         documentNumber,
