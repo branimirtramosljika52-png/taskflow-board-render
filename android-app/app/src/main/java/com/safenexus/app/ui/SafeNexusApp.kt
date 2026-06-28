@@ -22116,7 +22116,9 @@ private fun WorkOrderDocumentationSection(
     readOnly: Boolean = false,
 ) {
     DetailSection("Dokumentacija") {
-        val groupedDocuments = remember(documents) { groupWorkOrderDocuments(documents) }
+        val visibleDocuments = remember(documents) { documents.filterNot { it.isPendingDigitalSignature } }
+        val pendingDigitalCount = remember(documents) { documents.count { it.isPendingDigitalSignature } }
+        val groupedDocuments = remember(visibleDocuments) { groupWorkOrderDocuments(visibleDocuments) }
         var collapsedGroups by remember { mutableStateOf<Set<String>>(emptySet()) }
         Row(
             modifier = Modifier
@@ -22156,7 +22158,31 @@ private fun WorkOrderDocumentationSection(
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
 
-        if (!loading && documents.isEmpty()) {
+        AnimatedVisibility(!loading && pendingDigitalCount > 0) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Čeka digitalni potpis", fontWeight = FontWeight.Bold)
+                        Text(
+                            "$pendingDigitalCount dokument${if (pendingDigitalCount == 1) "" else "a"} je u Signatures. U RN dokumentima će se prikazati nakon potpisa.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                    }
+                }
+            }
+        }
+
+        if (!loading && visibleDocuments.isEmpty() && pendingDigitalCount == 0) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),

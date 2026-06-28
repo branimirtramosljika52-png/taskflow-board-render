@@ -3135,6 +3135,12 @@ private fun JSONArray?.toWorkOrderDocuments(): List<WorkOrderDocument> {
                     documentCategory = item.firstClean("documentCategory", "category").ifBlank { "Ostalo" },
                     description = item.firstClean("description"),
                     sourceType = item.firstClean("sourceType").ifBlank { "editor" },
+                    signatureFieldRole = item.firstClean("signatureFieldRole", "signature_field_role"),
+                    signatureFieldOib = item.firstClean("signatureFieldOib", "signerOib", "signature_field_oib"),
+                    preferredField = item.firstClean("preferredField", "preferred_field"),
+                    signatureFieldsJson = item.firstClean("signatureFieldsJson", "signature_fields_json"),
+                    signedFieldsJson = item.firstClean("signedFieldsJson", "signed_fields_json"),
+                    signatureReviewStatus = item.firstClean("signatureReviewStatus", "signature_review_status"),
                     createdAt = item.firstClean("createdAt", "updatedAt"),
                 ),
             )

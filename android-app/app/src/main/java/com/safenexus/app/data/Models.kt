@@ -1,6 +1,7 @@
 package com.safenexus.app.data
 
 import org.json.JSONObject
+import org.json.JSONArray
 import java.time.LocalDate
 
 data class SafeNexusUser(
@@ -950,6 +951,12 @@ data class WorkOrderDocument(
     val documentCategory: String,
     val description: String,
     val sourceType: String,
+    val signatureFieldRole: String = "",
+    val signatureFieldOib: String = "",
+    val preferredField: String = "",
+    val signatureFieldsJson: String = "",
+    val signedFieldsJson: String = "",
+    val signatureReviewStatus: String = "",
     val createdAt: String,
 ) {
     val displayName: String
@@ -962,6 +969,47 @@ data class WorkOrderDocument(
     val isPdf: Boolean
         get() = fileType.equals("application/pdf", ignoreCase = true) ||
             fileName.endsWith(".pdf", ignoreCase = true)
+
+    val hasDigitalSignatureFields: Boolean
+        get() = signatureFieldsJson.isNotBlank() ||
+            preferredField.isNotBlank() ||
+            signatureFieldOib.isNotBlank()
+
+    val isDigitallySigned: Boolean
+        get() {
+            if (!hasDigitalSignatureFields) return false
+            val fieldNames = parseWorkOrderDocumentSignatureFieldNames(signatureFieldsJson).ifEmpty {
+                setOf(preferredField).filter { it.isNotBlank() }.toSet()
+            }
+            val signedFieldNames = parseWorkOrderDocumentSignatureFieldNames(signedFieldsJson)
+            val hasSignedText = description.contains("potpisano", ignoreCase = true)
+            if (fieldNames.isEmpty()) return hasSignedText
+            if (signedFieldNames.isEmpty()) return hasSignedText
+            return fieldNames.all { signedFieldNames.contains(it) }
+        }
+
+    val isPendingDigitalSignature: Boolean
+        get() = hasDigitalSignatureFields &&
+            !isDigitallySigned &&
+            !signatureReviewStatus.equals("rejected_with_comment", ignoreCase = true)
+}
+
+private fun parseWorkOrderDocumentSignatureFieldNames(value: String): Set<String> {
+    if (value.isBlank()) return emptySet()
+    return runCatching {
+        val array = JSONArray(value)
+        buildSet {
+            for (index in 0 until array.length()) {
+                val item = array.opt(index)
+                val fieldName = when (item) {
+                    is JSONObject -> item.optString("fieldName")
+                        .ifBlank { item.optString("preferredField") }
+                    else -> item?.toString().orEmpty()
+                }.trim()
+                if (fieldName.isNotBlank()) add(fieldName)
+            }
+        }
+    }.getOrDefault(emptySet())
 }
 
 data class WorkOrderUploadFile(

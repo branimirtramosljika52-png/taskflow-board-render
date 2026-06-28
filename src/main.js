@@ -32569,6 +32569,14 @@ function isGeneratedDocumentRejected(documentItem = {}) {
   return String(documentItem?.signatureReviewStatus || "").trim() === "rejected_with_comment";
 }
 
+function isPendingDigitalSignatureDocument(documentItem = {}) {
+  const hasSignatureFields = getGeneratedDocumentSignatureFieldNames(documentItem).length > 0
+    || Boolean(String(documentItem?.signatureFieldsJson || documentItem?.preferredField || documentItem?.signatureFieldOib || "").trim());
+  return hasSignatureFields
+    && !isGeneratedDocumentSigned(documentItem)
+    && !isGeneratedDocumentRejected(documentItem);
+}
+
 function resolveGeneratedDocumentSignatureSummaryRole(entry = {}, documentItem = {}) {
   const rawRole = String(
     entry?.roleLabel
@@ -55138,7 +55146,8 @@ function renderWorkOrderDocuments() {
     return;
   }
 
-  const visibleItems = items.filter(Boolean);
+  const pendingDigitalItems = items.filter((item) => item && isPendingDigitalSignatureDocument(item));
+  const visibleItems = items.filter((item) => item && !isPendingDigitalSignatureDocument(item));
   const groupedItems = groupWorkOrderDocuments(visibleItems);
 
   if (workOrderDocumentCount) {
@@ -55171,6 +55180,17 @@ function renderWorkOrderDocuments() {
     "Povuci ili klikni za upload. Drag and drop radi i bilo gdje u desnom activity dijelu.",
   );
 
+  if (pendingDigitalItems.length > 0) {
+    const createPendingNotice = () => {
+      const notice = document.createElement("div");
+      notice.className = "helper-copy";
+      notice.textContent = `${pendingDigitalItems.length} dokument${pendingDigitalItems.length === 1 ? "" : "a"} čeka digitalni potpis u Signatures. U RN dokumentima prikazuje se nakon potpisa.`;
+      return notice;
+    };
+    workOrderDocumentList.append(createPendingNotice());
+    workOrderActivityDocumentList.append(createPendingNotice());
+  }
+
   groupedItems.forEach((group) => {
     workOrderDocumentList.append(createWorkOrderDocumentGroup(group));
     workOrderActivityDocumentList.append(createWorkOrderDocumentGroup(group, { compact: true }));
@@ -55185,8 +55205,8 @@ function renderWorkOrderDocuments() {
 
   workOrderDocumentEmpty.textContent = editorEmptyMessage;
   workOrderActivityDocumentEmpty.textContent = activityEmptyMessage;
-  workOrderDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0;
-  workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0;
+  workOrderDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0 || pendingDigitalItems.length > 0;
+  workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0 || pendingDigitalItems.length > 0;
 }
 
 function resetWorkOrderDocumentCategoryDialogState() {
