@@ -443,26 +443,42 @@ function buildAndroidDownloadPage() {
 </html>`;
 }
 
-function buildAndroidPlainDownloadPage() {
-  const directApkUrl = "/SafeNexus.apk";
-  const backupApkUrl = "/download-apk";
-  const apiApkUrl = "/api/mobile/android-apk";
-  const assetApkUrl = `/${MOBILE_ANDROID_APK_FILE_NAME}`;
+function buildAndroidPlainDownloadPage(request) {
+  const baseUrl = getRequestPublicBaseUrl(request).replace(/\/+$/, "");
+  const directApkUrl = `${baseUrl}/SafeNexus.apk`;
+  const octetApkUrl = `${baseUrl}/SafeNexus-download.apk`;
+  const backupApkUrl = `${baseUrl}/download-apk`;
+  const apiApkUrl = `${baseUrl}/api/mobile/android-apk`;
+  const assetApkUrl = `${baseUrl}/${MOBILE_ANDROID_APK_FILE_NAME}`;
+  const chromeIntentUrl = `intent://${new URL(directApkUrl).host}${new URL(directApkUrl).pathname}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(directApkUrl)};end`;
   return `<!doctype html>
 <html lang="hr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SafeNexus APK</title>
+  <style>
+    body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8fbff; color: #0f172a; }
+    main { max-width: 520px; margin: 0 auto; }
+    a { display: block; margin: 12px 0; padding: 16px; border-radius: 14px; background: #2563eb; color: white; text-decoration: none; font-weight: 800; text-align: center; }
+    a.secondary { background: white; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    p { color: #475569; line-height: 1.45; }
+    code { display: block; overflow-wrap: anywhere; padding: 12px; border-radius: 12px; background: #eaf2ff; color: #0f172a; }
+  </style>
 </head>
 <body>
-  <h1>SafeNexus Android ${MOBILE_ANDROID_APK_VERSION_LABEL}</h1>
-  <p>Ako jedan link zapne, vrati se ovdje i probaj sljedeci.</p>
-  <p><a href="${directApkUrl}">1. Direktno skidanje</a></p>
-  <p><a href="${backupApkUrl}">2. Rezervno direktno skidanje</a></p>
-  <p><a href="${apiApkUrl}">3. API download</a></p>
-  <p><a href="${assetApkUrl}">4. Static APK link</a></p>
-  <p>Datoteka: ${MOBILE_ANDROID_APK_FILE_NAME}</p>
+  <main>
+    <h1>SafeNexus Android ${MOBILE_ANDROID_APK_VERSION_LABEL}</h1>
+    <p>Najbolje radi iz Chromea. Ako se ova stranica otvorila unutar aplikacije za poruke ili chat, prvo probaj gumb za Chrome.</p>
+    <a href="${chromeIntentUrl}">Otvori u Chromeu i preuzmi</a>
+    <a class="secondary" href="${directApkUrl}" download>Direktno skidanje APK-a</a>
+    <a class="secondary" href="${octetApkUrl}" download>Rezervno skidanje</a>
+    <a class="secondary" href="${backupApkUrl}" download>Treći pokušaj</a>
+    <p>Ako gumbi ne rade, kopiraj ovaj URL u Chrome:</p>
+    <code>${directApkUrl}</code>
+    <p>Datoteka: ${MOBILE_ANDROID_APK_FILE_NAME}</p>
+    <p>Alternativni linkovi: <br>${apiApkUrl}<br>${assetApkUrl}</p>
+  </main>
 </body>
 </html>`;
 }
@@ -35148,6 +35164,15 @@ const server = createServer(async (request, response) => {
   }
 
   if ((request.method === "GET" || request.method === "HEAD")
+    && ["/SafeNexus-download.apk", "/download/SafeNexus.apk"].includes(url.pathname)) {
+    await writeAndroidApkDownload(response, {
+      contentType: "application/octet-stream",
+      fileName: MOBILE_ANDROID_APK_PUBLIC_FILE_NAME,
+    });
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD")
     && url.pathname === `/${MOBILE_ANDROID_APK_FILE_NAME}`) {
     await writeAndroidApkDownload(response, {
       fileName: MOBILE_ANDROID_APK_FILE_NAME,
@@ -35156,8 +35181,8 @@ const server = createServer(async (request, response) => {
   }
 
   if ((request.method === "GET" || request.method === "HEAD")
-    && ["/mobile/plain", "/apk-help"].includes(url.pathname)) {
-    const body = buildAndroidPlainDownloadPage();
+    && ["/mobile/plain", "/apk-help", "/install", "/android-install"].includes(url.pathname)) {
+    const body = buildAndroidPlainDownloadPage(request);
     if (request.method === "HEAD") {
       const payload = Buffer.from(body, "utf8");
       response.statusCode = 200;
