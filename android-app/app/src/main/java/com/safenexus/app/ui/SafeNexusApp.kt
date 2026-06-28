@@ -29279,7 +29279,13 @@ private fun DocumentationSprTemplateSectionPanel(
                     Text(
                         listOf(
                             entry.template.title,
-                            if (entry.section.blocks.isNotEmpty()) "${entry.section.blocks.size} polja" else "Nema polja",
+                            if (isAttachmentSection) {
+                                "${attachmentFiles.size} prilog(a)"
+                            } else if (entry.section.blocks.isNotEmpty()) {
+                                "${entry.section.blocks.size} polja"
+                            } else {
+                                "Nema polja"
+                            },
                         ).filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
@@ -29320,7 +29326,7 @@ private fun DocumentationSprTemplateSectionPanel(
                         )
                     }
                     entry.section.blocks.forEach { block ->
-                        if (isAttachmentSection && block.type.equals("measurement_table", ignoreCase = true)) {
+                        if (isAttachmentSection) {
                             return@forEach
                         }
                         val editableField = findTemplateFieldForBlock(entry.template, block)
