@@ -35,7 +35,7 @@ function splitTextLines(value = "") {
     .filter(Boolean);
 }
 
-function safeFileName(value = "", fallback = "spr-zapisnik.pdf") {
+function safeFileName(value = "", fallback = "zapisnik.pdf") {
   const base = clean(value || fallback)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -43,7 +43,7 @@ function safeFileName(value = "", fallback = "spr-zapisnik.pdf") {
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120);
-  return /\.pdf$/i.test(base || "") ? base : `${base || "spr-zapisnik"}.pdf`;
+  return /\.pdf$/i.test(base || "") ? base : `${base || "zapisnik"}.pdf`;
 }
 
 function textWidth(font, text, size) {
@@ -1743,7 +1743,7 @@ export async function generateDocumentationSprPdfBlob({
   return {
     blob,
     bytes,
-    fileName: safeFileName(fileName || model.recordNumber || "spr-zapisnik.pdf"),
+    fileName: safeFileName(fileName || model.recordNumber || "zapisnik.pdf"),
     pageCount: pdfDoc.getPageCount(),
     signatureFieldCount: record.signatureFieldCount,
   };

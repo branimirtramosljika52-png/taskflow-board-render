@@ -459,6 +459,8 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
   return {
     serviceCode: preset.serviceCode,
     serviceName: preset.serviceName,
+    title: preset.title,
+    documentType: preset.documentType,
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle,

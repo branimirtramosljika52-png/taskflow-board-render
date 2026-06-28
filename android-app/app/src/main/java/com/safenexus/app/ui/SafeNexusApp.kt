@@ -22995,6 +22995,62 @@ private fun WorkOrderDocumentationTemplate.isSprDocumentationTemplate(): Boolean
     listOf(serviceCode, serviceName, documentType, title, documentName, dataSourceTitle)
         .any(::isDocumentationSprText)
 
+private fun documentationNativeServiceCodeForText(value: String): String {
+    val normalized = normalizeDocumentationWorkEquipmentText(value)
+    if (normalized.isBlank()) return ""
+    return when {
+        normalized == "spr" ||
+            normalized.startsWith("spr ") ||
+            normalized.contains("sigurnosna panik") ||
+            normalized.contains("panik rasvjet") ||
+            normalized.contains("panic lighting") ||
+            normalized.contains("emergency lighting") -> "SPR"
+        normalized == "tzin" ||
+            normalized.startsWith("tzin ") ||
+            normalized.contains("tipkalo") ||
+            normalized.contains("isklop elektric") -> "TZIN"
+        normalized == "szomv" ||
+            normalized.startsWith("szomv ") ||
+            (normalized.contains("vizual") && normalized.contains("munj")) -> "SZOMV"
+        normalized == "szom" ||
+            normalized.startsWith("szom ") ||
+            normalized.contains("zastitu od djelovanja munje") ||
+            normalized.contains("zastite od djelovanja munje") -> "SZOM"
+        normalized == "eiz" ||
+            normalized.startsWith("eiz ") ||
+            normalized.contains("elektricn") -> "EIZ"
+        normalized == "ves" ||
+            normalized.startsWith("ves ") ||
+            normalized.contains("evakuacij") -> "VES"
+        else -> ""
+    }
+}
+
+private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(item: DocumentationServiceFlowItem): Boolean {
+    if (documentationServiceKey().equals(item.serviceKey, ignoreCase = true)) return true
+    if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex) return true
+
+    val templateCode = normalizeDocumentationWorkEquipmentText(serviceCode)
+    val itemCode = normalizeDocumentationWorkEquipmentText(item.serviceCode)
+    if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode == itemCode) return true
+
+    val templateLookup = listOf(serviceCode, serviceName, documentType, title, documentName, dataSourceTitle)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    val itemLookup = listOf(item.serviceCode, item.serviceName, item.serviceKey)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    val templateNativeCode = documentationNativeServiceCodeForText(templateLookup)
+    val itemNativeCode = documentationNativeServiceCodeForText(itemLookup)
+    if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank() && templateNativeCode == itemNativeCode) return true
+
+    val templateName = normalizeDocumentationWorkEquipmentText(serviceName.ifBlank { documentType.ifBlank { title } })
+    val itemName = normalizeDocumentationWorkEquipmentText(item.serviceName)
+    return templateName.isNotBlank() &&
+        itemName.isNotBlank() &&
+        (templateName == itemName || templateName.contains(itemName) || itemName.contains(templateName))
+}
+
 private fun documentationAdditionalRecordFlowKey(record: DocumentationAdditionalObjectRecord, index: Int): String =
     "$DOCUMENTATION_EXTRA_FLOW_PREFIX:${record.serviceKey}:${record.objectId}:$index"
 
@@ -23105,7 +23161,7 @@ private fun List<WorkOrderDocumentationSignatureAreaOptions>.areaOptions(key: St
             key = normalizedKey,
             label = when (normalizedKey) {
                 "tipkalo", "tzin" -> "Tipkalo za isklop napona"
-                "elektro" -> "Sigurnosna panik rasvjeta"
+                "elektro" -> "Elektro usluga"
                 "radna_oprema", "ro" -> "Radna oprema"
                 "radni_okolis", "fc" -> "Radni okoliš"
                 else -> normalizedKey.replace('_', ' ').replaceFirstChar { it.titlecase(Locale.getDefault()) }
@@ -23933,17 +23989,34 @@ private fun WorkOrderDocumentationWizardDialog(
             else -> serviceFlowItems.firstOrNull()
         }
     }
-    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey, summaryFlowSelected, workEquipmentFlowSelected, physicalFactorsFlowSelected) {
+    val activeTemplates = remember(
+        context.templates,
+        selectedFlowItem?.serviceKey,
+        selectedFlowItem?.serviceCode,
+        selectedFlowItem?.serviceName,
+        selectedFlowItem?.serviceIndex,
+        summaryFlowSelected,
+        workEquipmentFlowSelected,
+        physicalFactorsFlowSelected,
+    ) {
         if (summaryFlowSelected || workEquipmentFlowSelected || physicalFactorsFlowSelected) {
             return@remember emptyList()
         }
-        val serviceKey = selectedFlowItem?.serviceKey.orEmpty()
-        if (serviceKey.isBlank() || serviceKey == "fallback") {
+        val flowItem = selectedFlowItem
+        if (flowItem == null || flowItem.serviceKey.isBlank() || flowItem.serviceKey == "fallback") {
             context.templates
         } else {
-            context.templates.filter { template ->
-                template.documentationServiceKey().equals(serviceKey, ignoreCase = true)
-            }.ifEmpty { context.templates }
+            val matchedTemplates = context.templates.filter { template ->
+                template.matchesDocumentationServiceFlowItem(flowItem)
+            }
+            matchedTemplates
+                .filter { template ->
+                    template.fieldBlocks.isNotEmpty() ||
+                        template.measurementTables.isNotEmpty() ||
+                        template.fields.isNotEmpty()
+                }
+                .ifEmpty { matchedTemplates }
+                .ifEmpty { context.templates }
         }
     }
     val sprBrowserFlowSelected = remember(
@@ -29488,7 +29561,16 @@ private fun DocumentationSprMobileWorkspace(
         }
     }
 
-    WizardSection(title = "${documentationSprTemplateLabel(templates)} zapisnik", icon = Icons.Rounded.PictureAsPdf) {
+    val templateLabel = remember(templates) { documentationSprTemplateLabel(templates) }
+    val workspaceTitle = remember(templateLabel) {
+        if (templateLabel.equals("Zapisnik", ignoreCase = true) || templateLabel.endsWith("zapisnik", ignoreCase = true)) {
+            templateLabel
+        } else {
+            "$templateLabel zapisnik"
+        }
+    }
+
+    WizardSection(title = workspaceTitle, icon = Icons.Rounded.PictureAsPdf) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -29617,7 +29699,7 @@ private fun DocumentationSprMobileWorkspace(
                     }
                 } else {
                     Text(
-                        "Nema polja za mobilni unos u ovom SPR predlošku.",
+                        "Nema polja za mobilni unos u ovom predlošku.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )

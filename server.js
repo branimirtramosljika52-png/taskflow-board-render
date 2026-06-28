@@ -110,7 +110,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.240.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.241.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -22558,7 +22558,7 @@ function normalizeMobileQualificationKeyList(value = []) {
 function getMobileQualificationAreaLabel(signatureArea = "elektro") {
   const key = normalizeMobileQualificationAreaKey(signatureArea);
   if (key === "elektro") {
-    return "Sigurnosna panik rasvjeta";
+    return "Elektro usluga";
   }
   if (key === "tipkalo" || key === "tzin") {
     return "Tipkalo za isklop napona";
@@ -24156,7 +24156,12 @@ function buildMobileDocumentationSprModel({
   );
 
   return {
-    templateCode: normalizeInputValue(template.title || template.documentType || "SPR v1.0.0"),
+    templateCode: normalizeInputValue(
+      template.title
+        || template.documentType
+        || reportDefaults.title
+        || `${serviceCode || "Zapisnik"} v1.0.0`,
+    ),
     workOrderId: normalizeInputValue(workOrder.id),
     workOrderNumber: normalizeInputValue(entry.workOrderNumber || workOrder.workOrderNumber || workOrder.number),
     serviceId: "",
@@ -24294,10 +24299,14 @@ async function buildMobileDocumentationSprPdfFile({
   });
   const rows = getMobileSprRows(entry, template, effectiveCommon);
   const preparedEntry = prepareMobileDocumentationSprEntry(entry, model, scopedSnapshot);
+  const requestedFileName = fileName
+    || entry.fileName
+    || model.recordNumber
+    || `${normalizeInputValue(model.serviceCode || entry.serviceCode || template.serviceCode || "zapisnik")}-zapisnik.pdf`;
   const result = await generateDocumentationSprPdfBlob({
     model,
     rows,
-    fileName: fileName || entry.fileName || model.recordNumber || "spr-zapisnik.pdf",
+    fileName: requestedFileName,
   });
   const pdfBuffer = Buffer.from(result.bytes ?? []);
   const stampedPdfBuffer = await addPdfDocumentStampToBuffer(
@@ -24306,7 +24315,7 @@ async function buildMobileDocumentationSprPdfFile({
   );
   return {
     kind: "pdf",
-    fileName,
+    fileName: result.fileName || requestedFileName,
     buffer: stampedPdfBuffer,
     entry: preparedEntry,
   };

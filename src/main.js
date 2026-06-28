@@ -61245,16 +61245,16 @@ function getDocumentationSprPdfFileName(model = documentationSprModel) {
   const rawName = [
     model?.issueDate || "",
     model?.recordNumber || "",
-    model?.templateCode || "SPR",
+    model?.templateCode || model?.serviceCode || "Zapisnik",
   ].filter(Boolean).join("-");
-  const baseName = String(rawName || "spr-zapisnik")
+  const baseName = String(rawName || "zapisnik")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\w.-]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120)
-    || "spr-zapisnik";
+    || "zapisnik";
   return `${baseName}.pdf`;
 }
 
@@ -61754,7 +61754,7 @@ function buildDocumentationSprPdfStyles() {
   `;
 }
 
-function triggerDocumentationSprHtmlDownload(html = "", fileName = "spr-zapisnik.html") {
+function triggerDocumentationSprHtmlDownload(html = "", fileName = "zapisnik.html") {
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -61814,7 +61814,7 @@ function buildDocumentationSprPdfHtml(model = documentationSprModel, rows = getD
 </html>`;
 }
 
-function openDocumentationSprPrintPdfFallback(html = "", fileName = "spr-zapisnik.pdf") {
+function openDocumentationSprPrintPdfFallback(html = "", fileName = "zapisnik.pdf") {
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     setDocumentationSprStatus("Dopusti popup za PDF", "saving");
@@ -62194,11 +62194,11 @@ function getDocumentationSprSingleExportEntry() {
   syncDocumentationSprGridlineIntoModel();
   const model = applyDocumentationSprGlobalHeaderToModel(documentationSprModel);
   return {
-    id: model.recordNumber || "spr-zapisnik",
+    id: model.recordNumber || "zapisnik",
     workOrderId: getDocumentationSprWorkOrderIdForExport({}, model),
     workOrderNumber: model.workOrderNumber,
-    serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || "SPR",
-    serviceName: model.serviceName || model.serviceBinding?.serviceName || "Sigurnosna panik rasvjeta",
+    serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || "",
+    serviceName: model.serviceName || model.serviceBinding?.serviceName || "Zapisnik",
     serviceId: model.serviceId || model.serviceBinding?.serviceId || "",
     recordNumber: model.recordNumber,
     companyName: model.companyName,
