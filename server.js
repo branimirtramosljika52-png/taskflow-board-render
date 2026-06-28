@@ -29023,6 +29023,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/mobile/bootstrap") {
+      await ensureStandardServiceCatalogItemsForRequest(user, request);
       await writeMobileBootstrap(response, user, request);
       return true;
     }
