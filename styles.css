@@ -38819,6 +38819,57 @@ body.is-vehicle-usage-open {
   white-space: nowrap;
 }
 
+.documentation-spr-signature-choice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 54%);
+  backdrop-filter: blur(10px);
+}
+
+.documentation-spr-signature-choice {
+  width: min(520px, 100%);
+  border: 1px solid rgb(148 163 184 / 42%);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 24px 70px rgb(15 23 42 / 28%);
+  padding: 24px;
+  color: #0f172a;
+}
+
+.documentation-spr-signature-choice span {
+  display: block;
+  margin-bottom: 6px;
+  color: #2563eb;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.documentation-spr-signature-choice h3 {
+  margin: 0;
+  font-size: 1.28rem;
+  line-height: 1.2;
+}
+
+.documentation-spr-signature-choice p {
+  margin: 10px 0 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.documentation-spr-signature-choice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+
 .documentation-spr-batch-dock[hidden] {
   display: none;
 }

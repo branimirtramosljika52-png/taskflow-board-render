@@ -322,6 +322,57 @@ async function embedHeaderImage(pdfDoc, dataUrl = "") {
   }
 }
 
+async function embedPdfImage(pdfDoc, source = "") {
+  const text = String(source || "").trim();
+  if (!text) {
+    return null;
+  }
+  try {
+    let bytes = null;
+    let mime = "";
+    const dataMatch = text.match(/^data:(image\/(?:png|jpe?g));base64,/i);
+    if (dataMatch) {
+      bytes = dataUrlToBytes(text);
+      mime = dataMatch[1].toLowerCase();
+    } else {
+      const response = await fetch(text);
+      if (!response.ok) {
+        return null;
+      }
+      bytes = new Uint8Array(await response.arrayBuffer());
+      mime = String(response.headers.get("content-type") || "").toLowerCase();
+    }
+    if (!bytes) {
+      return null;
+    }
+    const isPng = mime.includes("png") || /\.png(?:\?|$)/i.test(text);
+    return isPng ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function drawCenteredImage(page, image, {
+  x,
+  y,
+  width,
+  maxHeight = 32,
+} = {}) {
+  if (!image) {
+    return false;
+  }
+  const scale = Math.min(width / Math.max(1, image.width), maxHeight / Math.max(1, image.height), 1);
+  const imageWidth = image.width * scale;
+  const imageHeight = image.height * scale;
+  page.drawImage(image, {
+    x: x + ((width - imageWidth) / 2),
+    y,
+    width: imageWidth,
+    height: imageHeight,
+  });
+  return true;
+}
+
 function drawUploadedHeader(page, model, image, fonts, y = TOP_Y) {
   if (!image) {
     return drawDefaultHeader(page, model, fonts, y);
@@ -693,7 +744,7 @@ function extractOib(value = "") {
 }
 
 function signatureFieldName(model) {
-  const oib = extractOib(model.responsiblePerson);
+  const oib = clean(model.signatureFieldOib || model.responsiblePersonOib || "") || extractOib(model.responsiblePerson);
   const suffix = clean(model.signatureFieldSuffix || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -738,6 +789,7 @@ function addSignatureWidget(pdfDoc, page, rect, fieldName) {
 function drawSignatureText(page, model, fonts, x, y, width, {
   includeFieldLabel = false,
   fieldName = "",
+  signatureImage = null,
 } = {}) {
   drawTextLine(page, "Ispitivac", {
     x,
@@ -780,6 +832,14 @@ function drawSignatureText(page, model, fonts, x, y, width, {
     color: rgb(0.25, 0.36, 0.72),
     opacity: 0.45,
   });
+  if (model.signatureMode === "scan" && signatureImage) {
+    drawCenteredImage(page, signatureImage, {
+      x: x + 34,
+      y: y - 94,
+      width: width - 68,
+      maxHeight: 30,
+    });
+  }
   if (includeFieldLabel && fieldName) {
     drawTextLine(page, fieldName, {
       x,
@@ -793,7 +853,7 @@ function drawSignatureText(page, model, fonts, x, y, width, {
   }
 }
 
-function drawPageFour(pdfDoc, model, fonts) {
+function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = drawSimpleHeader(page, model, fonts, { showCode: false });
   drawTextLine(page, "Pregled i ispitivanje sukladno Tablici 1 obavili:", {
@@ -807,6 +867,7 @@ function drawPageFour(pdfDoc, model, fonts) {
   drawSignatureText(page, model, fonts, topSignatureX, y - 22, 205, {
     includeFieldLabel: true,
     fieldName,
+    signatureImage,
   });
   if (fieldName) {
     addSignatureWidget(pdfDoc, page, {
@@ -907,7 +968,9 @@ function drawPageFour(pdfDoc, model, fonts) {
     font: fonts.regular,
     size: 8,
   });
-  drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230);
+  drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230, {
+    signatureImage,
+  });
   drawFooter(page, "SPR-4/4", fonts);
   return page;
 }
@@ -1109,19 +1172,22 @@ function normalizeSprRows(rows = [], model = {}) {
 async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts) {
   const startPageIndex = pdfDoc.getPageCount();
   const headerImage = await embedHeaderImage(pdfDoc, model.headerImageDataUrl);
+  const signatureImage = model.signatureMode === "scan"
+    ? await embedPdfImage(pdfDoc, model.signatureImageUrl || model.signatureDataUrl)
+    : null;
   const safeRows = normalizeSprRows(rows, model);
 
   drawPageOne(pdfDoc, model, safeRows, fonts, headerImage);
   drawPageTwo(pdfDoc, model, fonts);
   drawPageThree(pdfDoc, model, safeRows, fonts);
-  drawPageFour(pdfDoc, model, fonts);
+  drawPageFour(pdfDoc, model, fonts, signatureImage);
   await appendAttachments(pdfDoc, model, fonts);
   const pageCount = pdfDoc.getPageCount() - startPageIndex;
   stampFooters(pdfDoc, model, fonts, { startPageIndex, pageCount });
   return {
     startPageIndex,
     pageCount,
-    signatureFieldCount: signatureFieldName(model) ? 1 : 0,
+    signatureFieldCount: model.signatureMode === "digital" && signatureFieldName(model) ? 1 : 0,
   };
 }
 
@@ -1231,6 +1297,9 @@ function normalizeBatchEntries(entries = []) {
           workOrderNumber,
           recordNumber,
           serviceCode,
+          signatureMode: clean(item.signatureMode || model.signatureMode || "digital").toLowerCase() === "scan" ? "scan" : "digital",
+          signatureFieldOib: clean(item.signatureFieldOib || model.signatureFieldOib || model.responsiblePersonOib || ""),
+          signatureImageUrl: clean(item.signatureImageUrl || model.signatureImageUrl || model.signatureDataUrl || ""),
           signatureFieldSuffix: signatureSuffix,
         },
       };
@@ -1337,6 +1406,168 @@ function drawBatchHandoverPage(pdfDoc, entries, fonts) {
   return page;
 }
 
+function resolveBatchHandoverContext(entries = [], handover = {}) {
+  const firstEntry = entries[0] || {};
+  const firstModel = firstEntry.model || {};
+  const workOrderNumbers = Array.from(new Set(entries.map((entry) => entry.workOrderNumber).filter(Boolean)));
+  const signatureMode = clean(handover.signatureMode || firstModel.signatureMode || "digital").toLowerCase() === "scan" ? "scan" : "digital";
+  const signerOib = clean(handover.signerOib || handover.signatureFieldOib || firstModel.signatureFieldOib || "");
+  return {
+    workOrderNumbers,
+    customerName: clean(handover.customerName || firstEntry.companyName || firstModel.companyName),
+    customerAddress: clean(handover.customerAddress || firstModel.companyAddress),
+    customerOib: clean(handover.customerOib || firstModel.companyOib),
+    executorName: clean(handover.executorName || "Adria Grupa d.o.o."),
+    executorAddress: clean(handover.executorAddress || "Heinzelova 53a, 10000 Zagreb"),
+    executorOib: clean(handover.executorOib || ""),
+    location: clean(handover.location || firstEntry.inspectionPlace || firstModel.inspectionPlace),
+    objectName: clean(handover.objectName || firstEntry.objectName || firstModel.inspectionObject),
+    contractType: clean(handover.contractType || firstModel.contractType || ""),
+    issuedPlace: clean(handover.issuedPlace || "Zagreb"),
+    issuedDate: clean(handover.issuedDate || firstModel.issueDate),
+    signerName: clean(handover.signerName || firstModel.responsiblePerson || "Ovjerio izvršitelj"),
+    signerTitle: clean(handover.signerTitle || ""),
+    signerOrganization: clean(handover.signerOrganization || handover.executorName || ""),
+    signerOib,
+    signatureMode,
+    signatureFieldName: signatureMode === "digital"
+      ? clean(handover.signatureFieldName || (signerOib ? `SIGN_PRIMOPREDAJA_${signerOib}` : ""))
+      : "",
+    signatureImageUrl: signatureMode === "scan" ? clean(handover.signatureImageUrl || firstModel.signatureImageUrl || "") : "",
+  };
+}
+
+function drawBatchHandoverPageV2(pdfDoc, entries, fonts, handover = {}, signatureImage = null) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const firstModel = entries[0]?.model || {};
+  const context = resolveBatchHandoverContext(entries, handover);
+  let signatureFieldCount = 0;
+  let y = drawDefaultHeader(page, { ...firstModel, workOrderNumber: "Primopredaja" }, fonts);
+  drawTextLine(page, "PRIMOPREDAJNI ZAPISNIK", {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 17,
+  });
+  y -= 20;
+  drawTextLine(page, "O OBAVLJENIM USLUGAMA IZ PODRUCJA ZASTITE NA RADU I ZASTITE OD POZARA", {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 8.4,
+  });
+  y -= 28;
+  y = drawKeyValueTable(page, [
+    ["Broj RN", context.workOrderNumbers.join(", ") || "-"],
+    ["Naručitelj", [context.customerName, context.customerAddress, context.customerOib ? `OIB ${context.customerOib}` : ""].filter(Boolean).join(", ") || "-"],
+    ["Izvršitelj", [context.executorName, context.executorAddress, context.executorOib ? `OIB ${context.executorOib}` : ""].filter(Boolean).join(", ") || "-"],
+    ["Lokacija ispitivanja", [context.location, context.objectName].filter(Boolean).join(" - ") || "-"],
+    ["Vrsta ugovora", context.contractType || "-"],
+  ], y, fonts, {
+    keyWidth: 118,
+    fontSize: 8,
+    lineHeight: 10.6,
+    bottomY: 420,
+  });
+  y -= 4;
+  drawTextBlock(page, "U nastavku je popis izrađenih zapisnika i usluga koje se predaju korisniku u sklopu odabranih radnih naloga.", {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    font: fonts.regular,
+    size: 8.1,
+    lineHeight: 10.4,
+    maxLines: 2,
+  });
+  y -= 28;
+  drawBatchTable(page, ["#", "Usluga", "Dokument", "Kol.", "Objekt", "Napomena"], entries.map((entry, index) => [
+    String(index + 1),
+    entry.serviceName || entry.serviceCode,
+    entry.recordNumber,
+    entry.quantity,
+    entry.objectName || entry.inspectionPlace,
+    entry.workOrderNumber,
+  ]), y, fonts, {
+    widths: [24, 138, 88, 44, 144, 72],
+    maxRows: 14,
+  });
+  drawTextLine(page, "PRILOG: Popis obavljenih usluga i izrađenih zapisnika", {
+    x: MARGIN_X,
+    y: 166,
+    font: fonts.bold,
+    size: 8.2,
+  });
+  drawTextLine(page, context.issuedDate ? `U ${context.issuedPlace || "Zagrebu"}, ${context.issuedDate}` : "", {
+    x: MARGIN_X,
+    y: 148,
+    font: fonts.regular,
+    size: 8,
+  });
+  drawTextLine(page, "Preuzeo:", {
+    x: MARGIN_X,
+    y: 128,
+    font: fonts.regular,
+    size: 8.6,
+  });
+  page.drawLine({
+    start: { x: MARGIN_X, y: 84 },
+    end: { x: MARGIN_X + 185, y: 84 },
+    thickness: 0.8,
+    color: DARK,
+  });
+  drawTextLine(page, "Predao:", {
+    x: PAGE_WIDTH - MARGIN_X - 185,
+    y: 128,
+    font: fonts.regular,
+    size: 8.6,
+  });
+  page.drawLine({
+    start: { x: PAGE_WIDTH - MARGIN_X - 185, y: 84 },
+    end: { x: PAGE_WIDTH - MARGIN_X, y: 84 },
+    thickness: 0.8,
+    color: DARK,
+  });
+  if (context.signatureMode === "scan" && signatureImage) {
+    drawCenteredImage(page, signatureImage, {
+      x: PAGE_WIDTH - MARGIN_X - 170,
+      y: 86,
+      width: 150,
+      maxHeight: 30,
+    });
+  }
+  if (context.signatureFieldName) {
+    addSignatureWidget(pdfDoc, page, {
+      x: PAGE_WIDTH - MARGIN_X - 174,
+      y: 72,
+      width: 160,
+      height: 38,
+    }, context.signatureFieldName);
+    signatureFieldCount += 1;
+    drawTextLine(page, context.signatureFieldName, {
+      x: PAGE_WIDTH - MARGIN_X - 185,
+      y: 70,
+      width: 185,
+      align: "center",
+      font: fonts.regular,
+      size: 5.4,
+      color: MUTED,
+    });
+  }
+  drawTextLine(page, context.signerName, {
+    x: PAGE_WIDTH - MARGIN_X - 185,
+    y: 62,
+    width: 185,
+    align: "center",
+    font: fonts.bold,
+    size: 7.2,
+  });
+  return { page, signatureFieldCount };
+}
+
 function createSprPdfDocument(title = "SPR zapisnik") {
   return PDFDocument.create().then((pdfDoc) => {
     pdfDoc.registerFontkit(fontkit);
@@ -1370,6 +1601,7 @@ export async function generateDocumentationSprPdfBlob({
 
 export async function generateDocumentationSprBatchPdfBlob({
   entries = [],
+  handover = {},
   fileName = "",
 } = {}) {
   const normalizedEntries = normalizeBatchEntries(entries);
@@ -1393,7 +1625,12 @@ export async function generateDocumentationSprBatchPdfBlob({
   });
 
   const handoverStart = pdfDoc.getPageCount();
-  drawBatchHandoverPage(pdfDoc, normalizedEntries, fonts);
+  const handoverContext = resolveBatchHandoverContext(normalizedEntries, handover);
+  const handoverSignatureImage = handoverContext.signatureMode === "scan"
+    ? await embedPdfImage(pdfDoc, handoverContext.signatureImageUrl)
+    : null;
+  const handoverRecord = drawBatchHandoverPageV2(pdfDoc, normalizedEntries, fonts, handoverContext, handoverSignatureImage);
+  signatureFieldCount += handoverRecord.signatureFieldCount;
   stampFooters(pdfDoc, { serviceCode: "PRIMOPREDAJA" }, fonts, {
     startPageIndex: handoverStart,
     pageCount: pdfDoc.getPageCount() - handoverStart,

@@ -57002,6 +57002,8 @@ function createDefaultDocumentationSprModel() {
     signatureNumber: "1392/25",
     resultStatus: "ZADOVOLJAVA",
     signatureMode: "digital",
+    signatureFieldOib: "",
+    signatureImageUrl: "",
     defects: "",
     recommendations: "",
     previewHidden: false,
@@ -57054,6 +57056,8 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     signatureNumber: "",
     resultStatus: "ZADOVOLJAVA",
     signatureMode: "digital",
+    signatureFieldOib: "",
+    signatureImageUrl: "",
     defects: "",
     recommendations: "",
     previewHidden: false,
@@ -57101,6 +57105,9 @@ function normalizeDocumentationSprModel(value) {
     customObjects: normalizeDocumentationSprCustomObjects(source.customObjects),
     inspectorUserIds: normalizeDocumentationSprIdList(source.inspectorUserIds),
     responsiblePersonUserId: String(source.responsiblePersonUserId || "").trim(),
+    signatureMode: normalizeDocumentTemplateSignatureMethod(source.signatureMode || fallback.signatureMode),
+    signatureFieldOib: normalizeDocumentationSprSignatureOib(source.signatureFieldOib || source.responsiblePersonOib || ""),
+    signatureImageUrl: String(source.signatureImageUrl || source.signatureDataUrl || "").trim(),
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
     previewHidden: Boolean(source.previewHidden),
@@ -59098,7 +59105,9 @@ function mergeDocumentationSprModelWithWorkOrderContext(model = {}, workOrder = 
     responsiblePerson: fromContext.responsiblePerson,
     signatureClass: fromContext.signatureClass || current.signatureClass,
     signatureNumber: fromContext.signatureNumber || current.signatureNumber,
-    signatureMode: fromContext.signatureMode || current.signatureMode || "digital",
+    signatureMode: current.signatureMode || fromContext.signatureMode || "digital",
+    signatureFieldOib: current.signatureFieldOib || fromContext.signatureFieldOib || "",
+    signatureImageUrl: current.signatureImageUrl || fromContext.signatureImageUrl || "",
   });
 }
 
@@ -61191,7 +61200,7 @@ let documentationSprPdfGeneratorPromise = null;
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260627-spr-batch-v1");
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260628-spr-signature-handover-v1");
   }
   return documentationSprPdfGeneratorPromise;
 }
@@ -61257,9 +61266,19 @@ async function exportDocumentationSprPdf() {
   if (!documentationSprModel) {
     return;
   }
-  readDocumentationSprFormIntoModel();
-  if (documentationSprGridlineApi?.getModel) {
-    documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(documentationSprGridlineApi.getModel());
+  const signatureMode = await chooseDocumentationSprSignatureMode({
+    title: "Kako potpisati zapisnik?",
+    message: "Digitalni potpis dodaje signature field u PDF. Scan potpisa umeće spremljenu sliku potpisa iz People modula.",
+  });
+  if (!signatureMode) {
+    setDocumentationSprStatus("Generiranje otkazano", "saving");
+    return;
+  }
+  try {
+    applyDocumentationSprSignatureModeToActiveBatch(signatureMode);
+  } catch (error) {
+    setDocumentationSprStatus(error?.message || "Potpis nije spreman", "saving");
+    return;
   }
   renderDocumentationSprPreview();
   scheduleDocumentationSprSave();
@@ -61281,7 +61300,9 @@ async function exportDocumentationSprPdf() {
     });
     triggerBlobDownload(result.blob, result.fileName || fileName);
     setDocumentationSprStatus(
-      result.signatureFieldCount
+      signatureMode === "scan"
+        ? "PDF preuzet sa scan potpisom"
+        : result.signatureFieldCount
         ? "PDF preuzet sa signature fieldom"
         : "PDF preuzet",
       "saved",
@@ -61330,6 +61351,191 @@ function normalizeDocumentationSprSignatureOib(value = "") {
   return /^\d{11}$/.test(digits) ? digits : "";
 }
 
+function getDocumentationSprResponsibleUserForModel(model = {}) {
+  const userById = getDocumentationSprUsersByIds([model.responsiblePersonUserId])[0] || null;
+  if (userById) {
+    return userById;
+  }
+  const responsibleText = normalizeLooseName(model.responsiblePerson || "");
+  if (!responsibleText) {
+    return null;
+  }
+  return getDocumentationSprResponsibleUsers().find((user) => (
+    responsibleText.includes(normalizeLooseName(getDocumentationSprUserName(user)))
+    || responsibleText.includes(normalizeLooseName(getUserDisplayLabel(user)))
+  )) || null;
+}
+
+function getDocumentationSprSignatureOibForModel(model = {}) {
+  const responsibleUser = getDocumentationSprResponsibleUserForModel(model);
+  return normalizeDocumentationSprSignatureOib(
+    getPeopleUserOib(responsibleUser)
+    || model.signatureFieldOib
+    || model.responsiblePersonOib
+    || model.responsiblePerson,
+  );
+}
+
+function getDocumentationSprSignatureImageForModel(model = {}) {
+  const responsibleUser = getDocumentationSprResponsibleUserForModel(model);
+  return String(
+    model.signatureImageUrl
+    || model.signatureDataUrl
+    || (responsibleUser ? getUserSignatureScanDataUrl(responsibleUser) : "")
+    || "",
+  ).trim();
+}
+
+function applyDocumentationSprSignatureModeToModel(model = {}, signatureMode = "digital") {
+  const mode = normalizeDocumentTemplateSignatureMethod(signatureMode || "digital");
+  const signatureFieldOib = getDocumentationSprSignatureOibForModel(model);
+  const signatureImageUrl = mode === "scan" ? getDocumentationSprSignatureImageForModel(model) : "";
+  return normalizeDocumentationSprModel({
+    ...model,
+    signatureMode: mode,
+    signatureFieldOib,
+    signatureImageUrl,
+  });
+}
+
+function getDocumentationSprSignatureModeLabel(signatureMode = "digital") {
+  return normalizeDocumentTemplateSignatureMethod(signatureMode) === "scan"
+    ? "scan potpisa"
+    : "digitalni potpis";
+}
+
+function showDocumentationSprSignatureModePrompt({
+  title = "Vrsta potpisa",
+  message = "Odaberi kako želiš potpisati PDF prije generiranja.",
+} = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "documentation-spr-signature-choice-backdrop";
+    backdrop.innerHTML = `
+      <section class="documentation-spr-signature-choice" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+        <div>
+          <span>Potpis prije generiranja</span>
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(message)}</p>
+        </div>
+        <div class="documentation-spr-signature-choice-actions">
+          <button type="button" class="ghost-button" data-documentation-spr-signature-choice="scan">Scan potpisa</button>
+          <button type="button" class="primary-button" data-documentation-spr-signature-choice="digital">Digitalni potpis</button>
+        </div>
+      </section>
+    `;
+    const cleanup = (value = "") => {
+      document.removeEventListener("keydown", onKeyDown);
+      backdrop.remove();
+      resolve(value);
+    };
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) {
+        cleanup("");
+        return;
+      }
+      const target = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-signature-choice]")
+        : null;
+      if (!target) {
+        return;
+      }
+      cleanup(target.getAttribute("data-documentation-spr-signature-choice") || "");
+    });
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        document.removeEventListener("keydown", onKeyDown);
+        cleanup("");
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.body.append(backdrop);
+    requestAnimationFrame(() => {
+      backdrop.querySelector("[data-documentation-spr-signature-choice='digital']")?.focus();
+    });
+  });
+}
+
+async function chooseDocumentationSprSignatureMode(options = {}) {
+  const selected = await showDocumentationSprSignatureModePrompt(options);
+  const mode = normalizeDocumentTemplateSignatureMethod(selected || "");
+  return selected ? mode : "";
+}
+
+function getDocumentationSprBatchHandoverSignatureContext(signatureMode = "digital") {
+  const mode = normalizeDocumentTemplateSignatureMethod(signatureMode || "digital");
+  const user = state.user || getDocumentTemplateRuntimeHandoverSignerUser?.() || null;
+  const signerOib = normalizeDocumentationSprSignatureOib(getPeopleUserOib(user) || user?.oib || "");
+  const organization = getDocumentTemplateRuntimeOrganizationForHandover?.() || state.currentOrganization || {};
+  return {
+    signatureMode: mode,
+    signerName: getUserDocumentDisplayName(user) || getUserDisplayLabel(user) || "Ovjerio izvršitelj",
+    signerTitle: getUserDocumentTitle(user),
+    signerOrganization: getUserDocumentOrganizationName(user) || organization.name || "",
+    signerOib,
+    signatureFieldName: mode === "digital" && signerOib ? `SIGN_PRIMOPREDAJA_${signerOib}` : "",
+    signatureImageUrl: mode === "scan" ? getUserSignatureScanDataUrl(user) : "",
+    executorName: organization.name || state.activeOrganizationName || "SafeNexus",
+    executorAddress: [
+      organization.address || organization.headquarters || "",
+      [organization.postalCode, organization.city].filter(Boolean).join(" "),
+    ].filter(Boolean).join(", "),
+    executorOib: organization.oib || "",
+    issuedPlace: state.workOrderDocumentWizard.common?.issuedPlace || "Zagreb",
+    issuedDate: formatCompactDate(state.workOrderDocumentWizard.common?.issuedDate || new Date().toISOString().slice(0, 10)),
+  };
+}
+
+function validateDocumentationSprSignatureModels(models = [], signatureMode = "digital") {
+  const mode = normalizeDocumentTemplateSignatureMethod(signatureMode || "digital");
+  const missing = (Array.isArray(models) ? models : [])
+    .map((model) => normalizeDocumentationSprModel(model))
+    .filter((model) => {
+      if (mode === "scan") {
+        return !getDocumentationSprSignatureImageForModel(model);
+      }
+      return !getDocumentationSprSignatureOibForModel(model);
+    })
+    .map((model) => model.workOrderNumber || model.recordNumber || "zapisnik");
+  if (missing.length > 0) {
+    const label = mode === "scan" ? "scan potpis" : "OIB za digitalni potpis";
+    throw new Error(`Nedostaje ${label}: ${missing.slice(0, 4).join(", ")}${missing.length > 4 ? "..." : ""}.`);
+  }
+}
+
+function applyDocumentationSprSignatureModeToActiveBatch(signatureMode = "digital") {
+  const mode = normalizeDocumentTemplateSignatureMethod(signatureMode || "digital");
+  const entries = getDocumentationSprBatchEntries();
+  if (entries.length > 0) {
+    refreshDocumentationSprBatchModelsFromWorkOrderContext({ readActiveForm: true });
+    const nextModels = entries.map((entry) =>
+      applyDocumentationSprSignatureModeToModel(getDocumentationSprBatchEntryModel(entry, { create: true }) || {}, mode),
+    );
+    validateDocumentationSprSignatureModels(nextModels, mode);
+    entries.forEach((entry, index) => {
+      entry.model = cloneDocumentationSprModelForBatch(nextModels[index]);
+    });
+    const activeIndex = Math.max(0, Math.min(entries.length - 1, Number(documentationSprWorkOrderBatch.activeIndex || 0)));
+    if (entries[activeIndex]?.model) {
+      documentationSprModel = cloneDocumentationSprModelForBatch(entries[activeIndex].model);
+      applyDocumentationSprModel(documentationSprModel, {
+        statusText: `Odabran ${getDocumentationSprSignatureModeLabel(mode)}`,
+      });
+    }
+    return entries.map((entry) => entry.model);
+  }
+
+  readDocumentationSprFormIntoModel();
+  syncDocumentationSprGridlineIntoModel();
+  const nextModel = applyDocumentationSprSignatureModeToModel(documentationSprModel, mode);
+  validateDocumentationSprSignatureModels([nextModel], mode);
+  documentationSprModel = nextModel;
+  applyDocumentationSprModel(documentationSprModel, {
+    statusText: `Odabran ${getDocumentationSprSignatureModeLabel(mode)}`,
+  });
+  return [documentationSprModel];
+}
+
 function sanitizeDocumentationSprSignatureSuffix(value = "") {
   return String(value || "")
     .normalize("NFD")
@@ -61341,15 +61547,14 @@ function sanitizeDocumentationSprSignatureSuffix(value = "") {
 }
 
 function getDocumentationSprPdfSignatureFieldName(model = {}) {
-  const responsibleUser = getDocumentationSprUsersByIds([model.responsiblePersonUserId])[0] || null;
-  const oib = normalizeDocumentationSprSignatureOib(getPeopleUserOib(responsibleUser) || model.responsiblePerson);
+  const oib = getDocumentationSprSignatureOibForModel(model);
   const suffix = sanitizeDocumentationSprSignatureSuffix(model.signatureFieldSuffix || "");
   return oib ? `SIGN_SPR_${oib}${suffix ? `_${suffix}` : ""}` : "";
 }
 
 function buildDocumentationSprSignatureMetadata(model = {}) {
-  const responsibleUser = getDocumentationSprUsersByIds([model.responsiblePersonUserId])[0] || null;
-  const oib = normalizeDocumentationSprSignatureOib(getPeopleUserOib(responsibleUser) || model.responsiblePerson);
+  const responsibleUser = getDocumentationSprResponsibleUserForModel(model);
+  const oib = getDocumentationSprSignatureOibForModel(model);
   const fieldName = getDocumentationSprPdfSignatureFieldName(model);
   if (!oib || !fieldName || model.signatureMode !== "digital") {
     return {
@@ -61436,15 +61641,19 @@ function getDocumentationSprSignatureExportEntries() {
   return singleEntry ? [singleEntry] : [];
 }
 
-async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, generator = null) {
+async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, generator = null, { signatureMode = "digital" } = {}) {
   const workOrderId = getDocumentationSprWorkOrderIdForExport(exportEntry, exportEntry.model);
   if (!workOrderId) {
     throw new Error(`RN ${exportEntry.workOrderNumber || exportEntry.recordNumber || ""} nema vezu na radni nalog.`);
   }
-  const model = normalizeDocumentationSprModel(exportEntry.model);
+  const mode = normalizeDocumentTemplateSignatureMethod(signatureMode || exportEntry.model?.signatureMode || "digital");
+  const model = applyDocumentationSprSignatureModeToModel(exportEntry.model, mode);
   const signatureMetadata = buildDocumentationSprSignatureMetadata(model);
-  if (!signatureMetadata.primary) {
+  if (mode === "digital" && !signatureMetadata.primary) {
     throw new Error(`RN ${exportEntry.workOrderNumber || model.workOrderNumber || ""}: odaberi odgovornu osobu s OIB-om za digitalni potpis.`);
+  }
+  if (mode === "scan" && !model.signatureImageUrl) {
+    throw new Error(`RN ${exportEntry.workOrderNumber || model.workOrderNumber || ""}: odgovorna osoba nema spremljen scan potpis.`);
   }
   const pdfGenerator = generator || await loadDocumentationSprPdfGenerator();
   const fileName = getDocumentationSprPdfFileName(model);
@@ -61464,15 +61673,19 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
         fileSize: result.bytes?.length || result.blob?.size || 0,
         dataUrl,
         documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
-        signatureFieldRole: signatureMetadata.primary.role,
-        signatureFieldOib: signatureMetadata.primary.oib,
-        signerOib: signatureMetadata.primary.oib,
-        preferredField: signatureMetadata.primary.fieldName,
-        signatureFieldsJson: signatureMetadata.signatureFieldsJson,
+        signatureFieldRole: mode === "digital" ? signatureMetadata.primary?.role || "" : "",
+        signatureFieldOib: mode === "digital" ? signatureMetadata.primary?.oib || "" : "",
+        signerOib: mode === "digital" ? signatureMetadata.primary?.oib || "" : "",
+        preferredField: mode === "digital" ? signatureMetadata.primary?.fieldName || "" : "",
+        signatureFieldsJson: mode === "digital" ? signatureMetadata.signatureFieldsJson : "",
         description: [
           `SPR zapisnik ${model.recordNumber || fileName} za RN ${model.workOrderNumber || exportEntry.workOrderNumber || ""}.`,
-          "PDF je spremljen iz Izrade dokumentacije i čeka digitalni potpis.",
-          `Potpisnik: ${signatureMetadata.primary.name}${signatureMetadata.primary.oib ? ` (OIB ${signatureMetadata.primary.oib})` : ""}.`,
+          mode === "digital"
+            ? "PDF je spremljen iz Izrade dokumentacije i čeka digitalni potpis."
+            : "PDF je spremljen iz Izrade dokumentacije sa scan potpisom.",
+          signatureMetadata.primary
+            ? `Potpisnik: ${signatureMetadata.primary.name}${signatureMetadata.primary.oib ? ` (OIB ${signatureMetadata.primary.oib})` : ""}.`
+            : "",
         ].filter(Boolean).join(" "),
       }],
     },
@@ -61485,6 +61698,20 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
 }
 
 async function queueDocumentationSprForDigitalSignature() {
+  const signatureMode = await chooseDocumentationSprSignatureMode({
+    title: "Kako spremiti PDF?",
+    message: "Digitalni potpis sprema signature field i šalje dokument u Signatures. Scan potpisa sprema PDF sa slikom potpisa u RN dokumente.",
+  });
+  if (!signatureMode) {
+    setDocumentationSprStatus("Spremanje otkazano", "saving");
+    return;
+  }
+  try {
+    applyDocumentationSprSignatureModeToActiveBatch(signatureMode);
+  } catch (error) {
+    setDocumentationSprStatus(error?.message || "Potpis nije spreman", "saving");
+    return;
+  }
   const exportEntries = getDocumentationSprSignatureExportEntries();
   if (!exportEntries.length) {
     setDocumentationSprStatus("Nema SPR zapisnika za potpis", "saving");
@@ -61502,11 +61729,11 @@ async function queueDocumentationSprForDigitalSignature() {
     button.disabled = true;
     button.textContent = "Spremam";
   });
-  setDocumentationSprStatus(`Spremam ${exportEntries.length} SPR PDF-a za potpis`, "saving");
+  setDocumentationSprStatus(`Spremam ${exportEntries.length} SPR PDF-a (${getDocumentationSprSignatureModeLabel(signatureMode)})`, "saving");
   try {
     const savedItems = [];
     for (const entry of exportEntries) {
-      savedItems.push(await saveDocumentationSprPdfEntryForSignature(entry, generator));
+      savedItems.push(await saveDocumentationSprPdfEntryForSignature(entry, generator, { signatureMode }));
     }
     state.documentsExplorer.loaded = true;
     state.documentsExplorer.lastRefreshAt = new Date().toISOString();
@@ -61515,7 +61742,9 @@ async function queueDocumentationSprForDigitalSignature() {
     }
     renderNotifications();
     setDocumentationSprStatus(
-      `Spremljeno za potpis: ${savedItems.filter(Boolean).length}/${exportEntries.length} PDF-a`,
+      signatureMode === "digital"
+        ? `Spremljeno za potpis: ${savedItems.filter(Boolean).length}/${exportEntries.length} PDF-a`
+        : `Spremljeno sa scan potpisom: ${savedItems.filter(Boolean).length}/${exportEntries.length} PDF-a`,
       "saved",
     );
   } catch (error) {
@@ -61533,6 +61762,20 @@ async function exportDocumentationSprBatchPdf() {
   const entries = getDocumentationSprBatchEntries();
   if (entries.length <= 1) {
     await exportDocumentationSprPdf();
+    return;
+  }
+  const signatureMode = await chooseDocumentationSprSignatureMode({
+    title: "Kako potpisati batch PDF?",
+    message: "Digitalni potpis dodaje signature fieldove u zapisnike i primopredaju. Scan potpisa umeće slike potpisa u PDF.",
+  });
+  if (!signatureMode) {
+    setDocumentationSprStatus("Batch PDF otkazan", "saving");
+    return;
+  }
+  try {
+    applyDocumentationSprSignatureModeToActiveBatch(signatureMode);
+  } catch (error) {
+    setDocumentationSprStatus(error?.message || "Potpis nije spreman", "saving");
     return;
   }
   const exportEntries = buildDocumentationSprBatchExportEntries();
@@ -61559,6 +61802,7 @@ async function exportDocumentationSprBatchPdf() {
     }
     const result = await generator.generateDocumentationSprBatchPdfBlob({
       entries: exportEntries,
+      handover: getDocumentationSprBatchHandoverSignatureContext(signatureMode),
       fileName: getDocumentationSprBatchPdfFileName(entries),
     });
     triggerBlobDownload(result.blob, result.fileName || getDocumentationSprBatchPdfFileName(entries));
