@@ -479,6 +479,8 @@ export function getDocumentationNativeTemplateSeedPresets() {
   return Object.values(DOCUMENTATION_NATIVE_REPORT_PRESETS).map((preset) => ({
     id: `${slugify(preset.serviceCode)}-v1-0-0`,
     name: preset.title,
+    title: preset.title,
+    documentType: preset.documentType,
     serviceCode: preset.serviceCode,
     serviceName: preset.serviceName,
     reportTitle: preset.reportTitle,

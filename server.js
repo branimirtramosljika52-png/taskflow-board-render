@@ -23267,7 +23267,10 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     });
   });
 
-  templates.sort((left, right) => left.title.localeCompare(right.title, "hr"));
+  templates.sort((left, right) => String(left?.title || "").localeCompare(String(right?.title || ""), "hr", {
+    numeric: true,
+    sensitivity: "base",
+  }));
 
   return {
     workOrderId: normalizeInputValue(workOrder?.id),
