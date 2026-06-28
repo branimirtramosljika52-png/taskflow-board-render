@@ -2124,13 +2124,24 @@ function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
   };
 }
 
+function normalizeMeasurementSheetCellValueSnapshot(value = "") {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const formula = normalizeText(value.formula ?? value.formulaText ?? value.expression);
+    if (formula) {
+      return formula.startsWith("=") ? formula : `=${formula}`;
+    }
+    return String(value.text ?? value.displayText ?? value.value ?? value.rawValue ?? "");
+  }
+  return String(value ?? "");
+}
+
 function normalizeMeasurementSheetRowSnapshot(input = {}, columns = [], index = 0) {
   const editableColumns = columns.filter((column) => !column.computed);
   const cells = {};
   const formats = {};
 
   editableColumns.forEach((column) => {
-    cells[column.id] = String(input?.cells?.[column.id] ?? "").slice(0, 4000);
+    cells[column.id] = normalizeMeasurementSheetCellValueSnapshot(input?.cells?.[column.id]).slice(0, 4000);
     formats[column.id] = normalizeMeasurementSheetCellFormatSnapshot(input?.formats?.[column.id]);
   });
 

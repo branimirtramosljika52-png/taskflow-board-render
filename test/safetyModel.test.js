@@ -2088,6 +2088,27 @@ test("measurement sheet normalization keeps validation metadata on editable colu
   assert.equal(normalized.columns[1].validation.sourceColumnId, "col-1");
 });
 
+test("measurement sheet normalization preserves object cell formulas", () => {
+  const normalized = normalizeWorkOrderMeasurementSheet({
+    columns: [
+      { id: "value", label: "Vrijednost" },
+      { id: "status", label: "Status" },
+    ],
+    rows: [
+      {
+        id: "row-1",
+        cells: {
+          value: { value: "10" },
+          status: { formula: 'IF(A1>5;"DA";"NE")' },
+        },
+      },
+    ],
+  });
+
+  assert.equal(normalized.rows[0].cells.value, "10");
+  assert.equal(normalized.rows[0].cells.status, '=IF(A1>5;"DA";"NE")');
+});
+
 test("measurement sheet normalization keeps wide Excel based tables", () => {
   const columns = Array.from({ length: 57 }, (_, index) => ({
     id: `col-${index + 1}`,

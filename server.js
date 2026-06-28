@@ -105,7 +105,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.226.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.227.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -23258,17 +23258,28 @@ function normalizeMobileSprSheetColumnKey(column = {}, index = 0) {
   ].filter(Boolean).join(" "));
 }
 
-function pickMobileSprSheetCell(row = {}, columns = [], candidates = [], fallbackIndex = -1) {
+function pickMobileSprSheetCell(sheet = {}, rowIndex = 0, columns = [], candidates = [], fallbackIndex = -1) {
+  const row = sheet?.rows?.[rowIndex] || {};
+  const readColumnValue = (column = null) => {
+    if (!column?.id || !Object.prototype.hasOwnProperty.call(row?.cells || {}, column.id)) {
+      return "";
+    }
+    const columnIndex = Number.isInteger(column.sourceIndex) ? column.sourceIndex : columns.findIndex((entry) => entry.id === column.id);
+    if (columnIndex >= 0) {
+      return normalizeInputValue(getMobileMeasurementCellDisplayText(sheet, rowIndex, columnIndex));
+    }
+    return normalizeInputValue(row.cells[column.id]);
+  };
   const candidateKeys = candidates.map(normalizeMobileSprLookupText).filter(Boolean);
   const matchingColumn = columns.find((column, index) => {
-    const key = normalizeMobileSprSheetColumnKey(column, index);
+    const key = normalizeMobileSprSheetColumnKey(column, Number.isInteger(column.sourceIndex) ? column.sourceIndex : index);
     return candidateKeys.some((candidate) => key === candidate || key.includes(candidate));
   });
-  if (matchingColumn?.id && Object.prototype.hasOwnProperty.call(row?.cells || {}, matchingColumn.id)) {
-    return normalizeInputValue(row.cells[matchingColumn.id]);
+  if (matchingColumn?.id) {
+    return readColumnValue(matchingColumn);
   }
   const fallbackColumn = fallbackIndex >= 0 ? columns[fallbackIndex] : null;
-  return fallbackColumn?.id ? normalizeInputValue(row?.cells?.[fallbackColumn.id]) : "";
+  return readColumnValue(fallbackColumn);
 }
 
 function getMobileSprRowsFromSheet(sheet = null) {
@@ -23276,15 +23287,17 @@ function getMobileSprRowsFromSheet(sheet = null) {
   if (!normalized?.columns?.length) {
     return [];
   }
-  const columns = normalized.columns.filter((column) => !column.computed);
+  const columns = normalized.columns
+    .map((column, sourceIndex) => ({ ...column, sourceIndex }))
+    .filter((column) => !column.computed);
   return normalized.rows
     .map((row, index) => ({
-      number: pickMobileSprSheetCell(row, columns, ["r br", "redni broj", "broj", "rb"], 0) || String(index + 1),
-      place: pickMobileSprSheetCell(row, columns, ["mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"], 1),
-      lampCount: pickMobileSprSheetCell(row, columns, ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"], 2),
-      ei: pickMobileSprSheetCell(row, columns, ["ei", "izmjereno", "izmjerena vrijednost"], 3),
-      eimin: pickMobileSprSheetCell(row, columns, ["eimin", "emin", "minimalno", "zahtijevano"], 4),
-      pass: pickMobileSprSheetCell(row, columns, ["zadovoljava", "ocjena", "ispravno", "pass"], 5),
+      number: pickMobileSprSheetCell(normalized, index, columns, ["r br", "redni broj", "broj", "rb"], 0) || String(index + 1),
+      place: pickMobileSprSheetCell(normalized, index, columns, ["mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"], 1),
+      lampCount: pickMobileSprSheetCell(normalized, index, columns, ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"], 2),
+      ei: pickMobileSprSheetCell(normalized, index, columns, ["ei", "izmjereno", "izmjerena vrijednost"], 3),
+      eimin: pickMobileSprSheetCell(normalized, index, columns, ["eimin", "emin", "minimalno", "zahtijevano"], 4),
+      pass: pickMobileSprSheetCell(normalized, index, columns, ["zadovoljava", "ocjena", "ispravno", "pass"], 5),
     }))
     .filter((row) => {
       const lookup = normalizeMobileSprLookupText([

@@ -2276,7 +2276,12 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         isLoading = false,
                         notice = if (documents.isNotEmpty()) {
-                            "Dokumentacija je izrađena i spremljena uz RN."
+                            when (draft.signatureMode.trim().lowercase(Locale.getDefault())) {
+                                "digital" -> "Dokumentacija je spremljena u Documents i poslana u Signatures na digitalni potpis."
+                                "manual" -> "PDF s ručnim potpisnim mjestom je odmah spremljen u Documents."
+                                "scan" -> "PDF sa sken potpisom je odmah spremljen u Documents."
+                                else -> "Dokumentacija je izrađena i spremljena uz RN."
+                            }
                         } else {
                             "Izrada dokumentacije je završena."
                         },
@@ -5312,6 +5317,7 @@ private fun WorkOrderSelectField(
     enabled: Boolean,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
@@ -5319,14 +5325,23 @@ private fun WorkOrderSelectField(
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
             enabled = enabled && options.isNotEmpty(),
-            shape = RoundedCornerShape(16.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
+            shape = RoundedCornerShape(if (compact) 12.dp else 16.dp),
+            contentPadding = PaddingValues(
+                horizontal = if (compact) 10.dp else 14.dp,
+                vertical = if (compact) 8.dp else 13.dp,
+            ),
         ) {
             Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                Text(
+                    label,
+                    style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     valueLabel.ifBlank { "Odaberi" },
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -28638,52 +28653,57 @@ private fun MeasurementQuickFillDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 640.dp)
+                    .heightIn(max = 560.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    "Svaki red je jedna stavka. Količinu možeš pisati kao: Stavka;3.",
+                    "Jedan red je jedna stavka. Količina može ići kao: Izlaz;3.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                 )
-                OutlinedTextField(
-                    value = floor,
-                    onValueChange = { floor = it },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Etaža") },
-                    singleLine = true,
-                    enabled = enabled,
-                    shape = RoundedCornerShape(14.dp),
-                )
-                OutlinedTextField(
-                    value = room,
-                    onValueChange = { room = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Prostorija") },
-                    singleLine = true,
-                    enabled = enabled,
-                    shape = RoundedCornerShape(14.dp),
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = floor,
+                        onValueChange = { floor = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Etaža") },
+                        singleLine = true,
+                        enabled = enabled,
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                    OutlinedTextField(
+                        value = room,
+                        onValueChange = { room = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Prostorija") },
+                        singleLine = true,
+                        enabled = enabled,
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = itemsText,
                     onValueChange = { itemsText = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Stavke") },
-                    minLines = 4,
-                    maxLines = 7,
+                    label = { Text("Redovi za unos") },
+                    minLines = 3,
+                    maxLines = 4,
                     enabled = enabled,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                 )
                 OutlinedTextField(
                     value = defaultCount,
                     onValueChange = { value -> defaultCount = value.filter { it.isDigit() }.take(3) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.widthIn(min = 120.dp, max = 160.dp),
                     label = { Text("Količina po stavci") },
                     singleLine = true,
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                 )
                 Text("Vrijednosti po kolonama", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
                 editableColumns.take(10).forEach { column ->
@@ -28695,6 +28715,7 @@ private fun MeasurementQuickFillDialog(
                         options = modeOptions,
                         enabled = enabled,
                         onSelect = { value -> columnModes = columnModes + (column.id to value) },
+                        compact = true,
                     )
                     if (mode == "custom" || mode == "formula") {
                         OutlinedTextField(
@@ -28704,7 +28725,7 @@ private fun MeasurementQuickFillDialog(
                             label = { Text(if (mode == "formula") "Formula" else "Vrijednost") },
                             singleLine = true,
                             enabled = enabled,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                         )
                     }
                 }
