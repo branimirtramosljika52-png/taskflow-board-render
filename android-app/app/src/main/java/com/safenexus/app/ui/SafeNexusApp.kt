@@ -11087,10 +11087,9 @@ private fun WorkOrdersScreen(
         bottomBar = {
             MainBottomBar(
                 selected = state.section,
+                currentMoreFocus = state.moreFocus,
                 isClientPortal = isClientPortal,
-                onSectionChange = { section ->
-                    onSectionChange(section, if (section == AppSection.More) MoreSectionFocus.Overview else null)
-                },
+                onSectionChange = onSectionChange,
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -12089,25 +12088,42 @@ private fun QuickActionDivider() {
 @Composable
 private fun MainBottomBar(
     selected: AppSection,
+    currentMoreFocus: MoreSectionFocus,
     isClientPortal: Boolean,
-    onSectionChange: (AppSection) -> Unit,
+    onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
 ) {
     if (isClientPortal) return
-    val visibleSections = remember(isClientPortal) {
-        AppSection.entries.filter { section -> section != AppSection.More && section != AppSection.Calendar }
+    val visibleSections = remember {
+        listOf(
+            MainMenuShortcut("Home", "Home", AppSection.Operations, Icons.Rounded.Home),
+            MainMenuShortcut("RN", "Radni nalozi", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
+            MainMenuShortcut("Dokumenti", "Dokumenti", AppSection.More, Icons.Rounded.Folder, MoreSectionFocus.Documents),
+            MainMenuShortcut("Periodika", "Periodika", AppSection.More, Icons.Rounded.CalendarMonth, MoreSectionFocus.Periodics),
+        )
     }
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-        visibleSections.forEach { section ->
+        visibleSections.forEach { shortcut ->
+            val itemSelected = if (shortcut.section == AppSection.More) {
+                selected == AppSection.More && currentMoreFocus == shortcut.moreFocus
+            } else {
+                selected == shortcut.section
+            }
             NavigationBarItem(
-                selected = selected == section,
-                onClick = { onSectionChange(section) },
+                selected = itemSelected,
+                onClick = { onSectionChange(shortcut.section, shortcut.moreFocus) },
                 icon = {
                     Icon(
-                        imageVector = section.icon(),
-                        contentDescription = section.label,
+                        imageVector = shortcut.icon,
+                        contentDescription = shortcut.description,
                     )
                 },
-                label = { Text(section.label) },
+                label = {
+                    Text(
+                        shortcut.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
             )
         }
     }
