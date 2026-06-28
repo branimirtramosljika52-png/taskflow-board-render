@@ -104,6 +104,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EditCalendar
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.EventNote
@@ -1618,6 +1619,37 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             serviceItems = serviceLabels,
             serviceDetails = serviceDetails,
         )
+    }
+
+    fun updateWorkOrderNumber(workOrder: WorkOrder, workOrderNumber: String) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za spremanje broja.")
+            return
+        }
+        val normalizedNumber = workOrderNumber.trim()
+        if (normalizedNumber.isBlank()) {
+            state = state.copy(error = "Upiši broj radnog naloga.", notice = "")
+            return
+        }
+        if (normalizedNumber == workOrder.number) return
+
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(workOrder.copy(number = normalizedNumber))
+        viewModelScope.launch {
+            api.updateWorkOrderNumber(workOrder.id, normalizedNumber)
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, "Broj RN-a je spremljen.")
+                    }
+                }
+                .onFailure { error ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(error = error.message ?: "Ne mogu spremiti broj RN-a.", notice = "")
+                    }
+                }
+        }
     }
 
     fun updateWorkOrderStatus(workOrder: WorkOrder, status: String) {
@@ -3352,6 +3384,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                     readOnly = state.user.hasClientPortalAccess(),
                     onBack = { viewModel.navigateBack() },
+                    onNumberChange = viewModel::updateWorkOrderNumber,
                     onStatusChange = viewModel::updateWorkOrderStatus,
                     onMetaChange = viewModel::updateWorkOrderMeta,
                     onDatesChange = viewModel::updateWorkOrderDates,
@@ -20953,7 +20986,7 @@ private fun VehicleChecklistRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun WorkOrderDetailScreen(
     workOrder: WorkOrder,
@@ -20970,6 +21003,7 @@ private fun WorkOrderDetailScreen(
     statusOptions: List<String>,
     readOnly: Boolean = false,
     onBack: () -> Unit,
+    onNumberChange: (WorkOrder, String) -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onMetaChange: (WorkOrder, String, List<String>) -> Unit,
     onDatesChange: (WorkOrder, String?, String?) -> Unit,
@@ -21031,6 +21065,59 @@ private fun WorkOrderDetailScreen(
     var showLocationDetails by remember(workOrder.id) { mutableStateOf(false) }
     var showExecutorsEditor by remember(workOrder.id) { mutableStateOf(false) }
     var showMetaEditor by remember(workOrder.id) { mutableStateOf(false) }
+    var showNumberMenu by remember(workOrder.id) { mutableStateOf(false) }
+    var showNumberEditor by remember(workOrder.id) { mutableStateOf(false) }
+    var numberDraft by remember(workOrder.id, workOrder.number) { mutableStateOf(workOrder.number) }
+    if (showNumberEditor && !readOnly) {
+        AlertDialog(
+            onDismissRequest = { showNumberEditor = false },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Broj radnog naloga", fontWeight = FontWeight.Black)
+                    Text(
+                        workOrder.companyName.ifBlank { "Radni nalog" },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+            text = {
+                OutlinedTextField(
+                    value = numberDraft,
+                    onValueChange = { numberDraft = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading,
+                    singleLine = true,
+                    label = { Text("Novi broj RN-a") },
+                    placeholder = { Text("npr. 26-664") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    shape = RoundedCornerShape(16.dp),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val normalized = numberDraft.trim()
+                        if (normalized.isNotBlank()) {
+                            onNumberChange(workOrder, normalized)
+                            showNumberEditor = false
+                        }
+                    },
+                    enabled = !isLoading && numberDraft.trim().isNotBlank(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Spremi", fontWeight = FontWeight.Black)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNumberEditor = false }, enabled = !isLoading) {
+                    Text("Odustani", fontWeight = FontWeight.Bold)
+                }
+            },
+        )
+    }
     if (showMetaEditor && !readOnly) {
         AlertDialog(
             onDismissRequest = { showMetaEditor = false },
@@ -21107,13 +21194,40 @@ private fun WorkOrderDetailScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                workOrder.displayNumber,
-                                modifier = Modifier.weight(1f),
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Box(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    workOrder.displayNumber,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .combinedClickable(
+                                            enabled = !readOnly,
+                                            onClick = {},
+                                            onLongClick = { showNumberMenu = true },
+                                        )
+                                        .padding(horizontal = 2.dp, vertical = 1.dp),
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                DropdownMenu(
+                                    expanded = showNumberMenu,
+                                    onDismissRequest = { showNumberMenu = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Promijeni broj RN-a") },
+                                        leadingIcon = {
+                                            Icon(Icons.Rounded.Edit, contentDescription = null)
+                                        },
+                                        onClick = {
+                                            numberDraft = workOrder.number
+                                            showNumberMenu = false
+                                            showNumberEditor = true
+                                        },
+                                        enabled = !readOnly && !isLoading,
+                                    )
+                                }
+                            }
                             WorkOrderHeaderMeta(
                                 workOrder = workOrder,
                                 enabled = !readOnly,
@@ -22850,11 +22964,26 @@ private fun isDocumentationSprText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
     if (normalized.isBlank()) return false
     return normalized == "spr" ||
+        normalized == "tzin" ||
+        normalized == "eiz" ||
+        normalized == "szom" ||
+        normalized == "szomv" ||
+        normalized == "ves" ||
         normalized.startsWith("spr ") ||
+        normalized.startsWith("tzin ") ||
+        normalized.startsWith("eiz ") ||
+        normalized.startsWith("szom ") ||
+        normalized.startsWith("szomv ") ||
+        normalized.startsWith("ves ") ||
         normalized.contains("sigurnosna panik") ||
         normalized.contains("panik rasvjet") ||
         normalized.contains("panic lighting") ||
-        normalized.contains("emergency lighting")
+        normalized.contains("emergency lighting") ||
+        normalized.contains("tipkalo") ||
+        normalized.contains("isklop elektric") ||
+        normalized.contains("elektricn") ||
+        normalized.contains("evakuacij") ||
+        normalized.contains("zastitu od djelovanja munje")
 }
 
 private fun isDocumentationSprService(item: DocumentationServiceFlowItem): Boolean =
@@ -22888,7 +23017,7 @@ private fun buildDocumentationFlowTabs(
             else -> item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
         }
         val normalizedServiceLabel = serviceLabel.trim().uppercase(Locale.getDefault())
-        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "RO", "FC")) {
+        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "FC")) {
             normalizedServiceLabel
         } else {
             "${serviceIndex + 1}. $serviceLabel"
@@ -22903,7 +23032,7 @@ private fun buildDocumentationFlowTabs(
                 val sequence = tabs.count { tab -> tab.serviceItem?.serviceKey == item.serviceKey } + 1
                 val recordLabel = record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }.trim()
                 val normalizedRecordLabel = recordLabel.uppercase(Locale.getDefault())
-                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "RO", "FC")) {
+                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "FC")) {
                     "$normalizedRecordLabel $sequence"
                 } else {
                     "$sequence. $recordLabel"
@@ -29359,7 +29488,7 @@ private fun DocumentationSprMobileWorkspace(
         }
     }
 
-    WizardSection(title = "SPR zapisnik", icon = Icons.Rounded.PictureAsPdf) {
+    WizardSection(title = "${documentationSprTemplateLabel(templates)} zapisnik", icon = Icons.Rounded.PictureAsPdf) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -29383,7 +29512,7 @@ private fun DocumentationSprMobileWorkspace(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(
-                        documentNumber.ifBlank { workOrder.displayNumber.ifBlank { "SPR" } },
+                        documentNumber.ifBlank { workOrder.displayNumber.ifBlank { documentationSprTemplateLabel(templates) } },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
                         maxLines = 1,
@@ -29867,15 +29996,16 @@ private fun documentationSprMobileSourceLabel(templates: List<WorkOrderDocumenta
         template.documentName
             .ifBlank { template.title }
             .ifBlank { template.documentType }
-            .ifBlank { "Novi SPR" }
-    }.orEmpty().ifBlank { "Novi SPR" }
+            .ifBlank { "Novi zapisnik" }
+    }.orEmpty().ifBlank { "Novi zapisnik" }
 }
 
 private fun documentationSprTemplateLabel(templates: List<WorkOrderDocumentationTemplate>): String =
-    templates.firstOrNull { it.title.contains("SPR", ignoreCase = true) }?.title
+    templates.firstOrNull { it.serviceCode.isNotBlank() }?.serviceCode
+        ?: templates.firstOrNull { it.title.contains("SPR", ignoreCase = true) }?.title
         ?: templates.firstOrNull { it.documentName.contains("SPR", ignoreCase = true) }?.documentName
         ?: templates.firstOrNull()?.title
-        ?: "SPR"
+        ?: "Zapisnik"
 
 private fun documentationTemplateDataSourceTitle(template: WorkOrderDocumentationTemplate): String {
     val type = template.dataSourceType.trim().lowercase(Locale.getDefault())

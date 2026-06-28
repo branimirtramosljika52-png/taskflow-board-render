@@ -225,6 +225,29 @@ function isFailingResult(model = {}) {
   return clean(model.resultStatus).toUpperCase() === "NE ZADOVOLJAVA";
 }
 
+function getReportServiceTitle(model = {}) {
+  const explicitTitle = clean(model.reportTitle || model.reportHeaderTitle || model.documentTitle);
+  if (explicitTitle) {
+    return explicitTitle.toUpperCase();
+  }
+  const serviceName = clean(model.serviceName || model.serviceBinding?.serviceName || model.templateCode);
+  if (!serviceName) {
+    return "ISPITIVANJE";
+  }
+  const upper = serviceName.toUpperCase();
+  return /^(O|ISPITIVANJE|PREGLED|VIZUALNI|IZVRSENJE|IZVRŠENJE)\b/.test(upper)
+    ? upper
+    : `ISPITIVANJE ${upper}`;
+}
+
+function getReportCoverSubtitle(model = {}) {
+  return clean(model.coverSubtitle || model.reportCoverSubtitle || getReportServiceTitle(model));
+}
+
+function getMeasurementTableTitle(model = {}) {
+  return clean(model.measurementTableTitle || "Tablica 1. - rezultati ispitivanja");
+}
+
 function drawDefaultHeader(page, model, fonts, y = TOP_Y) {
   const x = MARGIN_X;
   const width = PAGE_WIDTH - (MARGIN_X * 2);
@@ -397,11 +420,15 @@ function drawUploadedHeader(page, model, image, fonts, y = TOP_Y) {
   return imageY - 18;
 }
 
-function drawSimpleHeader(page, model, fonts, { showCode = true } = {}) {
+function drawSimpleHeader(page, model, fonts) {
   const x = MARGIN_X;
   const y = TOP_Y;
   const width = PAGE_WIDTH - (MARGIN_X * 2);
-  const height = 64;
+  const height = 66;
+  const innerWidth = width - 130;
+  const serviceTitle = getReportServiceTitle(model);
+  const serviceFontSize = serviceTitle.length > 62 ? 9 : 10.2;
+  const serviceLines = wrapText(serviceTitle, fonts.bold, serviceFontSize, innerWidth).slice(0, 2);
   page.drawRectangle({
     x,
     y: y - height,
@@ -427,24 +454,16 @@ function drawSimpleHeader(page, model, fonts, { showCode = true } = {}) {
     font: fonts.bold,
     size: 10.2,
   });
-  drawTextLine(page, "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE", {
-    x,
-    y: y - 36,
-    width,
-    align: "center",
-    font: fonts.bold,
-    size: 10.2,
-  });
-  if (showCode) {
-    drawTextLine(page, "IL - SPR", {
-      x,
-      y: y - 51,
-      width,
+  serviceLines.forEach((line, index) => {
+    drawTextLine(page, line, {
+      x: x + 65,
+      y: y - 37 - (index * 12),
+      width: innerWidth,
       align: "center",
-      font: fonts.regular,
-      size: 8.2,
+      font: fonts.bold,
+      size: serviceFontSize,
     });
-  }
+  });
   drawTextLine(page, clean(model.inspectionPlace), {
     x: x + 4,
     y: y - height + 14,
@@ -538,13 +557,15 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
     font: fonts.bold,
     size: 23,
   });
-  drawTextLine(page, "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE", {
+  drawTextBlock(page, getReportCoverSubtitle(model), {
     x: MARGIN_X,
     y: y - 40,
     width: PAGE_WIDTH - (MARGIN_X * 2),
     align: "center",
     font: fonts.bold,
     size: 10.4,
+    lineHeight: 13,
+    maxLines: 2,
   });
   y -= 70;
   y = drawSectionTitle(page, 1, "OPĆI PODACI", y, fonts);
@@ -570,7 +591,7 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
 
 function drawPageTwo(pdfDoc, model, fonts) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  let y = drawDefaultHeader(page, model, fonts);
+  let y = drawSimpleHeader(page, model, fonts);
   y = drawSectionTitle(page, 4, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
   y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 3, fontSize: 9, lineHeight: 12 });
   y -= 8;
@@ -725,8 +746,8 @@ function drawMeasurementTable(page, rows, y, fonts) {
 
 function drawPageThree(pdfDoc, model, rows, fonts) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  let y = drawSimpleHeader(page, model, fonts, { showCode: true });
-  drawTextLine(page, "Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete", {
+  let y = drawSimpleHeader(page, model, fonts);
+  drawTextLine(page, getMeasurementTableTitle(model), {
     x: MARGIN_X,
     y: y + 6,
     font: fonts.regular,
@@ -855,7 +876,7 @@ function drawSignatureText(page, model, fonts, x, y, width, {
 
 function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  let y = drawSimpleHeader(page, model, fonts, { showCode: false });
+  let y = drawSimpleHeader(page, model, fonts);
   drawTextLine(page, "Pregled i ispitivanje sukladno Tablici 1 obavili:", {
     x: MARGIN_X,
     y,
@@ -1570,11 +1591,11 @@ function drawBatchHandoverPageV2(pdfDoc, entries, fonts, handover = {}, signatur
   return { page, signatureFieldCount };
 }
 
-function createSprPdfDocument(title = "SPR zapisnik") {
+function createSprPdfDocument(title = "Zapisnik") {
   return PDFDocument.create().then((pdfDoc) => {
     pdfDoc.registerFontkit(fontkit);
-    pdfDoc.setTitle(clean(title || "SPR zapisnik"));
-    pdfDoc.setSubject("SafeNexus Izrada dokumentacije SPR");
+    pdfDoc.setTitle(clean(title || "Zapisnik"));
+    pdfDoc.setSubject("SafeNexus Izrada dokumentacije");
     pdfDoc.setCreator("SafeNexus browser PDF");
     pdfDoc.setProducer("SafeNexus browser PDF");
     return pdfDoc;
@@ -1586,7 +1607,7 @@ export async function generateDocumentationSprPdfBlob({
   rows = [],
   fileName = "",
 } = {}) {
-  const pdfDoc = await createSprPdfDocument(model.recordNumber || "SPR zapisnik");
+  const pdfDoc = await createSprPdfDocument(model.recordNumber || "Zapisnik");
   const fonts = await createDocumentationSprFonts(pdfDoc);
   const record = await appendDocumentationSprRecord(pdfDoc, model, rows, fonts);
 

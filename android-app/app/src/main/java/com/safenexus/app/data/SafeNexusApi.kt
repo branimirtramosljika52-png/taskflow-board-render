@@ -307,6 +307,16 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun updateWorkOrderNumber(workOrderId: String, workOrderNumber: String): Result<WorkOrder> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("workOrderNumber", workOrderNumber.trim())
+                .toString()
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
+        }
+    }
+
     suspend fun updateWorkOrderStatus(workOrderId: String, status: String): Result<WorkOrder> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()

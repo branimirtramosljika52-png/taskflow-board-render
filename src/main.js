@@ -2661,6 +2661,7 @@ const state = {
     tone: "",
   },
   workOrderRowMenu: null,
+  workOrderNumberMenu: null,
   documentTemplateRuntime: {
     mode: "builder",
     source: "",
@@ -29132,6 +29133,10 @@ function renderWorkOrderEditorSummary() {
   const titleNumber = document.createElement("span");
   titleNumber.className = "work-order-editor-title-number";
   titleNumber.textContent = activeId ? (workOrderNumber || "Radni nalog") : "Novi radni nalog";
+  if (activeId && getCanEditOperationalData()) {
+    titleNumber.classList.add("is-context-editable");
+    titleNumber.title = "Desni klik za promjenu broja RN-a";
+  }
   const titleMetaText = [
     companyName,
     String(workOrderHeadquartersInput.value || "").trim(),
@@ -56885,6 +56890,62 @@ const DOCUMENTATION_SPR_LAYOUT_PRESETS = Object.freeze([
   },
 ]);
 const DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET = "basic";
+const DOCUMENTATION_NATIVE_TEMPLATE_PRESETS = Object.freeze([
+  Object.freeze({
+    id: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
+    name: "SPR v1.0.0",
+    serviceCode: "SPR",
+    serviceName: "Sigurnosna panik rasvjeta",
+    reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE",
+    coverSubtitle: "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE",
+    measurementTableTitle: "Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete",
+  }),
+  Object.freeze({
+    id: "szomv-v1-0-0",
+    name: "SZOMV v1.0.0",
+    serviceCode: "SZOMV",
+    serviceName: "Vizualni pregled sustava za zaštitu od djelovanja munje",
+    reportTitle: "VIZUALNI PREGLED SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE",
+    coverSubtitle: "O VIZUALNOM PREGLEDU SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE NA GRAĐEVINAMA",
+    measurementTableTitle: "Tablica 1. - rezultati vizualnog pregleda sustava zaštite od munje",
+  }),
+  Object.freeze({
+    id: "tzin-v1-0-0",
+    name: "TZIN v1.0.0",
+    serviceCode: "TZIN",
+    serviceName: "Tipkalo za isklop električne instalacije",
+    reportTitle: "ISPITIVANJE TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE",
+    coverSubtitle: "O ISPITIVANJU TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE U SLUČAJU HITNOSTI",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja tipkala za isklop",
+  }),
+  Object.freeze({
+    id: "ves-v1-0-0",
+    name: "VES v1.0.0",
+    serviceCode: "VES",
+    serviceName: "Vježba evakuacije i spašavanja",
+    reportTitle: "IZVRŠENJE VJEŽBE EVAKUACIJE I SPAŠAVANJA",
+    coverSubtitle: "O IZVRŠENJU VJEŽBE EVAKUACIJE I SPAŠAVANJA",
+    measurementTableTitle: "Tablica 1. - pregled vježbe evakuacije i spašavanja",
+  }),
+  Object.freeze({
+    id: "eiz-v1-0-0",
+    name: "EIZ v1.0.0",
+    serviceCode: "EIZ",
+    serviceName: "Električne instalacije",
+    reportTitle: "ISPITIVANJE ELEKTRIČNIH INSTALACIJA",
+    coverSubtitle: "O ISPITIVANJU ELEKTRIČNIH INSTALACIJA",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja električnih instalacija",
+  }),
+  Object.freeze({
+    id: "szom-v1-0-0",
+    name: "SZOM v1.0.0",
+    serviceCode: "SZOM",
+    serviceName: "Sustav za zaštitu od djelovanja munje",
+    reportTitle: "PREGLED SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE",
+    coverSubtitle: "O PREGLEDU SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE NA GRAĐEVINAMA",
+    measurementTableTitle: "Tablica 1. - rezultati pregleda sustava zaštite od munje",
+  }),
+]);
 const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   companyName: "Tvrtka",
   companyOib: "OIB",
@@ -56988,6 +57049,9 @@ function createDefaultDocumentationSprModel() {
     serviceId: "",
     serviceCode: "SPR",
     serviceName: "Sigurnosna panik rasvjeta",
+    reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE",
+    coverSubtitle: "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE",
+    measurementTableTitle: "Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete",
     recordNumber: "25-1287-SPR",
     documentStatus: "U izradi",
     companyName: "PETROL d.o.o.",
@@ -57067,6 +57131,9 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     serviceId: "",
     serviceCode: "",
     serviceName: "",
+    reportTitle: "",
+    coverSubtitle: "",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja",
     recordNumber: "",
     documentStatus: "U izradi",
     companyName: "",
@@ -57525,23 +57592,61 @@ function normalizeDocumentationSprTemplateEntry(entry = null, index = 0) {
   };
 }
 
+function buildDocumentationNativeTemplateModel(preset = {}) {
+  const base = createDefaultDocumentationSprModel();
+  return {
+    ...base,
+    templateCode: preset.name || base.templateCode,
+    serviceCode: preset.serviceCode || base.serviceCode,
+    serviceName: preset.serviceName || base.serviceName,
+    reportTitle: preset.reportTitle || base.reportTitle,
+    coverSubtitle: preset.coverSubtitle || base.coverSubtitle,
+    measurementTableTitle: preset.measurementTableTitle || base.measurementTableTitle,
+    recordNumber: `25-1287-${preset.serviceCode || "SPR"}`,
+  };
+}
+
+function createDocumentationNativeTemplateEntries(timestamp = new Date().toISOString()) {
+  return DOCUMENTATION_NATIVE_TEMPLATE_PRESETS.map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    serviceBinding: {
+      serviceId: "",
+      serviceCode: preset.serviceCode,
+      serviceName: preset.serviceName,
+    },
+    model: cloneDocumentationSprModelForTemplate(buildDocumentationNativeTemplateModel(preset)),
+  }));
+}
+
+function mergeDocumentationNativeTemplateSeeds(templates = []) {
+  const nextTemplates = [...templates];
+  const existingIds = new Set(nextTemplates.map((entry) => String(entry.id || "").trim()).filter(Boolean));
+  const existingServiceCodes = new Set(nextTemplates
+    .map((entry) => String(entry.serviceBinding?.serviceCode || entry.model?.serviceCode || "").trim().toUpperCase())
+    .filter(Boolean));
+  createDocumentationNativeTemplateEntries("2026-01-01T00:00:00.000Z").forEach((seed) => {
+    const code = String(seed.serviceBinding?.serviceCode || "").trim().toUpperCase();
+    if (existingIds.has(seed.id) || (code && existingServiceCodes.has(code))) {
+      return;
+    }
+    existingIds.add(seed.id);
+    if (code) {
+      existingServiceCodes.add(code);
+    }
+    nextTemplates.push(seed);
+  });
+  return nextTemplates;
+}
+
 function createInitialDocumentationSprTemplateLibrary() {
-  const now = new Date().toISOString();
+  const now = "2026-01-01T00:00:00.000Z";
   return {
     version: 1,
     activeTemplateId: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
-    templates: [{
-      id: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
-      name: "SPR v1.0.0",
-      createdAt: now,
-      updatedAt: now,
-      serviceBinding: {
-        serviceId: "",
-        serviceCode: "SPR",
-        serviceName: "Sigurnosna panik rasvjeta",
-      },
-      model: cloneDocumentationSprModelForTemplate(createDefaultDocumentationSprModel()),
-    }],
+    templates: createDocumentationNativeTemplateEntries(now),
   };
 }
 
@@ -57551,7 +57656,7 @@ function normalizeDocumentationSprTemplateLibrary(value = null) {
     return createInitialDocumentationSprTemplateLibrary();
   }
   const seenIds = new Set();
-  const templates = source.templates
+  const templates = mergeDocumentationNativeTemplateSeeds(source.templates
     .map((entry, index) => normalizeDocumentationSprTemplateEntry(entry, index))
     .map((entry) => {
       if (!seenIds.has(entry.id)) {
@@ -57562,7 +57667,7 @@ function normalizeDocumentationSprTemplateLibrary(value = null) {
       seenIds.add(id);
       return { ...entry, id };
     })
-    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))));
   if (!templates.length) {
     return {
       version: 1,
@@ -59436,7 +59541,7 @@ function getDocumentationSprBatchDockGroups(entries = getDocumentationSprBatchEn
     return {
       workOrderId,
       workOrderNumber: summary.workOrderNumber,
-      templateTitle: summary.serviceCode || summary.serviceName || entry.templateName || "SPR zapisnik",
+      templateTitle: summary.serviceCode || summary.serviceName || entry.templateName || "Zapisnik",
       serviceCode: summary.serviceCode,
       serviceName: summary.serviceName,
       recordNumber: summary.recordNumber,
@@ -59518,7 +59623,7 @@ function createDocumentationSprBatchDockCard(group = {}, activeIndex = 0) {
     badge.textContent = item.serviceCode || item.timelineLabel || item.serviceName || "SPR";
     badge.title = [
       group.workOrderNumber ? `RN ${group.workOrderNumber}` : "",
-      item.serviceName || item.serviceCode || "SPR zapisnik",
+      item.serviceName || item.serviceCode || "Zapisnik",
       item.recordNumber ? `Zapisnik ${item.recordNumber}` : "",
       item.completion?.ok ? "Spremno" : (item.completion?.missing || []).join(", "),
     ].filter(Boolean).join(" · ");
@@ -60664,13 +60769,35 @@ function renderDocumentationSprPaperHeader(model, { useUploadedHeader = false } 
   `;
 }
 
-function renderDocumentationSprSimpleHeader(model, showCode = true) {
+function getDocumentationSprReportServiceTitle(model = documentationSprModel) {
+  const explicitTitle = String(model?.reportTitle || model?.reportHeaderTitle || model?.documentTitle || "").trim();
+  if (explicitTitle) {
+    return explicitTitle.toUpperCase();
+  }
+  const serviceName = String(model?.serviceName || model?.serviceBinding?.serviceName || model?.templateCode || "").trim();
+  if (!serviceName) {
+    return "ISPITIVANJE";
+  }
+  const upper = serviceName.toUpperCase();
+  return /^(O|ISPITIVANJE|PREGLED|VIZUALNI|IZVRSENJE|IZVRŠENJE)\b/.test(upper)
+    ? upper
+    : `ISPITIVANJE ${upper}`;
+}
+
+function getDocumentationSprCoverSubtitle(model = documentationSprModel) {
+  return String(model?.coverSubtitle || model?.reportCoverSubtitle || getDocumentationSprReportServiceTitle(model) || "").trim();
+}
+
+function getDocumentationSprMeasurementTableTitle(model = documentationSprModel) {
+  return String(model?.measurementTableTitle || "Tablica 1. - rezultati ispitivanja").trim();
+}
+
+function renderDocumentationSprSimpleHeader(model) {
   return `
     <div class="documentation-spr-paper-simple-header">
       <span class="documentation-spr-paper-rn">${escapeHtml(model.workOrderNumber)}</span>
       <strong>ISPITNI IZVJEŠTAJ</strong>
-      <strong>ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE</strong>
-      ${showCode ? "<span>IL - SPR</span>" : ""}
+      <strong>${escapeHtml(getDocumentationSprReportServiceTitle(model))}</strong>
       <span class="documentation-spr-paper-place">${escapeHtml(model.inspectionPlace)}</span>
     </div>
   `;
@@ -60708,7 +60835,7 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
       ${renderDocumentationSprPaperHeader(model, { useUploadedHeader: true })}
       <div class="documentation-spr-paper-title">
         <h2>ZAPISNIK</h2>
-        <strong>O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE</strong>
+        <strong>${escapeHtml(getDocumentationSprCoverSubtitle(model))}</strong>
       </div>
       ${renderDocumentationSprSectionTitle(1, "OPĆI PODACI")}
       <table class="documentation-spr-paper-kv">
@@ -60733,7 +60860,7 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
 function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
   return `
     <section class="documentation-spr-paper">
-      ${renderDocumentationSprPaperHeader(model)}
+      ${renderDocumentationSprSimpleHeader(model)}
       ${renderDocumentationSprSectionTitle(4, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
       ${renderDocumentationSprSectionTitle(5, "REZULTATI ISPITIVANJA")}
@@ -60759,8 +60886,8 @@ function renderDocumentationSprMeasurementTableRows(rows) {
 function renderDocumentationSprPageThree(model, rows, pageNumber = 3, totalPages = 4) {
   return `
     <section class="documentation-spr-paper">
-      ${renderDocumentationSprSimpleHeader(model, true)}
-      <div class="documentation-spr-paper-measure-title">Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete</div>
+      ${renderDocumentationSprSimpleHeader(model)}
+      <div class="documentation-spr-paper-measure-title">${escapeHtml(getDocumentationSprMeasurementTableTitle(model))}</div>
       <table class="documentation-spr-paper-measure-table">
         <thead>
           <tr>
@@ -60807,7 +60934,7 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
   const recommendations = renderDocumentationSprLineList(model.recommendations);
   return `
     <section class="documentation-spr-paper">
-      ${renderDocumentationSprSimpleHeader(model, false)}
+      ${renderDocumentationSprSimpleHeader(model)}
       <strong>Potpis odgovorne osobe:</strong>
       <div class="documentation-spr-paper-signature-area">
         <div></div>
@@ -61978,7 +62105,7 @@ function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
     serviceId: model.serviceId || model.serviceBinding?.serviceId || exportEntry.serviceId || "",
     serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || exportEntry.serviceCode || "SPR",
     serviceName: model.serviceName || model.serviceBinding?.serviceName || exportEntry.serviceName || "",
-    templateTitle: model.templateCode || exportEntry.serviceCode || "SPR zapisnik",
+    templateTitle: model.templateCode || exportEntry.serviceCode || "Zapisnik",
     documentType: "Zapisnik",
     companyId: String(workOrder.companyId || "").trim(),
     locationId: String(workOrder.locationId || "").trim(),
@@ -62048,7 +62175,7 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
         preferredField: mode === "digital" ? signatureMetadata.primary?.fieldName || "" : "",
         signatureFieldsJson: mode === "digital" ? signatureMetadata.signatureFieldsJson : "",
         description: [
-          `SPR zapisnik ${model.recordNumber || fileName} za RN ${model.workOrderNumber || exportEntry.workOrderNumber || ""}.`,
+          `${getDocumentationSprServiceCode(model)} zapisnik ${model.recordNumber || fileName} za RN ${model.workOrderNumber || exportEntry.workOrderNumber || ""}.`,
           mode === "digital"
             ? "PDF je spremljen iz Izrade dokumentacije i čeka digitalni potpis."
             : "PDF je spremljen iz Izrade dokumentacije sa scan potpisom.",
@@ -62067,7 +62194,7 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
     response.documentRecords.forEach((record) => upsertDocumentTemplatePreviousRecordCache(record));
   }
   if (Array.isArray(response?.documentRecordWarnings) && response.documentRecordWarnings.length > 0) {
-    console.warn("SPR zapisnik nije potpuno povezan za ponovno korištenje.", response.documentRecordWarnings);
+    console.warn("Zapisnik nije potpuno povezan za ponovno korištenje.", response.documentRecordWarnings);
   }
   return savedItem;
 }
@@ -62089,7 +62216,7 @@ async function queueDocumentationSprForDigitalSignature() {
   }
   const exportEntries = getDocumentationSprSignatureExportEntries();
   if (!exportEntries.length) {
-    setDocumentationSprStatus("Nema SPR zapisnika za potpis", "saving");
+    setDocumentationSprStatus("Nema zapisnika za potpis", "saving");
     return;
   }
   const generator = await loadDocumentationSprPdfGenerator();
@@ -71100,7 +71227,7 @@ function normalizeDocumentTemplateSignatureServiceCode(value = "") {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, " ")
     .trim();
-  const known = ["SPR", "ZNR", "TZIN", "TIPKALO", "PANIK"];
+  const known = ["SPR", "ZNR", "TZIN", "EIZ", "SZOMV", "SZOM", "VES", "TIPKALO", "PANIK"];
   const knownMatch = known.find((code) => new RegExp(`\\b${code}\\b`, "i").test(direct));
   if (knownMatch) {
     return knownMatch === "PANIK" ? "SPR" : knownMatch;
@@ -96604,6 +96731,7 @@ function openWorkOrderEditor() {
 
 function closeWorkOrderEditor({ reset = false } = {}) {
   clearWorkOrderAutoSaveTimer();
+  closeWorkOrderNumberMenu();
   state.workOrderEditorOpen = false;
   renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
@@ -124087,6 +124215,194 @@ function closeWorkOrderRowMenu() {
   state.workOrderRowMenu = null;
 }
 
+function closeWorkOrderNumberMenu() {
+  const menuElement = state.workOrderNumberMenu?.element;
+  if (menuElement instanceof HTMLElement) {
+    menuElement.remove();
+  }
+  state.workOrderNumberMenu = null;
+}
+
+function getActiveWorkOrderEditorItem() {
+  const activeId = String(workOrderIdInput?.value || "").trim();
+  if (!activeId) {
+    return null;
+  }
+
+  return (state.workOrders ?? []).find((item) => String(item.id) === activeId) ?? {
+    id: activeId,
+    workOrderNumber: String(workOrderNumberPreview?.textContent || "")
+      .replace(/^Uredujes\s+/i, "")
+      .replace(/^Uređuješ\s+/i, "")
+      .replace(/^RN\s+/i, "")
+      .trim(),
+  };
+}
+
+async function saveActiveWorkOrderNumber(nextNumber = "", submitButton = null) {
+  const activeWorkOrder = getActiveWorkOrderEditorItem();
+  const activeId = String(activeWorkOrder?.id || "").trim();
+  const normalizedNumber = String(nextNumber || "").trim();
+  const currentNumber = String(activeWorkOrder?.workOrderNumber || "").trim();
+
+  if (!activeId) {
+    setInlineMessage(workOrderError, "Prvo spremi RN pa možeš promijeniti broj.");
+    return false;
+  }
+
+  if (!normalizedNumber) {
+    setInlineMessage(workOrderError, "Upiši broj radnog naloga.");
+    return false;
+  }
+
+  if (normalizedNumber === currentNumber) {
+    closeWorkOrderNumberMenu();
+    return true;
+  }
+
+  const originalButtonText = submitButton?.textContent || "";
+  if (submitButton instanceof HTMLButtonElement) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Spremam...";
+  }
+  setWorkOrderSaveState("saving", "Spremam broj RN-a...");
+
+  const success = await runMutation(() => apiRequest(`/work-orders/${encodeURIComponent(activeId)}`, {
+    method: "PATCH",
+    body: {
+      workOrderNumber: normalizedNumber,
+    },
+  }), workOrderError);
+
+  if (submitButton instanceof HTMLButtonElement) {
+    submitButton.disabled = false;
+    submitButton.textContent = originalButtonText || "Promijeni";
+  }
+
+  if (!success) {
+    setWorkOrderSaveState("error", workOrderError?.textContent || "Promjena broja RN-a nije uspjela.");
+    return false;
+  }
+
+  const updated = (state.workOrders ?? []).find((item) => String(item.id) === activeId) ?? {
+    ...activeWorkOrder,
+    workOrderNumber: normalizedNumber,
+  };
+  if (workOrderNumberPreview) {
+    workOrderNumberPreview.textContent = `Uredujes ${updated.workOrderNumber || normalizedNumber}`;
+  }
+  renderWorkOrderEditorSummary();
+  renderWorkOrderWorkspace();
+  queueGeneratedWorkOrderPdfSave(activeId);
+  setWorkOrderSaveState("saved", "Broj RN-a je promijenjen.");
+  closeWorkOrderNumberMenu();
+  return true;
+}
+
+function openWorkOrderNumberMenu(event) {
+  if (!workOrderEditorTitle || !state.workOrderEditorOpen || !getCanEditOperationalData()) {
+    return;
+  }
+
+  const target = event?.target instanceof HTMLElement ? event.target : null;
+  if (!target?.closest(".work-order-editor-title-number")) {
+    return;
+  }
+
+  const activeWorkOrder = getActiveWorkOrderEditorItem();
+  const activeId = String(activeWorkOrder?.id || "").trim();
+  if (!activeId) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  closeOpenWorkOrderStatusMenus();
+  closeWorkOrderRowMenu();
+  closeWorkOrderNumberMenu();
+
+  const menu = document.createElement("form");
+  menu.className = "work-order-row-context-menu work-order-number-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.dataset.preventRowOpen = "true";
+
+  const header = document.createElement("div");
+  header.className = "work-order-row-context-head";
+  const title = document.createElement("strong");
+  title.textContent = "Broj radnog naloga";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = activeWorkOrder.workOrderNumber
+    ? `Trenutno: ${activeWorkOrder.workOrderNumber}`
+    : "RN nema upisan broj";
+  header.append(title, subtitle);
+
+  const field = document.createElement("label");
+  field.className = "work-order-row-context-field";
+  const fieldLabel = document.createElement("span");
+  fieldLabel.textContent = "Novi broj RN-a";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = String(activeWorkOrder.workOrderNumber || "").trim();
+  input.placeholder = "npr. 26-664";
+  input.autocomplete = "off";
+  field.append(fieldLabel, input);
+
+  const shortcuts = document.createElement("div");
+  shortcuts.className = "work-order-row-context-shortcuts";
+  const quickButton = document.createElement("button");
+  quickButton.type = "button";
+  quickButton.className = "work-order-row-context-shortcut";
+  quickButton.textContent = "Promijeni";
+  quickButton.addEventListener("click", (clickEvent) => {
+    clickEvent.preventDefault();
+    clickEvent.stopPropagation();
+    input.focus({ preventScroll: true });
+    input.select();
+  });
+  shortcuts.append(quickButton);
+
+  const actions = document.createElement("div");
+  actions.className = "work-order-row-context-actions";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "ghost-button";
+  cancelButton.textContent = "Odustani";
+  cancelButton.addEventListener("click", (clickEvent) => {
+    clickEvent.preventDefault();
+    closeWorkOrderNumberMenu();
+  });
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = "Spremi broj";
+  actions.append(cancelButton, saveButton);
+
+  menu.append(header, shortcuts, field, actions);
+  menu.addEventListener("click", (clickEvent) => {
+    clickEvent.stopPropagation();
+  });
+  menu.addEventListener("contextmenu", (contextEvent) => {
+    contextEvent.preventDefault();
+    contextEvent.stopPropagation();
+  });
+  menu.addEventListener("submit", (submitEvent) => {
+    submitEvent.preventDefault();
+    void saveActiveWorkOrderNumber(input.value, saveButton);
+  });
+
+  document.body.append(menu);
+  const rect = menu.getBoundingClientRect();
+  const pointerX = Number(event?.clientX || 0);
+  const pointerY = Number(event?.clientY || 0);
+  const left = Math.min(Math.max(pointerX + 8, 12), Math.max(12, window.innerWidth - rect.width - 12));
+  const top = Math.min(Math.max(pointerY + 8, 12), Math.max(12, window.innerHeight - rect.height - 12));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  state.workOrderNumberMenu = { element: menu, workOrderId: activeId };
+  input.focus({ preventScroll: true });
+  input.select();
+}
+
 function getWorkOrderRowMenuTargets(workOrder = {}) {
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   if (selectedWorkOrders.length > 0) {
@@ -142393,11 +142709,14 @@ workOrderForm.addEventListener("submit", (event) => {
 
 workOrderResetButton.addEventListener("click", resetWorkOrderForm);
 workOrderEditorCloseButton?.addEventListener("click", () => {
+  closeWorkOrderNumberMenu();
   closeWorkOrderEditor({ reset: true });
 });
 workOrderEditorBackdrop?.addEventListener("click", () => {
+  closeWorkOrderNumberMenu();
   closeWorkOrderEditor({ reset: true });
 });
+workOrderEditorTitle?.addEventListener("contextmenu", openWorkOrderNumberMenu);
 workOrderOpenFormButton?.addEventListener("click", () => {
   focusWorkOrderComposer();
 });
@@ -149716,6 +150035,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (state.workOrderNumberMenu && event.key === "Escape") {
+    closeWorkOrderNumberMenu();
+    return;
+  }
+
   if (state.workOrderRowMenu && event.key === "Escape") {
     closeWorkOrderRowMenu();
     return;
@@ -150075,6 +150399,13 @@ document.addEventListener("click", (event) => {
     const clickedWorkOrderRowMenu = state.workOrderRowMenu.element?.contains(event.target);
     if (!clickedWorkOrderRowMenu) {
       closeWorkOrderRowMenu();
+    }
+  }
+
+  if (state.workOrderNumberMenu && event.target instanceof Node) {
+    const clickedWorkOrderNumberMenu = state.workOrderNumberMenu.element?.contains(event.target);
+    if (!clickedWorkOrderNumberMenu) {
+      closeWorkOrderNumberMenu();
     }
   }
 

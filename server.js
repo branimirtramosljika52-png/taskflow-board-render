@@ -105,7 +105,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.238.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.240.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1140,6 +1140,48 @@ const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
     serviceType: "inspection",
     validityMonths: "36",
     note: "Standardna usluga za zapisnik fizikalnih čimbenika radnog okoliša i periodiku.",
+  }),
+  Object.freeze({
+    name: "Sigurnosna panik rasvjeta",
+    serviceCode: "SPR",
+    serviceType: "inspection",
+    validityMonths: "12",
+    note: "Native zapisnik iz modula Izrada dokumentacije.",
+  }),
+  Object.freeze({
+    name: "Vizualni pregled sustava za zaštitu od djelovanja munje",
+    serviceCode: "SZOMV",
+    serviceType: "inspection",
+    validityMonths: "12",
+    note: "Native zapisnik iz modula Izrada dokumentacije.",
+  }),
+  Object.freeze({
+    name: "Tipkalo za isklop električne instalacije",
+    serviceCode: "TZIN",
+    serviceType: "inspection",
+    validityMonths: "12",
+    note: "Native zapisnik iz modula Izrada dokumentacije.",
+  }),
+  Object.freeze({
+    name: "Vježba evakuacije i spašavanja",
+    serviceCode: "VES",
+    serviceType: "inspection",
+    validityMonths: "24",
+    note: "Native zapisnik iz modula Izrada dokumentacije.",
+  }),
+  Object.freeze({
+    name: "Električne instalacije",
+    serviceCode: "EIZ",
+    serviceType: "inspection",
+    validityMonths: "12",
+    note: "Native zapisnik iz modula Izrada dokumentacije.",
+  }),
+  Object.freeze({
+    name: "Sustav za zaštitu od djelovanja munje",
+    serviceCode: "SZOM",
+    serviceType: "inspection",
+    validityMonths: "12",
+    note: "Native zapisnik iz modula Izrada dokumentacije.",
   }),
   Object.freeze({
     name: "Pregled vida",
@@ -9265,6 +9307,45 @@ function assertHandoverUsesWordTemplate(entry = {}, template = {}) {
   }
 }
 
+function resolveMobileTemplateForExportEntry(documentTemplates = [], entry = {}, scopedSnapshot = {}) {
+  const normalizedTemplateId = normalizeInputValue(entry?.templateId);
+  const scopedTemplate = (Array.isArray(documentTemplates) ? documentTemplates : [])
+    .find((template) => normalizeInputValue(template?.id) === normalizedTemplateId);
+  if (scopedTemplate) {
+    return scopedTemplate;
+  }
+
+  const workOrder = (Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [])
+    .find((item) => normalizeInputValue(item?.id) === normalizeInputValue(entry?.workOrderId));
+  const nativeIdMatch = normalizedTemplateId.match(/^native-([a-z0-9]+)-(\d+)$/i);
+  const serviceIndex = Math.max(
+    0,
+    Number.parseInt(entry?.serviceIndex ?? nativeIdMatch?.[2] ?? "0", 10) || 0,
+  );
+  const serviceCode = normalizeInputValue(
+    entry?.serviceCode
+      || entry?.code
+      || nativeIdMatch?.[1]?.toUpperCase()
+      || entry?.templateTitle
+      || entry?.documentType,
+  );
+  const nativeTemplate = buildMobileNativeDocumentationTemplate({
+    ...entry,
+    serviceCode,
+    code: serviceCode,
+    name: entry?.serviceName || entry?.documentType || entry?.templateTitle || serviceCode,
+  }, serviceIndex, workOrder || {}, scopedSnapshot);
+  if (nativeTemplate) {
+    return nativeTemplate;
+  }
+
+  return assertInScope(
+    documentTemplates,
+    entry?.templateId,
+    "Template nije pronaden.",
+  );
+}
+
 function hasTemplateRenderPdfModel(value = null) {
   return Boolean(
     value
@@ -9297,11 +9378,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
   const pdfBuffers = [];
 
   for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
-    const template = assertInScope(
-      documentTemplates,
-      entry?.templateId,
-      "Template nije pronaden.",
-    );
+    const template = resolveMobileTemplateForExportEntry(documentTemplates, entry, scopedSnapshot);
     assertHandoverUsesWordTemplate(entry, template);
     if (isMobileDocumentationSprEntry(entry, template)) {
       const workOrder = assertInScope(workOrders, entry?.workOrderId, "Radni nalog nije pronaden.");
@@ -9436,11 +9513,7 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
   );
 
   const pdfFiles = await mapWithConcurrency(entries, concurrency, async (entry, entryIndex) => {
-    const template = assertInScope(
-      documentTemplates,
-      entry?.templateId,
-      "Template nije pronaden.",
-    );
+    const template = resolveMobileTemplateForExportEntry(documentTemplates, entry, scopedSnapshot);
     assertHandoverUsesWordTemplate(entry, template);
     const fileName = ensureUniquePdfZipFileName(
       entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}`,
@@ -9712,11 +9785,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
   let sprPdfMs = 0;
 
   for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
-    const template = assertInScope(
-      documentTemplates,
-      entry?.templateId,
-      "Template nije pronaden.",
-    );
+    const template = resolveMobileTemplateForExportEntry(documentTemplates, entry, scopedSnapshot);
     assertHandoverUsesWordTemplate(entry, template);
     const fallbackName = `zapisnik-${entryIndex + 1}`;
     const sourceName = entry?.fileName || template.outputFileName || template.title || fallbackName;
@@ -9902,11 +9971,7 @@ async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSna
   const htmlEntries = [];
 
   for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
-    const template = assertInScope(
-      documentTemplates,
-      entry?.templateId,
-      "Template nije pronađen.",
-    );
+    const template = resolveMobileTemplateForExportEntry(documentTemplates, entry, scopedSnapshot);
 
     if (isMobileDocumentationSprEntry(entry, template)) {
       return null;
@@ -22816,6 +22881,318 @@ function buildMobileRulebookOptions(scopedSnapshot = {}) {
     .sort((left, right) => left.label.localeCompare(right.label, "hr", { numeric: true, sensitivity: "base" }));
 }
 
+const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze([
+  Object.freeze({
+    serviceCode: "SPR",
+    serviceName: "Sigurnosna panik rasvjeta",
+    title: "SPR v1.0.0",
+    documentType: "Sigurnosna panik rasvjeta",
+    reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE",
+    coverSubtitle: "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE",
+    measurementTableTitle: "Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete",
+    signatureAreas: ["elektro"],
+  }),
+  Object.freeze({
+    serviceCode: "SZOMV",
+    serviceName: "Vizualni pregled sustava za zaštitu od djelovanja munje",
+    title: "SZOMV v1.0.0",
+    documentType: "Vizualni pregled sustava za zaštitu od djelovanja munje",
+    reportTitle: "VIZUALNI PREGLED SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE",
+    coverSubtitle: "O VIZUALNOM PREGLEDU SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE NA GRAĐEVINAMA",
+    measurementTableTitle: "Tablica 1. - rezultati vizualnog pregleda sustava zaštite od munje",
+    signatureAreas: ["elektro"],
+  }),
+  Object.freeze({
+    serviceCode: "TZIN",
+    serviceName: "Tipkalo za isklop električne instalacije",
+    title: "TZIN v1.0.0",
+    documentType: "Tipkalo za isklop električne instalacije",
+    reportTitle: "ISPITIVANJE TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE",
+    coverSubtitle: "O ISPITIVANJU TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE U SLUČAJU HITNOSTI",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja tipkala za isklop",
+    signatureAreas: ["tipkalo", "elektro"],
+  }),
+  Object.freeze({
+    serviceCode: "VES",
+    serviceName: "Vježba evakuacije i spašavanja",
+    title: "VES v1.0.0",
+    documentType: "Vježba evakuacije i spašavanja",
+    reportTitle: "IZVRŠENJE VJEŽBE EVAKUACIJE I SPAŠAVANJA",
+    coverSubtitle: "O IZVRŠENJU VJEŽBE EVAKUACIJE I SPAŠAVANJA",
+    measurementTableTitle: "Tablica 1. - pregled vježbe evakuacije i spašavanja",
+    signatureAreas: ["elektro"],
+  }),
+  Object.freeze({
+    serviceCode: "EIZ",
+    serviceName: "Električne instalacije",
+    title: "EIZ v1.0.0",
+    documentType: "Električne instalacije",
+    reportTitle: "ISPITIVANJE ELEKTRIČNIH INSTALACIJA",
+    coverSubtitle: "O ISPITIVANJU ELEKTRIČNIH INSTALACIJA",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja električnih instalacija",
+    signatureAreas: ["elektro"],
+  }),
+  Object.freeze({
+    serviceCode: "SZOM",
+    serviceName: "Sustav za zaštitu od djelovanja munje",
+    title: "SZOM v1.0.0",
+    documentType: "Sustav za zaštitu od djelovanja munje",
+    reportTitle: "PREGLED SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE",
+    coverSubtitle: "O PREGLEDU SUSTAVA ZA ZAŠTITU OD DJELOVANJA MUNJE NA GRAĐEVINAMA",
+    measurementTableTitle: "Tablica 1. - rezultati pregleda sustava zaštite od munje",
+    signatureAreas: ["elektro"],
+  }),
+]);
+
+function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0) {
+  const serviceText = normalizeMobileSprLookupText([
+    service?.serviceCode,
+    service?.code,
+    service?.shortLabel,
+    service?.name,
+    service?.serviceName,
+    service?.title,
+    `USLUGA-${serviceIndex + 1}`,
+  ].filter(Boolean).join(" "));
+  if (!serviceText) {
+    return null;
+  }
+  return MOBILE_NATIVE_DOCUMENTATION_PRESETS.find((preset) => {
+    const code = normalizeMobileSprLookupText(preset.serviceCode);
+    const name = normalizeMobileSprLookupText(preset.serviceName);
+    return serviceText === code
+      || serviceText.includes(code)
+      || (name && serviceText.includes(name))
+      || (code === "SPR" && (serviceText.includes("panik rasvjet") || serviceText.includes("sigurnosna rasvjet")))
+      || (code === "TZIN" && (serviceText.includes("tipkalo") || serviceText.includes("isklop")))
+      || (code === "EIZ" && serviceText.includes("elektricn"))
+      || (code === "VES" && serviceText.includes("evakuacij"))
+      || (code === "SZOM" && serviceText.includes("zastitu od djelovanja munje"))
+      || (code === "SZOMV" && serviceText.includes("vizual"));
+  }) || null;
+}
+
+function buildMobileNativeDocumentationField(id, label, type = "text", {
+  required = false,
+  defaultValue = "",
+  helpText = "",
+  options = [],
+} = {}) {
+  return {
+    id,
+    key: id,
+    tokenKey: id.toUpperCase().replace(/[^A-Z0-9]+/g, "_"),
+    label,
+    type,
+    required,
+    helpText,
+    defaultValue,
+    options,
+    signatureArea: "",
+    signatureRole: "",
+    signatureMultiple: true,
+    signatureMetaFields: [],
+  };
+}
+
+function buildMobileNativeDocumentationBlock(id, label, type = "text", {
+  group = "Zapisnik",
+  typeLabel = "",
+  required = false,
+  editable = false,
+  summary = "",
+  helpText = "",
+  signatureArea = "",
+  signatureRole = "",
+  signatureMultiple = true,
+  options = [],
+} = {}) {
+  return {
+    id,
+    key: id,
+    tokenKey: id.toUpperCase().replace(/[^A-Z0-9]+/g, "_"),
+    label,
+    type,
+    typeLabel: typeLabel || type,
+    group,
+    required,
+    editable,
+    helpText,
+    summary,
+    options,
+    signatureArea,
+    signatureRole,
+    signatureMultiple,
+    signatureMetaFields: [],
+  };
+}
+
+function buildMobileNativeDocumentationMeasurementTable(preset = {}) {
+  const columns = [
+    ["number", "R. br.", "1", 76],
+    ["place", "Mjesto ispitivanja", "Prostor / mjesto", 220],
+    ["count", "Broj", "Količina", 96],
+    ["measured", "Izmjereno", "Vrijednost", 112],
+    ["required", "Zahtjev", "Minimalno", 112],
+    ["result", "Zadovoljava", "DA/NE", 112],
+  ].map(([id, label, placeholder, width]) => ({
+    id,
+    label,
+    placeholder,
+    width,
+    computed: "",
+    readonly: false,
+  }));
+  return {
+    id: "gridline-results",
+    key: "gridline-results",
+    tokenKey: "GRIDLINE_RESULTS",
+    label: "Rezultati ispitivanja",
+    helpText: "Gridline tablica popunjava rezultate za odabranu uslugu.",
+    summary: preset.measurementTableTitle || "Rezultati ispitivanja",
+    sheet: {
+      columns,
+      rows: [],
+      merges: [],
+      headerRows: [],
+    },
+  };
+}
+
+function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, workOrder = {}, scopedSnapshot = {}) {
+  void scopedSnapshot;
+  const preset = getMobileNativeDocumentationPresetForService(service, serviceIndex);
+  if (!preset) {
+    return null;
+  }
+  const serviceWithCode = {
+    ...service,
+    serviceCode: preset.serviceCode,
+    code: preset.serviceCode,
+    name: normalizeInputValue(service?.name || service?.serviceName || service?.title || preset.serviceName) || preset.serviceName,
+  };
+  const documentNumber = buildMobileDocumentTemplateDocumentNumber(serviceWithCode, workOrder, preset, serviceIndex);
+  const fields = [
+    buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
+      defaultValue: "Preporuke",
+      helpText: "Napomene ili preporuke za korisnika.",
+    }),
+    buildMobileNativeDocumentationField("defects", "Nedostaci", "textarea", {
+      required: false,
+      defaultValue: "Nedostaci",
+      helpText: "Prikazuje se samo ako zapisnik ne zadovoljava.",
+    }),
+    buildMobileNativeDocumentationField("resultStatus", "Zadovoljava", "toggle", {
+      required: true,
+      defaultValue: "true",
+      options: [
+        { value: "true", label: "Zadovoljava" },
+        { value: "false", label: "Ne zadovoljava" },
+      ],
+    }),
+  ];
+  const area = preset.signatureAreas?.[0] || "elektro";
+  const fieldBlocks = [
+    buildMobileNativeDocumentationBlock("chapter-basic", "Osnovni podaci", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: "Tvrtka, objekt, datumi, broj zapisnika i vrsta ispitivanja.",
+    }),
+    buildMobileNativeDocumentationBlock("documentNumber", "Broj zapisnika", "text", { group: "Osnovni podaci", summary: documentNumber }),
+    buildMobileNativeDocumentationBlock("inspectionDate", "Datum ispitivanja", "date", { group: "Osnovni podaci" }),
+    buildMobileNativeDocumentationBlock("issuedDate", "Datum izdavanja", "date", { group: "Osnovni podaci" }),
+    buildMobileNativeDocumentationBlock("testingLocation", "Mjesto ispitivanja", "text", { group: "Osnovni podaci" }),
+    buildMobileNativeDocumentationBlock("inspectionType", "Vrsta ispitivanja", "select", { group: "Osnovni podaci" }),
+    buildMobileNativeDocumentationBlock("chapter-equipment", "Mjerna i ispitna oprema", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: "Oprema se bira iz modula Mjerna oprema.",
+    }),
+    buildMobileNativeDocumentationBlock("equipment", "Mjerna oprema", "equipment_list", { group: "Mjerna i ispitna oprema" }),
+    buildMobileNativeDocumentationBlock("chapter-legal", "Primijenjeni propisi", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: "Propisi se biraju iz Legal framework modula.",
+    }),
+    buildMobileNativeDocumentationBlock("legal", "Primijenjeni propisi", "legal_list", { group: "Primijenjeni propisi" }),
+    buildMobileNativeDocumentationBlock("chapter-people", "Osobe i ovlaštenja", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: "Ispitivači i odgovorna osoba povlače se iz People modula.",
+    }),
+    buildMobileNativeDocumentationBlock("inspectors", "Ispitivači", "qualified_inspectors", {
+      group: "Osobe i ovlaštenja",
+      signatureArea: area,
+      signatureRole: "inspect",
+      signatureMultiple: true,
+    }),
+    buildMobileNativeDocumentationBlock("responsiblePerson", "Odgovorna osoba", "authorization_holder_signature", {
+      group: "Osobe i ovlaštenja",
+      signatureArea: area,
+      signatureRole: "authorize",
+      signatureMultiple: false,
+    }),
+    buildMobileNativeDocumentationBlock("chapter-measurements", "Rezultati ispitivanja", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: preset.measurementTableTitle || "Gridline rezultati ispitivanja.",
+    }),
+    buildMobileNativeDocumentationBlock("gridline-results", "Gridline rezultati", "measurement_table", {
+      group: "Rezultati ispitivanja",
+      summary: "Otvori i popuni Gridline tablicu.",
+    }),
+    buildMobileNativeDocumentationBlock("chapter-conclusion", "Preporuke i zaključna ocjena", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: "Ocjena određuje prikaz nedostataka.",
+    }),
+    buildMobileNativeDocumentationBlock("recommendations", "Preporuke", "textarea", {
+      group: "Preporuke i zaključna ocjena",
+      editable: true,
+    }),
+    buildMobileNativeDocumentationBlock("resultStatus", "Zadovoljava", "toggle", {
+      group: "Preporuke i zaključna ocjena",
+      editable: true,
+      required: true,
+    }),
+    buildMobileNativeDocumentationBlock("defects", "Nedostaci", "textarea", {
+      group: "Preporuke i zaključna ocjena",
+      editable: true,
+    }),
+    buildMobileNativeDocumentationBlock("chapter-attachments", "Dodaj dokumente", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: "Prilozi se nastavljaju iza zapisnika.",
+    }),
+    buildMobileNativeDocumentationBlock("attachments", "Dodaj dokumente", "sketch_upload", {
+      group: "Dodaj dokumente",
+      summary: "Dodaj PDF, sken, kameru, slike ili datoteku iza zapisnika.",
+    }),
+  ];
+  return {
+    id: `native-${preset.serviceCode.toLowerCase()}-${serviceIndex}`,
+    title: preset.title,
+    documentType: preset.documentType,
+    serviceName: preset.serviceName,
+    serviceCode: preset.serviceCode,
+    serviceIndex,
+    signatureAreas: preset.signatureAreas || ["elektro"],
+    documentNumber,
+    documentName: `${buildMobileDocumentTemplateFileBaseName(preset, workOrder, documentNumber)}.pdf`,
+    dataSourceType: "template",
+    dataSourceTitle: preset.title,
+    dataSourceDate: "",
+    dataSourceWorkOrderNumber: "",
+    fields,
+    fieldBlocks,
+    inspectionTypeOptions: [
+      { value: "Periodično ispitivanje", label: "Periodično ispitivanje" },
+      { value: "Početno ispitivanje", label: "Početno ispitivanje" },
+      { value: "Izvanredno ispitivanje", label: "Izvanredno ispitivanje" },
+    ],
+    measurementTables: [buildMobileNativeDocumentationMeasurementTable(preset)],
+    aiFields: [],
+    aiMeasurementColumns: [],
+    reportTitle: preset.reportTitle,
+    coverSubtitle: preset.coverSubtitle,
+    measurementTableTitle: preset.measurementTableTitle,
+    exportKind: "documentation_spr",
+  };
+}
+
 function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot = {}) {
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
@@ -22828,6 +23205,25 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   let primaryDefaults = null;
 
   services.forEach((service, serviceIndex) => {
+    const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
+    if (nativeTemplate) {
+      const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
+      const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, latestRecord);
+      const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
+      if (!primaryDefaults && Object.keys(recordDefaults).length > 0) {
+        primaryDefaults = recordDefaults;
+      }
+      const templateServiceKey = `${serviceIndex}::native::${nativeTemplate.serviceCode}`;
+      if (!seenTemplateKeys.has(templateServiceKey)) {
+        seenTemplateKeys.add(templateServiceKey);
+        nativeTemplate.signatureAreas.forEach((area) => signatureAreaKeys.add(area));
+        templates.push({
+          ...nativeTemplate,
+          ...dataSource,
+        });
+      }
+      return;
+    }
     getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
       const template = templateById.get(String(templateId));
       if (!isActiveMobileDocumentTemplate(template)) {
@@ -23435,6 +23831,9 @@ function isMobileDocumentationSprEntry(entry = {}, template = {}) {
   if (["documentation spr", "spr browser", "spr"].includes(explicitKind)) {
     return true;
   }
+  if (["documentation native", "native documentation", "documentation_spr"].includes(explicitKind)) {
+    return true;
+  }
   const lookup = normalizeMobileSprLookupText([
     entry?.serviceCode,
     entry?.serviceName,
@@ -23445,11 +23844,18 @@ function isMobileDocumentationSprEntry(entry = {}, template = {}) {
     template?.serviceCode,
     template?.serviceName,
   ].filter(Boolean).join(" "));
+  const nativeCodes = /\b(spr|tzin|eiz|szomv|szom|ves)\b/;
   return /\bspr\b/.test(lookup)
+    || nativeCodes.test(lookup)
     || lookup.includes("sigurnosna panik")
     || lookup.includes("sigurnosna rasvjeta")
     || lookup.includes("panik rasvjet")
-    || lookup.includes("panic lighting");
+    || lookup.includes("panic lighting")
+    || lookup.includes("tipkalo")
+    || lookup.includes("isklop elektric")
+    || lookup.includes("elektricn")
+    || lookup.includes("evakuacij")
+    || lookup.includes("zastitu od djelovanja munje");
 }
 
 function getMobileSprFirstValue(source = {}, keys = []) {
@@ -23542,24 +23948,24 @@ function getMobileSprResponsibleUser(common = {}, scopedSnapshot = {}) {
   );
 }
 
-function getMobileSprSignatureOib(common = {}, scopedSnapshot = {}) {
+function getMobileSprSignatureOib(common = {}, scopedSnapshot = {}, area = "elektro") {
   const user = getMobileSprResponsibleUser(common, scopedSnapshot);
   return normalizeSignatureFieldOib(
-    getMobileUserDocumentOib(user, "elektro", scopedSnapshot)
+    getMobileUserDocumentOib(user, area, scopedSnapshot)
       || getMobileUserDocumentOib(
         findMobileScopedUserById(scopedSnapshot, common.electricalInspectorUserId || common.inspectorUserId),
-        "elektro",
+        area,
         scopedSnapshot,
       ),
   );
 }
 
-function getMobileSprQualificationValue(common = {}, scopedSnapshot = {}, key = "") {
+function getMobileSprQualificationValue(common = {}, scopedSnapshot = {}, key = "", area = "elektro") {
   const user = getMobileSprResponsibleUser(common, scopedSnapshot);
   if (!user) {
     return "";
   }
-  const qualification = getMobileUserQualificationForArea(user, "elektro");
+  const qualification = getMobileUserQualificationForArea(user, area);
   return normalizeInputValue(qualification?.[key]);
 }
 
@@ -23676,9 +24082,10 @@ function buildMobileDocumentationSprModel({
       || entry.locationName
       || workOrder.locationName,
   );
-  const responsiblePerson = getMobileSprPersonText(common, scopedSnapshot, "elektro", "authorize")
+  const signatureArea = normalizeMobileQualificationAreaKey(template.signatureAreas?.[0] || entry.signatureArea || "elektro");
+  const responsiblePerson = getMobileSprPersonText(common, scopedSnapshot, signatureArea, "authorize")
     || getMobileSprFirstValue(placeholders, ["ODGOVORNA_OSOBA", "RESPONSIBLE_PERSON", "POTPISNIK"]);
-  const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot);
+  const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot, signatureArea);
   const serviceCode = normalizeInputValue(entry.serviceCode || placeholders.SIFRA_USLUGE || "SPR");
   const inspectionDate = normalizeDateOnlyValue(entry.inspectionDate || common.inspectionDate);
   const issuedDate = normalizeDateOnlyValue(entry.issuedDate || common.issuedDate || inspectionDate);
@@ -23705,6 +24112,9 @@ function buildMobileDocumentationSprModel({
     serviceId: "",
     serviceCode,
     serviceName: normalizeInputValue(entry.serviceName || template.documentType || "Sigurnosna panik rasvjeta"),
+    reportTitle: normalizeInputValue(template.reportTitle || entry.reportTitle),
+    coverSubtitle: normalizeInputValue(template.coverSubtitle || entry.coverSubtitle),
+    measurementTableTitle: normalizeInputValue(template.measurementTableTitle || entry.measurementTableTitle),
     recordNumber: normalizeInputValue(entry.documentNumber || placeholders.BROJ_ZAPISNIKA || placeholders.DOCUMENT_NUMBER),
     documentStatus: "Generirano",
     companyName: normalizeInputValue(entry.companyName || workOrder.companyName || placeholders.TVRTKA || placeholders.COMPANY_NAME),
@@ -23726,12 +24136,12 @@ function buildMobileDocumentationSprModel({
     resultsText: getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"]),
     eiNote: "Ei - izmjereno osvijetljenje sigurnosne rasvjete duž evakuacijskih puteva, te kod izlaza iz prostorija na visini 0,20 m od poda prostorije [Lux]",
     eiminNote: "Eimin - zahtijevano minimalno osvijetljenje sigurnosne rasvjete na visini 0.20 m od poda prostorije [Lux]",
-    inspectors: getMobileSprPersonText(common, scopedSnapshot, "elektro", "inspect"),
+    inspectors: getMobileSprPersonText(common, scopedSnapshot, signatureArea, "inspect"),
     responsiblePerson,
-    signatureClass: getMobileSprQualificationValue(common, scopedSnapshot, "classCode")
-      || getMobileSprQualificationValue(common, scopedSnapshot, "data1"),
-    signatureNumber: getMobileSprQualificationValue(common, scopedSnapshot, "urbroj")
-      || getMobileSprQualificationValue(common, scopedSnapshot, "data2"),
+    signatureClass: getMobileSprQualificationValue(common, scopedSnapshot, "classCode", signatureArea)
+      || getMobileSprQualificationValue(common, scopedSnapshot, "data1", signatureArea),
+    signatureNumber: getMobileSprQualificationValue(common, scopedSnapshot, "urbroj", signatureArea)
+      || getMobileSprQualificationValue(common, scopedSnapshot, "data2", signatureArea),
     resultStatus: resultStatus || "ZADOVOLJAVA",
     signatureMode: common.signatureMode || "digital",
     signatureFieldOib: signatureOib,
@@ -23758,23 +24168,24 @@ function buildMobileDocumentationSprSignatureGroup(model = {}, scopedSnapshot = 
     return null;
   }
   const responsibleUser = findMobileScopedUserById(scopedSnapshot, model.responsiblePersonUserId);
-  const fieldName = buildSignatureFieldName("SPR", oib);
+  const fieldCode = normalizeInputValue(model.serviceCode || "SPR") || "SPR";
+  const fieldName = buildSignatureFieldName(fieldCode, oib);
   return {
     __docxBlockType: "signature_group",
     type: "signature_group",
     items: [{
-      name: getMobileUserDocumentName(responsibleUser) || model.responsiblePerson || "Ispitivač SPR",
+      name: getMobileUserDocumentName(responsibleUser) || model.responsiblePerson || `Ispitivač ${fieldCode}`,
       signerUserId: normalizeInputValue(responsibleUser?.id || model.responsiblePersonUserId),
       signerEmail: normalizeInputValue(responsibleUser?.email),
       signerOib: oib,
       signerTitle: getMobileUserDocumentTitle(responsibleUser),
       signerOrganization: normalizeInputValue(model.companyName),
       signatureMode: "digital",
-      signatureFieldRole: "SPR",
+      signatureFieldRole: fieldCode,
       signatureFieldOib: oib,
       preferredField: fieldName,
       fieldName,
-      roleLabel: "Ispitivač SPR",
+      roleLabel: `Ispitivač ${fieldCode}`,
       anchorText: fieldName,
       drawPlaceholder: false,
     }],
