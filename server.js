@@ -105,7 +105,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.229.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.230.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -19254,10 +19254,10 @@ function normalizeMobileDocumentationAttachments(value = []) {
       const isPdf = fileType === "application/pdf" || /^data:application\/pdf;base64,/i.test(dataUrl) || /\.pdf$/i.test(fileName);
       const isPng = fileType === "image/png" || /^data:image\/png;base64,/i.test(dataUrl) || /\.png$/i.test(fileName);
       const isJpg = fileType === "image/jpeg" || fileType === "image/jpg" || /^data:image\/jpe?g;base64,/i.test(dataUrl) || /\.jpe?g$/i.test(fileName);
-      if (!fileName || !dataUrl || (!isPdf && !isPng && !isJpg)) {
+      if (!fileName || !dataUrl) {
         return null;
       }
-      const normalizedType = isPdf ? "application/pdf" : isPng ? "image/png" : "image/jpeg";
+      const normalizedType = isPdf ? "application/pdf" : isPng ? "image/png" : isJpg ? "image/jpeg" : (fileType || "application/octet-stream");
       return {
         id: normalizeInputValue(item.id) || `mobile-attachment-${index + 1}`,
         fileName,

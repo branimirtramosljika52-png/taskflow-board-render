@@ -985,13 +985,13 @@ function normalizeAttachments(value = []) {
       const isPdf = fileType === "application/pdf" || /^data:application\/pdf;base64,/i.test(dataUrl) || /\.pdf$/i.test(fileName);
       const isPng = fileType === "image/png" || /^data:image\/png;base64,/i.test(dataUrl) || /\.png$/i.test(fileName);
       const isJpg = fileType === "image/jpeg" || fileType === "image/jpg" || /^data:image\/jpe?g;base64,/i.test(dataUrl) || /\.jpe?g$/i.test(fileName);
-      if (!fileName || !dataUrl || (!isPdf && !isPng && !isJpg)) {
+      if (!fileName || !dataUrl) {
         return null;
       }
       return {
         fileName,
         dataUrl,
-        fileType: isPdf ? "application/pdf" : isPng ? "image/png" : "image/jpeg",
+        fileType: isPdf ? "application/pdf" : isPng ? "image/png" : isJpg ? "image/jpeg" : (fileType || "application/octet-stream"),
       };
     })
     .filter(Boolean);
@@ -1042,7 +1042,7 @@ function drawAttachmentPlaceholder(page, attachment, fonts, title = "PRILOG") {
     align: "center",
     maxLines: 3,
   });
-  drawTextLine(page, attachment.fileType === "application/pdf" ? "PDF prilog" : "Prilog", {
+  drawTextLine(page, attachment.fileType === "application/pdf" ? "PDF prilog" : clean(attachment.fileType || "Datoteka"), {
     x: MARGIN_X + 24,
     y: 360,
     width: PAGE_WIDTH - (MARGIN_X * 2) - 48,
@@ -1117,8 +1117,10 @@ async function appendAttachments(pdfDoc, model, fonts) {
     try {
       if (attachment.fileType === "application/pdf") {
         await appendPdfAttachmentPages(pdfDoc, attachment);
-      } else {
+      } else if (attachment.fileType.startsWith("image/")) {
         await appendImageAttachmentPage(pdfDoc, attachment, fonts, index);
+      } else {
+        await appendAttachmentPlaceholderPage(pdfDoc, attachment, fonts, index);
       }
     } catch {
       await appendAttachmentPlaceholderPage(pdfDoc, attachment, fonts, index);

@@ -24132,8 +24132,12 @@ private fun WorkOrderDocumentationWizardDialog(
     var documentationAttachmentFiles by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<WorkOrderDocumentationAiFile>()) }
     var documentationAttachmentLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
-    val documentationAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+    fun addDocumentationAttachments(
+        uris: List<Uri>,
+        mode: WorkOrderDocumentInputMode,
+        successLabel: String = "prilog(a)",
+    ) {
+        if (uris.isEmpty()) return
         coroutineScope.launch {
             documentationAttachmentLoading = true
             documentationAttachmentMessage = ""
@@ -24143,6 +24147,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         context = androidContext.applicationContext,
                         uris = uris,
                         existingCount = documentationAttachmentFiles.size,
+                        mode = mode,
                     )
                 }
             }
@@ -24154,13 +24159,70 @@ private fun WorkOrderDocumentationWizardDialog(
                     documentationAttachmentMessage = if (files.isEmpty()) {
                         "Nije dodan nijedan prilog."
                     } else {
-                        "${files.size} prilog(a) dodano u zapisnik."
+                        "${files.size} $successLabel dodano u zapisnik."
                     }
                 }
                 .onFailure { error ->
                     documentationAttachmentMessage = error.message ?: "Ne mogu učitati odabrane priloge."
                 }
             documentationAttachmentLoading = false
+        }
+    }
+    val documentationAttachmentPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        addDocumentationAttachments(uris, WorkOrderDocumentInputMode.Photos, "slika")
+    }
+    val documentationAttachmentPdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        addDocumentationAttachments(uris, WorkOrderDocumentInputMode.Pdf, "PDF prilog(a)")
+    }
+    val documentationAttachmentFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        addDocumentationAttachments(uris, WorkOrderDocumentInputMode.File)
+    }
+    var pendingDocumentationAttachmentCameraUri by remember(workOrder.id, selectedObjectId) { mutableStateOf<Uri?>(null) }
+    val documentationAttachmentCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val uri = pendingDocumentationAttachmentCameraUri
+        pendingDocumentationAttachmentCameraUri = null
+        if (success && uri != null) {
+            addDocumentationAttachments(listOf(uri), WorkOrderDocumentInputMode.Photos, "fotografija")
+        }
+    }
+    val documentationAttachmentScannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+        val pdfUri = scanResult?.pdf?.uri
+        if (pdfUri == null) {
+            documentationAttachmentMessage = "Sken nije vratio PDF dokument."
+        } else {
+            addDocumentationAttachments(listOf(pdfUri), WorkOrderDocumentInputMode.Scan, "sken")
+        }
+    }
+    val startDocumentationAttachmentScan: () -> Unit = {
+        val activity = androidContext.findFragmentActivity()
+        if (activity == null) {
+            documentationAttachmentMessage = "Skeniranje dokumenta nije dostupno u ovom prikazu."
+        } else {
+            val options = GmsDocumentScannerOptions.Builder()
+                .setGalleryImportAllowed(true)
+                .setPageLimit(30)
+                .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+                .build()
+            GmsDocumentScanning.getClient(options)
+                .getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    documentationAttachmentScannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+                }
+                .addOnFailureListener { error ->
+                    documentationAttachmentMessage = error.message ?: "Ne mogu pokrenuti skeniranje dokumenta."
+                }
+        }
+    }
+    val startDocumentationAttachmentCamera: () -> Unit = {
+        val outputUri = createWorkOrderCameraCaptureUri(androidContext.applicationContext)
+        if (outputUri == null) {
+            documentationAttachmentMessage = "Ne mogu pripremiti fotografiju za spremanje."
+        } else {
+            pendingDocumentationAttachmentCameraUri = outputUri
+            documentationAttachmentCameraLauncher.launch(outputUri)
         }
     }
     val availableLocationObjects = remember(workOrder.companyId, workOrder.locationId, locationObjects) {
@@ -24959,7 +25021,11 @@ private fun WorkOrderDocumentationWizardDialog(
                         attachmentMessage = documentationAttachmentMessage,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
-                        onPickAttachments = { documentationAttachmentPicker.launch(arrayOf("application/pdf", "image/png", "image/jpeg")) },
+                        onCaptureAttachmentPhoto = startDocumentationAttachmentCamera,
+                        onScanAttachment = startDocumentationAttachmentScan,
+                        onPickAttachmentPhotos = { documentationAttachmentPhotoPicker.launch("image/*") },
+                        onPickAttachmentPdf = { documentationAttachmentPdfPicker.launch(arrayOf("application/pdf")) },
+                        onPickAttachmentFile = { documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes) },
                         onRemoveAttachment = { fileId ->
                             documentationAttachmentFiles = documentationAttachmentFiles.filterNot { it.id == fileId }
                             documentationAttachmentMessage = if (documentationAttachmentFiles.isEmpty()) "" else "${documentationAttachmentFiles.size} prilog(a) u zapisniku."
@@ -29050,7 +29116,11 @@ private fun DocumentationSprMobileWorkspace(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onPickAttachments: () -> Unit,
+    onCaptureAttachmentPhoto: () -> Unit,
+    onScanAttachment: () -> Unit,
+    onPickAttachmentPhotos: () -> Unit,
+    onPickAttachmentPdf: () -> Unit,
+    onPickAttachmentFile: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
@@ -29191,7 +29261,11 @@ private fun DocumentationSprMobileWorkspace(
                                 attachmentMessage = attachmentMessage,
                                 enabled = enabled,
                                 onOpenMeasurements = onOpenMeasurements,
-                                onPickAttachments = onPickAttachments,
+                                onCaptureAttachmentPhoto = onCaptureAttachmentPhoto,
+                                onScanAttachment = onScanAttachment,
+                                onPickAttachmentPhotos = onPickAttachmentPhotos,
+                                onPickAttachmentPdf = onPickAttachmentPdf,
+                                onPickAttachmentFile = onPickAttachmentFile,
                                 onRemoveAttachment = onRemoveAttachment,
                                 onFieldChange = onFieldChange,
                             )
@@ -29237,7 +29311,11 @@ private fun DocumentationSprTemplateSectionPanel(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onPickAttachments: () -> Unit,
+    onCaptureAttachmentPhoto: () -> Unit,
+    onScanAttachment: () -> Unit,
+    onPickAttachmentPhotos: () -> Unit,
+    onPickAttachmentPdf: () -> Unit,
+    onPickAttachmentFile: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
@@ -29321,7 +29399,11 @@ private fun DocumentationSprTemplateSectionPanel(
                             loading = attachmentLoading,
                             message = attachmentMessage,
                             enabled = enabled,
-                            onPick = onPickAttachments,
+                            onCapturePhoto = onCaptureAttachmentPhoto,
+                            onScan = onScanAttachment,
+                            onPickPhotos = onPickAttachmentPhotos,
+                            onPickPdf = onPickAttachmentPdf,
+                            onPickFile = onPickAttachmentFile,
                             onRemove = onRemoveAttachment,
                         )
                     }
@@ -29405,9 +29487,14 @@ private fun DocumentationSprAttachmentsCard(
     loading: Boolean,
     message: String,
     enabled: Boolean,
-    onPick: () -> Unit,
+    onCapturePhoto: () -> Unit,
+    onScan: () -> Unit,
+    onPickPhotos: () -> Unit,
+    onPickPdf: () -> Unit,
+    onPickFile: () -> Unit,
     onRemove: (String) -> Unit,
 ) {
+    val canAdd = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -29436,25 +29523,25 @@ private fun DocumentationSprAttachmentsCard(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Prilozi uz zapisnik", fontWeight = FontWeight.Black)
                     Text(
-                        if (files.isEmpty()) "Dodaj PDF ili slike koje idu iza zapisnika." else "${files.size} prilog(a) nastavlja se u PDF-u.",
+                        if (files.isEmpty()) "Dodaj sken, kameru, PDF, slike ili datoteku iza zapisnika." else "${files.size} prilog(a) nastavlja se u PDF-u.",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
                 }
-                OutlinedButton(
-                    onClick = onPick,
-                    enabled = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES,
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                ) {
-                    if (loading) {
-                        CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Rounded.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (loading) "Učitavam" else "Dodaj", fontWeight = FontWeight.Bold)
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 }
+            }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                DocumentationSprAttachmentActionButton(Icons.Rounded.CameraAlt, "Kamera", canAdd, onCapturePhoto)
+                DocumentationSprAttachmentActionButton(WorkOrderDocumentInputMode.Scan.icon, "Sken", canAdd, onScan)
+                DocumentationSprAttachmentActionButton(Icons.Rounded.Image, "Slike", canAdd, onPickPhotos)
+                DocumentationSprAttachmentActionButton(Icons.Rounded.PictureAsPdf, "PDF", canAdd, onPickPdf)
+                DocumentationSprAttachmentActionButton(Icons.Rounded.Folder, "Datoteka", canAdd, onPickFile)
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -29478,7 +29565,11 @@ private fun DocumentationSprAttachmentsCard(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
-                                if (file.type.equals("application/pdf", ignoreCase = true)) Icons.Rounded.PictureAsPdf else Icons.Rounded.Image,
+                                when {
+                                    file.type.equals("application/pdf", ignoreCase = true) -> Icons.Rounded.PictureAsPdf
+                                    file.type.startsWith("image/", ignoreCase = true) -> Icons.Rounded.Image
+                                    else -> Icons.Rounded.InsertDriveFile
+                                },
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp),
@@ -29507,6 +29598,25 @@ private fun DocumentationSprAttachmentsCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DocumentationSprAttachmentActionButton(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -32700,6 +32810,7 @@ private suspend fun buildWorkOrderDocumentationAttachmentFiles(
     context: Context,
     uris: List<Uri>,
     existingCount: Int,
+    mode: WorkOrderDocumentInputMode = WorkOrderDocumentInputMode.File,
 ): List<WorkOrderDocumentationAiFile> = withContext(Dispatchers.IO) {
     val availableSlots = (WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
     if (availableSlots <= 0) {
@@ -32707,17 +32818,23 @@ private suspend fun buildWorkOrderDocumentationAttachmentFiles(
     }
     uris.take(availableSlots).mapIndexed { index, uri ->
         val bytes = readUriBytes(context, uri)
-        val name = resolveUriDisplayName(context, uri, existingCount + index, WorkOrderDocumentInputMode.File)
+        val name = resolveUriDisplayName(context, uri, existingCount + index, mode)
         if (bytes.size.toLong() > WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILE_BYTES) {
             error("Prilog $name mora biti manji od 8 MB.")
         }
-        val detectedType = resolveUriMimeType(context, uri, name).ifBlank { "application/octet-stream" }
+        val fallbackType = when (mode) {
+            WorkOrderDocumentInputMode.Photos -> "image/jpeg"
+            WorkOrderDocumentInputMode.Pdf,
+            WorkOrderDocumentInputMode.Scan -> "application/pdf"
+            WorkOrderDocumentInputMode.File -> "application/octet-stream"
+        }
+        val detectedType = resolveUriMimeType(context, uri, name).ifBlank { fallbackType }
         val mimeType = when {
             detectedType.equals("application/pdf", ignoreCase = true) || name.endsWith(".pdf", ignoreCase = true) -> "application/pdf"
             detectedType.equals("image/png", ignoreCase = true) || name.endsWith(".png", ignoreCase = true) -> "image/png"
             detectedType.equals("image/jpeg", ignoreCase = true) || detectedType.equals("image/jpg", ignoreCase = true) ||
                 name.endsWith(".jpg", ignoreCase = true) || name.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
-            else -> error("Prilog $name mora biti PDF, PNG ili JPG.")
+            else -> detectedType.ifBlank { "application/octet-stream" }
         }
         WorkOrderDocumentationAiFile(
             id = "${System.currentTimeMillis()}-attachment-${existingCount + index}-${name.hashCode()}",
