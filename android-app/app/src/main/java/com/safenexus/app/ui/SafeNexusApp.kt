@@ -29738,6 +29738,7 @@ private fun DocumentationSprTemplateSectionPanel(
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
     var expanded by rememberSaveable(entry.key) { mutableStateOf(false) }
+    val isBasicSection = remember(entry.section) { isBasicTemplateSection(entry.section) }
     val isAttachmentSection = remember(entry.section) { isDocumentationAttachmentTemplateSection(entry.section) }
     val hideDefects = remember(entry.template, entry.section.blocks, values) {
         shouldHideDocumentationDefects(entry.template, entry.section.blocks, values)
@@ -29776,6 +29777,8 @@ private fun DocumentationSprTemplateSectionPanel(
                         listOf(
                             if (isAttachmentSection) {
                                 "${attachmentFiles.size} prilog(a)"
+                            } else if (isBasicSection) {
+                                "Osnovni podaci"
                             } else if (entry.section.blocks.isNotEmpty()) {
                                 "${entry.section.blocks.size} polja"
                             } else {
@@ -29825,8 +29828,11 @@ private fun DocumentationSprTemplateSectionPanel(
                             onRemove = onRemoveAttachment,
                         )
                     }
+                    if (isBasicSection) {
+                        TemplateBasicControls(standardControls)
+                    }
                     entry.section.blocks.forEach { block ->
-                        if (isAttachmentSection) {
+                        if (isAttachmentSection || (isBasicSection && isBasicStandardTemplateBlock(block))) {
                             return@forEach
                         }
                         val editableField = findTemplateFieldForBlock(entry.template, block)
@@ -30558,11 +30564,7 @@ private fun TemplateBlockSectionCard(
                     }
                 }
                 if (includeBasics) {
-                    Text(
-                        "Osnovni podaci uređuju se u glavnom bloku Osnovno na početku izrade.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                    )
+                    TemplateBasicControls(standardControls)
                 }
                 if (includeEquipment) {
                     TemplateEquipmentControls(standardControls)

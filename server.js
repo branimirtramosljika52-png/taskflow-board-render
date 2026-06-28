@@ -110,7 +110,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.241.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.242.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -23053,7 +23053,29 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     name: normalizeInputValue(service?.name || service?.serviceName || service?.title || preset.serviceName) || preset.serviceName,
   };
   const documentNumber = buildMobileDocumentTemplateDocumentNumber(serviceWithCode, workOrder, preset, serviceIndex);
+  const inspectionTypeOptions = [
+    { value: "Periodično ispitivanje", label: "Periodično ispitivanje" },
+    { value: "Početno ispitivanje", label: "Početno ispitivanje" },
+    { value: "Izvanredno ispitivanje", label: "Izvanredno ispitivanje" },
+  ];
   const fields = [
+    buildMobileNativeDocumentationField("inspectionDate", "Datum ispitivanja", "date", {
+      required: true,
+      helpText: "Datum kada je provedeno ispitivanje.",
+    }),
+    buildMobileNativeDocumentationField("issuedDate", "Datum izdavanja", "date", {
+      required: true,
+      helpText: "Datum izdavanja zapisnika.",
+    }),
+    buildMobileNativeDocumentationField("testingLocation", "Mjesto ispitivanja", "text", {
+      required: true,
+      helpText: "Lokacija ili mjesto na kojem je provedeno ispitivanje.",
+    }),
+    buildMobileNativeDocumentationField("inspectionType", "Vrsta ispitivanja", "dropdown", {
+      required: true,
+      defaultValue: "Periodično ispitivanje",
+      options: inspectionTypeOptions,
+    }),
     buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
       defaultValue: "Preporuke",
       helpText: "Napomene ili preporuke za korisnika.",
@@ -23078,11 +23100,32 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       typeLabel: "Poglavlje",
       summary: "Tvrtka, objekt, datumi, broj zapisnika i vrsta ispitivanja.",
     }),
-    buildMobileNativeDocumentationBlock("documentNumber", "Broj zapisnika", "text", { group: "Osnovni podaci", summary: documentNumber }),
-    buildMobileNativeDocumentationBlock("inspectionDate", "Datum ispitivanja", "date", { group: "Osnovni podaci" }),
-    buildMobileNativeDocumentationBlock("issuedDate", "Datum izdavanja", "date", { group: "Osnovni podaci" }),
-    buildMobileNativeDocumentationBlock("testingLocation", "Mjesto ispitivanja", "text", { group: "Osnovni podaci" }),
-    buildMobileNativeDocumentationBlock("inspectionType", "Vrsta ispitivanja", "select", { group: "Osnovni podaci" }),
+    buildMobileNativeDocumentationBlock("documentNumber", "Broj zapisnika", "text", {
+      group: "Osnovni podaci",
+      summary: documentNumber,
+      helpText: "Broj zapisnika se automatski gradi iz RN-a i šifre usluge.",
+    }),
+    buildMobileNativeDocumentationBlock("inspectionDate", "Datum ispitivanja", "date", {
+      group: "Osnovni podaci",
+      editable: true,
+      required: true,
+    }),
+    buildMobileNativeDocumentationBlock("issuedDate", "Datum izdavanja", "date", {
+      group: "Osnovni podaci",
+      editable: true,
+      required: true,
+    }),
+    buildMobileNativeDocumentationBlock("testingLocation", "Mjesto ispitivanja", "text", {
+      group: "Osnovni podaci",
+      editable: true,
+      required: true,
+    }),
+    buildMobileNativeDocumentationBlock("inspectionType", "Vrsta ispitivanja", "select", {
+      group: "Osnovni podaci",
+      editable: true,
+      required: true,
+      options: inspectionTypeOptions,
+    }),
     buildMobileNativeDocumentationBlock("chapter-equipment", "Mjerna i ispitna oprema", "chapter", {
       typeLabel: "Poglavlje",
       summary: "Oprema se bira iz modula Mjerna oprema.",
@@ -23163,11 +23206,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     dataSourceWorkOrderNumber: "",
     fields,
     fieldBlocks,
-    inspectionTypeOptions: [
-      { value: "Periodično ispitivanje", label: "Periodično ispitivanje" },
-      { value: "Početno ispitivanje", label: "Početno ispitivanje" },
-      { value: "Izvanredno ispitivanje", label: "Izvanredno ispitivanje" },
-    ],
+    inspectionTypeOptions,
     measurementTables,
     aiFields: [],
     aiMeasurementColumns: [],
