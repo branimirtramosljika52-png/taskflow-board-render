@@ -22910,24 +22910,38 @@ private fun WorkOrderDocumentationOption.matchesExecutorLabel(executors: List<St
         .filter { it.isNotBlank() }
         .toSet()
     if (normalizedExecutors.isEmpty()) return false
-    return listOf(id, label, subtitle, status)
+    val candidates = listOf(id, label, subtitle, status)
         .map { normalizeServiceMatch(it) }
         .filter { it.isNotBlank() }
-        .any { normalizedExecutors.contains(it) }
+    return candidates.any { candidate ->
+        normalizedExecutors.any { executor ->
+            candidate == executor ||
+                (executor.length >= 4 && candidate.contains(executor)) ||
+                (candidate.length >= 4 && executor.contains(candidate))
+        }
+    }
 }
 
 private fun WorkOrderDocumentationSignatureAreaOptions.defaultInspectorIdsForExecutors(executors: List<String>): Set<String> {
     if (executors.isEmpty()) return emptySet()
-    return defaultInspectorIds
+    val defaultMatches = defaultInspectorIds
         .map { it.trim() }
         .filter { id -> inspectorOptions.firstOrNull { it.id == id }?.matchesExecutorLabel(executors) == true }
+        .toSet()
+    if (defaultMatches.isNotEmpty()) return defaultMatches
+    return inspectorOptions
+        .filter { option -> option.matchesExecutorLabel(executors) }
+        .map { it.id.trim() }
+        .filter { it.isNotBlank() }
         .toSet()
 }
 
 private fun WorkOrderDocumentationSignatureAreaOptions.defaultAuthorizationIdForExecutors(executors: List<String>): String {
     if (executors.isEmpty()) return ""
     val defaultId = defaultAuthorizationHolderId.trim()
-    return defaultId.takeIf { id -> authorizationOptions.firstOrNull { it.id == id }?.matchesExecutorLabel(executors) == true }.orEmpty()
+    val defaultMatch = defaultId.takeIf { id -> authorizationOptions.firstOrNull { it.id == id }?.matchesExecutorLabel(executors) == true }.orEmpty()
+    if (defaultMatch.isNotBlank()) return defaultMatch
+    return authorizationOptions.firstOrNull { option -> option.matchesExecutorLabel(executors) }?.id.orEmpty().trim()
 }
 
 private val documentationSignatureFieldTypes = setOf(
@@ -23961,8 +23975,8 @@ private fun WorkOrderDocumentationWizardDialog(
             includePhysicalFactors = showPhysicalFactorsFromIsznr,
         )
     }
-    val environmentVisibility = remember {
-        documentationEnvironmentVisibilityAll()
+    val environmentVisibility = remember(context.templates) {
+        buildDocumentationEnvironmentVisibility(context.templates)
     }
     var additionalRecordTarget by remember(workOrder.id) {
         mutableStateOf<DocumentationServiceFlowItem?>(null)
@@ -31790,17 +31804,18 @@ private fun DocumentationSatisfactoryChoice(
         border = BorderStroke(1.dp, if (selected) accent.copy(alpha = 0.82f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 11.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 11.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f))
             Text(
                 label,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Black,
                 color = if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                maxLines = 2,
+                maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis,
             )
         }
