@@ -105,7 +105,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.232.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.233.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -11965,6 +11965,7 @@ function normalizeGeneratedDocumentRecordDate(value = "") {
 }
 
 const GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY = "__PERIODICS_TRACKED_DATES";
+const MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY = "__mobileDocumentationAttachments";
 
 function normalizeGeneratedDocumentExpirationDate(value = "") {
   const raw = String(value ?? "").trim();
@@ -12212,6 +12213,17 @@ function buildGeneratedDocumentTemplateRecordPayload({
   });
   expirationDate = periodicsPayload.expirationDate || expirationDate;
   fieldValues = periodicsPayload.fieldValues;
+  const recordAttachments = normalizeMobileDocumentationAttachments(
+    suppliedRecord.attachments
+      || entry.attachments
+      || entry.mobileCommon?.attachments
+      || [],
+  );
+  if (recordAttachments.length > 0) {
+    fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY] = recordAttachments;
+  } else {
+    delete fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY];
+  }
   const objectName = String(
     suppliedRecord.objectName
     || entry.objectName
@@ -21994,6 +22006,16 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
   const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
     ? record.fieldValues
     : {};
+  const savedAttachments = normalizeMobileDocumentationAttachments(
+    fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]
+      || record?.attachments
+      || record?.documentAttachments
+      || [],
+  );
+  const {
+    [MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]: _savedDocumentationAttachments,
+    ...fieldValuesForDefaults
+  } = fieldValues;
   const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
     ? record.fieldSheets
     : {};
@@ -22037,8 +22059,9 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
     validityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_VALIDITY_MONTHS", "WORK_ORDER_SERVICE_VALIDITY_MONTHS", "VRIJEDI_MJESECI"]),
     electricalValidityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_PANIC_VALIDITY_MONTHS"]),
     tipkaloValidityMonths: getMobileDocumentRecordFieldValue(record, ["WORK_ORDER_TIPKALO_VALIDITY_MONTHS"]),
-    fieldValues,
+    fieldValues: fieldValuesForDefaults,
     fieldSheets,
+    attachments: savedAttachments,
   };
 }
 
@@ -24399,6 +24422,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
           expirationDate: validUntilIso,
           fieldValues,
           fieldSheets,
+          attachments: common.attachments,
         },
       });
     });

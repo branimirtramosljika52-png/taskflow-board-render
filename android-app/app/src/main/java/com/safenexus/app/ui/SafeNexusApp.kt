@@ -23542,6 +23542,7 @@ private fun WorkOrderDocumentationDefaults.hasReusableDocumentationDefaults(): B
         fieldSheets.isNotEmpty() ||
         templateFieldValues.values.any { it.isNotEmpty() } ||
         templateFieldSheets.values.any { it.isNotEmpty() } ||
+        attachments.isNotEmpty() ||
         selectedEquipmentIds.isNotEmpty() ||
         selectedLegalFrameworkIds.isNotEmpty() ||
         listOf(
@@ -24206,9 +24207,13 @@ private fun WorkOrderDocumentationWizardDialog(
             aiCameraLauncher.launch(outputUri)
         }
     }
-    var documentationAttachmentFiles by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<WorkOrderDocumentationAiFile>()) }
+    var documentationAttachmentFiles by remember(workOrder.id, selectedObjectId, defaults.attachments) {
+        mutableStateOf(defaults.attachments)
+    }
     var documentationAttachmentLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
-    var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId, defaults.attachments.size) {
+        mutableStateOf(if (defaults.attachments.isEmpty()) "" else "${defaults.attachments.size} prilog(a) iz prethodnog zapisnika.")
+    }
     fun addDocumentationAttachments(
         uris: List<Uri>,
         mode: WorkOrderDocumentInputMode,
@@ -25130,6 +25135,23 @@ private fun WorkOrderDocumentationWizardDialog(
                         onPickAttachmentPhotos = { documentationAttachmentPhotoPicker.launch("image/*") },
                         onPickAttachmentPdf = { documentationAttachmentPdfPicker.launch(arrayOf("application/pdf")) },
                         onPickAttachmentFile = { documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes) },
+                        onOpenAttachment = { file ->
+                            runCatching {
+                                val document = file.toDownloadedDocument()
+                                val uri = cacheDownloadedDocument(androidContext.applicationContext, document)
+                                openCachedDocument(androidContext.applicationContext, uri, document.fileType)
+                            }
+                                .onSuccess { opened ->
+                                    documentationAttachmentMessage = if (opened) {
+                                        "Otvoren prilog: ${file.name}"
+                                    } else {
+                                        "Nema aplikacije za otvaranje priloga ${file.name}."
+                                    }
+                                }
+                                .onFailure { error ->
+                                    documentationAttachmentMessage = error.message ?: "Ne mogu otvoriti prilog."
+                                }
+                        },
                         onRemoveAttachment = { fileId ->
                             documentationAttachmentFiles = documentationAttachmentFiles.filterNot { it.id == fileId }
                             documentationAttachmentMessage = if (documentationAttachmentFiles.isEmpty()) "" else "${documentationAttachmentFiles.size} prilog(a) u zapisniku."
@@ -29225,6 +29247,7 @@ private fun DocumentationSprMobileWorkspace(
     onPickAttachmentPhotos: () -> Unit,
     onPickAttachmentPdf: () -> Unit,
     onPickAttachmentFile: () -> Unit,
+    onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
@@ -29368,6 +29391,7 @@ private fun DocumentationSprMobileWorkspace(
                                 onPickAttachmentPhotos = onPickAttachmentPhotos,
                                 onPickAttachmentPdf = onPickAttachmentPdf,
                                 onPickAttachmentFile = onPickAttachmentFile,
+                                onOpenAttachment = onOpenAttachment,
                                 onRemoveAttachment = onRemoveAttachment,
                                 onFieldChange = onFieldChange,
                             )
@@ -29418,6 +29442,7 @@ private fun DocumentationSprTemplateSectionPanel(
     onPickAttachmentPhotos: () -> Unit,
     onPickAttachmentPdf: () -> Unit,
     onPickAttachmentFile: () -> Unit,
+    onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
@@ -29505,6 +29530,7 @@ private fun DocumentationSprTemplateSectionPanel(
                             onPickPhotos = onPickAttachmentPhotos,
                             onPickPdf = onPickAttachmentPdf,
                             onPickFile = onPickAttachmentFile,
+                            onOpen = onOpenAttachment,
                             onRemove = onRemoveAttachment,
                         )
                     }
@@ -29593,6 +29619,7 @@ private fun DocumentationSprAttachmentsCard(
     onPickPhotos: () -> Unit,
     onPickPdf: () -> Unit,
     onPickFile: () -> Unit,
+    onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
 ) {
     val canAdd = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES
@@ -29682,6 +29709,9 @@ private fun DocumentationSprAttachmentsCard(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                                 )
+                            }
+                            IconButton(onClick = { onOpen(file) }, enabled = enabled && !loading) {
+                                Icon(Icons.Rounded.Visibility, contentDescription = "Otvori prilog", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                             }
                             IconButton(onClick = { onRemove(file.id) }, enabled = enabled && !loading) {
                                 Icon(Icons.Rounded.Delete, contentDescription = "Ukloni prilog", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
@@ -33087,6 +33117,24 @@ private suspend fun buildWorkOrderDocumentationAttachmentFiles(
             contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
         )
     }
+}
+
+private fun WorkOrderDocumentationAiFile.toDownloadedDocument(): DownloadedDocument {
+    val trimmedDataUrl = contentDataUrl.trim()
+    val dataUrlMatch = Regex(
+        pattern = """^data:([^;,]+)(?:;[^,]*)?;base64,(.*)$""",
+        options = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+    ).find(trimmedDataUrl)
+    val detectedType = dataUrlMatch?.groupValues?.getOrNull(1).orEmpty()
+    val base64Payload = dataUrlMatch?.groupValues?.getOrNull(2)
+        ?: trimmedDataUrl.substringAfter(",", trimmedDataUrl)
+    val mimeType = detectedType.ifBlank { type }.ifBlank { "application/octet-stream" }
+    val bytes = Base64.getDecoder().decode(base64Payload.replace(Regex("\\s+"), ""))
+    return DownloadedDocument(
+        fileName = name.withFallbackExtension(mimeType),
+        fileType = mimeType,
+        bytes = bytes,
+    )
 }
 
 private suspend fun buildFieldInquiryAttachmentFiles(

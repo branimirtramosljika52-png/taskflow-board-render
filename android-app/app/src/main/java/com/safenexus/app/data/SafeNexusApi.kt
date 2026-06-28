@@ -1734,6 +1734,20 @@ private fun JSONObject.firstInt(defaultValue: Int, vararg keys: String): Int {
     return defaultValue
 }
 
+private fun JSONObject.firstLong(defaultValue: Long, vararg keys: String): Long {
+    for (key in keys) {
+        if (!has(key) || isNull(key)) continue
+        val raw = opt(key)
+        val value = when (raw) {
+            is Number -> raw.toLong()
+            is String -> raw.trim().toLongOrNull()
+            else -> null
+        }
+        if (value != null) return value
+    }
+    return defaultValue
+}
+
 private fun JSONObject.firstNullableBoolean(vararg keys: String): Boolean? {
     for (key in keys) {
         if (!has(key) || isNull(key)) continue
@@ -2179,6 +2193,27 @@ private fun List<WorkOrderDocumentationAiFile>.toDocumentationAiFilesJsonArray()
             )
         }
     }
+
+private fun JSONArray?.toWorkOrderDocumentationAiFiles(): List<WorkOrderDocumentationAiFile> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val name = item.firstClean("name", "fileName").ifBlank { "Prilog ${index + 1}" }
+            val contentDataUrl = item.firstClean("contentDataUrl", "dataUrl")
+            if (name.isBlank() || contentDataUrl.isBlank()) continue
+            add(
+                WorkOrderDocumentationAiFile(
+                    id = item.firstClean("id").ifBlank { "saved-attachment-${index + 1}-${name.hashCode()}" },
+                    name = name,
+                    type = item.firstClean("type", "fileType").ifBlank { "application/octet-stream" },
+                    size = item.firstLong(0L, "size", "fileSize"),
+                    contentDataUrl = contentDataUrl,
+                ),
+            )
+        }
+    }.distinctBy { it.id }
+}
 
 private fun List<WorkOrderDocumentationAiField>.toDocumentationAiFieldsJsonArray(): JSONArray =
     JSONArray().also { array ->
@@ -2768,6 +2803,7 @@ private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentati
         templateFieldValues = optJSONObject("templateFieldValues").toNestedStringMap(),
         fieldSheets = optJSONObject("fieldSheets").toWorkOrderMeasurementSheetMap(),
         templateFieldSheets = optJSONObject("templateFieldSheets").toNestedWorkOrderMeasurementSheetMap(),
+        attachments = optJSONArray("attachments").toWorkOrderDocumentationAiFiles(),
     )
 }
 
