@@ -22116,9 +22116,7 @@ private fun WorkOrderDocumentationSection(
     readOnly: Boolean = false,
 ) {
     DetailSection("Dokumentacija") {
-        val visibleDocuments = remember(documents) { documents.filterNot { it.isPendingDigitalSignature } }
-        val pendingDigitalCount = remember(documents) { documents.count { it.isPendingDigitalSignature } }
-        val groupedDocuments = remember(visibleDocuments) { groupWorkOrderDocuments(visibleDocuments) }
+        val groupedDocuments = remember(documents) { groupWorkOrderDocuments(documents) }
         var collapsedGroups by remember { mutableStateOf<Set<String>>(emptySet()) }
         Row(
             modifier = Modifier
@@ -22158,31 +22156,7 @@ private fun WorkOrderDocumentationSection(
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
 
-        AnimatedVisibility(!loading && pendingDigitalCount > 0) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("Čeka digitalni potpis", fontWeight = FontWeight.Bold)
-                        Text(
-                            "$pendingDigitalCount dokument${if (pendingDigitalCount == 1) "" else "a"} je u Signatures. U RN dokumentima će se prikazati nakon potpisa.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                        )
-                    }
-                }
-            }
-        }
-
-        if (!loading && visibleDocuments.isEmpty() && pendingDigitalCount == 0) {
+        if (!loading && documents.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -22375,8 +22349,36 @@ private fun WorkOrderDocumentCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (document.isPendingDigitalSignature) {
+                        Spacer(Modifier.height(5.dp))
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = Color(0xFFFEF3C7),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.28f)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Fingerprint,
+                                    contentDescription = null,
+                                    tint = Color(0xFFB45309),
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Text(
+                                    "Čeka potpis",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF92400E),
+                                    fontWeight = FontWeight.Black,
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = listOf(
+                            if (document.isPendingDigitalSignature) "Čeka potpis" else "",
                             document.documentCategory,
                             formatFileSizeLabel(document.fileSize),
                             formatDateLabel(document.createdAt),
@@ -32949,6 +32951,7 @@ private fun workOrderDocumentIcon(document: WorkOrderDocument): ImageVector = wh
 }
 
 private fun workOrderDocumentAccent(document: WorkOrderDocument): Color = when {
+    document.isPendingDigitalSignature -> Color(0xFFF59E0B)
     workOrderDocumentGroupKey(document) == "work-order" -> Color(0xFF2563EB)
     workOrderDocumentGroupKey(document) == "worksheets" -> Color(0xFFA16207)
     workOrderDocumentGroupKey(document) == "projects" -> Color(0xFF7C3AED)

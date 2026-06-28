@@ -54985,7 +54985,12 @@ function formatFileSize(value) {
 
 function createWorkOrderDocumentCard(item, { compact = false } = {}) {
   const card = document.createElement("article");
-  card.className = compact ? "work-order-document-card is-compact" : "work-order-document-card";
+  const isPendingSignature = isPendingDigitalSignatureDocument(item);
+  card.className = [
+    "work-order-document-card",
+    compact ? "is-compact" : "",
+    isPendingSignature ? "is-pending-signature" : "",
+  ].filter(Boolean).join(" ");
   const isBusy = state.workOrderDocuments.busyId === String(item.id);
 
   const badge = document.createElement("span");
@@ -55012,13 +55017,23 @@ function createWorkOrderDocumentCard(item, { compact = false } = {}) {
   const meta = document.createElement("span");
   meta.className = "work-order-document-meta";
   meta.textContent = [
+    isPendingSignature ? "Čeka potpis" : "",
     getWorkOrderDocumentCategoryLabel(item.documentCategory),
     formatFileSize(item.fileSize),
     getWorkOrderDocumentSourceLabel(item.sourceType),
     formatDateTime(item.createdAt),
   ].filter(Boolean).join(" · ");
 
-  body.append(nameInput, descriptionInput, meta);
+  body.append(nameInput, descriptionInput);
+
+  if (isPendingSignature) {
+    const status = document.createElement("span");
+    status.className = "work-order-document-status is-pending-signature";
+    status.textContent = "Čeka potpis";
+    body.append(status);
+  }
+
+  body.append(meta);
 
   const actions = document.createElement("div");
   actions.className = "work-order-document-actions";
@@ -55146,8 +55161,7 @@ function renderWorkOrderDocuments() {
     return;
   }
 
-  const pendingDigitalItems = items.filter((item) => item && isPendingDigitalSignatureDocument(item));
-  const visibleItems = items.filter((item) => item && !isPendingDigitalSignatureDocument(item));
+  const visibleItems = items.filter(Boolean);
   const groupedItems = groupWorkOrderDocuments(visibleItems);
 
   if (workOrderDocumentCount) {
@@ -55180,17 +55194,6 @@ function renderWorkOrderDocuments() {
     "Povuci ili klikni za upload. Drag and drop radi i bilo gdje u desnom activity dijelu.",
   );
 
-  if (pendingDigitalItems.length > 0) {
-    const createPendingNotice = () => {
-      const notice = document.createElement("div");
-      notice.className = "helper-copy";
-      notice.textContent = `${pendingDigitalItems.length} dokument${pendingDigitalItems.length === 1 ? "" : "a"} čeka digitalni potpis u Signatures. U RN dokumentima prikazuje se nakon potpisa.`;
-      return notice;
-    };
-    workOrderDocumentList.append(createPendingNotice());
-    workOrderActivityDocumentList.append(createPendingNotice());
-  }
-
   groupedItems.forEach((group) => {
     workOrderDocumentList.append(createWorkOrderDocumentGroup(group));
     workOrderActivityDocumentList.append(createWorkOrderDocumentGroup(group, { compact: true }));
@@ -55205,8 +55208,8 @@ function renderWorkOrderDocuments() {
 
   workOrderDocumentEmpty.textContent = editorEmptyMessage;
   workOrderActivityDocumentEmpty.textContent = activityEmptyMessage;
-  workOrderDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0 || pendingDigitalItems.length > 0;
-  workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0 || pendingDigitalItems.length > 0;
+  workOrderDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0;
+  workOrderActivityDocumentEmpty.hidden = loading || Boolean(error) || visibleItems.length > 0;
 }
 
 function resetWorkOrderDocumentCategoryDialogState() {

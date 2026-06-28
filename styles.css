@@ -18851,6 +18851,11 @@ button.work-order-editor-section-head {
     0 10px 22px rgba(94, 73, 145, 0.06);
 }
 
+.work-order-document-card.is-pending-signature {
+  border-color: rgba(245, 158, 11, 0.44);
+  background: linear-gradient(180deg, #fffdf7 0%, #ffffff 66%);
+}
+
 .work-order-document-card.is-compact {
   grid-template-columns: 44px minmax(0, 1fr);
   gap: 10px;
@@ -18926,6 +18931,24 @@ button.work-order-editor-section-head {
   color: #7d8ba6;
   font-size: 0.72rem;
   line-height: 1.45;
+}
+
+.work-order-document-status {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.work-order-document-status.is-pending-signature {
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid rgba(245, 158, 11, 0.42);
 }
 
 .work-order-document-actions {
