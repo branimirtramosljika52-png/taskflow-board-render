@@ -12269,6 +12269,239 @@ function buildGeneratedDocumentTemplateRecordPayload({
   return payload;
 }
 
+function getScopedDocumentTemplateById(scopedSnapshot = {}, templateId = "") {
+  const normalizedId = normalizeInputValue(templateId);
+  if (!normalizedId) {
+    return null;
+  }
+  return (Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [])
+    .find((template) => normalizeInputValue(template?.id) === normalizedId) || null;
+}
+
+function getWorkOrderServiceItemsForDocumentRecord(workOrder = {}) {
+  return Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
+    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
+    : [{ name: workOrder.serviceLine || workOrder.displayService || "" }];
+}
+
+function findWorkOrderServiceForDocumentRecord(input = {}, workOrder = {}, scopedSnapshot = {}) {
+  const serviceId = normalizeInputValue(input.serviceId || input.serviceCatalogId);
+  const serviceCode = normalizeMobileTemplateLookupKey(input.serviceCode || input.code);
+  const serviceName = normalizeMobileTemplateLookupKey(input.serviceName || input.name || input.title);
+  const services = getWorkOrderServiceItemsForDocumentRecord(workOrder);
+  const catalogByService = new Map(services.map((service) => [service, findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot) || {}]));
+
+  return services.find((service) => {
+    const catalogItem = catalogByService.get(service) || {};
+    const ids = [
+      service?.serviceId,
+      service?.id,
+      service?.catalogServiceId,
+      catalogItem?.id,
+    ].map(normalizeInputValue).filter(Boolean);
+    if (serviceId && ids.includes(serviceId)) {
+      return true;
+    }
+    const codes = [
+      service?.serviceCode,
+      service?.code,
+      catalogItem?.serviceCode,
+      catalogItem?.code,
+    ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+    if (serviceCode && codes.includes(serviceCode)) {
+      return true;
+    }
+    const names = [
+      service?.name,
+      service?.serviceName,
+      service?.title,
+      catalogItem?.name,
+      catalogItem?.title,
+    ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+    return Boolean(serviceName && names.includes(serviceName));
+  }) || services[0] || null;
+}
+
+function resolveWorkOrderDocumentRecordTemplate(input = {}, workOrder = {}, scopedSnapshot = {}) {
+  const directTemplate = getScopedDocumentTemplateById(scopedSnapshot, input.templateId);
+  if (directTemplate && isActiveMobileDocumentTemplate(directTemplate)) {
+    return directTemplate;
+  }
+
+  const service = findWorkOrderServiceForDocumentRecord(input, workOrder, scopedSnapshot);
+  const linkedTemplateIds = service ? getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot) : [];
+  for (const templateId of linkedTemplateIds) {
+    const template = getScopedDocumentTemplateById(scopedSnapshot, templateId);
+    if (template && isActiveMobileDocumentTemplate(template)) {
+      return template;
+    }
+  }
+
+  const lookup = normalizeMobileTemplateLookupKey([
+    input.templateTitle,
+    input.documentType,
+    input.serviceCode,
+    input.serviceName,
+  ].filter(Boolean).join(" "));
+  return (Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [])
+    .filter(isActiveMobileDocumentTemplate)
+    .find((template) => {
+      const templateLookup = normalizeMobileTemplateLookupKey([
+        template?.title,
+        template?.documentType,
+        template?.documentName,
+      ].filter(Boolean).join(" "));
+      return Boolean(
+        templateLookup
+        && (
+          (lookup && templateLookup.includes(lookup))
+          || (lookup.includes("spr") && templateLookup.includes("spr"))
+          || (lookup.includes("panik") && templateLookup.includes("panik"))
+          || (lookup.includes("sigurnosna rasvjeta") && templateLookup.includes("sigurnosna rasvjeta"))
+        ),
+      );
+    }) || null;
+}
+
+function getGenericDocumentationSprRecordSheet(fieldSheets = {}) {
+  const source = fieldSheets && typeof fieldSheets === "object" && !Array.isArray(fieldSheets)
+    ? fieldSheets
+    : {};
+  const preferredKeys = [
+    "DOCUMENTATION_SPR_GRIDLINE_MODEL",
+    "SPR_GRIDLINE_MODEL",
+    "GRIDLINE_MODEL",
+    "TABLICA_MJERENJA",
+    "MJERENJA",
+  ];
+  for (const key of preferredKeys) {
+    const sheet = normalizeWorkOrderMeasurementSheet(source[key]);
+    if (sheet) {
+      return sheet;
+    }
+  }
+  for (const value of Object.values(source)) {
+    const sheet = normalizeWorkOrderMeasurementSheet(value);
+    if (sheet) {
+      return sheet;
+    }
+  }
+  return null;
+}
+
+function expandDocumentationSprRecordFieldSheetsForTemplate(fieldSheets = {}, template = {}) {
+  const normalizedSheets = Object.fromEntries(
+    Object.entries(fieldSheets && typeof fieldSheets === "object" && !Array.isArray(fieldSheets) ? fieldSheets : {})
+      .map(([key, value]) => [normalizeInputValue(key), normalizeWorkOrderMeasurementSheet(value)])
+      .filter(([key, value]) => key && value),
+  );
+  const genericSheet = getGenericDocumentationSprRecordSheet(normalizedSheets);
+  if (!genericSheet) {
+    return normalizedSheets;
+  }
+
+  (Array.isArray(template?.customFields) ? template.customFields : [])
+    .filter((field) => normalizeInputValue(field?.type).toLowerCase() === "measurement_table")
+    .forEach((field, index) => {
+      [
+        getMobileDocumentTemplateFieldTokenKey(field, index),
+        field?.key,
+        field?.id,
+        field?.tokenKey,
+        field?.label,
+      ]
+        .map(normalizeInputValue)
+        .filter(Boolean)
+        .forEach((key) => {
+          if (!normalizedSheets[key]) {
+            normalizedSheets[key] = genericSheet;
+          }
+        });
+    });
+
+  return normalizedSheets;
+}
+
+function buildWorkOrderDocumentRecordPayloadFromRequest(input = {}, workOrder = {}, scopedSnapshot = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+  const template = resolveWorkOrderDocumentRecordTemplate(input, workOrder, scopedSnapshot);
+  if (!template) {
+    return null;
+  }
+  const fieldValues = input.fieldValues && typeof input.fieldValues === "object" && !Array.isArray(input.fieldValues)
+    ? { ...input.fieldValues }
+    : {};
+  const recordAttachments = normalizeMobileDocumentationAttachments(
+    input.attachments
+      || fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]
+      || input.documentAttachments
+      || [],
+  );
+  if (recordAttachments.length > 0) {
+    fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY] = recordAttachments;
+  } else {
+    delete fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY];
+  }
+
+  const fieldSheets = expandDocumentationSprRecordFieldSheetsForTemplate(input.fieldSheets, template);
+  const workOrderNumber = normalizeInputValue(input.workOrderNumber || workOrder.workOrderNumber || workOrder.number);
+  if (workOrderNumber && !normalizeInputValue(fieldValues.WORK_ORDER_NUMBER)) {
+    fieldValues.WORK_ORDER_NUMBER = workOrderNumber;
+  }
+
+  return {
+    organizationId: normalizeInputValue(scopedSnapshot.activeOrganizationId || workOrder.organizationId),
+    templateId: normalizeInputValue(template.id),
+    templateTitle: normalizeInputValue(input.templateTitle || template.title || template.documentType || "Zapisnik"),
+    documentType: normalizeInputValue(input.documentType || template.documentType || "Zapisnik"),
+    companyId: normalizeInputValue(input.companyId || workOrder.companyId),
+    locationId: normalizeInputValue(input.locationId || workOrder.locationId),
+    objectId: normalizeInputValue(input.objectId || workOrder.objectId || workOrder.locationObjectId),
+    objectName: normalizeInputValue(input.objectName || workOrder.objectName || workOrder.locationObjectName),
+    inspectionDate: normalizeGeneratedDocumentRecordDate(input.inspectionDate),
+    issuedDate: normalizeGeneratedDocumentRecordDate(input.issuedDate || input.issueDate),
+    expirationDate: normalizeGeneratedDocumentExpirationDate(input.expirationDate || input.validUntil),
+    fieldValues,
+    fieldSheets,
+  };
+}
+
+async function persistWorkOrderDocumentRecordsFromRequest({
+  body = {},
+  workOrder = {},
+  scopedSnapshot = {},
+  user = null,
+} = {}) {
+  const rawRecords = [
+    ...(Array.isArray(body.documentRecords) ? body.documentRecords : []),
+    ...(body.documentRecord && typeof body.documentRecord === "object" && !Array.isArray(body.documentRecord)
+      ? [body.documentRecord]
+      : []),
+  ];
+  const savedRecords = [];
+  const warnings = [];
+
+  for (const rawRecord of rawRecords) {
+    const payload = buildWorkOrderDocumentRecordPayloadFromRequest(rawRecord, workOrder, scopedSnapshot);
+    if (!payload) {
+      warnings.push("Nije pronađen povezani server predložak za spremanje prethodnog zapisnika.");
+      continue;
+    }
+    try {
+      const saved = await upsertDocumentRecordPayload(payload, user, workOrder);
+      if (saved) {
+        savedRecords.push(saved);
+      }
+    } catch (error) {
+      warnings.push(error?.message || "Ne mogu spremiti zapisnik za ponovno korištenje.");
+    }
+  }
+
+  return { savedRecords, warnings };
+}
+
 function isSameGeneratedDocumentRecord(existing = {}, payload = {}, workOrder = {}) {
   if (!existing || !payload) {
     return false;
@@ -33174,6 +33407,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronaden.");
       assertInScope(scopedSnapshot.workOrders, workOrderDocumentsMatch[1], "Radni nalog nije pronađen.");
       const items = await domainRepository.addWorkOrderDocuments(
         workOrderDocumentsMatch[1],
@@ -33181,7 +33415,25 @@ async function handleApiRequest(request, response, url) {
         user,
         { sourceType: body.sourceType ?? body.source },
       );
-      sendJson(response, 201, { items: items.map((item) => stripStoredDocumentPayloadForResponse(item)) });
+      const recordResult = await persistWorkOrderDocumentRecordsFromRequest({
+        body,
+        workOrder,
+        scopedSnapshot,
+        user,
+      });
+      sendJson(response, 201, {
+        items: items.map((item) => stripStoredDocumentPayloadForResponse(item)),
+        documentRecords: recordResult.savedRecords.map((record) => {
+          const {
+            [MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]: _attachments,
+            ...fieldValues
+          } = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+            ? record.fieldValues
+            : {};
+          return { ...record, fieldValues };
+        }),
+        documentRecordWarnings: recordResult.warnings,
+      });
       return true;
     }
 

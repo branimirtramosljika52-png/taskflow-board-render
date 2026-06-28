@@ -56842,6 +56842,7 @@ function triggerBlobDownload(blob, fileName) {
 const DOCUMENTATION_SPR_STORAGE_KEY = "safenexus.documentation-workbench.spr.v1";
 const DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY = "safenexus.documentation-workbench.spr.templates.v1";
 const DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID = "spr-v1-0-0";
+const DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY = "__mobileDocumentationAttachments";
 const DOCUMENTATION_SPR_GRID_ROW_COUNT = 24;
 const DOCUMENTATION_SPR_GRID_COLUMN_COUNT = 6;
 const DOCUMENTATION_SPR_DATE_FIELDS = new Set(["inspectionDate", "issueDate", "validUntil"]);
@@ -57194,12 +57195,20 @@ function normalizeDocumentationSprFieldSettings(value = {}) {
 }
 
 function normalizeDocumentationSprAttachments(value = []) {
-  const source = Array.isArray(value) ? value : [];
+  let source = Array.isArray(value) ? value : [];
+  if (!Array.isArray(value) && typeof value === "string" && value.trim().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value);
+      source = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      source = [];
+    }
+  }
   const seen = new Set();
   return source.map((entry, index) => {
     const item = entry && typeof entry === "object" ? entry : {};
     const fileName = String(item.fileName || item.name || "").trim();
-    const dataUrl = String(item.dataUrl || "").trim();
+    const dataUrl = String(item.dataUrl || item.contentDataUrl || "").trim();
     const fileType = String(item.fileType || item.type || "").trim().toLowerCase();
     const isPdf = fileType === "application/pdf" || /^data:application\/pdf;base64,/i.test(dataUrl) || /\.pdf$/i.test(fileName);
     const isImage = /^image\/(?:png|jpeg|jpg)$/i.test(fileType)
@@ -58590,6 +58599,18 @@ function getDocumentationSprPreviousRecordSheet(record = {}) {
   return preferred?.[1] || null;
 }
 
+function getDocumentationSprPreviousRecordAttachments(record = {}) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  return normalizeDocumentationSprAttachments(
+    fieldValues[DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY]
+      || record.attachments
+      || record.documentAttachments
+      || [],
+  );
+}
+
 function buildDocumentationSprGridlineModelFromPreviousSheet(sheet = null) {
   const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
   if (sheet && typeof sheet === "object" && !Array.isArray(sheet) && sheet.data && sheet.rowCount && sheet.columnCount) {
@@ -58634,8 +58655,12 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
   const previousLabel = buildDocumentTemplatePreviousRecordCandidateLabel(record);
   const previousSheet = getDocumentationSprPreviousRecordSheet(record);
   const previousGridlineModel = buildDocumentationSprGridlineModelFromPreviousSheet(previousSheet);
+  const previousAttachments = getDocumentationSprPreviousRecordAttachments(record);
   if (previousGridlineModel) {
     next.gridlineModel = previousGridlineModel;
+  }
+  if (previousAttachments.length > 0 && normalizeDocumentationSprAttachments(next.attachments).length === 0) {
+    next.attachments = previousAttachments;
   }
   next.projectDocumentation = fieldText(["PROJECT_DOCUMENTATION", "KORISTENA_DOKUMENTACIJA", "TEHNICKA_DOKUMENTACIJA"])
     || next.projectDocumentation
@@ -59923,9 +59948,22 @@ function renderDocumentationSprAttachmentList() {
         <strong>${escapeHtml(attachment.fileName)}</strong>
         <span>${escapeHtml(attachment.fileType === "application/pdf" ? "PDF" : "Slika")} · ${escapeHtml(formatFileSize(attachment.fileSize) || "datoteka")} · ${attachment.pageCount} ${attachment.pageCount === 1 ? "stranica" : "stranice"}</span>
       </div>
+      <button type="button" class="ghost-button" data-documentation-spr-attachment-open="${escapeHtml(attachment.id)}">Otvori</button>
       <button type="button" class="ghost-button" data-documentation-spr-attachment-remove="${escapeHtml(attachment.id)}">Ukloni</button>
     </div>
   `).join("");
+}
+
+function openDocumentationSprAttachment(id = "") {
+  const attachmentId = String(id || "").trim();
+  const attachment = normalizeDocumentationSprAttachments(documentationSprModel?.attachments ?? [])
+    .find((item) => String(item.id) === attachmentId);
+  if (!attachment?.dataUrl) {
+    setDocumentationSprStatus("Prilog nije dostupan za pregled", "saving");
+    return;
+  }
+  const opened = window.open(attachment.dataUrl, "_blank", "noopener,noreferrer");
+  setDocumentationSprStatus(opened ? `Otvoren prilog: ${attachment.fileName}` : "Preglednik je blokirao otvaranje priloga", opened ? "saved" : "saving");
 }
 
 async function appendDocumentationSprAttachments(files = []) {
@@ -59970,6 +60008,7 @@ async function appendDocumentationSprAttachments(files = []) {
   ]);
   renderDocumentationSprAttachmentList();
   renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
   setDocumentationSprStatus(
     `${accepted.length} ${accepted.length === 1 ? "prilog dodan za export" : "priloga dodano za export"}`,
     "saved",
@@ -59985,6 +60024,7 @@ function removeDocumentationSprAttachment(id = "") {
     .filter((attachment) => String(attachment.id) !== attachmentId);
   renderDocumentationSprAttachmentList();
   renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
   setDocumentationSprStatus("Prilog uklonjen iz exporta", "saved");
 }
 
@@ -61334,6 +61374,7 @@ function buildDocumentationSprBatchExportEntries() {
     id: summary.entry.id || `spr-batch-${index + 1}`,
     workOrderId: summary.entry.workOrderId || "",
     workOrderNumber: summary.workOrderNumber,
+    serviceId: summary.entry.service?.serviceId || summary.entry.service?.id || summary.model.serviceId || "",
     serviceCode: summary.serviceCode,
     serviceName: summary.serviceName,
     recordNumber: summary.recordNumber,
@@ -61622,6 +61663,7 @@ function getDocumentationSprSingleExportEntry() {
     workOrderNumber: model.workOrderNumber,
     serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || "SPR",
     serviceName: model.serviceName || model.serviceBinding?.serviceName || "Sigurnosna panik rasvjeta",
+    serviceId: model.serviceId || model.serviceBinding?.serviceId || "",
     recordNumber: model.recordNumber,
     companyName: model.companyName,
     inspectionPlace: model.inspectionPlace,
@@ -61629,6 +61671,155 @@ function getDocumentationSprSingleExportEntry() {
     quantity: "1",
     model,
     rows: getDocumentationSprMeasurementRowsForModel(model),
+  };
+}
+
+function buildDocumentationSprMeasurementSheetForRecord(model = {}) {
+  const gridRows = getDocumentationSprRowsFromGridlineModel(model?.gridlineModel || buildDocumentationSprGridlineModelFromRows());
+  const headerRow = gridRows[0] || getDocumentationSprBlankRows()[0];
+  const unitRow = gridRows[1] || [];
+  const columnCount = Math.max(DOCUMENTATION_SPR_GRID_COLUMN_COUNT, headerRow.length);
+  const columns = Array.from({ length: columnCount }, (_, columnIndex) => ({
+    id: `spr_col_${columnIndex + 1}`,
+    label: String(headerRow[columnIndex] || `Kolona ${columnIndex + 1}`).trim(),
+    placeholder: String(unitRow[columnIndex] || "").trim(),
+    width: [70, 240, 100, 90, 90, 130][columnIndex] || 130,
+    computed: "",
+    readonly: false,
+  }));
+  const rows = gridRows.slice(2)
+    .filter((row) => Array.from({ length: columnCount }).some((_, columnIndex) => String(row[columnIndex] || "").trim()))
+    .map((row, rowIndex) => ({
+      id: `spr_row_${rowIndex + 1}`,
+      cells: Object.fromEntries(columns.map((column, columnIndex) => [
+        column.id,
+        String(row[columnIndex] ?? "").trim(),
+      ])),
+      formats: {},
+    }));
+  return {
+    columns,
+    rows,
+    merges: [],
+    headerRows: [],
+  };
+}
+
+function buildDocumentationSprRecordFieldValues(model = {}) {
+  const normalized = normalizeDocumentationSprModel(model);
+  const attachments = normalizeDocumentationSprAttachments(normalized.attachments);
+  const inspectionDate = normalizeDateInputValue(normalized.inspectionDate);
+  const issuedDate = normalizeDateInputValue(normalized.issueDate);
+  const validUntil = normalizeDateInputValue(normalized.validUntil);
+  const fieldValues = {
+    WORK_ORDER_NUMBER: normalized.workOrderNumber || "",
+    WORK_ORDER_DOCUMENT_NUMBER: normalized.recordNumber || "",
+    DOCUMENT_NUMBER: normalized.recordNumber || "",
+    BROJ_ZAPISNIKA: normalized.recordNumber || "",
+    DOCUMENTATION_SPR_RECORD_NUMBER: normalized.recordNumber || "",
+    SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
+    WORK_ORDER_SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
+    DOCUMENTATION_SPR_SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
+    SERVICE_NAME: normalized.serviceName || normalized.serviceBinding?.serviceName || "",
+    WORK_ORDER_SERVICE_NAME: normalized.serviceName || normalized.serviceBinding?.serviceName || "",
+    DOCUMENTATION_SPR_SERVICE_NAME: normalized.serviceName || normalized.serviceBinding?.serviceName || "",
+    COMPANY_NAME: normalized.companyName || "",
+    TVRTKA: normalized.companyName || "",
+    COMPANY_HEADQUARTERS: normalized.companyAddress || "",
+    SJEDISTE: normalized.companyAddress || "",
+    COMPANY_OIB: normalized.companyOib || "",
+    OIB: normalized.companyOib || "",
+    KORISNIK: normalized.spaceUser || normalized.companyName || "",
+    WORK_ORDER_TESTING_LOCATION: normalized.inspectionPlace || "",
+    TESTING_LOCATION: normalized.inspectionPlace || "",
+    MJESTO_ISPITIVANJA: normalized.inspectionPlace || "",
+    OBJECT_NAME: normalized.inspectionObject || "",
+    OBJEKT: normalized.inspectionObject || "",
+    WORK_ORDER_INSPECTION_DATE: inspectionDate || normalized.inspectionDate || "",
+    DATUM_ISPITIVANJA: inspectionDate || normalized.inspectionDate || "",
+    WORK_ORDER_ISSUED_DATE: issuedDate || normalized.issueDate || "",
+    DATUM_IZDAVANJA: issuedDate || normalized.issueDate || "",
+    WORK_ORDER_VALID_UNTIL: validUntil || normalized.validUntil || "",
+    WORK_ORDER_SERVICE_VALID_UNTIL: validUntil || normalized.validUntil || "",
+    VRIJEDI_DO: validUntil || normalized.validUntil || "",
+    WORK_ORDER_INSPECTION_TYPE: normalized.inspectionType || "",
+    VRSTA_ISPITIVANJA: normalized.inspectionType || "",
+    MEASUREMENT_EQUIPMENT_GROUP: normalized.measurementEquipmentGroup || "",
+    MEASUREMENT_EQUIPMENT_IDS: normalizeDocumentationSprIdList(normalized.measurementEquipmentIds),
+    LEGAL_FRAMEWORK_IDS: normalizeDocumentationSprIdList(normalized.legalFrameworkIds),
+    DOCUMENTATION_SPR_RESULTS_TEXT: normalized.resultsText || "",
+    SPR_RESULTS_TEXT: normalized.resultsText || "",
+    OPIS_SUSTAVA: normalized.resultsText || "",
+    DOCUMENTATION_SPR_RESULT_STATUS: normalized.resultStatus || "",
+    SPR_RESULT_STATUS: normalized.resultStatus || "",
+    ZAKLJUCNA_OCJENA: normalized.resultStatus || "",
+    DOCUMENTATION_SPR_DEFECTS: normalized.defects || "",
+    SPR_DEFECTS: normalized.defects || "",
+    NEDOSTACI: normalized.defects || "",
+    DOCUMENTATION_SPR_RECOMMENDATIONS: normalized.recommendations || "",
+    SPR_RECOMMENDATIONS: normalized.recommendations || "",
+    PREPORUKE: normalized.recommendations || "",
+    PROJECT_DOCUMENTATION: normalized.projectDocumentation || "",
+    KORISTENA_DOKUMENTACIJA: normalized.projectDocumentation || "",
+    SIGNATURE_MODE: normalized.signatureMode || "digital",
+    NACIN_POTPISA: normalized.signatureMode || "digital",
+    DOCUMENTATION_SPR_GRIDLINE_MODEL: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
+  };
+  if (validUntil) {
+    fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY] = [{
+      fieldId: "WORK_ORDER_VALID_UNTIL",
+      fieldKey: "WORK_ORDER_VALID_UNTIL",
+      label: "Vrijedi do",
+      value: validUntil,
+    }];
+  }
+  if (attachments.length > 0) {
+    fieldValues[DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY] = attachments;
+  }
+  return fieldValues;
+}
+
+function getDocumentationSprWorkOrderForExportEntry(exportEntry = {}, model = {}) {
+  const workOrderId = getDocumentationSprWorkOrderIdForExport(exportEntry, model);
+  if (workOrderId) {
+    const byId = (state.workOrders || []).find((item) => String(item.id || "") === workOrderId);
+    if (byId) {
+      return byId;
+    }
+  }
+  const workOrderNumber = String(exportEntry.workOrderNumber || model.workOrderNumber || "").trim();
+  return (state.workOrders || []).find((item) => String(item.workOrderNumber || item.number || "").trim() === workOrderNumber) || null;
+}
+
+function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
+  const model = normalizeDocumentationSprModel(exportEntry.model || documentationSprModel);
+  const workOrder = getDocumentationSprWorkOrderForExportEntry(exportEntry, model) || {};
+  const object = getDocumentationSprWorkOrderObject(workOrder) || {};
+  const fieldValues = buildDocumentationSprRecordFieldValues(model);
+  const measurementSheet = buildDocumentationSprMeasurementSheetForRecord(model);
+  const attachments = normalizeDocumentationSprAttachments(model.attachments);
+  return {
+    recordKind: "documentation_spr",
+    workOrderNumber: model.workOrderNumber || exportEntry.workOrderNumber || workOrder.workOrderNumber || "",
+    serviceId: model.serviceId || model.serviceBinding?.serviceId || exportEntry.serviceId || "",
+    serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || exportEntry.serviceCode || "SPR",
+    serviceName: model.serviceName || model.serviceBinding?.serviceName || exportEntry.serviceName || "",
+    templateTitle: model.templateCode || exportEntry.serviceCode || "SPR zapisnik",
+    documentType: "Zapisnik",
+    companyId: String(workOrder.companyId || "").trim(),
+    locationId: String(workOrder.locationId || "").trim(),
+    objectId: String(model.inspectionObjectId || object.id || workOrder.objectId || workOrder.locationObjectId || "").trim(),
+    objectName: model.inspectionObject || object.name || workOrder.objectName || workOrder.locationObjectName || "",
+    inspectionDate: normalizeDateInputValue(model.inspectionDate) || model.inspectionDate || "",
+    issuedDate: normalizeDateInputValue(model.issueDate) || model.issueDate || "",
+    expirationDate: normalizeDateInputValue(model.validUntil) || model.validUntil || "",
+    fieldValues,
+    fieldSheets: {
+      DOCUMENTATION_SPR_GRIDLINE_MODEL: measurementSheet,
+      SPR_GRIDLINE_MODEL: measurementSheet,
+      GRIDLINE_MODEL: measurementSheet,
+    },
+    attachments,
   };
 }
 
@@ -61667,6 +61858,10 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
     method: "POST",
     body: {
       sourceType: "pdf",
+      documentRecords: [buildDocumentationSprDocumentRecordPayload({
+        ...exportEntry,
+        model,
+      })],
       files: [{
         fileName: result.fileName || fileName,
         fileType: "application/pdf",
@@ -61693,6 +61888,12 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
   const savedItem = response?.items?.[0] || null;
   if (savedItem) {
     upsertDocumentsExplorerWorkOrderDocuments([savedItem]);
+  }
+  if (Array.isArray(response?.documentRecords)) {
+    response.documentRecords.forEach((record) => upsertDocumentTemplatePreviousRecordCache(record));
+  }
+  if (Array.isArray(response?.documentRecordWarnings) && response.documentRecordWarnings.length > 0) {
+    console.warn("SPR zapisnik nije potpuno povezan za ponovno korištenje.", response.documentRecordWarnings);
   }
   return savedItem;
 }
@@ -61999,6 +62200,13 @@ function initDocumentationSprWorkbench() {
       void appendDocumentationSprAttachments(event.dataTransfer?.files);
     });
     documentationSprAttachmentList?.addEventListener("click", (event) => {
+      const openButton = event.target instanceof Element
+        ? event.target.closest("[data-documentation-spr-attachment-open]")
+        : null;
+      if (openButton) {
+        openDocumentationSprAttachment(openButton.getAttribute("data-documentation-spr-attachment-open") || "");
+        return;
+      }
       const button = event.target instanceof Element
         ? event.target.closest("[data-documentation-spr-attachment-remove]")
         : null;
