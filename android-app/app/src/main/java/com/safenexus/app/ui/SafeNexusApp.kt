@@ -345,6 +345,9 @@ private enum class PeriodicsViewMode(val label: String) {
     Calendar("Kalendar"),
 }
 
+private const val PERIODICS_INITIAL_VISIBLE_COUNT = 50
+private const val PERIODICS_VISIBLE_INCREMENT = 50
+
 private data class MainMenuShortcut(
     val label: String,
     val description: String,
@@ -16132,7 +16135,13 @@ private fun PeriodicsContent(
             entries.filter { periodicCategoryId(it.kind) == selectedCategory }
         }
     }
-    val calendarRecords = remember(visibleEntries) { visibleEntries.map { it.record } }
+    var visibleListLimit by remember(entries, selectedCategory) { mutableStateOf(PERIODICS_INITIAL_VISIBLE_COUNT) }
+    val displayedEntries = remember(visibleEntries, visibleListLimit) {
+        visibleEntries.take(visibleListLimit)
+    }
+    val calendarRecords = remember(visibleEntries, viewMode) {
+        if (viewMode == PeriodicsViewMode.Calendar) visibleEntries.map { it.record } else emptyList()
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -16194,7 +16203,15 @@ private fun PeriodicsContent(
             } else if (viewMode == PeriodicsViewMode.Calendar) {
                 CalendarContent(records = calendarRecords, onOpenRecord = onOpenRecord)
             } else {
-                PeriodicsListView(entries = visibleEntries, today = today, onOpenRecord = onOpenRecord)
+                PeriodicsListView(
+                    entries = displayedEntries,
+                    totalCount = visibleEntries.size,
+                    today = today,
+                    onOpenRecord = onOpenRecord,
+                    onShowMore = {
+                        visibleListLimit = (visibleListLimit + PERIODICS_VISIBLE_INCREMENT).coerceAtMost(visibleEntries.size)
+                    },
+                )
             }
         }
     }
@@ -16203,8 +16220,10 @@ private fun PeriodicsContent(
 @Composable
 private fun PeriodicsListView(
     entries: List<PeriodicEntry>,
+    totalCount: Int,
     today: LocalDate,
     onOpenRecord: (MobileRecord) -> Unit,
+    onShowMore: () -> Unit,
 ) {
     val groups = remember(entries, today) {
         listOf(
@@ -16220,11 +16239,16 @@ private fun PeriodicsListView(
             "Bez datuma" to entries.filter { it.parsedDate == null },
         ).filter { it.second.isNotEmpty() }
     }
-    if (entries.isEmpty()) {
+    if (totalCount == 0) {
         Text("Nema rokova za odabrani filter.", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "Prikazano ${entries.size} od $totalCount rokova. Najstariji datumi su prvi.",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+        )
         groups.forEach { (label, groupEntries) ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
@@ -16240,6 +16264,18 @@ private fun PeriodicsListView(
             }
             groupEntries.forEach { entry ->
                 PeriodicLine(entry = entry, today = today, onClick = { onOpenRecord(entry.record) })
+            }
+        }
+        if (entries.size < totalCount) {
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onShowMore,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(
+                    "Prikaži još ${minOf(PERIODICS_VISIBLE_INCREMENT, totalCount - entries.size)}",
+                    fontWeight = FontWeight.Black,
+                )
             }
         }
     }
