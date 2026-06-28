@@ -28107,18 +28107,31 @@ private fun MeasurementTableEditor(
     var extraRowWindow by remember(table.key, table.id) { mutableStateOf(0) }
     var quickFillOpen by remember(table.key, table.id) { mutableStateOf(false) }
     var lastQuickFillDraft by remember(table.key, table.id) { mutableStateOf<MeasurementQuickFillDraft?>(null) }
+    val rowLoadPageSize = if (tableOnly) 24 else 20
     val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex, tableOnly) {
         if (sheet.rows.isEmpty()) {
             0
         } else if (lastMeaningfulRowIndex >= 0) {
-            val maxRows = if (tableOnly) 72 else 32
-            maxOf(if (tableOnly) 18 else 12, minOf(lastMeaningfulRowIndex + 6, maxRows)).coerceAtMost(sheet.rows.size)
+            val initialRows = if (tableOnly) 24 else 12
+            val maxRows = if (tableOnly) 24 else 32
+            maxOf(initialRows, minOf(lastMeaningfulRowIndex + 6, maxRows)).coerceAtMost(sheet.rows.size)
         } else {
             minOf(if (tableOnly) 24 else 12, sheet.rows.size)
         }
     }
     val visibleRowCount = (baseVisibleRowCount + extraRowWindow).coerceAtMost(sheet.rows.size)
     val visibleRows = remember(sheet.rows, visibleRowCount) { sheet.rows.take(visibleRowCount) }
+    val gridScrollState = rememberScrollState()
+    LaunchedEffect(tableOnly, gridScrollState.value, gridScrollState.maxValue, visibleRowCount, sheet.rows.size) {
+        if (
+            tableOnly &&
+            visibleRowCount < sheet.rows.size &&
+            gridScrollState.maxValue > 0 &&
+            gridScrollState.value >= gridScrollState.maxValue - 180
+        ) {
+            extraRowWindow = (extraRowWindow + rowLoadPageSize).coerceAtMost((sheet.rows.size - baseVisibleRowCount).coerceAtLeast(0))
+        }
+    }
     val initialSelection = remember(table.key, table.id, sheet.columns.size) {
         val columnIndex = sheet.columns.indexOfFirst { it.isEditableMeasurementColumn() }.takeIf { it >= 0 } ?: 0
         MeasurementCellSelection(0, columnIndex)
@@ -28196,7 +28209,7 @@ private fun MeasurementTableEditor(
             onApply = { draft ->
                 lastQuickFillDraft = draft
                 commitSheetChange(applyMeasurementQuickFill(sheetWithPendingCellValue(sheet), draft))
-                extraRowWindow = extraRowWindow.coerceAtLeast(20)
+                extraRowWindow = extraRowWindow.coerceAtLeast(rowLoadPageSize)
                 quickFillOpen = false
             },
         )
@@ -28460,7 +28473,7 @@ private fun MeasurementTableEditor(
                         if (tableOnly) {
                             baseModifier
                                 .heightIn(max = if (expanded) 440.dp else 360.dp)
-                                .verticalScroll(rememberScrollState())
+                                .verticalScroll(gridScrollState)
                         } else {
                             baseModifier
                         }
@@ -28546,8 +28559,8 @@ private fun MeasurementTableEditor(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                         )
-                        OutlinedButton(onClick = { extraRowWindow += 20 }, enabled = enabled) {
-                            Text("Još 20")
+                        OutlinedButton(onClick = { extraRowWindow += rowLoadPageSize }, enabled = enabled) {
+                            Text("Još $rowLoadPageSize")
                         }
                         TextButton(onClick = { extraRowWindow = sheet.rows.size }, enabled = enabled) {
                             Text("Sve")
