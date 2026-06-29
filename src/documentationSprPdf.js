@@ -1144,6 +1144,31 @@ function getPdfMeasurementColumnWidths(columns = [], metrics = getPdfPageMetrics
   return columns.map((column) => ((Number(column.width) || 120) / declaredWidth) * availableWidth);
 }
 
+function getPdfMeasurementBaseRowHeight(dense = false) {
+  return dense ? 15.2 : 17.4;
+}
+
+function estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts, dense) {
+  const fontSize = dense ? 5.8 : 7.2;
+  const lineHeight = fontSize + 2;
+  const minHeight = getPdfMeasurementBaseRowHeight(dense);
+  const rowIndex = row.rowIndex;
+  let maxLines = 1;
+  columns.forEach((column, columnIndex) => {
+    if (isPdfMeasurementCoveredByMerge(sheet, rowIndex, columnIndex)) {
+      return;
+    }
+    const merge = getPdfMeasurementMerge(sheet, rowIndex, columnIndex);
+    const columnSpan = merge && merge.row === rowIndex && merge.column === columnIndex
+      ? Math.max(1, Math.min(merge.columnSpan, columns.length - columnIndex))
+      : 1;
+    const width = widths.slice(columnIndex, columnIndex + columnSpan).reduce((sum, value) => sum + value, 0) || widths[columnIndex] || 32;
+    const text = row.cells?.[column.id] || "";
+    maxLines = Math.max(maxLines, wrapText(text, sheet.headerRows.includes(rowIndex) ? fonts.bold : fonts.regular, fontSize, Math.max(4, width - 6)).length || 1);
+  });
+  return Math.max(minHeight, Math.ceil((maxLines * lineHeight) + 5));
+}
+
 function drawMeasurementColumnHeader(page, columns, widths, y, fonts, dense, metrics = getPdfPageMetrics()) {
   let cellX = metrics.marginX || MARGIN_X;
   const headerHeight = dense ? 30 : 36;
@@ -1165,8 +1190,8 @@ function drawMeasurementColumnHeader(page, columns, widths, y, fonts, dense, met
   return y - headerHeight;
 }
 
-function drawMeasurementDataRow(page, sheet, row, columns, widths, y, fonts, dense, metrics = getPdfPageMetrics()) {
-  const rowHeight = dense ? 15.2 : 17.4;
+function drawMeasurementDataRow(page, sheet, row, columns, widths, y, fonts, dense, metrics = getPdfPageMetrics(), rowHeightOverride = null) {
+  const rowHeight = rowHeightOverride || getPdfMeasurementBaseRowHeight(dense);
   const fontSize = dense ? 5.8 : 7.2;
   columns.forEach((column, columnIndex) => {
     const merge = getPdfMeasurementMerge(sheet, row.rowIndex, columnIndex);
@@ -1213,7 +1238,8 @@ function drawMeasurementTable(page, table, y, fonts, rowsOverride = null, option
     cursorY = drawMeasurementColumnHeader(page, columns, widths, cursorY, fonts, dense, metrics);
   }
   rows.forEach((row) => {
-    cursorY = drawMeasurementDataRow(page, sheet, row, columns, widths, cursorY, fonts, dense, metrics);
+    const rowHeight = estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts, dense);
+    cursorY = drawMeasurementDataRow(page, sheet, row, columns, widths, cursorY, fonts, dense, metrics, rowHeight);
   });
   return cursorY;
 }
@@ -1253,11 +1279,15 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
     const columns = sheet.columns.length ? sheet.columns : [];
     const dense = columns.length > 8;
     const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
-    const rowHeight = dense ? 15.2 : 17.4;
+    const widths = getPdfMeasurementColumnWidths(columns, metrics);
     const headerHeight = dense ? 30 : 36;
-    const rowsPerPage = Math.max(1, Math.floor((metrics.topY - 106 - metrics.bottomY - headerHeight) / rowHeight));
+    const tableBudget = Math.max(80, metrics.topY - 106 - metrics.bottomY);
     const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
     const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
+    const repeatedHeaderHeight = headerHeight + headerRows.reduce((sum, row) => (
+      sum + estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts, dense)
+    ), 0);
+    const maxBodyHeight = Math.max(getPdfMeasurementBaseRowHeight(dense) * 2, tableBudget - repeatedHeaderHeight);
     let cursor = 0;
     let tablePageIndex = 0;
     if (!bodyRows.length) {
@@ -1266,13 +1296,24 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
       return;
     }
     while (cursor < bodyRows.length) {
-      const availableBodyRows = Math.max(1, rowsPerPage - headerRows.length);
-      const pageRows = [
-        ...(tablePageIndex > 0 ? headerRows : headerRows),
-        ...bodyRows.slice(cursor, cursor + availableBodyRows),
-      ];
+      const pageBodyRows = [];
+      let usedHeight = 0;
+      while (cursor < bodyRows.length) {
+        const row = bodyRows[cursor];
+        const rowHeight = estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts, dense);
+        if (pageBodyRows.length && usedHeight + rowHeight > maxBodyHeight) {
+          break;
+        }
+        pageBodyRows.push(row);
+        usedHeight += rowHeight;
+        cursor += 1;
+      }
+      if (!pageBodyRows.length) {
+        pageBodyRows.push(bodyRows[cursor]);
+        cursor += 1;
+      }
+      const pageRows = [...headerRows, ...pageBodyRows];
       drawMeasurementTablePage(pdfDoc, model, table, fonts, pageRows, tablePageIndex);
-      cursor += availableBodyRows;
       tablePageIndex += 1;
       pageCount += 1;
     }

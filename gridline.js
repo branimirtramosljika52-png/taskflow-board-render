@@ -307,6 +307,11 @@
     fragment = document.createDocumentFragment();
     function flushGroup() {
       if (group && group.childElementCount) {
+        var label = document.createElement("span");
+        label.className = "gridline-toolbar-group-title";
+        label.textContent = TOOLBAR_GROUP_LABELS[groupIndex] || "Alati";
+        label.setAttribute("aria-hidden", "true");
+        group.appendChild(label);
         fragment.appendChild(group);
       }
       group = null;
@@ -1018,12 +1023,15 @@
       grid.tabIndex = 0;
     }
 
-    if (!statusBar && rootElement && rootElement.appendChild) {
+    if (!statusBar && rootElement) {
+      var statusBarTarget = rootElement.nodeType === 9 ? rootElement.body : rootElement;
       statusBar = document.createElement("div");
       statusBar.className = "gridline-statusbar";
       statusBar.dataset.gridlineRole = "summary";
       statusBar.textContent = "Spremno";
-      rootElement.appendChild(statusBar);
+      if (statusBarTarget && statusBarTarget.appendChild) {
+        statusBarTarget.appendChild(statusBar);
+      }
     }
 
     if (zoomSelect) {
@@ -1520,23 +1528,30 @@
       return td && grid.contains(td) ? td : null;
     }
 
-    function handleSelectionPointerMove(event) {
-      var td;
+    function getCellFromEventTarget(target) {
+      var td = target && typeof target.closest === "function"
+        ? target.closest("td[data-row][data-column]")
+        : null;
+      return td && grid.contains(td) ? td : null;
+    }
+
+    function updateSelectionDragRange(row, column) {
       if (!selectionDrag) {
         return;
       }
-      event.preventDefault();
-      td = getCellFromPoint(event.clientX, event.clientY);
-      if (!td) {
-        return;
-      }
-      selectCell(Number(td.dataset.row), Number(td.dataset.column), {
+      selection = {
+        startRow: selectionDrag.startRow,
+        startColumn: selectionDrag.startColumn,
+        endRow: row,
+        endColumn: column,
+      };
+      selectCell(row, column, {
         focus: false,
-        extend: true,
+        preserveSelection: true,
       });
     }
 
-    function handleSelectionPointerUp(event) {
+    function finishSelectionDrag() {
       if (selectionDrag && selectionDrag.captureElement && typeof selectionDrag.captureElement.releasePointerCapture === "function") {
         try {
           selectionDrag.captureElement.releasePointerCapture(selectionDrag.pointerId);
@@ -1548,6 +1563,92 @@
       document.removeEventListener("pointerup", handleSelectionPointerUp);
       document.body.classList.remove("is-selecting-gridline-cells");
       selectionDrag = null;
+    }
+
+    function handleSelectionPointerMove(event) {
+      var td;
+      if (!selectionDrag) {
+        return;
+      }
+      event.preventDefault();
+      td = getCellFromPoint(event.clientX, event.clientY);
+      if (!td) {
+        return;
+      }
+      updateSelectionDragRange(Number(td.dataset.row), Number(td.dataset.column));
+    }
+
+    function handleSelectionPointerUp(event) {
+      finishSelectionDrag();
+    }
+
+    function handleGridMouseDown(event) {
+      var cell;
+      var row;
+      var column;
+      if (event.button !== 0) {
+        return;
+      }
+      if (event.target && event.target.closest && (
+        event.target.closest(".gridline-fill-handle")
+        || event.target.closest("[data-gridline-validation-row][data-gridline-validation-column]")
+        || event.target.closest("[data-gridline-filter-column]")
+        || event.target.closest("[data-gridline-column-resizer]")
+        || event.target.closest("[data-gridline-row-resizer]")
+      )) {
+        return;
+      }
+      cell = getCellFromEventTarget(event.target);
+      if (!cell) {
+        return;
+      }
+      event.preventDefault();
+      closeValidationPanel();
+      closeFilterPanel();
+      hideContextMenu();
+      row = Number(cell.dataset.row);
+      column = Number(cell.dataset.column);
+      if (document.activeElement === formulaInput && String(formulaInput.value || "").trim().startsWith("=")) {
+        insertFormulaReference(formatCellReference(row, column));
+        return;
+      }
+      if (event.shiftKey) {
+        selectCell(row, column, {
+          focus: false,
+          extend: true,
+        });
+        return;
+      }
+      selectionDrag = {
+        startRow: row,
+        startColumn: column,
+        pointerId: null,
+        captureElement: null,
+        mode: "mouse",
+      };
+      selectCell(row, column, { focus: false });
+      grid.focus({ preventScroll: true });
+      document.body.classList.add("is-selecting-gridline-cells");
+    }
+
+    function handleGridMouseOver(event) {
+      var cell;
+      if (!selectionDrag || selectionDrag.mode !== "mouse") {
+        return;
+      }
+      cell = getCellFromEventTarget(event.target);
+      if (!cell) {
+        return;
+      }
+      event.preventDefault();
+      updateSelectionDragRange(Number(cell.dataset.row), Number(cell.dataset.column));
+    }
+
+    function handleDocumentMouseUp() {
+      if (!selectionDrag || selectionDrag.mode !== "mouse") {
+        return;
+      }
+      finishSelectionDrag();
     }
 
     function markFillPreview(targetRow, targetColumn) {
@@ -2113,6 +2214,9 @@
         ? event.target.closest("td[data-row][data-column]")
         : null;
       if (cell && grid.contains(cell)) {
+        if (event.pointerType === "mouse") {
+          return;
+        }
         event.preventDefault();
         if (document.activeElement === formulaInput && String(formulaInput.value || "").trim().startsWith("=")) {
           insertFormulaReference(formatCellReference(Number(cell.dataset.row), Number(cell.dataset.column)));
@@ -2130,6 +2234,7 @@
           startColumn: Number(cell.dataset.column),
           pointerId: event.pointerId,
           captureElement: cell,
+          mode: "pointer",
         };
         selectCell(selectionDrag.startRow, selectionDrag.startColumn, { focus: false });
         grid.focus({ preventScroll: true });
@@ -4735,6 +4840,8 @@
     grid.addEventListener("copy", handleCopy);
     grid.addEventListener("cut", handleCut);
     grid.addEventListener("pointerdown", handleGridPointerDown);
+    grid.addEventListener("mousedown", handleGridMouseDown);
+    grid.addEventListener("mouseover", handleGridMouseOver);
     grid.addEventListener("dblclick", handleFillDoubleClick);
     if (enableAiContextMenu || enableColumnAiSettings) {
       grid.addEventListener("contextmenu", handleGridContextMenu);
@@ -4914,6 +5021,7 @@
     document.addEventListener("click", hideContextMenu);
     document.addEventListener("click", closeValidationPanel);
     document.addEventListener("click", closeFilterPanel);
+    document.addEventListener("mouseup", handleDocumentMouseUp);
     updateHistoryButtons();
 
     function destroy() {
@@ -4939,6 +5047,7 @@
       document.removeEventListener("pointerup", handleColumnResizeUp);
       document.removeEventListener("pointermove", handleRowResizeMove);
       document.removeEventListener("pointerup", handleRowResizeUp);
+      document.removeEventListener("mouseup", handleDocumentMouseUp);
       document.body.classList.remove("is-selecting-gridline-cells");
       selectionDrag = null;
       fillDrag = null;
@@ -4955,6 +5064,8 @@
       grid.removeEventListener("copy", handleCopy);
       grid.removeEventListener("cut", handleCut);
       grid.removeEventListener("pointerdown", handleGridPointerDown);
+      grid.removeEventListener("mousedown", handleGridMouseDown);
+      grid.removeEventListener("mouseover", handleGridMouseOver);
       grid.removeEventListener("dblclick", handleFillDoubleClick);
       grid.removeEventListener("contextmenu", handleGridContextMenu);
       formulaInput.removeEventListener("input", handleFormulaInput);

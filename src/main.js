@@ -57381,6 +57381,21 @@ function normalizeDocumentationSprPageOrientation(value = "") {
   return String(value || "").trim().toLowerCase() === "landscape" ? "landscape" : "portrait";
 }
 
+function getDocumentationSprMeasurementPageOrientation(table = {}) {
+  const signature = [
+    table?.id,
+    table?.key,
+    table?.label,
+    table?.summary,
+    table?.chapterTitle,
+    table?.assessmentLabel,
+  ].map((entry) => String(entry || "").trim().toLowerCase()).join(" ");
+  if (/\bipk\b|impedancija\s+petlje\s+kvara/.test(signature)) {
+    return "landscape";
+  }
+  return normalizeDocumentationSprPageOrientation(table?.pageOrientation || table?.orientation);
+}
+
 function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
   const key = String(table.key || table.id || `measurement-table-${index + 1}`).trim();
   return {
@@ -62557,10 +62572,143 @@ function getDocumentationSprMeasurementRowsPerPage(table = {}) {
   return columns.length > 8 ? 20 : 18;
 }
 
+function getDocumentationSprPreviewMeasurementProfile(table = {}) {
+  const columns = table?.sheet?.columns || [];
+  const orientation = getDocumentationSprMeasurementPageOrientation(table);
+  const dense = columns.length > 8;
+  if (orientation === "landscape") {
+    return {
+      orientation,
+      dense,
+      tableWidth: 1060,
+      maxTableHeight: dense ? 395 : 410,
+      minRowHeight: dense ? 17 : 20,
+      fontSize: dense ? 8.4 : 9.6,
+      lineHeight: dense ? 9.8 : 11.2,
+      padding: dense ? 7 : 9,
+      headerMinHeight: dense ? 30 : 34,
+    };
+  }
+  return {
+    orientation,
+    dense,
+    tableWidth: 720,
+    maxTableHeight: dense ? 620 : 660,
+    minRowHeight: dense ? 18 : 25,
+    fontSize: dense ? 9.1 : 13.2,
+    lineHeight: dense ? 10.6 : 15.2,
+    padding: dense ? 7 : 12,
+    headerMinHeight: dense ? 32 : 40,
+  };
+}
+
+function getDocumentationSprMeasurementColumnWidthsPx(table = {}, profile = getDocumentationSprPreviewMeasurementProfile(table)) {
+  const columns = table?.sheet?.columns || [];
+  const totalWidth = columns.reduce((sum, column) => sum + (Number(column.width) || 120), 0) || columns.length || 1;
+  return columns.map((column) => Math.max(18, ((Number(column.width) || 120) / totalWidth) * profile.tableWidth));
+}
+
+function getDocumentationSprPreviewRowCellValue(table = {}, sheet = {}, row = {}, rowIndex = 0, columnIndex = 0) {
+  const columns = sheet.columns || [];
+  const column = columns[columnIndex];
+  if (!column) {
+    return "";
+  }
+  try {
+    return getMeasurementSheetPreviewCellValue(sheet, row.rowIndex ?? rowIndex, columnIndex, table.formulaContext);
+  } catch {
+    return row.cells?.[column.id] || "";
+  }
+}
+
+function estimateDocumentationSprPreviewTextLines(value = "", widthPx = 80, profile = getDocumentationSprPreviewMeasurementProfile()) {
+  const text = String(value ?? "").trim();
+  const charWidth = Math.max(3.2, profile.fontSize * 0.52);
+  const charsPerLine = Math.max(3, Math.floor(Math.max(16, widthPx - 8) / charWidth));
+  if (!text) {
+    return 1;
+  }
+  return text.split(/\r?\n/).reduce((sum, line) => {
+    const cleanLine = String(line || "").trim();
+    return sum + Math.max(1, Math.ceil(cleanLine.length / charsPerLine));
+  }, 0);
+}
+
+function estimateDocumentationSprPreviewMeasurementRowHeight(table = {}, row = {}, sheet = null, profile = null, widths = null) {
+  const effectiveSheet = sheet || cloneDocumentationSprMeasurementSheet(table?.sheet || {});
+  const effectiveProfile = profile || getDocumentationSprPreviewMeasurementProfile(table);
+  const effectiveWidths = widths || getDocumentationSprMeasurementColumnWidthsPx(table, effectiveProfile);
+  const columns = effectiveSheet.columns || [];
+  const rowIndex = row.rowIndex ?? 0;
+  const isHeaderRow = effectiveSheet.headerRows.includes(rowIndex);
+  let maxLines = 1;
+  columns.forEach((column, columnIndex) => {
+    if (isDocumentationSprPreviewCoveredByMerge(effectiveSheet, rowIndex, columnIndex)) {
+      return;
+    }
+    const merge = getDocumentationSprPreviewMerge(effectiveSheet, rowIndex, columnIndex);
+    const columnSpan = merge && Number(merge.row || 0) === rowIndex && Number(merge.column || 0) === columnIndex
+      ? Math.max(1, Number(merge.columnSpan || merge.colSpan || 1))
+      : 1;
+    const width = effectiveWidths.slice(columnIndex, columnIndex + columnSpan).reduce((sum, value) => sum + value, 0) || effectiveWidths[columnIndex] || 80;
+    const value = getDocumentationSprPreviewRowCellValue(table, effectiveSheet, row, rowIndex, columnIndex);
+    maxLines = Math.max(maxLines, estimateDocumentationSprPreviewTextLines(value, width, effectiveProfile));
+  });
+  return Math.max(
+    effectiveProfile.minRowHeight + (isHeaderRow ? 2 : 0),
+    Math.ceil((maxLines * effectiveProfile.lineHeight) + effectiveProfile.padding + (isHeaderRow ? 3 : 0)),
+  );
+}
+
+function estimateDocumentationSprPreviewMeasurementHeaderHeight(table = {}, profile = null, widths = null) {
+  const effectiveProfile = profile || getDocumentationSprPreviewMeasurementProfile(table);
+  const effectiveWidths = widths || getDocumentationSprMeasurementColumnWidthsPx(table, effectiveProfile);
+  const columns = table?.sheet?.columns || [];
+  const maxLines = columns.reduce((max, column, columnIndex) => {
+    const text = [column.label, column.placeholder].filter(Boolean).join("\n");
+    return Math.max(max, estimateDocumentationSprPreviewTextLines(text, effectiveWidths[columnIndex] || 80, effectiveProfile));
+  }, 1);
+  return Math.max(effectiveProfile.headerMinHeight, Math.ceil(maxLines * effectiveProfile.lineHeight + effectiveProfile.padding + 4));
+}
+
+function splitDocumentationSprMeasurementRowsForPreview(table = {}, headerRows = [], bodyRows = []) {
+  const sheet = cloneDocumentationSprMeasurementSheet(table?.sheet || {});
+  const profile = getDocumentationSprPreviewMeasurementProfile(table);
+  const widths = getDocumentationSprMeasurementColumnWidthsPx(table, profile);
+  const repeatedHeaderHeight = estimateDocumentationSprPreviewMeasurementHeaderHeight(table, profile, widths)
+    + headerRows.reduce((sum, row) => sum + estimateDocumentationSprPreviewMeasurementRowHeight(table, row, sheet, profile, widths), 0);
+  const maxBodyHeight = Math.max(profile.minRowHeight * 2, profile.maxTableHeight - repeatedHeaderHeight);
+  const chunks = [];
+  let cursor = 0;
+  if (!bodyRows.length) {
+    return [headerRows];
+  }
+  while (cursor < bodyRows.length) {
+    const pageBodyRows = [];
+    let usedHeight = 0;
+    while (cursor < bodyRows.length) {
+      const row = bodyRows[cursor];
+      const rowHeight = estimateDocumentationSprPreviewMeasurementRowHeight(table, row, sheet, profile, widths);
+      if (pageBodyRows.length && usedHeight + rowHeight > maxBodyHeight) {
+        break;
+      }
+      pageBodyRows.push(row);
+      usedHeight += rowHeight;
+      cursor += 1;
+    }
+    if (!pageBodyRows.length) {
+      pageBodyRows.push(bodyRows[cursor]);
+      cursor += 1;
+    }
+    chunks.push([...headerRows, ...pageBodyRows]);
+  }
+  return chunks;
+}
+
 function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4, rowsOverride = null, tablePageIndex = 0) {
   const columns = table?.sheet?.columns || [];
   const title = table?.summary || table?.label || getDocumentationSprMeasurementTableTitle(model);
-  const orientation = normalizeDocumentationSprPageOrientation(table?.pageOrientation);
+  const orientation = getDocumentationSprMeasurementPageOrientation(table);
   return `
     <section class="documentation-spr-paper ${orientation === "landscape" ? "is-landscape" : ""}">
       ${renderDocumentationSprSimpleHeader(model)}
@@ -62585,23 +62733,10 @@ function renderDocumentationSprMeasurementPages(model, startPageNumber = 3, tota
     const allRows = getDocumentationSprMeasurementTableRowsForRender(table);
     const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
     const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
-    const rowsPerPage = getDocumentationSprMeasurementRowsPerPage(table);
-    const availableBodyRows = Math.max(1, rowsPerPage - headerRows.length);
-    let cursor = 0;
-    let tablePageIndex = 0;
-    if (!bodyRows.length) {
-      pages.push(renderDocumentationSprMeasurementPage(model, table, startPageNumber + pages.length, totalPages, headerRows, tablePageIndex));
-      return;
-    }
-    while (cursor < bodyRows.length) {
-      const pageRows = [
-        ...headerRows,
-        ...bodyRows.slice(cursor, cursor + availableBodyRows),
-      ];
+    const pageChunks = splitDocumentationSprMeasurementRowsForPreview(table, headerRows, bodyRows);
+    pageChunks.forEach((pageRows, tablePageIndex) => {
       pages.push(renderDocumentationSprMeasurementPage(model, table, startPageNumber + pages.length, totalPages, pageRows, tablePageIndex));
-      cursor += availableBodyRows;
-      tablePageIndex += 1;
-    }
+    });
   });
   return pages;
 }
@@ -63052,9 +63187,11 @@ function buildDocumentationSprPdfStyles() {
 
     .documentation-spr-paper-measure-table {
       width: 100%;
+      max-width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
       font-size: 9pt;
+      line-height: 1.12;
     }
 
     .documentation-spr-paper-measure-table th,
@@ -63217,7 +63354,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-footer {
       position: absolute;
       left: 10mm;
-      bottom: 18mm;
+      bottom: 10.5mm;
       color: #111;
       font-size: 10pt;
       line-height: 1;
