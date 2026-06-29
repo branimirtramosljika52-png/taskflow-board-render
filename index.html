@@ -6604,7 +6604,7 @@
                     <section class="documentation-spr-section documentation-spr-section-basic">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
-                          <span>1</span>
+                          <span data-documentation-spr-section-index="basic">1</span>
                           <strong>Osnovni podaci</strong>
                         </div>
                         <span id="documentation-spr-people-summary" class="documentation-spr-section-meta">Ispitivači i potpisnici</span>
@@ -6698,11 +6698,26 @@
                       </div>
                     </section>
 
-                    <section class="documentation-spr-section documentation-spr-section-legal">
+                    <section id="documentation-spr-technical-section" class="documentation-spr-section documentation-spr-section-technical" hidden>
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
-                          <span>2</span>
-                          <strong>Odabir instrumenata</strong>
+                          <span data-documentation-spr-section-index="technical">2</span>
+                          <strong>Tehnički podaci</strong>
+                        </div>
+                        <span class="documentation-spr-section-meta">EIZ1.1</span>
+                      </div>
+                      <div id="documentation-spr-technical-fields" class="documentation-spr-field-grid documentation-spr-technical-grid"></div>
+                      <label class="field documentation-spr-field documentation-spr-technical-raw" hidden>
+                        <span>Tehnički podaci</span>
+                        <textarea data-documentation-spr-field="technicalData" rows="5"></textarea>
+                      </label>
+                    </section>
+
+                    <section id="documentation-spr-equipment-section" class="documentation-spr-section documentation-spr-section-legal">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span data-documentation-spr-section-index="equipment">2</span>
+                          <strong>Mjerna i ispitna oprema</strong>
                         </div>
                         <span id="documentation-spr-source-summary" class="documentation-spr-section-meta">Izvori iz modula</span>
                       </div>
@@ -6732,11 +6747,11 @@
                       <textarea data-documentation-spr-field="equipment" rows="7" hidden></textarea>
                     </section>
 
-                    <section id="documentation-spr-conclusion-section" class="documentation-spr-section documentation-spr-section-conclusion">
+                    <section id="documentation-spr-regulations-section" class="documentation-spr-section documentation-spr-section-legal">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
-                          <span>3</span>
-                          <strong>Propisi</strong>
+                          <span data-documentation-spr-section-index="regulations">3</span>
+                          <strong>Zakonska regulativa</strong>
                         </div>
                       </div>
                       <div class="documentation-spr-source-grid">
@@ -6770,31 +6785,62 @@
                         </section>
                       </div>
                       <textarea data-documentation-spr-field="regulations" rows="7" hidden></textarea>
+                    </section>
+
+                    <section id="documentation-spr-project-section" class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span data-documentation-spr-section-index="project">4</span>
+                          <strong>Tehnička dokumentacija</strong>
+                        </div>
+                      </div>
                       <label class="field documentation-spr-field">
                         <span>Korištena tehničko-projektna dokumentacija</span>
                         <textarea data-documentation-spr-field="projectDocumentation" rows="2"></textarea>
                       </label>
                     </section>
 
-                    <section class="documentation-spr-section">
+                    <section id="documentation-spr-results-section" class="documentation-spr-section">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
-                          <span>4</span>
-                          <strong>Opis sustava</strong>
+                          <span data-documentation-spr-section-index="results">5</span>
+                          <strong>Rezultati ispitivanja</strong>
                         </div>
                       </div>
                       <label class="field documentation-spr-field">
-                        <span>Opis sustava i ispitivanja</span>
+                        <span>Opis i rezultati ispitivanja</span>
                         <textarea data-documentation-spr-field="resultsText" rows="10"></textarea>
                       </label>
                       <textarea data-documentation-spr-field="eiNote" rows="2" hidden></textarea>
                       <textarea data-documentation-spr-field="eiminNote" rows="2" hidden></textarea>
                     </section>
 
-                    <section class="documentation-spr-section">
+                    <section id="documentation-spr-checklists-section" class="documentation-spr-section documentation-spr-native-checklists" hidden>
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
-                          <span>5</span>
+                          <span data-documentation-spr-section-index="checklists">6</span>
+                          <strong>Vizualni pregled</strong>
+                        </div>
+                        <span class="documentation-spr-section-meta">Checklist</span>
+                      </div>
+                      <div id="documentation-spr-checklists-editor" class="documentation-spr-checklists-editor"></div>
+                    </section>
+
+                    <section id="documentation-spr-native-measurements-section" class="documentation-spr-section documentation-spr-native-measurements" hidden>
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span data-documentation-spr-section-index="nativeMeasurements">7</span>
+                          <strong>Mjerenja</strong>
+                        </div>
+                        <span class="documentation-spr-section-meta">Odvojene Gridline tablice</span>
+                      </div>
+                      <div id="documentation-spr-native-measurements-editor" class="documentation-spr-native-measurements-editor"></div>
+                    </section>
+
+                    <section id="documentation-spr-primary-gridline-section" class="documentation-spr-section">
+                      <div class="documentation-spr-section-head">
+                        <div class="documentation-spr-section-title">
+                          <span data-documentation-spr-section-index="gridline">5</span>
                           <strong>Mjerna mjesta</strong>
                         </div>
                         <span id="documentation-spr-grid-summary" class="documentation-spr-section-meta">Gridline tablica</span>
@@ -6839,10 +6885,10 @@
                       </div>
                     </section>
 
-                    <section class="documentation-spr-section">
+                    <section id="documentation-spr-conclusion-section" class="documentation-spr-section documentation-spr-section-conclusion">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
-                          <span>6</span>
+                          <span data-documentation-spr-section-index="conclusion">6</span>
                           <strong>Nedostaci, preporuke i zaključna ocjena</strong>
                         </div>
                       </div>
@@ -6863,6 +6909,7 @@
                           </label>
                           <p id="documentation-spr-result-helper">Zapisnik je spreman bez obveznog unosa nedostataka.</p>
                         </div>
+                        <div id="documentation-spr-assessments-editor" class="documentation-spr-assessments-editor is-wide"></div>
                         <label class="field documentation-spr-field documentation-spr-defects-field is-wide">
                           <span>Nedostaci</span>
                           <textarea data-documentation-spr-field="defects" rows="4" placeholder="Upiši nedostatke ili ostavi prazno ako ih nema."></textarea>

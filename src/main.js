@@ -3998,6 +3998,18 @@ const documentationSprBatchDockSummaryButton = document.querySelector("#document
 const documentationSprBatchDockExportButton = document.querySelector("#documentation-spr-batch-dock-export");
 const documentationSprBatchDockSignatureButton = document.querySelector("#documentation-spr-batch-dock-signature");
 const documentationSprBatchSummarySignatureButton = document.querySelector("#documentation-spr-batch-summary-signature");
+const documentationSprTechnicalSection = document.querySelector("#documentation-spr-technical-section");
+const documentationSprTechnicalFields = document.querySelector("#documentation-spr-technical-fields");
+const documentationSprEquipmentSection = document.querySelector("#documentation-spr-equipment-section");
+const documentationSprRegulationsSection = document.querySelector("#documentation-spr-regulations-section");
+const documentationSprProjectSection = document.querySelector("#documentation-spr-project-section");
+const documentationSprResultsSection = document.querySelector("#documentation-spr-results-section");
+const documentationSprChecklistsSection = document.querySelector("#documentation-spr-checklists-section");
+const documentationSprChecklistsEditor = document.querySelector("#documentation-spr-checklists-editor");
+const documentationSprNativeMeasurementsSection = document.querySelector("#documentation-spr-native-measurements-section");
+const documentationSprNativeMeasurementsEditor = document.querySelector("#documentation-spr-native-measurements-editor");
+const documentationSprPrimaryGridlineSection = document.querySelector("#documentation-spr-primary-gridline-section");
+const documentationSprAssessmentsEditor = document.querySelector("#documentation-spr-assessments-editor");
 const documentationSprGridline = document.querySelector("#documentation-spr-gridline");
 const documentationSprGridSummary = document.querySelector("#documentation-spr-grid-summary");
 const documentationSprSourceStatus = document.querySelector("#documentation-spr-source-status");
@@ -56926,6 +56938,7 @@ let documentationSprModel = null;
 let documentationSprTemplateLibrary = { version: 1, activeTemplateId: "", templates: [] };
 let documentationSprGlobalHeader = { dataUrl: "", name: "", updatedAt: "" };
 let documentationSprGridlineApi = null;
+let documentationSprNativeMeasurementGridlineApis = new Map();
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
 let documentationSprGridlineRetryTimer = 0;
@@ -57191,11 +57204,60 @@ function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
   };
 }
 
+function getDocumentationSprNativeEntryKeys(entry = {}) {
+  return [
+    entry.id,
+    entry.key,
+    entry.tokenKey,
+    entry.enabledFieldId,
+  ]
+    .map((value) => normalizeLooseName(value))
+    .filter(Boolean);
+}
+
+function findDocumentationSprNativeEntryByDefault(source = [], defaultEntry = {}) {
+  const defaultKeys = new Set(getDocumentationSprNativeEntryKeys(defaultEntry));
+  if (!defaultKeys.size) {
+    return null;
+  }
+  return (Array.isArray(source) ? source : []).find((entry) => (
+    getDocumentationSprNativeEntryKeys(entry).some((key) => defaultKeys.has(key))
+  )) || null;
+}
+
+function shouldReconcileDocumentationSprNativeDefaults(serviceCode = "", defaults = []) {
+  return normalizeLooseName(serviceCode) !== "spr" && Array.isArray(defaults) && defaults.length > 0;
+}
+
+function mergeDocumentationSprMeasurementTableWithDefault(defaultTable = {}, existingTable = null) {
+  if (!existingTable || typeof existingTable !== "object") {
+    return defaultTable;
+  }
+  const defaultColumnIds = (defaultTable.sheet?.columns || [])
+    .map((column) => normalizeLooseName(column.id || column.key || column.label))
+    .filter(Boolean);
+  const existingColumnIds = (existingTable.sheet?.columns || [])
+    .map((column) => normalizeLooseName(column.id || column.key || column.label))
+    .filter(Boolean);
+  const hasCompatibleSheet = defaultColumnIds.length > 0
+    && defaultColumnIds.every((id, index) => existingColumnIds[index] === id);
+  return {
+    ...defaultTable,
+    enabled: existingTable.enabled !== false,
+    sheet: hasCompatibleSheet ? existingTable.sheet : defaultTable.sheet,
+  };
+}
+
 function normalizeDocumentationSprMeasurementTables(value = [], model = {}) {
   const serviceCode = getDocumentationSprServiceCode(model);
-  const source = Array.isArray(value) && value.length > 0
-    ? value
-    : createDocumentationMeasurementTablesForService(serviceCode);
+  const defaults = createDocumentationMeasurementTablesForService(serviceCode);
+  const rawSource = Array.isArray(value) ? value : [];
+  const source = shouldReconcileDocumentationSprNativeDefaults(serviceCode, defaults)
+    ? defaults.map((defaultTable) => mergeDocumentationSprMeasurementTableWithDefault(
+      defaultTable,
+      findDocumentationSprNativeEntryByDefault(rawSource, defaultTable),
+    ))
+    : (rawSource.length > 0 ? rawSource : defaults);
   return source.map((table, index) => cloneDocumentationSprMeasurementTable(table, index));
 }
 
@@ -57224,6 +57286,7 @@ function cloneDocumentationSprChecklist(checklist = {}, index = 0) {
       tokenKey: String(item?.tokenKey || `${key}-${itemIndex + 1}`.toUpperCase().replace(/[^A-Z0-9]+/g, "_")).trim(),
       label: String(item?.label || `Stavka ${itemIndex + 1}`).trim(),
       defaultValue: String(item?.defaultValue || "DA").trim(),
+      value: String(item?.value || item?.defaultValue || "DA").trim(),
     })),
   };
 }
@@ -57231,14 +57294,38 @@ function cloneDocumentationSprChecklist(checklist = {}, index = 0) {
 function normalizeDocumentationSprChecklists(value = [], model = {}) {
   const serviceCode = getDocumentationSprServiceCode(model);
   const fallback = createDocumentationReportModelDefaults(serviceCode).checklists || [];
-  const source = Array.isArray(value) && value.length > 0 ? value : fallback;
+  const rawSource = Array.isArray(value) ? value : [];
+  const source = shouldReconcileDocumentationSprNativeDefaults(serviceCode, fallback)
+    ? fallback.map((defaultChecklist) => ({
+      ...defaultChecklist,
+      ...(findDocumentationSprNativeEntryByDefault(rawSource, defaultChecklist) || {}),
+      id: defaultChecklist.id,
+      key: defaultChecklist.key,
+      tokenKey: defaultChecklist.tokenKey,
+      label: defaultChecklist.label,
+      summary: defaultChecklist.summary,
+      enabledFieldId: defaultChecklist.enabledFieldId,
+      options: defaultChecklist.options,
+      items: (findDocumentationSprNativeEntryByDefault(rawSource, defaultChecklist) || {}).items || defaultChecklist.items,
+    }))
+    : (rawSource.length > 0 ? rawSource : fallback);
   return source.map((checklist, index) => cloneDocumentationSprChecklist(checklist, index));
 }
 
 function normalizeDocumentationSprMeasurementAssessments(value = [], model = {}) {
   const serviceCode = getDocumentationSprServiceCode(model);
   const fallback = createDocumentationReportModelDefaults(serviceCode).measurementAssessments || [];
-  const source = Array.isArray(value) && value.length > 0 ? value : fallback;
+  const rawSource = Array.isArray(value) ? value : [];
+  const source = shouldReconcileDocumentationSprNativeDefaults(serviceCode, fallback)
+    ? fallback.map((defaultAssessment) => ({
+      ...defaultAssessment,
+      ...(findDocumentationSprNativeEntryByDefault(rawSource, defaultAssessment) || {}),
+      id: defaultAssessment.id,
+      key: defaultAssessment.key,
+      label: defaultAssessment.label,
+      enabledFieldId: defaultAssessment.enabledFieldId,
+    }))
+    : (rawSource.length > 0 ? rawSource : fallback);
   return source.map((entry, index) => ({
     id: String(entry?.id || `assessment-${index + 1}`).trim(),
     key: String(entry?.key || entry?.id || `assessment-${index + 1}`).trim(),
@@ -57278,9 +57365,20 @@ function formatDocumentationTechnicalDataFields(fields = []) {
 function normalizeDocumentationSprModel(value) {
   const fallback = createDefaultDocumentationSprModel();
   const source = value && typeof value === "object" ? value : {};
+  const serviceDefaults = createDocumentationReportModelDefaults(getDocumentationSprServiceCode({ ...fallback, ...source }));
+  const defaultTechnicalData = formatDocumentationTechnicalDataFields(serviceDefaults.technicalDataFields || []);
   return {
     ...fallback,
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
+    serviceCode: source.serviceCode || serviceDefaults.serviceCode || fallback.serviceCode,
+    serviceName: source.serviceName || serviceDefaults.serviceName || fallback.serviceName,
+    reportTitle: source.reportTitle || serviceDefaults.reportTitle || fallback.reportTitle,
+    coverSubtitle: source.coverSubtitle || serviceDefaults.coverSubtitle || fallback.coverSubtitle,
+    measurementTableTitle: source.measurementTableTitle || serviceDefaults.measurementTableTitle || fallback.measurementTableTitle,
+    resultsText: source.resultsText || serviceDefaults.resultsText || fallback.resultsText,
+    assessmentLabel: source.assessmentLabel || serviceDefaults.assessmentLabel || fallback.assessmentLabel,
+    conclusionLead: source.conclusionLead || serviceDefaults.conclusionLead || fallback.conclusionLead,
+    validitySentence: source.validitySentence || serviceDefaults.validitySentence || fallback.validitySentence,
     layoutPreset: normalizeDocumentationSprLayoutPreset(source.layoutPreset || fallback.layoutPreset),
     inspectionObjectId: String(source.inspectionObjectId || "").trim(),
     inspectionType: normalizeDocumentationSprInspectionType(source.inspectionType || fallback.inspectionType),
@@ -57298,7 +57396,7 @@ function normalizeDocumentationSprModel(value) {
     signatureImageUrl: String(source.signatureImageUrl || source.signatureDataUrl || "").trim(),
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
-    technicalData: String(source.technicalData || fallback.technicalData || "").trim(),
+    technicalData: String(source.technicalData || defaultTechnicalData || fallback.technicalData || "").trim(),
     checklists: normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
     measurementAssessments: normalizeDocumentationSprMeasurementAssessments(source.measurementAssessments, { ...fallback, ...source }),
     measurementTables: normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
@@ -60206,6 +60304,7 @@ function syncDocumentationSprGridlineIntoModel() {
   if (documentationSprGridlineApi?.getModel) {
     documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(documentationSprGridlineApi.getModel());
   }
+  syncDocumentationSprNativeMeasurementTablesIntoModel();
 }
 
 function applyDocumentationSprModel(nextModel, {
@@ -60845,6 +60944,469 @@ function syncDocumentationSprFieldSettingsUi() {
   });
 }
 
+function isDocumentationSprNativeMeasurementMode(model = documentationSprModel) {
+  return getDocumentationSprServiceCode(model) === "EIZ";
+}
+
+function getDocumentationSprTechnicalFieldDefinitions(model = documentationSprModel) {
+  const preset = getDocumentationNativeReportPreset(getDocumentationSprServiceCode(model));
+  return Array.isArray(preset.technicalDataFields) ? preset.technicalDataFields : [];
+}
+
+function parseDocumentationSprTechnicalData(value = "", definitions = []) {
+  const lines = String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const parsed = new Map();
+  lines.forEach((line) => {
+    const separatorIndex = line.indexOf(":");
+    if (separatorIndex < 0) {
+      return;
+    }
+    const label = line.slice(0, separatorIndex).trim();
+    const fieldValue = line.slice(separatorIndex + 1).trim();
+    if (label) {
+      parsed.set(normalizeLooseName(label), fieldValue);
+    }
+  });
+  return definitions.map((definition, index) => {
+    const label = String(definition?.label || definition?.key || definition?.id || `Tehnički podatak ${index + 1}`).trim();
+    const key = normalizeLooseName(label);
+    return {
+      id: String(definition?.id || definition?.key || `technical-${index + 1}`).trim(),
+      label,
+      value: parsed.has(key)
+        ? parsed.get(key)
+        : String(definition?.defaultValue || "").trim(),
+    };
+  });
+}
+
+function formatDocumentationSprTechnicalEntries(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      const label = String(entry?.label || "").trim();
+      const value = String(entry?.value || "").trim();
+      return label ? `${label}: ${value}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function setDocumentationSprTechnicalFieldValue(index = -1, value = "") {
+  if (!documentationSprModel) {
+    return;
+  }
+  const definitions = getDocumentationSprTechnicalFieldDefinitions(documentationSprModel);
+  const entries = parseDocumentationSprTechnicalData(documentationSprModel.technicalData, definitions);
+  if (!entries[index]) {
+    return;
+  }
+  entries[index] = {
+    ...entries[index],
+    value: String(value || "").trim(),
+  };
+  documentationSprModel.technicalData = formatDocumentationSprTechnicalEntries(entries);
+  const rawControl = documentationSprTechnicalSection?.querySelector("[data-documentation-spr-field='technicalData']");
+  if (rawControl instanceof HTMLTextAreaElement) {
+    rawControl.value = documentationSprModel.technicalData;
+  }
+}
+
+function renderDocumentationSprTechnicalSection() {
+  if (!(documentationSprTechnicalSection instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const definitions = getDocumentationSprTechnicalFieldDefinitions(documentationSprModel);
+  const hasDefinitions = definitions.length > 0;
+  const hasText = Boolean(String(documentationSprModel.technicalData || "").trim());
+  documentationSprTechnicalSection.hidden = !(hasDefinitions || hasText);
+  const rawField = documentationSprTechnicalSection.querySelector(".documentation-spr-technical-raw");
+  const rawControl = documentationSprTechnicalSection.querySelector("[data-documentation-spr-field='technicalData']");
+  if (rawControl instanceof HTMLTextAreaElement) {
+    rawControl.value = documentationSprModel.technicalData || "";
+  }
+  if (!(documentationSprTechnicalFields instanceof HTMLElement)) {
+    return;
+  }
+  if (!hasDefinitions) {
+    documentationSprTechnicalFields.replaceChildren();
+    if (rawField instanceof HTMLElement) {
+      rawField.hidden = false;
+    }
+    return;
+  }
+  if (rawField instanceof HTMLElement) {
+    rawField.hidden = true;
+  }
+  const entries = parseDocumentationSprTechnicalData(documentationSprModel.technicalData, definitions);
+  if (!String(documentationSprModel.technicalData || "").trim()) {
+    documentationSprModel.technicalData = formatDocumentationSprTechnicalEntries(entries);
+    if (rawControl instanceof HTMLTextAreaElement) {
+      rawControl.value = documentationSprModel.technicalData;
+    }
+  }
+  documentationSprTechnicalFields.innerHTML = entries.map((entry, index) => `
+    <label class="field documentation-spr-field is-span-3">
+      <span>${escapeHtml(entry.label)}</span>
+      <input
+        data-documentation-spr-technical-index="${index}"
+        type="text"
+        value="${escapeHtml(entry.value)}"
+        placeholder="${escapeHtml(entry.label)}"
+      />
+    </label>
+  `).join("");
+}
+
+function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
+  const columns = table?.sheet?.columns || [];
+  const rows = [
+    columns.map((column) => column.label || column.id || ""),
+    columns.map((column) => column.placeholder || ""),
+    ...(table?.sheet?.rows || []).map((row, rowIndex) => (
+      columns.map((column, columnIndex) => {
+        const value = String(row.cells?.[column.id] ?? "").trim();
+        return columnIndex === 0 && !value ? String(rowIndex + 1) : value;
+      })
+    )),
+  ];
+  const rowCount = Math.max(14, rows.length);
+  const columnCount = Math.max(1, columns.length);
+  const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+  if (gridlineApi?.rowsToModel) {
+    return gridlineApi.rowsToModel(rows, {
+      rowCount,
+      columnCount,
+      defaultRows: rowCount,
+      defaultColumns: columnCount,
+    });
+  }
+  const data = {};
+  rows.forEach((row, rowIndex) => {
+    row.slice(0, columnCount).forEach((cell, columnIndex) => {
+      const text = String(cell || "");
+      if (text) {
+        data[`${rowIndex}:${columnIndex}`] = text;
+      }
+    });
+  });
+  return { rowCount, columnCount, data };
+}
+
+function syncDocumentationSprNativeMeasurementTablesIntoModel() {
+  if (!documentationSprModel || !(documentationSprNativeMeasurementGridlineApis instanceof Map)) {
+    return;
+  }
+  documentationSprNativeMeasurementGridlineApis.forEach((entry, key) => {
+    const index = Number(key);
+    const table = documentationSprModel.measurementTables?.[index];
+    if (!table || !entry?.api?.getModel) {
+      return;
+    }
+    entry.api.flush?.();
+    const gridlineModel = normalizeDocumentationSprGridlineModel(entry.api.getModel());
+    documentationSprModel.measurementTables[index] = {
+      ...table,
+      sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel }, table),
+    };
+  });
+}
+
+function renderDocumentationSprChecklistsEditor() {
+  if (!(documentationSprChecklistsSection instanceof HTMLElement) || !(documentationSprChecklistsEditor instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const checklists = getDocumentationSprChecklistsForModel({
+    ...documentationSprModel,
+    checklists: documentationSprModel.checklists,
+  });
+  const allChecklists = normalizeDocumentationSprChecklists(documentationSprModel.checklists, documentationSprModel);
+  documentationSprChecklistsSection.hidden = allChecklists.length === 0;
+  if (!allChecklists.length) {
+    documentationSprChecklistsEditor.replaceChildren();
+    return;
+  }
+  documentationSprChecklistsEditor.innerHTML = allChecklists.map((checklist, checklistIndex) => `
+    <article class="documentation-spr-native-card ${checklist.enabled === false ? "is-disabled" : ""}">
+      <header class="documentation-spr-native-card-head">
+        <div>
+          <strong>${escapeHtml(checklist.label || `Checklist ${checklistIndex + 1}`)}</strong>
+          ${checklist.summary ? `<span>${escapeHtml(checklist.summary)}</span>` : ""}
+        </div>
+        <label class="documentation-spr-checkbox-line">
+          <input type="checkbox" data-documentation-spr-checklist-enabled="${checklistIndex}" ${checklist.enabled === false ? "" : "checked"} />
+          Koristi
+        </label>
+      </header>
+      <div class="documentation-spr-checklist-grid">
+        ${(checklist.items || []).map((item, itemIndex) => `
+          <label class="documentation-spr-checklist-row">
+            <span>${escapeHtml(item.label || `Stavka ${itemIndex + 1}`)}</span>
+            <select data-documentation-spr-checklist-index="${checklistIndex}" data-documentation-spr-checklist-item-index="${itemIndex}" ${checklist.enabled === false ? "disabled" : ""}>
+              ${(checklist.options || []).map((option) => {
+                const optionValue = String(option.value || option.label || "").trim();
+                const selected = optionValue === String(item.value || item.defaultValue || "DA").trim();
+                return `<option value="${escapeHtml(optionValue)}" ${selected ? "selected" : ""}>${escapeHtml(option.label || optionValue)}</option>`;
+              }).join("")}
+            </select>
+          </label>
+        `).join("")}
+      </div>
+    </article>
+  `).join("");
+  void checklists;
+}
+
+function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0) {
+  const shell = document.createElement("div");
+  shell.className = "documentation-gridline-module documentation-spr-native-gridline";
+  shell.dataset.gridlineInstance = `documentation-native-${table.id || tableIndex}`;
+  shell.innerHTML = `
+    <header class="documentation-gridline-topbar">
+      <div class="documentation-gridline-title">
+        <span class="documentation-gridline-mark" aria-hidden="true">GL</span>
+        <div>
+          <h3>${escapeHtml(table.label || `Tablica ${tableIndex + 1}`)}</h3>
+          <span>${escapeHtml(table.summary || table.chapterTitle || "Gridline tablica")}</span>
+        </div>
+      </div>
+      <div class="documentation-gridline-actions">
+        <span class="status is-saved" data-gridline-role="status">Spremno</span>
+        <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
+        <button type="button" class="ghost-button" data-gridline-action="add-row">+ 20 redova</button>
+        <button type="button" class="ghost-button" data-gridline-action="add-column">+ kolone</button>
+        <button type="button" class="ghost-button" data-gridline-action="clear">Očisti</button>
+      </div>
+    </header>
+    <section class="documentation-gridline-formula" aria-label="Formula bar">
+      <div class="cell-ref" data-gridline-role="cell-ref">A1</div>
+      <input data-gridline-role="formula" type="text" autocomplete="off" spellcheck="false" placeholder="Vrijednost aktivne ćelije" />
+    </section>
+    <section class="documentation-gridline-shell" aria-label="${escapeHtml(table.label || "Gridline tablica")}">
+      <div class="documentation-gridline-scroll">
+        <table data-gridline-role="grid" aria-label="${escapeHtml(table.label || "Gridline tablica")}"></table>
+      </div>
+    </section>
+  `;
+  return shell;
+}
+
+function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, tableIndex = 0) {
+  const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
+  if (!gridlineApi?.mount || !shell?.isConnected || !documentationSprModel) {
+    return;
+  }
+  const model = buildDocumentationSprGridlineModelFromMeasurementTable(table);
+  const api = gridlineApi.mount(shell, {
+    storageKey: "",
+    model,
+    defaultRows: model.rowCount,
+    defaultColumns: model.columnCount,
+    rowCount: model.rowCount,
+    columnCount: model.columnCount,
+    changeMode: "debounced",
+    saveDelayMs: 220,
+    enableQuickFill: true,
+    enableAiContextMenu: false,
+    aiFieldLabel: table.label || "Gridline tablica",
+    organizationId: state.activeOrganizationId || "",
+    workOrderNumber: documentationSprModel.workOrderNumber || "",
+    onFormulaReady: () => {
+      syncDocumentationSprNativeMeasurementTablesIntoModel();
+      renderDocumentationSprPreview();
+    },
+    onChange: (nextModel) => {
+      const currentTable = documentationSprModel.measurementTables?.[tableIndex];
+      if (!currentTable) {
+        return;
+      }
+      documentationSprModel.measurementTables[tableIndex] = {
+        ...currentTable,
+        sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel: normalizeDocumentationSprGridlineModel(nextModel) }, currentTable),
+      };
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    },
+  });
+  documentationSprNativeMeasurementGridlineApis.set(String(tableIndex), { api, shell });
+}
+
+function renderDocumentationSprNativeMeasurementsEditor() {
+  if (!(documentationSprNativeMeasurementsSection instanceof HTMLElement) || !(documentationSprNativeMeasurementsEditor instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const nativeMode = isDocumentationSprNativeMeasurementMode(documentationSprModel);
+  const tables = normalizeDocumentationSprMeasurementTables(documentationSprModel.measurementTables, documentationSprModel);
+  documentationSprNativeMeasurementGridlineApis = new Map();
+  documentationSprNativeMeasurementsSection.hidden = !nativeMode || tables.length === 0;
+  if (!nativeMode || !tables.length) {
+    documentationSprNativeMeasurementsEditor.replaceChildren();
+    return;
+  }
+  documentationSprNativeMeasurementsEditor.replaceChildren();
+  tables.forEach((table, tableIndex) => {
+    const card = document.createElement("article");
+    card.className = `documentation-spr-native-card ${table.enabled === false ? "is-disabled" : ""}`;
+    card.innerHTML = `
+      <header class="documentation-spr-native-card-head">
+        <div>
+          <strong>${escapeHtml(table.chapterTitle || table.label || `Tablica ${tableIndex + 1}`)}</strong>
+          <span>${escapeHtml(table.summary || table.label || "")}</span>
+        </div>
+        <label class="documentation-spr-checkbox-line">
+          <input type="checkbox" data-documentation-spr-measurement-enabled="${tableIndex}" ${table.enabled === false ? "" : "checked"} />
+          Koristi tablicu
+        </label>
+      </header>
+    `;
+    if (table.enabled !== false) {
+      const shell = createDocumentationSprNativeMeasurementShell(table, tableIndex);
+      card.appendChild(shell);
+      requestAnimationFrame(() => mountDocumentationSprNativeMeasurementGridline(shell, table, tableIndex));
+    }
+    documentationSprNativeMeasurementsEditor.appendChild(card);
+  });
+}
+
+function renderDocumentationSprAssessmentsEditor() {
+  if (!(documentationSprAssessmentsEditor instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const tableByEnabledField = new Map(
+    normalizeDocumentationSprMeasurementTables(documentationSprModel.measurementTables, documentationSprModel)
+      .map((table) => [String(table.enabledFieldId || "").trim(), table]),
+  );
+  const assessments = normalizeDocumentationSprMeasurementAssessments(documentationSprModel.measurementAssessments, documentationSprModel)
+    .filter((entry) => {
+      const fieldId = String(entry.enabledFieldId || "").trim();
+      return !fieldId || tableByEnabledField.get(fieldId)?.enabled !== false;
+    });
+  if (!assessments.length) {
+    documentationSprAssessmentsEditor.replaceChildren();
+    documentationSprAssessmentsEditor.hidden = true;
+    return;
+  }
+  documentationSprAssessmentsEditor.hidden = false;
+  documentationSprAssessmentsEditor.innerHTML = `
+    <div class="documentation-spr-assessments-head">
+      <strong>Ocjena rezultata ispitivanja</strong>
+      <span>Prikazuju se samo uključene tablice i provjere.</span>
+    </div>
+    <div class="documentation-spr-assessment-grid">
+      ${assessments.map((entry) => {
+        const originalIndex = documentationSprModel.measurementAssessments.findIndex((candidate) => String(candidate.id || candidate.key) === String(entry.id || entry.key));
+        return `
+          <label class="field documentation-spr-field">
+            <span>${escapeHtml(entry.label)}</span>
+            <select data-documentation-spr-assessment-index="${originalIndex >= 0 ? originalIndex : 0}">
+              <option value="ZADOVOLJAVA" ${String(entry.value || entry.defaultValue).toUpperCase() === "ZADOVOLJAVA" ? "selected" : ""}>ZADOVOLJAVA</option>
+              <option value="NE ZADOVOLJAVA" ${String(entry.value || entry.defaultValue).toUpperCase() === "NE ZADOVOLJAVA" ? "selected" : ""}>NE ZADOVOLJAVA</option>
+            </select>
+          </label>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function updateDocumentationSprSectionNumbers() {
+  if (!documentationSprForm) {
+    return;
+  }
+  const ordered = [
+    ["basic", documentationSprForm.querySelector(".documentation-spr-section-basic")],
+    ["technical", documentationSprTechnicalSection],
+    ["equipment", documentationSprEquipmentSection],
+    ["regulations", documentationSprRegulationsSection],
+    ["project", documentationSprProjectSection],
+    ["results", documentationSprResultsSection],
+    ["checklists", documentationSprChecklistsSection],
+    ["nativeMeasurements", documentationSprNativeMeasurementsSection],
+    ["gridline", documentationSprPrimaryGridlineSection],
+    ["conclusion", documentationSprConclusionSection],
+  ];
+  let number = 1;
+  ordered.forEach(([key, section]) => {
+    if (!(section instanceof HTMLElement) || section.hidden) {
+      return;
+    }
+    const badge = documentationSprForm.querySelector(`[data-documentation-spr-section-index="${key}"]`);
+    if (badge) {
+      badge.textContent = String(number);
+    }
+    number += 1;
+  });
+}
+
+function renderDocumentationSprNativeEditors() {
+  if (!documentationSprModel) {
+    return;
+  }
+  renderDocumentationSprTechnicalSection();
+  const nativeMode = isDocumentationSprNativeMeasurementMode(documentationSprModel);
+  if (documentationSprPrimaryGridlineSection instanceof HTMLElement) {
+    documentationSprPrimaryGridlineSection.hidden = nativeMode;
+  }
+  renderDocumentationSprChecklistsEditor();
+  renderDocumentationSprNativeMeasurementsEditor();
+  renderDocumentationSprAssessmentsEditor();
+  updateDocumentationSprSectionNumbers();
+}
+
+function handleDocumentationSprNativeEditorChange(event) {
+  if (!documentationSprModel || !(event.target instanceof HTMLElement)) {
+    return false;
+  }
+  const target = event.target;
+  if (target.matches("[data-documentation-spr-technical-index]")) {
+    setDocumentationSprTechnicalFieldValue(Number(target.getAttribute("data-documentation-spr-technical-index")), target.value || "");
+    renderDocumentationSprPreview();
+    scheduleDocumentationSprSave();
+    return true;
+  }
+  if (target.matches("[data-documentation-spr-checklist-enabled]")) {
+    const index = Number(target.getAttribute("data-documentation-spr-checklist-enabled"));
+    if (documentationSprModel.checklists?.[index]) {
+      documentationSprModel.checklists[index].enabled = Boolean(target.checked);
+      renderDocumentationSprNativeEditors();
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    }
+    return true;
+  }
+  if (target.matches("[data-documentation-spr-checklist-index]")) {
+    const checklistIndex = Number(target.getAttribute("data-documentation-spr-checklist-index"));
+    const itemIndex = Number(target.getAttribute("data-documentation-spr-checklist-item-index"));
+    if (documentationSprModel.checklists?.[checklistIndex]?.items?.[itemIndex]) {
+      documentationSprModel.checklists[checklistIndex].items[itemIndex].value = target.value || "DA";
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    }
+    return true;
+  }
+  if (target.matches("[data-documentation-spr-measurement-enabled]")) {
+    const index = Number(target.getAttribute("data-documentation-spr-measurement-enabled"));
+    if (documentationSprModel.measurementTables?.[index]) {
+      syncDocumentationSprNativeMeasurementTablesIntoModel();
+      documentationSprModel.measurementTables[index].enabled = Boolean(target.checked);
+      renderDocumentationSprNativeEditors();
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    }
+    return true;
+  }
+  if (target.matches("[data-documentation-spr-assessment-index]")) {
+    const index = Number(target.getAttribute("data-documentation-spr-assessment-index"));
+    if (documentationSprModel.measurementAssessments?.[index]) {
+      documentationSprModel.measurementAssessments[index].value = target.value || "ZADOVOLJAVA";
+      syncDocumentationSprConclusionUi();
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    }
+    return true;
+  }
+  return false;
+}
+
 function readDocumentationSprControlValue(control, fieldName = "") {
   const rawValue = control?.value ?? "";
   if (DOCUMENTATION_SPR_DATE_FIELDS.has(fieldName)) {
@@ -60889,6 +61451,7 @@ function writeDocumentationSprModelToForm() {
     }
   });
   renderDocumentationSprObjectSelect();
+  renderDocumentationSprNativeEditors();
   syncDocumentationSprConclusionUi();
   syncDocumentationSprFieldSettingsUi();
   renderDocumentationSprAttachmentList();
@@ -60979,6 +61542,9 @@ function getDocumentationSprMeasurementTablesForModel(model = documentationSprMo
     .filter((table) => table.enabled !== false);
   if (!tables.length) {
     return [];
+  }
+  if (isDocumentationSprNativeMeasurementMode(normalized)) {
+    return tables;
   }
   const primarySheet = buildDocumentationSprMeasurementSheetFromGridlineModel(normalized, tables[0]);
   return [
@@ -61102,7 +61668,21 @@ function renderDocumentationSprPaperFooter(model, pageNumber, totalPages) {
 }
 
 function isDocumentationSprFailingModel(model = documentationSprModel) {
-  return String(model?.resultStatus || "").trim().toUpperCase() === "NE ZADOVOLJAVA";
+  if (String(model?.resultStatus || "").trim().toUpperCase() === "NE ZADOVOLJAVA") {
+    return true;
+  }
+  const enabledFields = new Set(
+    (Array.isArray(model?.measurementTables) ? model.measurementTables : [])
+      .filter((table) => table?.enabled !== false)
+      .map((table) => String(table.enabledFieldId || "").trim())
+      .filter(Boolean),
+  );
+  return (Array.isArray(model?.measurementAssessments) ? model.measurementAssessments : [])
+    .filter((entry) => {
+      const enabledFieldId = String(entry?.enabledFieldId || "").trim();
+      return !enabledFieldId || enabledFields.has(enabledFieldId);
+    })
+    .some((entry) => String(entry?.value || entry?.defaultValue || "").trim().toUpperCase() === "NE ZADOVOLJAVA");
 }
 
 function getDocumentationSprAssessmentLabel(model = documentationSprModel) {
@@ -62841,6 +63421,9 @@ function initDocumentationSprWorkbench() {
   if (!documentationSprInitialized) {
     documentationSprInitialized = true;
     documentationWorkbenchModule.addEventListener("input", (event) => {
+      if (handleDocumentationSprNativeEditorChange(event)) {
+        return;
+      }
       if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-documentation-spr-field]")) {
         return;
       }
@@ -62856,6 +63439,9 @@ function initDocumentationSprWorkbench() {
       scheduleDocumentationSprSave();
     });
     documentationWorkbenchModule.addEventListener("change", (event) => {
+      if (handleDocumentationSprNativeEditorChange(event)) {
+        return;
+      }
       if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-documentation-spr-field]")) {
         return;
       }
