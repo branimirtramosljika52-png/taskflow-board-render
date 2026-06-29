@@ -3942,6 +3942,8 @@ const moduleViewChips = document.querySelector("#module-view-chips");
 const modulePanel = document.querySelector("#module-view > .module-panel");
 const documentsModule = document.querySelector("#documents-module");
 const documentationWorkbenchModule = document.querySelector("#documentation-workbench-module");
+const documentationSprWorkbenchTitle = document.querySelector("#documentation-spr-workbench-title");
+const documentationSprWorkbenchSubtitle = document.querySelector("#documentation-spr-workbench-subtitle");
 const documentationSprForm = document.querySelector("#documentation-spr-form");
 const documentationSprShell = document.querySelector(".documentation-spr-shell");
 const documentationSprPreviewPanel = document.querySelector("#documentation-spr-preview-panel");
@@ -57901,6 +57903,15 @@ function getDocumentationSprTemplateById(templateId = documentationSprTemplateLi
 function setDocumentationSprWorkbenchMode(mode = "library", { renderLibrary = true } = {}) {
   documentationSprWorkbenchMode = mode === "editor" ? "editor" : "library";
   const isLibraryMode = documentationSprWorkbenchMode === "library";
+  const isBatchRecordMode = !isLibraryMode && getDocumentationSprBatchEntries().length > 0;
+  if (documentationSprWorkbenchTitle) {
+    documentationSprWorkbenchTitle.textContent = isBatchRecordMode ? "Izrada zapisnika" : "Izrada dokumentacije";
+  }
+  if (documentationSprWorkbenchSubtitle) {
+    documentationSprWorkbenchSubtitle.textContent = isBatchRecordMode
+      ? "Zapisnici se izrađuju iz RN-a, a predlošci iz Izrade dokumentacije koriste se u pozadini."
+      : "Predlošci rade u browseru, s Gridline tablicom i A4 previewom.";
+  }
   documentationSprLibraryPanel?.toggleAttribute("hidden", !isLibraryMode);
   documentationSprLibraryBackButton?.toggleAttribute("hidden", isLibraryMode);
   documentationWorkbenchModule
@@ -57973,7 +57984,7 @@ function createDocumentationSprLibraryCard(entry = null) {
   description.textContent = [
     entry?.model?.inspectionType || "",
     entry?.model?.inspectionObject || "",
-  ].filter(Boolean).join(" · ") || "Browser predložak dokumentacije";
+  ].filter(Boolean).join(" · ") || "Predložak zapisnika";
 
   copy.append(title, meta, description);
 
@@ -59968,7 +59979,7 @@ function renderDocumentationSprBatchContext() {
   if (documentationSprBatchMeta) {
     documentationSprBatchMeta.textContent = [
       activeEntry.workOrder?.companyName || getDocumentationSprWorkOrderCompany(activeEntry.workOrder).name || "",
-      activeEntry.templateName || (activeEntry.hasTemplate ? "Browser predložak" : "Novi browser predložak"),
+      activeEntry.templateName || (activeEntry.hasTemplate ? "Predložak zapisnika" : "Novi zapisnik iz predloška"),
     ].filter(Boolean).join(" · ");
   }
   if (documentationSprBatchPrevButton) {
@@ -60040,7 +60051,7 @@ function openDocumentationSprWorkbenchFromBatchEntries(entries = [], { activeInd
   const normalizedEntries = (Array.isArray(entries) ? entries : []).filter((entry) => entry?.workOrder && entry?.service);
   if (normalizedEntries.length === 0) {
     if (workOrderDocumentWizardError) {
-      workOrderDocumentWizardError.textContent = "Na odabranim RN-ovima nema usluga za browser izradu dokumentacije.";
+      workOrderDocumentWizardError.textContent = "Na odabranim RN-ovima nema usluga za izradu zapisnika.";
     }
     return false;
   }
@@ -60053,7 +60064,7 @@ function openDocumentationSprWorkbenchFromBatchEntries(entries = [], { activeInd
   };
   setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
   state.activeSidebarGroup = "operations";
-  state.activeSidebarItem = "documentation-workbench";
+  state.activeSidebarItem = "work-orders";
   state.activeView = "module";
   state.activeModuleItem = "documentation-workbench";
   closeWorkOrderDocumentWizard();
@@ -72640,7 +72651,7 @@ const WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS = [
 const WORK_ORDER_DOCUMENT_SIGNATURE_AREA_GROUPS = [
   {
     key: "elektro",
-    title: "Sigurnosna panik rasvjeta",
+    title: "Elektro ispitivanja",
   },
   {
     key: "tipkalo",
@@ -72714,7 +72725,7 @@ function getWorkOrderDocumentSignatureAreaGroups() {
     const legacyGroup = legacyGroups.get(definition.key);
     return {
       key: definition.key,
-      title: legacyGroup?.title || definition.serviceLabel || definition.label || definition.title || definition.key,
+      title: definition.serviceLabel || definition.label || definition.title || legacyGroup?.title || definition.key,
     };
   });
 }
@@ -72727,6 +72738,15 @@ const WORK_ORDER_DOCUMENT_COMMON_ENVIRONMENT_FIELDS = [
   ["groundCondition", "Stanje tla"],
   ["groundResistance", "Otpor tla"],
 ];
+
+const WORK_ORDER_DOCUMENT_ENVIRONMENT_FIELD_ALIASES = Object.freeze({
+  outsideTemperature: ["vanjska temperatura", "temperatura zraka", "outside temperature", "air temperature"],
+  relativeHumidity: ["relativna vlaga", "relativna vlaznost", "relative humidity", "humidity"],
+  airflowSpeed: ["strujanje zraka", "brzina strujanja", "brzina zraka", "airflow", "air flow"],
+  weather: ["vremenski uvjeti", "vrijeme", "weather"],
+  groundCondition: ["stanje tla", "uvjeti tla", "ground condition"],
+  groundResistance: ["otpor tla", "specificni otpor tla", "ground resistance"],
+});
 
 const WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS = new Set([
   "outsideTemperature",
@@ -131828,6 +131848,64 @@ function syncWorkOrderDocumentWizardCommonSummaryText() {
     : (mode === "znr" ? "Odaberi zajedničkog stručnjaka zaštite na radu." : "Vrijedi za sve odabrane RN-ove.");
 }
 
+function createWorkOrderDocumentEnvironmentVisibility(overrides = {}) {
+  const visibility = Object.fromEntries(
+    WORK_ORDER_DOCUMENT_COMMON_ENVIRONMENT_FIELDS.map(([fieldName]) => [fieldName, Boolean(overrides[fieldName])]),
+  );
+  visibility.any = WORK_ORDER_DOCUMENT_COMMON_ENVIRONMENT_FIELDS.some(([fieldName]) => Boolean(visibility[fieldName]));
+  return visibility;
+}
+
+function getDocumentationSprTemplateEnvironmentLookupText(entry = {}) {
+  const service = entry?.service ?? {};
+  const template = entry?.templateId
+    ? getDocumentationSprTemplateById(entry.templateId)
+    : getDocumentationSprTemplateForService(service);
+  const model = template?.model ?? {};
+  return [
+    entry?.serviceCode,
+    entry?.serviceName,
+    service?.serviceCode,
+    service?.name,
+    service?.serviceName,
+    template?.name,
+    model?.templateCode,
+    model?.serviceCode,
+    model?.serviceName,
+    model?.reportTitle,
+    model?.technicalData,
+    model?.projectDocumentation,
+    model?.resultsText,
+    ...(Array.isArray(model?.measurementTables) ? model.measurementTables.flatMap((table) => [
+      table?.label,
+      table?.summary,
+      ...(Array.isArray(table?.sheet?.columns) ? table.sheet.columns.map((column) => column?.label || column?.key || "") : []),
+    ]) : []),
+    ...(Array.isArray(model?.customFields) ? model.customFields.flatMap((field) => [
+      field?.id,
+      field?.key,
+      field?.label,
+      field?.helpText,
+    ]) : []),
+  ].filter(Boolean).join(" ");
+}
+
+function getWorkOrderDocumentWizardEnvironmentVisibility(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  const entries = getDocumentationSprBatchEntriesForWorkOrders(workOrders);
+  if (entries.length === 0) {
+    return createWorkOrderDocumentEnvironmentVisibility();
+  }
+  const lookup = normalizeLooseName(entries.map(getDocumentationSprTemplateEnvironmentLookupText).join(" "));
+  return createWorkOrderDocumentEnvironmentVisibility(
+    Object.fromEntries(
+      Object.entries(WORK_ORDER_DOCUMENT_ENVIRONMENT_FIELD_ALIASES).map(([fieldName, aliases]) => [
+        fieldName,
+        aliases.some((alias) => lookup.includes(normalizeLooseName(alias))),
+      ]),
+    ),
+  );
+}
+
 function getWorkOrderDocumentWizardCollapsedSections(workOrderId = "") {
   const normalizedId = String(workOrderId || "").trim();
   if (!normalizedId) {
@@ -131910,11 +131988,30 @@ function renderWorkOrderDocumentWizardCommonPeopleSection() {
 
 function renderWorkOrderDocumentWizardCommonEnvSection() {
   const isCollapsed = Boolean(state.workOrderDocumentWizard.commonEnvCollapsed);
+  const visibility = getWorkOrderDocumentWizardEnvironmentVisibility();
+  const hasEnvironmentFields = Boolean(visibility.any);
   if (workOrderDocumentWizardCommonEnvSection) {
+    workOrderDocumentWizardCommonEnvSection.hidden = !hasEnvironmentFields;
     workOrderDocumentWizardCommonEnvSection.classList.toggle("is-collapsed", isCollapsed);
   }
   if (workOrderDocumentWizardCommonEnvBody) {
-    workOrderDocumentWizardCommonEnvBody.hidden = isCollapsed;
+    workOrderDocumentWizardCommonEnvBody.hidden = isCollapsed || !hasEnvironmentFields;
+  }
+  [
+    [workOrderDocumentCommonOutsideTemperatureInput, "outsideTemperature"],
+    [workOrderDocumentCommonRelativeHumidityInput, "relativeHumidity"],
+    [workOrderDocumentCommonAirflowSpeedInput, "airflowSpeed"],
+    [workOrderDocumentCommonWeatherInput, "weather"],
+    [workOrderDocumentCommonGroundConditionInput, "groundCondition"],
+    [workOrderDocumentCommonGroundResistanceInput, "groundResistance"],
+  ].forEach(([input, fieldName]) => {
+    input?.closest(".field")?.toggleAttribute("hidden", !visibility[fieldName]);
+  });
+  workOrderDocumentCommonRandomizeEnvironmentInput
+    ?.closest(".field")
+    ?.toggleAttribute("hidden", !hasEnvironmentFields);
+  if (!hasEnvironmentFields) {
+    return;
   }
   setWorkOrderDocumentWizardCollapseButtonState(workOrderDocumentWizardCommonEnvToggleButton, isCollapsed, {
     collapsedLabel: "Prikaži uvjete ispitivanja",
@@ -131961,7 +132058,7 @@ function renderWorkOrderDocumentWizardSprSheet(workOrders = getAllSelectedWorkOr
   if (groups.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Na odabranim RN-ovima nema usluga za browser izradu dokumentacije.";
+    empty.textContent = "Na odabranim RN-ovima nema usluga za izradu zapisnika.";
     workOrderDocumentWizardSprServiceGroups.replaceChildren(empty);
     return;
   }
@@ -131981,7 +132078,7 @@ function renderWorkOrderDocumentWizardSprSheet(workOrders = getAllSelectedWorkOr
       `${group.entries.length} zapisnika`,
       `${group.workOrderNumbers.size} RN`,
       getDocumentationSprGroupSourceSummary(group),
-      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Browser predložak",
+      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Predložak zapisnika",
     ].filter(Boolean).join(" · ");
     copy.append(title, meta);
 
@@ -136075,56 +136172,60 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     };
   };
 
-  const environmentSection = createCollapsibleSection({
-    sectionKey: "environment",
-    titleText: "Uvjeti ispitivanja",
-    descriptionText: state.workOrderDocumentWizard.common.randomizeEnvironment
-      ? "Zajedničke vrijednosti su blago varirane po RN-u. Ovdje ih po potrebi ručno korigiraj."
-      : "Zajednički uvjeti se ovdje automatski preslikaju. Mijenjaj samo ako ovaj RN odstupa.",
-    className: "work-order-document-selection-env-block",
-  });
+  const environmentVisibility = getWorkOrderDocumentWizardEnvironmentVisibility([workOrder]);
+  let environmentSectionNode = null;
+  if (environmentVisibility.any) {
+    const environmentSection = createCollapsibleSection({
+      sectionKey: "environment",
+      titleText: "Uvjeti ispitivanja",
+      descriptionText: state.workOrderDocumentWizard.common.randomizeEnvironment
+        ? "Zajedničke vrijednosti su blago varirane po RN-u. Ovdje ih po potrebi ručno korigiraj."
+        : "Zajednički uvjeti se ovdje automatski preslikaju. Mijenjaj samo ako ovaj RN odstupa.",
+      className: "work-order-document-selection-env-block",
+    });
 
-  const envGrid = document.createElement("div");
-  envGrid.className = "form-grid work-order-document-selection-env-grid";
-  envGrid.append(
-    createOverrideField({
-      label: "Vanjska temperatura (°C)",
-      fieldName: "outsideTemperature",
-      placeholder: state.workOrderDocumentWizard.common.outsideTemperature || "npr. 18",
-      ...getWeatherHintOptions("outsideTemperature"),
-    }),
-    createOverrideField({
-      label: "Relativna vlažnost (%)",
-      fieldName: "relativeHumidity",
-      placeholder: state.workOrderDocumentWizard.common.relativeHumidity || "npr. 52",
-      ...getWeatherHintOptions("relativeHumidity"),
-    }),
-    createOverrideField({
-      label: "Brzina strujanja (m/s)",
-      fieldName: "airflowSpeed",
-      placeholder: state.workOrderDocumentWizard.common.airflowSpeed || "npr. 0,4",
-      ...getWeatherHintOptions("airflowSpeed"),
-    }),
-    createOverrideField({
-      label: "Vrijeme",
-      fieldName: "weather",
-      placeholder: state.workOrderDocumentWizard.common.weather || "npr. sunčano",
-      ...getWeatherHintOptions("weather"),
-    }),
-    createOverrideField({
-      label: "Stanje tla",
-      fieldName: "groundCondition",
-      placeholder: state.workOrderDocumentWizard.common.groundCondition || "npr. suho",
-      ...getWeatherHintOptions("groundCondition"),
-    }),
-    createOverrideField({
-      label: "Otpor tla (Ω)",
-      fieldName: "groundResistance",
-      placeholder: state.workOrderDocumentWizard.common.groundResistance || "npr. 5,2",
-      ...getWeatherHintOptions("groundResistance"),
-    }),
-  );
-  environmentSection.bodyNode.append(envGrid);
+    const envGrid = document.createElement("div");
+    envGrid.className = "form-grid work-order-document-selection-env-grid";
+    [
+      {
+        label: "Vanjska temperatura (°C)",
+        fieldName: "outsideTemperature",
+        placeholder: state.workOrderDocumentWizard.common.outsideTemperature || "npr. 18",
+      },
+      {
+        label: "Relativna vlažnost (%)",
+        fieldName: "relativeHumidity",
+        placeholder: state.workOrderDocumentWizard.common.relativeHumidity || "npr. 52",
+      },
+      {
+        label: "Brzina strujanja (m/s)",
+        fieldName: "airflowSpeed",
+        placeholder: state.workOrderDocumentWizard.common.airflowSpeed || "npr. 0,4",
+      },
+      {
+        label: "Vrijeme",
+        fieldName: "weather",
+        placeholder: state.workOrderDocumentWizard.common.weather || "npr. sunčano",
+      },
+      {
+        label: "Stanje tla",
+        fieldName: "groundCondition",
+        placeholder: state.workOrderDocumentWizard.common.groundCondition || "npr. suho",
+      },
+      {
+        label: "Otpor tla (Ω)",
+        fieldName: "groundResistance",
+        placeholder: state.workOrderDocumentWizard.common.groundResistance || "npr. 5,2",
+      },
+    ].filter((definition) => environmentVisibility[definition.fieldName]).forEach((definition) => {
+      envGrid.append(createOverrideField({
+        ...definition,
+        ...getWeatherHintOptions(definition.fieldName),
+      }));
+    });
+    environmentSection.bodyNode.append(envGrid);
+    environmentSectionNode = environmentSection.section;
+  }
 
   grid.append(
     companyBlock,
@@ -136132,7 +136233,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     servicesSection.section,
     ...(learningSectionNode ? [learningSectionNode] : []),
     peopleSection.section,
-    environmentSection.section,
+    ...(environmentSectionNode ? [environmentSectionNode] : []),
   );
 
   const footer = document.createElement("div");
@@ -136640,15 +136741,15 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   const browserSummary = document.createElement("div");
   browserSummary.className = "work-order-document-template-summary-card";
   browserSummary.innerHTML = `
-    <strong>${browserEntries.length} browser zapisnika · ${browserGroups.length} šifri usluga</strong>
-    <span>${browserEntries.length > 0 ? `${browserTemplateCount} zapisnika ima spremljeni browser predložak, ostali se otvaraju kao novi predlošci vezani na uslugu.` : "Na odabranim RN-ovima nema usluga za browser izradu dokumentacije."}</span>
+    <strong>${browserEntries.length} zapisnika · ${browserGroups.length} šifri usluga</strong>
+    <span>${browserEntries.length > 0 ? `${browserTemplateCount} zapisnika ima spremljeni predložak, ostali se otvaraju kao novi zapisnici vezani na uslugu.` : "Na odabranim RN-ovima nema usluga za izradu zapisnika."}</span>
   `;
   workOrderDocumentWizardTemplateSummary.append(browserSummary);
 
   if (browserGroups.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Dodaj usluge na RN pa će se ovdje pojaviti browser izrada dokumentacije po šiframa usluga.";
+    empty.textContent = "Dodaj usluge na RN pa će se ovdje pojaviti zapisnici po šiframa usluga.";
     workOrderDocumentWizardTemplateList.replaceChildren(empty);
     renderWorkOrderDocumentWizardTemplateDock([]);
     return;
@@ -136675,14 +136776,14 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
       `${group.entries.length} zapisnika`,
       `${group.workOrderNumbers.size} RN`,
       getDocumentationSprGroupSourceSummary(group),
-      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Browser predložak",
+      group.templateNames.size > 0 ? [...group.templateNames].join(", ") : "Predložak zapisnika",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
 
     const badges = document.createElement("div");
     badges.className = "work-order-document-template-card-badges";
-    badges.append(createBadge("Browser", "document-template-meta-badge"));
+    badges.append(createBadge("Predložak", "document-template-meta-badge"));
     if (group.serviceCode) {
       badges.append(createBadge(group.serviceCode, "document-template-meta-badge"));
     }
@@ -136867,12 +136968,12 @@ function renderWorkOrderDocumentWizard() {
 
   if (workOrderDocumentWizardTitle) {
     workOrderDocumentWizardTitle.textContent = isSingleWorkOrderFlow
-      ? (isInspectionMode ? "Izrada dokumentacije RN" : "Izrada ZNR dokumentacije RN")
+      ? (isInspectionMode ? "Izrada zapisnika RN" : "Izrada ZNR dokumentacije RN")
       : copy.title;
   }
   if (workOrderDocumentWizardHelper) {
     const helperText = isSingleWorkOrderFlow
-      ? "Prikazani su browser predlošci povezani s uslugama na ovom RN-u. Nema masovne izrade."
+      ? "Prikazani su zapisnici povezani s uslugama na ovom RN-u."
       : (copy.wizardHelper || "");
     workOrderDocumentWizardHelper.textContent = helperText;
     workOrderDocumentWizardHelper.hidden = !helperText;

@@ -30107,8 +30107,9 @@ private fun documentationSprMobileSourceLabel(templates: List<WorkOrderDocumenta
 
 private fun documentationSprTemplateLabel(templates: List<WorkOrderDocumentationTemplate>): String =
     templates.firstOrNull { it.serviceCode.isNotBlank() }?.serviceCode
-        ?: templates.firstOrNull { it.title.contains("SPR", ignoreCase = true) }?.title
-        ?: templates.firstOrNull { it.documentName.contains("SPR", ignoreCase = true) }?.documentName
+        ?: templates.firstOrNull { it.serviceName.isNotBlank() }?.serviceName
+        ?: templates.firstOrNull { it.documentType.isNotBlank() }?.documentType
+        ?: templates.firstOrNull { it.documentName.isNotBlank() }?.documentName
         ?: templates.firstOrNull()?.title
         ?: "Zapisnik"
 
