@@ -40663,7 +40663,7 @@ body.is-vehicle-usage-open {
   width: 210mm;
   height: 296.5mm;
   min-height: 0;
-  padding: 12mm 10mm 32mm;
+  padding: 12mm 10mm 36mm;
   box-sizing: border-box;
   overflow: hidden;
   background: #fff;
@@ -40871,7 +40871,7 @@ body.is-vehicle-usage-open {
   width: 297mm;
   height: 209.5mm;
   min-height: 0;
-  padding: 10mm 9mm 28mm;
+  padding: 10mm 9mm 32mm;
 }
 
 .documentation-spr-paper-measure-title {
@@ -41019,9 +41019,10 @@ body.is-vehicle-usage-open {
 .documentation-spr-paper-footer {
   position: absolute;
   left: 10mm;
-  bottom: 22mm;
+  bottom: 11mm;
   color: #111;
   font-size: 10pt;
+  line-height: 1;
 }
 
 .documentation-spr-paper-attachment {

@@ -62499,9 +62499,9 @@ function getDocumentationSprMeasurementRowsPerPage(table = {}) {
   const columns = table?.sheet?.columns || [];
   const orientation = normalizeDocumentationSprPageOrientation(table?.pageOrientation);
   if (orientation === "landscape") {
-    return columns.length > 8 ? 26 : 22;
+    return columns.length > 8 ? 22 : 19;
   }
-  return columns.length > 8 ? 42 : 34;
+  return columns.length > 8 ? 35 : 29;
 }
 
 function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4, rowsOverride = null, tablePageIndex = 0) {
@@ -62769,7 +62769,7 @@ function buildDocumentationSprPdfStyles() {
       height: 296.5mm;
       min-height: 0;
       margin: 0 auto;
-      padding: 12mm 10mm 32mm;
+      padding: 12mm 10mm 36mm;
       box-sizing: border-box;
       background: #fff;
       color: #101010;
@@ -62784,7 +62784,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper.is-landscape {
       width: 297mm;
       height: 209.5mm;
-      padding: 10mm 9mm 28mm;
+      padding: 10mm 9mm 32mm;
     }
 
     .documentation-spr-paper:last-child {
@@ -63153,9 +63153,10 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-footer {
       position: absolute;
       left: 10mm;
-      bottom: 22mm;
+      bottom: 11mm;
       color: #111;
       font-size: 10pt;
+      line-height: 1;
     }
 
     .documentation-spr-paper-attachment {

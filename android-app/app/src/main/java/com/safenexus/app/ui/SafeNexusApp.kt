@@ -198,6 +198,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -24945,6 +24946,20 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
+    if (measurementPreviewOpen) {
+        DocumentationMeasurementFullscreenDialog(
+            workOrder = workOrder,
+            selectedLabel = selectedFlowTab?.label ?: selectedFlowItem?.serviceCode ?: "Mjerenja",
+            measurementTemplates = measurementTemplates,
+            measurementSheets = measurementSheets,
+            enabled = !formLoading,
+            onSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
+            onDismiss = { measurementPreviewOpen = false },
+            onDone = { measurementPreviewOpen = false },
+        )
+    }
+
+    if (!measurementPreviewOpen) {
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier
@@ -25775,6 +25790,7 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         },
     )
+    }
 
 }
 
@@ -28345,6 +28361,103 @@ private fun DocumentationMeasurementPreviewHeader(
 }
 
 @Composable
+private fun DocumentationMeasurementFullscreenDialog(
+    workOrder: WorkOrder,
+    selectedLabel: String,
+    measurementTemplates: List<WorkOrderDocumentationTemplate>,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+    enabled: Boolean,
+    onSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit,
+) {
+    val context = LocalContext.current
+    DisposableEffect(Unit) {
+        val activity = context.findFragmentActivity()
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(0.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(WindowInsets.safeDrawing.asPaddingValues())
+                    .padding(start = 10.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
+                    ) {
+                        Text(
+                            "Mjerenja",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                        )
+                        Text(
+                            listOf("RN ${workOrder.displayNumber}", selectedLabel, workOrder.companyName)
+                                .filter { it.isNotBlank() }
+                                .joinToString(" · "),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    DocumentationMeasurementPreviewContent(
+                        measurementTemplates = measurementTemplates,
+                        measurementSheets = measurementSheets,
+                        enabled = enabled,
+                        fullscreen = true,
+                        onSheetChange = onSheetChange,
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .width(56.dp)
+                        .fillMaxHeight()
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Top,
+                ) {
+                    FloatingActionButton(
+                        onClick = onDone,
+                        modifier = Modifier.size(48.dp),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = "Gotovo")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DocumentationMeasurementLaunchCard(
     measurementTemplates: List<WorkOrderDocumentationTemplate>,
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
@@ -28402,6 +28515,7 @@ private fun DocumentationMeasurementPreviewContent(
     measurementTemplates: List<WorkOrderDocumentationTemplate>,
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
     enabled: Boolean,
+    fullscreen: Boolean = false,
     onSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
 ) {
     val context = LocalContext.current
@@ -28420,7 +28534,7 @@ private fun DocumentationMeasurementPreviewContent(
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.82f),
+            .fillMaxHeight(if (fullscreen) 1f else 0.82f),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
