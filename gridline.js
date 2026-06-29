@@ -15,6 +15,38 @@
   var DEFAULT_ROW_HEIGHT = 36;
   var UNDO_LIMIT = 80;
   var REFERENCE_COLORS = ["#1f6fff", "#d9480f", "#0f8a5f", "#7c3aed", "#c2255c", "#087f5b"];
+  var DATA_TYPES = ["general", "text", "number", "integer", "percent"];
+  var MIN_DECIMALS = 0;
+  var MAX_DECIMALS = 6;
+  var TOOLBAR_GROUP_LABELS = ["Datoteka", "Uredi", "Format", "Raspored", "Podaci"];
+  var GRIDLINE_TOOLBAR_ICONS = {
+    save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h7V4"/><path d="M8 20v-6h8v6"/>',
+    export: '<path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 20h14"/>',
+    undo: '<path d="M9 7H5v4"/><path d="M5 11c2.5-4 9.5-5 13 0 2.2 3.2.6 7-3.5 8"/>',
+    redo: '<path d="M15 7h4v4"/><path d="M19 11c-2.5-4-9.5-5-13 0-2.2 3.2-.6 7 3.5 8"/>',
+    copy: '<rect x="8" y="8" width="11" height="11" rx="1.8"/><rect x="5" y="5" width="11" height="11" rx="1.8"/>',
+    cut: '<path d="m4 5 16 14"/><path d="m20 5-6.5 6.5"/><circle cx="6" cy="16" r="2"/><circle cx="6" cy="8" r="2"/>',
+    paste: '<path d="M9 5h6l1 2h2v13H6V7h2z"/><path d="M9 5h6"/><path d="M9 11h6M9 15h5"/>',
+    textColor: '<path d="M5 19h14"/><path d="m8 15 4-10 4 10"/><path d="M9.2 12h5.6"/>',
+    border: '<rect x="5" y="5" width="14" height="14"/><path d="M12 5v14M5 12h14"/>',
+    alignLeft: '<path d="M5 7h14M5 12h10M5 17h14"/>',
+    alignCenter: '<path d="M5 7h14M7 12h10M5 17h14"/>',
+    alignRight: '<path d="M5 7h14M9 12h10M5 17h14"/>',
+    merge: '<rect x="4" y="6" width="16" height="12"/><path d="M8 6v12M16 6v12"/><path d="m10 12 2-2 2 2M10 12l2 2 2-2"/>',
+    unmerge: '<rect x="4" y="6" width="16" height="12"/><path d="M8 6v12M16 6v12"/><path d="m7 12 3-2M7 12l3 2M17 12l-3-2M17 12l-3 2"/>',
+    header: '<path d="M5 6h14v12H5z"/><path d="M5 10h14"/><path d="M9 6v12"/>',
+    freezeRow: '<path d="M5 6h14v12H5z"/><path d="M5 10h14"/><path d="m12 14 3 3 3-3"/>',
+    freezeColumn: '<path d="M5 6h14v12H5z"/><path d="M10 6v12"/><path d="m14 12 3-3 3 3"/>',
+    addRow: '<path d="M5 6h14v12H5z"/><path d="M5 11h14"/><path d="M12 13v4M10 15h4"/>',
+    deleteRow: '<path d="M5 6h14v12H5z"/><path d="M5 11h14"/><path d="M10 15h4"/>',
+    addColumn: '<path d="M5 6h14v12H5z"/><path d="M10 6v12"/><path d="M14 12h4M16 10v4"/>',
+    deleteColumn: '<path d="M5 6h14v12H5z"/><path d="M10 6v12"/><path d="M14 12h4"/>',
+    sortAsc: '<path d="M8 17V7"/><path d="m5 10 3-3 3 3"/><path d="M14 8h5M14 12h4M14 16h3"/>',
+    sortDesc: '<path d="M8 7v10"/><path d="m5 14 3 3 3-3"/><path d="M14 8h3M14 12h4M14 16h5"/>',
+    filter: '<path d="M5 6h14l-5 6v5l-4 2v-7z"/>',
+    find: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/>',
+    clearFormatting: '<path d="M5 17h7"/><path d="m7 15 5-10 5 10"/><path d="M9 11h6"/><path d="m15 19 4-4M19 19l-4-4"/>',
+  };
 
   function clampInteger(value, fallback, min, max) {
     var numeric = Math.round(Number(value));
@@ -50,6 +82,24 @@
     return /^#[0-9a-f]{6}$/i.test(String(value || "").trim());
   }
 
+  function normalizeDataType(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "auto") {
+      normalized = "general";
+    }
+    if (normalized === "int") {
+      normalized = "integer";
+    }
+    return DATA_TYPES.indexOf(normalized) >= 0 ? normalized : "general";
+  }
+
+  function normalizeDecimalCount(value) {
+    if (value == null || String(value).trim() === "") {
+      return null;
+    }
+    return clampInteger(value, 2, MIN_DECIMALS, MAX_DECIMALS);
+  }
+
   function normalizeStyleEntry(entry) {
     var source = entry && typeof entry === "object" ? entry : {};
     var style = {};
@@ -57,6 +107,8 @@
     var color = String(source.color || source.textColor || "").trim();
     var textAlign = String(source.textAlign || source.align || "").trim().toLowerCase();
     var border = String(source.border || source.borderStyle || "").trim().toLowerCase();
+    var dataType = normalizeDataType(source.type || source.dataType || source.valueType);
+    var decimals = normalizeDecimalCount(source.decimals);
     if (isValidHexColor(backgroundColor)) {
       style.backgroundColor = backgroundColor;
     }
@@ -78,6 +130,12 @@
     if (["all", "outer", "bottom"].indexOf(border) >= 0) {
       style.border = border;
     }
+    if (dataType !== "general") {
+      style.type = dataType;
+    }
+    if (decimals != null) {
+      style.decimals = decimals;
+    }
     if (source.required === true) {
       style.required = true;
     }
@@ -97,6 +155,187 @@
       return "";
     }
     return String(rounded).replace(".", ",");
+  }
+
+  function parseFormattedNumber(value) {
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+    var text = String(value == null ? "" : value)
+      .trim()
+      .replace(/\s+/g, "")
+      .replace("%", "");
+    if (!text) {
+      return null;
+    }
+    if (text.indexOf(",") >= 0 && text.indexOf(".") < 0) {
+      text = text.replace(",", ".");
+    }
+    if (!/^-?\d+(?:\.\d+)?$/.test(text)) {
+      return null;
+    }
+    var numeric = Number(text);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  function formatNumberWithDecimals(value, decimals) {
+    var numeric = parseFormattedNumber(value);
+    var safeDecimals = clampInteger(decimals, 2, MIN_DECIMALS, MAX_DECIMALS);
+    if (numeric == null) {
+      return String(value == null ? "" : value);
+    }
+    return numeric.toFixed(safeDecimals);
+  }
+
+  function formatValueForCellStyle(value, style) {
+    var text = String(value == null ? "" : value);
+    var normalizedStyle = normalizeStyleEntry(style);
+    var type = normalizeDataType(normalizedStyle.type);
+    var decimals = normalizedStyle.decimals;
+    var numeric;
+    if (!text || /^#(?:ERROR|DIV\/0!|REF!)$/i.test(text)) {
+      return text;
+    }
+    if (type === "text") {
+      return text;
+    }
+    if (type === "integer") {
+      numeric = parseFormattedNumber(text);
+      return numeric == null ? text : formatNumberWithDecimals(Math.round(numeric), 0);
+    }
+    if (type === "percent") {
+      numeric = parseFormattedNumber(text);
+      return numeric == null
+        ? text
+        : formatNumberWithDecimals(numeric * (text.indexOf("%") >= 0 ? 1 : 100), decimals == null ? 2 : decimals) + "%";
+    }
+    if (type === "number" || decimals != null) {
+      return formatNumberWithDecimals(text, decimals == null ? 2 : decimals);
+    }
+    return text;
+  }
+
+  function toolbarIconMarkup(name) {
+    var content = GRIDLINE_TOOLBAR_ICONS[name];
+    if (!content) {
+      return "";
+    }
+    return '<svg class="gridline-toolbar-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + content + "</svg>";
+  }
+
+  function toolbarLetterMarkup(letter, className) {
+    return '<span class="gridline-toolbar-letter ' + (className || "") + '" aria-hidden="true">' + letter + "</span>";
+  }
+
+  function toolbarIconNameForButton(button) {
+    var action = button && button.dataset ? button.dataset.gridlineAction : "";
+    if (action === "align") {
+      return "align" + (button.dataset.gridlineAlign || "left").replace(/^./, function (letter) {
+        return letter.toUpperCase();
+      });
+    }
+    if (action === "text-color") {
+      return "textColor";
+    }
+    if (action === "toggle-header-row") {
+      return "header";
+    }
+    if (action === "freeze-row") {
+      return "freezeRow";
+    }
+    if (action === "freeze-column") {
+      return "freezeColumn";
+    }
+    if (action === "add-row") {
+      return "addRow";
+    }
+    if (action === "delete-row") {
+      return "deleteRow";
+    }
+    if (action === "add-column") {
+      return "addColumn";
+    }
+    if (action === "delete-column") {
+      return "deleteColumn";
+    }
+    if (action === "sort-asc") {
+      return "sortAsc";
+    }
+    if (action === "sort-desc") {
+      return "sortDesc";
+    }
+    if (action === "clear-formatting") {
+      return "clearFormatting";
+    }
+    return action;
+  }
+
+  function decorateToolbarButtonIcons(root) {
+    if (!root || typeof root.querySelectorAll !== "function") {
+      return;
+    }
+    Array.prototype.forEach.call(root.querySelectorAll(".gridline-icon-button[data-gridline-action]"), function (button) {
+      var action = button.dataset.gridlineAction || "";
+      var iconName;
+      var icon;
+      if (action === "bold") {
+        button.innerHTML = toolbarLetterMarkup("B", "is-bold");
+      } else if (action === "italic") {
+        button.innerHTML = toolbarLetterMarkup("I", "is-italic");
+      } else if (action === "underline") {
+        button.innerHTML = toolbarLetterMarkup("U", "is-underline");
+      } else {
+        iconName = toolbarIconNameForButton(button);
+        icon = toolbarIconMarkup(iconName);
+        if (icon) {
+          button.innerHTML = icon;
+        }
+      }
+    });
+  }
+
+  function groupToolbarActions(root) {
+    var actions = root && typeof root.querySelector === "function"
+      ? root.querySelector(".documentation-gridline-actions")
+      : null;
+    var fragment;
+    var group = null;
+    var groupIndex = 0;
+    if (!actions || actions.dataset.gridlineGrouped === "true") {
+      return;
+    }
+    fragment = document.createDocumentFragment();
+    function flushGroup() {
+      if (group && group.childElementCount) {
+        fragment.appendChild(group);
+      }
+      group = null;
+    }
+    Array.prototype.slice.call(actions.children).forEach(function (child) {
+      var isSeparator = child.classList && child.classList.contains("gridline-toolbar-separator");
+      var isStatus = child.dataset && child.dataset.gridlineRole;
+      if (isSeparator) {
+        flushGroup();
+        groupIndex += 1;
+        child.remove();
+        return;
+      }
+      if (isStatus) {
+        flushGroup();
+        fragment.appendChild(child);
+        return;
+      }
+      if (!group) {
+        group = document.createElement("span");
+        group.className = "gridline-toolbar-group";
+        group.setAttribute("aria-label", TOOLBAR_GROUP_LABELS[groupIndex] || "Alati");
+      }
+      group.appendChild(child);
+    });
+    flushGroup();
+    clearNode(actions);
+    actions.appendChild(fragment);
+    actions.dataset.gridlineGrouped = "true";
   }
 
   var formulaTools = window.SafeNexusMeasurementFormula || null;
@@ -568,6 +807,11 @@
         } catch (error) {
           return "#ERROR";
         }
+      }).map(function (value, columnIndex) {
+        if (options && options.raw) {
+          return value;
+        }
+        return formatValueForCellStyle(value, normalized.cellStyles[cellKey(rowIndex, columnIndex)]);
       });
     });
   }
@@ -702,6 +946,8 @@
     var freezeRowButton = resolveElement(host, "[data-gridline-action='freeze-row']");
     var freezeColumnButton = resolveElement(host, "[data-gridline-action='freeze-column']");
     var zoomSelect = resolveElement(host, "[data-gridline-action='zoom']");
+    var dataTypeSelect = resolveElement(host, "[data-gridline-action='data-type']");
+    var decimalsSelect = resolveElement(host, "[data-gridline-action='decimals']");
     var statusBar = resolveElement(host, "[data-gridline-role='summary']");
     var rootElement = grid ? grid.closest("[data-gridline-instance]") || host : host;
     var model;
@@ -756,6 +1002,9 @@
     if (!grid || !status || !formulaInput || !cellRef) {
       return null;
     }
+
+    groupToolbarActions(rootElement);
+    decorateToolbarButtonIcons(rootElement);
 
     if (rootElement && rootElement.__safeNexusGridlineDestroy) {
       rootElement.__safeNexusGridlineDestroy();
@@ -818,7 +1067,10 @@
     }
 
     function getDisplayValue(row, column) {
-      return getModelCellDisplayValue(model, row, column, options);
+      return formatValueForCellStyle(
+        getModelCellDisplayValue(model, row, column, options),
+        getCellStyle(row, column)
+      );
     }
 
     function getColumnWidth(column) {
@@ -1951,6 +2203,7 @@
       }
       cellRef.textContent = formatSelectionLabel();
       formulaInput.value = getValue(active.row, active.column);
+      syncToolbarState();
       Array.prototype.forEach.call(grid.querySelectorAll("td.is-range-selected"), function (node) {
         node.classList.remove("is-range-selected");
       });
@@ -2133,6 +2386,7 @@
         setValue(cell.row, cell.column, "");
       });
       render();
+      syncToolbarState();
       scheduleSave();
     }
 
@@ -4219,6 +4473,7 @@
         }
       });
       render();
+      syncToolbarState();
       scheduleSave();
     }
 
@@ -4258,6 +4513,7 @@
         }
       });
       render();
+      syncToolbarState();
       scheduleSave();
     }
 
@@ -4303,7 +4559,43 @@
         });
       }
       render();
+      syncToolbarState();
       scheduleSave();
+    }
+
+    function syncToolbarState() {
+      var style = normalizeStyleEntry(getCellStyle(active.row, active.column) || {});
+      if (dataTypeSelect) {
+        dataTypeSelect.value = style.type || "general";
+      }
+      if (decimalsSelect) {
+        decimalsSelect.value = style.decimals == null ? "" : String(style.decimals);
+      }
+    }
+
+    function setSelectedDataType(type) {
+      var normalizedType = normalizeDataType(type);
+      updateSelectedCellStyles(function (style) {
+        if (normalizedType === "general") {
+          delete style.type;
+          delete style.dataType;
+        } else {
+          style.type = normalizedType;
+        }
+        return style;
+      });
+    }
+
+    function setSelectedDecimals(value) {
+      var decimals = normalizeDecimalCount(value);
+      updateSelectedCellStyles(function (style) {
+        if (decimals == null) {
+          delete style.decimals;
+        } else {
+          style.decimals = decimals;
+        }
+        return style;
+      });
     }
 
     function clearSelectedContent() {
@@ -4504,6 +4796,16 @@
       freezeColumnButton.addEventListener("click", function () {
         freezeFirstColumn = !freezeFirstColumn;
         rootElement.classList.toggle("is-gridline-freeze-column", freezeFirstColumn);
+      });
+    }
+    if (dataTypeSelect) {
+      dataTypeSelect.addEventListener("change", function () {
+        setSelectedDataType(dataTypeSelect.value);
+      });
+    }
+    if (decimalsSelect) {
+      decimalsSelect.addEventListener("change", function () {
+        setSelectedDecimals(decimalsSelect.value);
       });
     }
     if (zoomSelect) {

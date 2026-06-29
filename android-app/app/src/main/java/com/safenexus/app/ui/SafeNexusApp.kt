@@ -28802,6 +28802,27 @@ private fun MeasurementTableEditor(
     val selectedEditable = selectedColumn?.isEditableMeasurementColumn() == true
     val selectedRequiresSpaceSelection = requireSpaceSelection && selectedColumn?.isPhysicalFactorsSpaceSelectorColumn() == true
     val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
+    val selectedFormat = selectedRow?.formats?.get(selectedColumn?.id.orEmpty())
+    val selectedFormatType = selectedFormat.measurementFormatString("type").ifBlank { "general" }
+    val selectedFormatDecimals = selectedFormat.measurementFormatInt("decimals", 2).coerceIn(0, 6)
+    val measurementDataTypeOptions = remember {
+        listOf(
+            "general" to "Auto",
+            "text" to "Tekst",
+            "number" to "Broj",
+            "integer" to "Cijeli broj",
+            "percent" to "Postotak",
+        )
+    }
+    val measurementDecimalsOptions = remember {
+        (0..6).map { it.toString() to "$it dec." }
+    }
+    fun commitSelectedCellFormat(patch: Map<String, Any?>) {
+        val row = selectedRow ?: return
+        val column = selectedColumn ?: return
+        if (!selectedEditable) return
+        commitSheetChange(updateMeasurementCellFormat(sheetWithPendingCellValue(sheet), row.id, column.id, patch))
+    }
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
     val rowHeaderWidth = if (tableOnly) 46.dp else if (expanded) 54.dp else 46.dp
     val rowHeight = if (tableOnly) 42.dp else if (expanded) 52.dp else 44.dp
@@ -28934,6 +28955,42 @@ private fun MeasurementTableEditor(
                             singleLine = true,
                             enabled = enabled && selectedEditable,
                             shape = RoundedCornerShape(6.dp),
+                        )
+                    }
+                }
+                if (selectedRow != null && selectedColumn != null && selectedEditable) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        WorkOrderSelectField(
+                            label = "Tip podatka",
+                            value = selectedFormatType,
+                            valueLabel = measurementDataTypeOptions.firstOrNull { it.first == selectedFormatType }?.second ?: "Auto",
+                            options = measurementDataTypeOptions,
+                            enabled = enabled,
+                            onSelect = { value ->
+                                commitSelectedCellFormat(
+                                    mapOf<String, Any?>("type" to value.takeUnless { it == "general" }),
+                                )
+                            },
+                            modifier = Modifier.width(154.dp),
+                            compact = true,
+                        )
+                        WorkOrderSelectField(
+                            label = "Decimale",
+                            value = selectedFormatDecimals.toString(),
+                            valueLabel = "${selectedFormatDecimals} dec.",
+                            options = measurementDecimalsOptions,
+                            enabled = enabled,
+                            onSelect = { value ->
+                                commitSelectedCellFormat(
+                                    mapOf<String, Any?>("decimals" to value.toIntOrNull()?.coerceIn(0, 6)),
+                                )
+                            },
+                            modifier = Modifier.width(132.dp),
+                            compact = true,
                         )
                     }
                 }

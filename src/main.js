@@ -52677,6 +52677,41 @@ function appendGridlineSpreadsheetToolbar(actions, {
     option.selected = value === 100;
     zoom.appendChild(option);
   });
+  const dataType = document.createElement("select");
+  dataType.className = "gridline-toolbar-select";
+  dataType.dataset.gridlineAction = "data-type";
+  dataType.title = "Tip podatka";
+  [
+    ["general", "Auto"],
+    ["text", "Tekst"],
+    ["number", "Broj"],
+    ["integer", "Cijeli"],
+    ["percent", "%"],
+  ].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    dataType.appendChild(option);
+  });
+  const decimals = document.createElement("select");
+  decimals.className = "gridline-toolbar-select is-decimals";
+  decimals.dataset.gridlineAction = "decimals";
+  decimals.title = "Vidljive decimale";
+  [
+    ["", "Dec"],
+    ["0", "0"],
+    ["1", "1"],
+    ["2", "2"],
+    ["3", "3"],
+    ["4", "4"],
+    ["5", "5"],
+    ["6", "6"],
+  ].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    decimals.appendChild(option);
+  });
   actions.append(
     ...(status ? [status] : []),
     ...(summary ? [summary] : []),
@@ -52714,6 +52749,8 @@ function appendGridlineSpreadsheetToolbar(actions, {
     makeButton("⌄", "filter", "Filter"),
     makeButton("⌕", "find", "Pronadi"),
     makeButton("Tx", "clear-formatting", "Ocisti formatiranje"),
+    dataType,
+    decimals,
     ...(includeQuickFill ? [createActionButton("Brzi unos", "ghost-button")] : []),
     zoom,
     ...(applyButton ? [applyButton] : []),
@@ -61586,6 +61623,23 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="filter" title="Filter">⌄</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="find" title="Pronađi">⌕</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="clear-formatting" title="Očisti formatiranje">Tx</button>
+        <select class="gridline-toolbar-select" data-gridline-action="data-type" title="Tip podatka">
+          <option value="general">Auto</option>
+          <option value="text">Tekst</option>
+          <option value="number">Broj</option>
+          <option value="integer">Cijeli</option>
+          <option value="percent">%</option>
+        </select>
+        <select class="gridline-toolbar-select is-decimals" data-gridline-action="decimals" title="Vidljive decimale">
+          <option value="">Dec</option>
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
         <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
         <select class="gridline-zoom-select" data-gridline-action="zoom" title="Zoom">
           <option value="90">90%</option>
@@ -62715,7 +62769,7 @@ function buildDocumentationSprPdfStyles() {
       height: 296.5mm;
       min-height: 0;
       margin: 0 auto;
-      padding: 12mm 10mm 18mm;
+      padding: 12mm 10mm 32mm;
       box-sizing: border-box;
       background: #fff;
       color: #101010;
@@ -62730,7 +62784,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper.is-landscape {
       width: 297mm;
       height: 209.5mm;
-      padding: 10mm 9mm 16mm;
+      padding: 10mm 9mm 28mm;
     }
 
     .documentation-spr-paper:last-child {
@@ -63099,7 +63153,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-footer {
       position: absolute;
       left: 10mm;
-      bottom: 8mm;
+      bottom: 22mm;
       color: #111;
       font-size: 10pt;
     }

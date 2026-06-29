@@ -37791,8 +37791,20 @@ body.is-vehicle-usage-open {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
   flex-wrap: wrap;
+}
+
+.gridline-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 34px;
+  padding: 3px;
+  border: 1px solid rgba(155, 174, 205, 0.32);
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 255, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .documentation-gridline-actions .gridline-icon-button {
@@ -37804,19 +37816,68 @@ body.is-vehicle-usage-open {
   font-weight: 950;
 }
 
+.gridline-toolbar-svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.gridline-toolbar-letter {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  color: currentColor;
+  font-size: 0.92rem;
+  line-height: 1;
+}
+
+.gridline-toolbar-letter.is-bold {
+  font-weight: 950;
+}
+
+.gridline-toolbar-letter.is-italic {
+  font-style: italic;
+}
+
+.gridline-toolbar-letter.is-underline {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .documentation-gridline-actions .ghost-button,
 .documentation-gridline-actions .primary-button {
   min-height: 30px;
   border-radius: 7px;
 }
 
-.gridline-zoom-select {
+.gridline-zoom-select,
+.gridline-toolbar-select {
   height: 30px;
   border: 1px solid var(--documentation-gridline-line, #d9e3f2);
   border-radius: 7px;
   background: #fff;
   color: #13203a;
   font-weight: 850;
+  padding: 0 24px 0 9px;
+}
+
+.gridline-toolbar-select {
+  width: 82px;
+  font-size: 0.78rem;
+}
+
+.gridline-toolbar-select.is-decimals {
+  width: 58px;
+}
+
+.gridline-zoom-select {
+  width: 76px;
 }
 
 .gridline-toolbar-separator {
@@ -40602,7 +40663,7 @@ body.is-vehicle-usage-open {
   width: 210mm;
   height: 296.5mm;
   min-height: 0;
-  padding: 12mm 10mm 18mm;
+  padding: 12mm 10mm 32mm;
   box-sizing: border-box;
   overflow: hidden;
   background: #fff;
@@ -40810,7 +40871,7 @@ body.is-vehicle-usage-open {
   width: 297mm;
   height: 209.5mm;
   min-height: 0;
-  padding: 10mm 9mm 16mm;
+  padding: 10mm 9mm 28mm;
 }
 
 .documentation-spr-paper-measure-title {
@@ -40958,7 +41019,7 @@ body.is-vehicle-usage-open {
 .documentation-spr-paper-footer {
   position: absolute;
   left: 10mm;
-  bottom: 8mm;
+  bottom: 22mm;
   color: #111;
   font-size: 10pt;
 }
