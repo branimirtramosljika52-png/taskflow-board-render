@@ -38265,7 +38265,19 @@ body.is-vehicle-usage-open {
   font: inherit;
 }
 
-.documentation-gridline-module input.cell:focus {
+.documentation-gridline-module input.cell[readonly] {
+  cursor: cell;
+  caret-color: transparent;
+  user-select: none;
+}
+
+.documentation-gridline-module input.cell.is-editing {
+  cursor: text;
+  caret-color: auto;
+  user-select: text;
+}
+
+.documentation-gridline-module input.cell.is-editing:focus {
   background: #fbfdff;
 }
 

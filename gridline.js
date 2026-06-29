@@ -980,6 +980,7 @@
     var columnResize = null;
     var rowResize = null;
     var selectionDrag = null;
+    var editingCell = null;
     var selection = { startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 };
     var undoStack = [];
     var redoStack = [];
@@ -1148,7 +1149,12 @@
     }
 
     function isInputEditing(input) {
-      return input && document.activeElement === input;
+      return Boolean(
+        input
+        && editingCell
+        && Number(input.dataset.row) === editingCell.row
+        && Number(input.dataset.column) === editingCell.column
+      );
     }
 
     function syncInputDisplay(input, forceRaw) {
@@ -1167,7 +1173,10 @@
         : getDisplayValue(row, column);
       input.value = displayValue;
       input.dataset.rawValue = rawValue;
+      input.readOnly = !isInputEditing(input);
+      input.tabIndex = isInputEditing(input) ? 0 : -1;
       input.classList.toggle("is-formula", isFormulaText(rawValue));
+      input.classList.toggle("is-editing", isInputEditing(input));
       input.classList.toggle("is-formula-error", isFormulaText(rawValue) && displayValue === "#ERROR");
       input.classList.toggle("is-invalid-value", !isValueAllowed(row, column, rawValue));
       input.title = isFormulaText(rawValue) && displayValue === "#ERROR"
@@ -1559,6 +1568,7 @@
           // Pointer capture can already be released by the browser.
         }
       }
+      document.removeEventListener("mousemove", handleSelectionMouseMove);
       document.removeEventListener("pointermove", handleSelectionPointerMove);
       document.removeEventListener("pointerup", handleSelectionPointerUp);
       document.body.classList.remove("is-selecting-gridline-cells");
@@ -1578,6 +1588,19 @@
       updateSelectionDragRange(Number(td.dataset.row), Number(td.dataset.column));
     }
 
+    function handleSelectionMouseMove(event) {
+      var td;
+      if (!selectionDrag || selectionDrag.mode !== "mouse") {
+        return;
+      }
+      event.preventDefault();
+      td = getCellFromPoint(event.clientX, event.clientY);
+      if (!td) {
+        return;
+      }
+      updateSelectionDragRange(Number(td.dataset.row), Number(td.dataset.column));
+    }
+
     function handleSelectionPointerUp(event) {
       finishSelectionDrag();
     }
@@ -1585,6 +1608,8 @@
     function handleGridMouseDown(event) {
       var cell;
       var handle = event.target && event.target.closest ? event.target.closest(".gridline-fill-handle") : null;
+      var targetInput;
+      var editingInput;
       var row;
       var column;
       if (event.button !== 0) {
@@ -1607,6 +1632,16 @@
       cell = getCellFromEventTarget(event.target);
       if (!cell) {
         return;
+      }
+      targetInput = getClosestCellInput(event.target);
+      if (targetInput && isInputEditing(targetInput)) {
+        return;
+      }
+      if (editingCell) {
+        editingInput = getInput(editingCell.row, editingCell.column);
+        if (editingInput) {
+          finishCellEdit(editingInput);
+        }
       }
       event.preventDefault();
       closeValidationPanel();
@@ -1635,6 +1670,7 @@
       selectCell(row, column, { focus: false });
       grid.focus({ preventScroll: true });
       document.body.classList.add("is-selecting-gridline-cells");
+      document.addEventListener("mousemove", handleSelectionMouseMove);
     }
 
     function handleGridMouseOver(event) {
@@ -2268,6 +2304,17 @@
         ? event.target.closest("td[data-row][data-column]")
         : null;
       if (cell && grid.contains(cell)) {
+        var pointerTargetInput = getClosestCellInput(event.target);
+        var pointerEditingInput;
+        if (pointerTargetInput && isInputEditing(pointerTargetInput)) {
+          return;
+        }
+        if (editingCell) {
+          pointerEditingInput = getInput(editingCell.row, editingCell.column);
+          if (pointerEditingInput) {
+            finishCellEdit(pointerEditingInput);
+          }
+        }
         if (event.pointerType === "mouse") {
           return;
         }
@@ -2322,18 +2369,7 @@
         cell = event.target && event.target.closest ? event.target.closest("td[data-row][data-column]") : null;
         if (cell && grid.contains(cell)) {
           event.preventDefault();
-          input = getInput(Number(cell.dataset.row), Number(cell.dataset.column));
-          if (input) {
-            selectCell(Number(cell.dataset.row), Number(cell.dataset.column), { focus: false });
-            input.focus();
-            input.value = getValue(active.row, active.column);
-            input.setSelectionRange(input.value.length, input.value.length);
-            editingSnapshot = {
-              row: active.row,
-              column: active.column,
-              value: getValue(active.row, active.column),
-            };
-          }
+          beginCellEdit(Number(cell.dataset.row), Number(cell.dataset.column), null, false);
         }
         return;
       }
@@ -2429,7 +2465,7 @@
       if (input) {
         syncInputDisplay(input, focus || isInputEditing(input));
       }
-      if (focus && input) {
+      if (focus && input && isInputEditing(input)) {
         input.focus();
         input.select();
         editingSnapshot = {
@@ -2437,6 +2473,8 @@
           column: active.column,
           value: getValue(active.row, active.column),
         };
+      } else if (focus && grid && typeof grid.focus === "function") {
+        grid.focus({ preventScroll: true });
       }
       updateStatusSummary();
       updateReferenceHighlights();
@@ -2690,6 +2728,13 @@
         return;
       }
       selectCell(Number(input.dataset.row), Number(input.dataset.column), { focus: false });
+      if (!isInputEditing(input)) {
+        window.setTimeout(function () {
+          if (!isInputEditing(input) && document.activeElement === input) {
+            grid.focus({ preventScroll: true });
+          }
+        }, 0);
+      }
     }
 
     function handleFocusOut(event) {
@@ -2698,6 +2743,10 @@
         return;
       }
       window.setTimeout(function () {
+        if (isInputEditing(input) && document.activeElement !== input) {
+          finishCellEdit(input);
+          return;
+        }
         if (!isInputEditing(input)) {
           input.dataset.gridlineUndoRecorded = "";
           syncInputDisplay(input, false);
@@ -2710,6 +2759,11 @@
       var row;
       var column;
       if (!input) {
+        return;
+      }
+      if (!isInputEditing(input)) {
+        event.preventDefault();
+        syncInputDisplay(input, false);
         return;
       }
       if (input.dataset.gridlineUndoRecorded !== "true") {
@@ -2733,12 +2787,35 @@
         && !event.altKey;
     }
 
+    function finishCellEdit(input) {
+      var row;
+      var column;
+      if (!input || !isInputEditing(input)) {
+        return;
+      }
+      row = Number(input.dataset.row);
+      column = Number(input.dataset.column);
+      setValue(row, column, input.value);
+      input.dataset.gridlineUndoRecorded = "";
+      editingCell = null;
+      editingSnapshot = null;
+      syncInputDisplay(input, false);
+      if (row === active.row && column === active.column) {
+        formulaInput.value = getValue(row, column);
+      }
+      scheduleSave();
+    }
+
     function beginCellEdit(row, column, initialValue, replace) {
       var input = getInput(row, column);
       if (!input) {
         return;
       }
       selectCell(row, column, { focus: false });
+      editingCell = { row: row, column: column };
+      syncInputDisplay(input, true);
+      input.readOnly = false;
+      input.tabIndex = 0;
       input.focus();
       editingSnapshot = {
         row: row,
@@ -2750,12 +2827,15 @@
       if (replace) {
         input.value = String(initialValue || "");
         setValue(row, column, input.value);
+        input.dataset.rawValue = input.value;
         formulaInput.value = input.value;
       } else {
         input.value = getValue(row, column);
       }
       input.setSelectionRange(input.value.length, input.value.length);
-      scheduleSave();
+      if (replace) {
+        scheduleSave();
+      }
     }
 
     function moveSelection(rowOffset, columnOffset, extend) {
@@ -2818,6 +2898,7 @@
 
     function handleKeydown(event) {
       var input = getClosestCellInput(event.target);
+      var inputIsEditing = input && isInputEditing(input);
       var row;
       var column;
       function move(nextRow, nextColumn) {
@@ -2833,43 +2914,45 @@
       row = input ? Number(input.dataset.row) : active.row;
       column = input ? Number(input.dataset.column) : active.column;
       if (event.key === "Enter") {
-        if (input) {
-          input.dataset.gridlineUndoRecorded = "";
-          syncInputDisplay(input, false);
+        if (inputIsEditing) {
+          finishCellEdit(input);
         }
         move(row + (event.shiftKey ? -1 : 1), column);
       } else if (event.key === "Tab") {
-        if (input) {
-          input.dataset.gridlineUndoRecorded = "";
-          syncInputDisplay(input, false);
+        if (inputIsEditing) {
+          finishCellEdit(input);
         }
         move(row, column + (event.shiftKey ? -1 : 1));
       } else if (event.key === "Escape") {
         event.preventDefault();
-        if (editingSnapshot && input) {
+        if (editingSnapshot && inputIsEditing) {
           setValue(editingSnapshot.row, editingSnapshot.column, editingSnapshot.value);
           input.dataset.gridlineUndoRecorded = "";
+          editingCell = null;
           syncInputDisplay(input, false);
           formulaInput.value = editingSnapshot.value;
         }
         editingSnapshot = null;
         grid.focus({ preventScroll: true });
-      } else if (event.key === "ArrowDown" && (!input || event.shiftKey || input.selectionStart === input.value.length)) {
+      } else if (event.key === "F2") {
+        event.preventDefault();
+        beginCellEdit(row, column, null, false);
+      } else if (event.key === "ArrowDown" && (!inputIsEditing || event.shiftKey || input.selectionStart === input.value.length)) {
         event.preventDefault();
         moveSelection(1, 0, event.shiftKey);
-      } else if (event.key === "ArrowUp" && (!input || event.shiftKey || input.selectionStart === 0)) {
+      } else if (event.key === "ArrowUp" && (!inputIsEditing || event.shiftKey || input.selectionStart === 0)) {
         event.preventDefault();
         moveSelection(-1, 0, event.shiftKey);
-      } else if (event.key === "ArrowRight" && (!input || event.shiftKey || input.selectionStart === input.value.length)) {
+      } else if (event.key === "ArrowRight" && (!inputIsEditing || event.shiftKey || input.selectionStart === input.value.length)) {
         event.preventDefault();
         moveSelection(0, 1, event.shiftKey);
-      } else if (event.key === "ArrowLeft" && (!input || event.shiftKey || input.selectionStart === 0)) {
+      } else if (event.key === "ArrowLeft" && (!inputIsEditing || event.shiftKey || input.selectionStart === 0)) {
         event.preventDefault();
         moveSelection(0, -1, event.shiftKey);
-      } else if (!input && (event.key === "Delete" || event.key === "Backspace")) {
+      } else if (!inputIsEditing && (event.key === "Delete" || event.key === "Backspace")) {
         event.preventDefault();
         clearSelectedContent();
-      } else if (!input && isPrintableKey(event)) {
+      } else if (!inputIsEditing && isPrintableKey(event)) {
         event.preventDefault();
         beginCellEdit(active.row, active.column, event.key, true);
       }
@@ -5093,6 +5176,7 @@
         aiPanel.remove();
         aiPanel = null;
       }
+      document.removeEventListener("mousemove", handleSelectionMouseMove);
       document.removeEventListener("pointermove", handleSelectionPointerMove);
       document.removeEventListener("pointerup", handleSelectionPointerUp);
       document.removeEventListener("mousemove", handleFillMouseMove);
