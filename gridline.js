@@ -7,14 +7,14 @@
   var MAX_ROWS = 1000;
   var MIN_COLUMNS = 1;
   var MAX_COLUMNS = 60;
-  var MIN_COLUMN_WIDTH = 72;
+  var MIN_COLUMN_WIDTH = 36;
   var MAX_COLUMN_WIDTH = 320;
   var DEFAULT_COLUMN_WIDTH = 132;
-  var MIN_ROW_HEIGHT = 28;
+  var MIN_ROW_HEIGHT = 18;
   var MAX_ROW_HEIGHT = 96;
   var DEFAULT_ROW_HEIGHT = 36;
   var UNDO_LIMIT = 80;
-  var REFERENCE_COLORS = ["#1f6fff", "#d9480f", "#0f8a5f", "#7c3aed", "#c2255c", "#087f5b"];
+  var REFERENCE_COLORS = ["#2563eb", "#dc2626", "#059669", "#7c3aed", "#ea580c", "#0891b2"];
   var DATA_TYPES = ["general", "text", "number", "integer", "percent"];
   var MIN_DECIMALS = 0;
   var MAX_DECIMALS = 6;
@@ -737,6 +737,8 @@
       MAX_COLUMNS
     );
     return {
+      title: String(options && options.title || "").trim(),
+      subtitle: String(options && options.subtitle || "").trim(),
       rowCount: rowCount,
       columnCount: columnCount,
       data: Object.create(null),
@@ -783,6 +785,8 @@
     });
 
     return {
+      title: String(options && options.title || "").trim(),
+      subtitle: String(options && options.subtitle || "").trim(),
       rowCount: rowCount,
       columnCount: columnCount,
       data: data,
@@ -845,6 +849,8 @@
     });
 
     return {
+      title: String(source.title || options && options.title || "").trim(),
+      subtitle: String(source.subtitle || options && options.subtitle || "").trim(),
       rowCount: rowCount,
       columnCount: columnCount,
       data: data,
@@ -859,6 +865,8 @@
 
   function cloneModel(model) {
     return {
+      title: String(model.title || "").trim(),
+      subtitle: String(model.subtitle || "").trim(),
       rowCount: model.rowCount,
       columnCount: model.columnCount,
       data: Object.assign(Object.create(null), model.data),
@@ -954,6 +962,8 @@
     var dataTypeSelect = resolveElement(host, "[data-gridline-action='data-type']");
     var decimalsSelect = resolveElement(host, "[data-gridline-action='decimals']");
     var statusBar = resolveElement(host, "[data-gridline-role='summary']");
+    var titleInput = resolveElement(host, "[data-gridline-role='title']");
+    var subtitleInput = resolveElement(host, "[data-gridline-role='subtitle']");
     var rootElement = grid ? grid.closest("[data-gridline-instance]") || host : host;
     var model;
     var active = { row: 0, column: 0 };
@@ -990,9 +1000,12 @@
     var filterPanel = null;
     var validationPanel = null;
     var referenceHighlights = [];
+    var formulaHighlight = null;
     var freezeFirstRow = true;
     var freezeFirstColumn = true;
     var zoomLevel = 1;
+    var zoomMode = "manual";
+    var zoomResizeFrame = 0;
     var quickFillPanel = null;
     var contextMenu = null;
     var aiPanel = null;
@@ -1019,6 +1032,8 @@
     model = options && options.model
       ? normalizeModel(options.model, options)
       : (readStoredModel(storageKey, options) || createDefaultModel(options));
+    syncTitleControlsFromModel();
+    ensureFormulaHighlightLayer();
 
     if (grid && !grid.hasAttribute("tabindex")) {
       grid.tabIndex = 0;
@@ -1035,12 +1050,7 @@
       }
     }
 
-    if (zoomSelect) {
-      zoomLevel = Number(zoomSelect.value || 100) / 100;
-      if (!Number.isFinite(zoomLevel) || zoomLevel <= 0) {
-        zoomLevel = 1;
-      }
-    }
+    readZoomControl();
     if (rootElement && rootElement.classList) {
       rootElement.classList.add("is-gridline-freeze-row", "is-gridline-freeze-column");
     }
@@ -1101,6 +1111,102 @@
 
     function getCellStyle(row, column) {
       return model.cellStyles && model.cellStyles[cellKey(row, column)] || null;
+    }
+
+    function syncTitleControlsFromModel() {
+      if (titleInput) {
+        if (!String(model.title || "").trim() && String(titleInput.value || "").trim()) {
+          model.title = String(titleInput.value || "").trim();
+        } else if (String(model.title || "").trim()) {
+          titleInput.value = String(model.title || "");
+        }
+      }
+      if (subtitleInput) {
+        if (!String(model.subtitle || "").trim() && String(subtitleInput.value || "").trim()) {
+          model.subtitle = String(subtitleInput.value || "").trim();
+        } else if (String(model.subtitle || "").trim()) {
+          subtitleInput.value = String(model.subtitle || "");
+        }
+      }
+    }
+
+    function handleGridlineTitleInput() {
+      if (titleInput) {
+        model.title = String(titleInput.value || "").trim();
+      }
+      if (subtitleInput) {
+        model.subtitle = String(subtitleInput.value || "").trim();
+      }
+      scheduleSave();
+    }
+
+    function getGridScrollElement() {
+      return grid && typeof grid.closest === "function"
+        ? grid.closest(".documentation-gridline-scroll")
+        : null;
+    }
+
+    function getUnscaledGridWidth() {
+      var width = 52;
+      var column;
+      for (column = 0; column < model.columnCount; column += 1) {
+        width += getColumnWidth(column);
+      }
+      return width;
+    }
+
+    function readZoomControl() {
+      var rawValue = zoomSelect ? String(zoomSelect.value || "100") : "100";
+      if (rawValue === "fit") {
+        zoomMode = "fit";
+      } else {
+        zoomMode = "manual";
+        zoomLevel = Number(rawValue || 100) / 100;
+        if (!Number.isFinite(zoomLevel) || zoomLevel <= 0) {
+          zoomLevel = 1;
+        }
+      }
+      applyZoom();
+    }
+
+    function applyZoom() {
+      var scrollElement;
+      var viewportWidth;
+      var gridWidth;
+      if (!rootElement || !rootElement.style) {
+        return;
+      }
+      if (zoomMode === "fit") {
+        scrollElement = getGridScrollElement();
+        viewportWidth = scrollElement ? Math.max(0, scrollElement.clientWidth - 8) : 0;
+        gridWidth = getUnscaledGridWidth();
+        zoomLevel = viewportWidth && gridWidth
+          ? Math.max(0.42, Math.min(1, viewportWidth / gridWidth))
+          : 1;
+      }
+      rootElement.style.setProperty("--gridline-zoom", String(Math.round(zoomLevel * 1000) / 1000));
+      if (zoomSelect) {
+        zoomSelect.title = zoomMode === "fit"
+          ? "Zoom: prilagodeno sirini (" + Math.round(zoomLevel * 100) + "%)"
+          : "Zoom";
+      }
+    }
+
+    function scheduleZoomFit() {
+      if (zoomMode !== "fit") {
+        return;
+      }
+      if (zoomResizeFrame) {
+        window.cancelAnimationFrame(zoomResizeFrame);
+      }
+      zoomResizeFrame = window.requestAnimationFrame(function () {
+        zoomResizeFrame = 0;
+        applyZoom();
+      });
+    }
+
+    function handleWindowResize() {
+      scheduleZoomFit();
     }
 
     function applyCellStyleToElement(td, input, style) {
@@ -1380,8 +1486,80 @@
       return refs.map(parseReferenceBounds).filter(Boolean);
     }
 
+    function ensureFormulaHighlightLayer() {
+      var parent;
+      var wrapper;
+      if (!formulaInput || formulaHighlight) {
+        return;
+      }
+      parent = formulaInput.parentElement;
+      if (parent && parent.classList && parent.classList.contains("gridline-formula-input-wrap")) {
+        formulaHighlight = parent.querySelector(".gridline-formula-highlight");
+        formulaInput.classList.add("has-formula-highlight");
+        return;
+      }
+      if (!parent || !parent.insertBefore) {
+        return;
+      }
+      wrapper = document.createElement("div");
+      wrapper.className = "gridline-formula-input-wrap";
+      formulaHighlight = document.createElement("div");
+      formulaHighlight.className = "gridline-formula-highlight";
+      formulaHighlight.setAttribute("aria-hidden", "true");
+      parent.insertBefore(wrapper, formulaInput);
+      wrapper.appendChild(formulaHighlight);
+      wrapper.appendChild(formulaInput);
+      formulaInput.classList.add("has-formula-highlight");
+    }
+
+    function syncFormulaHighlightScroll() {
+      if (formulaHighlight && formulaInput) {
+        formulaHighlight.style.transform = "translateX(" + (-formulaInput.scrollLeft) + "px)";
+      }
+    }
+
+    function renderFormulaHighlight() {
+      var value;
+      var regex;
+      var cursor = 0;
+      var referenceIndex = 0;
+      var match;
+      var token;
+      if (!formulaHighlight || !formulaInput) {
+        return;
+      }
+      value = String(formulaInput.value || "");
+      clearNode(formulaHighlight);
+      formulaInput.classList.toggle("is-colored-formula", isFormulaText(value));
+      if (!isFormulaText(value)) {
+        syncFormulaHighlightScroll();
+        return;
+      }
+      regex = /\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?/g;
+      while ((match = regex.exec(value))) {
+        if (match.index > cursor) {
+          formulaHighlight.appendChild(document.createTextNode(value.slice(cursor, match.index)));
+        }
+        token = document.createElement("span");
+        token.className = "gridline-formula-token";
+        token.style.setProperty("--gridline-reference-color", REFERENCE_COLORS[referenceIndex % REFERENCE_COLORS.length]);
+        token.textContent = match[0];
+        formulaHighlight.appendChild(token);
+        cursor = match.index + match[0].length;
+        referenceIndex += 1;
+      }
+      if (cursor < value.length) {
+        formulaHighlight.appendChild(document.createTextNode(value.slice(cursor)));
+      }
+      syncFormulaHighlightScroll();
+    }
+
     function updateReferenceHighlights() {
       referenceHighlights = listFormulaReferenceBounds(formulaInput && formulaInput.value);
+      if (rootElement && rootElement.classList) {
+        rootElement.classList.toggle("is-gridline-formula-mode", isFormulaText(formulaInput && formulaInput.value));
+      }
+      renderFormulaHighlight();
       Array.prototype.forEach.call(grid.querySelectorAll("td[data-row][data-column]"), function (node) {
         var row = Number(node.dataset.row);
         var column = Number(node.dataset.column);
@@ -1641,6 +1819,16 @@
       if (targetInput && isInputEditing(targetInput)) {
         return;
       }
+      if (getFormulaInsertTarget()) {
+        event.preventDefault();
+        closeValidationPanel();
+        closeFilterPanel();
+        hideContextMenu();
+        row = Number(cell.dataset.row);
+        column = Number(cell.dataset.column);
+        insertFormulaReference(formatCellReference(row, column));
+        return;
+      }
       if (editingCell) {
         editingInput = getInput(editingCell.row, editingCell.column);
         if (editingInput) {
@@ -1653,10 +1841,6 @@
       hideContextMenu();
       row = Number(cell.dataset.row);
       column = Number(cell.dataset.column);
-      if (document.activeElement === formulaInput && String(formulaInput.value || "").trim().startsWith("=")) {
-        insertFormulaReference(formatCellReference(row, column));
-        return;
-      }
       if (event.shiftKey) {
         selectCell(row, column, {
           focus: false,
@@ -2197,19 +2381,59 @@
       return columnLabel(column) + String(row + 1);
     }
 
+    function getFormulaInsertTarget() {
+      var editingInput = editingCell ? getInput(editingCell.row, editingCell.column) : null;
+      if (editingInput && document.activeElement === editingInput && isFormulaText(editingInput.value)) {
+        return editingInput;
+      }
+      if (document.activeElement === formulaInput && isFormulaText(formulaInput.value)) {
+        return formulaInput;
+      }
+      return null;
+    }
+
+    function syncFormulaTargetValue(target) {
+      var row;
+      var column;
+      if (target === formulaInput) {
+        handleFormulaInput();
+        return;
+      }
+      if (!target || !target.dataset) {
+        return;
+      }
+      if (target.dataset.gridlineUndoRecorded !== "true") {
+        recordUndo();
+        target.dataset.gridlineUndoRecorded = "true";
+      }
+      row = Number(target.dataset.row);
+      column = Number(target.dataset.column);
+      setValue(row, column, target.value);
+      target.dataset.rawValue = target.value;
+      target.classList.toggle("is-formula", isFormulaText(target.value));
+      if (row === active.row && column === active.column) {
+        formulaInput.value = target.value;
+      }
+      updateReferenceHighlights();
+      scheduleSave();
+    }
+
     function insertFormulaReference(referenceText) {
-      var start = formulaInput.selectionStart == null ? formulaInput.value.length : formulaInput.selectionStart;
-      var end = formulaInput.selectionEnd == null ? formulaInput.value.length : formulaInput.selectionEnd;
-      var value = formulaInput.value || "=";
+      var target = getFormulaInsertTarget() || formulaInput;
+      var start = target.selectionStart == null ? target.value.length : target.selectionStart;
+      var end = target.selectionEnd == null ? target.value.length : target.selectionEnd;
+      var value = target.value || "=";
       if (!value.trim().startsWith("=")) {
         value = "=";
         start = 1;
         end = 1;
       }
-      formulaInput.value = value.slice(0, start) + referenceText + value.slice(end);
-      formulaInput.focus();
-      formulaInput.setSelectionRange(start + referenceText.length, start + referenceText.length);
-      handleFormulaInput();
+      target.value = value.slice(0, start) + referenceText + value.slice(end);
+      target.focus();
+      if (typeof target.setSelectionRange === "function") {
+        target.setSelectionRange(start + referenceText.length, start + referenceText.length);
+      }
+      syncFormulaTargetValue(target);
     }
 
     function handleGridPointerDown(event) {
@@ -2313,6 +2537,14 @@
         if (pointerTargetInput && isInputEditing(pointerTargetInput)) {
           return;
         }
+        if (getFormulaInsertTarget()) {
+          event.preventDefault();
+          closeValidationPanel();
+          closeFilterPanel();
+          hideContextMenu();
+          insertFormulaReference(formatCellReference(Number(cell.dataset.row), Number(cell.dataset.column)));
+          return;
+        }
         if (editingCell) {
           pointerEditingInput = getInput(editingCell.row, editingCell.column);
           if (pointerEditingInput) {
@@ -2323,10 +2555,6 @@
         closeValidationPanel();
         closeFilterPanel();
         hideContextMenu();
-        if (document.activeElement === formulaInput && String(formulaInput.value || "").trim().startsWith("=")) {
-          insertFormulaReference(formatCellReference(Number(cell.dataset.row), Number(cell.dataset.column)));
-          return;
-        }
         if (event.shiftKey) {
           selectCell(Number(cell.dataset.row), Number(cell.dataset.column), {
             focus: false,
@@ -2517,7 +2745,6 @@
       for (column = 0; column < model.columnCount; column += 1) {
         var columnAi = model.aiColumns && model.aiColumns[String(column)];
         var resizer = document.createElement("button");
-        var filterControl = document.createElement("button");
         th = document.createElement("th");
         th.dataset.column = String(column);
         th.dataset.gridlineColumnHeader = String(column);
@@ -2529,13 +2756,6 @@
           ? "Desni klik: NexAI postavke kolone"
           : "Povuci rub za promjenu širine. Desni klik: NexAI postavke kolone";
         th.appendChild(document.createTextNode(columnLabel(column)));
-        filterControl.type = "button";
-        filterControl.className = "gridline-filter-button";
-        filterControl.dataset.gridlineFilterColumn = String(column);
-        filterControl.title = "Filter i sortiranje";
-        filterControl.setAttribute("aria-label", "Filter kolone " + columnLabel(column));
-        filterControl.textContent = "⌄";
-        th.appendChild(filterControl);
         resizer.type = "button";
         resizer.className = "gridline-column-resizer";
         resizer.dataset.gridlineColumnResizer = String(column);
@@ -2613,6 +2833,7 @@
       selectedCell = null;
       grid.appendChild(fragment);
       selectCell(active.row, active.column, { focus: false });
+      applyZoom();
     }
 
     function serializeSelection() {
@@ -2790,6 +3011,7 @@
       if (row === active.row && column === active.column) {
         formulaInput.value = input.value;
       }
+      updateReferenceHighlights();
       scheduleSave();
     }
 
@@ -2817,6 +3039,7 @@
       if (row === active.row && column === active.column) {
         formulaInput.value = getValue(row, column);
       }
+      updateReferenceHighlights();
       scheduleSave();
     }
 
@@ -2847,6 +3070,7 @@
         input.value = getValue(row, column);
       }
       input.setSelectionRange(input.value.length, input.value.length);
+      updateReferenceHighlights();
       if (replace) {
         scheduleSave();
       }
@@ -2987,6 +3211,29 @@
       }
       updateReferenceHighlights();
       scheduleSave();
+    }
+
+    function handleFormulaKeydown(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        formulaInput.blur();
+        grid.focus({ preventScroll: true });
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        formulaInput.value = getValue(active.row, active.column);
+        formulaInput.dataset.gridlineUndoRecorded = "";
+        updateReferenceHighlights();
+        grid.focus({ preventScroll: true });
+      }
+    }
+
+    function handleFormulaBlur() {
+      formulaInput.dataset.gridlineUndoRecorded = "";
+      updateReferenceHighlights();
+    }
+
+    function handleFormulaFocus() {
+      updateReferenceHighlights();
     }
 
     function getLastMeaningfulRowIndex() {
@@ -4113,22 +4360,9 @@
     }
 
     function showAiContextMenu(event, row, column) {
-      if (!enableAiContextMenu) {
-        return;
-      }
-      event.preventDefault();
-      selectCell(row, column, { focus: false });
-      hideContextMenu();
-      contextMenu = document.createElement("div");
-      contextMenu.className = "gridline-context-menu";
-      contextMenu.style.left = event.clientX + "px";
-      contextMenu.style.top = event.clientY + "px";
-      contextMenu.append(
-        createContextMenuButton("NexAI popuni celiju", "cell"),
-        createContextMenuButton("NexAI popuni red", "row"),
-        createContextMenuButton("NexAI popuni tablicu", "table")
-      );
-      document.body.appendChild(contextMenu);
+      void event;
+      void row;
+      void column;
     }
 
     function closeColumnAiPanel() {
@@ -4314,45 +4548,7 @@
           createContextActionButton("Obrisi stupac", function () { deleteColumnsInRange(columnIndex, columnIndex); }),
           createContextActionButton("Sort A-Z", function () { sortByColumn(columnIndex, "asc"); }),
           createContextActionButton("Sort Z-A", function () { sortByColumn(columnIndex, "desc"); }),
-          createContextActionButton("NexAI postavke kolone", function () { showColumnAiSettingsPanel(event, columnIndex); }),
-          createContextActionButton("NexAI popuni kolonu", function () {
-            if (typeof onAiPrefill === "function") {
-              onAiPrefill({
-                mode: "column",
-                columnIndex: columnIndex,
-                columnLabel: columnLabel(columnIndex),
-                aiColumn: model.aiColumns && model.aiColumns[String(columnIndex)] || null,
-                files: cloneFileMeta(aiState.files),
-                model: cloneModel(model),
-              }).then(function (payload) {
-                var aiRows;
-                var rowIndex;
-                if (payload && payload.data && payload.rowCount) {
-                  model = normalizeModel(payload, options);
-                  render();
-                  scheduleSave();
-                  return;
-                }
-                aiRows = payload && !payload.dryRun ? buildAiRowsFromPayload(payload) : [];
-                if (aiRows.length) {
-                  recordUndo();
-                  ensureSize(aiRows.length, columnIndex);
-                  for (rowIndex = 0; rowIndex < aiRows.length; rowIndex += 1) {
-                    setValue(rowIndex, columnIndex, aiRows[rowIndex][columnIndex] || aiRows[rowIndex][0] || "");
-                  }
-                  render();
-                  scheduleSave();
-                  setStatus("NexAI kolona popunjena", "is-saved");
-                } else {
-                  setStatus("NexAI nije vratio vrijednosti za kolonu", "is-saving");
-                }
-              }).catch(function () {
-                setStatus("NexAI kolona nije popunjena", "is-saving");
-              });
-            } else {
-              showColumnAiSettingsPanel(event, columnIndex);
-            }
-          })
+          createContextActionButton("NexAI postavke kolone", function () { showColumnAiSettingsPanel(event, columnIndex); })
         );
         document.body.appendChild(contextMenu);
         return;
@@ -4402,13 +4598,6 @@
         createContextActionButton("Ocisti sadrzaj", clearSelectedContent),
         createContextActionButton("Ocisti formatiranje", clearSelectedFormatting)
       );
-      if (enableAiContextMenu) {
-        contextMenu.append(
-          createContextMenuButton("NexAI popuni celiju", "cell"),
-          createContextMenuButton("NexAI popuni red", "row"),
-          createContextMenuButton("NexAI popuni tablicu", "table")
-        );
-      }
       document.body.appendChild(contextMenu);
     }
 
@@ -4998,12 +5187,9 @@
       grid.addEventListener("contextmenu", handleGridContextMenu);
     }
     formulaInput.addEventListener("input", handleFormulaInput);
-    formulaInput.addEventListener("keydown", handleKeydown);
-    formulaInput.addEventListener("blur", function () {
-      formulaInput.dataset.gridlineUndoRecorded = "";
-      updateReferenceHighlights();
-    });
-    formulaInput.addEventListener("focus", updateReferenceHighlights);
+    formulaInput.addEventListener("keydown", handleFormulaKeydown);
+    formulaInput.addEventListener("blur", handleFormulaBlur);
+    formulaInput.addEventListener("focus", handleFormulaFocus);
     if (addRowButton) {
       addRowButton.addEventListener("click", function () { addRows(1); });
     }
@@ -5160,15 +5346,17 @@
       });
     }
     if (zoomSelect) {
-      zoomSelect.addEventListener("change", function () {
-        zoomLevel = Number(zoomSelect.value || 100) / 100;
-        if (!Number.isFinite(zoomLevel) || zoomLevel <= 0) {
-          zoomLevel = 1;
-        }
-        rootElement.style.setProperty("--gridline-zoom", String(zoomLevel));
-      });
-      rootElement.style.setProperty("--gridline-zoom", String(zoomLevel));
+      zoomSelect.addEventListener("change", readZoomControl);
     }
+    if (titleInput) {
+      titleInput.addEventListener("input", handleGridlineTitleInput);
+    }
+    if (subtitleInput) {
+      subtitleInput.addEventListener("input", handleGridlineTitleInput);
+    }
+    formulaInput.addEventListener("scroll", syncFormulaHighlightScroll);
+    window.addEventListener("resize", handleWindowResize);
+    applyZoom();
     document.addEventListener("click", hideContextMenu);
     document.addEventListener("click", closeValidationPanel);
     document.addEventListener("click", closeFilterPanel);
@@ -5180,6 +5368,10 @@
       if (computedRefreshFrame) {
         window.cancelAnimationFrame(computedRefreshFrame);
         computedRefreshFrame = 0;
+      }
+      if (zoomResizeFrame) {
+        window.cancelAnimationFrame(zoomResizeFrame);
+        zoomResizeFrame = 0;
       }
       hideContextMenu();
       if (quickFillPanel) {
@@ -5223,7 +5415,20 @@
       grid.removeEventListener("dblclick", handleFillDoubleClick);
       grid.removeEventListener("contextmenu", handleGridContextMenu);
       formulaInput.removeEventListener("input", handleFormulaInput);
-      formulaInput.removeEventListener("keydown", handleKeydown);
+      formulaInput.removeEventListener("keydown", handleFormulaKeydown);
+      formulaInput.removeEventListener("blur", handleFormulaBlur);
+      formulaInput.removeEventListener("focus", handleFormulaFocus);
+      formulaInput.removeEventListener("scroll", syncFormulaHighlightScroll);
+      window.removeEventListener("resize", handleWindowResize);
+      if (zoomSelect) {
+        zoomSelect.removeEventListener("change", readZoomControl);
+      }
+      if (titleInput) {
+        titleInput.removeEventListener("input", handleGridlineTitleInput);
+      }
+      if (subtitleInput) {
+        subtitleInput.removeEventListener("input", handleGridlineTitleInput);
+      }
       if (quickFillButton) {
         quickFillButton.removeEventListener("click", handleQuickFillButtonClick);
       }
@@ -5259,6 +5464,7 @@
       getModel: function () { return cloneModel(model); },
       setModel: function (nextModel) {
         model = normalizeModel(nextModel, options);
+        syncTitleControlsFromModel();
         render();
         emitChange();
       },

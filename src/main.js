@@ -52670,11 +52670,11 @@ function appendGridlineSpreadsheetToolbar(actions, {
   zoom.className = "gridline-zoom-select";
   zoom.dataset.gridlineAction = "zoom";
   zoom.title = "Zoom";
-  [90, 100, 110, 125].forEach((value) => {
+  [["fit", "Fit"], [75, "75%"], [90, "90%"], [100, "100%"], [110, "110%"], [125, "125%"]].forEach(([value, label]) => {
     const option = document.createElement("option");
     option.value = String(value);
-    option.textContent = `${value}%`;
-    option.selected = value === 100;
+    option.textContent = label;
+    option.selected = value === "fit";
     zoom.appendChild(option);
   });
   const dataType = document.createElement("select");
@@ -57115,16 +57115,23 @@ function getDocumentationSprBlankRows() {
 function buildDocumentationSprGridlineModelFromRows(rows = getDocumentationSprDefaultRows()) {
   const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
   if (gridlineApi?.rowsToModel) {
-    return gridlineApi.rowsToModel(rows, {
+    const model = gridlineApi.rowsToModel(rows, {
       rowCount: Math.max(DOCUMENTATION_SPR_GRID_ROW_COUNT, rows.length),
       columnCount: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
       defaultRows: DOCUMENTATION_SPR_GRID_ROW_COUNT,
       defaultColumns: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
+      title: "Tablica 1.",
+      subtitle: "Mjerna mjesta sigurnosne protupanične rasvjete",
     });
+    model.title = model.title || "Tablica 1.";
+    model.subtitle = model.subtitle || "Mjerna mjesta sigurnosne protupanične rasvjete";
+    return model;
   }
 
   const rowCount = Math.max(DOCUMENTATION_SPR_GRID_ROW_COUNT, rows.length);
   const model = {
+    title: "Tablica 1.",
+    subtitle: "Mjerna mjesta sigurnosne protupanične rasvjete",
     rowCount,
     columnCount: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
     data: {},
@@ -61517,7 +61524,11 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
       columnCount,
       defaultRows: rowCount,
       defaultColumns: columnCount,
+      title: table.label || "Gridline tablica",
+      subtitle: table.summary || table.chapterTitle || "Gridline tablica",
     });
+    model.title = model.title || table.label || "Gridline tablica";
+    model.subtitle = model.subtitle || table.summary || table.chapterTitle || "Gridline tablica";
     model.columnWidths = Object.fromEntries(columns.map((column, columnIndex) => [
       String(columnIndex),
       Number(column.width) || [70, 240, 100, 90, 90, 130][columnIndex] || 130,
@@ -61561,6 +61572,8 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
     });
   });
   return {
+    title: table.label || "Gridline tablica",
+    subtitle: table.summary || table.chapterTitle || "Gridline tablica",
     rowCount,
     columnCount,
     data,
@@ -61591,8 +61604,12 @@ function syncDocumentationSprNativeMeasurementTablesIntoModel() {
     }
     entry.api.flush?.();
     const gridlineModel = normalizeDocumentationSprGridlineModel(entry.api.getModel());
+    const title = String(gridlineModel.title || table.label || "").trim();
+    const subtitle = String(gridlineModel.subtitle || table.summary || table.chapterTitle || "").trim();
     documentationSprModel.measurementTables[index] = {
       ...table,
+      label: title || table.label,
+      summary: subtitle || table.summary,
       sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel }, table),
     };
   });
@@ -61652,8 +61669,8 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
       <div class="documentation-gridline-title">
         <span class="documentation-gridline-mark" aria-hidden="true">GL</span>
         <div>
-          <h3>${escapeHtml(table.label || `Tablica ${tableIndex + 1}`)}</h3>
-          <span>${escapeHtml(table.summary || table.chapterTitle || "Gridline tablica")}</span>
+          <input class="documentation-gridline-title-input" data-gridline-role="title" type="text" value="${escapeHtml(table.label || `Tablica ${tableIndex + 1}`)}" aria-label="Naziv tablice" />
+          <input class="documentation-gridline-subtitle-input" data-gridline-role="subtitle" type="text" value="${escapeHtml(table.summary || table.chapterTitle || "Gridline tablica")}" aria-label="Opis tablice" />
         </div>
       </div>
       <div class="documentation-gridline-actions">
@@ -61717,8 +61734,10 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
         </select>
         <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
         <select class="gridline-zoom-select" data-gridline-action="zoom" title="Zoom">
+          <option value="fit" selected>Fit</option>
+          <option value="75">75%</option>
           <option value="90">90%</option>
-          <option value="100" selected>100%</option>
+          <option value="100">100%</option>
           <option value="110">110%</option>
           <option value="125">125%</option>
         </select>
@@ -61771,9 +61790,14 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
       if (!currentTable) {
         return;
       }
+      const gridlineModel = normalizeDocumentationSprGridlineModel(nextModel);
+      const title = String(gridlineModel.title || currentTable.label || "").trim();
+      const subtitle = String(gridlineModel.subtitle || currentTable.summary || currentTable.chapterTitle || "").trim();
       documentationSprModel.measurementTables[tableIndex] = {
         ...currentTable,
-        sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel: normalizeDocumentationSprGridlineModel(nextModel) }, currentTable),
+        label: title || currentTable.label,
+        summary: subtitle || currentTable.summary,
+        sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel }, currentTable),
       };
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
@@ -62205,9 +62229,13 @@ function getDocumentationSprMeasurementTablesForModel(model = documentationSprMo
     return tables;
   }
   const primarySheet = buildDocumentationSprMeasurementSheetFromGridlineModel(normalized, tables[0]);
+  const primaryTitle = String(normalized.gridlineModel?.title || "").trim();
+  const primarySubtitle = String(normalized.gridlineModel?.subtitle || "").trim();
   return [
     {
       ...tables[0],
+      label: primaryTitle || tables[0].label,
+      summary: primarySubtitle || tables[0].summary,
       sheet: primarySheet,
     },
     ...tables.slice(1),
@@ -67719,6 +67747,8 @@ function normalizeDocumentTemplateGridlineModel(value = null, fallbackRows = [])
   }
 
   return {
+    title: String(source.title || "").trim(),
+    subtitle: String(source.subtitle || "").trim(),
     rowCount,
     columnCount,
     data,
@@ -67776,7 +67806,13 @@ function cloneDocumentTemplateGridlineModelForEditor(model = null) {
     }
   });
 
-  return { rowCount, columnCount, data };
+  return {
+    title: String(source.title || "").trim(),
+    subtitle: String(source.subtitle || "").trim(),
+    rowCount,
+    columnCount,
+    data,
+  };
 }
 
 function getDocumentTemplateGridlineSummaryFast(model = null) {
@@ -67825,10 +67861,18 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
   mark.setAttribute("aria-hidden", "true");
   mark.innerHTML = getWorkOrderIconMarkup("table");
   const titleCopy = document.createElement("div");
-  const title = document.createElement("h3");
-  title.textContent = field.label || "Gridline tablica";
-  const hint = document.createElement("span");
-  hint.textContent = "Ovdje složi početnu tablicu. Ista struktura se otvara u zapisniku.";
+  const title = document.createElement("input");
+  title.className = "documentation-gridline-title-input";
+  title.dataset.gridlineRole = "title";
+  title.type = "text";
+  title.value = model.title || field.label || "Gridline tablica";
+  title.setAttribute("aria-label", "Naziv tablice");
+  const hint = document.createElement("input");
+  hint.className = "documentation-gridline-subtitle-input";
+  hint.dataset.gridlineRole = "subtitle";
+  hint.type = "text";
+  hint.value = model.subtitle || "Početna struktura tablice";
+  hint.setAttribute("aria-label", "Opis tablice");
   titleCopy.append(title, hint);
   titleWrap.append(mark, titleCopy);
 
@@ -67948,6 +67992,8 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
       storageKey: "",
       defaultRows: latestModel.rowCount || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_ROWS,
       defaultColumns: latestModel.columnCount || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_COLUMNS,
+      title: field.label || "Gridline tablica",
+      subtitle: "Početna struktura tablice",
       saveDelayMs: 900,
       changeMode: "debounced",
       onChange: (nextModel) => {
@@ -95854,11 +95900,18 @@ function renderDocumentTemplateRuntimeFieldRows() {
     mark.setAttribute("aria-hidden", "true");
     mark.innerHTML = getWorkOrderIconMarkup("table");
     const titleCopy = document.createElement("div");
-    const titleNode = document.createElement("h3");
-    titleNode.textContent = createFieldTitle(field, 0);
-    appendDocumentTemplateRuntimeTitleAiPill(titleNode, field, workOrder?.id);
-    const subtitle = document.createElement("span");
-    subtitle.textContent = "Gridline editor radi u browseru, bez backend poziva pri tipkanju.";
+    const titleNode = document.createElement("input");
+    titleNode.className = "documentation-gridline-title-input";
+    titleNode.dataset.gridlineRole = "title";
+    titleNode.type = "text";
+    titleNode.value = createFieldTitle(field, 0);
+    titleNode.setAttribute("aria-label", "Naziv tablice");
+    const subtitle = document.createElement("input");
+    subtitle.className = "documentation-gridline-subtitle-input";
+    subtitle.dataset.gridlineRole = "subtitle";
+    subtitle.type = "text";
+    subtitle.value = field.description || field.placeholder || "Gridline tablica";
+    subtitle.setAttribute("aria-label", "Opis tablice");
     titleCopy.append(titleNode, subtitle);
     titleWrap.append(mark, titleCopy);
 
@@ -95948,6 +96001,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
         storageKey: "",
         defaultRows: DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_ROWS,
         defaultColumns: DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_COLUMNS,
+        title: createFieldTitle(field, 0),
+        subtitle: field.description || field.placeholder || "Gridline tablica",
         saveDelayMs: 450,
         onChange: queueGridlineModelPersist,
       });

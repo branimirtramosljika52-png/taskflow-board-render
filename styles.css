@@ -37758,42 +37758,77 @@ body.is-vehicle-usage-open {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid var(--documentation-gridline-line);
-  border-radius: 14px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 16px 38px rgba(18, 38, 72, 0.08);
+  box-shadow: 0 10px 26px rgba(18, 38, 72, 0.07);
 }
 
 .documentation-gridline-title {
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 12px;
+  gap: 10px;
+  flex: 1 1 260px;
 }
 
-.documentation-gridline-title h3 {
+.documentation-gridline-title > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.documentation-gridline-title h3,
+.documentation-gridline-title-input {
   margin: 0;
+  width: min(420px, 100%);
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
   color: var(--documentation-gridline-text);
-  font-size: 1.35rem;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 950;
   letter-spacing: 0;
+  line-height: 1.2;
+  outline: none;
 }
 
-.documentation-gridline-title span:not(.documentation-gridline-mark) {
+.documentation-gridline-title span:not(.documentation-gridline-mark),
+.documentation-gridline-subtitle-input {
   display: block;
+  width: min(460px, 100%);
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
   color: var(--documentation-gridline-muted);
-  font-size: 0.86rem;
+  font: inherit;
+  font-size: 0.74rem;
   font-weight: 700;
+  line-height: 1.2;
+  outline: none;
+}
+
+.documentation-gridline-title-input:hover,
+.documentation-gridline-title-input:focus,
+.documentation-gridline-subtitle-input:hover,
+.documentation-gridline-subtitle-input:focus {
+  border-color: rgba(31, 111, 255, 0.22);
+  background: #f8fbff;
+  box-shadow: 0 0 0 3px rgba(31, 111, 255, 0.08);
 }
 
 .documentation-gridline-mark {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  border-radius: 12px;
+  border-radius: 9px;
   border: 1px solid rgba(31, 111, 255, 0.18);
   background: linear-gradient(145deg, #f8fbff, #eaf2ff);
   color: var(--documentation-gridline-blue);
@@ -38021,6 +38056,52 @@ body.is-vehicle-usage-open {
   outline: none;
 }
 
+.gridline-formula-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  overflow: hidden;
+}
+
+.documentation-gridline-formula .gridline-formula-input-wrap input {
+  width: 100%;
+  height: 100%;
+}
+
+.documentation-gridline-formula input.has-formula-highlight {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+}
+
+.documentation-gridline-formula input.has-formula-highlight.is-colored-formula {
+  color: transparent;
+  caret-color: var(--documentation-gridline-text);
+}
+
+.gridline-formula-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  min-width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  color: var(--documentation-gridline-text);
+  font: inherit;
+  font-weight: 700;
+  line-height: 34px;
+  pointer-events: none;
+  white-space: pre;
+  will-change: transform;
+}
+
+.gridline-formula-token {
+  color: var(--gridline-reference-color, #2563eb);
+  font-weight: 950;
+}
+
 .documentation-gridline-formula input:focus {
   border-color: rgba(31, 111, 255, 0.65);
   box-shadow: 0 0 0 3px rgba(31, 111, 255, 0.12);
@@ -38098,9 +38179,9 @@ body.is-vehicle-usage-open {
 
 .documentation-gridline-module thead th.is-range-selected-header,
 .documentation-gridline-module tbody th.is-range-selected-header {
-  background: #dcecff;
-  color: #0f4da2;
-  box-shadow: inset 0 -2px 0 rgba(31, 111, 255, 0.45);
+  background: #bfdbfe;
+  color: #0f3f91;
+  box-shadow: inset 0 -2px 0 rgba(37, 99, 235, 0.75);
 }
 
 .documentation-gridline-module thead th.has-ai-column {
@@ -38138,6 +38219,7 @@ body.is-vehicle-usage-open {
 }
 
 .gridline-filter-button {
+  display: none;
   position: absolute;
   right: 8px;
   top: 6px;
@@ -38220,13 +38302,13 @@ body.is-vehicle-usage-open {
 }
 
 .documentation-gridline-module td.is-selected {
-  box-shadow: inset 0 0 0 2px var(--documentation-gridline-blue);
-  background: #fbfdff;
+  background: #dbeafe;
+  box-shadow: inset 0 0 0 2px #2563eb;
 }
 
 .documentation-gridline-module td.is-range-selected:not(.is-selected) {
-  background: #f3f8ff;
-  box-shadow: inset 0 0 0 1px rgba(31, 111, 255, 0.22);
+  background: #cfe3ff;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.55);
 }
 
 .documentation-gridline-module td.is-fill-preview {
@@ -38235,7 +38317,8 @@ body.is-vehicle-usage-open {
 }
 
 .documentation-gridline-module td.is-formula-reference {
-  box-shadow: inset 0 0 0 2px var(--gridline-reference-color, #1f6fff);
+  background: #fff;
+  box-shadow: inset 0 0 0 2px var(--gridline-reference-color, #2563eb);
 }
 
 .documentation-gridline-module td.is-required-cell::before {
@@ -38253,10 +38336,32 @@ body.is-vehicle-usage-open {
   box-shadow: inset 0 0 0 1px #111827;
 }
 
+.documentation-gridline-module td.has-cell-border.is-selected {
+  box-shadow: inset 0 0 0 2px #2563eb;
+}
+
+.documentation-gridline-module td.has-cell-border.is-range-selected:not(.is-selected) {
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.55);
+}
+
+.documentation-gridline-module td.has-cell-border.is-formula-reference {
+  box-shadow: inset 0 0 0 2px var(--gridline-reference-color, #2563eb);
+}
+
+.documentation-gridline-module td.has-cell-border::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 1px solid #111827;
+  pointer-events: none;
+}
+
 .documentation-gridline-module input.cell {
   width: 100%;
-  height: 34px;
-  padding: 0 8px;
+  height: 100%;
+  min-height: 0;
+  padding: 0 6px;
   border: 0;
   border-radius: 0;
   outline: none;
@@ -38674,11 +38779,13 @@ body.is-vehicle-usage-open {
   box-shadow: 0 10px 26px rgba(18, 38, 72, 0.06);
 }
 
-.document-template-runtime-gridline-field .documentation-gridline-title h3 {
+.document-template-runtime-gridline-field .documentation-gridline-title h3,
+.document-template-runtime-gridline-field .documentation-gridline-title-input {
   font-size: 1rem;
 }
 
-.document-template-runtime-gridline-field .documentation-gridline-title span:not(.documentation-gridline-mark) {
+.document-template-runtime-gridline-field .documentation-gridline-title span:not(.documentation-gridline-mark),
+.document-template-runtime-gridline-field .documentation-gridline-subtitle-input {
   font-size: 0.76rem;
 }
 
@@ -40627,11 +40734,15 @@ body.is-vehicle-usage-open {
   box-shadow: 0 8px 22px rgba(18, 38, 72, 0.06);
 }
 
-.documentation-spr-gridline .documentation-gridline-title h3 {
+.documentation-spr-gridline .documentation-gridline-title h3,
+.documentation-spr-gridline .documentation-gridline-title-input,
+.documentation-spr-native-gridline .documentation-gridline-title-input {
   font-size: 1rem;
 }
 
-.documentation-spr-gridline .documentation-gridline-title span:not(.documentation-gridline-mark) {
+.documentation-spr-gridline .documentation-gridline-title span:not(.documentation-gridline-mark),
+.documentation-spr-gridline .documentation-gridline-subtitle-input,
+.documentation-spr-native-gridline .documentation-gridline-subtitle-input {
   font-size: 0.76rem;
 }
 
@@ -40647,8 +40758,9 @@ body.is-vehicle-usage-open {
   max-height: 560px;
 }
 
-.documentation-spr-gridline table {
-  min-width: 910px;
+.documentation-spr-gridline table,
+.documentation-spr-native-gridline table {
+  min-width: 0;
 }
 
 .documentation-spr-gridline td {
@@ -51655,11 +51767,13 @@ body.is-measurement-equipment-export-open {
   box-shadow: 0 10px 26px rgba(18, 38, 72, 0.07);
 }
 
-.document-template-gridline-demo.is-template-editor .documentation-gridline-title h3 {
+.document-template-gridline-demo.is-template-editor .documentation-gridline-title h3,
+.document-template-gridline-demo.is-template-editor .documentation-gridline-title-input {
   font-size: 1rem;
 }
 
-.document-template-gridline-demo.is-template-editor .documentation-gridline-title span:not(.documentation-gridline-mark) {
+.document-template-gridline-demo.is-template-editor .documentation-gridline-title span:not(.documentation-gridline-mark),
+.document-template-gridline-demo.is-template-editor .documentation-gridline-subtitle-input {
   font-size: 0.76rem;
 }
 
