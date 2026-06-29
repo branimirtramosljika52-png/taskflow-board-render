@@ -47764,6 +47764,49 @@ body.is-measurement-equipment-export-open {
   padding: 10px;
 }
 
+.document-template-runtime-ai-source {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid rgba(133, 161, 214, 0.28);
+  border-radius: 16px;
+  background: rgba(249, 251, 255, 0.86);
+}
+
+.document-template-runtime-ai-source > span {
+  color: #25365a;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.document-template-runtime-ai-source select,
+.document-template-runtime-ai-file-source {
+  min-height: 34px;
+  border: 1px solid rgba(152, 173, 213, 0.64);
+  border-radius: 12px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #15223d;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.document-template-runtime-ai-source select:focus,
+.document-template-runtime-ai-file-source:focus {
+  outline: none;
+  border-color: rgba(47, 117, 255, 0.72);
+  box-shadow: 0 0 0 3px rgba(47, 117, 255, 0.12);
+}
+
+.document-template-runtime-ai-source small {
+  color: #65738d;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
 .document-template-runtime-ai-dropzone {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -47835,7 +47878,7 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-ai-file {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(136px, 0.6fr) auto;
   gap: 8px;
   align-items: center;
   padding: 8px 9px;
@@ -47865,6 +47908,11 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-ai-file small {
   color: #6b7890;
   font-size: 0.7rem;
+}
+
+.document-template-runtime-ai-file-source {
+  width: 100%;
+  min-width: 0;
 }
 
 .document-template-runtime-ai-file-remove {
@@ -48120,6 +48168,14 @@ body.is-measurement-equipment-export-open {
 @media (max-width: 1180px) {
   .document-template-runtime-ai-assistant {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-runtime-ai-file {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .document-template-runtime-ai-file-source {
+    grid-column: 1 / -1;
   }
 }
 

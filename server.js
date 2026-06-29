@@ -99,6 +99,8 @@ import {
   generateDocumentationSprPdfBlob,
 } from "./src/documentationSprPdf.js";
 import {
+  createDocumentationNativeAiFieldsForService,
+  createDocumentationNativeAiMeasurementColumnsForService,
   createDocumentationMeasurementTablesForService,
   createDocumentationReportModelDefaults,
   getDocumentationNativeTemplateSeedPresets,
@@ -7425,8 +7427,111 @@ function sanitizeOpenAiFileForPrompt(file = {}) {
     name: String(file.name || "datoteka").slice(0, 240),
     type: String(file.type || "application/octet-stream").slice(0, 120),
     size: Number(file.size || 0),
+    sourceKind: normalizeOpenAiSourceKind(file.sourceKind),
+    sourceKindLabel: String(file.sourceKindLabel || "").slice(0, 120),
     inlineReady: Boolean(file.contentDataUrl),
   };
+}
+
+const OPENAI_STRUCTURE_ONLY_SOURCE_KINDS = new Set([
+  "project",
+  "single_line_diagram",
+  "electrical_cabinet_photo",
+]);
+
+const OPENAI_STRUCTURE_ONLY_FIELD_KEYS = new Set([
+  "resultstatus",
+  "defects",
+  "recommendations",
+]);
+
+const OPENAI_STRUCTURE_ONLY_MEASUREMENT_COLUMN_KEYS = new Set([
+  "iisk",
+  "tisk",
+  "u0",
+  "uo",
+  "pass",
+  "zadovoljava",
+  "td",
+  "zlpe",
+  "z_l_pe",
+  "zem",
+  "izem",
+  "zln",
+  "z_l_n",
+  "zll",
+  "z_l_l",
+  "l123",
+  "l123n",
+  "l123pe",
+  "npe",
+  "rd",
+  "testcurrent",
+  "measuredresistance",
+  "allowedresistance",
+  "note",
+]);
+
+function normalizeOpenAiPolicyKey(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase();
+}
+
+function normalizeOpenAiSourceKind(value = "") {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_");
+}
+
+function isOpenAiStructureOnlySourceKind(value = "") {
+  return OPENAI_STRUCTURE_ONLY_SOURCE_KINDS.has(normalizeOpenAiSourceKind(value));
+}
+
+function buildOpenAiSourcePolicy(files = []) {
+  const normalizedFiles = (Array.isArray(files) ? files : [])
+    .map((file) => ({
+      name: String(file?.name || "").trim(),
+      sourceKind: normalizeOpenAiSourceKind(file?.sourceKind),
+    }))
+    .filter((file) => file.name);
+  const filesWithSourceKind = normalizedFiles.filter((file) => file.sourceKind);
+  const structureOnly = normalizedFiles.length > 0
+    && filesWithSourceKind.length === normalizedFiles.length
+    && normalizedFiles.every((file) => isOpenAiStructureOnlySourceKind(file.sourceKind));
+  const hasStructureSource = filesWithSourceKind.some((file) => isOpenAiStructureOnlySourceKind(file.sourceKind));
+  return {
+    structureOnly,
+    hasStructureSource,
+    blockedFieldKeys: structureOnly ? Array.from(OPENAI_STRUCTURE_ONLY_FIELD_KEYS) : [],
+    blockedMeasurementColumnKeys: structureOnly ? Array.from(OPENAI_STRUCTURE_ONLY_MEASUREMENT_COLUMN_KEYS) : [],
+    instructions: [
+      hasStructureSource
+        ? "Datoteke oznacene kao project, single_line_diagram ili electrical_cabinet_photo koriste se samo za strukturu instalacije: razdjelnike, oznake krugova, FID/FI/ZUDS/RCD/RCBO/KZS uredaje, nazivnu struju In i diferencijalnu struju I delta n. Iz tih izvora ne popunjavaj stvarne mjerne rezultate."
+        : "",
+      structureOnly
+        ? "Svi uploadani izvori su strukturni izvori. Ne vracaj zakljucak, nedostatke, preporuke ni mjerne rezultate poput Iisk, tisk, U0, Z(L-PE), Izem, Z(L-N), Z(L-L), Riso, kontinuitet, izmjereni otpor ili ZADOVOLJAVA. Te vrijednosti popunjava korisnik ili formule u Gridline tablici."
+        : "",
+    ].filter(Boolean),
+  };
+}
+
+function isOpenAiStructureOnlyField(field = {}) {
+  return [
+    field?.id,
+    field?.key,
+    field?.label,
+  ].some((value) => OPENAI_STRUCTURE_ONLY_FIELD_KEYS.has(normalizeOpenAiPolicyKey(value)));
+}
+
+function isOpenAiStructureOnlyMeasurementColumn(column = {}) {
+  return [
+    column?.columnId,
+    column?.key,
+    column?.label,
+    column?.aiMapping?.key,
+    column?.aiMapping?.label,
+  ].some((value) => OPENAI_STRUCTURE_ONLY_MEASUREMENT_COLUMN_KEYS.has(normalizeOpenAiPolicyKey(value)));
 }
 
 function buildOpenAiFieldForPrompt(field = {}, index = 0) {
@@ -7530,12 +7635,22 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
   const files = Array.isArray(body.files) ? body.files : [];
   const fields = Array.isArray(body.fields) ? body.fields : [];
   const columns = Array.isArray(body.columns) ? body.columns : [];
+  const sourcePolicy = buildOpenAiSourcePolicy(files);
+  const promptFields = sourcePolicy.structureOnly
+    ? fields.filter((field) => !isOpenAiStructureOnlyField(field))
+    : fields;
+  const promptColumns = sourcePolicy.structureOnly
+    ? columns.filter((column) => !isOpenAiStructureOnlyMeasurementColumn(column))
+    : columns;
   const customExpectedJsonShape = body.expectedJsonShape && typeof body.expectedJsonShape === "object"
     ? body.expectedJsonShape
     : null;
   return {
     language: "hr-HR",
-    instruction: "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Ako je expectedJsonShape posebno zadan za purpose, postuj taj oblik. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
+    instruction: [
+      "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Ako je expectedJsonShape posebno zadan za purpose, postuj taj oblik. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
+      ...sourcePolicy.instructions,
+    ].filter(Boolean).join(" "),
     purpose: String(body.purpose || "document-template-runtime-ai-prefill").slice(0, 120),
     organizationId: String(body.organizationId || ""),
     templateId: String(body.templateId || ""),
@@ -7545,9 +7660,10 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
     model: selectedModel,
     context: body.context && typeof body.context === "object" ? body.context : {},
     settings: body.settings && typeof body.settings === "object" ? body.settings : {},
+    sourcePolicy,
     files: files.map(sanitizeOpenAiFileForPrompt),
-    fields: fields.map(buildOpenAiFieldForPrompt),
-    measurementColumns: columns.map((column) => ({
+    fields: promptFields.map(buildOpenAiFieldForPrompt),
+    measurementColumns: promptColumns.map((column) => ({
       fieldId: String(column?.fieldId || ""),
       fieldKey: String(column?.fieldKey || ""),
       fieldLabel: String(column?.fieldLabel || ""),
@@ -7702,6 +7818,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
   const modelTier = normalizeOpenAiModelTier(body.modelTier || body.modelPreference?.tier);
   const modelTierOption = getOpenAiModelTierOption(modelTier);
   const selectedModel = String(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config)).trim();
+  const sourcePolicy = buildOpenAiSourcePolicy(Array.isArray(body.files) ? body.files : []);
   if (!selectedModel) {
     const error = new Error("OpenAI model nije konfiguriran.");
     error.statusCode = 503;
@@ -7719,6 +7836,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Za obicna text polja fieldSuggestions[].value uvijek mora biti plain text string. Za longtext polja fieldSuggestions[].value mora biti jedan string: plain text ili, ako ai.format izricito trazi rich text/HTML, siguran HTML fragment s oznakama p, h2, h3, strong, em, ul, ol, li, table, tr, th, td i br. Nemoj vracati blocks, rows, markdown JSON ni objekt za longtext polja.",
       "Za polje fields[].type === system_description value u fieldSuggestions mora biti objekt oblika { blocks: [{ title, sectionSubtitle, rows: [{ subtitle, description, lineCount }] }] }. Razdvoji vece cjeline u vise blocks s jasnim naslovima. Koristi redove iz fields[].systemRows kada odgovaraju, npr. Proizvodac, Tip, Teh. podaci i opisni red, ali izostavi prazne/neprimjenjive redove. Opci blok smije imati samo opisni red. Nemoj vracati cijeli Opis sustava kao obican string ako su dostupni blokovi.",
       "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Popunjavaj samo kolone navedene u measurementColumns; sve druge kolone, formule i rucni unos ignoriraj. Nemoj vracati genericki kljuc columnKey.",
+      ...sourcePolicy.instructions,
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
     ].join(" "),
     input: [
@@ -7791,6 +7909,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
     },
     result,
     outputText,
+    sourcePolicy,
     usage: payload?.usage ?? null,
     nextStep: result
       ? "OpenAI je vratio JSON prijedloge. Provjeri ih prije finalnog exporta."
@@ -23243,8 +23362,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     fieldBlocks,
     inspectionTypeOptions,
     measurementTables,
-    aiFields: [],
-    aiMeasurementColumns: [],
+    aiFields: createDocumentationNativeAiFieldsForService(preset.serviceCode),
+    aiMeasurementColumns: createDocumentationNativeAiMeasurementColumnsForService(preset.serviceCode),
     technicalDataFields,
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,

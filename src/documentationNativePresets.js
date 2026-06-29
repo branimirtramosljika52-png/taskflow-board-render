@@ -25,6 +25,75 @@ function makeColumn(id, label, width = 120, placeholder = "") {
   };
 }
 
+function makeAiConfig({
+  key = "",
+  label = "",
+  description = "",
+  type = "text",
+  unit = "",
+  aiDescription = "",
+  aiLookFor = [],
+  aiAvoid = "",
+  allowedValues = [],
+  commonValues = [],
+  examples = [],
+  format = "",
+  defaultValue = "",
+  fallbackValue = "",
+  validationRules = "",
+  group = "",
+  required = false,
+  confidenceRequired = "medium",
+  displayOrder = 0,
+} = {}) {
+  return {
+    key,
+    label,
+    description,
+    type,
+    required,
+    placeholder: "",
+    helpText: description,
+    enabled: true,
+    aiDescription,
+    aiLookFor,
+    aiAvoid: aiAvoid || "Ne izmisljaj podatke. Ako vrijednost nije jasno vidljiva u starom zapisniku, projektu, slici ili jednopolnoj shemi, vrati fallback ili prazno.",
+    allowedValues,
+    commonValues,
+    examples,
+    format,
+    unit,
+    defaultValue,
+    fallbackValue,
+    confidenceRequired,
+    sourceTracking: true,
+    validationRules,
+    displayOrder,
+    group,
+  };
+}
+
+function makeColumnAi(options = {}) {
+  return makeAiConfig({
+    group: "Rezultati ispitivanja",
+    ...options,
+  });
+}
+
+function makeTechnicalAi(options = {}) {
+  const defaultValue = String(options.defaultValue ?? "");
+  return makeAiConfig({
+    type: "text",
+    description: "Tehnicki podatak sustava koji NexAI moze prepisati iz starog zapisnika, projekta ili jednopolne sheme.",
+    defaultValue,
+    validationRules: "Ako podatak nije jasno naveden, koristi postojecu predlosku vrijednost ili ostavi korisniku za provjeru.",
+    confidenceRequired: "medium",
+    group: "Tehnicki podaci",
+    ...options,
+    fallbackValue: options.fallbackValue ?? defaultValue,
+  });
+}
+
 function makeRow(columns = [], values = {}, index = 0) {
   return {
     id: `measurement-row-${index + 1}`,
@@ -276,6 +345,886 @@ const EIZ_TECHNICAL_FIELDS = [
   technicalField("protectionType", "Vrsta zaštite", "Zaštitni uređaj diferencijalne struje - ZUDS"),
   technicalField("protectiveDevices", "Zaštitni uređaji", "Automatski osigurači, ZUDS"),
 ];
+
+const YES_NO_VALUES = ["DA", "NE"];
+const YES_NO_NP_VALUES = ["DA", "NE", "NP"];
+const EIZ_RCD_DEVICE_ALIASES = [
+  "FID",
+  "FI",
+  "FID sklopka",
+  "ZUDS",
+  "ZIDA",
+  "RCD",
+  "RCCB",
+  "RCBO",
+  "KZS",
+  "diferencijalna sklopka",
+  "zastitna diferencijalna sklopka",
+  "kombinirana sklopka",
+  "kombinacijska sklopka",
+  "kombinirani zastitni uredaj",
+  "kombinacijski zastitni uredaj",
+];
+const EIZ_RCD_RATING_ALIASES = [
+  "40/30",
+  "40A/30mA",
+  "40 A / 30 mA",
+  "25/30",
+  "63/300",
+  "I delta n",
+  "IΔn",
+  "Idn",
+  "0,03 A",
+  "0.03 A",
+  "30 mA",
+  "300 mA",
+];
+
+const DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE = Object.freeze({
+  SPR: Object.freeze({
+    subject: "sigurnosnu i protupanicnu rasvjetu",
+    resultLookFor: ["SPR", "sigurnosna rasvjeta", "panik rasvjeta", "Ei", "Eimin", "zadovoljava", "ne zadovoljava"],
+    defectsLookFor: ["nedostaci", "neispravna svjetiljka", "ne zadovoljava", "Ei", "Eimin", "rasvjeta"],
+    recommendationsLookFor: ["preporuke", "napomena", "servis rasvjete", "zamjena svjetiljke", "provjera autonomije"],
+    aiAvoid: "Ne prepisuj podatke iz drugih vrsta zapisnika. Za SPR koristi samo rasvjetu, lux vrijednosti i ocjenu sigurnosne/protupanicne rasvjete.",
+  }),
+  TZIN: Object.freeze({
+    subject: "tipkala za isklop elektricne energije u slucaju nuzde",
+    resultLookFor: ["TZIN", "tipkalo", "isklop elektricne energije", "slucaj nuzde", "funkcionalnost", "zadovoljava", "DA", "NE"],
+    defectsLookFor: ["nedostaci", "tipkalo ne radi", "neispravno tipkalo", "ne zadovoljava", "isklop nije ostvaren", "primjedba"],
+    recommendationsLookFor: ["preporuke", "napomena", "zamjena tipkala", "oznacavanje tipkala", "provjera isklopa"],
+    aiAvoid: "Ne koristi tekstove o panik rasvjeti, lux vrijednostima, uzemljenju ili EIZ mjerenjima za TZIN. Ako izvor nema TZIN tablicu, ostavi korisniku za provjeru.",
+  }),
+  SZOM: Object.freeze({
+    subject: "sustav zastite od djelovanja munje",
+    resultLookFor: ["SZOM", "sustav zastite od munje", "Riz", "Rdop", "skriveni spojevi", "metalne mase", "zadovoljava"],
+    defectsLookFor: ["nedostaci", "ne zadovoljava", "povecani otpor", "prekid spoja", "neispravan odvod", "uzemljenje"],
+    recommendationsLookFor: ["preporuke", "napomena", "sanacija uzemljenja", "popravak spoja", "pregled odvoda"],
+    aiAvoid: "Ne koristi SPR, TZIN ili EIZ zakljucke za SZOM. Zakljucak temelji na SZOM mjernim vrijednostima i vizualnim navodima.",
+  }),
+  SZOMV: Object.freeze({
+    subject: "vizualni pregled sustava zastite od djelovanja munje",
+    resultLookFor: ["SZOMV", "vizualni pregled", "hvataljke", "odvodi", "mjerni spojevi", "uzemljenje", "zadovoljava"],
+    defectsLookFor: ["nedostaci", "neuredno", "ostecenje", "korozija", "prekid", "ne zadovoljava"],
+    recommendationsLookFor: ["preporuke", "napomena", "sanacija", "popravak", "vizualni pregled"],
+    aiAvoid: "Ne izvlaci mjerne vrijednosti iz SZOM tablice kao vizualni nedostatak ako u SZOMV dijelu nema takve primjedbe.",
+  }),
+  EIZ: Object.freeze({
+    subject: "elektricnu instalaciju",
+    resultLookFor: ["EIZ", "elektricne instalacije", "EIZ.V", "EIZ.ZUDS", "EIZ.IPK", "EIZ.OI", "EIZ.K", ...EIZ_RCD_DEVICE_ALIASES, "zadovoljava"],
+    defectsLookFor: ["nedostaci", "ne zadovoljava", ...EIZ_RCD_DEVICE_ALIASES, "impedancija", "otpor izolacije", "kontinuitet", "vizualni pregled"],
+    recommendationsLookFor: ["preporuke", "napomena", "sanacija instalacije", "provjera FID", "provjera RCD", "otkloniti nedostatke"],
+    aiAvoid: "Ne koristi SZOM, TZIN ili SPR tekstove za EIZ. Kod jednopolne sheme popuni samo ono sto je jasno povezano s krugovima i zastitnim uredajima.",
+  }),
+  VES: Object.freeze({
+    subject: "vjezbu evakuacije i spasavanja",
+    resultLookFor: ["VES", "vjezba evakuacije", "spasavanje", "zborno mjesto", "vrijeme evakuacije", "zadovoljava"],
+    defectsLookFor: ["nedostaci", "ne zadovoljava", "evakuacija", "problem", "primjedba"],
+    recommendationsLookFor: ["preporuke", "napomena", "ponoviti vjezbu", "zborno mjesto", "plan evakuacije"],
+    aiAvoid: "Ne koristi mjerenja elektrike, munje, rasvjete ili tipkala za VES zapisnik.",
+  }),
+});
+
+const DOCUMENTATION_TECHNICAL_AI_BY_SERVICE = Object.freeze({
+  SZOM: Object.freeze({
+    inspectionArea: makeTechnicalAi({
+      key: "technical-inspectionArea",
+      label: "Prostor pregleda",
+      defaultValue: "Prostor benzinske postaje sa pratecim sadrzajem",
+      aiDescription: "Pronadji prostor ili objekt pregleda sustava zastite od djelovanja munje. Najcesce stoji u opisu objekta, tehnickim podacima ili prvom dijelu starog zapisnika.",
+      aiLookFor: ["prostor pregleda", "objekt pregleda", "prostor benzinske postaje", "tehnicki podaci"],
+      examples: ["Prostor benzinske postaje sa pratecim sadrzajem"],
+    }),
+    weatherConditions: makeTechnicalAi({
+      key: "technical-weatherConditions",
+      label: "Vremenski uvjeti",
+      defaultValue: "Vedro",
+      aiDescription: "Pronadji vremenske uvjete navedene uz mjerenje sustava zastite od munje.",
+      aiLookFor: ["vremenski uvjeti", "vrijeme", "uvjeti mjerenja"],
+      examples: ["Vedro", "Oblacno", "Suho vrijeme"],
+    }),
+    soilResistance: makeTechnicalAi({
+      key: "technical-soilResistance",
+      label: "Otpor tla [ohm m]",
+      defaultValue: "-",
+      aiDescription: "Pronadji podatak o otporu tla ili specificnom otporu tla ako postoji u starom zapisniku.",
+      aiLookFor: ["otpor tla", "specificni otpor tla", "rho", "ohm m"],
+      examples: ["-", "120 ohm m"],
+    }),
+    soilMoisture: makeTechnicalAi({
+      key: "technical-soilMoisture",
+      label: "Vlaznost tla",
+      defaultValue: "Suho",
+      aiDescription: "Pronadji vlaznost ili stanje tla kod pregleda sustava zastite od munje.",
+      aiLookFor: ["vlaznost tla", "stanje tla", "suho", "vlazno"],
+      examples: ["Suho", "Vlazno"],
+    }),
+    protectionSystemClass: makeTechnicalAi({
+      key: "technical-protectionSystemClass",
+      label: "Vrsta sustava zastite",
+      defaultValue: "II",
+      aiDescription: "Pronadji klasu ili vrstu sustava zastite od munje.",
+      aiLookFor: ["LPS klasa", "razina zastite", "vrsta sustava zastite", "klasa zastite"],
+      examples: ["II", "III", "LPS II"],
+    }),
+    airTermination: makeTechnicalAi({
+      key: "technical-airTermination",
+      label: "Hvataljke",
+      defaultValue: "Aluminijska zica",
+      aiDescription: "Pronadji opis hvataljki sustava zastite od munje.",
+      aiLookFor: ["hvataljke", "mreza vodica", "stapne hvataljke", "aluminijska zica"],
+      examples: ["Aluminijska zica", "Mreza vodica"],
+    }),
+    downConductors: makeTechnicalAi({
+      key: "technical-downConductors",
+      label: "Odvodi",
+      defaultValue: "Pocincana traka Fe/Zn, Aluminijska zica",
+      aiDescription: "Pronadji opis odvoda sustava zastite od munje.",
+      aiLookFor: ["odvodi", "vodici odvoda", "Fe/Zn", "aluminijska zica"],
+      examples: ["Pocincana traka Fe/Zn", "Pocincana traka Fe/Zn, Aluminijska zica"],
+    }),
+    earthing: makeTechnicalAi({
+      key: "technical-earthing",
+      label: "Uzemljenje",
+      defaultValue: "Pocincana traka Fe/Zn",
+      aiDescription: "Pronadji opis uzemljenja sustava zastite od munje.",
+      aiLookFor: ["uzemljenje", "uzemljivac", "temeljni uzemljivac", "Fe/Zn"],
+      examples: ["Pocincana traka Fe/Zn", "Temeljni uzemljivac"],
+    }),
+  }),
+  SZOMV: Object.freeze({
+    inspectionArea: makeTechnicalAi({
+      key: "technical-inspectionArea",
+      label: "Prostor pregleda",
+      defaultValue: "Prostor benzinske postaje sa pratecim sadrzajem",
+      aiDescription: "Pronadji prostor ili objekt vizualnog pregleda sustava zastite od djelovanja munje.",
+      aiLookFor: ["prostor pregleda", "objekt pregleda", "vizualni pregled", "tehnicki podaci"],
+      examples: ["Prostor benzinske postaje sa pratecim sadrzajem"],
+    }),
+    weatherConditions: makeTechnicalAi({
+      key: "technical-weatherConditions",
+      label: "Vremenski uvjeti",
+      defaultValue: "Vedro",
+      aiDescription: "Pronadji vremenske uvjete navedene uz vizualni pregled.",
+      aiLookFor: ["vremenski uvjeti", "vrijeme", "uvjeti pregleda"],
+      examples: ["Vedro", "Oblacno"],
+    }),
+    soilMoisture: makeTechnicalAi({
+      key: "technical-soilMoisture",
+      label: "Vlaznost tla",
+      defaultValue: "Suho",
+      aiDescription: "Pronadji stanje tla ako je navedeno u vizualnom pregledu.",
+      aiLookFor: ["vlaznost tla", "stanje tla", "suho", "vlazno"],
+      examples: ["Suho", "Vlazno"],
+    }),
+    protectionSystemClass: makeTechnicalAi({
+      key: "technical-protectionSystemClass",
+      label: "Vrsta sustava zastite",
+      defaultValue: "II",
+      aiDescription: "Pronadji klasu ili vrstu sustava zastite od munje.",
+      aiLookFor: ["LPS klasa", "razina zastite", "vrsta sustava zastite", "klasa zastite"],
+      examples: ["II", "III", "LPS II"],
+    }),
+    airTermination: makeTechnicalAi({
+      key: "technical-airTermination",
+      label: "Hvataljke",
+      defaultValue: "Aluminijska zica",
+      aiDescription: "Pronadji opis hvataljki u tehnickim podacima ili vizualnom opisu.",
+      aiLookFor: ["hvataljke", "mreza vodica", "stapne hvataljke"],
+      examples: ["Aluminijska zica", "Mreza vodica"],
+    }),
+    downConductors: makeTechnicalAi({
+      key: "technical-downConductors",
+      label: "Odvodi",
+      defaultValue: "Pocincana traka Fe/Zn, Aluminijska zica",
+      aiDescription: "Pronadji opis odvoda sustava zastite od munje.",
+      aiLookFor: ["odvodi", "vodici odvoda", "Fe/Zn"],
+      examples: ["Pocincana traka Fe/Zn, Aluminijska zica"],
+    }),
+    earthing: makeTechnicalAi({
+      key: "technical-earthing",
+      label: "Uzemljenje",
+      defaultValue: "Pocincana traka Fe/Zn",
+      aiDescription: "Pronadji opis uzemljenja iz starog zapisnika ili projekta.",
+      aiLookFor: ["uzemljenje", "uzemljivac", "temeljni uzemljivac"],
+      examples: ["Pocincana traka Fe/Zn"],
+    }),
+  }),
+  EIZ: Object.freeze({
+    networkSystem: makeTechnicalAi({
+      key: "technical-networkSystem",
+      label: "Sustav mreze",
+      defaultValue: "TN-S sa ZUDS",
+      aiDescription: "Pronadji sustav mreze elektricnih instalacija iz tehnickih podataka, projekta ili jednopolne sheme. Prihvati oznake TN-S, TN-C-S, TN-C, TT ili IT i dodatke kao 'sa ZUDS'.",
+      aiLookFor: ["sustav mreze", "TN-S", "TN-C-S", "TT", "IT", "jednopolna shema", ...EIZ_RCD_DEVICE_ALIASES],
+      examples: ["TN-S sa ZUDS", "TN-C-S", "TT sa ZUDS"],
+    }),
+    voltageFrequency: makeTechnicalAi({
+      key: "technical-voltageFrequency",
+      label: "Napon/frekvencija",
+      defaultValue: "230/400 V; 50 Hz",
+      aiDescription: "Pronadji nazivni napon i frekvenciju instalacije iz tehnickih podataka, projekta ili sheme.",
+      aiLookFor: ["napon", "frekvencija", "230/400", "400/230", "50 Hz", "jednopolna shema"],
+      examples: ["230/400 V; 50 Hz", "400/230 V; 50 Hz"],
+    }),
+    protectionType: makeTechnicalAi({
+      key: "technical-protectionType",
+      label: "Vrsta zastite",
+      defaultValue: "Zastitni uredaj diferencijalne struje - ZUDS",
+      aiDescription: "Pronadji opis vrste zastite od elektrickog udara ili zastitne mjere. Gledaj projekt, stari EIZ zapisnik i jednopolnu shemu. FID, ZUDS, FI, RCD, RCCB, RCBO, KZS i kombinacijska/kombinirana sklopka su isti kontekst zastitnih diferencijalnih uredaja.",
+      aiLookFor: ["vrsta zastite", "zastita od elektricnog udara", ...EIZ_RCD_DEVICE_ALIASES, "automatski isklop napajanja"],
+      examples: ["Zastitni uredaj diferencijalne struje - ZUDS", "FID sklopka", "Kombinacijska sklopka 40/30", "Automatski isklop napajanja"],
+    }),
+    protectiveDevices: makeTechnicalAi({
+      key: "technical-protectiveDevices",
+      label: "Zastitni uredaji",
+      defaultValue: "Automatski osiguraci, ZUDS",
+      aiDescription: "Pronadji zastitne uredaje instalacije: automatski osiguraci, rastalni osiguraci, FID/ZUDS/RCD, kombinacijske sklopke, prenaponska zastita ili sklopke. Sa sheme prepisi kratak zajednicki opis.",
+      aiLookFor: ["zastitni uredaji", "automatski osiguraci", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES, "osiguraci", "jednopolna shema"],
+      examples: ["Automatski osiguraci, ZUDS", "Automatski osiguraci, FID sklopke", "Kombinacijske sklopke 40/30"],
+    }),
+  }),
+});
+
+const DOCUMENTATION_COLUMN_AI_BY_TABLE = Object.freeze({
+  "spr-results": Object.freeze({
+    place: makeColumnAi({
+      key: "place",
+      label: "Mjesto ispitivanja",
+      aiDescription: "Prepiši mjerna mjesta sigurnosne ili protupanicne rasvjete iz stare SPR tablice.",
+      aiLookFor: ["mjesto ispitivanja", "mjerno mjesto", "sigurnosna rasvjeta", "panik rasvjeta", "evakuacijski put"],
+      examples: ["Izlaz", "Prodajni prostor", "Ulaz"],
+      required: true,
+    }),
+    lampCount: makeColumnAi({
+      key: "lampCount",
+      label: "Broj lampi",
+      type: "number",
+      aiDescription: "Prepiši broj lampi za isto mjerno mjesto. Ako broj nije jasno naveden, predlozi 1.",
+      aiLookFor: ["broj lampi", "broj svjetiljki", "kom", "rasvjetno tijelo"],
+      examples: ["1", "2"],
+      fallbackValue: "1",
+    }),
+    ei: makeColumnAi({
+      key: "ei",
+      label: "Ei",
+      type: "text",
+      unit: "lux",
+      aiDescription: "Prepiši izmjereno osvjetljenje Ei za sigurnosnu rasvjetu. Vrijednost moze biti broj ili izraz poput >2.",
+      aiLookFor: ["Ei", "izmjereno osvjetljenje", "lux"],
+      examples: [">2", "3,5", "2.8"],
+      validationRules: "Zadrzi decimalni zapis i znak > ako postoji. Ne pretvaraj jedinice.",
+    }),
+    eimin: makeColumnAi({
+      key: "eimin",
+      label: "Eimin",
+      type: "text",
+      unit: "lux",
+      aiDescription: "Prepiši zahtijevano minimalno osvjetljenje Eimin. Ako nije vidljivo, predlozi 1.",
+      aiLookFor: ["Eimin", "minimalno osvjetljenje", "zahtijevano osvjetljenje", "lux"],
+      examples: ["1", "0,5"],
+      fallbackValue: "1",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "ZADOVOLJAVA",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE za ocjenu retka. Ako ocjena nije navedena, zakljuci samo kada su Ei i Eimin jasno usporedivi.",
+      aiLookFor: ["zadovoljava", "ocjena", "DA", "NE"],
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+      validationRules: "Ne stavljaj DA ako je u retku jasno navedeno da ne zadovoljava.",
+    }),
+  }),
+  "tzin-buttons": Object.freeze({
+    place: makeColumnAi({
+      key: "place",
+      label: "Mjesto ispitivanja",
+      aiDescription: "Prepiši mjesta tipkala za isklop elektricne energije u slucaju nuzde iz stare TZIN tablice.",
+      aiLookFor: ["mjesto ispitivanja", "mjesto tipkala", "tipkalo", "isklop u slucaju nuzde"],
+      examples: ["Rasvjetni stup", "Ulaz", "RO"],
+      aiAvoid: "Ne uzimaj mjerna mjesta iz SPR, SZOM ili EIZ tablica. Za TZIN redak koristi samo mjesta tipkala za isklop u slucaju nuzde.",
+      required: true,
+    }),
+    buttonCount: makeColumnAi({
+      key: "buttonCount",
+      label: "Broj tipkala",
+      type: "number",
+      aiDescription: "Prepiši broj tipkala na toj lokaciji. Ako nije vidljivo, predlozi 1.",
+      aiLookFor: ["broj tipkala", "kom", "tipkala"],
+      examples: ["1", "2"],
+      fallbackValue: "1",
+      validationRules: "Vrati cijeli broj. Ako se u starom zapisniku vidi samo jedan redak bez broja, predlozi 1.",
+    }),
+    buttonType: makeColumnAi({
+      key: "buttonType",
+      label: "Tip tipkala",
+      aiDescription: "Prepiši tip tipkala ako postoji. Ako stari zapisnik ima crticu, prepiši crticu.",
+      aiLookFor: ["tip tipkala", "tip", "model", "oznaka"],
+      examples: ["-", "gljiva", "tipkalo u kutiji"],
+      fallbackValue: "-",
+      validationRules: "Ako je u starom TZIN zapisniku upisana crtica, zadrzi crticu. Ne izmisljaj model tipkala.",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "ZADOVOLJAVA",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE za funkcionalnost tipkala.",
+      aiLookFor: ["zadovoljava", "funkcionalnost", "ispravno", "DA", "NE"],
+      aiAvoid: "Ne zakljucuj iz SPR lux vrijednosti ili EIZ mjerenja. TZIN ocjena vrijedi samo za funkcionalnost tipkala za isklop.",
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+      validationRules: "Vrati DA ili NE. Ako stari TZIN redak ima NE ili opis neispravnosti, vrati NE.",
+    }),
+  }),
+  "szom-measurements": Object.freeze({
+    place: makeColumnAi({
+      key: "place",
+      label: "Mjerno mjesto",
+      aiDescription: "Prepiši mjerna mjesta iz SZOM tablice, npr. odvodi, spremnici, rasvjetni stupovi, metalni poklopci ili drugi dijelovi sustava.",
+      aiLookFor: ["mjerno mjesto", "odvod", "spremnik", "rasvjetni stup", "metalni poklopac", "uzemljenje"],
+      examples: ["Odvod BP", "Rasvjetni stup", "Metalni poklopac"],
+      required: true,
+    }),
+    riz: makeColumnAi({
+      key: "riz",
+      label: "Riz",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši izmjereni otpor rasprostiranja uzemljivaca Riz za isti redak.",
+      aiLookFor: ["Riz", "otpor rasprostiranja", "uzemljivac"],
+      examples: ["2,03", "2.97"],
+      validationRules: "Zadrzi decimalni separator iz izvora. Ne racunaj novu vrijednost.",
+    }),
+    rdop: makeColumnAi({
+      key: "rdop",
+      label: "Rdop",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši dopusteni otpor Rdop za Riz.",
+      aiLookFor: ["Rdop", "dopusteni otpor", "<10"],
+      examples: ["<10"],
+      fallbackValue: "<10",
+    }),
+    hiddenJoint: makeColumnAi({
+      key: "hiddenJoint",
+      label: "Skriveni spojevi",
+      aiDescription: "Prepiši opis ili mjerno mjesto skrivenih spojeva ako je u retku naveden.",
+      aiLookFor: ["skriveni spojevi", "spoj", "mjerni spoj"],
+      examples: ["", "Spoj odvoda", "Kontrolni spoj"],
+    }),
+    riz2: makeColumnAi({
+      key: "riz2",
+      label: "Riz2",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši izmjereni elektricni otpor skrivenih spojeva Riz2 ako postoji.",
+      aiLookFor: ["Riz2", "skriveni spojevi", "otpor spoja"],
+      examples: ["0,42", "0.85"],
+    }),
+    rdop2: makeColumnAi({
+      key: "rdop2",
+      label: "Rdop2",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši dopusteni otpor Rdop2 za skrivene spojeve.",
+      aiLookFor: ["Rdop2", "dopusteni otpor", "<1"],
+      examples: ["<1"],
+      fallbackValue: "<1",
+    }),
+    metalMassBonding: makeColumnAi({
+      key: "metalMassBonding",
+      label: "Elektricna povezanost metalnih masa",
+      aiDescription: "Prepiši opis ili mjerno mjesto elektricne povezanosti metalnih masa ako postoji.",
+      aiLookFor: ["elektricna povezanost metalnih masa", "metalne mase", "izjednacavanje potencijala"],
+      examples: ["Metalni poklopac", "Odzracnik", "Spremnik"],
+    }),
+    riz3: makeColumnAi({
+      key: "riz3",
+      label: "Riz3",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši izmjereni otpor elektricne povezanosti metalnih masa Riz3 ako postoji.",
+      aiLookFor: ["Riz3", "metalne mase", "elektricna povezanost"],
+      examples: ["0,74", "1,25"],
+    }),
+    rdop3: makeColumnAi({
+      key: "rdop3",
+      label: "Rdop3",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši dopusteni otpor Rdop3 za povezivanje metalnih masa.",
+      aiLookFor: ["Rdop3", "dopusteni otpor", "<2"],
+      examples: ["<2"],
+      fallbackValue: "<2",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "ZADOVOLJAVA",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE za redak SZOM mjerenja. Ako nema ocjene, ne zakljucuj protivno izmjerenim vrijednostima.",
+      aiLookFor: ["zadovoljava", "ocjena", "DA", "NE"],
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+    }),
+  }),
+  "szomv-visual": Object.freeze({
+    item: makeColumnAi({
+      key: "item",
+      label: "Stavka pregleda",
+      aiDescription: "Koristi checklist stavku za poravnanje retka sa starim SZOMV zapisnikom. Prepiši samo ako stari zapisnik ima dodatnu ili drugacije imenovanu stavku.",
+      aiLookFor: ["stavka pregleda", "vizualni pregled", "hvataljke", "odvodi", "uzemljenje"],
+      examples: ["Stanje vodica odvoda", "Stanje mjernih spojeva"],
+      confidenceRequired: "low",
+    }),
+    selected: makeColumnAi({
+      key: "selected",
+      label: "Odabir / stanje",
+      type: "text",
+      aiDescription: "Prepiši stanje za checklist stavku: uredno, neuredno, nije primjenjivo, DA/NE ili slican tekst iz starog vizualnog pregleda.",
+      aiLookFor: ["odabir", "stanje", "uredno", "neuredno", "nije primjenjivo", "DA", "NE"],
+      commonValues: ["uredno", "DA", "NP"],
+    }),
+    remark: makeColumnAi({
+      key: "remark",
+      label: "Napomena",
+      aiDescription: "Prepiši napomenu uz stavku vizualnog pregleda samo ako postoji.",
+      aiLookFor: ["napomena", "primjedba", "opis stanja"],
+      fallbackValue: "",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "ZADOVOLJAVA",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE za stavku vizualnog pregleda.",
+      aiLookFor: ["zadovoljava", "ocjena", "DA", "NE"],
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+    }),
+  }),
+  "eiz-visual": Object.freeze({
+    item: makeColumnAi({
+      key: "item",
+      label: "Predmet pregleda",
+      aiDescription: "Koristi predmet vizualnog pregleda za poravnanje retka sa starim EIZ.V zapisnikom. Ako stari zapisnik ima istu ili slicnu checklist stavku, povezi ju s ovim retkom.",
+      aiLookFor: ["vizualni pregled", "predmet pregleda", "checklista", "EIZ.V", "elektricna instalacija"],
+      examples: ["Metoda zastite od elektricnog udara", "Raspolozivost shema", "Funkcionalno ispitivanje"],
+      confidenceRequired: "low",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "ZADOVOLJAVA",
+      type: "enum",
+      aiDescription: "Prepiši ocjenu DA/NE/NP za odgovarajucu checklist stavku vizualnog pregleda elektricne instalacije.",
+      aiLookFor: ["EIZ.V", "vizualni pregled", "zadovoljava", "DA", "NE", "NP"],
+      allowedValues: YES_NO_NP_VALUES,
+      commonValues: ["DA", "NP"],
+      fallbackValue: "DA",
+      validationRules: "Ako stari zapisnik za stavku ima NP, vrati NP. Ako ima negativnu primjedbu, vrati NE.",
+    }),
+  }),
+  "eiz-zuds": Object.freeze({
+    board: makeColumnAi({
+      key: "board",
+      label: "Razdjelnik",
+      aiDescription: "Prepiši oznaku razdjelnika iz EIZ.ZUDS tablice ili jednopolne sheme.",
+      aiLookFor: ["razdjelnik", "RO", "GRO", "ormar", "EIZ.ZUDS", "jednopolna shema"],
+      examples: ["RO BS", "GRO", "RO-1"],
+      required: true,
+    }),
+    circuit: makeColumnAi({
+      key: "circuit",
+      label: "Strujni krug",
+      aiDescription: "Prepiši oznaku strujnog kruga ili osiguraca za ZUDS/RCD ispitivanje.",
+      aiLookFor: ["strujni krug", "oznaka kruga", "F100", "QF", ...EIZ_RCD_DEVICE_ALIASES],
+      examples: ["F100.4", "F140", "QF1", "FID1"],
+      required: true,
+    }),
+    inCurrent: makeColumnAi({
+      key: "inCurrent",
+      label: "In [A]",
+      type: "text",
+      unit: "A",
+      aiDescription: "Prepiši nazivnu struju zastitnog uredaja za ZUDS/RCD redak.",
+      aiLookFor: ["In", "nazivna struja", "A", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES],
+      examples: ["25", "40", "63"],
+      validationRules: "Ako je uredaj zapisan kao 40/30, 40A/30mA ili slicno, u ovu kolonu upisi nazivnu struju u amperima: 40.",
+    }),
+    idn: makeColumnAi({
+      key: "idn",
+      label: "I delta n [mA]",
+      type: "text",
+      unit: "mA",
+      aiDescription: "Prepiši nazivnu diferencijalnu struju I delta n za RCD/ZUDS.",
+      aiLookFor: ["IΔn", "Idn", "I delta n", "diferencijalna struja", "mA"],
+      examples: ["30", "300"],
+      validationRules: "Zadrzi vrijednost u mA ako je navedena. Ne pretvaraj ako nisi siguran.",
+      ...{
+        aiLookFor: ["IÎ”n", "IΔn", "Idn", "I delta n", "diferencijalna struja", "mA", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES],
+        validationRules: "Zadrzi vrijednost u mA ako je navedena. Ako je uredaj zapisan kao 40/30, 40A/30mA ili slicno, u ovu kolonu upisi 30. Ne pretvaraj ako nisi siguran.",
+      },
+    }),
+    iisk: makeColumnAi({
+      key: "iisk",
+      label: "Iisk [mA]",
+      type: "text",
+      unit: "mA",
+      aiDescription: "Prepiši izmjerenu struju prorade Iisk iz ZUDS/RCD ispitivanja.",
+      aiLookFor: ["Iisk", "struja prorade", "mA", "RCD test", ...EIZ_RCD_DEVICE_ALIASES],
+      examples: ["23", "78", "210"],
+    }),
+    tisk: makeColumnAi({
+      key: "tisk",
+      label: "tisk [ms]",
+      type: "text",
+      unit: "ms",
+      aiDescription: "Prepiši izmjereno vrijeme prorade tisk u milisekundama.",
+      aiLookFor: ["tisk", "vrijeme prorade", "ms", "RCD test", ...EIZ_RCD_DEVICE_ALIASES],
+      examples: ["18", "24", "156"],
+    }),
+    u0: makeColumnAi({
+      key: "u0",
+      label: "U0 [V]",
+      type: "text",
+      unit: "V",
+      aiDescription: "Prepiši dodirni napon ili U0 vrijednost/granicu za ZUDS ispitivanje ako postoji.",
+      aiLookFor: ["U0", "Uo", "dodirni napon", "V", "<50"],
+      examples: ["<50", "230"],
+      fallbackValue: "<50",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "Iisk < I delta n / tisk < tdoz",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE iz ZUDS tablice. Ako nije izricito navedeno, predlozi samo ako su Iisk i tisk jasno u dopustenim granicama.",
+      aiLookFor: ["zadovoljava", "Iisk < IΔn", "tisk", "DA", "NE"],
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+    }),
+  }),
+  "eiz-ipk": Object.freeze({
+    place: makeColumnAi({
+      key: "place",
+      label: "Mjerno mjesto",
+      aiDescription: "Prepiši mjerno mjesto impedancije petlje kvara iz EIZ.IPK tablice ili iz jednopolne sheme ako je jasno povezano s krugom.",
+      aiLookFor: ["EIZ.IPK", "impedancija petlje kvara", "mjerno mjesto", "uticnica", "razdjelnik"],
+      examples: ["Uticnica 230 V", "Rasvjeta", "RO BS"],
+      required: true,
+    }),
+    circuit: makeColumnAi({
+      key: "circuit",
+      label: "Oznaka strujnog kruga",
+      aiDescription: "Prepiši oznaku strujnog kruga za mjerno mjesto impedancije petlje kvara.",
+      aiLookFor: ["oznaka strujnog kruga", "strujni krug", "F", "QF", "jednopolna shema"],
+      examples: ["F1", "F100.4", "-"],
+    }),
+    protectionType: makeColumnAi({
+      key: "protectionType",
+      label: "Tip i karakteristika zastitnog uredaja",
+      aiDescription: "Prepiši tip i karakteristiku zastitnog uredaja za redak IPK: osigurac, automatski osigurac, RCD/ZUDS ili vrijednost iz sheme.",
+      aiLookFor: ["tip zastitnog uredaja", "karakteristika", "B16", "C16", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES, "osigurac"],
+      examples: ["RCD 40/0,03", "FID 40/30", "Kombinacijska sklopka 40A/30mA", "B16", "C16"],
+    }),
+    idnIa: makeColumnAi({
+      key: "idnIa",
+      label: "I delta n / Ia [A]",
+      type: "text",
+      unit: "A",
+      aiDescription: "Prepiši vrijednost I delta n ili Ia za IPK iz starog zapisnika ili sheme.",
+      aiLookFor: ["IΔn", "Idn", "Ia", "A", "IPK"],
+      examples: ["0.03", "0,3", "80"],
+      ...{
+        aiLookFor: ["IÎ”n", "IΔn", "Idn", "Ia", "A", "IPK", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES],
+        examples: ["0.03", "0,3", "80", "30 mA"],
+        validationRules: "Ako se iz sheme vidi FID/ZUDS 40/30, I delta n je 0.03 A odnosno 30 mA; za IPK zadrzi format koji odgovara tablici.",
+      },
+    }),
+    td: makeColumnAi({
+      key: "td",
+      label: "td [s]",
+      type: "text",
+      unit: "s",
+      aiDescription: "Prepiši dopusteno vrijeme isklopa td.",
+      aiLookFor: ["td", "dopusteno vrijeme", "s", "0.4"],
+      examples: ["0.4", "0,4", "5"],
+      fallbackValue: "0.4",
+    }),
+    zLpe: makeColumnAi({
+      key: "zLpe",
+      label: "Z(L-PE) [ohm]",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši izmjerenu impedanciju petlje kvara Z(L-PE).",
+      aiLookFor: ["Z(L-PE)", "Z L-PE", "petlja kvara", "impedancija", "ohm"],
+      examples: ["1,42", "0.88"],
+    }),
+    izem: makeColumnAi({
+      key: "izem",
+      label: "Izem [A]",
+      type: "text",
+      unit: "A",
+      aiDescription: "Prepiši izracunatu ili izmjerenu struju zemljospoja Izem ako postoji.",
+      aiLookFor: ["Izem", "struja zemljospoja", "A"],
+      examples: ["158", "235,5"],
+    }),
+    zLn: makeColumnAi({
+      key: "zLn",
+      label: "Z(L-N) [ohm]",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši impedanciju Z(L-N) ako postoji.",
+      aiLookFor: ["Z(L-N)", "Z L-N", "ohm"],
+      examples: ["0,55", "0.63"],
+    }),
+    zLl: makeColumnAi({
+      key: "zLl",
+      label: "Z(L-L) [ohm]",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši impedanciju Z(L-L) ako postoji. Ako stari zapisnik ima crticu, prepiši crticu.",
+      aiLookFor: ["Z(L-L)", "Z L-L", "ohm"],
+      examples: ["-", "0,44"],
+      fallbackValue: "-",
+    }),
+    u0: makeColumnAi({
+      key: "u0",
+      label: "Uo [V]",
+      type: "text",
+      unit: "V",
+      aiDescription: "Prepiši Uo ili dodirni napon za IPK redak ako postoji.",
+      aiLookFor: ["Uo", "U0", "dodirni napon", "V"],
+      examples: ["50", "230"],
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "ZADOVOLJAVA",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE za IPK redak. Ako postoji formula u predlosku, AI smije predloziti, ali ne smije tvrditi DA kad stari zapisnik ima NE.",
+      aiLookFor: ["zadovoljava", "ocjena", "DA", "NE"],
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+    }),
+  }),
+  "eiz-oi": Object.freeze({
+    circuit: makeColumnAi({
+      key: "circuit",
+      label: "Oznaka strujnog kruga",
+      aiDescription: "Prepiši oznaku strujnog kruga iz EIZ.OI tablice ili jednopolne sheme.",
+      aiLookFor: ["EIZ.OI", "otpor izolacije", "strujni krug", "oznaka kruga", "jednopolna shema"],
+      examples: ["F1", "Strujni krug 1", "RO BS"],
+      required: true,
+    }),
+    conductor: makeColumnAi({
+      key: "conductor",
+      label: "Vrsta vodica",
+      aiDescription: "Prepiši vrstu vodica ako je navedena u OI tablici ili shemi.",
+      aiLookFor: ["vrsta vodica", "vodic", "kabel", "Cu", "Al"],
+      examples: ["Cu", "PP-Y", "NYM"],
+    }),
+    l123: makeColumnAi({
+      key: "l123",
+      label: "Riso L1-L2-L3 [Mohm]",
+      type: "text",
+      unit: "Mohm",
+      aiDescription: "Prepiši izmjereni otpor izolacije izmedju faza L1-L2-L3.",
+      aiLookFor: ["Riso L1-L2-L3", "L1-L2-L3", "MOhm", "Mohm"],
+      examples: [">30", "200", "50"],
+    }),
+    l123n: makeColumnAi({
+      key: "l123n",
+      label: "Riso L1-L2-L3-N [Mohm]",
+      type: "text",
+      unit: "Mohm",
+      aiDescription: "Prepiši izmjereni otpor izolacije L1-L2-L3-N.",
+      aiLookFor: ["Riso L1-L2-L3-N", "L1-L2-L3-N", "MOhm", "Mohm"],
+      examples: [">30", "200"],
+    }),
+    l123pe: makeColumnAi({
+      key: "l123pe",
+      label: "Riso L1-L2-L3-PE [Mohm]",
+      type: "text",
+      unit: "Mohm",
+      aiDescription: "Prepiši izmjereni otpor izolacije L1-L2-L3-PE.",
+      aiLookFor: ["Riso L1-L2-L3-PE", "L1-L2-L3-PE", "PE", "MOhm"],
+      examples: [">30", "200"],
+    }),
+    npe: makeColumnAi({
+      key: "npe",
+      label: "Riso N-PE [Mohm]",
+      type: "text",
+      unit: "Mohm",
+      aiDescription: "Prepiši izmjereni otpor izolacije N-PE.",
+      aiLookFor: ["Riso N-PE", "N-PE", "MOhm", "Mohm"],
+      examples: [">30", "200"],
+    }),
+    rd: makeColumnAi({
+      key: "rd",
+      label: "Doz. otpor izolacije Rd [Mohm]",
+      type: "text",
+      unit: "Mohm",
+      aiDescription: "Prepiši dopusteni otpor izolacije Rd.",
+      aiLookFor: ["Rd", "doz. otpor izolacije", "dopusteni otpor", "MOhm"],
+      examples: [">1", "1"],
+      fallbackValue: ">1",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "Riso > Rd",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE za otpor izolacije ili zakljuci samo ako su Riso i Rd jasno usporedivi.",
+      aiLookFor: ["Riso > Rd", "zadovoljava", "DA", "NE"],
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+    }),
+  }),
+  "eiz-k": Object.freeze({
+    place1: makeColumnAi({
+      key: "place1",
+      label: "Mjerno mjesto 1",
+      aiDescription: "Prepiši prvo mjerno mjesto za kontinuitet zastitnog vodica ili vodica za izjednacavanje potencijala.",
+      aiLookFor: ["EIZ.K", "kontinuitet", "PE sabirnica", "mjerno mjesto 1", "zastitni vodic"],
+      examples: ["PE sabirnica GRO", "PE sabirnica RO"],
+      required: true,
+    }),
+    place2: makeColumnAi({
+      key: "place2",
+      label: "Mjerno mjesto 2",
+      aiDescription: "Prepiši drugo mjerno mjesto/par za kontinuitet zastitnog vodica.",
+      aiLookFor: ["mjerno mjesto 2", "uzemljivac", "metalna masa", "vodovodna instalacija", "agregat"],
+      examples: ["Uzemljivac objekta", "Agregati za istakanje goriva", "Vodovodna instalacija"],
+      required: true,
+    }),
+    testCurrent: makeColumnAi({
+      key: "testCurrent",
+      label: "Ispitna struja [A]",
+      type: "text",
+      unit: "A",
+      aiDescription: "Prepiši ispitnu struju za kontinuitet ako je navedena.",
+      aiLookFor: ["ispitna struja", "A", "kontinuitet"],
+      examples: ["0,2", "0.2"],
+      fallbackValue: "0,2",
+    }),
+    measuredResistance: makeColumnAi({
+      key: "measuredResistance",
+      label: "Izmjereni otpor [ohm]",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši izmjereni otpor kontinuiteta.",
+      aiLookFor: ["izmjereni otpor", "kontinuitet", "ohm", "<1"],
+      examples: ["<1", "0,12"],
+    }),
+    allowedResistance: makeColumnAi({
+      key: "allowedResistance",
+      label: "Doz. otpor [ohm]",
+      type: "text",
+      unit: "ohm",
+      aiDescription: "Prepiši dopusteni otpor kontinuiteta.",
+      aiLookFor: ["doz. otpor", "dopusteni otpor", "ohm"],
+      examples: ["<1"],
+      fallbackValue: "<1",
+    }),
+    pass: makeColumnAi({
+      key: "pass",
+      label: "Zadovoljava",
+      type: "enum",
+      aiDescription: "Prepiši DA/NE za kontinuitet zastitnog vodica.",
+      aiLookFor: ["zadovoljava", "kontinuitet", "DA", "NE"],
+      allowedValues: YES_NO_VALUES,
+      commonValues: ["DA"],
+      fallbackValue: "DA",
+    }),
+    note: makeColumnAi({
+      key: "note",
+      label: "Napomena",
+      aiDescription: "Prepiši napomenu uz mjerenje kontinuiteta samo ako postoji. Ako je u starom zapisniku crtica, prepiši crticu.",
+      aiLookFor: ["napomena", "primjedba", "kontinuitet"],
+      examples: ["-", "Provjeriti spoj"],
+      fallbackValue: "-",
+    }),
+  }),
+  "ves-exercise": Object.freeze({
+    assemblyPoint: makeColumnAi({
+      key: "assemblyPoint",
+      label: "Zborno mjesto",
+      aiDescription: "Prepiši zborno mjesto iz starog zapisnika vjezbe evakuacije.",
+      aiLookFor: ["zborno mjesto", "evakuacija", "spasavanje"],
+      examples: ["Zborno mjesto ispred objekta"],
+    }),
+    personCount: makeColumnAi({
+      key: "personCount",
+      label: "Broj osoba",
+      type: "number",
+      aiDescription: "Prepiši broj osoba koje su sudjelovale u vjezbi.",
+      aiLookFor: ["broj osoba", "sudionici", "evakuirano"],
+      examples: ["12", "25"],
+    }),
+    evacuationTime: makeColumnAi({
+      key: "evacuationTime",
+      label: "Vrijeme napustanja objekta [sek]",
+      type: "text",
+      unit: "sek",
+      aiDescription: "Prepiši vrijeme napustanja objekta u sekundama ili onako kako je navedeno.",
+      aiLookFor: ["vrijeme napustanja", "vrijeme evakuacije", "sek"],
+      examples: ["120", "2 min"],
+    }),
+    note: makeColumnAi({
+      key: "note",
+      label: "Napomena",
+      aiDescription: "Prepiši napomenu o tijeku vjezbe ako postoji.",
+      aiLookFor: ["napomena", "tijek vjezbe", "primjedba"],
+    }),
+  }),
+});
+
+const DOCUMENTATION_FORMULA_RESULT_COLUMN_IDS_BY_TABLE = Object.freeze({
+  "eiz-zuds": new Set(["iisk", "tisk", "u0", "pass"]),
+  "eiz-ipk": new Set(["td", "zLpe", "izem", "zLn", "zLl", "u0", "pass"]),
+  "eiz-oi": new Set(["l123", "l123n", "l123pe", "npe", "rd", "pass"]),
+  "eiz-k": new Set(["testCurrent", "measuredResistance", "allowedResistance", "pass", "note"]),
+});
+
+function isDocumentationFormulaResultAiColumn(tableId = "", columnId = "") {
+  const blockedColumns = DOCUMENTATION_FORMULA_RESULT_COLUMN_IDS_BY_TABLE[String(tableId || "")];
+  return Boolean(blockedColumns?.has(String(columnId || "")));
+}
+
+function getDocumentationColumnAiMapping(tableId = "", columnId = "") {
+  if (isDocumentationFormulaResultAiColumn(tableId, columnId)) {
+    return null;
+  }
+  return DOCUMENTATION_COLUMN_AI_BY_TABLE[tableId]?.[columnId] || null;
+}
+
+function withDocumentationColumnAiMapping(tableId = "", column = {}) {
+  const aiMapping = getDocumentationColumnAiMapping(tableId, column?.id);
+  return aiMapping ? { ...column, aiMapping: { ...aiMapping } } : { ...column };
+}
+
+function withDocumentationTechnicalFieldAi(serviceCode = "", field = {}) {
+  const normalizedService = normalizeCode(serviceCode);
+  const ai = DOCUMENTATION_TECHNICAL_AI_BY_SERVICE[normalizedService]?.[field?.id]
+    || DOCUMENTATION_TECHNICAL_AI_BY_SERVICE[normalizedService]?.[field?.key]
+    || null;
+  return ai ? { ...field, ai: { ...ai } } : { ...field };
+}
+
+function getSpreadsheetColumnLabel(index = 0) {
+  let value = Number(index) + 1;
+  let label = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+  return label || "A";
+}
 
 function rowsFromItems(columns, items, pass = "DA") {
   return items.map((item, index) => makeRow(columns, {
@@ -584,7 +1533,7 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
     helpText: "Gridline tablica popunjava rezultate za odabranu uslugu.",
     summary: table.summary,
     sheet: {
-      columns: table.columns.map((column) => ({ ...column })),
+      columns: table.columns.map((column) => withDocumentationColumnAiMapping(table.id, column)),
       rows: table.rows.map((row, index) => ({
         id: row.id || `measurement-row-${index + 1}`,
         cells: { ...(row.cells || {}) },
@@ -594,6 +1543,129 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
       headerRows: [],
     },
   }));
+}
+
+export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
+  const preset = getDocumentationNativeReportPreset(serviceCode);
+  const resultContext = DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE[preset.serviceCode]
+    || DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE.SPR;
+  const technicalFields = (preset.technicalDataFields || [])
+    .map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field))
+    .filter((field) => field?.ai);
+  const resultFields = [
+    {
+      id: "resultStatus",
+      key: "resultStatus",
+      label: "Zadovoljava",
+      type: "boolean",
+      fieldType: "toggle",
+      required: true,
+      ai: makeAiConfig({
+        key: "resultStatus",
+        label: "Zadovoljava",
+        type: "boolean",
+        group: "Zakljucak",
+        aiDescription: `Predlozi ukupnu zakljucnu ocjenu za ${resultContext.subject} temeljem starog zapisnika, projekta, slike ili popunjenih Gridline tablica. Vrati true za zadovoljava i false za ne zadovoljava.`,
+        aiLookFor: resultContext.resultLookFor,
+        aiAvoid: `${resultContext.aiAvoid} Ne vracaj false ako nema jasnog nedostatka ili negativne ocjene. Ako nije sigurno, vrati true i dodaj upozorenje.`,
+        allowedValues: ["true", "false"],
+        commonValues: ["true"],
+        fallbackValue: "true",
+        validationRules: "false koristi samo kada stari zapisnik ili rezultati jasno pokazuju neispravnost.",
+        confidenceRequired: "high",
+      }),
+    },
+    {
+      id: "defects",
+      key: "defects",
+      label: "Nedostaci",
+      type: "text",
+      fieldType: "textarea",
+      required: false,
+      ai: makeAiConfig({
+        key: "defects",
+        label: "Nedostaci",
+        type: "text",
+        group: "Zakljucak",
+        aiDescription: "Prepiši ili sazetkom predlozi nedostatke iz starog zapisnika, projekta ili fotografija. Ako nema nedostataka, vrati prazno.",
+        aiLookFor: ["nedostaci", "ne zadovoljava", "neispravno", "primjedbe", "otkloniti"],
+        aiAvoid: "Ne izmisljaj nedostatke. Ako dokument ne navodi nedostatke, ostavi prazno.",
+        ...{
+          aiDescription: `Prepisi ili sazetkom predlozi nedostatke za ${resultContext.subject} iz starog zapisnika, projekta ili fotografija. Ako nema nedostataka, vrati prazno.`,
+          aiLookFor: resultContext.defectsLookFor,
+          aiAvoid: `${resultContext.aiAvoid} Ne izmisljaj nedostatke. Ako dokument ne navodi nedostatke, ostavi prazno.`,
+        },
+        fallbackValue: "",
+        confidenceRequired: "high",
+      }),
+    },
+    {
+      id: "recommendations",
+      key: "recommendations",
+      label: "Preporuke",
+      type: "text",
+      fieldType: "textarea",
+      required: false,
+      ai: makeAiConfig({
+        key: "recommendations",
+        label: "Preporuke",
+        type: "text",
+        group: "Zakljucak",
+        aiDescription: "Predlozi preporuke ili napomene za korisnika samo ako se mogu temeljiti na starom zapisniku, projektu, slici ili rezultatima mjerenja.",
+        aiLookFor: ["preporuke", "napomena", "primjedba", "potrebno", "predlaze se"],
+        aiAvoid: "Ne dodaj opcenite preporuke koje nisu povezane s ucitanim izvorima.",
+        ...{
+          aiDescription: `Predlozi preporuke ili napomene za ${resultContext.subject} samo ako se mogu temeljiti na starom zapisniku, projektu, slici ili rezultatima mjerenja.`,
+          aiLookFor: resultContext.recommendationsLookFor,
+          aiAvoid: `${resultContext.aiAvoid} Ne dodaj opcenite preporuke koje nisu povezane s ucitanim izvorima.`,
+        },
+        fallbackValue: "",
+        confidenceRequired: "medium",
+      }),
+    },
+  ];
+  return [
+    ...technicalFields.map((field) => ({
+      id: `technical-${field.id || field.key}`,
+      key: `technical-${field.id || field.key}`,
+      label: field.label || "Tehnicki podatak",
+      type: "text",
+      fieldType: "text",
+      required: false,
+      ai: { ...field.ai },
+    })),
+    ...resultFields,
+  ];
+}
+
+export function createDocumentationNativeAiMeasurementColumnsForService(serviceCode = "") {
+  const preset = getDocumentationNativeReportPreset(serviceCode);
+  return preset.tables.flatMap((table) => (
+    table.columns
+      .map((column, columnIndex) => {
+        const aiMapping = getDocumentationColumnAiMapping(table.id, column.id);
+        if (!aiMapping) {
+          return null;
+        }
+        return {
+          fieldId: table.id,
+          fieldKey: table.key,
+          fieldLabel: table.label,
+          fieldDescription: table.summary,
+          columnId: column.id,
+          columnIndex,
+          columnLetter: getSpreadsheetColumnLabel(columnIndex),
+          key: aiMapping.key || column.id,
+          label: aiMapping.label || column.label || column.id,
+          type: aiMapping.type || "text",
+          required: Boolean(aiMapping.required),
+          placeholder: column.placeholder || aiMapping.placeholder || "",
+          helpText: aiMapping.helpText || aiMapping.description || aiMapping.aiDescription || "",
+          aiMapping: { ...aiMapping },
+        };
+      })
+      .filter(Boolean)
+  ));
 }
 
 export function createDocumentationGridlineRowsForService(serviceCode = "") {
@@ -622,7 +1694,7 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     signatureAreas: [...preset.signatureAreas],
-    technicalDataFields: (preset.technicalDataFields || []).map((field) => ({ ...field })),
+    technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
   };
 }
@@ -645,7 +1717,7 @@ export function getDocumentationNativeTemplateSeedPresets() {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     signatureAreas: [...preset.signatureAreas],
-    technicalDataFields: (preset.technicalDataFields || []).map((field) => ({ ...field })),
+    technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
   }));
 }
