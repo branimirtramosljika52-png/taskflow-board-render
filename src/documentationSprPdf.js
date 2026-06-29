@@ -14,7 +14,7 @@ const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN_X = 42;
 const TOP_Y = 805;
-const BOTTOM_Y = 74;
+const BOTTOM_Y = 92;
 const FONT_REGULAR_URL = "/assets/fonts/DejaVuSans.ttf";
 const FONT_BOLD_URL = "/assets/fonts/DejaVuSans-Bold.ttf";
 const BLUE = rgb(0.06, 0.45, 0.74);
@@ -240,7 +240,7 @@ function stampFooters(pdfDoc, model, fonts, {
   targetPages.forEach((page, index) => {
     drawTextLine(page, `${serviceCode}-${index + 1}/${totalPages}`, {
       x: MARGIN_X,
-      y: 26,
+      y: 30,
       font: fonts.regular,
       size: 8.4,
     });
@@ -1255,7 +1255,7 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
     const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
     const rowHeight = dense ? 15.2 : 17.4;
     const headerHeight = dense ? 30 : 36;
-    const rowsPerPage = Math.max(1, Math.floor((metrics.topY - 86 - metrics.bottomY - headerHeight) / rowHeight));
+    const rowsPerPage = Math.max(1, Math.floor((metrics.topY - 106 - metrics.bottomY - headerHeight) / rowHeight));
     const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
     const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
     let cursor = 0;

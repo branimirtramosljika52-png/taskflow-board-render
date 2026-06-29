@@ -1525,6 +1525,7 @@
       if (!selectionDrag) {
         return;
       }
+      event.preventDefault();
       td = getCellFromPoint(event.clientX, event.clientY);
       if (!td) {
         return;
@@ -1535,9 +1536,17 @@
       });
     }
 
-    function handleSelectionPointerUp() {
+    function handleSelectionPointerUp(event) {
+      if (selectionDrag && selectionDrag.captureElement && typeof selectionDrag.captureElement.releasePointerCapture === "function") {
+        try {
+          selectionDrag.captureElement.releasePointerCapture(selectionDrag.pointerId);
+        } catch (error) {
+          // Pointer capture can already be released by the browser.
+        }
+      }
       document.removeEventListener("pointermove", handleSelectionPointerMove);
       document.removeEventListener("pointerup", handleSelectionPointerUp);
+      document.body.classList.remove("is-selecting-gridline-cells");
       selectionDrag = null;
     }
 
@@ -2119,9 +2128,19 @@
         selectionDrag = {
           startRow: Number(cell.dataset.row),
           startColumn: Number(cell.dataset.column),
+          pointerId: event.pointerId,
+          captureElement: cell,
         };
         selectCell(selectionDrag.startRow, selectionDrag.startColumn, { focus: false });
         grid.focus({ preventScroll: true });
+        if (typeof cell.setPointerCapture === "function") {
+          try {
+            cell.setPointerCapture(event.pointerId);
+          } catch (error) {
+            selectionDrag.captureElement = null;
+          }
+        }
+        document.body.classList.add("is-selecting-gridline-cells");
         document.addEventListener("pointermove", handleSelectionPointerMove);
         document.addEventListener("pointerup", handleSelectionPointerUp, { once: true });
         return;
@@ -4920,6 +4939,7 @@
       document.removeEventListener("pointerup", handleColumnResizeUp);
       document.removeEventListener("pointermove", handleRowResizeMove);
       document.removeEventListener("pointerup", handleRowResizeUp);
+      document.body.classList.remove("is-selecting-gridline-cells");
       selectionDrag = null;
       fillDrag = null;
       columnResize = null;

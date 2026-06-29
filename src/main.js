@@ -62552,9 +62552,9 @@ function getDocumentationSprMeasurementRowsPerPage(table = {}) {
   const columns = table?.sheet?.columns || [];
   const orientation = normalizeDocumentationSprPageOrientation(table?.pageOrientation);
   if (orientation === "landscape") {
-    return columns.length > 8 ? 18 : 16;
+    return columns.length > 8 ? 15 : 14;
   }
-  return columns.length > 8 ? 29 : 24;
+  return columns.length > 8 ? 20 : 18;
 }
 
 function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4, rowsOverride = null, tablePageIndex = 0) {
@@ -62823,7 +62823,7 @@ function buildDocumentationSprPdfStyles() {
       height: 296.5mm;
       min-height: 0;
       margin: 0 auto;
-      padding: 12mm 10mm 44mm;
+      padding: 12mm 10mm 50mm;
       box-sizing: border-box;
       background: #fff;
       color: #101010;
@@ -62838,7 +62838,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper.is-landscape {
       width: 297mm;
       height: 209.5mm;
-      padding: 10mm 9mm 40mm;
+      padding: 10mm 9mm 44mm;
     }
 
     .documentation-spr-paper:last-child {
@@ -63166,6 +63166,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-signature-area.is-bottom {
       min-height: 120px;
       grid-template-columns: minmax(0, 1fr) 300px;
+      position: relative;
     }
 
     .documentation-spr-paper-signature-area span,
@@ -63189,8 +63190,12 @@ function buildDocumentationSprPdfStyles() {
     }
 
     .documentation-spr-paper-stamp {
-      align-self: center;
-      justify-self: center;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      min-width: 64px;
+      transform: translate(-50%, -50%);
+      text-align: center;
     }
 
     .documentation-spr-paper-conclusion {
@@ -63212,7 +63217,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-footer {
       position: absolute;
       left: 10mm;
-      bottom: 16mm;
+      bottom: 18mm;
       color: #111;
       font-size: 10pt;
       line-height: 1;
