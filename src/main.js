@@ -52715,6 +52715,10 @@ function appendGridlineSpreadsheetToolbar(actions, {
   actions.append(
     ...(status ? [status] : []),
     ...(summary ? [summary] : []),
+    makeButton("☰", "toggle-tools", "Prikazi/sakrij alate"),
+    makeButton("▤", "toggle-table", "Sakrij/prikazi tablicu"),
+    makeButton("⛶", "fullscreen", "Full screen tablica"),
+    makeButton("▦", "auto-border-filled", "Automatski obrubi popunjene celije"),
     makeButton("▣", "save", "Spremi"),
     makeButton("⇩", "export", "Izvoz"),
     separator(),
@@ -52746,7 +52750,6 @@ function appendGridlineSpreadsheetToolbar(actions, {
     makeButton("C-", "delete-column", "Obrisi stupac"),
     makeButton("A↓", "sort-asc", "Sortiraj A-Z"),
     makeButton("Z↓", "sort-desc", "Sortiraj Z-A"),
-    makeButton("⌄", "filter", "Filter"),
     makeButton("⌕", "find", "Pronadi"),
     makeButton("Tx", "clear-formatting", "Ocisti formatiranje"),
     dataType,
@@ -57203,8 +57206,8 @@ function createDefaultDocumentationSprModel() {
     assessmentLabel: reportDefaults.assessmentLabel,
     conclusionLead: reportDefaults.conclusionLead,
     validitySentence: reportDefaults.validitySentence,
-    inspectors: "Nikola Lovrenčević",
-    responsiblePerson: "Nikola Lovrenčević, el.teh.; 89627512970",
+    inspectors: "",
+    responsiblePerson: "",
     signatureClass: "UP/I-133-02/25-02/26",
     signatureNumber: "1392/25",
     resultStatus: "ZADOVOLJAVA",
@@ -59138,6 +59141,7 @@ function applyDocumentationSprPeopleSelection({
   const responsibleUser = getDocumentationSprUsersByIds([documentationSprModel.responsiblePersonUserId])[0] || null;
   if (responsibleUser) {
     setDocumentationSprFieldValue("responsiblePerson", formatDocumentationSprResponsiblePerson(responsibleUser));
+    documentationSprModel.signatureFieldOib = getPeopleUserOib(responsibleUser);
     const qualification = getUserElectricalQualification(responsibleUser, "elektro");
     if (qualification.data1) {
       setDocumentationSprFieldValue("signatureClass", qualification.data1);
@@ -59147,6 +59151,7 @@ function applyDocumentationSprPeopleSelection({
     }
   } else {
     setDocumentationSprFieldValue("responsiblePerson", "");
+    documentationSprModel.signatureFieldOib = "";
   }
 
   syncDocumentationSprSourceSummary();
@@ -59712,10 +59717,10 @@ function getDocumentationSprObjectItems() {
   const customObjects = normalizeDocumentationSprCustomObjects(documentationSprModel?.customObjects ?? [])
     .filter((item) => {
       if (locationId) {
-        return !item.locationId || item.locationId === locationId;
+        return item.locationId === locationId;
       }
       if (companyId) {
-        return !item.companyId || item.companyId === companyId;
+        return item.companyId === companyId;
       }
       return true;
     });
@@ -59743,11 +59748,10 @@ function renderDocumentationSprObjectSelect() {
   }
   const items = getDocumentationSprObjectItems();
   const selectedId = String(documentationSprModel.inspectionObjectId || "").trim();
-  const currentText = String(documentationSprModel.inspectionObject || "").trim();
   const options = [
     {
       value: "",
-      label: currentText ? `Ručno: ${currentText}` : "Odaberi objekt",
+      label: "Odaberi objekt",
     },
     ...items.map((item) => ({
       value: item.id,
@@ -59799,9 +59803,7 @@ function applyDocumentationSprObjectSelection(objectId = "") {
   }
   const item = getDocumentationSprObjectItems().find((entry) => entry.id === normalizedId);
   documentationSprModel.inspectionObjectId = item?.id || "";
-  if (item?.name) {
-    setDocumentationSprFieldValue("inspectionObject", item.name);
-  }
+  setDocumentationSprFieldValue("inspectionObject", item?.name || "");
   renderDocumentationSprObjectSelect();
   renderDocumentationSprPreview();
   scheduleDocumentationSprSave();
@@ -59967,7 +59969,7 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
     ).trim(),
     spaceUser: companyName || baseModel.spaceUser,
     inspectionPlace: [locationName, locationAddress].filter(Boolean).join(", ") || baseModel.inspectionPlace,
-    inspectionObject: objectName || serviceBinding?.serviceName || service.name || baseModel.inspectionObject,
+    inspectionObject: objectName || (baseModel.inspectionObjectId ? baseModel.inspectionObject : ""),
     inspectionObjectId: String(object?.id || workOrder.objectId || workOrder.locationObjectId || baseModel.inspectionObjectId || "").trim(),
     inspectionType: normalizeDocumentationSprInspectionType(
       workOrder.inspectionType
@@ -59980,12 +59982,13 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
     validUntil: formatDocumentationSprDateFromSource(validUntil),
     measurementEquipmentIds: equipmentIds.length > 0 ? equipmentIds : baseModel.measurementEquipmentIds,
     legalFrameworkIds: legalFrameworkIds.length > 0 ? legalFrameworkIds : baseModel.legalFrameworkIds,
-    inspectorUserIds: peopleContext.inspectorIds.length > 0 ? peopleContext.inspectorIds : baseModel.inspectorUserIds,
-    responsiblePersonUserId: peopleContext.responsibleUserId || baseModel.responsiblePersonUserId,
+    inspectorUserIds: peopleContext.inspectorIds,
+    responsiblePersonUserId: peopleContext.responsibleUserId || "",
     inspectors: inspectorUsers.length > 0
       ? inspectorUsers.map((user) => getDocumentationSprUserName(user)).join(", ")
-      : baseModel.inspectors,
-    responsiblePerson: responsibleUser ? formatDocumentationSprResponsiblePerson(responsibleUser) : baseModel.responsiblePerson,
+      : "",
+    responsiblePerson: responsibleUser ? formatDocumentationSprResponsiblePerson(responsibleUser) : "",
+    signatureFieldOib: responsibleUser ? getPeopleUserOib(responsibleUser) : "",
     signatureMode: state.workOrderDocumentWizard.common?.signatureMode || baseModel.signatureMode || "digital",
   });
 
@@ -61675,6 +61678,10 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
       </div>
       <div class="documentation-gridline-actions">
         <span class="status is-saved" data-gridline-role="status">Spremno</span>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-tools" title="Prikaži alate">☰</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-table" title="Sakrij tablicu">▤</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="fullscreen" title="Full screen tablica">⛶</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="auto-border-filled" title="Automatski obrubi popunjene ćelije">▦</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="save" title="Spremi">▣</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="export" title="Izvoz">⇩</button>
         <span class="gridline-toolbar-separator" aria-hidden="true"></span>
@@ -61712,7 +61719,6 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="delete-column" title="Obriši stupac">C-</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-asc" title="Sortiraj A-Z">A↓</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-desc" title="Sortiraj Z-A">Z↓</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="filter" title="Filter">⌄</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="find" title="Pronađi">⌕</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="clear-formatting" title="Očisti formatiranje">Tx</button>
         <select class="gridline-toolbar-select" data-gridline-action="data-type" title="Tip podatka">
@@ -61774,7 +61780,7 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
     saveDelayMs: 220,
     enableQuickFill: true,
     enableAiContextMenu: false,
-    enableColumnAiSettings: true,
+    enableColumnAiSettings: false,
     disableAiUpload: true,
     aiFiles: getDocumentationSprGridlineAiFiles(),
     aiFieldLabel: table.label || "Gridline tablica",
@@ -62187,11 +62193,13 @@ function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fall
         ])),
         formats: Object.fromEntries(columns.map((column, columnIndex) => {
           const style = normalizedGridline.cellStyles?.[`${originalIndex + 2}:${columnIndex}`] || {};
+          const value = String(row[columnIndex] ?? "").trim();
           return [column.id, {
             backgroundColor: style.backgroundColor || "",
             textAlign: style.textAlign || "",
+            border: style.border || (normalizedGridline.autoBorderFilled && value ? "all" : ""),
           }];
-        }).filter(([, format]) => format.backgroundColor || format.textAlign)),
+        }).filter(([, format]) => format.backgroundColor || format.textAlign || format.border)),
       };
     });
   const headerRows = (normalizedGridline.headerRows || [])
@@ -62536,8 +62544,12 @@ function renderDocumentationSprPreviewCellAttributes(sheet = {}, row = {}, colum
   const format = row.formats?.[column.id] || {};
   const styles = [];
   const attrs = [];
+  const classes = [];
   const backgroundColor = String(format.backgroundColor || "").trim();
   const textAlign = String(format.textAlign || format.align || "").trim();
+  const border = String(format.border || "").trim();
+  const value = String(row.cells?.[column.id] || "").trim();
+  const headerText = normalizeLooseName([column.label, column.placeholder, column.id].filter(Boolean).join(" "));
   if (/^#[0-9a-f]{6}$/i.test(backgroundColor)) {
     styles.push(`background-color:${backgroundColor}`);
   }
@@ -62558,7 +62570,21 @@ function renderDocumentationSprPreviewCellAttributes(sheet = {}, row = {}, colum
     attrs.push(`style="${escapeHtml(styles.join(";"))}"`);
   }
   if ((Array.isArray(sheet.headerRows) ? sheet.headerRows : []).includes(rowIndex)) {
-    attrs.push('class="is-header-row"');
+    classes.push("is-header-row");
+  }
+  if (border) {
+    classes.push("has-cell-border");
+  }
+  if (rowIndex > 0 && /zadovol|ocjena|status|rezultat|pass/.test(headerText)) {
+    const normalizedValue = normalizeLooseName(value);
+    if (/^(ne|no|fail|nije)(\b|\s|-)/.test(normalizedValue) || normalizedValue.includes("ne zadovol")) {
+      classes.push("is-failing-result");
+    } else if (/^(da|ok|yes|pass)$/.test(normalizedValue) || normalizedValue.includes("zadovol")) {
+      classes.push("is-passing-result");
+    }
+  }
+  if (classes.length) {
+    attrs.push(`class="${classes.join(" ")}"`);
   }
   return attrs.join(" ");
 }
@@ -62610,11 +62636,11 @@ function getDocumentationSprPreviewMeasurementProfile(table = {}) {
       dense,
       tableWidth: 1060,
       maxTableHeight: dense ? 395 : 410,
-      minRowHeight: dense ? 17 : 20,
+      minRowHeight: dense ? 26 : 30,
       fontSize: dense ? 8.4 : 9.6,
       lineHeight: dense ? 9.8 : 11.2,
-      padding: dense ? 7 : 9,
-      headerMinHeight: dense ? 30 : 34,
+      padding: dense ? 11 : 14,
+      headerMinHeight: dense ? 45 : 51,
     };
   }
   return {
@@ -62622,11 +62648,11 @@ function getDocumentationSprPreviewMeasurementProfile(table = {}) {
     dense,
     tableWidth: 720,
     maxTableHeight: dense ? 620 : 660,
-    minRowHeight: dense ? 18 : 25,
+    minRowHeight: dense ? 27 : 38,
     fontSize: dense ? 9.1 : 13.2,
     lineHeight: dense ? 10.6 : 15.2,
-    padding: dense ? 7 : 12,
-    headerMinHeight: dense ? 32 : 40,
+    padding: dense ? 11 : 18,
+    headerMinHeight: dense ? 48 : 60,
   };
 }
 
@@ -62770,6 +62796,10 @@ function renderDocumentationSprMeasurementPages(model, startPageNumber = 3, tota
 }
 
 function renderDocumentationSprSignature(model) {
+  const responsiblePerson = String(model?.responsiblePerson || "").trim();
+  if (!responsiblePerson) {
+    return '<div class="documentation-spr-signature-box is-empty"></div>';
+  }
   if (model.signatureMode === "empty") {
     return '<div class="documentation-spr-signature-box"><span>Signature field</span></div>';
   }
@@ -62777,7 +62807,7 @@ function renderDocumentationSprSignature(model) {
     <div class="documentation-spr-signature-box">
       <div>
         <span>Ispitivač</span>
-        <strong>${escapeHtml(model.responsiblePerson)}</strong>
+        <strong>${escapeHtml(responsiblePerson)}</strong>
         <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
         <span>${escapeHtml(model.signatureNumber)}</span>
         <i aria-hidden="true"></i>
@@ -62792,6 +62822,7 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
   const recommendations = renderDocumentationSprLineList(model.recommendations);
   const sectionOffset = getDocumentationSprSectionOffset(model);
   const assessmentRows = getDocumentationSprMeasurementAssessmentsForModel(model);
+  const responsiblePerson = String(model.responsiblePerson || "").trim();
   return `
     <section class="documentation-spr-paper documentation-spr-paper-conclusion-page">
       ${renderDocumentationSprSimpleHeader(model)}
@@ -62820,11 +62851,13 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
       <div class="documentation-spr-paper-signature-area is-bottom">
         <div class="documentation-spr-paper-center documentation-spr-paper-stamp"><strong>M.P.</strong></div>
         <div>
-          <span>Dokaze iz Zapisnika ocijenio:</span>
-          <strong>${escapeHtml(model.responsiblePerson)}</strong>
-          <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
-          <span>${escapeHtml(model.signatureNumber)}</span>
-          <i aria-hidden="true"></i>
+          ${responsiblePerson ? `
+            <span>Dokaze iz Zapisnika ocijenio:</span>
+            <strong>${escapeHtml(responsiblePerson)}</strong>
+            <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
+            <span>${escapeHtml(model.signatureNumber)}</span>
+            <i aria-hidden="true"></i>
+          ` : ""}
         </div>
       </div>
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
@@ -63250,7 +63283,7 @@ function buildDocumentationSprPdfStyles() {
 
     .documentation-spr-paper-measure-table th,
     .documentation-spr-paper-measure-table td {
-      padding: 5px 4px;
+      padding: 8px 5px;
       border: 1px solid #111;
       text-align: center;
       vertical-align: middle;
@@ -63267,6 +63300,22 @@ function buildDocumentationSprPdfStyles() {
       background: #d9d9d9;
       font-weight: 900;
       text-align: left;
+    }
+
+    .documentation-spr-paper-measure-table td.has-cell-border {
+      box-shadow: inset 0 0 0 1px #111;
+    }
+
+    .documentation-spr-paper-measure-table td.is-passing-result {
+      background: #bbf7d0;
+      color: #14532d;
+      font-weight: 900;
+    }
+
+    .documentation-spr-paper-measure-table td.is-failing-result {
+      background: #fecaca;
+      color: #7f1d1d;
+      font-weight: 900;
     }
 
     .documentation-spr-paper-measure-table th span,
@@ -63286,7 +63335,7 @@ function buildDocumentationSprPdfStyles() {
 
     .documentation-spr-paper-measure-table.is-dense th,
     .documentation-spr-paper-measure-table.is-dense td {
-      padding: 3px 2px;
+      padding: 5px 3px;
     }
 
     .documentation-spr-paper.is-landscape .documentation-spr-paper-measure-table {
@@ -64393,7 +64442,7 @@ function mountDocumentationSprGridline() {
     saveDelayMs: 220,
     enableQuickFill: true,
     enableAiContextMenu: false,
-    enableColumnAiSettings: true,
+    enableColumnAiSettings: false,
     disableAiUpload: true,
     aiFiles: getDocumentationSprGridlineAiFiles(),
     aiFieldLabel: "Tablica mjernih mjesta",

@@ -7,10 +7,10 @@
   var MAX_ROWS = 1000;
   var MIN_COLUMNS = 1;
   var MAX_COLUMNS = 60;
-  var MIN_COLUMN_WIDTH = 36;
+  var MIN_COLUMN_WIDTH = 22;
   var MAX_COLUMN_WIDTH = 320;
   var DEFAULT_COLUMN_WIDTH = 132;
-  var MIN_ROW_HEIGHT = 18;
+  var MIN_ROW_HEIGHT = 12;
   var MAX_ROW_HEIGHT = 96;
   var DEFAULT_ROW_HEIGHT = 36;
   var UNDO_LIMIT = 80;
@@ -46,6 +46,10 @@
     filter: '<path d="M5 6h14l-5 6v5l-4 2v-7z"/>',
     find: '<circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/>',
     clearFormatting: '<path d="M5 17h7"/><path d="m7 15 5-10 5 10"/><path d="M9 11h6"/><path d="m15 19 4-4M19 19l-4-4"/>',
+    tools: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    hideTable: '<path d="M4 6h16v12H4z"/><path d="M4 10h16M9 6v12"/><path d="m7 15 10-10"/>',
+    fullscreen: '<path d="M8 4H4v4M16 4h4v4M8 20H4v-4M20 16v4h-4"/>',
+    autoBorderFilled: '<path d="M5 5h14v14H5z"/><path d="M5 10h14M5 15h14M10 5v14M15 5v14"/><path d="m7 7 2 2 4-4"/>',
   };
 
   function clampInteger(value, fallback, min, max) {
@@ -267,6 +271,18 @@
     if (action === "clear-formatting") {
       return "clearFormatting";
     }
+    if (action === "toggle-tools") {
+      return "tools";
+    }
+    if (action === "toggle-table") {
+      return "hideTable";
+    }
+    if (action === "fullscreen") {
+      return "fullscreen";
+    }
+    if (action === "auto-border-filled") {
+      return "autoBorderFilled";
+    }
     return action;
   }
 
@@ -316,9 +332,14 @@
       }
       group = null;
     }
+    function isToolbarUtilityAction(child) {
+      var action = child && child.dataset ? child.dataset.gridlineAction : "";
+      return ["toggle-tools", "toggle-table", "fullscreen", "auto-border-filled"].indexOf(action) >= 0;
+    }
     Array.prototype.slice.call(actions.children).forEach(function (child) {
       var isSeparator = child.classList && child.classList.contains("gridline-toolbar-separator");
       var isStatus = child.dataset && child.dataset.gridlineRole;
+      var isUtility = isToolbarUtilityAction(child);
       if (isSeparator) {
         flushGroup();
         groupIndex += 1;
@@ -327,6 +348,12 @@
       }
       if (isStatus) {
         flushGroup();
+        fragment.appendChild(child);
+        return;
+      }
+      if (isUtility) {
+        flushGroup();
+        child.classList.add("gridline-toolbar-utility");
         fragment.appendChild(child);
         return;
       }
@@ -796,6 +823,7 @@
       cellStyles: Object.create(null),
       headerRows: Array.isArray(options && options.headerRows) ? normalizeHeaderRows(options.headerRows, rowCount) : [],
       aiColumns: Object.create(null),
+      autoBorderFilled: false,
     };
   }
 
@@ -860,6 +888,7 @@
       cellStyles: cellStyles,
       headerRows: headerRows,
       aiColumns: aiColumns,
+      autoBorderFilled: Boolean(source.autoBorderFilled),
     };
   }
 
@@ -876,6 +905,7 @@
       cellStyles: normalizeCellStyles(model.cellStyles, model.rowCount, model.columnCount),
       headerRows: normalizeHeaderRows(model.headerRows, model.rowCount),
       aiColumns: cloneAiColumns(model.aiColumns, model.columnCount),
+      autoBorderFilled: Boolean(model.autoBorderFilled),
     };
   }
 
@@ -883,7 +913,7 @@
     if (!target || typeof target.closest !== "function") {
       return null;
     }
-    return target.closest("input.cell");
+    return target.closest(".cell[data-row][data-column]");
   }
 
   function resolveElement(root, selector, fallbackSelector) {
@@ -949,6 +979,7 @@
       ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='text-color']"))
       : [];
     var borderButton = resolveElement(host, "[data-gridline-action='border']");
+    var autoBorderFilledButton = resolveElement(host, "[data-gridline-action='auto-border-filled']");
     var clearFormattingButton = resolveElement(host, "[data-gridline-action='clear-formatting']");
     var deleteRowButton = resolveElement(host, "[data-gridline-action='delete-row']");
     var deleteColumnButton = resolveElement(host, "[data-gridline-action='delete-column']");
@@ -959,6 +990,9 @@
     var freezeRowButton = resolveElement(host, "[data-gridline-action='freeze-row']");
     var freezeColumnButton = resolveElement(host, "[data-gridline-action='freeze-column']");
     var zoomSelect = resolveElement(host, "[data-gridline-action='zoom']");
+    var toolsToggleButton = resolveElement(host, "[data-gridline-action='toggle-tools']");
+    var tableToggleButton = resolveElement(host, "[data-gridline-action='toggle-table']");
+    var fullscreenButton = resolveElement(host, "[data-gridline-action='fullscreen']");
     var dataTypeSelect = resolveElement(host, "[data-gridline-action='data-type']");
     var decimalsSelect = resolveElement(host, "[data-gridline-action='decimals']");
     var statusBar = resolveElement(host, "[data-gridline-role='summary']");
@@ -1010,6 +1044,9 @@
     var contextMenu = null;
     var aiPanel = null;
     var columnAiPanel = null;
+    var toolsCollapsed = !(rootElement && rootElement.dataset && rootElement.dataset.gridlineToolsDefault === "open");
+    var tableHidden = Boolean(rootElement && rootElement.dataset && rootElement.dataset.gridlineTableHidden === "true");
+    var fallbackFullscreen = false;
     var aiState = {
       mode: "table",
       files: cloneFileMeta(options && options.aiFiles),
@@ -1053,7 +1090,10 @@
     readZoomControl();
     if (rootElement && rootElement.classList) {
       rootElement.classList.add("is-gridline-freeze-row", "is-gridline-freeze-column");
+      rootElement.classList.toggle("is-gridline-tools-collapsed", toolsCollapsed);
+      rootElement.classList.toggle("is-gridline-table-hidden", tableHidden);
     }
+    syncGridlineViewButtons();
 
     function setStatus(text, className) {
       var nextClassName = ("status " + (className || "")).trim();
@@ -1111,6 +1151,33 @@
 
     function getCellStyle(row, column) {
       return model.cellStyles && model.cellStyles[cellKey(row, column)] || null;
+    }
+
+    function normalizeSemanticCellText(value) {
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    function getCellSemanticStatus(row, column) {
+      var header = normalizeSemanticCellText([
+        getValue(0, column),
+        getValue(1, column),
+        columnLabel(column),
+      ].join(" "));
+      var value = normalizeSemanticCellText(getValue(row, column));
+      if (row <= 1 || !value || !/(zadovol|ocjena|status|rezultat|pass)/.test(header)) {
+        return "";
+      }
+      if (/^(ne|no|fail|nije)(\b|\s|-)/.test(value) || value.indexOf("ne zadovol") >= 0) {
+        return "negative";
+      }
+      if (/^(da|ok|yes|pass)$/.test(value) || value.indexOf("zadovol") >= 0) {
+        return "positive";
+      }
+      return "";
     }
 
     function syncTitleControlsFromModel() {
@@ -1181,7 +1248,7 @@
         viewportWidth = scrollElement ? Math.max(0, scrollElement.clientWidth - 8) : 0;
         gridWidth = getUnscaledGridWidth();
         zoomLevel = viewportWidth && gridWidth
-          ? Math.max(0.42, Math.min(1, viewportWidth / gridWidth))
+          ? Math.max(0.42, Math.min(1.4, viewportWidth / gridWidth))
           : 1;
       }
       rootElement.style.setProperty("--gridline-zoom", String(Math.round(zoomLevel * 1000) / 1000));
@@ -1207,6 +1274,93 @@
 
     function handleWindowResize() {
       scheduleZoomFit();
+    }
+
+    function isGridlineFullscreen() {
+      return Boolean((document.fullscreenElement && document.fullscreenElement === rootElement) || fallbackFullscreen);
+    }
+
+    function syncGridlineViewButtons() {
+      if (toolsToggleButton) {
+        toolsToggleButton.setAttribute("aria-pressed", toolsCollapsed ? "false" : "true");
+        toolsToggleButton.title = toolsCollapsed ? "Prikazi alate" : "Sakrij alate";
+      }
+      if (tableToggleButton) {
+        tableToggleButton.setAttribute("aria-pressed", tableHidden ? "true" : "false");
+        tableToggleButton.title = tableHidden ? "Prikazi tablicu" : "Sakrij tablicu";
+      }
+      if (fullscreenButton) {
+        fullscreenButton.setAttribute("aria-pressed", isGridlineFullscreen() ? "true" : "false");
+        fullscreenButton.title = isGridlineFullscreen() ? "Izadi iz full screena" : "Full screen tablica";
+      }
+      if (autoBorderFilledButton) {
+        autoBorderFilledButton.setAttribute("aria-pressed", model && model.autoBorderFilled ? "true" : "false");
+        autoBorderFilledButton.title = model && model.autoBorderFilled
+          ? "Iskljuci automatske obrube popunjenih celija"
+          : "Automatski obrubi popunjene celije";
+      }
+    }
+
+    function toggleGridlineTools() {
+      toolsCollapsed = !toolsCollapsed;
+      if (rootElement && rootElement.classList) {
+        rootElement.classList.toggle("is-gridline-tools-collapsed", toolsCollapsed);
+      }
+      syncGridlineViewButtons();
+    }
+
+    function toggleGridlineTable() {
+      tableHidden = !tableHidden;
+      if (rootElement && rootElement.classList) {
+        rootElement.classList.toggle("is-gridline-table-hidden", tableHidden);
+      }
+      syncGridlineViewButtons();
+      scheduleZoomFit();
+    }
+
+    function syncFullscreenState() {
+      if (document.fullscreenElement && document.fullscreenElement !== rootElement) {
+        fallbackFullscreen = false;
+      }
+      if (rootElement && rootElement.classList) {
+        rootElement.classList.toggle("is-gridline-fullscreen", isGridlineFullscreen());
+      }
+      syncGridlineViewButtons();
+      scheduleZoomFit();
+    }
+
+    function toggleGridlineFullscreen() {
+      if (!rootElement) {
+        return;
+      }
+      if (isGridlineFullscreen()) {
+        fallbackFullscreen = false;
+        if (document.fullscreenElement === rootElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(function () {});
+        }
+        syncFullscreenState();
+        return;
+      }
+      if (rootElement.requestFullscreen) {
+        rootElement.requestFullscreen().then(function () {
+          fallbackFullscreen = false;
+          syncFullscreenState();
+        }).catch(function () {
+          fallbackFullscreen = true;
+          syncFullscreenState();
+        });
+      } else {
+        fallbackFullscreen = true;
+        syncFullscreenState();
+      }
+    }
+
+    function toggleAutoBorderFilled() {
+      recordUndo();
+      model.autoBorderFilled = !model.autoBorderFilled;
+      render();
+      scheduleSave();
+      syncGridlineViewButtons();
     }
 
     function applyCellStyleToElement(td, input, style) {
@@ -1294,7 +1448,7 @@
 
     function refreshComputedCells() {
       computedRefreshFrame = 0;
-      Array.prototype.forEach.call(grid.querySelectorAll("input.cell"), function (input) {
+      Array.prototype.forEach.call(grid.querySelectorAll(".cell[data-row][data-column]"), function (input) {
         syncInputDisplay(input, false);
       });
     }
@@ -1317,7 +1471,7 @@
     }
 
     function getInput(row, column) {
-      return grid.querySelector('input[data-row="' + row + '"][data-column="' + column + '"]');
+      return grid.querySelector('.cell[data-row="' + row + '"][data-column="' + column + '"]');
     }
 
     function getCoveringMerge(row, column) {
@@ -1385,26 +1539,14 @@
 
     function updateStatusSummary() {
       var cells;
-      var numericValues;
       var count;
-      var sum;
-      var average;
       var bounds;
       if (!statusBar) {
         return;
       }
       bounds = getSelectionBounds();
       cells = getSelectedCells();
-      numericValues = cells.map(function (cell) {
-        var value = getDisplayValue(cell.row, cell.column);
-        var parsed = Number(String(value == null ? "" : value).trim().replace(",", "."));
-        return Number.isFinite(parsed) ? parsed : null;
-      }).filter(function (value) {
-        return value !== null;
-      });
       count = cells.length;
-      sum = numericValues.reduce(function (total, value) { return total + value; }, 0);
-      average = numericValues.length ? sum / numericValues.length : 0;
       statusBar.innerHTML = "";
       statusBar.appendChild(document.createTextNode("Spremno"));
       if (count > 1) {
@@ -1425,17 +1567,6 @@
         var columnChip = document.createElement("span");
         columnChip.textContent = "Stupac " + columnLabel(bounds.left);
         statusBar.appendChild(columnChip);
-      }
-      if (numericValues.length) {
-        [
-          ["SUM", sum],
-          ["AVERAGE", average],
-          ["COUNT", numericValues.length],
-        ].forEach(function (entry) {
-          var chip = document.createElement("span");
-          chip.textContent = entry[0] + " " + formatNumberForStatus(entry[1]);
-          statusBar.appendChild(chip);
-        });
       }
     }
 
@@ -1715,6 +1846,35 @@
       return td && grid.contains(td) ? td : null;
     }
 
+    function getColumnHeaderFromPoint(clientX, clientY) {
+      var element = document.elementFromPoint(clientX, clientY);
+      var th = element && typeof element.closest === "function"
+        ? element.closest("thead th[data-column]")
+        : null;
+      return th && grid.contains(th) ? th : null;
+    }
+
+    function autoScrollGridNearPointer(clientX, clientY) {
+      var scrollElement = getGridScrollElement();
+      var rect;
+      var edge = 42;
+      var speed = 22;
+      if (!scrollElement || typeof scrollElement.getBoundingClientRect !== "function") {
+        return;
+      }
+      rect = scrollElement.getBoundingClientRect();
+      if (clientY > rect.bottom - edge) {
+        scrollElement.scrollTop += speed;
+      } else if (clientY < rect.top + edge) {
+        scrollElement.scrollTop -= speed;
+      }
+      if (clientX > rect.right - edge) {
+        scrollElement.scrollLeft += speed;
+      } else if (clientX < rect.left + edge) {
+        scrollElement.scrollLeft -= speed;
+      }
+    }
+
     function getCellFromEventTarget(target) {
       var td = target && typeof target.closest === "function"
         ? target.closest("td[data-row][data-column]")
@@ -1733,6 +1893,22 @@
         endColumn: column,
       };
       selectCell(row, column, {
+        focus: false,
+        preserveSelection: true,
+      });
+    }
+
+    function updateColumnHeaderDragRange(column) {
+      if (!selectionDrag) {
+        return;
+      }
+      selection = {
+        startRow: 0,
+        startColumn: selectionDrag.startColumn,
+        endRow: model.rowCount - 1,
+        endColumn: column,
+      };
+      selectCell(active.row, column, {
         focus: false,
         preserveSelection: true,
       });
@@ -1759,6 +1935,14 @@
         return;
       }
       event.preventDefault();
+      autoScrollGridNearPointer(event.clientX, event.clientY);
+      if (selectionDrag.mode === "column-header") {
+        var th = getColumnHeaderFromPoint(event.clientX, event.clientY);
+        if (th) {
+          updateColumnHeaderDragRange(Number(th.dataset.column));
+        }
+        return;
+      }
       td = getCellFromPoint(event.clientX, event.clientY);
       if (!td) {
         return;
@@ -1772,6 +1956,7 @@
         return;
       }
       event.preventDefault();
+      autoScrollGridNearPointer(event.clientX, event.clientY);
       td = getCellFromPoint(event.clientX, event.clientY);
       if (!td) {
         return;
@@ -2079,6 +2264,7 @@
         return;
       }
       event.preventDefault();
+      autoScrollGridNearPointer(event.clientX, event.clientY);
       td = getCellFromPoint(event.clientX, event.clientY);
       if (!td) {
         return;
@@ -2092,6 +2278,7 @@
         return;
       }
       event.preventDefault();
+      autoScrollGridNearPointer(event.clientX, event.clientY);
       td = getCellFromPoint(event.clientX, event.clientY);
       if (!td) {
         return;
@@ -2498,14 +2685,25 @@
       if (columnHeader && grid.contains(columnHeader) && event.button === 0) {
         var headerColumn = Number(columnHeader.dataset.column);
         event.preventDefault();
-        selection = {
+        selectionDrag = {
           startRow: 0,
           startColumn: headerColumn,
-          endRow: model.rowCount - 1,
-          endColumn: headerColumn,
+          pointerId: event.pointerId,
+          captureElement: columnHeader,
+          mode: "column-header",
         };
-        selectCell(active.row, headerColumn, { focus: false, preserveSelection: true });
+        updateColumnHeaderDragRange(headerColumn);
         grid.focus({ preventScroll: true });
+        if (typeof columnHeader.setPointerCapture === "function") {
+          try {
+            columnHeader.setPointerCapture(event.pointerId);
+          } catch (error) {
+            selectionDrag.captureElement = null;
+          }
+        }
+        document.body.classList.add("is-selecting-gridline-cells");
+        document.addEventListener("pointermove", handleSelectionPointerMove);
+        document.addEventListener("pointerup", handleSelectionPointerUp, { once: true });
         return;
       }
       if (rowHeader && grid.contains(rowHeader) && event.button === 0) {
@@ -2750,11 +2948,11 @@
         th.dataset.gridlineColumnHeader = String(column);
         th.style.width = getColumnWidth(column) + "px";
         th.style.minWidth = getColumnWidth(column) + "px";
-        th.classList.toggle("has-ai-column", Boolean(columnAi && columnAi.enabled !== false));
+        th.classList.toggle("has-ai-column", Boolean(enableColumnAiSettings && columnAi && columnAi.enabled !== false));
         th.classList.toggle("is-filtered", Boolean(columnFilters[String(column)]));
-        th.title = columnAi
-          ? "Desni klik: NexAI postavke kolone"
-          : "Povuci rub za promjenu širine. Desni klik: NexAI postavke kolone";
+        th.title = enableColumnAiSettings
+          ? (columnAi ? "Desni klik: NexAI postavke kolone" : "Povuci rub za promjenu sirine. Desni klik: NexAI postavke kolone")
+          : "Povuci rub za promjenu sirine.";
         th.appendChild(document.createTextNode(columnLabel(column)));
         resizer.type = "button";
         resizer.className = "gridline-column-resizer";
@@ -2788,6 +2986,7 @@
         for (column = 0; column < model.columnCount; column += 1) {
           var merge = getCoveringMerge(row, column);
           var cellStyle = getCellStyle(row, column);
+          var semanticStatus = getCellSemanticStatus(row, column);
           if (isCoveredByMerge(row, column)) {
             continue;
           }
@@ -2802,11 +3001,19 @@
             td.rowSpan = merge.rowSpan;
             td.classList.add("is-merged-cell");
           }
+          if (model.autoBorderFilled && String(getValue(row, column)).trim()) {
+            cellStyle = Object.assign({}, cellStyle || {}, { border: (cellStyle && cellStyle.border) || "all" });
+            td.classList.add("is-auto-border-filled");
+          }
+          if (semanticStatus) {
+            td.classList.add("is-gridline-" + semanticStatus + "-result");
+          }
           if (isCellInSelection(row, column)) {
             td.classList.add("is-range-selected");
           }
-          input = document.createElement("input");
+          input = document.createElement("textarea");
           input.className = merge ? "cell is-merged-input" : "cell";
+          input.rows = 1;
           input.autocomplete = "off";
           input.spellcheck = false;
           input.dataset.row = String(row);
@@ -2882,24 +3089,23 @@
       }
     }
 
-    function applyClipboardText(text) {
-      var rows;
+    function applyClipboardMatrix(matrix) {
+      var rows = (Array.isArray(matrix) ? matrix : [])
+        .map(function (row) {
+          return (Array.isArray(row) ? row : [row]).map(function (value) {
+            return String(value == null ? "" : value);
+          });
+        })
+        .filter(function (row) { return row.length > 0; });
       var changedSize = false;
-      var sourceText = String(text == null ? "" : text).replace(/\r/g, "");
-      if (sourceText.indexOf("\t") === -1 && sourceText.indexOf("\n") === -1) {
-        recordUndo();
-        setValue(active.row, active.column, sourceText);
-        render();
-        selectCell(active.row, active.column, { focus: false });
-        scheduleSave();
-        return true;
+      var lastRow;
+      var lastColumn;
+      if (!rows.length) {
+        return false;
       }
       recordUndo();
-      rows = sourceText.split("\n").filter(function (row) {
-        return row.length > 0;
-      });
-      rows.forEach(function (line, rowOffset) {
-        line.split("\t").forEach(function (value, columnOffset) {
+      rows.forEach(function (rowValues, rowOffset) {
+        rowValues.forEach(function (value, columnOffset) {
           var row = active.row + rowOffset;
           var column = active.column + columnOffset;
           var input;
@@ -2916,21 +3122,106 @@
           }
         });
       });
+      lastRow = Math.min(model.rowCount - 1, active.row + rows.length - 1);
+      lastColumn = Math.min(model.columnCount - 1, active.column + rows.reduce(function (max, row) {
+        return Math.max(max, row.length);
+      }, 1) - 1);
       if (changedSize) {
         render();
       }
+      selection = {
+        startRow: active.row,
+        startColumn: active.column,
+        endRow: lastRow,
+        endColumn: lastColumn,
+      };
+      selectCell(active.row, active.column, { focus: false, preserveSelection: true });
       formulaInput.value = getValue(active.row, active.column);
       scheduleSave();
       return true;
     }
 
+    function parseClipboardHtmlTable(html) {
+      var source = String(html || "");
+      var parser;
+      var doc;
+      var table;
+      var matrix = [];
+      if (!source || source.toLowerCase().indexOf("<table") === -1 || typeof DOMParser === "undefined") {
+        return null;
+      }
+      try {
+        parser = new DOMParser();
+        doc = parser.parseFromString(source, "text/html");
+        table = doc.querySelector("table");
+      } catch (error) {
+        table = null;
+      }
+      if (!table) {
+        return null;
+      }
+      Array.prototype.forEach.call(table.rows, function (tr, rowIndex) {
+        var columnIndex = 0;
+        matrix[rowIndex] = matrix[rowIndex] || [];
+        Array.prototype.forEach.call(tr.cells, function (cell) {
+          var rowSpan = clampInteger(cell.getAttribute("rowspan"), 1, 1, 200);
+          var columnSpan = clampInteger(cell.getAttribute("colspan"), 1, 1, 200);
+          var text = String(cell.textContent || "")
+            .replace(/\r/g, "")
+            .replace(/\u00a0/g, " ")
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n[ \t]+/g, "\n")
+            .trim();
+          var rowOffset;
+          var columnOffset;
+          while (matrix[rowIndex][columnIndex] !== undefined) {
+            columnIndex += 1;
+          }
+          for (rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+            matrix[rowIndex + rowOffset] = matrix[rowIndex + rowOffset] || [];
+            for (columnOffset = 0; columnOffset < columnSpan; columnOffset += 1) {
+              matrix[rowIndex + rowOffset][columnIndex + columnOffset] = rowOffset === 0 && columnOffset === 0 ? text : "";
+            }
+          }
+          columnIndex += columnSpan;
+        });
+      });
+      return matrix.map(function (row) {
+        var last = row.length - 1;
+        while (last > 0 && String(row[last] || "") === "") {
+          last -= 1;
+        }
+        return row.slice(0, last + 1).map(function (value) { return value || ""; });
+      }).filter(function (row) {
+        return row.some(function (value) { return String(value || "").trim(); });
+      });
+    }
+
+    function applyClipboardText(text) {
+      var sourceText = String(text == null ? "" : text).replace(/\r/g, "");
+      if (sourceText.indexOf("\t") === -1 && sourceText.indexOf("\n") === -1) {
+        return applyClipboardMatrix([[sourceText]]);
+      }
+      return applyClipboardMatrix(sourceText.split("\n").filter(function (row) {
+        return row.length > 0;
+      }).map(function (line) {
+        return line.split("\t");
+      }));
+    }
+
     function handlePaste(event) {
+      var html = event.clipboardData ? event.clipboardData.getData("text/html") : "";
       var text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
-      if (!text && text !== "") {
+      var matrix = parseClipboardHtmlTable(html);
+      if (!matrix && !text && text !== "") {
         return;
       }
       event.preventDefault();
-      applyClipboardText(text);
+      if (matrix && matrix.length) {
+        applyClipboardMatrix(matrix);
+      } else {
+        applyClipboardText(text);
+      }
     }
 
     function handleCopy(event) {
@@ -3008,6 +3299,35 @@
       row = Number(input.dataset.row);
       column = Number(input.dataset.column);
       setValue(row, column, input.value);
+      if (row === active.row && column === active.column) {
+        formulaInput.value = input.value;
+      }
+      updateReferenceHighlights();
+      scheduleSave();
+    }
+
+    function insertTextIntoCellEditor(input, text) {
+      var start;
+      var end;
+      var row;
+      var column;
+      if (!input || !isInputEditing(input)) {
+        return;
+      }
+      if (input.dataset.gridlineUndoRecorded !== "true") {
+        recordUndo();
+        input.dataset.gridlineUndoRecorded = "true";
+      }
+      start = input.selectionStart == null ? input.value.length : input.selectionStart;
+      end = input.selectionEnd == null ? input.value.length : input.selectionEnd;
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      if (typeof input.setSelectionRange === "function") {
+        input.setSelectionRange(start + text.length, start + text.length);
+      }
+      row = Number(input.dataset.row);
+      column = Number(input.dataset.column);
+      setValue(row, column, input.value);
+      input.dataset.rawValue = input.value;
       if (row === active.row && column === active.column) {
         formulaInput.value = input.value;
       }
@@ -3152,6 +3472,11 @@
       row = input ? Number(input.dataset.row) : active.row;
       column = input ? Number(input.dataset.column) : active.column;
       if (event.key === "Enter") {
+        if (inputIsEditing && event.altKey) {
+          event.preventDefault();
+          insertTextIntoCellEditor(input, "\n");
+          return;
+        }
         if (inputIsEditing) {
           finishCellEdit(input);
         }
@@ -5280,6 +5605,9 @@
     if (borderButton) {
       borderButton.addEventListener("click", toggleSelectedBorder);
     }
+    if (autoBorderFilledButton) {
+      autoBorderFilledButton.addEventListener("click", toggleAutoBorderFilled);
+    }
     if (clearFormattingButton) {
       clearFormattingButton.addEventListener("click", clearSelectedFormatting);
     }
@@ -5348,6 +5676,15 @@
     if (zoomSelect) {
       zoomSelect.addEventListener("change", readZoomControl);
     }
+    if (toolsToggleButton) {
+      toolsToggleButton.addEventListener("click", toggleGridlineTools);
+    }
+    if (tableToggleButton) {
+      tableToggleButton.addEventListener("click", toggleGridlineTable);
+    }
+    if (fullscreenButton) {
+      fullscreenButton.addEventListener("click", toggleGridlineFullscreen);
+    }
     if (titleInput) {
       titleInput.addEventListener("input", handleGridlineTitleInput);
     }
@@ -5356,6 +5693,7 @@
     }
     formulaInput.addEventListener("scroll", syncFormulaHighlightScroll);
     window.addEventListener("resize", handleWindowResize);
+    document.addEventListener("fullscreenchange", syncFullscreenState);
     applyZoom();
     document.addEventListener("click", hideContextMenu);
     document.addEventListener("click", closeValidationPanel);
@@ -5420,6 +5758,7 @@
       formulaInput.removeEventListener("focus", handleFormulaFocus);
       formulaInput.removeEventListener("scroll", syncFormulaHighlightScroll);
       window.removeEventListener("resize", handleWindowResize);
+      document.removeEventListener("fullscreenchange", syncFullscreenState);
       if (zoomSelect) {
         zoomSelect.removeEventListener("change", readZoomControl);
       }

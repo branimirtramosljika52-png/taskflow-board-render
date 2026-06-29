@@ -891,7 +891,7 @@ function drawChecklistPage(pdfDoc, model, checklist, fonts) {
     x: MARGIN_X,
     y,
     width: firstColumnWidth,
-    height: 28,
+    height: 42,
     text: "Predmet pregleda",
     fonts,
     bold: true,
@@ -901,14 +901,14 @@ function drawChecklistPage(pdfDoc, model, checklist, fonts) {
     x: MARGIN_X + firstColumnWidth,
     y,
     width: 104,
-    height: 28,
+    height: 42,
     text: "ZADOVOLJAVA\nDA/NE/NP",
     fonts,
     bold: true,
     fill: TABLE_GRAY,
   });
-  y -= 28;
-  const rowHeight = 24;
+  y -= 42;
+  const rowHeight = 36;
   checklist.items.forEach((item) => {
     if (y - rowHeight < BOTTOM_Y + 10) {
       return;
@@ -1145,7 +1145,7 @@ function getPdfMeasurementColumnWidths(columns = [], metrics = getPdfPageMetrics
 }
 
 function getPdfMeasurementBaseRowHeight(dense = false) {
-  return dense ? 15.2 : 17.4;
+  return dense ? 23 : 26;
 }
 
 function estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts, dense) {
@@ -1166,12 +1166,12 @@ function estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts,
     const text = row.cells?.[column.id] || "";
     maxLines = Math.max(maxLines, wrapText(text, sheet.headerRows.includes(rowIndex) ? fonts.bold : fonts.regular, fontSize, Math.max(4, width - 6)).length || 1);
   });
-  return Math.max(minHeight, Math.ceil((maxLines * lineHeight) + 5));
+  return Math.max(minHeight, Math.ceil((maxLines * lineHeight) + 10));
 }
 
 function drawMeasurementColumnHeader(page, columns, widths, y, fonts, dense, metrics = getPdfPageMetrics()) {
   let cellX = metrics.marginX || MARGIN_X;
-  const headerHeight = dense ? 30 : 36;
+  const headerHeight = dense ? 45 : 54;
   const headerFontSize = dense ? 5.7 : 7.2;
   columns.forEach((column, columnIndex) => {
     drawCell(page, {
@@ -1280,7 +1280,7 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
     const dense = columns.length > 8;
     const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
     const widths = getPdfMeasurementColumnWidths(columns, metrics);
-    const headerHeight = dense ? 30 : 36;
+    const headerHeight = dense ? 45 : 54;
     const tableBudget = Math.max(80, metrics.topY - 106 - metrics.bottomY);
     const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
     const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
@@ -1375,6 +1375,9 @@ function drawSignatureText(page, model, fonts, x, y, width, {
   fieldName = "",
   signatureImage = null,
 } = {}) {
+  if (!clean(model.responsiblePerson)) {
+    return;
+  }
   drawTextLine(page, "Ispitivač", {
     x,
     y,
@@ -1541,17 +1544,19 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     font: fonts.bold,
     size: 9.2,
   });
-  drawTextLine(page, "Dokaze iz Zapisnika ocijenio:", {
-    x: PAGE_WIDTH - MARGIN_X - 230,
-    y: 154,
-    width: 230,
-    align: "center",
-    font: fonts.regular,
-    size: 8,
-  });
-  drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230, {
-    signatureImage,
-  });
+  if (clean(model.responsiblePerson)) {
+    drawTextLine(page, "Dokaze iz Zapisnika ocijenio:", {
+      x: PAGE_WIDTH - MARGIN_X - 230,
+      y: 154,
+      width: 230,
+      align: "center",
+      font: fonts.regular,
+      size: 8,
+    });
+    drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230, {
+      signatureImage,
+    });
+  }
   drawFooter(page, "SPR-4/4", fonts);
   return page;
 }

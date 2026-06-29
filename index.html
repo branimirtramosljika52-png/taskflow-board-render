@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260629-gridline-excel-polish-v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260629-gridline-output-parity-v3" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -6659,7 +6659,7 @@
                             <select id="documentation-spr-object-select" aria-label="Odaberi objekt"></select>
                             <button type="button" id="documentation-spr-object-add" class="ghost-button" title="Dodaj objekt u ovaj zapisnik">+</button>
                           </div>
-                          <input data-documentation-spr-field="inspectionObject" type="text" placeholder="Naziv objekta" />
+                          <input data-documentation-spr-field="inspectionObject" type="hidden" />
                         </label>
                         <label class="field documentation-spr-field is-span-3">
                           <span>Datum ispitivanja</span>
@@ -6897,6 +6897,10 @@
                           </div>
                           <div class="documentation-gridline-actions">
                             <span class="status is-saved" data-gridline-role="status">Spremno</span>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-tools" title="Prikaži alate" aria-label="Prikaži alate">☰</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-table" title="Sakrij tablicu" aria-label="Sakrij tablicu">▤</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="fullscreen" title="Full screen tablica" aria-label="Full screen tablica">⛶</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="auto-border-filled" title="Automatski obrubi popunjene ćelije" aria-label="Automatski obrubi popunjene ćelije">▦</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="save" title="Spremi">▣</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="export" title="Izvoz">⇩</button>
                             <span class="gridline-toolbar-separator" aria-hidden="true"></span>
@@ -6934,7 +6938,6 @@
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="delete-column" title="Obriši stupac">C-</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-asc" title="Sortiraj A-Z">A↓</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-desc" title="Sortiraj Z-A">Z↓</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="filter" title="Filter">⌄</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="find" title="Pronađi">⌕</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="clear-formatting" title="Očisti formatiranje">Tx</button>
                             <select class="gridline-toolbar-select" data-gridline-action="data-type" title="Tip podatka">
@@ -11478,9 +11481,9 @@
 
     <script src="/assets/vendor/leaflet.js"></script>
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
-    <script src="/gridline.js?v=20260629-gridline-excel-formula-v2"></script>
+    <script src="/gridline.js?v=20260629-gridline-output-parity-v3"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260629-gridline-excel-polish-v2"></script>
+    <script type="module" src="/src/main.js?v=20260629-gridline-output-parity-v3"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>
