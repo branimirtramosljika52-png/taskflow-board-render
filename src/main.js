@@ -89521,6 +89521,63 @@ function isDocumentTemplateRuntimeVisibleField(field = {}) {
   return type !== "page_break";
 }
 
+function getDocumentTemplateRuntimeBasicLookup(value = "") {
+  return normalizeLooseName(value).replace(/\s+/g, "");
+}
+
+function isDocumentTemplateRuntimeStandardBasicChapter(field = {}) {
+  const lookup = getDocumentTemplateRuntimeBasicLookup([
+    field?.id,
+    field?.key,
+    field?.label,
+    field?.wordLabel,
+    field?.defaultValue,
+    field?.helpText,
+  ].filter(Boolean).join(" "));
+  return lookup.includes("chapterbasic")
+    || lookup.includes("osnovnipodaci")
+    || lookup.includes("osnovno")
+    || lookup.includes("opcipodaci");
+}
+
+function isDocumentTemplateRuntimeStandardBasicField(field = {}) {
+  const lookupValues = [
+    field?.id,
+    field?.key,
+    field?.name,
+    field?.label,
+    field?.wordLabel,
+    field?.source,
+    field?.tokenKey,
+    field?.placeholder,
+  ].map(getDocumentTemplateRuntimeBasicLookup).filter(Boolean);
+  return lookupValues.some((lookup) => (
+    [
+      "documentnumber",
+      "brojzapisnika",
+      "brojdokumenta",
+      "inspectiondate",
+      "datumispitivanja",
+      "issueddate",
+      "datumizdavanja",
+      "testinglocation",
+      "mjestoispitivanja",
+      "inspectiontype",
+      "vrstaispitivanja",
+      "companyname",
+      "tvrtka",
+      "companyoib",
+      "oib",
+      "companyheadquarters",
+      "sjediste",
+      "customer",
+      "korisnik",
+      "object",
+      "objekt",
+    ].includes(lookup)
+  ));
+}
+
 function getDocumentTemplateFieldDefaultRuntimeValue(field = {}) {
   if (String(field?.type || "").trim().toLowerCase() === "system_description") {
     return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field);
@@ -89819,6 +89876,12 @@ function buildDocumentTemplateRuntimeBlockGroups(fields = documentTemplateFieldD
       return;
     }
 
+    if (currentBlock?.chapter
+      && isDocumentTemplateRuntimeStandardBasicChapter(currentBlock.chapter)
+      && isDocumentTemplateRuntimeStandardBasicField(field)) {
+      return;
+    }
+
     if (!currentBlock) {
       currentBlock = {
         chapter: null,
@@ -89831,7 +89894,10 @@ function buildDocumentTemplateRuntimeBlockGroups(fields = documentTemplateFieldD
     currentBlock.items.push({ field, index });
   });
 
-  return blocks;
+  return blocks.filter((block) => (
+    block.items.length > 0
+    || !isDocumentTemplateRuntimeStandardBasicChapter(block.chapter)
+  ));
 }
 
 function getDocumentTemplateRuntimeBlockId(block = {}, blockIndex = 0) {

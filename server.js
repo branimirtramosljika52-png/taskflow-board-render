@@ -23247,11 +23247,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       helpText: field.helpText || "Tehnički podatak iz predloška zapisnika.",
     });
   });
+  const nativeBasicBlockIds = new Set([
+    "chapter-basic",
+    "documentNumber",
+    "inspectionDate",
+    "issuedDate",
+    "testingLocation",
+    "inspectionType",
+  ]);
   const fieldBlocks = [
-    buildMobileNativeDocumentationBlock("chapter-basic", "Osnovni podaci", "chapter", {
-      typeLabel: "Poglavlje",
-      summary: "Tvrtka, objekt, datumi, broj zapisnika i vrsta ispitivanja.",
-    }),
     buildMobileNativeDocumentationBlock("documentNumber", "Broj zapisnika", "text", {
       group: "Osnovni podaci",
       summary: documentNumber,
@@ -23343,7 +23347,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       group: "Dodaj dokumente",
       summary: "Dodaj PDF, sken, kameru, slike ili datoteku iza zapisnika.",
     }),
-  ];
+  ].filter((block) => !nativeBasicBlockIds.has(String(block?.id || "")));
   return {
     id: `native-${preset.serviceCode.toLowerCase()}-${serviceIndex}`,
     title: preset.title,
