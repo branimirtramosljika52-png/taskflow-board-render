@@ -24946,7 +24946,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 ) {
                     Column(modifier = Modifier.widthIn(min = 190.dp, max = 270.dp)) {
                         Text(
-                            "Izrada dokumentacije",
+                            "Izrada zapisnika",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black,
                             maxLines = 1,
@@ -24979,7 +24979,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 }
             } else {
                 Column {
-                    Text("Izrada dokumentacije", fontWeight = FontWeight.Black)
+                    Text("Izrada zapisnika", fontWeight = FontWeight.Black)
                     Text(
                         text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
                         style = MaterialTheme.typography.labelMedium,
@@ -29536,14 +29536,16 @@ private fun DocumentationSprMobileWorkspace(
     val sourceLabel = remember(templates) { documentationSprMobileSourceLabel(templates) }
     val menuEntries = remember(templates) {
         templates.flatMap { template ->
-            buildTemplateBlockSections(template.fieldBlocks).mapIndexed { index, section ->
-                DocumentationSprMenuEntry(
-                    key = "${template.id}:${section.id}",
-                    template = template,
-                    section = section,
-                    index = index,
-                )
-            }
+            buildTemplateBlockSections(template.fieldBlocks)
+                .filterNot(::isSharedDocumentationTemplateSection)
+                .map { section -> template to section }
+        }.mapIndexed { index, (template, section) ->
+            DocumentationSprMenuEntry(
+                key = "${template.id}:${section.id}",
+                template = template,
+                section = section,
+                index = index,
+            )
         }
     }
     val fallbackFieldTemplates = remember(templates) {
@@ -32077,6 +32079,31 @@ private fun TemplateBlockSection.lookupText(): String =
 private fun isBasicTemplateSection(section: TemplateBlockSection): Boolean {
     val lookup = section.lookupText()
     return lookup.contains("osnovn") || lookup.contains("opci podaci")
+}
+
+private fun isSharedDocumentationTemplateSection(section: TemplateBlockSection): Boolean {
+    val sectionLookup = normalizeTemplateSectionLookup(
+        listOf(section.title, section.subtitle, section.header?.label.orEmpty(), section.header?.summary.orEmpty())
+            .joinToString(" "),
+    )
+    val blockTypes = section.blocks
+        .map { it.type.trim().lowercase(Locale.getDefault()) }
+        .toSet()
+    val sharedBlockTypes = setOf(
+        "equipment_list",
+        "legal_list",
+        "qualified_inspectors",
+        "inspector_signature",
+        "authorization_holder_signature",
+        "digital_signature",
+    )
+
+    return sectionLookup.contains("osnovni podaci") ||
+        sectionLookup.contains("opci podaci") ||
+        sectionLookup.contains("mjerna i ispitna oprema") ||
+        sectionLookup.contains("primijenjeni propisi") ||
+        (sectionLookup.contains("osobe") && sectionLookup.contains("ovlast")) ||
+        blockTypes.any { it in sharedBlockTypes }
 }
 
 private fun isEquipmentTemplateSection(section: TemplateBlockSection): Boolean {
