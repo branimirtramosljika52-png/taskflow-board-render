@@ -40897,8 +40897,10 @@ body.is-vehicle-usage-open {
 
 .documentation-spr-paper-simple-header {
   position: relative;
-  min-height: 86px;
-  padding: 19px 86px 11px;
+  height: 66pt;
+  min-height: 66pt;
+  padding: 15pt 86pt 7pt;
+  box-sizing: border-box;
   border: 1px solid #111;
   text-align: center;
 }
@@ -40935,6 +40937,13 @@ body.is-vehicle-usage-open {
   height: 209.5mm;
   min-height: 0;
   padding: 10mm 9mm 44mm;
+}
+
+.documentation-spr-paper.is-landscape .documentation-spr-paper-simple-header {
+  height: 58pt;
+  min-height: 58pt;
+  padding-top: 12pt;
+  padding-bottom: 6pt;
 }
 
 .documentation-spr-paper-measure-title {
@@ -41028,9 +41037,10 @@ body.is-vehicle-usage-open {
 }
 
 .documentation-spr-paper-conclusion-page .documentation-spr-paper-simple-header {
-  min-height: 74px;
-  padding-top: 15px;
-  padding-bottom: 7px;
+  height: 66pt;
+  min-height: 66pt;
+  padding-top: 15pt;
+  padding-bottom: 7pt;
 }
 
 .documentation-spr-paper-conclusion-page .documentation-spr-paper-signature-area {

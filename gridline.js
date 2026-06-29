@@ -1615,6 +1615,10 @@
       if (event.button !== 0) {
         return;
       }
+      if (selectionDrag && selectionDrag.mode === "pointer") {
+        event.preventDefault();
+        return;
+      }
       if (handle && grid.contains(handle)) {
         event.preventDefault();
         event.stopPropagation();
@@ -2315,10 +2319,10 @@
             finishCellEdit(pointerEditingInput);
           }
         }
-        if (event.pointerType === "mouse") {
-          return;
-        }
         event.preventDefault();
+        closeValidationPanel();
+        closeFilterPanel();
+        hideContextMenu();
         if (document.activeElement === formulaInput && String(formulaInput.value || "").trim().startsWith("=")) {
           insertFormulaReference(formatCellReference(Number(cell.dataset.row), Number(cell.dataset.column)));
           return;
@@ -2725,6 +2729,16 @@
     function handleFocusIn(event) {
       var input = getClosestCellInput(event.target);
       if (!input) {
+        return;
+      }
+      if (selectionDrag) {
+        if (!isInputEditing(input)) {
+          window.setTimeout(function () {
+            if (!isInputEditing(input) && document.activeElement === input) {
+              grid.focus({ preventScroll: true });
+            }
+          }, 0);
+        }
         return;
       }
       selectCell(Number(input.dataset.row), Number(input.dataset.column), { focus: false });

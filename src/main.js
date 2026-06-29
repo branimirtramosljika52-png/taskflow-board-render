@@ -57410,7 +57410,7 @@ function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
     enabledFieldId: String(table.enabledFieldId || `use-${key}`).trim(),
     assessmentLabel: String(table.assessmentLabel || "").trim(),
     chapterTitle: String(table.chapterTitle || "").trim(),
-    pageOrientation: normalizeDocumentationSprPageOrientation(table.pageOrientation || table.orientation),
+    pageOrientation: getDocumentationSprMeasurementPageOrientation(table),
     sheet: cloneDocumentationSprMeasurementSheet(table.sheet),
   };
 }
@@ -62899,6 +62899,16 @@ function buildDocumentationSprPdfStyles() {
       margin: 0;
     }
 
+    @page documentation-spr-portrait {
+      size: A4 portrait;
+      margin: 0;
+    }
+
+    @page documentation-spr-landscape {
+      size: A4 landscape;
+      margin: 0;
+    }
+
     *,
     *::before,
     *::after {
@@ -62968,12 +62978,21 @@ function buildDocumentationSprPdfStyles() {
       overflow: hidden;
       break-after: page;
       page-break-after: always;
+      page: documentation-spr-portrait;
     }
 
     .documentation-spr-paper.is-landscape {
       width: 297mm;
       height: 209.5mm;
       padding: 10mm 9mm 44mm;
+      page: documentation-spr-landscape;
+    }
+
+    .documentation-spr-paper.is-landscape .documentation-spr-paper-simple-header {
+      height: 58pt;
+      min-height: 58pt;
+      padding-top: 12pt;
+      padding-bottom: 6pt;
     }
 
     .documentation-spr-paper:last-child {
@@ -63145,8 +63164,10 @@ function buildDocumentationSprPdfStyles() {
 
     .documentation-spr-paper-simple-header {
       position: relative;
-      min-height: 82px;
-      padding: 19px 90px 8px;
+      height: 66pt;
+      min-height: 66pt;
+      padding: 15pt 86pt 7pt;
+      box-sizing: border-box;
       border: 1px solid #111;
       text-align: center;
     }
@@ -63155,6 +63176,11 @@ function buildDocumentationSprPdfStyles() {
       display: block;
       margin-bottom: 4px;
       font-size: 12pt;
+      line-height: 1.16;
+    }
+
+    .documentation-spr-paper-simple-header strong + strong {
+      font-size: 11.2pt;
     }
 
     .documentation-spr-paper-rn {
@@ -63273,9 +63299,10 @@ function buildDocumentationSprPdfStyles() {
     }
 
     .documentation-spr-paper-conclusion-page .documentation-spr-paper-simple-header {
-      min-height: 74px;
-      padding-top: 15px;
-      padding-bottom: 7px;
+      height: 66pt;
+      min-height: 66pt;
+      padding-top: 15pt;
+      padding-bottom: 7pt;
     }
 
     .documentation-spr-paper-conclusion-page .documentation-spr-paper-signature-area {
@@ -63481,7 +63508,7 @@ let documentationSprPdfGeneratorPromise = null;
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260628-native-tables-v1");
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260629-preview-pdf-parity-v1");
   }
   return documentationSprPdfGeneratorPromise;
 }
