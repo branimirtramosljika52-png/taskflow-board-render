@@ -57071,6 +57071,8 @@ function createDefaultDocumentationSprModel() {
     responsiblePersonUserId: "",
     fieldSettings: {},
     attachments: [],
+    checklists: reportDefaults.checklists || [],
+    measurementAssessments: reportDefaults.measurementAssessments || [],
     measurementTables: reportDefaults.measurementTables,
     gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService("SPR")),
   };
@@ -57180,6 +57182,11 @@ function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
     label: String(table.label || table.summary || `Tablica ${index + 1}`).trim(),
     helpText: String(table.helpText || "").trim(),
     summary: String(table.summary || table.label || `Tablica ${index + 1}`).trim(),
+    enabled: table.enabled !== false,
+    enabledByDefault: table.enabledByDefault !== false,
+    enabledFieldId: String(table.enabledFieldId || `use-${key}`).trim(),
+    assessmentLabel: String(table.assessmentLabel || "").trim(),
+    chapterTitle: String(table.chapterTitle || "").trim(),
     sheet: cloneDocumentationSprMeasurementSheet(table.sheet),
   };
 }
@@ -57190,6 +57197,56 @@ function normalizeDocumentationSprMeasurementTables(value = [], model = {}) {
     ? value
     : createDocumentationMeasurementTablesForService(serviceCode);
   return source.map((table, index) => cloneDocumentationSprMeasurementTable(table, index));
+}
+
+function cloneDocumentationSprChecklist(checklist = {}, index = 0) {
+  const key = String(checklist.key || checklist.id || `checklist-${index + 1}`).trim();
+  const options = Array.isArray(checklist.options) && checklist.options.length
+    ? checklist.options
+    : ["DA", "NE", "NP"].map((value) => ({ value, label: value }));
+  return {
+    id: String(checklist.id || key || `checklist-${index + 1}`).trim(),
+    key,
+    tokenKey: String(checklist.tokenKey || key.toUpperCase().replace(/[^A-Z0-9]+/g, "_")).trim(),
+    label: String(checklist.label || `Checklist ${index + 1}`).trim(),
+    summary: String(checklist.summary || checklist.label || "").trim(),
+    enabled: checklist.enabled !== false,
+    enabledByDefault: checklist.enabledByDefault !== false,
+    enabledFieldId: String(checklist.enabledFieldId || `use-${key}`).trim(),
+    assessmentLabel: String(checklist.assessmentLabel || "").trim(),
+    options: options.map((option) => ({
+      value: String(option?.value || option?.label || "").trim(),
+      label: String(option?.label || option?.value || "").trim(),
+    })).filter((option) => option.value || option.label),
+    items: (Array.isArray(checklist.items) ? checklist.items : []).map((item, itemIndex) => ({
+      id: String(item?.id || `${key}-${itemIndex + 1}`).trim(),
+      key: String(item?.key || item?.id || `${key}-${itemIndex + 1}`).trim(),
+      tokenKey: String(item?.tokenKey || `${key}-${itemIndex + 1}`.toUpperCase().replace(/[^A-Z0-9]+/g, "_")).trim(),
+      label: String(item?.label || `Stavka ${itemIndex + 1}`).trim(),
+      defaultValue: String(item?.defaultValue || "DA").trim(),
+    })),
+  };
+}
+
+function normalizeDocumentationSprChecklists(value = [], model = {}) {
+  const serviceCode = getDocumentationSprServiceCode(model);
+  const fallback = createDocumentationReportModelDefaults(serviceCode).checklists || [];
+  const source = Array.isArray(value) && value.length > 0 ? value : fallback;
+  return source.map((checklist, index) => cloneDocumentationSprChecklist(checklist, index));
+}
+
+function normalizeDocumentationSprMeasurementAssessments(value = [], model = {}) {
+  const serviceCode = getDocumentationSprServiceCode(model);
+  const fallback = createDocumentationReportModelDefaults(serviceCode).measurementAssessments || [];
+  const source = Array.isArray(value) && value.length > 0 ? value : fallback;
+  return source.map((entry, index) => ({
+    id: String(entry?.id || `assessment-${index + 1}`).trim(),
+    key: String(entry?.key || entry?.id || `assessment-${index + 1}`).trim(),
+    label: String(entry?.label || `Ocjena ${index + 1}`).trim(),
+    enabledFieldId: String(entry?.enabledFieldId || "").trim(),
+    defaultValue: String(entry?.defaultValue || "ZADOVOLJAVA").trim(),
+    value: String(entry?.value || entry?.defaultValue || "ZADOVOLJAVA").trim(),
+  }));
 }
 
 function normalizeDocumentationSprLayoutPreset(value = "") {
@@ -57242,6 +57299,8 @@ function normalizeDocumentationSprModel(value) {
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
     technicalData: String(source.technicalData || fallback.technicalData || "").trim(),
+    checklists: normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
+    measurementAssessments: normalizeDocumentationSprMeasurementAssessments(source.measurementAssessments, { ...fallback, ...source }),
     measurementTables: normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
@@ -57631,6 +57690,8 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     assessmentLabel: preset.assessmentLabel || reportDefaults.assessmentLabel,
     conclusionLead: preset.conclusionLead || reportDefaults.conclusionLead,
     validitySentence: preset.validitySentence || reportDefaults.validitySentence,
+    checklists: reportDefaults.checklists || [],
+    measurementAssessments: reportDefaults.measurementAssessments || [],
     measurementTables: reportDefaults.measurementTables,
     gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService(reportDefaults.serviceCode)),
     recordNumber: `25-1287-${preset.serviceCode || "SPR"}`,
@@ -57693,6 +57754,8 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       assessmentLabel: nativeModel.assessmentLabel,
       conclusionLead: nativeModel.conclusionLead,
       validitySentence: nativeModel.validitySentence,
+      checklists: nativeModel.checklists,
+      measurementAssessments: nativeModel.measurementAssessments,
       measurementTables: nativeModel.measurementTables,
       gridlineModel: nativeModel.gridlineModel,
     }),
@@ -60912,7 +60975,8 @@ function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fall
 
 function getDocumentationSprMeasurementTablesForModel(model = documentationSprModel) {
   const normalized = normalizeDocumentationSprModel(model);
-  const tables = normalizeDocumentationSprMeasurementTables(normalized.measurementTables, normalized);
+  const tables = normalizeDocumentationSprMeasurementTables(normalized.measurementTables, normalized)
+    .filter((table) => table.enabled !== false);
   if (!tables.length) {
     return [];
   }
@@ -61046,6 +61110,18 @@ function getDocumentationSprAssessmentLabel(model = documentationSprModel) {
   return String(model?.assessmentLabel || preset.assessmentLabel || "Rezultat ispitivanja").trim();
 }
 
+function getDocumentationSprChecklistsForModel(model = documentationSprModel) {
+  const normalized = normalizeDocumentationSprModel(model);
+  return normalizeDocumentationSprChecklists(normalized.checklists, normalized)
+    .filter((checklist) => checklist.enabled !== false)
+    .filter((checklist) => checklist.items.length > 0);
+}
+
+function getDocumentationSprMeasurementAssessmentsForModel(model = documentationSprModel) {
+  const normalized = normalizeDocumentationSprModel(model);
+  return normalizeDocumentationSprMeasurementAssessments(normalized.measurementAssessments, normalized);
+}
+
 function getDocumentationSprConclusionLead(model = documentationSprModel) {
   const preset = getDocumentationNativeReportPreset(getDocumentationSprServiceCode(model));
   return String(model?.conclusionLead || preset.conclusionLead || "Temeljem rezultata pregleda i ispitivanja može se zaključiti da predmetni sustav na dan predmetnog ispitivanja").trim();
@@ -61111,6 +61187,39 @@ function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
+}
+
+function renderDocumentationSprChecklistPage(model, checklist, pageNumber = 3, totalPages = 4) {
+  const rows = (checklist.items || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.label || "")}</td>
+      <td><strong>${escapeHtml(item.value || item.defaultValue || "DA")}</strong></td>
+    </tr>
+  `).join("");
+  return `
+    <section class="documentation-spr-paper">
+      ${renderDocumentationSprSimpleHeader(model)}
+      <div class="documentation-spr-paper-measure-title">
+        ${escapeHtml(checklist.label || "Vizualni pregled")}
+        ${checklist.summary ? `<small>${escapeHtml(checklist.summary)}</small>` : ""}
+      </div>
+      <table class="documentation-spr-paper-measure-table is-regular documentation-spr-paper-checklist">
+        <thead>
+          <tr>
+            <th><span>Predmet pregleda</span></th>
+            <th><span>ZADOVOLJAVA</span><small>DA/NE/NP</small></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
+    </section>
+  `;
+}
+
+function renderDocumentationSprChecklistPages(model, startPageNumber = 3, totalPages = 4) {
+  return getDocumentationSprChecklistsForModel(model)
+    .map((checklist, index) => renderDocumentationSprChecklistPage(model, checklist, startPageNumber + index, totalPages));
 }
 
 function renderDocumentationSprMeasurementTableHead(table = {}) {
@@ -61191,6 +61300,7 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
   const defects = showDefects ? renderDocumentationSprLineList(model.defects) : "";
   const recommendations = renderDocumentationSprLineList(model.recommendations);
   const sectionOffset = getDocumentationSprSectionOffset(model);
+  const assessmentRows = getDocumentationSprMeasurementAssessmentsForModel(model);
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model)}
@@ -61205,7 +61315,9 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
       ${renderDocumentationSprSectionTitle(8 + sectionOffset, "OCJENA REZULTATA ISPITIVANJA")}
       <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:</p>
       <table class="documentation-spr-paper-kv">
-        <tr><td>${escapeHtml(getDocumentationSprAssessmentLabel(model))}</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>
+        ${assessmentRows.length > 0
+          ? assessmentRows.map((entry) => `<tr><td>${escapeHtml(entry.label)}</td><td><strong>${escapeHtml(entry.value || entry.defaultValue || "ZADOVOLJAVA")}</strong></td></tr>`).join("")
+          : `<tr><td>${escapeHtml(getDocumentationSprAssessmentLabel(model))}</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>`}
       </table>
       ${renderDocumentationSprSectionTitle(9 + sectionOffset, "ZAKLJUČAK")}
       <p>${escapeHtml(getDocumentationSprConclusionLead(model))}</p>
@@ -61258,14 +61370,17 @@ function renderDocumentationSprAttachmentPreviewPages(model, startPageNumber = 5
 
 function renderDocumentationSprPages(model) {
   const effectiveModel = applyDocumentationSprGlobalHeaderToModel(model);
-  const measurementPages = renderDocumentationSprMeasurementPages(effectiveModel, 3, 4);
+  const checklistPages = renderDocumentationSprChecklistPages(effectiveModel, 3, 4);
+  const measurementPages = renderDocumentationSprMeasurementPages(effectiveModel, 3 + checklistPages.length, 4);
   const attachmentPageCount = getDocumentationSprAttachmentPageCount(effectiveModel?.attachments);
-  const totalPages = 3 + measurementPages.length + attachmentPageCount;
-  const refreshedMeasurementPages = renderDocumentationSprMeasurementPages(effectiveModel, 3, totalPages);
-  const conclusionPageNumber = 3 + refreshedMeasurementPages.length;
+  const totalPages = 3 + checklistPages.length + measurementPages.length + attachmentPageCount;
+  const refreshedChecklistPages = renderDocumentationSprChecklistPages(effectiveModel, 3, totalPages);
+  const refreshedMeasurementPages = renderDocumentationSprMeasurementPages(effectiveModel, 3 + refreshedChecklistPages.length, totalPages);
+  const conclusionPageNumber = 3 + refreshedChecklistPages.length + refreshedMeasurementPages.length;
   return [
     renderDocumentationSprPageOne(effectiveModel, 1, totalPages),
     renderDocumentationSprPageTwo(effectiveModel, 2, totalPages),
+    ...refreshedChecklistPages,
     ...refreshedMeasurementPages,
     renderDocumentationSprPageFour(effectiveModel, conclusionPageNumber, totalPages),
     ...renderDocumentationSprAttachmentPreviewPages(effectiveModel, conclusionPageNumber + 1, totalPages),
@@ -61625,6 +61740,18 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-measure-table.is-dense th,
     .documentation-spr-paper-measure-table.is-dense td {
       padding: 3px 2px;
+    }
+
+    .documentation-spr-paper-checklist th:first-child,
+    .documentation-spr-paper-checklist td:first-child {
+      width: auto !important;
+      text-align: left;
+    }
+
+    .documentation-spr-paper-checklist th:last-child,
+    .documentation-spr-paper-checklist td:last-child {
+      width: 118px !important;
+      text-align: center;
     }
 
     .documentation-spr-paper-measure-table th:nth-child(1) {
@@ -62358,6 +62485,8 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     SIGNATURE_MODE: normalized.signatureMode || "digital",
     NACIN_POTPISA: normalized.signatureMode || "digital",
     DOCUMENTATION_SPR_GRIDLINE_MODEL: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
+    DOCUMENTATION_NATIVE_CHECKLISTS: getDocumentationSprChecklistsForModel(normalized),
+    DOCUMENTATION_NATIVE_MEASUREMENT_ASSESSMENTS: getDocumentationSprMeasurementAssessmentsForModel(normalized),
     DOCUMENTATION_NATIVE_MEASUREMENT_TABLES: getDocumentationSprMeasurementTablesForModel(normalized),
   };
   if (validUntil) {
@@ -131881,6 +132010,11 @@ function getDocumentationSprTemplateEnvironmentLookupText(entry = {}) {
       table?.label,
       table?.summary,
       ...(Array.isArray(table?.sheet?.columns) ? table.sheet.columns.map((column) => column?.label || column?.key || "") : []),
+    ]) : []),
+    ...(Array.isArray(model?.checklists) ? model.checklists.flatMap((checklist) => [
+      checklist?.label,
+      checklist?.summary,
+      ...(Array.isArray(checklist?.items) ? checklist.items.map((item) => item?.label || item?.key || "") : []),
     ]) : []),
     ...(Array.isArray(model?.customFields) ? model.customFields.flatMap((field) => [
       field?.id,

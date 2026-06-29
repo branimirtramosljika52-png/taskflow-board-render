@@ -157,6 +157,10 @@ function tableSpec({
   rows = null,
   blankRowCount = DEFAULT_ROW_COUNT,
   blankSeed = {},
+  enabledByDefault = true,
+  enabledFieldId = "",
+  assessmentLabel = "",
+  chapterTitle = "",
 }) {
   const key = id;
   return {
@@ -165,6 +169,10 @@ function tableSpec({
     tokenKey: normalizeCode(id).replace(/[^A-Z0-9]+/g, "_"),
     label,
     summary: summary || label,
+    enabledByDefault,
+    enabledFieldId: enabledFieldId || `use-${id}`,
+    assessmentLabel,
+    chapterTitle,
     columns,
     rows: rows || blankRows(columns, blankRowCount, blankSeed),
   };
@@ -230,6 +238,7 @@ const EIZ_ZUDS_COLUMNS = [
   makeColumn("board", "Razdjelnik", 90),
   makeColumn("circuit", "Strujni krug", 110),
   makeColumn("inCurrent", "In [A]", 76),
+  makeColumn("separator", "/", 32),
   makeColumn("idn", "IΔn [mA]", 86),
   makeColumn("iisk", "Iisk [mA]", 84),
   makeColumn("tisk", "tisk [ms]", 84),
@@ -241,7 +250,7 @@ const EIZ_IPK_COLUMNS = [
   makeColumn("number", "R.br.", 54),
   makeColumn("place", "Mjerno mjesto", 150),
   makeColumn("circuit", "Oznaka strujnog kruga", 104),
-  makeColumn("protectionType", "Tip i karakteristika zastitnog uredaja", 165),
+  makeColumn("protectionType", "Tip i karakteristika zaštitnog uređaja", 165),
   makeColumn("idnIa", "IΔn / Ia [A]", 84),
   makeColumn("td", "td [s]", 64),
   makeColumn("zLpe", "Z(L-PE) [Ω]", 88),
@@ -255,7 +264,7 @@ const EIZ_IPK_COLUMNS = [
 const EIZ_OI_COLUMNS = [
   makeColumn("number", "R.br.", 54),
   makeColumn("circuit", "Oznaka strujnog kruga", 145),
-  makeColumn("conductor", "Vrsta vodica", 104),
+  makeColumn("conductor", "Vrsta vodiča", 104),
   makeColumn("l123", "Riso L1-L2-L3 [MΩ]", 112),
   makeColumn("l123n", "Riso L1-L2-L3-N [MΩ]", 132),
   makeColumn("l123pe", "Riso L1-L2-L3-PE [MΩ]", 142),
@@ -329,6 +338,34 @@ const EIZ_VISUAL_RESULTS = [
   "DA",
   "DA",
 ];
+
+const EIZ_VISUAL_CHECKLIST = Object.freeze({
+  id: "eiz-visual",
+  key: "eiz-visual",
+  tokenKey: "EIZ_VISUAL",
+  label: "VIZUALNI PREGLED ELEKTRIČNE INSTALACIJE",
+  summary: "IL - EIZ.V",
+  enabledFieldId: "use-eiz-visual",
+  enabledByDefault: true,
+  assessmentLabel: "Zaštita od izravnog (direktnog) dodira dijelova pod naponom",
+  options: ["DA", "NE", "NP"].map((value) => ({ value, label: value })),
+  items: EIZ_VISUAL_ITEMS.map((label, index) => ({
+    id: `eiz-visual-${index + 1}`,
+    key: `eiz-visual-${index + 1}`,
+    tokenKey: `EIZ_VISUAL_${index + 1}`,
+    label,
+    defaultValue: EIZ_VISUAL_RESULTS[index] || "DA",
+  })),
+});
+
+const EIZ_MEASUREMENT_ASSESSMENTS = Object.freeze([
+  { id: "eiz-visual", label: "Zaštita od izravnog (direktnog) dodira dijelova pod naponom", enabledFieldId: "use-eiz-visual" },
+  { id: "eiz-ipk", label: "Zaštita od indirektnog dodira", enabledFieldId: "use-eiz-ipk" },
+  { id: "eiz-oi", label: "Otpor izolacije vodova", enabledFieldId: "use-eiz-oi" },
+  { id: "eiz-k-bonding", label: "Povezanost metalnih masa", enabledFieldId: "use-eiz-k" },
+  { id: "eiz-k-continuity", label: "Kontinuitet zaštitnog vodiča", enabledFieldId: "use-eiz-k" },
+  { id: "eiz-zuds", label: "Ispitivanje ZUDS nazivnom i rastućom strujom kvara", enabledFieldId: "use-eiz-zuds" },
+]);
 
 const SZOMV_ITEMS = [
   "Vrsta hvataljki - mreza vodica",
@@ -1421,56 +1458,56 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
   }),
   EIZ: Object.freeze({
     serviceCode: "EIZ",
-    serviceName: "Elektricne instalacije",
+    serviceName: "Električne instalacije",
     title: "EIZ v1.0.0",
-    documentType: "Elektricne instalacije",
-    reportTitle: "ISPITIVANJE ELEKTRICNIH INSTALACIJA",
-    coverSubtitle: "O ISPITIVANJU ELEKTRICNIH INSTALACIJA",
-    measurementTableTitle: "Tablica 1. - vizualni pregled elektricne instalacije",
+    documentType: "Električne instalacije",
+    reportTitle: "ISPITIVANJE ELEKTRIČNIH INSTALACIJA",
+    coverSubtitle: "O ISPITIVANJU ELEKTRIČNIH INSTALACIJA",
+    measurementTableTitle: "Tablica 1. - vizualni pregled električne instalacije",
     resultsText: [
-      "Ispitivanje elektricne instalacije obuhvaca vizualni pregled, ispitivanje zastitnog uredaja diferencijalne struje, impedanciju petlje kvara, otpor izolacije i kontinuitet zastitnog vodica.",
+      "Ispitivanje električne instalacije obuhvaća vizualni pregled, ispitivanje zaštitnog uređaja diferencijalne struje, impedanciju petlje kvara, otpor izolacije i kontinuitet zaštitnog vodiča.",
       "Rezultati ispitivanja prikazuju se u zasebnim ispitnim listovima EIZ.V, EIZ.ZUDS, EIZ.IPK, EIZ.OI i EIZ.K.",
     ].join("\n\n"),
     notes: [
-      "ZUDS - zastitni uredaj diferencijalne struje; Iisk - izmjerena struja prorade; tisk - izmjereno vrijeme prorade.",
-      "IPK - impedancija petlje kvara; OI - otpor izolacije; K - kontinuitet zastitnog vodica.",
+      "ZUDS - zaštitni uređaj diferencijalne struje; Iisk - izmjerena struja prorade; tisk - izmjereno vrijeme prorade.",
+      "IPK - impedancija petlje kvara; OI - otpor izolacije; K - kontinuitet zaštitnog vodiča.",
     ],
-    assessmentLabel: "Elektricne instalacije",
-    conclusionLead: "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivana elektricna instalacija na dan predmetnog ispitivanja",
+    assessmentLabel: "Električne instalacije",
+    conclusionLead: "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja može se zaključiti da ispitivana električna instalacija na dan predmetnog ispitivanja",
     validitySentence: "Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do",
     signatureAreas: ["elektro"],
     technicalDataFields: EIZ_TECHNICAL_FIELDS,
     projectDocumentation: "",
+    checklists: [EIZ_VISUAL_CHECKLIST],
+    measurementAssessments: EIZ_MEASUREMENT_ASSESSMENTS,
     tables: [
       tableSpec({
-        id: "eiz-visual",
-        label: "VIZUALNI PREGLED ELEKTRICNE INSTALACIJE",
-        summary: "IL - EIZ.V",
-        columns: EIZ_VISUAL_COLUMNS,
-        rows: rowsFromItems(EIZ_VISUAL_COLUMNS, EIZ_VISUAL_ITEMS, EIZ_VISUAL_RESULTS),
-      }),
-      tableSpec({
         id: "eiz-zuds",
-        label: "ISPITIVANJE ZASTITNOG UREDAJA DIFERENCIJALNE STRUJE - ZUDS",
+        label: "ISPITIVANJE ZAŠTITNOG UREĐAJA DIFERENCIJALNE STRUJE - ZUDS",
         summary: "IL - EIZ.ZUDS",
+        chapterTitle: "Mjerenja zaštitnog uređaja diferencijalne struje",
+        assessmentLabel: "Ispitivanje ZUDS nazivnom i rastućom strujom kvara",
         columns: EIZ_ZUDS_COLUMNS,
-        rows: formulaRows(EIZ_ZUDS_COLUMNS, 8, (rowNumber, index) => ({
+        rows: formulaRows(EIZ_ZUDS_COLUMNS, 10, (rowNumber, index) => ({
           board: "RO BS",
-          circuit: index < 4 ? `F100.${index + 4}` : ["F140", "F141", "F133", "F142"][index - 4] || "",
+          circuit: ["F100.4", "F100.5", "F100.6", "F100.8", "F140", "F141", "F133", "F142", "F340", "F340.1"][index] || "",
           inCurrent: index === 0 ? "63" : (index < 4 ? "40" : "25"),
-          idn: [300, 30, 30, 30, 300, 300, 300, 300][index] || 30,
-          iisk: `=IF(E${rowNumber}="","",RANDBETWEEN(70,80)*E${rowNumber}/100)`,
-          tisk: `=IF(E${rowNumber}="","",RANDBETWEEN(14,24))`,
-          u0: `=IF(E${rowNumber}="","","<50")`,
-          pass: `=IF(E${rowNumber}="","","DA")`,
+          separator: "/",
+          idn: [300, 30, 30, 30, 300, 300, 300, 300, 30, 30][index] || 30,
+          iisk: `=IF(F${rowNumber}="","",RANDBETWEEN(70,80)*F${rowNumber}/100)`,
+          tisk: `=IF(F${rowNumber}="","",RANDBETWEEN(14,24))`,
+          u0: `=IF(F${rowNumber}="","","<50")`,
+          pass: `=IF(F${rowNumber}="","","DA")`,
         })),
       }),
       tableSpec({
         id: "eiz-ipk",
         label: "ISPITIVANJE IMPEDANCIJE PETLJE KVARA",
         summary: "IL - EIZ.IPK",
+        chapterTitle: "Impedancija petlje kvara",
+        assessmentLabel: "Zaštita od indirektnog dodira",
         columns: EIZ_IPK_COLUMNS,
-        rows: formulaRows(EIZ_IPK_COLUMNS, 24, (rowNumber) => ({
+        rows: formulaRows(EIZ_IPK_COLUMNS, 36, (rowNumber) => ({
           place: "Utičnica 230 V",
           circuit: "-",
           protectionType: "RCD 40/0,03",
@@ -1488,8 +1525,10 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         id: "eiz-oi",
         label: "ISPITIVANJE OTPORA IZOLACIJE",
         summary: "IL - EIZ.OI",
+        chapterTitle: "Otpor izolacije",
+        assessmentLabel: "Otpor izolacije vodova",
         columns: EIZ_OI_COLUMNS,
-        rows: formulaRows(EIZ_OI_COLUMNS, 24, (rowNumber) => ({
+        rows: formulaRows(EIZ_OI_COLUMNS, 60, (rowNumber) => ({
           circuit: `Strujni krug ${rowNumber}`,
           l123n: ">30",
           l123pe: ">30",
@@ -1500,8 +1539,10 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
       }),
       tableSpec({
         id: "eiz-k",
-        label: "ISPITIVANJE KONTINUITETA ZASTITNOG VODICA I VODICA ZA IZJEDNACAVANJE POTENCIJALA",
+        label: "ISPITIVANJE KONTINUITETA ZAŠTITNOG VODIČA I VODIČA ZA IZJEDNAČAVANJE POTENCIJALA",
         summary: "IL - EIZ.K",
+        chapterTitle: "Kontinuitet zaštitnog vodiča",
+        assessmentLabel: "Kontinuitet zaštitnog vodiča",
         columns: EIZ_K_COLUMNS,
         rows: formulaRows(EIZ_K_COLUMNS, 6, (rowNumber, index) => ({
           place1: "PE sabirnica GRO",
@@ -1565,6 +1606,10 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
     label: table.label,
     helpText: "Gridline tablica popunjava rezultate za odabranu uslugu.",
     summary: table.summary,
+    enabledByDefault: table.enabledByDefault !== false,
+    enabledFieldId: table.enabledFieldId || `use-${table.id}`,
+    assessmentLabel: table.assessmentLabel || "",
+    chapterTitle: table.chapterTitle || "",
     sheet: {
       columns: table.columns.map((column) => withDocumentationColumnAiMapping(table.id, column)),
       rows: table.rows.map((row, index) => ({
@@ -1575,6 +1620,42 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
       merges: [],
       headerRows: [],
     },
+  }));
+}
+
+export function createDocumentationChecklistsForService(serviceCode = "") {
+  const preset = getDocumentationNativeReportPreset(serviceCode);
+  return (preset.checklists || []).map((checklist) => ({
+    id: checklist.id,
+    key: checklist.key || checklist.id,
+    tokenKey: checklist.tokenKey || normalizeCode(checklist.id).replace(/[^A-Z0-9]+/g, "_"),
+    label: checklist.label,
+    summary: checklist.summary || checklist.label,
+    enabledByDefault: checklist.enabledByDefault !== false,
+    enabledFieldId: checklist.enabledFieldId || `use-${checklist.id}`,
+    assessmentLabel: checklist.assessmentLabel || "",
+    options: (checklist.options || ["DA", "NE", "NP"].map((value) => ({ value, label: value }))).map((option) => ({
+      value: option.value || option.label || "",
+      label: option.label || option.value || "",
+    })),
+    items: (checklist.items || []).map((item, index) => ({
+      id: item.id || `${checklist.id}-${index + 1}`,
+      key: item.key || item.id || `${checklist.id}-${index + 1}`,
+      tokenKey: item.tokenKey || normalizeCode(item.id || `${checklist.id}-${index + 1}`).replace(/[^A-Z0-9]+/g, "_"),
+      label: item.label || `Stavka ${index + 1}`,
+      defaultValue: item.defaultValue || "DA",
+    })),
+  }));
+}
+
+export function createDocumentationMeasurementAssessmentsForService(serviceCode = "") {
+  const preset = getDocumentationNativeReportPreset(serviceCode);
+  return (preset.measurementAssessments || []).map((entry, index) => ({
+    id: entry.id || `assessment-${index + 1}`,
+    key: entry.key || entry.id || `assessment-${index + 1}`,
+    label: entry.label || `Ocjena ${index + 1}`,
+    enabledFieldId: entry.enabledFieldId || "",
+    defaultValue: entry.defaultValue || "ZADOVOLJAVA",
   }));
 }
 
@@ -1745,6 +1826,8 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     projectDocumentation: preset.projectDocumentation || "",
     signatureAreas: [...preset.signatureAreas],
     technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
+    checklists: createDocumentationChecklistsForService(preset.serviceCode),
+    measurementAssessments: createDocumentationMeasurementAssessmentsForService(preset.serviceCode),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
   };
 }
@@ -1769,6 +1852,8 @@ export function getDocumentationNativeTemplateSeedPresets() {
     projectDocumentation: preset.projectDocumentation || "",
     signatureAreas: [...preset.signatureAreas],
     technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
+    checklists: createDocumentationChecklistsForService(preset.serviceCode),
+    measurementAssessments: createDocumentationMeasurementAssessmentsForService(preset.serviceCode),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
   }));
 }

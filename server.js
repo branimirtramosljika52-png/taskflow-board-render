@@ -23221,6 +23221,10 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
   const technicalDataFields = Array.isArray(reportDefaults.technicalDataFields)
     ? reportDefaults.technicalDataFields
     : [];
+  const checklists = Array.isArray(reportDefaults.checklists) ? reportDefaults.checklists : [];
+  const measurementAssessments = Array.isArray(reportDefaults.measurementAssessments)
+    ? reportDefaults.measurementAssessments
+    : [];
   const includeProjectDocumentation = preset.serviceCode === "EIZ";
   const serviceWithCode = {
     ...service,
@@ -23234,6 +23238,55 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     { value: "Početno ispitivanje", label: "Početno ispitivanje" },
     { value: "Izvanredno ispitivanje", label: "Izvanredno ispitivanje" },
   ];
+  const yesNoNpOptions = [
+    { value: "DA", label: "DA" },
+    { value: "NE", label: "NE" },
+    { value: "NP", label: "NP" },
+  ];
+  const assessmentOptions = [
+    { value: "ZADOVOLJAVA", label: "Zadovoljava" },
+    { value: "NE ZADOVOLJAVA", label: "Ne zadovoljava" },
+  ];
+  const measurementTableUseFields = measurementTables.map((table, index) => buildMobileNativeDocumentationField(
+    table.enabledFieldId || `use-${table.key || table.id || index + 1}`,
+    `Koristi ${normalizeInputValue(table.chapterTitle || table.label || `tablicu ${index + 1}`)}`,
+    "toggle",
+    {
+      defaultValue: table.enabledByDefault === false ? "false" : "true",
+      helpText: "Ako je isključeno, ova Gridline tablica i pripadajuća ocjena ne ulaze u zapisnik.",
+    },
+  ));
+  const checklistUseFields = checklists.map((checklist, index) => buildMobileNativeDocumentationField(
+    checklist.enabledFieldId || `use-${checklist.key || checklist.id || index + 1}`,
+    `Koristi ${normalizeInputValue(checklist.label || `checklist ${index + 1}`)}`,
+    "toggle",
+    {
+      defaultValue: checklist.enabledByDefault === false ? "false" : "true",
+      helpText: "Ako je isključeno, checklist i pripadajuća ocjena ne ulaze u zapisnik.",
+    },
+  ));
+  const checklistItemFields = checklists.flatMap((checklist) => (
+    (Array.isArray(checklist.items) ? checklist.items : []).map((item) => buildMobileNativeDocumentationField(
+      item.key || item.id,
+      item.label || "Stavka pregleda",
+      "dropdown",
+      {
+        defaultValue: item.defaultValue || "DA",
+        options: Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions,
+        helpText: "Vizualni pregled se upisuje kao DA, NE ili NP.",
+      },
+    ))
+  ));
+  const assessmentFields = measurementAssessments.map((entry, index) => buildMobileNativeDocumentationField(
+    `assessment-${entry.key || entry.id || index + 1}`,
+    entry.label || `Ocjena ${index + 1}`,
+    "dropdown",
+    {
+      defaultValue: entry.defaultValue || "ZADOVOLJAVA",
+      options: assessmentOptions,
+      helpText: "Ocjena se prikazuje samo ako je pripadajući dio zapisnika uključen.",
+    },
+  ));
   const fields = [
     buildMobileNativeDocumentationField("inspectionDate", "Datum ispitivanja", "date", {
       required: true,
@@ -23270,7 +23323,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         defaultValue: reportDefaults.projectDocumentation || "",
         helpText: "Bullet popis projekata, prethodnih zapisnika, jednopolnih shema i druge tehničke dokumentacije.",
       }),
+      buildMobileNativeDocumentationField("resultsText", "Rezultati ispitivanja", "longtext", {
+        defaultValue: reportDefaults.resultsText || "",
+        helpText: "Tekstualni opis postupka ispitivanja prije ispitnih listova.",
+      }),
     ] : []),
+    ...checklistUseFields,
+    ...checklistItemFields,
+    ...measurementTableUseFields,
+    ...assessmentFields,
     buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
       defaultValue: "Preporuke",
       helpText: "Napomene ili preporuke za korisnika.",
@@ -23301,6 +23362,61 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       helpText: "Svaka Gridline tablica ima vlastito polje i zasebno se sprema u zapisnik.",
     });
   });
+  const measurementSections = measurementTables.flatMap((table, index) => {
+    const tableKey = normalizeInputValue(table?.key || table?.id || table?.tokenKey || `gridline-results-${index + 1}`)
+      || `gridline-results-${index + 1}`;
+    const title = normalizeInputValue(table?.chapterTitle || table?.label || `Gridline tablica ${index + 1}`);
+    const enabledFieldId = table.enabledFieldId || `use-${tableKey}`;
+    return [
+      buildMobileNativeDocumentationBlock(`chapter-${tableKey}`, title, "chapter", {
+        typeLabel: "Poglavlje",
+        summary: table.summary || "Gridline tablica rezultata ispitivanja.",
+      }),
+      buildMobileNativeDocumentationBlock(enabledFieldId, "Koristi ovu tablicu", "toggle", {
+        group: title,
+        editable: true,
+        summary: "Isključi ako se ovaj ispitni list ne koristi u zapisniku.",
+      }),
+      measurementFieldBlocks[index],
+    ];
+  });
+  const checklistSections = checklists.flatMap((checklist, index) => {
+    const checklistKey = normalizeInputValue(checklist?.key || checklist?.id || `checklist-${index + 1}`)
+      || `checklist-${index + 1}`;
+    const enabledFieldId = checklist.enabledFieldId || `use-${checklistKey}`;
+    const title = normalizeInputValue(checklist.label || `Checklist ${index + 1}`);
+    const itemBlocks = (Array.isArray(checklist.items) ? checklist.items : []).map((item) => (
+      buildMobileNativeDocumentationBlock(item.key || item.id, item.label || "Stavka pregleda", "select", {
+        group: title,
+        editable: true,
+        summary: item.defaultValue || "DA",
+        options: Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions,
+      })
+    ));
+    return [
+      buildMobileNativeDocumentationBlock(`chapter-${checklistKey}`, title, "chapter", {
+        typeLabel: "Poglavlje",
+        summary: checklist.summary || "Checklist stavke zapisnika.",
+      }),
+      buildMobileNativeDocumentationBlock(enabledFieldId, "Koristi ovu checklistu", "toggle", {
+        group: title,
+        editable: true,
+        summary: "Isključi ako se checklist ne koristi u zapisniku.",
+      }),
+      ...itemBlocks,
+    ];
+  });
+  const assessmentBlocks = measurementAssessments.map((entry, index) => buildMobileNativeDocumentationBlock(
+    `assessment-${entry.key || entry.id || index + 1}`,
+    entry.label || `Ocjena ${index + 1}`,
+    "select",
+    {
+      group: "Ocjena rezultata ispitivanja",
+      editable: true,
+      summary: entry.defaultValue || "ZADOVOLJAVA",
+      options: assessmentOptions,
+    },
+  ));
   const technicalFieldBlocks = technicalDataFields.map((field) => {
     const fieldId = `technical-${field.id || field.key}`;
     return buildMobileNativeDocumentationBlock(fieldId, field.label || "Tehnički podatak", "text", {
@@ -23375,6 +23491,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         summary: reportDefaults.projectDocumentation || "Dodaj dokumentaciju korištenu pri izradi zapisnika.",
         helpText: "Textbox s bulletima. NexAI može prepisati nazive projekata, prethodnih zapisnika, jednopolnih shema i slika elektroormara.",
       }),
+      buildMobileNativeDocumentationBlock("chapter-results-text", "Rezultati ispitivanja", "chapter", {
+        typeLabel: "Poglavlje",
+        summary: "Tekstualni opis postupka ispitivanja prije ispitnih listova.",
+      }),
+      buildMobileNativeDocumentationBlock("resultsText", "Rezultati ispitivanja", "longtext", {
+        group: "Rezultati ispitivanja",
+        editable: true,
+        summary: "Dodaj tekst o načinu ispitivanja i primijenjenim metodama.",
+      }),
     ] : []),
     buildMobileNativeDocumentationBlock("chapter-people", "Osobe i ovlaštenja", "chapter", {
       typeLabel: "Poglavlje",
@@ -23392,13 +23517,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       signatureRole: "authorize",
       signatureMultiple: false,
     }),
-    buildMobileNativeDocumentationBlock("chapter-measurements", "Rezultati ispitivanja", "chapter", {
-      typeLabel: "Poglavlje",
-      summary: measurementTables.length > 1
-        ? `${measurementTables.length} Gridline tablica za ${preset.serviceCode}.`
-        : (preset.measurementTableTitle || "Gridline rezultati ispitivanja."),
-    }),
-    ...measurementFieldBlocks,
+    ...checklistSections,
+    ...measurementSections,
+    ...(assessmentBlocks.length > 0 ? [
+      buildMobileNativeDocumentationBlock("chapter-assessment", "Ocjena rezultata ispitivanja", "chapter", {
+        typeLabel: "Poglavlje",
+        summary: "Ocjene se vežu na uključene EIZ ispitne listove.",
+      }),
+      ...assessmentBlocks,
+    ] : []),
     buildMobileNativeDocumentationBlock("chapter-conclusion", "Preporuke i zaključna ocjena", "chapter", {
       typeLabel: "Poglavlje",
       summary: "Ocjena određuje prikaz nedostataka.",
@@ -23442,6 +23569,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     fields,
     fieldBlocks,
     inspectionTypeOptions,
+    checklists,
+    measurementAssessments,
     measurementTables,
     aiFields: createDocumentationNativeAiFieldsForService(preset.serviceCode),
     aiMeasurementColumns: createDocumentationNativeAiMeasurementColumnsForService(preset.serviceCode),
@@ -24383,6 +24512,12 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
     : createDocumentationMeasurementTablesForService(serviceCode);
   return baseTables.map((table, index) => ({
     ...table,
+    enabled: getMobileDocumentationTemplateBooleanValue(
+      common,
+      template,
+      [table.enabledFieldId, `use-${table.key}`, `use-${table.id}`],
+      table.enabledByDefault !== false,
+    ),
     sheet: getMobileDocumentationMeasurementSheetForTable(table, index, entry, template, common),
   }));
 }
@@ -24415,6 +24550,67 @@ function getMobileDocumentationTemplateFieldValues(common = {}, template = {}, k
     }
   }
   return "";
+}
+
+function getMobileDocumentationTemplateBooleanValue(common = {}, template = {}, keys = [], fallback = true) {
+  const value = normalizeInputValue(getMobileDocumentationTemplateFieldValues(common, template, keys));
+  if (!value) {
+    return Boolean(fallback);
+  }
+  const normalized = value.toLowerCase();
+  if (["false", "0", "ne", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  if (["true", "1", "da", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  return Boolean(fallback);
+}
+
+function buildMobileDocumentationChecklists(template = {}, reportDefaults = {}, common = {}) {
+  const checklists = Array.isArray(template.checklists) && template.checklists.length > 0
+    ? template.checklists
+    : (Array.isArray(reportDefaults.checklists) ? reportDefaults.checklists : []);
+  return checklists.map((checklist, index) => {
+    const checklistKey = normalizeInputValue(checklist.key || checklist.id || `checklist-${index + 1}`);
+    const enabled = getMobileDocumentationTemplateBooleanValue(
+      common,
+      template,
+      [checklist.enabledFieldId, `use-${checklistKey}`, `use-${checklist.id}`],
+      checklist.enabledByDefault !== false,
+    );
+    return {
+      ...checklist,
+      enabled,
+      items: (Array.isArray(checklist.items) ? checklist.items : []).map((item, itemIndex) => ({
+        ...item,
+        value: getMobileDocumentationTemplateFieldValues(common, template, [
+          item.key,
+          item.id,
+          item.tokenKey,
+          `${checklistKey}-${itemIndex + 1}`,
+          item.label,
+        ]) || item.defaultValue || "DA",
+      })),
+    };
+  });
+}
+
+function buildMobileDocumentationMeasurementAssessments(template = {}, reportDefaults = {}, common = {}) {
+  const assessments = Array.isArray(template.measurementAssessments) && template.measurementAssessments.length > 0
+    ? template.measurementAssessments
+    : (Array.isArray(reportDefaults.measurementAssessments) ? reportDefaults.measurementAssessments : []);
+  return assessments
+    .filter((entry) => getMobileDocumentationTemplateBooleanValue(common, template, [entry.enabledFieldId], true))
+    .map((entry, index) => ({
+      ...entry,
+      value: getMobileDocumentationTemplateFieldValues(common, template, [
+        `assessment-${entry.key || entry.id || index + 1}`,
+        entry.key,
+        entry.id,
+        entry.label,
+      ]) || entry.defaultValue || "ZADOVOLJAVA",
+    }));
 }
 
 function buildMobileDocumentationTechnicalDataText(template = {}, reportDefaults = {}, common = {}, placeholders = {}) {
@@ -24536,7 +24732,8 @@ function buildMobileDocumentationSprModel({
       || reportDefaults.projectDocumentation
     ),
     technicalData: buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders),
-    resultsText: getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"])
+    resultsText: getMobileDocumentationTemplateFieldValues(common, template, ["resultsText", "REZULTATI_TEKST", "RESULTS_TEXT"])
+      || getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"])
       || normalizeInputValue(template.resultsText || reportDefaults.resultsText),
     eiNote: normalizeInputValue(template.eiNote || reportDefaults.eiNote),
     eiminNote: normalizeInputValue(template.eiminNote || reportDefaults.eiminNote),
@@ -24565,6 +24762,8 @@ function buildMobileDocumentationSprModel({
     responsiblePersonUserId: common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId,
     fieldSettings: {},
     attachments: Array.isArray(common.attachments) ? common.attachments : [],
+    checklists: buildMobileDocumentationChecklists(template, reportDefaults, common),
+    measurementAssessments: buildMobileDocumentationMeasurementAssessments(template, reportDefaults, common),
     measurementTables: buildMobileDocumentationMeasurementTables(entry, template, common, serviceCode),
   };
 }

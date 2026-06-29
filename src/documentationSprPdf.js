@@ -4,6 +4,11 @@ import {
   createDocumentationMeasurementTablesForService,
   getDocumentationNativeReportPreset,
 } from "./documentationNativePresets.js";
+import {
+  evaluateMeasurementFormula,
+  isMeasurementFormula,
+  parseMeasurementCellReference,
+} from "./measurementFormula.js";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -258,6 +263,20 @@ function getReportPreset(model = {}) {
 
 function getAssessmentLabel(model = {}) {
   return clean(model.assessmentLabel || getReportPreset(model).assessmentLabel || "Rezultat ispitivanja");
+}
+
+function normalizePdfMeasurementAssessments(model = {}) {
+  const preset = getReportPreset(model);
+  const source = Array.isArray(model.measurementAssessments) && model.measurementAssessments.length > 0
+    ? model.measurementAssessments
+    : (Array.isArray(preset.measurementAssessments) ? preset.measurementAssessments : []);
+  return source
+    .map((entry, index) => ({
+      id: clean(entry.id || entry.key || `assessment-${index + 1}`),
+      label: clean(entry.label || `Ocjena ${index + 1}`),
+      value: clean(entry.value || entry.defaultValue || "ZADOVOLJAVA"),
+    }))
+    .filter((entry) => entry.label);
 }
 
 function getConclusionLead(model = {}) {
@@ -561,6 +580,7 @@ function drawPlainList(page, value, y, fonts, {
 
 function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const hasTechnicalData = splitTextLines(model.technicalData).length > 0;
   page.drawRectangle({
     x: 18,
     y: BOTTOM_Y,
@@ -600,10 +620,15 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
     ["Ispitivanje obavili:", clean(model.inspectors)],
   ], y, fonts, { fontSize: 9, lineHeight: 11.4 });
   y -= 4;
-  y = drawSectionTitle(page, 2, "MJERNA I ISPITNA OPREMA", y, fonts);
+  if (hasTechnicalData) {
+    y = drawSectionTitle(page, 2, "TEHNIČKI PODACI SUSTAVA", y, fonts);
+    y = drawPlainList(page, model.technicalData, y, fonts, { maxLines: 5, fontSize: 8.2, lineHeight: 10.4 });
+    y -= 4;
+  }
+  y = drawSectionTitle(page, hasTechnicalData ? 3 : 2, "MJERNA I ISPITNA OPREMA", y, fonts);
   y = drawPlainList(page, model.equipment, y, fonts, { maxLines: 7, fontSize: 8.2, lineHeight: 10.4 });
   y -= 4;
-  y = drawSectionTitle(page, 3, "PRIMJENJENI PROPISI", y, fonts);
+  y = drawSectionTitle(page, hasTechnicalData ? 4 : 3, "PRIMJENJENI PROPISI", y, fonts);
   drawPlainList(page, model.regulations, y, fonts, { maxLines: 14, fontSize: 7.7, lineHeight: 9.4 });
   drawFooter(page, "SPR-1/4", fonts);
   return page;
@@ -611,11 +636,12 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
 
 function drawPageTwo(pdfDoc, model, fonts) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const sectionOffset = splitTextLines(model.technicalData).length > 0 ? 1 : 0;
   let y = drawSimpleHeader(page, model, fonts);
-  y = drawSectionTitle(page, 4, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
+  y = drawSectionTitle(page, 4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
   y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 3, fontSize: 9, lineHeight: 12 });
   y -= 8;
-  y = drawSectionTitle(page, 5, "REZULTATI ISPITIVANJA", y, fonts);
+  y = drawSectionTitle(page, 5 + sectionOffset, "REZULTATI ISPITIVANJA", y, fonts);
   y = drawTextBlock(page, cleanMultiline(model.resultsText), {
     x: MARGIN_X + 2,
     y,
@@ -704,6 +730,108 @@ function drawCell(page, {
   });
 }
 
+function normalizePdfChecklists(model = {}) {
+  const preset = getReportPreset(model);
+  const source = Array.isArray(model.checklists) && model.checklists.length > 0
+    ? model.checklists
+    : (Array.isArray(preset.checklists) ? preset.checklists : []);
+  return source
+    .filter((checklist) => checklist?.enabled !== false)
+    .map((checklist, index) => ({
+      id: clean(checklist.id || checklist.key || `checklist-${index + 1}`),
+      key: clean(checklist.key || checklist.id || `checklist-${index + 1}`),
+      label: clean(checklist.label || `Checklist ${index + 1}`),
+      summary: clean(checklist.summary || ""),
+      items: (Array.isArray(checklist.items) ? checklist.items : []).map((item, itemIndex) => ({
+        id: clean(item.id || item.key || `checklist-item-${itemIndex + 1}`),
+        label: clean(item.label || `Stavka ${itemIndex + 1}`),
+        value: clean(item.value || item.defaultValue || "DA"),
+      })),
+    }))
+    .filter((checklist) => checklist.items.length > 0);
+}
+
+function drawChecklistPage(pdfDoc, model, checklist, fonts) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = drawSimpleHeader(page, model, fonts);
+  drawTextLine(page, checklist.label, {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 10.2,
+  });
+  if (checklist.summary) {
+    drawTextLine(page, checklist.summary, {
+      x: MARGIN_X,
+      y: y - 16,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      align: "center",
+      font: fonts.regular,
+      size: 7.6,
+      color: MUTED,
+    });
+  }
+  y -= 34;
+  const firstColumnWidth = PAGE_WIDTH - (MARGIN_X * 2) - 104;
+  drawCell(page, {
+    x: MARGIN_X,
+    y,
+    width: firstColumnWidth,
+    height: 28,
+    text: "Predmet pregleda",
+    fonts,
+    bold: true,
+    fill: TABLE_GRAY,
+  });
+  drawCell(page, {
+    x: MARGIN_X + firstColumnWidth,
+    y,
+    width: 104,
+    height: 28,
+    text: "ZADOVOLJAVA\nDA/NE/NP",
+    fonts,
+    bold: true,
+    fill: TABLE_GRAY,
+  });
+  y -= 28;
+  const rowHeight = 24;
+  checklist.items.forEach((item) => {
+    if (y - rowHeight < BOTTOM_Y + 10) {
+      return;
+    }
+    drawCell(page, {
+      x: MARGIN_X,
+      y,
+      width: firstColumnWidth,
+      height: rowHeight,
+      text: item.label,
+      fonts,
+      fontSize: 7.1,
+      align: "left",
+    });
+    drawCell(page, {
+      x: MARGIN_X + firstColumnWidth,
+      y,
+      width: 104,
+      height: rowHeight,
+      text: item.value,
+      fonts,
+      fontSize: 7.4,
+      bold: true,
+    });
+    y -= rowHeight;
+  });
+  return page;
+}
+
+function drawChecklistPages(pdfDoc, model, fonts) {
+  normalizePdfChecklists(model).forEach((checklist) => {
+    drawChecklistPage(pdfDoc, model, checklist, fonts);
+  });
+}
+
 function normalizePdfMeasurementSheet(sheet = {}) {
   const source = sheet && typeof sheet === "object" && !Array.isArray(sheet) ? sheet : {};
   const columns = Array.isArray(source.columns)
@@ -726,6 +854,37 @@ function normalizePdfMeasurementSheet(sheet = {}) {
     columns,
     rows,
   };
+}
+
+function getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, stack = new Set()) {
+  const row = sheet?.rows?.[rowIndex];
+  const column = sheet?.columns?.[columnIndex];
+  if (!row || !column) {
+    return "";
+  }
+  const rawValue = cleanMultiline(row.cells?.[column.id] ?? "");
+  if (!isMeasurementFormula(rawValue)) {
+    return rawValue;
+  }
+  const cellKey = `${rowIndex}:${columnIndex}`;
+  if (stack.has(cellKey)) {
+    return "";
+  }
+  stack.add(cellKey);
+  try {
+    const value = evaluateMeasurementFormula(rawValue, {
+      resolveCellReference(reference) {
+        const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } =
+          parseMeasurementCellReference(reference);
+        return getPdfMeasurementCellRawValue(sheet, referenceRowIndex, referenceColumnIndex, stack);
+      },
+    });
+    return clean(value);
+  } catch {
+    return "";
+  } finally {
+    stack.delete(cellKey);
+  }
 }
 
 function mapLegacyRowsToSheet(legacyRows = [], table = {}) {
@@ -769,7 +928,7 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
   const sourceTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
     ? model.measurementTables
     : createDocumentationMeasurementTablesForService(getServiceCode(model));
-  return sourceTables.map((table, index) => {
+  return sourceTables.filter((table) => table?.enabled !== false).map((table, index) => {
     const base = table && typeof table === "object" ? table : {};
     const withLegacyRows = index === 0 && Array.isArray(legacyRows) && legacyRows.length > 0
       ? { ...base, sheet: mapLegacyRowsToSheet(legacyRows, base) }
@@ -779,6 +938,8 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
       key: clean(withLegacyRows.key || withLegacyRows.id || `measurement-table-${index + 1}`),
       label: clean(withLegacyRows.label || withLegacyRows.summary || `Tablica ${index + 1}`),
       summary: clean(withLegacyRows.summary || withLegacyRows.label || getMeasurementTableTitle(model)),
+      assessmentLabel: clean(withLegacyRows.assessmentLabel || ""),
+      chapterTitle: clean(withLegacyRows.chapterTitle || ""),
       sheet: normalizePdfMeasurementSheet(withLegacyRows.sheet),
     };
   });
@@ -790,7 +951,7 @@ function getPdfMeasurementTableRows(table = {}) {
     .map((row, rowIndex) => ({
       ...row,
       cells: Object.fromEntries(sheet.columns.map((column, columnIndex) => {
-        const value = clean(row.cells?.[column.id]);
+        const value = clean(getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex));
         return [column.id, columnIndex === 0 && !value ? String(rowIndex + 1) : value];
       })),
     }))
@@ -1043,9 +1204,11 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     maxLines: 3,
   });
   y -= 5;
-  y = drawKeyValueTable(page, [
-    [getAssessmentLabel(model), clean(model.resultStatus), true],
-  ], y, fonts, { keyWidth: 310, fontSize: 8.5, lineHeight: 11 });
+  const assessmentEntries = normalizePdfMeasurementAssessments(model);
+  y = drawKeyValueTable(page, assessmentEntries.length > 0
+    ? assessmentEntries.map((entry) => [entry.label, entry.value, entry.value.toUpperCase().includes("NE ZADOVOLJAVA")])
+    : [[getAssessmentLabel(model), clean(model.resultStatus), true]],
+  y, fonts, { keyWidth: 310, fontSize: 8.5, lineHeight: 11 });
   y -= 8;
   y = drawSectionTitle(page, 9, "ZAKLJUČAK", y, fonts);
   y = drawTextBlock(page, getConclusionLead(model), {
@@ -1329,6 +1492,7 @@ async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts
 
   drawPageOne(pdfDoc, model, safeRows, fonts, headerImage);
   drawPageTwo(pdfDoc, model, fonts);
+  drawChecklistPages(pdfDoc, model, fonts);
   drawMeasurementTablePages(pdfDoc, model, safeRows, fonts);
   drawPageFour(pdfDoc, model, fonts, signatureImage);
   await appendAttachments(pdfDoc, model, fonts);
