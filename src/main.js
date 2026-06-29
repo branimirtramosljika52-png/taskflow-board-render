@@ -3975,6 +3975,11 @@ const documentationSprTemplateSaveButton = document.querySelector("#documentatio
 const documentationSprTemplateLoadButton = document.querySelector("#documentation-spr-template-load");
 const documentationSprTemplateDeleteButton = document.querySelector("#documentation-spr-template-delete");
 const documentationSprTemplateMeta = document.querySelector("#documentation-spr-template-meta");
+const documentationSprAiSourceUploadButton = document.querySelector("#documentation-spr-ai-source-upload");
+const documentationSprAiSourceClearButton = document.querySelector("#documentation-spr-ai-source-clear");
+const documentationSprAiSourceFileInput = document.querySelector("#documentation-spr-ai-source-file");
+const documentationSprAiSourceList = document.querySelector("#documentation-spr-ai-source-list");
+const documentationSprAiSourceStatus = document.querySelector("#documentation-spr-ai-source-status");
 const documentationSprBatchContext = document.querySelector("#documentation-spr-batch-context");
 const documentationSprBatchKicker = document.querySelector("#documentation-spr-batch-kicker");
 const documentationSprBatchTitle = document.querySelector("#documentation-spr-batch-title");
@@ -57083,6 +57088,7 @@ function createDefaultDocumentationSprModel() {
     inspectorUserIds: [],
     responsiblePersonUserId: "",
     fieldSettings: {},
+    aiSources: [],
     attachments: [],
     checklists: reportDefaults.checklists || [],
     measurementAssessments: reportDefaults.measurementAssessments || [],
@@ -57148,6 +57154,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     inspectorUserIds: [],
     responsiblePersonUserId: "",
     fieldSettings: {},
+    aiSources: [],
     attachments: [],
     measurementTables: [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
@@ -57168,21 +57175,77 @@ function normalizeDocumentationSprGridlineModel(model) {
 }
 
 function cloneDocumentationSprMeasurementSheet(sheet = {}) {
-  const normalized = normalizeWorkOrderMeasurementSheet(sheet) || {
-    columns: [],
-    rows: [],
-    merges: [],
-    headerRows: [],
-  };
+  const source = sheet && typeof sheet === "object" && !Array.isArray(sheet) ? sheet : {};
+  const columns = (Array.isArray(source.columns) ? source.columns : [])
+    .slice(0, 96)
+    .map((column, index) => ({
+      id: String(column?.id || `col_${index + 1}`).trim(),
+      label: String(column?.label || column?.id || `Kolona ${index + 1}`).trim(),
+      placeholder: String(column?.placeholder || "").trim(),
+      width: Number(column?.width) || [70, 240, 100, 90, 90, 130][index] || 130,
+      computed: String(column?.computed || "").trim(),
+      readonly: Boolean(column?.readonly),
+      validation: column?.validation && typeof column.validation === "object" ? { ...column.validation } : undefined,
+      ai: column?.ai && typeof column.ai === "object"
+        ? { ...column.ai }
+        : column?.aiMapping && typeof column.aiMapping === "object"
+          ? { ...column.aiMapping }
+          : undefined,
+    }))
+    .filter((column, index, items) => (
+      column.id && items.findIndex((item) => item.id === column.id) === index
+    ));
+  const rows = (Array.isArray(source.rows) ? source.rows : [])
+    .slice(0, 600)
+    .map((row, index) => ({
+      id: String(row?.id || `measurement-row-${index + 1}`).trim(),
+      cells: Object.fromEntries(columns.map((column) => [
+        column.id,
+        String(row?.cells?.[column.id] ?? "").trim(),
+      ])),
+      formats: Object.fromEntries(columns.map((column) => {
+        const format = row?.formats?.[column.id];
+        return [column.id, format && typeof format === "object" ? { ...format } : {}];
+      }).filter(([, format]) => Object.keys(format || {}).length)),
+    }));
+  const rowIdToIndex = new Map(rows.map((row, index) => [row.id, index]));
+  const columnIdToIndex = new Map(columns.map((column, index) => [column.id, index]));
+  const merges = (Array.isArray(source.merges) ? source.merges : [])
+    .slice(0, 200)
+    .map((merge) => {
+      const row = Number.isInteger(Number(merge?.row))
+        ? Number(merge.row)
+        : rowIdToIndex.get(String(merge?.rowId || "").trim());
+      const column = Number.isInteger(Number(merge?.column))
+        ? Number(merge.column)
+        : columnIdToIndex.get(String(merge?.columnId || "").trim());
+      return {
+        row,
+        column,
+        rowSpan: Math.max(1, Number.parseInt(String(merge?.rowSpan || 1), 10) || 1),
+        columnSpan: Math.max(1, Number.parseInt(String(merge?.columnSpan || merge?.colSpan || 1), 10) || 1),
+      };
+    })
+    .filter((merge) => (
+      Number.isInteger(merge.row)
+      && Number.isInteger(merge.column)
+      && merge.row >= 0
+      && merge.column >= 0
+      && merge.row < rows.length
+      && merge.column < columns.length
+      && (merge.rowSpan > 1 || merge.columnSpan > 1)
+    ));
+  const headerRows = Array.from(new Set((Array.isArray(source.headerRows) ? source.headerRows : [])
+    .map((value) => {
+      const numeric = Number(value);
+      return Number.isInteger(numeric) ? numeric : rowIdToIndex.get(String(value || "").trim());
+    })
+    .filter((value) => Number.isInteger(value) && value >= 0 && value < rows.length)));
   return {
-    columns: normalized.columns.map((column) => ({ ...column })),
-    rows: normalized.rows.map((row, index) => ({
-      id: row.id || `measurement-row-${index + 1}`,
-      cells: { ...(row.cells || {}) },
-      formats: { ...(row.formats || {}) },
-    })),
-    merges: Array.isArray(normalized.merges) ? normalized.merges.map((merge) => ({ ...merge })) : [],
-    headerRows: Array.isArray(normalized.headerRows) ? [...normalized.headerRows] : [],
+    columns,
+    rows,
+    merges,
+    headerRows,
   };
 }
 
@@ -57395,6 +57458,7 @@ function normalizeDocumentationSprModel(value) {
     signatureFieldOib: normalizeDocumentationSprSignatureOib(source.signatureFieldOib || source.responsiblePersonOib || ""),
     signatureImageUrl: String(source.signatureImageUrl || source.signatureDataUrl || "").trim(),
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
+    aiSources: normalizeDocumentationSprAiSources(source.aiSources),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
     technicalData: String(source.technicalData || defaultTechnicalData || fallback.technicalData || "").trim(),
     checklists: normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
@@ -57481,6 +57545,32 @@ function normalizeDocumentationSprFieldSettings(value = {}) {
       })
       .filter(Boolean),
   );
+}
+
+function normalizeDocumentationSprAiSources(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return source.map((entry, index) => {
+    const item = entry && typeof entry === "object" ? entry : {};
+    const name = String(item.name || item.fileName || "").trim();
+    const contentDataUrl = String(item.contentDataUrl || item.dataUrl || "").trim();
+    const type = String(item.type || item.fileType || "").trim();
+    const id = String(item.id || `spr-ai-source-${index}-${slugifyValue(name)}`).trim();
+    if (!id || !name || seen.has(id)) {
+      return null;
+    }
+    seen.add(id);
+    return {
+      id,
+      name,
+      type,
+      size: Number(item.size || item.fileSize || 0) || 0,
+      lastModified: Number(item.lastModified || 0) || 0,
+      inlineReady: Boolean(item.inlineReady || contentDataUrl),
+      contentDataUrl,
+      createdAt: String(item.createdAt || item.uploadedAt || new Date().toISOString()).trim(),
+    };
+  }).filter(Boolean).slice(0, 16);
 }
 
 function normalizeDocumentationSprAttachments(value = []) {
@@ -57722,6 +57812,7 @@ function cloneDocumentationSprModelForTemplate(model = documentationSprModel) {
   return JSON.parse(JSON.stringify({
     ...stripDocumentationSprHeaderFromModel(normalized),
     attachments: [],
+    aiSources: [],
     gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
   }));
 }
@@ -57731,6 +57822,10 @@ function cloneDocumentationSprModelForLocalDraft(model = documentationSprModel) 
   return JSON.parse(JSON.stringify({
     ...stripDocumentationSprHeaderFromModel(normalized),
     attachments: [],
+    aiSources: normalizeDocumentationSprAiSources(normalized.aiSources).map(({ contentDataUrl, inlineReady, ...source }) => ({
+      ...source,
+      inlineReady: false,
+    })),
     gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
   }));
 }
@@ -60514,6 +60609,125 @@ function getDocumentationSprAttachmentPageCount(attachments = documentationSprMo
     .reduce((sum, attachment) => sum + Math.max(1, Number(attachment.pageCount) || 1), 0);
 }
 
+function getDocumentationSprGridlineAiFiles() {
+  return normalizeDocumentationSprAiSources(documentationSprModel?.aiSources || [])
+    .map((source) => ({
+      id: source.id,
+      name: source.name,
+      type: source.type,
+      size: source.size,
+      lastModified: source.lastModified,
+      inlineReady: source.inlineReady,
+      contentDataUrl: source.contentDataUrl,
+    }));
+}
+
+function syncDocumentationSprAiSourcesToGridlines() {
+  const files = getDocumentationSprGridlineAiFiles();
+  documentationSprGridlineApi?.setAiFiles?.(files);
+  if (documentationSprNativeMeasurementGridlineApis instanceof Map) {
+    documentationSprNativeMeasurementGridlineApis.forEach((entry) => {
+      entry?.api?.setAiFiles?.(files);
+    });
+  }
+}
+
+function renderDocumentationSprAiSourceList() {
+  if (!documentationSprModel) {
+    return;
+  }
+  const sources = normalizeDocumentationSprAiSources(documentationSprModel.aiSources);
+  documentationSprModel.aiSources = sources;
+  if (documentationSprAiSourceStatus) {
+    documentationSprAiSourceStatus.textContent = sources.length
+      ? `${sources.length} ${sources.length === 1 ? "izvor učitan" : "izvora učitano"} za NexAI polja i Gridline kolone.`
+      : "Stari zapisnik, projekt, jednopolna shema ili slike ormara koriste se za AI polja i Gridline kolone.";
+  }
+  if (documentationSprAiSourceClearButton instanceof HTMLButtonElement) {
+    documentationSprAiSourceClearButton.hidden = sources.length === 0;
+  }
+  if (!(documentationSprAiSourceList instanceof HTMLElement)) {
+    return;
+  }
+  if (!sources.length) {
+    documentationSprAiSourceList.replaceChildren();
+    return;
+  }
+  documentationSprAiSourceList.innerHTML = sources.map((source) => `
+    <div class="documentation-spr-ai-source-chip" data-documentation-spr-ai-source-id="${escapeHtml(source.id)}">
+      <span>${escapeHtml(source.name)} · ${escapeHtml(formatFileSize(source.size) || "datoteka")}</span>
+      <button type="button" title="Ukloni izvor" aria-label="Ukloni ${escapeHtml(source.name)}" data-documentation-spr-ai-source-remove="${escapeHtml(source.id)}">×</button>
+    </div>
+  `).join("");
+}
+
+async function appendDocumentationSprAiSources(files = []) {
+  if (!documentationSprModel) {
+    return;
+  }
+  const fileList = Array.from(files || []);
+  if (!fileList.length) {
+    return;
+  }
+  const maxBytes = 12 * 1024 * 1024;
+  const accepted = [];
+  for (const file of fileList) {
+    const name = String(file.name || "izvor").trim();
+    if (Number(file.size || 0) > maxBytes) {
+      setDocumentationSprStatus(`${name} je veći od 12 MB`, "saving");
+      continue;
+    }
+    const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati NexAI izvor ${name}.`);
+    accepted.push({
+      id: createClientSideId("spr-ai-source"),
+      name: name || "izvor",
+      type: String(file.type || "").trim(),
+      size: Number(file.size || 0) || 0,
+      lastModified: Number(file.lastModified || 0) || 0,
+      inlineReady: Boolean(dataUrl),
+      contentDataUrl: dataUrl,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  if (!accepted.length) {
+    return;
+  }
+  documentationSprModel.aiSources = normalizeDocumentationSprAiSources([
+    ...(documentationSprModel.aiSources || []),
+    ...accepted,
+  ]);
+  renderDocumentationSprAiSourceList();
+  syncDocumentationSprAiSourcesToGridlines();
+  scheduleDocumentationSprSave();
+  setDocumentationSprStatus(
+    `${accepted.length} ${accepted.length === 1 ? "NexAI izvor dodan" : "NexAI izvora dodano"}`,
+    "saved",
+  );
+}
+
+function removeDocumentationSprAiSource(id = "") {
+  if (!documentationSprModel) {
+    return;
+  }
+  const sourceId = String(id || "").trim();
+  documentationSprModel.aiSources = normalizeDocumentationSprAiSources(documentationSprModel.aiSources)
+    .filter((source) => String(source.id) !== sourceId);
+  renderDocumentationSprAiSourceList();
+  syncDocumentationSprAiSourcesToGridlines();
+  scheduleDocumentationSprSave();
+}
+
+function clearDocumentationSprAiSources() {
+  if (!documentationSprModel) {
+    return;
+  }
+  documentationSprModel.aiSources = [];
+  renderDocumentationSprAiSourceList();
+  syncDocumentationSprAiSourcesToGridlines();
+  scheduleDocumentationSprSave();
+  setDocumentationSprStatus("NexAI izvori uklonjeni", "saved");
+}
+
 function renderDocumentationSprAttachmentList() {
   if (!(documentationSprAttachmentList instanceof HTMLElement) || !documentationSprModel) {
     return;
@@ -61073,12 +61287,44 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
   const columnCount = Math.max(1, columns.length);
   const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
   if (gridlineApi?.rowsToModel) {
-    return gridlineApi.rowsToModel(rows, {
+    const model = gridlineApi.rowsToModel(rows, {
       rowCount,
       columnCount,
       defaultRows: rowCount,
       defaultColumns: columnCount,
     });
+    model.columnWidths = Object.fromEntries(columns.map((column, columnIndex) => [
+      String(columnIndex),
+      Number(column.width) || [70, 240, 100, 90, 90, 130][columnIndex] || 130,
+    ]));
+    model.headerRows = [
+      0,
+      ...((Array.isArray(table?.sheet?.headerRows) ? table.sheet.headerRows : []).map((row) => Number(row) + 2)),
+    ].filter((row, index, source) => Number.isInteger(row) && row >= 0 && row < rowCount && source.indexOf(row) === index);
+    model.merges = (Array.isArray(table?.sheet?.merges) ? table.sheet.merges : []).map((merge) => ({
+      row: Number(merge.row || 0) + 2,
+      column: Number(merge.column || 0),
+      rowSpan: Number(merge.rowSpan || 1),
+      columnSpan: Number(merge.columnSpan || merge.colSpan || 1),
+    }));
+    model.cellStyles = {};
+    (table?.sheet?.rows || []).forEach((row, rowIndex) => {
+      const formats = row?.formats && typeof row.formats === "object" ? row.formats : {};
+      columns.forEach((column, columnIndex) => {
+        const format = formats[column.id];
+        if (format && typeof format === "object") {
+          model.cellStyles[`${rowIndex + 2}:${columnIndex}`] = {
+            backgroundColor: format.backgroundColor || "",
+            textAlign: format.textAlign || format.align || "",
+          };
+        }
+      });
+    });
+    model.aiColumns = Object.fromEntries(columns.map((column, columnIndex) => [
+      String(columnIndex),
+      column.ai && typeof column.ai === "object" ? column.ai : {},
+    ]).filter(([, value]) => Object.keys(value || {}).length));
+    return normalizeDocumentationSprGridlineModel(model);
   }
   const data = {};
   rows.forEach((row, rowIndex) => {
@@ -61089,7 +61335,23 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
       }
     });
   });
-  return { rowCount, columnCount, data };
+  return {
+    rowCount,
+    columnCount,
+    data,
+    headerRows: [0],
+    merges: [],
+    columnWidths: Object.fromEntries(columns.map((column, columnIndex) => [
+      String(columnIndex),
+      Number(column.width) || [70, 240, 100, 90, 90, 130][columnIndex] || 130,
+    ])),
+    rowHeights: {},
+    cellStyles: {},
+    aiColumns: Object.fromEntries(columns.map((column, columnIndex) => [
+      String(columnIndex),
+      column.ai && typeof column.ai === "object" ? column.ai : {},
+    ]).filter(([, value]) => Object.keys(value || {}).length)),
+  };
 }
 
 function syncDocumentationSprNativeMeasurementTablesIntoModel() {
@@ -61174,6 +61436,23 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
         <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
         <button type="button" class="ghost-button" data-gridline-action="add-row">+ 20 redova</button>
         <button type="button" class="ghost-button" data-gridline-action="add-column">+ kolone</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="widen-column" title="Proširi aktivnu kolonu">Š+</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="narrow-column" title="Smanji aktivnu kolonu">Š-</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="taller-row" title="Povećaj aktivni red">V+</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="shorter-row" title="Smanji aktivni red">V-</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">L</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">C</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">D</button>
+        <button type="button" class="ghost-button" data-gridline-action="merge" title="Spoji označene ćelije">Merge</button>
+        <button type="button" class="ghost-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">Unmerge</button>
+        <button type="button" class="ghost-button" data-gridline-action="toggle-header-row" title="Označi red kao naslov tablice za PDF">Naslov</button>
+        <span class="documentation-gridline-colors" aria-label="Pozadinska boja ćelije">
+          <button type="button" data-gridline-action="background-color" data-gridline-color="" title="Bez boje"></button>
+          <button type="button" data-gridline-action="background-color" data-gridline-color="#fff3bf" title="Žuta"></button>
+          <button type="button" data-gridline-action="background-color" data-gridline-color="#d3f9d8" title="Zelena"></button>
+          <button type="button" data-gridline-action="background-color" data-gridline-color="#ffe3e3" title="Crvena"></button>
+          <button type="button" data-gridline-action="background-color" data-gridline-color="#d0ebff" title="Plava"></button>
+        </span>
         <button type="button" class="ghost-button" data-gridline-action="clear">Očisti</button>
       </div>
     </header>
@@ -61207,9 +61486,13 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
     saveDelayMs: 220,
     enableQuickFill: true,
     enableAiContextMenu: false,
+    enableColumnAiSettings: true,
+    disableAiUpload: true,
+    aiFiles: getDocumentationSprGridlineAiFiles(),
     aiFieldLabel: table.label || "Gridline tablica",
     organizationId: state.activeOrganizationId || "",
     workOrderNumber: documentationSprModel.workOrderNumber || "",
+    onAiPrefill: runDocumentationSprGridlineAiPrefill,
     onFormulaReady: () => {
       syncDocumentationSprNativeMeasurementTablesIntoModel();
       renderDocumentationSprPreview();
@@ -61454,6 +61737,8 @@ function writeDocumentationSprModelToForm() {
   renderDocumentationSprNativeEditors();
   syncDocumentationSprConclusionUi();
   syncDocumentationSprFieldSettingsUi();
+  renderDocumentationSprAiSourceList();
+  syncDocumentationSprAiSourcesToGridlines();
   renderDocumentationSprAttachmentList();
 }
 
@@ -61502,37 +61787,70 @@ function getDocumentationSprMeasurementRowsForModel(model = documentationSprMode
 }
 
 function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fallbackTable = null) {
-  const rows = getDocumentationSprRowsFromGridlineModel(model?.gridlineModel || buildDocumentationSprGridlineModelFromRows());
+  const normalizedGridline = normalizeDocumentationSprGridlineModel(model?.gridlineModel || buildDocumentationSprGridlineModelFromRows());
+  const rows = getDocumentationSprRowsFromGridlineModel(normalizedGridline);
   const fallbackColumns = fallbackTable?.sheet?.columns || [];
   const headerRow = rows[0] || fallbackColumns.map((column) => column.label || column.id || "");
   const unitRow = rows[1] || fallbackColumns.map((column) => column.placeholder || "");
   const columnCount = Math.max(fallbackColumns.length, headerRow.length);
   const columns = Array.from({ length: columnCount }, (_, columnIndex) => {
     const fallbackColumn = fallbackColumns[columnIndex] || {};
+    const aiColumn = normalizedGridline.aiColumns?.[String(columnIndex)] || fallbackColumn.ai || {};
     return {
       id: String(fallbackColumn.id || `col_${columnIndex + 1}`).trim(),
       label: String(headerRow[columnIndex] || fallbackColumn.label || `Kolona ${columnIndex + 1}`).trim(),
       placeholder: String(unitRow[columnIndex] || fallbackColumn.placeholder || "").trim(),
-      width: Number(fallbackColumn.width) || [70, 240, 100, 90, 90, 130][columnIndex] || 130,
+      width: Number(normalizedGridline.columnWidths?.[String(columnIndex)]) || Number(fallbackColumn.width) || [70, 240, 100, 90, 90, 130][columnIndex] || 130,
       computed: String(fallbackColumn.computed || "").trim(),
       readonly: Boolean(fallbackColumn.readonly),
+      ai: aiColumn && typeof aiColumn === "object" ? { ...aiColumn } : undefined,
     };
   });
+  const rowIndexMap = new Map();
   const sheetRows = rows.slice(2)
-    .filter((row) => Array.from({ length: columnCount }).some((_, columnIndex) => String(row[columnIndex] || "").trim()))
-    .map((row, rowIndex) => ({
-      id: `measurement-row-${rowIndex + 1}`,
-      cells: Object.fromEntries(columns.map((column, columnIndex) => [
-        column.id,
-        String(row[columnIndex] ?? "").trim(),
-      ])),
-      formats: {},
+    .map((row, originalIndex) => ({ row, originalIndex }))
+    .filter(({ row, originalIndex }) => (
+      normalizedGridline.headerRows?.includes(originalIndex + 2)
+      || Array.from({ length: columnCount }).some((_, columnIndex) => String(row[columnIndex] || "").trim())
+    ))
+    .map(({ row, originalIndex }, rowIndex) => {
+      rowIndexMap.set(originalIndex, rowIndex);
+      return {
+        id: `measurement-row-${rowIndex + 1}`,
+        cells: Object.fromEntries(columns.map((column, columnIndex) => [
+          column.id,
+          String(row[columnIndex] ?? "").trim(),
+        ])),
+        formats: Object.fromEntries(columns.map((column, columnIndex) => {
+          const style = normalizedGridline.cellStyles?.[`${originalIndex + 2}:${columnIndex}`] || {};
+          return [column.id, {
+            backgroundColor: style.backgroundColor || "",
+            textAlign: style.textAlign || "",
+          }];
+        }).filter(([, format]) => format.backgroundColor || format.textAlign)),
+      };
+    });
+  const headerRows = (normalizedGridline.headerRows || [])
+    .map((row) => Number(row) - 2)
+    .filter((row) => row >= 0 && rowIndexMap.has(row))
+    .map((row) => rowIndexMap.get(row));
+  const merges = (normalizedGridline.merges || [])
+    .map((merge) => ({
+      row: Number(merge.row || 0) - 2,
+      column: Number(merge.column || 0),
+      rowSpan: Number(merge.rowSpan || 1),
+      columnSpan: Number(merge.columnSpan || merge.colSpan || 1),
+    }))
+    .filter((merge) => merge.row >= 0 && rowIndexMap.has(merge.row))
+    .map((merge) => ({
+      ...merge,
+      row: rowIndexMap.get(merge.row),
     }));
   return {
     columns,
     rows: sheetRows,
-    merges: [],
-    headerRows: [],
+    merges,
+    headerRows,
   };
 }
 
@@ -61562,10 +61880,12 @@ function getDocumentationSprMeasurementTableRowsForRender(table = {}) {
   return (sheet.rows || [])
     .map((row, index) => ({
       id: row.id || `measurement-row-${index + 1}`,
+      rowIndex: index,
       cells: Object.fromEntries(columns.map((column, columnIndex) => {
         const value = String(row.cells?.[column.id] ?? "").trim();
         return [column.id, columnIndex === 0 && !value ? String(index + 1) : value];
       })),
+      formats: row.formats || {},
     }))
     .filter((row) => Object.values(row.cells).some((value) => String(value || "").trim()));
 }
@@ -61816,22 +62136,75 @@ function renderDocumentationSprMeasurementTableHead(table = {}) {
   `;
 }
 
+function getDocumentationSprPreviewMerge(sheet = {}, rowIndex = 0, columnIndex = 0) {
+  return (Array.isArray(sheet.merges) ? sheet.merges : []).find((merge) => (
+    rowIndex >= Number(merge.row || 0)
+    && rowIndex < Number(merge.row || 0) + Number(merge.rowSpan || 1)
+    && columnIndex >= Number(merge.column || 0)
+    && columnIndex < Number(merge.column || 0) + Number(merge.columnSpan || merge.colSpan || 1)
+  )) || null;
+}
+
+function isDocumentationSprPreviewCoveredByMerge(sheet = {}, rowIndex = 0, columnIndex = 0) {
+  const merge = getDocumentationSprPreviewMerge(sheet, rowIndex, columnIndex);
+  return Boolean(merge && (Number(merge.row || 0) !== rowIndex || Number(merge.column || 0) !== columnIndex));
+}
+
+function renderDocumentationSprPreviewCellAttributes(sheet = {}, row = {}, column = {}, rowIndex = 0, columnIndex = 0) {
+  const merge = getDocumentationSprPreviewMerge(sheet, rowIndex, columnIndex);
+  const format = row.formats?.[column.id] || {};
+  const styles = [];
+  const attrs = [];
+  const backgroundColor = String(format.backgroundColor || "").trim();
+  const textAlign = String(format.textAlign || format.align || "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(backgroundColor)) {
+    styles.push(`background-color:${backgroundColor}`);
+  }
+  if (["left", "center", "right"].includes(textAlign)) {
+    styles.push(`text-align:${textAlign}`);
+  }
+  if (merge && Number(merge.row || 0) === rowIndex && Number(merge.column || 0) === columnIndex) {
+    const rowSpan = Number(merge.rowSpan || 1);
+    const columnSpan = Number(merge.columnSpan || merge.colSpan || 1);
+    if (rowSpan > 1) {
+      attrs.push(`rowspan="${rowSpan}"`);
+    }
+    if (columnSpan > 1) {
+      attrs.push(`colspan="${columnSpan}"`);
+    }
+  }
+  if (styles.length) {
+    attrs.push(`style="${escapeHtml(styles.join(";"))}"`);
+  }
+  if ((Array.isArray(sheet.headerRows) ? sheet.headerRows : []).includes(rowIndex)) {
+    attrs.push('class="is-header-row"');
+  }
+  return attrs.join(" ");
+}
+
 function renderDocumentationSprMeasurementTableRows(table = {}) {
-  const columns = table?.sheet?.columns || [];
+  const sheet = cloneDocumentationSprMeasurementSheet(table?.sheet || {});
+  const columns = sheet.columns || [];
   const rows = getDocumentationSprMeasurementTableRowsForRender(table);
   const fallbackRows = rows.length ? rows : [{
+    rowIndex: 0,
     cells: Object.fromEntries(columns.map((column, index) => [column.id, index === 0 ? "1" : ""])),
+    formats: {},
   }];
   return fallbackRows.map((row, rowIndex) => `
-    <tr>
+    <tr class="${(Array.isArray(sheet.headerRows) ? sheet.headerRows : []).includes(row.rowIndex ?? rowIndex) ? "is-header-row" : ""}">
       ${columns.map((column, columnIndex) => {
+        const sourceRowIndex = row.rowIndex ?? rowIndex;
+        if (isDocumentationSprPreviewCoveredByMerge(sheet, sourceRowIndex, columnIndex)) {
+          return "";
+        }
         let value = row.cells?.[column.id] || "";
         try {
-          value = getMeasurementSheetPreviewCellValue(table.sheet, rowIndex, columnIndex, table.formulaContext);
+          value = getMeasurementSheetPreviewCellValue(sheet, sourceRowIndex, columnIndex, table.formulaContext);
         } catch {
           value = row.cells?.[column.id] || "";
         }
-        return `<td>${escapeHtml(value || "")}</td>`;
+        return `<td ${renderDocumentationSprPreviewCellAttributes(sheet, row, column, sourceRowIndex, columnIndex)}>${escapeHtml(value || "")}</td>`;
       }).join("")}
     </tr>
   `).join("");
@@ -62300,6 +62673,12 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-measure-table th {
       background: #bfc1c3;
       font-weight: 900;
+    }
+    .documentation-spr-paper-measure-table tr.is-header-row td,
+    .documentation-spr-paper-measure-table td.is-header-row {
+      background: #d9d9d9;
+      font-weight: 900;
+      text-align: left;
     }
 
     .documentation-spr-paper-measure-table th span,
@@ -63388,10 +63767,14 @@ function mountDocumentationSprGridline() {
     saveDelayMs: 220,
     enableQuickFill: true,
     enableAiContextMenu: false,
+    enableColumnAiSettings: true,
+    disableAiUpload: true,
+    aiFiles: getDocumentationSprGridlineAiFiles(),
     aiFieldLabel: "Tablica mjernih mjesta",
     organizationId: state.activeOrganizationId || "",
     templateId: getDocumentationSprTemplateById()?.id || "",
     workOrderNumber: documentationSprModel.workOrderNumber || "",
+    onAiPrefill: runDocumentationSprGridlineAiPrefill,
     onFormulaReady: () => {
       renderDocumentationSprPreview();
     },
@@ -63488,6 +63871,26 @@ function initDocumentationSprWorkbench() {
       syncDocumentationSprPreviewControls();
       renderDocumentationSprPreview();
       setDocumentationSprStatus("Globalni header je maknut", "saved");
+    });
+    documentationSprAiSourceUploadButton?.addEventListener("click", () => {
+      documentationSprAiSourceFileInput?.click();
+    });
+    documentationSprAiSourceFileInput?.addEventListener("change", () => {
+      const files = documentationSprAiSourceFileInput.files;
+      if (documentationSprAiSourceFileInput instanceof HTMLInputElement) {
+        documentationSprAiSourceFileInput.value = "";
+      }
+      void appendDocumentationSprAiSources(files);
+    });
+    documentationSprAiSourceClearButton?.addEventListener("click", clearDocumentationSprAiSources);
+    documentationSprAiSourceList?.addEventListener("click", (event) => {
+      const button = event.target instanceof HTMLElement
+        ? event.target.closest("[data-documentation-spr-ai-source-remove]")
+        : null;
+      if (!button) {
+        return;
+      }
+      removeDocumentationSprAiSource(button.getAttribute("data-documentation-spr-ai-source-remove") || "");
     });
     documentationSprAttachmentUploadButton?.addEventListener("click", () => {
       documentationSprAttachmentFileInput?.click();

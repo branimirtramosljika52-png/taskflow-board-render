@@ -6576,6 +6576,29 @@
                   <span id="documentation-spr-template-meta" class="documentation-spr-template-meta">0 predložaka</span>
                 </section>
 
+                <section id="documentation-spr-ai-sources" class="documentation-spr-ai-sources" aria-label="NexAI izvori za zapisnik">
+                  <div class="documentation-spr-ai-sources-copy">
+                    <span class="documentation-spr-ai-sources-icon" aria-hidden="true">AI</span>
+                    <div>
+                      <p class="section-kicker">NexAI izvori</p>
+                      <h5>Upload na početku izrade</h5>
+                      <span id="documentation-spr-ai-source-status">Stari zapisnik, projekt, jednopolna shema ili slike ormara koriste se za AI polja i Gridline kolone.</span>
+                    </div>
+                  </div>
+                  <div class="documentation-spr-ai-sources-actions">
+                    <button type="button" id="documentation-spr-ai-source-upload" class="ghost-button">Dodaj izvore</button>
+                    <button type="button" id="documentation-spr-ai-source-clear" class="ghost-button" hidden>Očisti izvore</button>
+                    <input
+                      id="documentation-spr-ai-source-file"
+                      type="file"
+                      multiple
+                      hidden
+                      accept=".pdf,.doc,.docx,.txt,.csv,.json,.xml,.jpg,.jpeg,.png,.webp,application/pdf,text/*,image/*"
+                    />
+                  </div>
+                  <div id="documentation-spr-ai-source-list" class="documentation-spr-ai-source-list" aria-live="polite"></div>
+                </section>
+
                 <section class="documentation-spr-context" hidden aria-label="Kontekst dokumentacije">
                   <label class="documentation-spr-context-field">
                     <span>Predložak</span>
@@ -6863,6 +6886,12 @@
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="narrow-column" title="Smanji aktivnu kolonu">Š-</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="taller-row" title="Povećaj aktivni red">V+</button>
                             <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="shorter-row" title="Smanji aktivni red">V-</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">L</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">C</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">D</button>
+                            <button type="button" class="ghost-button" data-gridline-action="merge" title="Spoji označene ćelije">Merge</button>
+                            <button type="button" class="ghost-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">Unmerge</button>
+                            <button type="button" class="ghost-button" data-gridline-action="toggle-header-row" title="Označi red kao naslov tablice za PDF">Naslov</button>
                             <span class="documentation-gridline-colors" aria-label="Pozadinska boja ćelije">
                               <button type="button" data-gridline-action="background-color" data-gridline-color="" title="Bez boje"></button>
                               <button type="button" data-gridline-action="background-color" data-gridline-color="#fff3bf" title="Žuta"></button>

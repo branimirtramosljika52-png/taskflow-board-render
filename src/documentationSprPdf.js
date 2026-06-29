@@ -832,6 +832,28 @@ function drawChecklistPages(pdfDoc, model, fonts) {
   });
 }
 
+function normalizePdfCellFormat(format = {}) {
+  const source = format && typeof format === "object" && !Array.isArray(format) ? format : {};
+  const backgroundColor = clean(source.backgroundColor || source.fill || "");
+  const textAlign = clean(source.textAlign || source.align || "").toLowerCase();
+  return {
+    backgroundColor: /^#[0-9a-f]{6}$/i.test(backgroundColor) ? backgroundColor : "",
+    textAlign: ["left", "center", "right"].includes(textAlign) ? textAlign : "",
+  };
+}
+
+function colorFromHex(value = "", fallback = undefined) {
+  const match = String(value || "").trim().match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!match) {
+    return fallback;
+  }
+  return rgb(
+    Number.parseInt(match[1], 16) / 255,
+    Number.parseInt(match[2], 16) / 255,
+    Number.parseInt(match[3], 16) / 255,
+  );
+}
+
 function normalizePdfMeasurementSheet(sheet = {}) {
   const source = sheet && typeof sheet === "object" && !Array.isArray(sheet) ? sheet : {};
   const columns = Array.isArray(source.columns)
@@ -840,6 +862,7 @@ function normalizePdfMeasurementSheet(sheet = {}) {
       label: clean(column?.label || column?.id || `Kolona ${index + 1}`),
       placeholder: clean(column?.placeholder || ""),
       width: Number(column?.width) || 120,
+      ai: column?.ai && typeof column.ai === "object" ? { ...column.ai } : undefined,
     })).filter((column) => column.id)
     : [];
   const rows = Array.isArray(source.rows)
@@ -848,11 +871,36 @@ function normalizePdfMeasurementSheet(sheet = {}) {
       cells: row?.cells && typeof row.cells === "object" && !Array.isArray(row.cells)
         ? Object.fromEntries(columns.map((column) => [column.id, clean(row.cells[column.id])]))
         : {},
+      formats: row?.formats && typeof row.formats === "object" && !Array.isArray(row.formats)
+        ? Object.fromEntries(columns.map((column) => [column.id, normalizePdfCellFormat(row.formats[column.id])]))
+        : {},
     }))
+    : [];
+  const headerRows = Array.isArray(source.headerRows)
+    ? Array.from(new Set(source.headerRows
+      .map((row) => Number.parseInt(String(row), 10))
+      .filter((row) => Number.isInteger(row) && row >= 0 && row < rows.length)))
+    : [];
+  const merges = Array.isArray(source.merges)
+    ? source.merges.map((merge) => ({
+      row: Number.parseInt(String(merge?.row ?? 0), 10),
+      column: Number.parseInt(String(merge?.column ?? 0), 10),
+      rowSpan: Math.max(1, Number.parseInt(String(merge?.rowSpan ?? 1), 10) || 1),
+      columnSpan: Math.max(1, Number.parseInt(String(merge?.columnSpan ?? merge?.colSpan ?? 1), 10) || 1),
+    })).filter((merge) => (
+      Number.isInteger(merge.row)
+      && Number.isInteger(merge.column)
+      && merge.row >= 0
+      && merge.column >= 0
+      && merge.row < rows.length
+      && merge.column < columns.length
+    ))
     : [];
   return {
     columns,
     rows,
+    headerRows,
+    merges,
   };
 }
 
@@ -874,8 +922,11 @@ function getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, stack = new
   try {
     const value = evaluateMeasurementFormula(rawValue, {
       resolveCellReference(reference) {
-        const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } =
-          parseMeasurementCellReference(reference);
+        const parsed = parseMeasurementCellReference(reference);
+        if (!parsed) {
+          return "";
+        }
+        const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } = parsed;
         return getPdfMeasurementCellRawValue(sheet, referenceRowIndex, referenceColumnIndex, stack);
       },
     });
@@ -950,37 +1001,44 @@ function getPdfMeasurementTableRows(table = {}) {
   return sheet.rows
     .map((row, rowIndex) => ({
       ...row,
+      rowIndex,
       cells: Object.fromEntries(sheet.columns.map((column, columnIndex) => {
         const value = clean(getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex));
         return [column.id, columnIndex === 0 && !value ? String(rowIndex + 1) : value];
       })),
+      formats: row.formats || {},
     }))
     .filter((row) => Object.values(row.cells).some(Boolean));
 }
 
-function drawMeasurementTable(page, table, y, fonts) {
-  const x = MARGIN_X;
-  const sheet = normalizePdfMeasurementSheet(table.sheet);
-  const columns = sheet.columns.length ? sheet.columns : [
-    { id: "number", label: "R. br.", width: 70 },
-    { id: "place", label: "Mjesto ispitivanja", width: 240 },
-    { id: "pass", label: "ZADOVOLJAVA", width: 120 },
-  ];
-  const rows = getPdfMeasurementTableRows({ ...table, sheet });
+function getPdfMeasurementMerge(sheet, rowIndex, columnIndex) {
+  return (sheet.merges || []).find((merge) => (
+    rowIndex >= merge.row
+    && rowIndex < merge.row + merge.rowSpan
+    && columnIndex >= merge.column
+    && columnIndex < merge.column + merge.columnSpan
+  )) || null;
+}
+
+function isPdfMeasurementCoveredByMerge(sheet, rowIndex, columnIndex) {
+  const merge = getPdfMeasurementMerge(sheet, rowIndex, columnIndex);
+  return Boolean(merge && (merge.row !== rowIndex || merge.column !== columnIndex));
+}
+
+function getPdfMeasurementColumnWidths(columns = []) {
   const availableWidth = PAGE_WIDTH - (MARGIN_X * 2);
   const declaredWidth = columns.reduce((sum, column) => sum + (Number(column.width) || 120), 0) || availableWidth;
-  const widths = columns.map((column) => ((Number(column.width) || 120) / declaredWidth) * availableWidth);
-  const dense = columns.length > 8;
-  const rowHeight = dense ? 15.2 : (rows.length > 24 ? 15.4 : 17.8);
-  const headerHeight = dense ? 32 : 38;
-  const fontSize = dense ? 5.8 : (rows.length > 24 ? 6.8 : 7.5);
+  return columns.map((column) => ((Number(column.width) || 120) / declaredWidth) * availableWidth);
+}
+
+function drawMeasurementColumnHeader(page, columns, widths, y, fonts, dense) {
+  let cellX = MARGIN_X;
+  const headerHeight = dense ? 30 : 36;
   const headerFontSize = dense ? 5.7 : 7.2;
-  let cursorY = y;
-  let cellX = x;
   columns.forEach((column, columnIndex) => {
     drawCell(page, {
       x: cellX,
-      y: cursorY,
+      y,
       width: widths[columnIndex],
       height: headerHeight,
       text: [column.label, column.placeholder].filter(Boolean).join("\n"),
@@ -991,38 +1049,64 @@ function drawMeasurementTable(page, table, y, fonts) {
     });
     cellX += widths[columnIndex];
   });
-  cursorY -= headerHeight;
-  const maxRows = Math.max(1, Math.floor((cursorY - BOTTOM_Y - 20) / rowHeight));
-  rows.slice(0, maxRows).forEach((row) => {
-    cellX = x;
-    columns.forEach((column, cellIndex) => {
-      drawCell(page, {
-        x: cellX,
-        y: cursorY,
-        width: widths[cellIndex],
-        height: rowHeight,
-        text: row.cells?.[column.id] || "",
-        fonts,
-        fontSize,
-        align: cellIndex === 1 || column.id === "item" || column.id.includes("place") || column.id.includes("circuit") ? "left" : "center",
-      });
-      cellX += widths[cellIndex];
+  return y - headerHeight;
+}
+
+function drawMeasurementDataRow(page, sheet, row, columns, widths, y, fonts, dense) {
+  const rowHeight = dense ? 15.2 : 17.4;
+  const fontSize = dense ? 5.8 : 7.2;
+  columns.forEach((column, columnIndex) => {
+    const merge = getPdfMeasurementMerge(sheet, row.rowIndex, columnIndex);
+    const format = normalizePdfCellFormat(row.formats?.[column.id] || {});
+    const columnSpan = merge && merge.row === row.rowIndex && merge.column === columnIndex
+      ? Math.max(1, Math.min(merge.columnSpan, columns.length - columnIndex))
+      : 1;
+    const width = widths.slice(columnIndex, columnIndex + columnSpan).reduce((sum, value) => sum + value, 0);
+    const cellX = MARGIN_X + widths.slice(0, columnIndex).reduce((sum, value) => sum + value, 0);
+    const align = format.textAlign
+      || (columnIndex === 1 || column.id === "item" || column.id.includes("place") || column.id.includes("circuit") ? "left" : "center");
+    if (isPdfMeasurementCoveredByMerge(sheet, row.rowIndex, columnIndex)) {
+      return;
+    }
+    drawCell(page, {
+      x: cellX,
+      y,
+      width,
+      height: rowHeight,
+      text: row.cells?.[column.id] || "",
+      fonts,
+      fontSize,
+      align,
+      fill: colorFromHex(format.backgroundColor),
+      bold: sheet.headerRows.includes(row.rowIndex),
     });
-    cursorY -= rowHeight;
   });
-  if (rows.length > maxRows) {
-    drawTextLine(page, `Prikazano ${maxRows} od ${rows.length} redaka.`, {
-      x,
-      y: cursorY - 8,
-      font: fonts.regular,
-      size: 7.4,
-      color: MUTED,
-    });
+  return y - rowHeight;
+}
+
+function drawMeasurementTable(page, table, y, fonts, rowsOverride = null, options = {}) {
+  const x = MARGIN_X;
+  const sheet = normalizePdfMeasurementSheet(table.sheet);
+  const columns = sheet.columns.length ? sheet.columns : [
+    { id: "number", label: "R. br.", width: 70 },
+    { id: "place", label: "Mjesto ispitivanja", width: 240 },
+    { id: "pass", label: "ZADOVOLJAVA", width: 120 },
+  ];
+  const rows = Array.isArray(rowsOverride) ? rowsOverride : getPdfMeasurementTableRows({ ...table, sheet });
+  const widths = getPdfMeasurementColumnWidths(columns);
+  const dense = columns.length > 8;
+  let cursorY = y;
+  if (options.drawColumnHeader !== false) {
+    cursorY = drawMeasurementColumnHeader(page, columns, widths, cursorY, fonts, dense);
   }
+  rows.forEach((row) => {
+    cursorY = drawMeasurementDataRow(page, sheet, row, columns, widths, cursorY, fonts, dense);
+  });
+  void x;
   return cursorY;
 }
 
-function drawMeasurementTablePage(pdfDoc, model, table, fonts) {
+function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex = 0) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = drawSimpleHeader(page, model, fonts);
   drawTextLine(page, table.summary || table.label || getMeasurementTableTitle(model), {
@@ -1032,16 +1116,54 @@ function drawMeasurementTablePage(pdfDoc, model, table, fonts) {
     size: 8.2,
     color: DARK,
   });
-  drawMeasurementTable(page, table, y - 6, fonts);
+  if (pageIndex > 0) {
+    drawTextLine(page, "nastavak", {
+      x: PAGE_WIDTH - MARGIN_X - 54,
+      y: y + 6,
+      width: 54,
+      align: "right",
+      font: fonts.regular,
+      size: 7,
+      color: MUTED,
+    });
+  }
+  drawMeasurementTable(page, table, y - 6, fonts, rows);
   return page;
 }
 
 function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
   const tables = normalizePdfMeasurementTables(model, rows);
+  let pageCount = 0;
   tables.forEach((table) => {
-    drawMeasurementTablePage(pdfDoc, model, table, fonts);
+    const sheet = normalizePdfMeasurementSheet(table.sheet);
+    const allRows = getPdfMeasurementTableRows({ ...table, sheet });
+    const columns = sheet.columns.length ? sheet.columns : [];
+    const dense = columns.length > 8;
+    const rowHeight = dense ? 15.2 : 17.4;
+    const headerHeight = dense ? 30 : 36;
+    const rowsPerPage = Math.max(1, Math.floor((TOP_Y - 64 - BOTTOM_Y - headerHeight) / rowHeight));
+    const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
+    const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
+    let cursor = 0;
+    let tablePageIndex = 0;
+    if (!bodyRows.length) {
+      drawMeasurementTablePage(pdfDoc, model, table, fonts, headerRows, tablePageIndex);
+      pageCount += 1;
+      return;
+    }
+    while (cursor < bodyRows.length) {
+      const availableBodyRows = Math.max(1, rowsPerPage - headerRows.length);
+      const pageRows = [
+        ...(tablePageIndex > 0 ? headerRows : headerRows),
+        ...bodyRows.slice(cursor, cursor + availableBodyRows),
+      ];
+      drawMeasurementTablePage(pdfDoc, model, table, fonts, pageRows, tablePageIndex);
+      cursor += availableBodyRows;
+      tablePageIndex += 1;
+      pageCount += 1;
+    }
   });
-  return tables.length;
+  return pageCount;
 }
 
 function extractOib(value = "") {

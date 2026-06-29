@@ -293,6 +293,8 @@
       var column = Number(parts[1]);
       var entry = source[key] && typeof source[key] === "object" ? source[key] : {};
       var backgroundColor = String(entry.backgroundColor || "").trim();
+      var textAlign = String(entry.textAlign || entry.align || "").trim().toLowerCase();
+      var nextEntry = {};
       if (
         !Number.isInteger(row)
         || !Number.isInteger(column)
@@ -300,15 +302,123 @@
         || column < 0
         || row >= rowCount
         || column >= columnCount
-        || !/^#[0-9a-f]{6}$/i.test(backgroundColor)
       ) {
         return;
       }
-      normalized[cellKey(row, column)] = {
-        backgroundColor: backgroundColor,
+      if (/^#[0-9a-f]{6}$/i.test(backgroundColor)) {
+        nextEntry.backgroundColor = backgroundColor;
+      }
+      if (["left", "center", "right"].indexOf(textAlign) >= 0) {
+        nextEntry.textAlign = textAlign;
+      }
+      if (Object.keys(nextEntry).length) {
+        normalized[cellKey(row, column)] = nextEntry;
+      }
+    });
+    return normalized;
+  }
+
+  function normalizeHeaderRows(value, rowCount) {
+    var source = Array.isArray(value) ? value : [];
+    var seen = Object.create(null);
+    return source.map(function (entry) {
+      return clampInteger(entry, 0, 0, Math.max(0, rowCount - 1));
+    }).filter(function (row) {
+      if (seen[String(row)]) {
+        return false;
+      }
+      seen[String(row)] = true;
+      return true;
+    }).sort(function (left, right) {
+      return left - right;
+    });
+  }
+
+  function normalizeAiColumns(value, columnCount) {
+    var source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    var normalized = Object.create(null);
+    Object.keys(source).forEach(function (key) {
+      var column = Number(key);
+      var entry = source[key] && typeof source[key] === "object" ? source[key] : {};
+      if (!Number.isInteger(column) || column < 0 || column >= columnCount) {
+        return;
+      }
+      normalized[String(column)] = {
+        enabled: entry.enabled !== false,
+        label: String(entry.label || "").trim(),
+        description: String(entry.description || entry.aiDescription || "").trim(),
+        lookFor: String(entry.lookFor || entry.aiLookFor || "").trim(),
+        avoid: String(entry.avoid || entry.aiAvoid || "").trim(),
+        allowedValues: String(entry.allowedValues || "").trim(),
+        examples: String(entry.examples || "").trim(),
+        required: Boolean(entry.required),
       };
     });
     return normalized;
+  }
+
+  function cloneAiColumns(value, columnCount) {
+    var normalized = normalizeAiColumns(value, columnCount);
+    var clone = Object.create(null);
+    Object.keys(normalized).forEach(function (key) {
+      clone[key] = Object.assign({}, normalized[key]);
+    });
+    return clone;
+  }
+
+  function cloneFileMeta(value) {
+    return (Array.isArray(value) ? value : []).map(function (file) {
+      return {
+        id: String(file && (file.id || file.name) || ""),
+        name: String(file && file.name || ""),
+        type: String(file && file.type || ""),
+        size: Number(file && file.size || 0),
+        lastModified: Number(file && file.lastModified || 0),
+        inlineReady: Boolean(file && (file.inlineReady || file.contentDataUrl)),
+        contentDataUrl: file && file.contentDataUrl ? String(file.contentDataUrl) : "",
+      };
+    }).filter(function (file) {
+      return file.name || file.id;
+    });
+  }
+
+  function normalizeSelectionRange(range, rowCount, columnCount) {
+    var source = range && typeof range === "object" ? range : {};
+    return {
+      startRow: clampInteger(source.startRow, 0, 0, Math.max(0, rowCount - 1)),
+      startColumn: clampInteger(source.startColumn, 0, 0, Math.max(0, columnCount - 1)),
+      endRow: clampInteger(source.endRow, 0, 0, Math.max(0, rowCount - 1)),
+      endColumn: clampInteger(source.endColumn, 0, 0, Math.max(0, columnCount - 1)),
+    };
+  }
+
+  function getRangeBounds(range) {
+    return {
+      top: Math.min(range.startRow, range.endRow),
+      bottom: Math.max(range.startRow, range.endRow),
+      left: Math.min(range.startColumn, range.endColumn),
+      right: Math.max(range.startColumn, range.endColumn),
+    };
+  }
+
+  function rangesOverlap(left, right) {
+    return !(
+      left.right < right.left
+      || right.right < left.left
+      || left.bottom < right.top
+      || right.bottom < left.top
+    );
+  }
+
+  function makeCellStyle(backgroundColor, textAlign) {
+    var style = {};
+    if (/^#[0-9a-f]{6}$/i.test(String(backgroundColor || "").trim())) {
+      style.backgroundColor = String(backgroundColor).trim();
+    }
+    if (["left", "center", "right"].indexOf(String(textAlign || "").trim().toLowerCase()) >= 0) {
+      style.textAlign = String(textAlign).trim().toLowerCase();
+    }
+    return style;
   }
 
   function createDefaultModel(options) {
@@ -332,6 +442,8 @@
       columnWidths: Object.create(null),
       rowHeights: Object.create(null),
       cellStyles: Object.create(null),
+      headerRows: [],
+      aiColumns: Object.create(null),
     };
   }
 
@@ -376,6 +488,8 @@
       columnWidths: Object.create(null),
       rowHeights: Object.create(null),
       cellStyles: Object.create(null),
+      headerRows: Array.isArray(options && options.headerRows) ? normalizeHeaderRows(options.headerRows, rowCount) : [],
+      aiColumns: Object.create(null),
     };
   }
 
@@ -411,6 +525,8 @@
     var columnWidths = normalizeNumberMap(source.columnWidths, columnCount, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
     var rowHeights = normalizeNumberMap(source.rowHeights, rowCount, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
     var cellStyles = normalizeCellStyles(source.cellStyles, rowCount, columnCount);
+    var headerRows = normalizeHeaderRows(source.headerRows, rowCount);
+    var aiColumns = normalizeAiColumns(source.aiColumns, columnCount);
 
     Object.keys(data).forEach(function (key) {
       var parts = key.split(":");
@@ -429,6 +545,8 @@
       columnWidths: columnWidths,
       rowHeights: rowHeights,
       cellStyles: cellStyles,
+      headerRows: headerRows,
+      aiColumns: aiColumns,
     };
   }
 
@@ -441,6 +559,8 @@
       columnWidths: normalizeNumberMap(model.columnWidths, model.columnCount, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH),
       rowHeights: normalizeNumberMap(model.rowHeights, model.rowCount, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT),
       cellStyles: normalizeCellStyles(model.cellStyles, model.rowCount, model.columnCount),
+      headerRows: normalizeHeaderRows(model.headerRows, model.rowCount),
+      aiColumns: cloneAiColumns(model.aiColumns, model.columnCount),
     };
   }
 
@@ -488,6 +608,12 @@
     var narrowColumnButton = resolveElement(host, "[data-gridline-action='narrow-column']");
     var tallerRowButton = resolveElement(host, "[data-gridline-action='taller-row']");
     var shorterRowButton = resolveElement(host, "[data-gridline-action='shorter-row']");
+    var mergeButton = resolveElement(host, "[data-gridline-action='merge']");
+    var unmergeButton = resolveElement(host, "[data-gridline-action='unmerge']");
+    var headerRowButton = resolveElement(host, "[data-gridline-action='toggle-header-row']");
+    var alignButtons = host && typeof host.querySelectorAll === "function"
+      ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='align']"))
+      : [];
     var backgroundColorButtons = host && typeof host.querySelectorAll === "function"
       ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='background-color']"))
       : [];
@@ -511,14 +637,21 @@
     var autoGrow = !(options && options.autoGrow === false);
     var enableQuickFill = Boolean(quickFillButton || options && options.enableQuickFill);
     var enableAiContextMenu = Boolean(options && options.enableAiContextMenu);
+    var enableColumnAiSettings = options && Object.prototype.hasOwnProperty.call(options, "enableColumnAiSettings")
+      ? Boolean(options.enableColumnAiSettings)
+      : true;
+    var disableAiUpload = Boolean(options && options.disableAiUpload);
     var pendingExternalChange = false;
     var fillDrag = null;
+    var columnResize = null;
+    var selection = { startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 };
     var quickFillPanel = null;
     var contextMenu = null;
     var aiPanel = null;
+    var columnAiPanel = null;
     var aiState = {
       mode: "table",
-      files: [],
+      files: cloneFileMeta(options && options.aiFiles),
       previewRows: [],
       status: "idle",
       message: "",
@@ -673,6 +806,32 @@
     function isCoveredByMerge(row, column) {
       var merge = getCoveringMerge(row, column);
       return Boolean(merge && (merge.row !== row || merge.column !== column));
+    }
+
+    function getSelectionBounds() {
+      return getRangeBounds(normalizeSelectionRange(selection, model.rowCount, model.columnCount));
+    }
+
+    function isCellInSelection(row, column) {
+      var bounds = getSelectionBounds();
+      return row >= bounds.top && row <= bounds.bottom && column >= bounds.left && column <= bounds.right;
+    }
+
+    function isHeaderRow(row) {
+      return normalizeHeaderRows(model.headerRows, model.rowCount).indexOf(row) >= 0;
+    }
+
+    function getSelectedCells() {
+      var bounds = getSelectionBounds();
+      var cells = [];
+      var row;
+      var column;
+      for (row = bounds.top; row <= bounds.bottom; row += 1) {
+        for (column = bounds.left; column <= bounds.right; column += 1) {
+          cells.push({ row: row, column: column });
+        }
+      }
+      return cells;
     }
 
     function emitChange() {
@@ -925,6 +1084,63 @@
       document.addEventListener("pointerup", handleFillPointerUp, { once: true });
     }
 
+    function handleColumnResizeMove(event) {
+      var nextWidth;
+      if (!columnResize) {
+        return;
+      }
+      event.preventDefault();
+      nextWidth = clampInteger(
+        columnResize.startWidth + (event.clientX - columnResize.startX),
+        columnResize.startWidth,
+        MIN_COLUMN_WIDTH,
+        MAX_COLUMN_WIDTH
+      );
+      if (!model.columnWidths) {
+        model.columnWidths = Object.create(null);
+      }
+      model.columnWidths[String(columnResize.column)] = nextWidth;
+      render();
+      selectCell(active.row, active.column, { focus: false });
+    }
+
+    function handleColumnResizeUp() {
+      if (!columnResize) {
+        return;
+      }
+      document.removeEventListener("pointermove", handleColumnResizeMove);
+      document.removeEventListener("pointerup", handleColumnResizeUp);
+      columnResize = null;
+      scheduleSave();
+    }
+
+    function handleGridPointerDown(event) {
+      var resizer = event.target && event.target.closest
+        ? event.target.closest("[data-gridline-column-resizer]")
+        : null;
+      var input;
+      if (resizer && grid.contains(resizer)) {
+        event.preventDefault();
+        event.stopPropagation();
+        columnResize = {
+          column: clampInteger(resizer.dataset.gridlineColumnResizer, active.column, 0, model.columnCount - 1),
+          startX: event.clientX,
+          startWidth: getColumnWidth(clampInteger(resizer.dataset.gridlineColumnResizer, active.column, 0, model.columnCount - 1)),
+        };
+        document.addEventListener("pointermove", handleColumnResizeMove);
+        document.addEventListener("pointerup", handleColumnResizeUp);
+        return;
+      }
+      handleFillPointerDown(event);
+      input = getClosestCellInput(event.target);
+      if (input && event.shiftKey) {
+        selectCell(Number(input.dataset.row), Number(input.dataset.column), {
+          focus: false,
+          extend: true,
+        });
+      }
+    }
+
     function handleFillDoubleClick(event) {
       var handle = event.target && event.target.closest ? event.target.closest(".gridline-fill-handle") : null;
       var endRow;
@@ -946,6 +1162,7 @@
 
     function selectCell(row, column, selectOptions) {
       var focus = !selectOptions || selectOptions.focus !== false;
+      var extend = Boolean(selectOptions && selectOptions.extend);
       var input;
       var td;
       var start = getMergeStart(
@@ -956,6 +1173,21 @@
         row: start.row,
         column: start.column,
       };
+      if (extend) {
+        selection = {
+          startRow: selection.startRow,
+          startColumn: selection.startColumn,
+          endRow: active.row,
+          endColumn: active.column,
+        };
+      } else {
+        selection = {
+          startRow: active.row,
+          startColumn: active.column,
+          endRow: active.row,
+          endColumn: active.column,
+        };
+      }
       if (selectedCell) {
         selectedCell.classList.remove("is-selected");
         Array.prototype.forEach.call(selectedCell.querySelectorAll(".gridline-fill-handle"), function (node) {
@@ -972,6 +1204,14 @@
       }
       cellRef.textContent = columnLabel(active.column) + (active.row + 1);
       formulaInput.value = getValue(active.row, active.column);
+      Array.prototype.forEach.call(grid.querySelectorAll("td.is-range-selected"), function (node) {
+        node.classList.remove("is-range-selected");
+      });
+      Array.prototype.forEach.call(grid.querySelectorAll("td[data-row][data-column]"), function (node) {
+        if (isCellInSelection(Number(node.dataset.row), Number(node.dataset.column))) {
+          node.classList.add("is-range-selected");
+        }
+      });
       if (input) {
         syncInputDisplay(input, focus || isInputEditing(input));
       }
@@ -998,10 +1238,22 @@
       corner.className = "corner";
       headRow.appendChild(corner);
       for (column = 0; column < model.columnCount; column += 1) {
+        var columnAi = model.aiColumns && model.aiColumns[String(column)];
+        var resizer = document.createElement("button");
         th = document.createElement("th");
         th.textContent = columnLabel(column);
+        th.dataset.column = String(column);
         th.style.width = getColumnWidth(column) + "px";
         th.style.minWidth = getColumnWidth(column) + "px";
+        th.classList.toggle("has-ai-column", Boolean(columnAi && columnAi.enabled !== false));
+        th.title = columnAi
+          ? "Desni klik: NexAI postavke kolone"
+          : "Povuci rub za promjenu širine. Desni klik: NexAI postavke kolone";
+        resizer.type = "button";
+        resizer.className = "gridline-column-resizer";
+        resizer.dataset.gridlineColumnResizer = String(column);
+        resizer.setAttribute("aria-label", "Promijeni širinu kolone " + columnLabel(column));
+        th.appendChild(resizer);
         headRow.appendChild(th);
       }
       thead.appendChild(headRow);
@@ -1013,6 +1265,10 @@
         rowHead = document.createElement("th");
         rowHead.textContent = String(row + 1);
         rowHead.style.height = getRowHeight(row) + "px";
+        rowHead.classList.toggle("is-header-row", isHeaderRow(row));
+        if (isHeaderRow(row)) {
+          rowHead.title = "Naslovni red koji se ponavlja u PDF-u";
+        }
         tr.appendChild(rowHead);
         for (column = 0; column < model.columnCount; column += 1) {
           var merge = getCoveringMerge(row, column);
@@ -1034,6 +1290,12 @@
           if (cellStyle && cellStyle.backgroundColor) {
             td.style.backgroundColor = cellStyle.backgroundColor;
           }
+          if (cellStyle && cellStyle.textAlign) {
+            td.style.textAlign = cellStyle.textAlign;
+          }
+          if (isCellInSelection(row, column)) {
+            td.classList.add("is-range-selected");
+          }
           input = document.createElement("input");
           input.className = merge ? "cell is-merged-input" : "cell";
           input.autocomplete = "off";
@@ -1042,6 +1304,9 @@
           input.dataset.column = String(column);
           if (cellStyle && cellStyle.backgroundColor) {
             input.style.backgroundColor = cellStyle.backgroundColor;
+          }
+          if (cellStyle && cellStyle.textAlign) {
+            input.style.textAlign = cellStyle.textAlign;
           }
           syncInputDisplay(input, false);
           td.appendChild(input);
@@ -1745,6 +2010,11 @@
       return Array.from({ length: model.columnCount }, function (_, columnIndex) {
         var header = String(getValue(0, columnIndex) || "").trim();
         var letter = columnLabel(columnIndex);
+        var config = model.aiColumns && model.aiColumns[String(columnIndex)] || {};
+        var label = String(config.label || header || letter).trim();
+        var description = String(config.description || "").trim();
+        var lookFor = String(config.lookFor || "").trim();
+        var avoid = String(config.avoid || "").trim();
         return {
           fieldId: "gridline",
           fieldKey: "documentation_gridline",
@@ -1753,15 +2023,20 @@
           columnIndex: columnIndex,
           columnLetter: letter,
           key: "col_" + columnIndex,
-          label: header || letter,
+          label: label,
           type: "text",
-          required: false,
-          placeholder: header || letter,
-          helpText: "Popuni samo ako je vrijednost vidljiva u projektu ili starom zapisniku.",
+          required: Boolean(config.required),
+          placeholder: label,
+          helpText: description || "Popuni samo ako je vrijednost vidljiva u projektu ili starom zapisniku.",
+          allowedValues: String(config.allowedValues || "").trim(),
+          examples: String(config.examples || "").trim(),
           aiMapping: {
-            enabled: true,
+            enabled: config.enabled !== false,
             key: "col_" + columnIndex,
-            label: header || letter,
+            label: label,
+            description: description,
+            lookFor: lookFor,
+            avoid: avoid,
             sourceTracking: true,
           },
         };
@@ -1894,7 +2169,9 @@
         fileList.replaceChildren();
         if (!aiState.files.length) {
           var empty = document.createElement("span");
-          empty.textContent = "Nema dodanih datoteka.";
+          empty.textContent = disableAiUpload
+            ? "Nema početnih NexAI izvora za ovaj zapisnik."
+            : "Nema dodanih datoteka.";
           fileList.appendChild(empty);
         } else {
           aiState.files.forEach(function (file) {
@@ -1996,6 +2273,9 @@
       addFilesButton.className = "ghost-button";
       addFilesButton.dataset.gridlineAiAddFiles = "true";
       addFilesButton.textContent = "Dodaj projekt/zapisnik";
+      if (disableAiUpload) {
+        addFilesButton.hidden = true;
+      }
 
       runButton = document.createElement("button");
       runButton.type = "button";
@@ -2023,11 +2303,16 @@
       clearButton.textContent = "Ocisti";
 
       aiPanel.append(
-        createPopoverHeader("NexAI za Gridline", "Desni klik odreduje punim li celiju, red ili tablicu."),
+        createPopoverHeader(
+          "NexAI za Gridline",
+          disableAiUpload
+            ? "Koriste se NexAI izvori uploadani na početku izrade."
+            : "Desni klik određuje punim li ćeliju, red ili tablicu."
+        ),
         createLabeledControl("Uputa / zalijepljeni tekst", textInput),
         createLabeledControl("Model", modelSelect),
         createLabeledControl("Pocetni red", startInput),
-        fileInput,
+        disableAiUpload ? document.createTextNode("") : fileInput,
         createPopoverActions([addFilesButton, runButton, applyButton, clearButton, closeButton])
       );
       var status = document.createElement("div");
@@ -2042,7 +2327,9 @@
       preview.dataset.gridlineAiPreview = "true";
       aiPanel.append(status, files, preview);
       aiPanel.addEventListener("click", handleAiPanelClick);
-      fileInput.addEventListener("change", handleAiPanelFileChange);
+      if (!disableAiUpload) {
+        fileInput.addEventListener("change", handleAiPanelFileChange);
+      }
       rootElement.appendChild(aiPanel);
       renderAiPanel();
       return aiPanel;
@@ -2275,8 +2562,162 @@
       document.body.appendChild(contextMenu);
     }
 
+    function closeColumnAiPanel() {
+      if (columnAiPanel) {
+        columnAiPanel.remove();
+        columnAiPanel = null;
+      }
+    }
+
+    function createColumnAiTextInput(name, labelText, value, multiline) {
+      var control = multiline ? document.createElement("textarea") : document.createElement("input");
+      if (!multiline) {
+        control.type = "text";
+      } else {
+        control.rows = 3;
+      }
+      control.value = String(value || "");
+      control.dataset.gridlineColumnAiField = name;
+      return createLabeledControl(labelText, control);
+    }
+
+    function showColumnAiSettingsPanel(event, column) {
+      var normalizedColumn = clampInteger(column, active.column, 0, model.columnCount - 1);
+      var current = model.aiColumns && model.aiColumns[String(normalizedColumn)] || {};
+      var header = String(getValue(0, normalizedColumn) || columnLabel(normalizedColumn)).trim();
+      var enabledLabel;
+      var enabledInput;
+      var requiredLabel;
+      var requiredInput;
+      var saveButton;
+      var removeButton;
+      var closeButton;
+      if (!enableColumnAiSettings || !rootElement) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      hideContextMenu();
+      closeColumnAiPanel();
+      columnAiPanel = document.createElement("section");
+      columnAiPanel.className = "gridline-popover gridline-column-ai-panel";
+      columnAiPanel.style.left = Math.min(event.clientX, window.innerWidth - 420) + "px";
+      columnAiPanel.style.top = Math.min(event.clientY, window.innerHeight - 520) + "px";
+      columnAiPanel.dataset.gridlineColumnAiPanel = String(normalizedColumn);
+      columnAiPanel.setAttribute("role", "dialog");
+      columnAiPanel.setAttribute("aria-label", "NexAI postavke kolone");
+
+      enabledInput = document.createElement("input");
+      enabledInput.type = "checkbox";
+      enabledInput.checked = current.enabled !== false;
+      enabledInput.dataset.gridlineColumnAiEnabled = "true";
+      enabledLabel = document.createElement("label");
+      enabledLabel.className = "gridline-popover-check";
+      enabledLabel.append(enabledInput, document.createTextNode(" NexAI smije popuniti ovu kolonu"));
+
+      requiredInput = document.createElement("input");
+      requiredInput.type = "checkbox";
+      requiredInput.checked = Boolean(current.required);
+      requiredInput.dataset.gridlineColumnAiRequired = "true";
+      requiredLabel = document.createElement("label");
+      requiredLabel.className = "gridline-popover-check";
+      requiredLabel.append(requiredInput, document.createTextNode(" Kolona je obavezna"));
+
+      saveButton = document.createElement("button");
+      saveButton.type = "button";
+      saveButton.className = "primary-button";
+      saveButton.textContent = "Spremi postavke";
+      saveButton.dataset.gridlineColumnAiSave = "true";
+
+      removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "ghost-button";
+      removeButton.textContent = "Makni AI";
+      removeButton.dataset.gridlineColumnAiRemove = "true";
+
+      closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "ghost-button";
+      closeButton.textContent = "Zatvori";
+      closeButton.dataset.gridlineColumnAiClose = "true";
+
+      columnAiPanel.append(
+        createPopoverHeader(
+          "NexAI kolona " + columnLabel(normalizedColumn),
+          "Ovdje se definira kako AI smije puniti ovu kolonu. Datoteke se uploadiraju na početku izrade."
+        ),
+        enabledLabel,
+        createColumnAiTextInput("label", "Naziv kolone za AI", current.label || header, false),
+        createColumnAiTextInput("description", "Opis polja", current.description || "", true),
+        createColumnAiTextInput("lookFor", "NexAI neka traži", current.lookFor || "", true),
+        createColumnAiTextInput("avoid", "NexAI ne smije", current.avoid || "", true),
+        createColumnAiTextInput("allowedValues", "Dozvoljene vrijednosti", current.allowedValues || "", false),
+        createColumnAiTextInput("examples", "Primjeri", current.examples || "", false),
+        requiredLabel,
+        createPopoverActions([removeButton, closeButton, saveButton])
+      );
+      columnAiPanel.addEventListener("click", handleColumnAiPanelClick);
+      rootElement.appendChild(columnAiPanel);
+    }
+
+    function readColumnAiPanelValue(fieldName) {
+      var control = columnAiPanel && columnAiPanel.querySelector('[data-gridline-column-ai-field="' + fieldName + '"]');
+      return control ? String(control.value || "").trim() : "";
+    }
+
+    function handleColumnAiPanelClick(event) {
+      var target = event.target;
+      var column;
+      if (!(target instanceof HTMLElement) || !columnAiPanel) {
+        return;
+      }
+      if (target.closest("[data-gridline-column-ai-close]")) {
+        closeColumnAiPanel();
+        return;
+      }
+      column = clampInteger(columnAiPanel.dataset.gridlineColumnAiPanel, active.column, 0, model.columnCount - 1);
+      if (target.closest("[data-gridline-column-ai-remove]")) {
+        if (model.aiColumns) {
+          delete model.aiColumns[String(column)];
+        }
+        closeColumnAiPanel();
+        render();
+        scheduleSave();
+        return;
+      }
+      if (target.closest("[data-gridline-column-ai-save]")) {
+        var enabledInput = columnAiPanel.querySelector("[data-gridline-column-ai-enabled]");
+        var requiredInput = columnAiPanel.querySelector("[data-gridline-column-ai-required]");
+        if (!model.aiColumns) {
+          model.aiColumns = Object.create(null);
+        }
+        model.aiColumns[String(column)] = normalizeAiColumns({
+          [String(column)]: {
+            enabled: enabledInput ? enabledInput.checked : true,
+            label: readColumnAiPanelValue("label"),
+            description: readColumnAiPanelValue("description"),
+            lookFor: readColumnAiPanelValue("lookFor"),
+            avoid: readColumnAiPanelValue("avoid"),
+            allowedValues: readColumnAiPanelValue("allowedValues"),
+            examples: readColumnAiPanelValue("examples"),
+            required: requiredInput ? requiredInput.checked : false,
+          },
+        }, model.columnCount)[String(column)];
+        closeColumnAiPanel();
+        render();
+        scheduleSave();
+      }
+    }
+
     function handleGridContextMenu(event) {
+      var columnHeader = event.target && event.target.closest
+        ? event.target.closest("thead th[data-column]")
+        : null;
       var input = getClosestCellInput(event.target);
+      if (columnHeader && grid.contains(columnHeader)) {
+        showColumnAiSettingsPanel(event, Number(columnHeader.dataset.column));
+        return;
+      }
       if (!input) {
         return;
       }
@@ -2359,19 +2800,122 @@
       scheduleSave();
     }
 
-    function setActiveCellBackground(color) {
-      var key = cellKey(active.row, active.column);
-      var normalizedColor = String(color || "").trim();
+    function mergeSelection() {
+      var bounds = getSelectionBounds();
+      var range = {
+        top: bounds.top,
+        bottom: bounds.bottom,
+        left: bounds.left,
+        right: bounds.right,
+      };
+      var row;
+      var column;
+      if (range.top === range.bottom && range.left === range.right) {
+        return;
+      }
+      model.merges = normalizeMerges(model.merges, model.rowCount, model.columnCount).filter(function (merge) {
+        return !rangesOverlap(range, {
+          top: merge.row,
+          bottom: merge.row + merge.rowSpan - 1,
+          left: merge.column,
+          right: merge.column + merge.columnSpan - 1,
+        });
+      });
+      for (row = range.top; row <= range.bottom; row += 1) {
+        for (column = range.left; column <= range.right; column += 1) {
+          if (row !== range.top || column !== range.left) {
+            delete model.data[cellKey(row, column)];
+          }
+        }
+      }
+      model.merges.push({
+        row: range.top,
+        column: range.left,
+        rowSpan: range.bottom - range.top + 1,
+        columnSpan: range.right - range.left + 1,
+      });
+      model.merges = normalizeMerges(model.merges, model.rowCount, model.columnCount);
+      active = { row: range.top, column: range.left };
+      selection = { startRow: range.top, startColumn: range.left, endRow: range.bottom, endColumn: range.right };
+      render();
+      scheduleSave();
+    }
+
+    function unmergeActive() {
+      var merge = getCoveringMerge(active.row, active.column);
+      if (!merge) {
+        return;
+      }
+      model.merges = normalizeMerges(model.merges, model.rowCount, model.columnCount).filter(function (entry) {
+        return !(
+          entry.row === merge.row
+          && entry.column === merge.column
+          && entry.rowSpan === merge.rowSpan
+          && entry.columnSpan === merge.columnSpan
+        );
+      });
+      active = { row: merge.row, column: merge.column };
+      selection = {
+        startRow: merge.row,
+        startColumn: merge.column,
+        endRow: merge.row + merge.rowSpan - 1,
+        endColumn: merge.column + merge.columnSpan - 1,
+      };
+      render();
+      scheduleSave();
+    }
+
+    function toggleHeaderRow() {
+      var rows = normalizeHeaderRows(model.headerRows, model.rowCount);
+      var index = rows.indexOf(active.row);
+      if (index >= 0) {
+        rows.splice(index, 1);
+      } else {
+        rows.push(active.row);
+      }
+      model.headerRows = normalizeHeaderRows(rows, model.rowCount);
+      render();
+      scheduleSave();
+    }
+
+    function setSelectedCellsAlign(align) {
+      var normalizedAlign = String(align || "").trim().toLowerCase();
+      if (["left", "center", "right"].indexOf(normalizedAlign) < 0) {
+        return;
+      }
       if (!model.cellStyles) {
         model.cellStyles = Object.create(null);
       }
-      if (!normalizedColor) {
-        delete model.cellStyles[key];
-      } else if (/^#[0-9a-f]{6}$/i.test(normalizedColor)) {
-        model.cellStyles[key] = {
-          backgroundColor: normalizedColor,
-        };
+      getSelectedCells().forEach(function (cell) {
+        var key = cellKey(cell.row, cell.column);
+        var existing = model.cellStyles[key] || {};
+        var nextStyle = makeCellStyle(existing.backgroundColor || "", normalizedAlign);
+        if (Object.keys(nextStyle).length) {
+          model.cellStyles[key] = nextStyle;
+        } else {
+          delete model.cellStyles[key];
+        }
+      });
+      render();
+      scheduleSave();
+    }
+
+    function setActiveCellBackground(color) {
+      var normalizedColor = String(color || "").trim();
+      var cells = getSelectedCells();
+      if (!model.cellStyles) {
+        model.cellStyles = Object.create(null);
       }
+      cells.forEach(function (cell) {
+        var key = cellKey(cell.row, cell.column);
+        var existing = model.cellStyles[key] || {};
+        var nextStyle = makeCellStyle(normalizedColor, existing.textAlign || "");
+        if (Object.keys(nextStyle).length) {
+          model.cellStyles[key] = nextStyle;
+        } else {
+          delete model.cellStyles[key];
+        }
+      });
       render();
       scheduleSave();
     }
@@ -2407,9 +2951,9 @@
     grid.addEventListener("input", handleInput);
     grid.addEventListener("keydown", handleKeydown);
     grid.addEventListener("paste", handlePaste);
-    grid.addEventListener("pointerdown", handleFillPointerDown);
+    grid.addEventListener("pointerdown", handleGridPointerDown);
     grid.addEventListener("dblclick", handleFillDoubleClick);
-    if (enableAiContextMenu) {
+    if (enableAiContextMenu || enableColumnAiSettings) {
       grid.addEventListener("contextmenu", handleGridContextMenu);
     }
     formulaInput.addEventListener("input", handleFormulaInput);
@@ -2431,6 +2975,20 @@
     if (shorterRowButton) {
       shorterRowButton.addEventListener("click", function () { resizeActiveRow(-8); });
     }
+    if (mergeButton) {
+      mergeButton.addEventListener("click", mergeSelection);
+    }
+    if (unmergeButton) {
+      unmergeButton.addEventListener("click", unmergeActive);
+    }
+    if (headerRowButton) {
+      headerRowButton.addEventListener("click", toggleHeaderRow);
+    }
+    alignButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        setSelectedCellsAlign(button.dataset.gridlineAlign || "");
+      });
+    });
     backgroundColorButtons.forEach(function (button) {
       button.addEventListener("click", function () {
         setActiveCellBackground(button.dataset.gridlineColor || "");
@@ -2462,12 +3020,13 @@
         aiPanel.remove();
         aiPanel = null;
       }
+      closeColumnAiPanel();
       grid.removeEventListener("focusin", handleFocusIn);
       grid.removeEventListener("focusout", handleFocusOut);
       grid.removeEventListener("input", handleInput);
       grid.removeEventListener("keydown", handleKeydown);
       grid.removeEventListener("paste", handlePaste);
-      grid.removeEventListener("pointerdown", handleFillPointerDown);
+      grid.removeEventListener("pointerdown", handleGridPointerDown);
       grid.removeEventListener("dblclick", handleFillDoubleClick);
       grid.removeEventListener("contextmenu", handleGridContextMenu);
       formulaInput.removeEventListener("input", handleFormulaInput);
@@ -2508,6 +3067,10 @@
         model = normalizeModel(nextModel, options);
         render();
         emitChange();
+      },
+      setAiFiles: function (files) {
+        aiState.files = cloneFileMeta(files);
+        renderAiPanel();
       },
       addRows: addRows,
       addColumns: addColumns,
