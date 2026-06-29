@@ -112,7 +112,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.245.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.246.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -22204,8 +22204,49 @@ function getMobileMeasurementSheetSummary(sheet = null) {
   ].join(" · ");
 }
 
+const MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES = new Set(["SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES"]);
+
+function normalizeMobileNativeMeasurementServiceCode(value = "") {
+  const code = normalizeInputValue(value).toUpperCase();
+  return MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES.has(code) ? code : "";
+}
+
+function getMobileMeasurementTableIdentity(table = {}) {
+  return normalizeInputValue(table?.key || table?.id || table?.tokenKey || table?.label).toLowerCase();
+}
+
+function mobileMeasurementTableLooksLikeOtherNativeService(table = {}, serviceCode = "") {
+  const identity = getMobileMeasurementTableIdentity(table);
+  const ownCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
+  if (!identity || !ownCode) {
+    return false;
+  }
+  const prefixesByCode = {
+    SPR: ["spr-"],
+    TZIN: ["tzin-"],
+    EIZ: ["eiz-"],
+    SZOM: ["szom-"],
+    SZOMV: ["szomv-"],
+    VES: ["ves-"],
+  };
+  return Object.entries(prefixesByCode).some(([code, prefixes]) => (
+    code !== ownCode && prefixes.some((prefix) => identity.startsWith(prefix))
+  ));
+}
+
+function getMobileDefaultMeasurementTablesForNativeService(service = {}, template = {}) {
+  const serviceCode = normalizeMobileNativeMeasurementServiceCode(
+    getMobileDocumentTemplateServiceCode(service, Number(template?.serviceIndex) || 0)
+      || template?.serviceCode,
+  );
+  return {
+    serviceCode,
+    tables: serviceCode ? createDocumentationMeasurementTablesForService(serviceCode) : [],
+  };
+}
+
 function buildMobileDocumentTemplateMeasurementTables(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}) {
-  return (Array.isArray(template?.customFields) ? template.customFields : [])
+  const generatedTables = (Array.isArray(template?.customFields) ? template.customFields : [])
     .map((field, index) => {
       if (normalizeInputValue(field?.type).toLowerCase() !== "measurement_table") {
         return null;
@@ -22227,6 +22268,17 @@ function buildMobileDocumentTemplateMeasurementTables(template = {}, workOrder =
       };
     })
     .filter(Boolean);
+  const nativeDefaults = getMobileDefaultMeasurementTablesForNativeService(service, template);
+  if (!nativeDefaults.tables.length) {
+    return generatedTables;
+  }
+  if (!generatedTables.length) {
+    return nativeDefaults.tables;
+  }
+  if (generatedTables.some((table) => mobileMeasurementTableLooksLikeOtherNativeService(table, nativeDefaults.serviceCode))) {
+    return nativeDefaults.tables;
+  }
+  return generatedTables;
 }
 
 function getMobileWorkOrderLocationObjectId(workOrder = {}) {

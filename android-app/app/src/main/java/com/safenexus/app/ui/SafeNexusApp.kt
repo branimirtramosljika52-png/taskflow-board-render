@@ -24006,17 +24006,43 @@ private fun WorkOrderDocumentationWizardDialog(
         if (flowItem == null || flowItem.serviceKey.isBlank() || flowItem.serviceKey == "fallback") {
             context.templates
         } else {
+            fun usableTemplates(templates: List<WorkOrderDocumentationTemplate>): List<WorkOrderDocumentationTemplate> =
+                templates
+                    .filter { template ->
+                        template.fieldBlocks.isNotEmpty() ||
+                            template.measurementTables.isNotEmpty() ||
+                            template.fields.isNotEmpty()
+                    }
+                    .ifEmpty { templates }
+
             val matchedTemplates = context.templates.filter { template ->
                 template.matchesDocumentationServiceFlowItem(flowItem)
             }
-            matchedTemplates
-                .filter { template ->
-                    template.fieldBlocks.isNotEmpty() ||
-                        template.measurementTables.isNotEmpty() ||
-                        template.fields.isNotEmpty()
+            val directMatches = usableTemplates(matchedTemplates)
+            if (directMatches.isNotEmpty()) {
+                return@remember directMatches
+            }
+
+            val flowNativeCode = documentationNativeServiceCodeForText(
+                listOf(flowItem.serviceCode, flowItem.serviceName, flowItem.serviceKey)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" "),
+            )
+            val nativeMatches = if (flowNativeCode.isNotBlank()) {
+                context.templates.filter { template ->
+                    val templateNativeCode = documentationNativeServiceCodeForText(
+                        listOf(template.serviceCode, template.serviceName, template.documentType, template.title, template.documentName, template.dataSourceTitle)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" "),
+                    )
+                    templateNativeCode == flowNativeCode
                 }
-                .ifEmpty { matchedTemplates }
-                .ifEmpty { context.templates }
+            } else {
+                emptyList()
+            }
+            usableTemplates(nativeMatches).ifEmpty {
+                if (context.templates.size == 1) context.templates else emptyList()
+            }
         }
     }
     val sprBrowserFlowSelected = remember(
@@ -28365,6 +28391,14 @@ private fun DocumentationMeasurementPreviewContent(
     enabled: Boolean,
     onSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
 ) {
+    val context = LocalContext.current
+    DisposableEffect(Unit) {
+        val activity = context.findFragmentActivity()
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
     val tables = remember(measurementTemplates) {
         measurementTemplates.flatMap { template ->
             template.measurementTables.map { table -> template to table }
@@ -28646,17 +28680,6 @@ private fun MeasurementTableEditor(
     tableOnly: Boolean = false,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
-    val context = LocalContext.current
-    DisposableEffect(table.key, table.id) {
-        val activity = context.findFragmentActivity()
-        val previousOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        onDispose {
-            if (activity?.isChangingConfigurations != true) {
-                activity?.requestedOrientation = previousOrientation
-            }
-        }
-    }
     val historyLimit = 24
     val columnWindowSize = if (tableOnly) 10 else if (expanded) 8 else 10
     var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
