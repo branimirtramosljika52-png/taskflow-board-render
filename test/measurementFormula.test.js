@@ -128,6 +128,43 @@ test("measurement formulas support aggregate functions over ranges", () => {
   assert.equal(evaluateMeasurementFormula("=COUNT(A1:A3)", context), 3);
 });
 
+test("measurement formulas support Excel-style business helpers", () => {
+  const values = new Map([
+    ["A1", "Safe"],
+    ["A2", ""],
+    ["A3", "Nexus"],
+    ["B1", 12.345],
+    ["B2", 0],
+    ["B3", 5],
+  ]);
+  const context = {
+    resolveCellReference(reference) {
+      return values.get(reference) ?? "";
+    },
+    resolveRange(startReference, endReference) {
+      assert.equal(startReference, "A1");
+      assert.equal(endReference, "A3");
+      return [["Safe"], [""], ["Nexus"]];
+    },
+    now() {
+      return new Date(2026, 5, 29, 10, 15);
+    },
+  };
+
+  assert.equal(evaluateMeasurementFormula("=COUNTA(A1:A3)", context), 2);
+  assert.equal(evaluateMeasurementFormula("=AND(B1>10;B3=5)", context), true);
+  assert.equal(evaluateMeasurementFormula("=OR(B1<10;B3=5)", context), true);
+  assert.equal(evaluateMeasurementFormula("=NOT(B2>0)", context), true);
+  assert.equal(evaluateMeasurementFormula("=ROUND(B1;2)", context), 12.35);
+  assert.equal(evaluateMeasurementFormula("=ROUNDUP(B1;1)", context), 12.4);
+  assert.equal(evaluateMeasurementFormula("=ROUNDDOWN(B1;1)", context), 12.3);
+  assert.equal(evaluateMeasurementFormula("=ISBLANK(A2)", context), true);
+  assert.equal(evaluateMeasurementFormula("=LEN(A1)", context), 4);
+  assert.equal(evaluateMeasurementFormula('=CONCAT(A1;" ";A3)', context), "Safe Nexus");
+  assert.equal(evaluateMeasurementFormula("=TODAY()", context), "29.06.2026");
+  assert.equal(evaluateMeasurementFormula("=NOW()", context), "29.06.2026 10:15");
+});
+
 test("measurement formulas support ROWS over ranges and cells", () => {
   const context = {
     resolveCellReference() {

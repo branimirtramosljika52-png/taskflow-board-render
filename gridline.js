@@ -1266,9 +1266,11 @@
       var count;
       var sum;
       var average;
+      var bounds;
       if (!statusBar) {
         return;
       }
+      bounds = getSelectionBounds();
       cells = getSelectedCells();
       numericValues = cells.map(function (cell) {
         var value = getDisplayValue(cell.row, cell.column);
@@ -1283,9 +1285,23 @@
       statusBar.innerHTML = "";
       statusBar.appendChild(document.createTextNode("Spremno"));
       if (count > 1) {
+        var rangeChip = document.createElement("span");
+        rangeChip.textContent = formatSelectionLabel();
+        statusBar.appendChild(rangeChip);
+      }
+      if (count > 1) {
         var countChip = document.createElement("span");
-        countChip.textContent = count + " celija";
+        countChip.textContent = count + " ćelija";
         statusBar.appendChild(countChip);
+      }
+      if (bounds.top === bounds.bottom && bounds.left === 0 && bounds.right === model.columnCount - 1) {
+        var rowChip = document.createElement("span");
+        rowChip.textContent = "Red " + (bounds.top + 1);
+        statusBar.appendChild(rowChip);
+      } else if (bounds.left === bounds.right && bounds.top === 0 && bounds.bottom === model.rowCount - 1) {
+        var columnChip = document.createElement("span");
+        columnChip.textContent = "Stupac " + columnLabel(bounds.left);
+        statusBar.appendChild(columnChip);
       }
       if (numericValues.length) {
         [
@@ -2088,8 +2104,8 @@
         ? event.target.closest("td[data-row][data-column]")
         : null;
       if (cell && grid.contains(cell)) {
+        event.preventDefault();
         if (document.activeElement === formulaInput && String(formulaInput.value || "").trim().startsWith("=")) {
-          event.preventDefault();
           insertFormulaReference(formatCellReference(Number(cell.dataset.row), Number(cell.dataset.column)));
           return;
         }
@@ -2207,11 +2223,31 @@
       Array.prototype.forEach.call(grid.querySelectorAll("td.is-range-selected"), function (node) {
         node.classList.remove("is-range-selected");
       });
+      Array.prototype.forEach.call(grid.querySelectorAll("th.is-range-selected-header"), function (node) {
+        node.classList.remove("is-range-selected-header");
+      });
       Array.prototype.forEach.call(grid.querySelectorAll("td[data-row][data-column]"), function (node) {
         if (isCellInSelection(Number(node.dataset.row), Number(node.dataset.column))) {
           node.classList.add("is-range-selected");
         }
       });
+      (function markSelectionHeaders() {
+        var bounds = getSelectionBounds();
+        var columnIndex;
+        var rowIndex;
+        for (columnIndex = bounds.left; columnIndex <= bounds.right; columnIndex += 1) {
+          var columnHead = grid.querySelector('thead th[data-column="' + columnIndex + '"]');
+          if (columnHead) {
+            columnHead.classList.add("is-range-selected-header");
+          }
+        }
+        for (rowIndex = bounds.top; rowIndex <= bounds.bottom; rowIndex += 1) {
+          var rowHead = grid.querySelector('tbody th[data-row-header="' + rowIndex + '"]');
+          if (rowHead) {
+            rowHead.classList.add("is-range-selected-header");
+          }
+        }
+      })();
       if (input) {
         syncInputDisplay(input, focus || isInputEditing(input));
       }
@@ -4003,7 +4039,45 @@
           createContextActionButton("Obrisi stupac", function () { deleteColumnsInRange(columnIndex, columnIndex); }),
           createContextActionButton("Sort A-Z", function () { sortByColumn(columnIndex, "asc"); }),
           createContextActionButton("Sort Z-A", function () { sortByColumn(columnIndex, "desc"); }),
-          createContextActionButton("NexAI postavke kolone", function () { showColumnAiSettingsPanel(event, columnIndex); })
+          createContextActionButton("NexAI postavke kolone", function () { showColumnAiSettingsPanel(event, columnIndex); }),
+          createContextActionButton("NexAI popuni kolonu", function () {
+            if (typeof onAiPrefill === "function") {
+              onAiPrefill({
+                mode: "column",
+                columnIndex: columnIndex,
+                columnLabel: columnLabel(columnIndex),
+                aiColumn: model.aiColumns && model.aiColumns[String(columnIndex)] || null,
+                files: cloneFileMeta(aiState.files),
+                model: cloneModel(model),
+              }).then(function (payload) {
+                var aiRows;
+                var rowIndex;
+                if (payload && payload.data && payload.rowCount) {
+                  model = normalizeModel(payload, options);
+                  render();
+                  scheduleSave();
+                  return;
+                }
+                aiRows = payload && !payload.dryRun ? buildAiRowsFromPayload(payload) : [];
+                if (aiRows.length) {
+                  recordUndo();
+                  ensureSize(aiRows.length, columnIndex);
+                  for (rowIndex = 0; rowIndex < aiRows.length; rowIndex += 1) {
+                    setValue(rowIndex, columnIndex, aiRows[rowIndex][columnIndex] || aiRows[rowIndex][0] || "");
+                  }
+                  render();
+                  scheduleSave();
+                  setStatus("NexAI kolona popunjena", "is-saved");
+                } else {
+                  setStatus("NexAI nije vratio vrijednosti za kolonu", "is-saving");
+                }
+              }).catch(function () {
+                setStatus("NexAI kolona nije popunjena", "is-saving");
+              });
+            } else {
+              showColumnAiSettingsPanel(event, columnIndex);
+            }
+          })
         );
         document.body.appendChild(contextMenu);
         return;

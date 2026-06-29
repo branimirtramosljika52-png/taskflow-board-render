@@ -14,7 +14,7 @@ const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN_X = 42;
 const TOP_Y = 805;
-const BOTTOM_Y = 46;
+const BOTTOM_Y = 74;
 const FONT_REGULAR_URL = "/assets/fonts/DejaVuSans.ttf";
 const FONT_BOLD_URL = "/assets/fonts/DejaVuSans-Bold.ttf";
 const BLUE = rgb(0.06, 0.45, 0.74);
@@ -240,7 +240,7 @@ function stampFooters(pdfDoc, model, fonts, {
   targetPages.forEach((page, index) => {
     drawTextLine(page, `${serviceCode}-${index + 1}/${totalPages}`, {
       x: MARGIN_X,
-      y: 32,
+      y: 26,
       font: fonts.regular,
       size: 8.4,
     });
@@ -305,6 +305,8 @@ function getValiditySentence(model = {}) {
 }
 
 function drawDefaultHeader(page, model, fonts, y = TOP_Y) {
+  void y;
+  return drawSimpleHeader(page, model, fonts);
   const x = MARGIN_X;
   const width = PAGE_WIDTH - (MARGIN_X * 2);
   page.drawLine({
@@ -390,9 +392,11 @@ async function embedHeaderImage(pdfDoc, dataUrl = "") {
     return null;
   }
   try {
-    const response = await fetch(text);
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const bytes = dataUrlToBytes(text);
     const mime = match[1].toLowerCase();
+    if (!bytes) {
+      return null;
+    }
     return mime.includes("png")
       ? await pdfDoc.embedPng(bytes)
       : await pdfDoc.embedJpg(bytes);
@@ -550,6 +554,17 @@ function getPdfPageMetrics(orientation = "portrait") {
 }
 
 function getPdfMeasurementOrientation(table = {}) {
+  const signature = [
+    table.id,
+    table.key,
+    table.label,
+    table.summary,
+    table.chapterTitle,
+    table.assessmentLabel,
+  ].map((entry) => clean(entry).toLowerCase()).join(" ");
+  if (/\bipk\b|impedancija\s+petlje\s+kvara/.test(signature)) {
+    return "landscape";
+  }
   return normalizePdfPageOrientation(table.pageOrientation || table.orientation);
 }
 
@@ -612,6 +627,7 @@ function drawKeyValueTable(page, entries, y, fonts, {
   fontSize = 9.3,
   lineHeight = 12.3,
   bottomY = BOTTOM_Y,
+  valueAlign = "left",
 } = {}) {
   const x = MARGIN_X;
   const valueX = x + keyWidth + 8;
@@ -635,6 +651,8 @@ function drawKeyValueTable(page, entries, y, fonts, {
       drawTextLine(page, line, {
         x: valueX,
         y: valueY,
+        width: valueWidth,
+        align: valueAlign,
         font: strong ? fonts.bold : fonts.regular,
         size: fontSize,
       });
@@ -1237,7 +1255,7 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
     const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
     const rowHeight = dense ? 15.2 : 17.4;
     const headerHeight = dense ? 30 : 36;
-    const rowsPerPage = Math.max(1, Math.floor((metrics.topY - 64 - metrics.bottomY - headerHeight) / rowHeight));
+    const rowsPerPage = Math.max(1, Math.floor((metrics.topY - 86 - metrics.bottomY - headerHeight) / rowHeight));
     const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
     const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
     let cursor = 0;
@@ -1316,7 +1334,7 @@ function drawSignatureText(page, model, fonts, x, y, width, {
   fieldName = "",
   signatureImage = null,
 } = {}) {
-  drawTextLine(page, "Ispitivac", {
+  drawTextLine(page, "Ispitivač", {
     x,
     y,
     width,
@@ -1349,13 +1367,6 @@ function drawSignatureText(page, model, fonts, x, y, width, {
     align: "center",
     font: fonts.regular,
     size: 7.4,
-  });
-  page.drawLine({
-    start: { x: x + 30, y: y - 76 },
-    end: { x: x + width - 30, y: y - 68 },
-    thickness: 1.3,
-    color: rgb(0.25, 0.36, 0.72),
-    opacity: 0.45,
   });
   if (model.signatureMode === "scan" && signatureImage) {
     drawCenteredImage(page, signatureImage, {
@@ -1426,7 +1437,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   y = drawKeyValueTable(page, assessmentEntries.length > 0
     ? assessmentEntries.map((entry) => [entry.label, entry.value, entry.value.toUpperCase().includes("NE ZADOVOLJAVA")])
     : [[getAssessmentLabel(model), clean(model.resultStatus), true]],
-  y, fonts, { keyWidth: 310, fontSize: 8.5, lineHeight: 11 });
+  y, fonts, { keyWidth: 310, fontSize: 8.5, lineHeight: 11, valueAlign: "right" });
   y -= 8;
   y = drawSectionTitle(page, 9, "ZAKLJUČAK", y, fonts);
   y = drawTextBlock(page, getConclusionLead(model), {
@@ -1482,8 +1493,10 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     size: 8.6,
   });
   drawTextLine(page, "M.P.", {
-    x: MARGIN_X + 90,
+    x: MARGIN_X,
     y: 134,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
     font: fonts.bold,
     size: 9.2,
   });

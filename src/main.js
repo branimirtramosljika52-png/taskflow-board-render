@@ -57654,6 +57654,8 @@ function normalizeDocumentationSprCustomObjects(value = []) {
     return {
       id,
       name,
+      companyId: String(item.companyId || "").trim(),
+      locationId: String(item.locationId || "").trim(),
       isCustom: true,
     };
   }).filter(Boolean);
@@ -59049,6 +59051,29 @@ function applyDocumentationSprLegalSelection(ids = getDocumentationSprSelectValu
   scheduleDocumentationSprSave();
 }
 
+function syncDocumentationSprDerivedSourceFields() {
+  if (!documentationSprModel) {
+    return;
+  }
+  const equipmentText = getDocumentationSprEquipmentByIds(documentationSprModel.measurementEquipmentIds)
+    .map((item) => formatDocumentationSprEquipmentLine(item))
+    .join("\n");
+  const regulationsText = buildDocumentationSprRegulationsText(
+    documentationSprModel.legalFrameworkIds,
+    documentationSprModel.customRegulations,
+  );
+  documentationSprModel.equipment = equipmentText;
+  documentationSprModel.regulations = regulationsText;
+  const equipmentField = documentationWorkbenchModule?.querySelector("[data-documentation-spr-field='equipment']");
+  const regulationsField = documentationWorkbenchModule?.querySelector("[data-documentation-spr-field='regulations']");
+  if (equipmentField instanceof HTMLTextAreaElement || equipmentField instanceof HTMLInputElement) {
+    equipmentField.value = equipmentText;
+  }
+  if (regulationsField instanceof HTMLTextAreaElement || regulationsField instanceof HTMLInputElement) {
+    regulationsField.value = regulationsText;
+  }
+}
+
 function appendDocumentationSprCustomRegulation() {
   if (!documentationSprModel || !(documentationSprLegalCustomInput instanceof HTMLInputElement)) {
     return;
@@ -59621,9 +59646,38 @@ function getDocumentationSprWorkOrderObject(workOrder = {}) {
   return getLocationObject(workOrder.objectId || workOrder.locationObjectId || workOrder.locationObject?.id || "");
 }
 
+function getDocumentationSprCurrentWorkOrder(model = documentationSprModel) {
+  const workOrderId = String(model?.workOrderId || "").trim();
+  const workOrderNumber = String(model?.workOrderNumber || "").trim();
+  if (workOrderId) {
+    const byId = (state.workOrders || []).find((item) => String(item.id || "").trim() === workOrderId);
+    if (byId) {
+      return byId;
+    }
+  }
+  if (workOrderNumber) {
+    return (state.workOrders || []).find((item) => String(item.workOrderNumber || "").trim() === workOrderNumber) || null;
+  }
+  return null;
+}
+
 function getDocumentationSprObjectItems() {
+  const workOrder = getDocumentationSprCurrentWorkOrder();
+  const companyId = String(workOrder?.companyId || "").trim();
+  const locationId = String(workOrder?.locationId || "").trim();
   const moduleObjects = (state.locationObjects ?? [])
     .filter((item) => item && item.isActive !== false)
+    .filter((item) => {
+      const itemLocationId = String(item.locationId || "").trim();
+      const itemCompanyId = String(item.companyId || "").trim();
+      if (locationId) {
+        return itemLocationId === locationId;
+      }
+      if (companyId) {
+        return itemCompanyId === companyId;
+      }
+      return true;
+    })
     .map((item) => ({
       id: String(item.id || "").trim(),
       name: String(item.name || item.title || item.code || "Objekt").trim(),
@@ -59633,7 +59687,16 @@ function getDocumentationSprObjectItems() {
       isCustom: false,
     }))
     .filter((item) => item.id && item.name);
-  const customObjects = normalizeDocumentationSprCustomObjects(documentationSprModel?.customObjects ?? []);
+  const customObjects = normalizeDocumentationSprCustomObjects(documentationSprModel?.customObjects ?? [])
+    .filter((item) => {
+      if (locationId) {
+        return !item.locationId || item.locationId === locationId;
+      }
+      if (companyId) {
+        return !item.companyId || item.companyId === companyId;
+      }
+      return true;
+    });
   return [...moduleObjects, ...customObjects]
     .sort((left, right) => (
       Number(left.isCustom) - Number(right.isCustom)
@@ -59695,9 +59758,15 @@ function applyDocumentationSprObjectSelection(objectId = "") {
     }
     const objectName = String(name || "").trim();
     const id = `custom-object-${Date.now().toString(36)}-${slugifyValue(objectName)}`;
+    const workOrder = getDocumentationSprCurrentWorkOrder();
     documentationSprModel.customObjects = normalizeDocumentationSprCustomObjects([
       ...(documentationSprModel.customObjects || []),
-      { id, name: objectName },
+      {
+        id,
+        name: objectName,
+        companyId: String(workOrder?.companyId || "").trim(),
+        locationId: String(workOrder?.locationId || "").trim(),
+      },
     ]);
     documentationSprModel.inspectionObjectId = id;
     setDocumentationSprFieldValue("inspectionObject", objectName);
@@ -61193,7 +61262,6 @@ function showDocumentationSprFieldContextMenu(event, target) {
   const menu = document.createElement("div");
   const title = document.createElement("strong");
   const aiButton = document.createElement("button");
-  const fillButton = document.createElement("button");
   const requiredButton = document.createElement("button");
 
   closeDocumentationSprFieldContextMenu();
@@ -61206,14 +61274,6 @@ function showDocumentationSprFieldContextMenu(event, target) {
     openDocumentationSprFieldSettingsPanel(target.fieldKey, target.label);
   });
 
-  fillButton.type = "button";
-  fillButton.textContent = "AI popuni iz uploada";
-  fillButton.addEventListener("click", () => {
-    updateDocumentationSprFieldSetting(target.fieldKey, { aiEnabled: true });
-    closeDocumentationSprFieldContextMenu();
-    setDocumentationSprStatus("NexAI postavke spremljene za polje", "saved");
-  });
-
   requiredButton.type = "button";
   requiredButton.textContent = setting.required ? "Makni obavezno polje" : "Polje je obavezno";
   requiredButton.addEventListener("click", () => {
@@ -61221,7 +61281,7 @@ function showDocumentationSprFieldContextMenu(event, target) {
     closeDocumentationSprFieldContextMenu();
   });
 
-  menu.append(title, aiButton, fillButton, requiredButton);
+  menu.append(title, aiButton, requiredButton);
   document.body.appendChild(menu);
   documentationSprFieldContextMenu = menu;
   positionDocumentationSprFloatingPanel(menu, event.clientX, event.clientY);
@@ -61946,14 +62006,14 @@ function handleDocumentationSprDatePickerOpen(event) {
     ? (normalizeDateInputValue(visibleInput.value) || "")
     : "";
   try {
+    picker.focus({ preventScroll: true });
     if (typeof picker.showPicker === "function") {
       picker.showPicker();
     } else {
-      picker.focus();
       picker.click();
     }
   } catch {
-    picker.focus();
+    picker.focus({ preventScroll: true });
     picker.click();
   }
   return true;
@@ -62180,18 +62240,11 @@ function renderDocumentationSprPaperHeader(model, { useUploadedHeader = false } 
     `;
   }
   return `
-    <div class="documentation-spr-paper-header">
-      <div class="documentation-spr-paper-logo">
-        <span class="documentation-spr-paper-logo-mark">AG</span>
-        <span>ADRIA GRUPA<small>FACILITY MANAGEMENT</small></span>
-      </div>
-      <div class="documentation-spr-paper-company">
-        <strong>Sektor: ZAŠTITNI SUSTAVI</strong>
-        <strong>Zaštita na radu · Zaštita od požara · Zaštita okoliša</strong>
-        <span>ADRIA GRUPA d.o.o., Heinzelova 53a, 10000 Zagreb, tel: 01 2359 942, fax: 01 2359 908</span>
-        <span>e-mail: zastitni.sustavi@adria-grupa.hr, web: www.adria-grupa.hr, MB: 1759906, OIB: 06637660960</span>
-      </div>
-      <div class="documentation-spr-paper-number">${escapeHtml(model.workOrderNumber)}</div>
+    <div class="documentation-spr-paper-simple-header">
+      <span class="documentation-spr-paper-rn">${escapeHtml(model.workOrderNumber)}</span>
+      <strong>ISPITNI IZVJEŠTAJ</strong>
+      <strong>${escapeHtml(getDocumentationSprReportServiceTitle(model))}</strong>
+      <span class="documentation-spr-paper-place">${escapeHtml(model.inspectionPlace)}</span>
     </div>
   `;
 }
@@ -62499,9 +62552,9 @@ function getDocumentationSprMeasurementRowsPerPage(table = {}) {
   const columns = table?.sheet?.columns || [];
   const orientation = normalizeDocumentationSprPageOrientation(table?.pageOrientation);
   if (orientation === "landscape") {
-    return columns.length > 8 ? 22 : 19;
+    return columns.length > 8 ? 18 : 16;
   }
-  return columns.length > 8 ? 35 : 29;
+  return columns.length > 8 ? 29 : 24;
 }
 
 function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4, rowsOverride = null, tablePageIndex = 0) {
@@ -62589,7 +62642,7 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
       <div class="documentation-spr-paper-list">${recommendations}</div>
       ${renderDocumentationSprSectionTitle(8 + sectionOffset, "OCJENA REZULTATA ISPITIVANJA")}
       <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:</p>
-      <table class="documentation-spr-paper-kv">
+      <table class="documentation-spr-paper-kv documentation-spr-paper-assessment-table">
         ${assessmentRows.length > 0
           ? assessmentRows.map((entry) => `<tr><td>${escapeHtml(entry.label)}</td><td><strong>${escapeHtml(entry.value || entry.defaultValue || "ZADOVOLJAVA")}</strong></td></tr>`).join("")
           : `<tr><td>${escapeHtml(getDocumentationSprAssessmentLabel(model))}</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>`}
@@ -62602,7 +62655,7 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
       <p class="documentation-spr-paper-center">${escapeHtml(getDocumentationSprValiditySentence(model))} <strong>${escapeHtml(formatDocumentationSprDateForDocument(model.validUntil))}</strong></p>
       <p class="documentation-spr-paper-right">U Zagrebu, <strong>${escapeHtml(formatDocumentationSprDateForDocument(model.issueDate))}</strong></p>
       <div class="documentation-spr-paper-signature-area is-bottom">
-        <div class="documentation-spr-paper-center"><strong>M.P.</strong></div>
+        <div class="documentation-spr-paper-center documentation-spr-paper-stamp"><strong>M.P.</strong></div>
         <div>
           <span>Dokaze iz Zapisnika ocijenio:</span>
           <strong>${escapeHtml(model.responsiblePerson)}</strong>
@@ -62666,6 +62719,7 @@ function renderDocumentationSprPreview() {
   if (!documentationSprPreview || !documentationSprModel) {
     return;
   }
+  syncDocumentationSprDerivedSourceFields();
   const rows = getDocumentationSprMeasurementRows();
   const tables = getDocumentationSprMeasurementTablesForModel({
     ...documentationSprModel,
@@ -62769,7 +62823,7 @@ function buildDocumentationSprPdfStyles() {
       height: 296.5mm;
       min-height: 0;
       margin: 0 auto;
-      padding: 12mm 10mm 36mm;
+      padding: 12mm 10mm 44mm;
       box-sizing: border-box;
       background: #fff;
       color: #101010;
@@ -62784,7 +62838,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper.is-landscape {
       width: 297mm;
       height: 209.5mm;
-      padding: 10mm 9mm 32mm;
+      padding: 10mm 9mm 40mm;
     }
 
     .documentation-spr-paper:last-child {
@@ -62925,6 +62979,11 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-kv td:first-child {
       width: 190px;
       font-weight: 900;
+    }
+
+    .documentation-spr-paper-assessment-table td:last-child {
+      width: 190px;
+      text-align: right;
     }
 
     .documentation-spr-paper-list {
@@ -63126,12 +63185,12 @@ function buildDocumentationSprPdfStyles() {
 
     .documentation-spr-signature-box i,
     .documentation-spr-paper-signature-area i {
-      width: 190px;
-      height: 42px;
-      display: block;
-      margin: 2px auto 0;
-      border-bottom: 2px solid rgba(65, 92, 180, 0.42);
-      transform: rotate(-5deg);
+      display: none;
+    }
+
+    .documentation-spr-paper-stamp {
+      align-self: center;
+      justify-self: center;
     }
 
     .documentation-spr-paper-conclusion {
@@ -63153,7 +63212,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-footer {
       position: absolute;
       left: 10mm;
-      bottom: 11mm;
+      bottom: 16mm;
       color: #111;
       font-size: 10pt;
       line-height: 1;
@@ -63360,6 +63419,9 @@ async function exportDocumentationSprPdf() {
     setDocumentationSprStatus(error?.message || "Potpis nije spreman", "saving");
     return;
   }
+  readDocumentationSprFormIntoModel();
+  syncDocumentationSprGridlineIntoModel();
+  syncDocumentationSprDerivedSourceFields();
   renderDocumentationSprPreview();
   scheduleDocumentationSprSave();
 

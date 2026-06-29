@@ -893,14 +893,14 @@ function evaluateFormulaAst(node, context) {
         if (node.args.length !== 0) {
           throw new MeasurementFormulaError("TODAY ne prima argumente.");
         }
-        return formatFormulaDate(new Date(), false);
+        return formatFormulaDate(typeof context.now === "function" ? context.now() : new Date(), false);
       }
 
       if (node.name === "NOW") {
         if (node.args.length !== 0) {
           throw new MeasurementFormulaError("NOW ne prima argumente.");
         }
-        return formatFormulaDate(new Date(), true);
+        return formatFormulaDate(typeof context.now === "function" ? context.now() : new Date(), true);
       }
 
       if (node.name === "ISBLANK") {
