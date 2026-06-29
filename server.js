@@ -112,7 +112,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.246.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.247.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -23252,6 +23252,10 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       defaultValue: "Periodično ispitivanje",
       options: inspectionTypeOptions,
     }),
+    buildMobileNativeDocumentationField("KORISNIK", "Korisnik", "text", {
+      defaultValue: normalizeInputValue(workOrder.companyName || service?.companyName),
+      helpText: "Početno se puni iz tvrtke RN-a, a po potrebi se može promijeniti za zapisnik.",
+    }),
     ...technicalDataFields.map((field) => buildMobileNativeDocumentationField(
       `technical-${field.id || field.key}`,
       field.label || "Tehnički podatak",
@@ -23306,15 +23310,11 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       helpText: field.helpText || "Tehnički podatak iz predloška zapisnika.",
     });
   });
-  const nativeBasicBlockIds = new Set([
-    "chapter-basic",
-    "documentNumber",
-    "inspectionDate",
-    "issuedDate",
-    "testingLocation",
-    "inspectionType",
-  ]);
   const fieldBlocks = [
+    buildMobileNativeDocumentationBlock("chapter-basic", "Osnovni podaci", "chapter", {
+      typeLabel: "Poglavlje",
+      summary: "Tvrtka, korisnik, objekt, datumi, vrsta ispitivanja i broj zapisnika.",
+    }),
     buildMobileNativeDocumentationBlock("documentNumber", "Broj zapisnika", "text", {
       group: "Osnovni podaci",
       summary: documentNumber,
@@ -23340,6 +23340,12 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       editable: true,
       required: true,
       options: inspectionTypeOptions,
+    }),
+    buildMobileNativeDocumentationBlock("KORISNIK", "Korisnik", "text", {
+      group: "Osnovni podaci",
+      editable: true,
+      summary: normalizeInputValue(workOrder.companyName || service?.companyName),
+      helpText: "Korisnik je početno isti kao tvrtka, ali se može prilagoditi za zapisnik.",
     }),
     ...(technicalFieldBlocks.length > 0 ? [
       buildMobileNativeDocumentationBlock("chapter-technical", preset.serviceCode === "EIZ" ? "Tehnički podaci sustava" : "Tehnički podaci", "chapter", {
@@ -23418,7 +23424,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       group: "Dodaj dokumente",
       summary: "Dodaj PDF, sken, kameru, slike ili datoteku iza zapisnika.",
     }),
-  ].filter((block) => !nativeBasicBlockIds.has(String(block?.id || "")));
+  ];
   return {
     id: `native-${preset.serviceCode.toLowerCase()}-${serviceIndex}`,
     title: preset.title,

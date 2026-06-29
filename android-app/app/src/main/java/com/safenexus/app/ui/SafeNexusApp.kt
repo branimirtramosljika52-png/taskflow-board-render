@@ -25339,6 +25339,19 @@ private fun WorkOrderDocumentationWizardDialog(
                 val templateControls = DocumentationTemplateStandardControls(
                     documentNumber = currentDocumentNumber,
                     serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                    companyName = workOrder.companyName,
+                    companyHeadquarters = workOrder.headquarters,
+                    companyOib = workOrder.companyOib,
+                    objectName = activeSelectedObject?.name.orEmpty().ifBlank { workOrder.objectName },
+                    validUntil = documentationValidityDate(
+                        inspectionDate.ifBlank { issuedDate },
+                        selectedFlowItem?.let { item ->
+                            serviceValidityMonths[item.serviceValidityKey()]
+                                ?: serviceValidityMonths[item.serviceCode]
+                                ?: serviceValidityMonths[item.serviceName]
+                                ?: item.validityMonths
+                        }.orEmpty().ifBlank { validityMonths },
+                    ),
                     inspectionDate = inspectionDate,
                     onInspectionDateChange = { inspectionDate = it },
                     issuedDate = issuedDate,
@@ -29560,7 +29573,7 @@ private fun DocumentationSprMobileWorkspace(
     val menuEntries = remember(templates) {
         templates.flatMap { template ->
             buildTemplateBlockSections(template.fieldBlocks)
-                .filterNot(::isSharedDocumentationTemplateSection)
+                .filter { section -> isBasicTemplateSection(section) || !isSharedDocumentationTemplateSection(section) }
                 .map { section -> template to section }
         }.mapIndexed { index, (template, section) ->
             DocumentationSprMenuEntry(
@@ -30163,6 +30176,11 @@ private fun documentationTemplateDataSourceDetails(template: WorkOrderDocumentat
 private data class DocumentationTemplateStandardControls(
     val documentNumber: String,
     val serviceName: String,
+    val companyName: String,
+    val companyHeadquarters: String,
+    val companyOib: String,
+    val objectName: String,
+    val validUntil: String,
     val inspectionDate: String,
     val onInspectionDateChange: (String) -> Unit,
     val issuedDate: String,
@@ -32020,6 +32038,15 @@ private fun DocumentationCoreBasicsContent(
 
 @Composable
 private fun TemplateBasicControls(controls: DocumentationTemplateStandardControls) {
+    DocumentationReadonlyFactGrid(
+        listOf(
+            "Tvrtka" to controls.companyName,
+            "Sjedište" to controls.companyHeadquarters,
+            "OIB" to controls.companyOib,
+            "Objekt" to controls.objectName.ifBlank { "Samo lokacija" },
+            "Vrijedi do" to formatDatePickerLabel(controls.validUntil).ifBlank { controls.validUntil },
+        ),
+    )
     DocumentationNumberPreview(
         documentNumber = controls.documentNumber,
         serviceName = controls.serviceName,
@@ -32052,6 +32079,53 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
         controls.onTestingLocationChange,
         controls.enabled,
     )
+}
+
+@Composable
+private fun DocumentationReadonlyFactGrid(items: List<Pair<String, String>>) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items
+            .filter { it.second.isNotBlank() }
+            .forEach { (label, value) ->
+                Surface(
+                    modifier = Modifier.widthIn(min = 128.dp, max = 260.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            value,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+    }
+}
+
+private fun documentationValidityDate(baseDate: String, months: String): String {
+    val base = parseDateOrNull(baseDate) ?: return ""
+    val monthCount = months.trim().toLongOrNull() ?: return ""
+    if (monthCount <= 0) return ""
+    return base.plusMonths(monthCount).toString()
 }
 
 @Composable
