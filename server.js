@@ -23221,6 +23221,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
   const technicalDataFields = Array.isArray(reportDefaults.technicalDataFields)
     ? reportDefaults.technicalDataFields
     : [];
+  const includeProjectDocumentation = preset.serviceCode === "EIZ";
   const serviceWithCode = {
     ...service,
     serviceCode: preset.serviceCode,
@@ -23260,6 +23261,12 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         helpText: field.helpText || "Tehnički podatak iz predloška zapisnika.",
       },
     )),
+    ...(includeProjectDocumentation ? [
+      buildMobileNativeDocumentationField("KORISTENA_DOKUMENTACIJA", "Tehnička dokumentacija", "longtext", {
+        defaultValue: reportDefaults.projectDocumentation || "",
+        helpText: "Bullet popis projekata, prethodnih zapisnika, jednopolnih shema i druge tehničke dokumentacije.",
+      }),
+    ] : []),
     buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
       defaultValue: "Preporuke",
       helpText: "Napomene ili preporuke za korisnika.",
@@ -23351,6 +23358,18 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       summary: "Propisi se biraju iz Legal framework modula.",
     }),
     buildMobileNativeDocumentationBlock("legal", "Primijenjeni propisi", "legal_list", { group: "Primijenjeni propisi" }),
+    ...(includeProjectDocumentation ? [
+      buildMobileNativeDocumentationBlock("chapter-project-documentation", "Tehnička dokumentacija", "chapter", {
+        typeLabel: "Poglavlje",
+        summary: "Popis korištene tehničke dokumentacije za EIZ.",
+      }),
+      buildMobileNativeDocumentationBlock("KORISTENA_DOKUMENTACIJA", "Tehnička dokumentacija", "longtext", {
+        group: "Tehnička dokumentacija",
+        editable: true,
+        summary: reportDefaults.projectDocumentation || "Dodaj dokumentaciju korištenu pri izradi zapisnika.",
+        helpText: "Textbox s bulletima. NexAI može prepisati nazive projekata, prethodnih zapisnika, jednopolnih shema i slika elektroormara.",
+      }),
+    ] : []),
     buildMobileNativeDocumentationBlock("chapter-people", "Osobe i ovlaštenja", "chapter", {
       typeLabel: "Poglavlje",
       summary: "Ispitivači i odgovorna osoba povlače se iz People modula.",
@@ -23430,6 +23449,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     assessmentLabel: preset.assessmentLabel || "",
     conclusionLead: preset.conclusionLead || "",
     validitySentence: preset.validitySentence || "",
+    projectDocumentation: reportDefaults.projectDocumentation || "",
     exportKind: "documentation_spr",
   };
 }
@@ -24489,17 +24509,26 @@ function buildMobileDocumentationSprModel({
     companyOib: normalizeInputValue(workOrder.companyOib || placeholders.OIB || placeholders.TVRTKA_OIB || placeholders.COMPANY_OIB),
     offerNumber: normalizeInputValue(workOrder.offerNumber || workOrder.offerCode || workOrder.linkedOfferNumber),
     purchaseOrderNumber: normalizeInputValue(workOrder.purchaseOrderNumber || workOrder.purchaseOrderCode || workOrder.clientPurchaseOrderNumber),
-    spaceUser: normalizeInputValue(entry.companyName || workOrder.companyName || placeholders.KORISNIK),
+    spaceUser: normalizeInputValue(placeholders.KORISNIK || entry.companyName || workOrder.companyName),
     inspectionPlace,
-    inspectionObject: normalizeInputValue(entry.objectName || workOrder.objectName || workOrder.locationObjectName || placeholders.OBJEKT),
-    inspectionObjectId: normalizeInputValue(entry.objectId || workOrder.objectId || workOrder.locationObjectId),
+    inspectionObject: normalizeInputValue(placeholders.OBJEKT || entry.objectName || workOrder.objectName || workOrder.locationObjectName),
+    inspectionObjectId: normalizeInputValue(placeholders.OBJEKT_ID || entry.objectId || workOrder.objectId || workOrder.locationObjectId),
     inspectionType: normalizeInputValue(common.inspectionType || placeholders.VRSTA_ISPITIVANJA || "Periodično ispitivanje"),
     inspectionDate: formatMobileSprDate(inspectionDate),
     issueDate: formatMobileSprDate(issuedDate),
     validUntil: formatMobileSprDate(validUntil),
     equipment: getMobileSprEquipmentText(template, scopedSnapshot, common),
     regulations: getMobileSprRegulationsText(template, scopedSnapshot, common),
-    projectDocumentation: normalizeInputValue(common.note || placeholders.KORISTENA_DOKUMENTACIJA),
+    projectDocumentation: normalizeInputValue(
+      common.projectDocumentation
+      || common.fieldValues?.KORISTENA_DOKUMENTACIJA
+      || common.fieldValues?.PROJECT_DOCUMENTATION
+      || placeholders.KORISTENA_DOKUMENTACIJA
+      || placeholders.TEHNICKA_DOKUMENTACIJA
+      || placeholders.PROJECT_DOCUMENTATION
+      || template.projectDocumentation
+      || reportDefaults.projectDocumentation
+    ),
     technicalData: buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders),
     resultsText: getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"])
       || normalizeInputValue(template.resultsText || reportDefaults.resultsText),

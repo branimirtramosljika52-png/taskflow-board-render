@@ -94,6 +94,34 @@ function makeTechnicalAi(options = {}) {
   });
 }
 
+function makeProjectDocumentationAi(options = {}) {
+  return makeAiConfig({
+    type: "text",
+    group: "Tehnicka dokumentacija",
+    description: "Popis koristene tehnicke dokumentacije koji se u zapisniku prikazuje kao bullet lista.",
+    aiDescription: "Pronadji i prepisi koristenu tehnicku dokumentaciju za EIZ iz naziva uploadanih projekata, starih zapisnika, jednopolnih shema, slika elektroormara ili popisa priloga. Vrati kratku bullet listu, jednu stavku po retku.",
+    aiLookFor: [
+      "tehnicka dokumentacija",
+      "projekt",
+      "glavni projekt",
+      "izvedbeni projekt",
+      "elektro projekt",
+      "jednopolna shema",
+      "shema razdjelnika",
+      "razvodni ormar",
+      "prethodni zapisnik",
+      "stari zapisnik",
+      "koristena dokumentacija",
+    ],
+    aiAvoid: "Ne izmisljaj dokumentaciju. Ne prepisuj opcenite zakone i pravilnike u ovo polje. Ako iz izvora vidis samo naziv datoteke, predlozi naziv datoteke kao stavku za korisnicku provjeru.",
+    fallbackValue: "",
+    validationRules: "Svaku stavku vrati u posebnom retku, idealno s prefiksom '- '. Ako nema jasne dokumentacije, ostavi prazno.",
+    confidenceRequired: "medium",
+    sourceTracking: true,
+    ...options,
+  });
+}
+
 function makeRow(columns = [], values = {}, index = 0) {
   return {
     id: `measurement-row-${index + 1}`,
@@ -553,35 +581,39 @@ const DOCUMENTATION_TECHNICAL_AI_BY_SERVICE = Object.freeze({
   EIZ: Object.freeze({
     networkSystem: makeTechnicalAi({
       key: "technical-networkSystem",
-      label: "Sustav mreze",
+      label: "Sustav mreže",
       defaultValue: "TN-S sa ZUDS",
-      aiDescription: "Pronadji sustav mreze elektricnih instalacija iz tehnickih podataka, projekta ili jednopolne sheme. Prihvati oznake TN-S, TN-C-S, TN-C, TT ili IT i dodatke kao 'sa ZUDS'.",
-      aiLookFor: ["sustav mreze", "TN-S", "TN-C-S", "TT", "IT", "jednopolna shema", ...EIZ_RCD_DEVICE_ALIASES],
-      examples: ["TN-S sa ZUDS", "TN-C-S", "TT sa ZUDS"],
+      aiDescription: "Ukoliko se upload napravi jednopolne sheme, projekta, slike elektroormara ili prethodnog EIZ zapisnika, pronađi sustav mreže. Traži oznake TN-S, TN-C, TN-C/S, TN-C-S, TT ili IT te dodatke poput ZUDS/FID/RCD.",
+      aiLookFor: ["sustav mreže", "sustav mreze", "TN-S", "TN-C", "TN-C/S", "TN-C-S", "TT", "IT", "jednopolna shema", "projekt", "elektroormar", "prethodni zapisnik", ...EIZ_RCD_DEVICE_ALIASES],
+      examples: ["TN-S sa ZUDS", "TN-C/S", "TN-C-S", "TT sa ZUDS", "IT"],
+      validationRules: "Vrati samo kratak naziv sustava mreže i eventualni dodatak zaštite. Ako nije jasno vidljivo, ostavi postojeću vrijednost korisniku za provjeru.",
     }),
     voltageFrequency: makeTechnicalAi({
       key: "technical-voltageFrequency",
       label: "Napon/frekvencija",
       defaultValue: "230/400 V; 50 Hz",
-      aiDescription: "Pronadji nazivni napon i frekvenciju instalacije iz tehnickih podataka, projekta ili sheme.",
-      aiLookFor: ["napon", "frekvencija", "230/400", "400/230", "50 Hz", "jednopolna shema"],
-      examples: ["230/400 V; 50 Hz", "400/230 V; 50 Hz"],
+      aiDescription: "Ukoliko se upload napravi jednopolne sheme, projekta, slike elektroormara ili prethodnog EIZ zapisnika, pronađi nazivni napon i frekvenciju, npr. 230/400 V; 50 Hz ili slične kombinacije.",
+      aiLookFor: ["napon", "frekvencija", "230/400", "400/230", "230 V", "400 V", "50 Hz", "jednopolna shema", "projekt", "natpisna pločica", "elektroormar"],
+      examples: ["230/400 V; 50 Hz", "400/230 V; 50 Hz", "230 V; 50 Hz"],
+      validationRules: "Vrati napon i frekvenciju u jednom kratkom retku. Ne izmišljaj frekvenciju ako nije navedena.",
     }),
     protectionType: makeTechnicalAi({
       key: "technical-protectionType",
-      label: "Vrsta zastite",
-      defaultValue: "Zastitni uredaj diferencijalne struje - ZUDS",
-      aiDescription: "Pronadji opis vrste zastite od elektrickog udara ili zastitne mjere. Gledaj projekt, stari EIZ zapisnik i jednopolnu shemu. FID, ZUDS, FI, RCD, RCCB, RCBO, KZS i kombinacijska/kombinirana sklopka su isti kontekst zastitnih diferencijalnih uredaja.",
-      aiLookFor: ["vrsta zastite", "zastita od elektricnog udara", ...EIZ_RCD_DEVICE_ALIASES, "automatski isklop napajanja"],
-      examples: ["Zastitni uredaj diferencijalne struje - ZUDS", "FID sklopka", "Kombinacijska sklopka 40/30", "Automatski isklop napajanja"],
+      label: "Vrsta zaštite",
+      defaultValue: "Zaštitni uređaj diferencijalne struje - ZUDS",
+      aiDescription: "Ukoliko se upload napravi jednopolne sheme, projekta, slike elektroormara ili prethodnog EIZ zapisnika, pronađi vrstu zaštite. Posebno traži osigurače, automatske ili rastalne osigurače, FID, ZUDS, FI, RCD, RCCB, RCBO, KZS i kombinacijske sklopke.",
+      aiLookFor: ["vrsta zaštite", "vrsta zastite", "zaštita od električnog udara", "zastita od elektricnog udara", "automatski isklop napajanja", "osigurač", "osigurac", "automatski osigurač", "rastalni osigurač", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES],
+      examples: ["Zaštitni uređaj diferencijalne struje - ZUDS", "FID sklopka", "ZUDS", "Kombinacijska sklopka 40/30", "Automatski isklop napajanja"],
+      validationRules: "Vrati opis mjere zaštite, ne popis svih elemenata ako je prikladnije za polje Zaštitni uređaji. Ako nije sigurno, ostavi postojeću vrijednost.",
     }),
     protectiveDevices: makeTechnicalAi({
       key: "technical-protectiveDevices",
-      label: "Zastitni uredaji",
-      defaultValue: "Automatski osiguraci, ZUDS",
-      aiDescription: "Pronadji zastitne uredaje instalacije: automatski osiguraci, rastalni osiguraci, FID/ZUDS/RCD, kombinacijske sklopke, prenaponska zastita ili sklopke. Sa sheme prepisi kratak zajednicki opis.",
-      aiLookFor: ["zastitni uredaji", "automatski osiguraci", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES, "osiguraci", "jednopolna shema"],
-      examples: ["Automatski osiguraci, ZUDS", "Automatski osiguraci, FID sklopke", "Kombinacijske sklopke 40/30"],
+      label: "Zaštitni uređaji",
+      defaultValue: "Automatski osigurači, ZUDS",
+      aiDescription: "Ukoliko se upload napravi jednopolne sheme, projekta, slike elektroormara ili prethodnog EIZ zapisnika, pronađi zaštitne uređaje instalacije. Traži automatske osigurače, rastalne osigurače, FID, ZUDS, RCD, kombinacijske sklopke 40/30, prenaponsku zaštitu i slične uređaje.",
+      aiLookFor: ["zaštitni uređaji", "zastitni uredaji", "automatski osigurači", "automatski osiguraci", "rastalni osigurači", "rastalni osiguraci", "osigurači", "osiguraci", "jednopolna shema", "razvodni ormar", "elektroormar", ...EIZ_RCD_DEVICE_ALIASES, ...EIZ_RCD_RATING_ALIASES],
+      examples: ["Automatski osigurači, ZUDS", "Automatski osigurači, FID sklopke", "Rastalni osigurači, ZUDS", "Kombinacijske sklopke 40/30"],
+      validationRules: "Vrati kratak skupni opis uređaja. Ako vidiš više FID/ZUDS uređaja, ne moraš nabrajati svaki krug nego sažmi vrstu uređaja.",
     }),
   }),
 });
@@ -1408,6 +1440,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     validitySentence: "Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do",
     signatureAreas: ["elektro"],
     technicalDataFields: EIZ_TECHNICAL_FIELDS,
+    projectDocumentation: "",
     tables: [
       tableSpec({
         id: "eiz-visual",
@@ -1624,6 +1657,21 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
       }),
     },
   ];
+  const projectDocumentationFields = preset.serviceCode === "EIZ"
+    ? [{
+        id: "KORISTENA_DOKUMENTACIJA",
+        key: "KORISTENA_DOKUMENTACIJA",
+        label: "Tehnička dokumentacija",
+        type: "text",
+        fieldType: "textarea",
+        required: false,
+        ai: makeProjectDocumentationAi({
+          key: "KORISTENA_DOKUMENTACIJA",
+          label: "Tehnička dokumentacija",
+          defaultValue: preset.projectDocumentation || "",
+        }),
+      }]
+    : [];
   return [
     ...technicalFields.map((field) => ({
       id: `technical-${field.id || field.key}`,
@@ -1634,6 +1682,7 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
       required: false,
       ai: { ...field.ai },
     })),
+    ...projectDocumentationFields,
     ...resultFields,
   ];
 }
@@ -1693,6 +1742,7 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     assessmentLabel: preset.assessmentLabel,
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
+    projectDocumentation: preset.projectDocumentation || "",
     signatureAreas: [...preset.signatureAreas],
     technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
@@ -1716,6 +1766,7 @@ export function getDocumentationNativeTemplateSeedPresets() {
     assessmentLabel: preset.assessmentLabel,
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
+    projectDocumentation: preset.projectDocumentation || "",
     signatureAreas: [...preset.signatureAreas],
     technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),

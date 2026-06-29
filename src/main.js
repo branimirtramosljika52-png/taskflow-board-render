@@ -57625,6 +57625,7 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     measurementTableTitle: preset.measurementTableTitle || reportDefaults.measurementTableTitle,
     resultsText: preset.resultsText || reportDefaults.resultsText,
     technicalData: formatDocumentationTechnicalDataFields(preset.technicalDataFields || reportDefaults.technicalDataFields),
+    projectDocumentation: preset.projectDocumentation || reportDefaults.projectDocumentation || base.projectDocumentation,
     eiNote: preset.eiNote || reportDefaults.eiNote,
     eiminNote: preset.eiminNote || reportDefaults.eiminNote,
     assessmentLabel: preset.assessmentLabel || reportDefaults.assessmentLabel,
