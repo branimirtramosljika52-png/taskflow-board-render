@@ -61728,10 +61728,78 @@ function readDocumentationSprControlValue(control, fieldName = "") {
 function writeDocumentationSprControlValue(control, fieldName = "", value = "") {
   if (DOCUMENTATION_SPR_DATE_FIELDS.has(fieldName) && control instanceof HTMLInputElement) {
     const normalizedDate = normalizeDateInputValue(value);
-    control.value = /^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) ? normalizedDate : "";
+    const picker = documentationWorkbenchModule?.querySelector(`[data-documentation-spr-date-picker="${fieldName}"]`);
+    control.value = formatDocumentationSprDateFromSource(value);
+    if (picker instanceof HTMLInputElement) {
+      picker.value = /^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) ? normalizedDate : "";
+    }
     return;
   }
   control.value = String(value ?? "");
+}
+
+function syncDocumentationSprDatePickerField(fieldName = "", rawValue = "") {
+  const normalizedFieldName = String(fieldName || "").trim();
+  if (!DOCUMENTATION_SPR_DATE_FIELDS.has(normalizedFieldName) || !documentationWorkbenchModule) {
+    return;
+  }
+  const visibleInput = documentationWorkbenchModule.querySelector(`[data-documentation-spr-field="${normalizedFieldName}"]`);
+  const picker = documentationWorkbenchModule.querySelector(`[data-documentation-spr-date-picker="${normalizedFieldName}"]`);
+  const normalizedDate = normalizeDateInputValue(rawValue);
+  if (visibleInput instanceof HTMLInputElement) {
+    visibleInput.value = formatDocumentationSprDateFromSource(rawValue);
+  }
+  if (picker instanceof HTMLInputElement) {
+    picker.value = /^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) ? normalizedDate : "";
+  }
+}
+
+function handleDocumentationSprDatePickerOpen(event) {
+  const button = event.target instanceof HTMLElement
+    ? event.target.closest("[data-documentation-spr-date-open]")
+    : null;
+  if (!(button instanceof HTMLElement) || !documentationWorkbenchModule) {
+    return false;
+  }
+  const fieldName = button.getAttribute("data-documentation-spr-date-open") || "";
+  const visibleInput = documentationWorkbenchModule.querySelector(`[data-documentation-spr-field="${fieldName}"]`);
+  const picker = documentationWorkbenchModule.querySelector(`[data-documentation-spr-date-picker="${fieldName}"]`);
+  if (!(picker instanceof HTMLInputElement)) {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  picker.value = visibleInput instanceof HTMLInputElement
+    ? (normalizeDateInputValue(visibleInput.value) || "")
+    : "";
+  try {
+    if (typeof picker.showPicker === "function") {
+      picker.showPicker();
+    } else {
+      picker.focus();
+      picker.click();
+    }
+  } catch {
+    picker.focus();
+    picker.click();
+  }
+  return true;
+}
+
+function handleDocumentationSprDatePickerChange(event) {
+  const picker = event.target;
+  if (!(picker instanceof HTMLInputElement) || !picker.matches("[data-documentation-spr-date-picker]")) {
+    return false;
+  }
+  const fieldName = picker.getAttribute("data-documentation-spr-date-picker") || "";
+  syncDocumentationSprDatePickerField(fieldName, picker.value);
+  readDocumentationSprFormIntoModel();
+  syncDocumentationSprConclusionUi();
+  syncDocumentationSprFieldSettingsUi();
+  renderDocumentationSprPreview();
+  syncDocumentationSprSourceSummary();
+  scheduleDocumentationSprSave();
+  return true;
 }
 
 function readDocumentationSprFormIntoModel() {
@@ -62336,9 +62404,9 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
   const sectionOffset = getDocumentationSprSectionOffset(model);
   const assessmentRows = getDocumentationSprMeasurementAssessmentsForModel(model);
   return `
-    <section class="documentation-spr-paper">
+    <section class="documentation-spr-paper documentation-spr-paper-conclusion-page">
       ${renderDocumentationSprSimpleHeader(model)}
-      <strong>Potpis odgovorne osobe:</strong>
+      <strong class="documentation-spr-paper-signature-lead">Pregled i ispitivanje sukladno Tablici 1 obavili:</strong>
       <div class="documentation-spr-paper-signature-area">
         <div></div>
         ${renderDocumentationSprSignature(model)}
@@ -62363,7 +62431,7 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
       <div class="documentation-spr-paper-signature-area is-bottom">
         <div class="documentation-spr-paper-center"><strong>M.P.</strong></div>
         <div>
-          <span>Dokaze iz Zapisnika ocjenio:</span>
+          <span>Dokaze iz Zapisnika ocijenio:</span>
           <strong>${escapeHtml(model.responsiblePerson)}</strong>
           <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
           <span>${escapeHtml(model.signatureNumber)}</span>
@@ -62823,6 +62891,45 @@ function buildDocumentationSprPdfStyles() {
       gap: 20px;
     }
 
+    .documentation-spr-paper-signature-lead {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 9pt;
+    }
+
+    .documentation-spr-paper-conclusion-page {
+      font-size: 9.2pt;
+      line-height: 1.18;
+    }
+
+    .documentation-spr-paper-conclusion-page .documentation-spr-paper-simple-header {
+      min-height: 74px;
+      padding-top: 15px;
+      padding-bottom: 7px;
+    }
+
+    .documentation-spr-paper-conclusion-page .documentation-spr-paper-signature-area {
+      min-height: 106px;
+      margin-bottom: 4px;
+    }
+
+    .documentation-spr-paper-conclusion-page .documentation-spr-paper-signature-area.is-bottom {
+      min-height: 92px;
+    }
+
+    .documentation-spr-paper-conclusion-page .documentation-spr-paper-section-title {
+      margin: 7px 0 5px;
+    }
+
+    .documentation-spr-paper-conclusion-page .documentation-spr-paper-list {
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+
+    .documentation-spr-paper-conclusion-page p {
+      margin: 5px 0;
+    }
+
     .documentation-spr-paper-signature-area.is-bottom {
       min-height: 120px;
       grid-template-columns: minmax(0, 1fr) 300px;
@@ -62854,7 +62961,7 @@ function buildDocumentationSprPdfStyles() {
     }
 
     .documentation-spr-paper-conclusion {
-      margin: 22px 0;
+      margin: 12px 0;
       font-size: 14pt;
       font-weight: 900;
       letter-spacing: 0.38em;
@@ -63899,6 +64006,9 @@ function initDocumentationSprWorkbench() {
       if (event.target.dataset.documentationSprField === "inspectionObject") {
         documentationSprModel.inspectionObjectId = "";
       }
+      if (DOCUMENTATION_SPR_DATE_FIELDS.has(event.target.dataset.documentationSprField || "")) {
+        syncDocumentationSprDatePickerField(event.target.dataset.documentationSprField || "", documentationSprModel[event.target.dataset.documentationSprField] || "");
+      }
       renderDocumentationSprObjectSelect();
       syncDocumentationSprConclusionUi();
       syncDocumentationSprFieldSettingsUi();
@@ -63907,6 +64017,9 @@ function initDocumentationSprWorkbench() {
       scheduleDocumentationSprSave();
     });
     documentationWorkbenchModule.addEventListener("change", (event) => {
+      if (handleDocumentationSprDatePickerChange(event)) {
+        return;
+      }
       if (handleDocumentationSprNativeEditorChange(event)) {
         return;
       }
@@ -63917,12 +64030,18 @@ function initDocumentationSprWorkbench() {
       if (event.target.dataset.documentationSprField === "inspectionObject") {
         documentationSprModel.inspectionObjectId = "";
       }
+      if (DOCUMENTATION_SPR_DATE_FIELDS.has(event.target.dataset.documentationSprField || "")) {
+        syncDocumentationSprDatePickerField(event.target.dataset.documentationSprField || "", documentationSprModel[event.target.dataset.documentationSprField] || "");
+      }
       renderDocumentationSprObjectSelect();
       syncDocumentationSprConclusionUi();
       syncDocumentationSprFieldSettingsUi();
       renderDocumentationSprPreview();
       syncDocumentationSprSourceSummary();
       scheduleDocumentationSprSave();
+    });
+    documentationWorkbenchModule.addEventListener("click", (event) => {
+      handleDocumentationSprDatePickerOpen(event);
     });
     documentationWorkbenchModule.addEventListener("contextmenu", handleDocumentationSprFieldContextMenu);
     document.addEventListener("click", closeDocumentationSprFieldContextMenu);

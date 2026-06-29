@@ -6663,15 +6663,33 @@
                         </label>
                         <label class="field documentation-spr-field is-span-3">
                           <span>Datum ispitivanja</span>
-                          <input data-documentation-spr-field="inspectionDate" type="date" />
+                          <div class="documentation-spr-date-control">
+                            <input data-documentation-spr-field="inspectionDate" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
+                            <button type="button" class="ghost-icon-button" data-documentation-spr-date-open="inspectionDate" title="Odaberi datum" aria-label="Odaberi datum ispitivanja">
+                              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 1.8v2.1M11.5 1.8v2.1M2.8 6.1h10.4M3.4 3.2h9.2c.8 0 1.4.6 1.4 1.4v7.8c0 .8-.6 1.4-1.4 1.4H3.4c-.8 0-1.4-.6-1.4-1.4V4.6c0-.8.6-1.4 1.4-1.4Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.25"/></svg>
+                            </button>
+                            <input class="documentation-spr-native-date-picker" data-documentation-spr-date-picker="inspectionDate" type="date" tabindex="-1" aria-hidden="true" />
+                          </div>
                         </label>
                         <label class="field documentation-spr-field is-span-3">
                           <span>Datum izdavanja</span>
-                          <input data-documentation-spr-field="issueDate" type="date" />
+                          <div class="documentation-spr-date-control">
+                            <input data-documentation-spr-field="issueDate" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
+                            <button type="button" class="ghost-icon-button" data-documentation-spr-date-open="issueDate" title="Odaberi datum" aria-label="Odaberi datum izdavanja">
+                              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 1.8v2.1M11.5 1.8v2.1M2.8 6.1h10.4M3.4 3.2h9.2c.8 0 1.4.6 1.4 1.4v7.8c0 .8-.6 1.4-1.4 1.4H3.4c-.8 0-1.4-.6-1.4-1.4V4.6c0-.8.6-1.4 1.4-1.4Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.25"/></svg>
+                            </button>
+                            <input class="documentation-spr-native-date-picker" data-documentation-spr-date-picker="issueDate" type="date" tabindex="-1" aria-hidden="true" />
+                          </div>
                         </label>
                         <label class="field documentation-spr-field is-span-3">
                           <span>Vrijedi do</span>
-                          <input data-documentation-spr-field="validUntil" type="date" />
+                          <div class="documentation-spr-date-control">
+                            <input data-documentation-spr-field="validUntil" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
+                            <button type="button" class="ghost-icon-button" data-documentation-spr-date-open="validUntil" title="Odaberi datum" aria-label="Odaberi datum vrijedi do">
+                              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 1.8v2.1M11.5 1.8v2.1M2.8 6.1h10.4M3.4 3.2h9.2c.8 0 1.4.6 1.4 1.4v7.8c0 .8-.6 1.4-1.4 1.4H3.4c-.8 0-1.4-.6-1.4-1.4V4.6c0-.8.6-1.4 1.4-1.4Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.25"/></svg>
+                            </button>
+                            <input class="documentation-spr-native-date-picker" data-documentation-spr-date-picker="validUntil" type="date" tabindex="-1" aria-hidden="true" />
+                          </div>
                         </label>
                         <label class="field documentation-spr-field is-span-3">
                           <span>Broj zapisnika</span>

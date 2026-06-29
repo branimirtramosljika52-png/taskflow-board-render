@@ -39428,6 +39428,36 @@ body.is-vehicle-usage-open {
   grid-column: span 6;
 }
 
+.documentation-spr-date-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.documentation-spr-date-control .ghost-icon-button {
+  width: 38px;
+  height: 34px;
+  min-height: 34px;
+  border-radius: 8px;
+}
+
+.documentation-spr-date-control svg {
+  width: 18px;
+  height: 18px;
+}
+
+.documentation-spr-native-date-picker {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .documentation-spr-technical-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -40630,6 +40660,45 @@ body.is-vehicle-usage-open {
   gap: 20px;
 }
 
+.documentation-spr-paper-signature-lead {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 9pt;
+}
+
+.documentation-spr-paper-conclusion-page {
+  font-size: 9.2pt;
+  line-height: 1.18;
+}
+
+.documentation-spr-paper-conclusion-page .documentation-spr-paper-simple-header {
+  min-height: 74px;
+  padding-top: 15px;
+  padding-bottom: 7px;
+}
+
+.documentation-spr-paper-conclusion-page .documentation-spr-paper-signature-area {
+  min-height: 106px;
+  margin-bottom: 4px;
+}
+
+.documentation-spr-paper-conclusion-page .documentation-spr-paper-signature-area.is-bottom {
+  min-height: 92px;
+}
+
+.documentation-spr-paper-conclusion-page .documentation-spr-paper-section-title {
+  margin: 7px 0 5px;
+}
+
+.documentation-spr-paper-conclusion-page .documentation-spr-paper-list {
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.documentation-spr-paper-conclusion-page p {
+  margin: 5px 0;
+}
+
 .documentation-spr-paper-signature-area.is-bottom {
   min-height: 120px;
   grid-template-columns: minmax(0, 1fr) 300px;
@@ -40661,7 +40730,7 @@ body.is-vehicle-usage-open {
 }
 
 .documentation-spr-paper-conclusion {
-  margin: 22px 0;
+  margin: 12px 0;
   font-size: 14pt;
   font-weight: 900;
   letter-spacing: 0.38em;
