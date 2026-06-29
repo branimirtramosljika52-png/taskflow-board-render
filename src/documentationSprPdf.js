@@ -33,6 +33,23 @@ function cleanMultiline(value = "") {
   return String(value ?? "").normalize("NFC").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 }
 
+function formatDocumentDate(value = "") {
+  const text = clean(value);
+  let match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (match) {
+    return `${match[3]}.${match[2]}.${match[1]}`;
+  }
+  match = /^(\d{1,2})[./](\d{1,2})[./](\d{4})\.?$/.exec(text);
+  if (match) {
+    return `${match[1].padStart(2, "0")}.${match[2].padStart(2, "0")}.${match[3]}`;
+  }
+  match = /^(\d{2})(\d{2})(\d{4})$/.exec(text);
+  if (match) {
+    return `${match[1]}.${match[2]}.${match[3]}`;
+  }
+  return text;
+}
+
 function splitTextLines(value = "") {
   return cleanMultiline(value)
     .split("\n")
@@ -513,6 +530,83 @@ function drawSimpleHeader(page, model, fonts) {
   return y - height - 14;
 }
 
+function normalizePdfPageOrientation(value = "") {
+  return clean(value).toLowerCase() === "landscape" ? "landscape" : "portrait";
+}
+
+function getPdfPageMetrics(orientation = "portrait") {
+  const isLandscape = normalizePdfPageOrientation(orientation) === "landscape";
+  const width = isLandscape ? PAGE_HEIGHT : PAGE_WIDTH;
+  const height = isLandscape ? PAGE_WIDTH : PAGE_HEIGHT;
+  return {
+    orientation: isLandscape ? "landscape" : "portrait",
+    width,
+    height,
+    marginX: MARGIN_X,
+    topY: height - 36,
+    bottomY: BOTTOM_Y,
+    contentWidth: width - (MARGIN_X * 2),
+  };
+}
+
+function getPdfMeasurementOrientation(table = {}) {
+  return normalizePdfPageOrientation(table.pageOrientation || table.orientation);
+}
+
+function drawMeasurementSimpleHeader(page, model, fonts, metrics = getPdfPageMetrics()) {
+  const x = metrics.marginX;
+  const y = metrics.topY;
+  const width = metrics.contentWidth;
+  const height = metrics.orientation === "landscape" ? 58 : 66;
+  const innerWidth = width - 130;
+  const serviceTitle = getReportServiceTitle(model);
+  const serviceFontSize = serviceTitle.length > 62 ? 9 : 10.2;
+  const serviceLines = wrapText(serviceTitle, fonts.bold, serviceFontSize, innerWidth).slice(0, 2);
+  page.drawRectangle({
+    x,
+    y: y - height,
+    width,
+    height,
+    borderColor: DARK,
+    borderWidth: 0.8,
+  });
+  drawTextLine(page, clean(model.workOrderNumber), {
+    x: x + width - 90,
+    y: y - 8,
+    width: 84,
+    align: "right",
+    font: fonts.regular,
+    size: 8,
+    color: MUTED,
+  });
+  drawTextLine(page, "ISPITNI IZVJEŠTAJ", {
+    x,
+    y: y - 21,
+    width,
+    align: "center",
+    font: fonts.bold,
+    size: 10.2,
+  });
+  serviceLines.forEach((line, index) => {
+    drawTextLine(page, line, {
+      x: x + 65,
+      y: y - 37 - (index * 12),
+      width: innerWidth,
+      align: "center",
+      font: fonts.bold,
+      size: serviceFontSize,
+    });
+  });
+  drawTextLine(page, clean(model.inspectionPlace), {
+    x: x + 4,
+    y: y - height + 14,
+    font: fonts.regular,
+    size: 7.8,
+    color: MUTED,
+  });
+  return y - height - 14;
+}
+
 function drawKeyValueTable(page, entries, y, fonts, {
   keyWidth = 145,
   fontSize = 9.3,
@@ -615,7 +709,7 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
     ["Mjesto ispitivanja:", clean(model.inspectionPlace), true],
     ["Objekt ispitivanja:", clean(model.inspectionObject)],
     ["Vrsta ispitivanja:", clean(model.inspectionType)],
-    ["Datum ispitivanja:", clean(model.inspectionDate), true],
+    ["Datum ispitivanja:", formatDocumentDate(model.inspectionDate), true],
     ["Broj zapisnika:", clean(model.recordNumber)],
     ["Ispitivanje obavili:", clean(model.inspectors)],
   ], y, fonts, { fontSize: 9, lineHeight: 11.4 });
@@ -991,6 +1085,7 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
       summary: clean(withLegacyRows.summary || withLegacyRows.label || getMeasurementTableTitle(model)),
       assessmentLabel: clean(withLegacyRows.assessmentLabel || ""),
       chapterTitle: clean(withLegacyRows.chapterTitle || ""),
+      pageOrientation: getPdfMeasurementOrientation(withLegacyRows),
       sheet: normalizePdfMeasurementSheet(withLegacyRows.sheet),
     };
   });
@@ -1025,14 +1120,14 @@ function isPdfMeasurementCoveredByMerge(sheet, rowIndex, columnIndex) {
   return Boolean(merge && (merge.row !== rowIndex || merge.column !== columnIndex));
 }
 
-function getPdfMeasurementColumnWidths(columns = []) {
-  const availableWidth = PAGE_WIDTH - (MARGIN_X * 2);
+function getPdfMeasurementColumnWidths(columns = [], metrics = getPdfPageMetrics()) {
+  const availableWidth = metrics.contentWidth || (PAGE_WIDTH - (MARGIN_X * 2));
   const declaredWidth = columns.reduce((sum, column) => sum + (Number(column.width) || 120), 0) || availableWidth;
   return columns.map((column) => ((Number(column.width) || 120) / declaredWidth) * availableWidth);
 }
 
-function drawMeasurementColumnHeader(page, columns, widths, y, fonts, dense) {
-  let cellX = MARGIN_X;
+function drawMeasurementColumnHeader(page, columns, widths, y, fonts, dense, metrics = getPdfPageMetrics()) {
+  let cellX = metrics.marginX || MARGIN_X;
   const headerHeight = dense ? 30 : 36;
   const headerFontSize = dense ? 5.7 : 7.2;
   columns.forEach((column, columnIndex) => {
@@ -1052,7 +1147,7 @@ function drawMeasurementColumnHeader(page, columns, widths, y, fonts, dense) {
   return y - headerHeight;
 }
 
-function drawMeasurementDataRow(page, sheet, row, columns, widths, y, fonts, dense) {
+function drawMeasurementDataRow(page, sheet, row, columns, widths, y, fonts, dense, metrics = getPdfPageMetrics()) {
   const rowHeight = dense ? 15.2 : 17.4;
   const fontSize = dense ? 5.8 : 7.2;
   columns.forEach((column, columnIndex) => {
@@ -1062,7 +1157,7 @@ function drawMeasurementDataRow(page, sheet, row, columns, widths, y, fonts, den
       ? Math.max(1, Math.min(merge.columnSpan, columns.length - columnIndex))
       : 1;
     const width = widths.slice(columnIndex, columnIndex + columnSpan).reduce((sum, value) => sum + value, 0);
-    const cellX = MARGIN_X + widths.slice(0, columnIndex).reduce((sum, value) => sum + value, 0);
+    const cellX = (metrics.marginX || MARGIN_X) + widths.slice(0, columnIndex).reduce((sum, value) => sum + value, 0);
     const align = format.textAlign
       || (columnIndex === 1 || column.id === "item" || column.id.includes("place") || column.id.includes("circuit") ? "left" : "center");
     if (isPdfMeasurementCoveredByMerge(sheet, row.rowIndex, columnIndex)) {
@@ -1085,7 +1180,7 @@ function drawMeasurementDataRow(page, sheet, row, columns, widths, y, fonts, den
 }
 
 function drawMeasurementTable(page, table, y, fonts, rowsOverride = null, options = {}) {
-  const x = MARGIN_X;
+  const metrics = options.metrics || getPdfPageMetrics(getPdfMeasurementOrientation(table));
   const sheet = normalizePdfMeasurementSheet(table.sheet);
   const columns = sheet.columns.length ? sheet.columns : [
     { id: "number", label: "R. br.", width: 70 },
@@ -1093,24 +1188,24 @@ function drawMeasurementTable(page, table, y, fonts, rowsOverride = null, option
     { id: "pass", label: "ZADOVOLJAVA", width: 120 },
   ];
   const rows = Array.isArray(rowsOverride) ? rowsOverride : getPdfMeasurementTableRows({ ...table, sheet });
-  const widths = getPdfMeasurementColumnWidths(columns);
+  const widths = getPdfMeasurementColumnWidths(columns, metrics);
   const dense = columns.length > 8;
   let cursorY = y;
   if (options.drawColumnHeader !== false) {
-    cursorY = drawMeasurementColumnHeader(page, columns, widths, cursorY, fonts, dense);
+    cursorY = drawMeasurementColumnHeader(page, columns, widths, cursorY, fonts, dense, metrics);
   }
   rows.forEach((row) => {
-    cursorY = drawMeasurementDataRow(page, sheet, row, columns, widths, cursorY, fonts, dense);
+    cursorY = drawMeasurementDataRow(page, sheet, row, columns, widths, cursorY, fonts, dense, metrics);
   });
-  void x;
   return cursorY;
 }
 
 function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex = 0) {
-  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  let y = drawSimpleHeader(page, model, fonts);
+  const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
+  const page = pdfDoc.addPage([metrics.width, metrics.height]);
+  let y = drawMeasurementSimpleHeader(page, model, fonts, metrics);
   drawTextLine(page, table.summary || table.label || getMeasurementTableTitle(model), {
-    x: MARGIN_X,
+    x: metrics.marginX,
     y: y + 6,
     font: fonts.regular,
     size: 8.2,
@@ -1118,7 +1213,7 @@ function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex =
   });
   if (pageIndex > 0) {
     drawTextLine(page, "nastavak", {
-      x: PAGE_WIDTH - MARGIN_X - 54,
+      x: metrics.width - metrics.marginX - 54,
       y: y + 6,
       width: 54,
       align: "right",
@@ -1127,7 +1222,7 @@ function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex =
       color: MUTED,
     });
   }
-  drawMeasurementTable(page, table, y - 6, fonts, rows);
+  drawMeasurementTable(page, table, y - 6, fonts, rows, { metrics });
   return page;
 }
 
@@ -1139,9 +1234,10 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
     const allRows = getPdfMeasurementTableRows({ ...table, sheet });
     const columns = sheet.columns.length ? sheet.columns : [];
     const dense = columns.length > 8;
+    const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
     const rowHeight = dense ? 15.2 : 17.4;
     const headerHeight = dense ? 30 : 36;
-    const rowsPerPage = Math.max(1, Math.floor((TOP_Y - 64 - BOTTOM_Y - headerHeight) / rowHeight));
+    const rowsPerPage = Math.max(1, Math.floor((metrics.topY - 64 - metrics.bottomY - headerHeight) / rowHeight));
     const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
     const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
     let cursor = 0;
@@ -1369,7 +1465,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     font: fonts.bold,
     size: 9.6,
   });
-  drawTextLine(page, `${getValiditySentence(model)} ${clean(model.validUntil)}`, {
+  drawTextLine(page, `${getValiditySentence(model)} ${formatDocumentDate(model.validUntil)}`, {
     x: MARGIN_X,
     y: y - 28,
     width: PAGE_WIDTH - (MARGIN_X * 2),
@@ -1377,7 +1473,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     font: fonts.regular,
     size: 8.4,
   });
-  drawTextLine(page, `U Zagrebu, ${clean(model.issueDate)}`, {
+  drawTextLine(page, `U Zagrebu, ${formatDocumentDate(model.issueDate)}`, {
     x: MARGIN_X,
     y: y - 52,
     width: PAGE_WIDTH - (MARGIN_X * 2),

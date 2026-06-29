@@ -644,6 +644,7 @@
     var pendingExternalChange = false;
     var fillDrag = null;
     var columnResize = null;
+    var selectionDrag = null;
     var selection = { startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 };
     var quickFillPanel = null;
     var contextMenu = null;
@@ -919,6 +920,27 @@
       return td && grid.contains(td) ? td : null;
     }
 
+    function handleSelectionPointerMove(event) {
+      var td;
+      if (!selectionDrag) {
+        return;
+      }
+      td = getCellFromPoint(event.clientX, event.clientY);
+      if (!td) {
+        return;
+      }
+      selectCell(Number(td.dataset.row), Number(td.dataset.column), {
+        focus: false,
+        extend: true,
+      });
+    }
+
+    function handleSelectionPointerUp() {
+      document.removeEventListener("pointermove", handleSelectionPointerMove);
+      document.removeEventListener("pointerup", handleSelectionPointerUp);
+      selectionDrag = null;
+    }
+
     function markFillPreview(targetRow, targetColumn) {
       var source;
       var start;
@@ -1119,6 +1141,7 @@
         ? event.target.closest("[data-gridline-column-resizer]")
         : null;
       var input;
+      var cell;
       if (resizer && grid.contains(resizer)) {
         event.preventDefault();
         event.stopPropagation();
@@ -1132,6 +1155,32 @@
         return;
       }
       handleFillPointerDown(event);
+      if (fillDrag) {
+        return;
+      }
+      if (event.button && event.button !== 0) {
+        return;
+      }
+      cell = event.target && event.target.closest
+        ? event.target.closest("td[data-row][data-column]")
+        : null;
+      if (cell && grid.contains(cell)) {
+        if (event.shiftKey) {
+          selectCell(Number(cell.dataset.row), Number(cell.dataset.column), {
+            focus: false,
+            extend: true,
+          });
+          return;
+        }
+        selectionDrag = {
+          startRow: Number(cell.dataset.row),
+          startColumn: Number(cell.dataset.column),
+        };
+        selectCell(selectionDrag.startRow, selectionDrag.startColumn, { focus: false });
+        document.addEventListener("pointermove", handleSelectionPointerMove);
+        document.addEventListener("pointerup", handleSelectionPointerUp, { once: true });
+        return;
+      }
       input = getClosestCellInput(event.target);
       if (input && event.shiftKey) {
         selectCell(Number(input.dataset.row), Number(input.dataset.column), {
@@ -3020,6 +3069,15 @@
         aiPanel.remove();
         aiPanel = null;
       }
+      document.removeEventListener("pointermove", handleSelectionPointerMove);
+      document.removeEventListener("pointerup", handleSelectionPointerUp);
+      document.removeEventListener("pointermove", handleFillPointerMove);
+      document.removeEventListener("pointerup", handleFillPointerUp);
+      document.removeEventListener("pointermove", handleColumnResizeMove);
+      document.removeEventListener("pointerup", handleColumnResizeUp);
+      selectionDrag = null;
+      fillDrag = null;
+      columnResize = null;
       closeColumnAiPanel();
       grid.removeEventListener("focusin", handleFocusIn);
       grid.removeEventListener("focusout", handleFocusOut);

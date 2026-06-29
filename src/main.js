@@ -3975,6 +3975,7 @@ const documentationSprTemplateSaveButton = document.querySelector("#documentatio
 const documentationSprTemplateLoadButton = document.querySelector("#documentation-spr-template-load");
 const documentationSprTemplateDeleteButton = document.querySelector("#documentation-spr-template-delete");
 const documentationSprTemplateMeta = document.querySelector("#documentation-spr-template-meta");
+const documentationSprAiSourcesSection = document.querySelector("#documentation-spr-ai-sources");
 const documentationSprAiSourceUploadButton = document.querySelector("#documentation-spr-ai-source-upload");
 const documentationSprAiSourceClearButton = document.querySelector("#documentation-spr-ai-source-clear");
 const documentationSprAiSourceFileInput = document.querySelector("#documentation-spr-ai-source-file");
@@ -57249,6 +57250,10 @@ function cloneDocumentationSprMeasurementSheet(sheet = {}) {
   };
 }
 
+function normalizeDocumentationSprPageOrientation(value = "") {
+  return String(value || "").trim().toLowerCase() === "landscape" ? "landscape" : "portrait";
+}
+
 function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
   const key = String(table.key || table.id || `measurement-table-${index + 1}`).trim();
   return {
@@ -57263,6 +57268,7 @@ function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
     enabledFieldId: String(table.enabledFieldId || `use-${key}`).trim(),
     assessmentLabel: String(table.assessmentLabel || "").trim(),
     chapterTitle: String(table.chapterTitle || "").trim(),
+    pageOrientation: normalizeDocumentationSprPageOrientation(table.pageOrientation || table.orientation),
     sheet: cloneDocumentationSprMeasurementSheet(table.sheet),
   };
 }
@@ -58182,6 +58188,7 @@ function setDocumentationSprWorkbenchMode(mode = "library", { renderLibrary = tr
   } else {
     renderDocumentationSprBatchDock();
   }
+  syncDocumentationSprAiSourcesVisibility();
 }
 
 function openDocumentationSprLibraryMode() {
@@ -59587,6 +59594,10 @@ function formatDocumentationSprDateFromSource(value = "") {
   return normalized ? formatDateInputDisplayValue(normalized) : String(value || "").trim();
 }
 
+function formatDocumentationSprDateForDocument(value = "") {
+  return formatDocumentationSprDateFromSource(value);
+}
+
 function getDocumentationSprWorkOrderDate(workOrder = {}, fieldName = "inspectionDate") {
   const workOrderId = String(workOrder?.id || "").trim();
   const sourceValue = workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, fieldName) : "";
@@ -60632,10 +60643,22 @@ function syncDocumentationSprAiSourcesToGridlines() {
   }
 }
 
+function shouldShowDocumentationSprAiSources() {
+  return documentationSprWorkbenchMode === "editor" && getDocumentationSprBatchEntries().length > 0;
+}
+
+function syncDocumentationSprAiSourcesVisibility() {
+  if (documentationSprAiSourcesSection instanceof HTMLElement) {
+    documentationSprAiSourcesSection.hidden = !shouldShowDocumentationSprAiSources();
+  }
+}
+
 function renderDocumentationSprAiSourceList() {
   if (!documentationSprModel) {
+    syncDocumentationSprAiSourcesVisibility();
     return;
   }
+  syncDocumentationSprAiSourcesVisibility();
   const sources = normalizeDocumentationSprAiSources(documentationSprModel.aiSources);
   documentationSprModel.aiSources = sources;
   if (documentationSprAiSourceStatus) {
@@ -61436,16 +61459,14 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
         <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
         <button type="button" class="ghost-button" data-gridline-action="add-row">+ 20 redova</button>
         <button type="button" class="ghost-button" data-gridline-action="add-column">+ kolone</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="widen-column" title="Proširi aktivnu kolonu">Š+</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="narrow-column" title="Smanji aktivnu kolonu">Š-</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="taller-row" title="Povećaj aktivni red">V+</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="shorter-row" title="Smanji aktivni red">V-</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">L</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">C</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">D</button>
-        <button type="button" class="ghost-button" data-gridline-action="merge" title="Spoji označene ćelije">Merge</button>
-        <button type="button" class="ghost-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">Unmerge</button>
-        <button type="button" class="ghost-button" data-gridline-action="toggle-header-row" title="Označi red kao naslov tablice za PDF">Naslov</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="taller-row" title="Povećaj aktivni red">↕+</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="shorter-row" title="Smanji aktivni red">↕-</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">⇤</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">≡</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">⇥</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="merge" title="Spoji označene ćelije">▦</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">□</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-header-row" title="Naslovni red koji se ponavlja u PDF-u">H</button>
         <span class="documentation-gridline-colors" aria-label="Pozadinska boja ćelije">
           <button type="button" data-gridline-action="background-color" data-gridline-color="" title="Bez boje"></button>
           <button type="button" data-gridline-action="background-color" data-gridline-color="#fff3bf" title="Žuta"></button>
@@ -61577,12 +61598,14 @@ function renderDocumentationSprAssessmentsEditor() {
     <div class="documentation-spr-assessment-grid">
       ${assessments.map((entry) => {
         const originalIndex = documentationSprModel.measurementAssessments.findIndex((candidate) => String(candidate.id || candidate.key) === String(entry.id || entry.key));
+        const value = String(entry.value || entry.defaultValue || "ZADOVOLJAVA").toUpperCase();
+        const isFailing = value === "NE ZADOVOLJAVA";
         return `
-          <label class="field documentation-spr-field">
-            <span>${escapeHtml(entry.label)}</span>
+          <label class="documentation-spr-assessment-row ${isFailing ? "is-failing" : "is-passing"}">
+            <span class="documentation-spr-assessment-label">${escapeHtml(entry.label)}</span>
             <select data-documentation-spr-assessment-index="${originalIndex >= 0 ? originalIndex : 0}">
-              <option value="ZADOVOLJAVA" ${String(entry.value || entry.defaultValue).toUpperCase() === "ZADOVOLJAVA" ? "selected" : ""}>ZADOVOLJAVA</option>
-              <option value="NE ZADOVOLJAVA" ${String(entry.value || entry.defaultValue).toUpperCase() === "NE ZADOVOLJAVA" ? "selected" : ""}>NE ZADOVOLJAVA</option>
+              <option value="ZADOVOLJAVA" ${!isFailing ? "selected" : ""}>ZADOVOLJAVA</option>
+              <option value="NE ZADOVOLJAVA" ${isFailing ? "selected" : ""}>NE ZADOVOLJAVA</option>
             </select>
           </label>
         `;
@@ -61682,6 +61705,7 @@ function handleDocumentationSprNativeEditorChange(event) {
     if (documentationSprModel.measurementAssessments?.[index]) {
       documentationSprModel.measurementAssessments[index].value = target.value || "ZADOVOLJAVA";
       syncDocumentationSprConclusionUi();
+      renderDocumentationSprAssessmentsEditor();
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
     }
@@ -62061,7 +62085,7 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
         <tr><td>Mjesto ispitivanja:</td><td><strong>${escapeHtml(model.inspectionPlace)}</strong></td></tr>
         <tr><td>Objekt ispitivanja:</td><td>${escapeHtml(model.inspectionObject)}</td></tr>
         <tr><td>Vrsta ispitivanja:</td><td>${escapeHtml(model.inspectionType)}</td></tr>
-        <tr><td>Datum ispitivanja:</td><td><strong>${escapeHtml(model.inspectionDate)}</strong></td></tr>
+        <tr><td>Datum ispitivanja:</td><td><strong>${escapeHtml(formatDocumentationSprDateForDocument(model.inspectionDate))}</strong></td></tr>
         <tr><td>Broj zapisnika:</td><td>${escapeHtml(model.recordNumber)}</td></tr>
         <tr><td>Ispitivanje obavili:</td><td>${escapeHtml(model.inspectors)}</td></tr>
       </table>
@@ -62104,6 +62128,10 @@ function renderDocumentationSprChecklistPage(model, checklist, pageNumber = 3, t
         ${checklist.summary ? `<small>${escapeHtml(checklist.summary)}</small>` : ""}
       </div>
       <table class="documentation-spr-paper-measure-table is-regular documentation-spr-paper-checklist">
+        <colgroup>
+          <col style="width:78%" />
+          <col style="width:22%" />
+        </colgroup>
         <thead>
           <tr>
             <th><span>Predmet pregleda</span></th>
@@ -62133,6 +62161,22 @@ function renderDocumentationSprMeasurementTableHead(table = {}) {
         </th>
       `).join("")}
     </tr>
+  `;
+}
+
+function renderDocumentationSprMeasurementColGroup(table = {}) {
+  const columns = table?.sheet?.columns || [];
+  if (!columns.length) {
+    return "";
+  }
+  const totalWidth = columns.reduce((sum, column) => sum + (Number(column.width) || 120), 0) || columns.length;
+  return `
+    <colgroup>
+      ${columns.map((column) => {
+        const width = Math.max(1, ((Number(column.width) || 120) / totalWidth) * 100);
+        return `<col style="width:${width.toFixed(3)}%" />`;
+      }).join("")}
+    </colgroup>
   `;
 }
 
@@ -62182,10 +62226,10 @@ function renderDocumentationSprPreviewCellAttributes(sheet = {}, row = {}, colum
   return attrs.join(" ");
 }
 
-function renderDocumentationSprMeasurementTableRows(table = {}) {
+function renderDocumentationSprMeasurementTableRows(table = {}, rowsOverride = null) {
   const sheet = cloneDocumentationSprMeasurementSheet(table?.sheet || {});
   const columns = sheet.columns || [];
-  const rows = getDocumentationSprMeasurementTableRowsForRender(table);
+  const rows = Array.isArray(rowsOverride) ? rowsOverride : getDocumentationSprMeasurementTableRowsForRender(table);
   const fallbackRows = rows.length ? rows : [{
     rowIndex: 0,
     cells: Object.fromEntries(columns.map((column, index) => [column.id, index === 0 ? "1" : ""])),
@@ -62210,16 +62254,30 @@ function renderDocumentationSprMeasurementTableRows(table = {}) {
   `).join("");
 }
 
-function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4) {
+function getDocumentationSprMeasurementRowsPerPage(table = {}) {
+  const columns = table?.sheet?.columns || [];
+  const orientation = normalizeDocumentationSprPageOrientation(table?.pageOrientation);
+  if (orientation === "landscape") {
+    return columns.length > 8 ? 26 : 22;
+  }
+  return columns.length > 8 ? 42 : 34;
+}
+
+function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4, rowsOverride = null, tablePageIndex = 0) {
   const columns = table?.sheet?.columns || [];
   const title = table?.summary || table?.label || getDocumentationSprMeasurementTableTitle(model);
+  const orientation = normalizeDocumentationSprPageOrientation(table?.pageOrientation);
   return `
-    <section class="documentation-spr-paper">
+    <section class="documentation-spr-paper ${orientation === "landscape" ? "is-landscape" : ""}">
       ${renderDocumentationSprSimpleHeader(model)}
-      <div class="documentation-spr-paper-measure-title">${escapeHtml(title)}</div>
+      <div class="documentation-spr-paper-measure-title">
+        ${escapeHtml(title)}
+        ${tablePageIndex > 0 ? "<small>nastavak</small>" : ""}
+      </div>
       <table class="documentation-spr-paper-measure-table is-${columns.length > 8 ? "dense" : "regular"}">
+        ${renderDocumentationSprMeasurementColGroup(table)}
         <thead>${renderDocumentationSprMeasurementTableHead(table)}</thead>
-        <tbody>${renderDocumentationSprMeasurementTableRows(table)}</tbody>
+        <tbody>${renderDocumentationSprMeasurementTableRows(table, rowsOverride)}</tbody>
       </table>
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
@@ -62227,8 +62285,31 @@ function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, tot
 }
 
 function renderDocumentationSprMeasurementPages(model, startPageNumber = 3, totalPages = 4) {
-  return getDocumentationSprMeasurementTablesForModel(model)
-    .map((table, index) => renderDocumentationSprMeasurementPage(model, table, startPageNumber + index, totalPages));
+  const pages = [];
+  getDocumentationSprMeasurementTablesForModel(model).forEach((table) => {
+    const sheet = cloneDocumentationSprMeasurementSheet(table?.sheet || {});
+    const allRows = getDocumentationSprMeasurementTableRowsForRender(table);
+    const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
+    const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
+    const rowsPerPage = getDocumentationSprMeasurementRowsPerPage(table);
+    const availableBodyRows = Math.max(1, rowsPerPage - headerRows.length);
+    let cursor = 0;
+    let tablePageIndex = 0;
+    if (!bodyRows.length) {
+      pages.push(renderDocumentationSprMeasurementPage(model, table, startPageNumber + pages.length, totalPages, headerRows, tablePageIndex));
+      return;
+    }
+    while (cursor < bodyRows.length) {
+      const pageRows = [
+        ...headerRows,
+        ...bodyRows.slice(cursor, cursor + availableBodyRows),
+      ];
+      pages.push(renderDocumentationSprMeasurementPage(model, table, startPageNumber + pages.length, totalPages, pageRows, tablePageIndex));
+      cursor += availableBodyRows;
+      tablePageIndex += 1;
+    }
+  });
+  return pages;
 }
 
 function renderDocumentationSprSignature(model) {
@@ -62277,8 +62358,8 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
       <div class="documentation-spr-paper-conclusion">${escapeHtml(model.resultStatus)}</div>
       <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
       <p class="documentation-spr-paper-center"><strong>${escapeHtml(model.recordNumber)}</strong></p>
-      <p class="documentation-spr-paper-center">${escapeHtml(getDocumentationSprValiditySentence(model))} <strong>${escapeHtml(model.validUntil)}</strong></p>
-      <p class="documentation-spr-paper-right">U Zagrebu, <strong>${escapeHtml(model.issueDate)}</strong></p>
+      <p class="documentation-spr-paper-center">${escapeHtml(getDocumentationSprValiditySentence(model))} <strong>${escapeHtml(formatDocumentationSprDateForDocument(model.validUntil))}</strong></p>
+      <p class="documentation-spr-paper-right">U Zagrebu, <strong>${escapeHtml(formatDocumentationSprDateForDocument(model.issueDate))}</strong></p>
       <div class="documentation-spr-paper-signature-area is-bottom">
         <div class="documentation-spr-paper-center"><strong>M.P.</strong></div>
         <div>
@@ -62435,7 +62516,8 @@ function buildDocumentationSprPdfStyles() {
     }
 
     .documentation-spr-pdf-export {
-      width: 210mm;
+      width: max-content;
+      min-width: 210mm;
       margin: 0 auto;
       background: #fff;
     }
@@ -62455,6 +62537,12 @@ function buildDocumentationSprPdfStyles() {
       overflow: hidden;
       break-after: page;
       page-break-after: always;
+    }
+
+    .documentation-spr-paper.is-landscape {
+      width: 297mm;
+      height: 209.5mm;
+      padding: 10mm 9mm 16mm;
     }
 
     .documentation-spr-paper:last-child {
@@ -62654,6 +62742,13 @@ function buildDocumentationSprPdfStyles() {
       font-style: italic;
     }
 
+    .documentation-spr-paper-measure-title small {
+      margin-left: 8px;
+      color: #6e7379;
+      font-size: 7.2pt;
+      font-style: normal;
+    }
+
     .documentation-spr-paper-measure-table {
       width: 100%;
       border-collapse: collapse;
@@ -62668,6 +62763,7 @@ function buildDocumentationSprPdfStyles() {
       text-align: center;
       vertical-align: middle;
       overflow-wrap: anywhere;
+      word-break: normal;
     }
 
     .documentation-spr-paper-measure-table th {
@@ -62701,33 +62797,22 @@ function buildDocumentationSprPdfStyles() {
       padding: 3px 2px;
     }
 
+    .documentation-spr-paper.is-landscape .documentation-spr-paper-measure-table {
+      font-size: 7.2pt;
+    }
+
+    .documentation-spr-paper.is-landscape .documentation-spr-paper-measure-table.is-dense {
+      font-size: 6.4pt;
+    }
+
     .documentation-spr-paper-checklist th:first-child,
     .documentation-spr-paper-checklist td:first-child {
-      width: auto !important;
       text-align: left;
     }
 
     .documentation-spr-paper-checklist th:last-child,
     .documentation-spr-paper-checklist td:last-child {
-      width: 118px !important;
       text-align: center;
-    }
-
-    .documentation-spr-paper-measure-table th:nth-child(1) {
-      width: 52px;
-    }
-
-    .documentation-spr-paper-measure-table th:nth-child(3) {
-      width: 78px;
-    }
-
-    .documentation-spr-paper-measure-table th:nth-child(4),
-    .documentation-spr-paper-measure-table th:nth-child(5) {
-      width: 74px;
-    }
-
-    .documentation-spr-paper-measure-table th:nth-child(6) {
-      width: 118px;
     }
 
     .documentation-spr-paper-signature-area {
@@ -62883,7 +62968,7 @@ function buildDocumentationSprPdfStyles() {
       }
 
       .documentation-spr-pdf-export {
-        width: 210mm;
+        width: auto;
         margin: 0;
       }
 

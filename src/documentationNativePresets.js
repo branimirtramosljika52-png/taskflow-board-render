@@ -161,6 +161,7 @@ function tableSpec({
   enabledFieldId = "",
   assessmentLabel = "",
   chapterTitle = "",
+  pageOrientation = "portrait",
 }) {
   const key = id;
   return {
@@ -173,6 +174,7 @@ function tableSpec({
     enabledFieldId: enabledFieldId || `use-${id}`,
     assessmentLabel,
     chapterTitle,
+    pageOrientation: pageOrientation === "landscape" ? "landscape" : "portrait",
     columns,
     rows: rows || blankRows(columns, blankRowCount, blankSeed),
   };
@@ -1506,6 +1508,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         summary: "IL - EIZ.IPK",
         chapterTitle: "Impedancija petlje kvara",
         assessmentLabel: "Zaštita od indirektnog dodira",
+        pageOrientation: "landscape",
         columns: EIZ_IPK_COLUMNS,
         rows: formulaRows(EIZ_IPK_COLUMNS, 36, (rowNumber) => ({
           place: "Utičnica 230 V",
@@ -1610,6 +1613,7 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
     enabledFieldId: table.enabledFieldId || `use-${table.id}`,
     assessmentLabel: table.assessmentLabel || "",
     chapterTitle: table.chapterTitle || "",
+    pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
     sheet: {
       columns: table.columns.map((column) => withDocumentationColumnAiMapping(table.id, column)),
       rows: table.rows.map((row, index) => ({

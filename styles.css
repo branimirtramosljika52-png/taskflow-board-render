@@ -37958,21 +37958,29 @@ body.is-vehicle-usage-open {
 .gridline-column-resizer {
   position: absolute;
   top: 0;
-  right: -4px;
+  right: -5px;
   z-index: 6;
-  width: 8px;
+  width: 10px;
   height: 100%;
   min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: transparent;
+  background: linear-gradient(90deg, transparent 0 42%, rgba(31, 111, 255, 0.2) 42% 58%, transparent 58% 100%);
+  opacity: 0;
   cursor: col-resize;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.documentation-gridline-module thead th:hover .gridline-column-resizer,
+.documentation-gridline-module thead th:focus-within .gridline-column-resizer {
+  opacity: 1;
 }
 
 .gridline-column-resizer:hover,
 .gridline-column-resizer:focus {
   background: rgba(31, 111, 255, 0.22);
+  opacity: 1;
   outline: none;
 }
 
@@ -39514,14 +39522,37 @@ body.is-vehicle-usage-open {
 }
 
 .documentation-spr-checklist-row select,
-.documentation-spr-assessment-grid select {
+.documentation-spr-assessment-row select {
   min-height: 34px;
 }
 
 .documentation-spr-assessment-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+}
+
+.documentation-spr-assessment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(240, 253, 244, 0.9), rgba(255, 255, 255, 0.96));
+}
+
+.documentation-spr-assessment-row.is-failing {
+  border-color: rgba(220, 38, 38, 0.28);
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.documentation-spr-assessment-label {
+  color: var(--documentation-spr-text);
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1.25;
 }
 
 .documentation-spr-native-gridline {
@@ -40324,7 +40355,7 @@ body.is-vehicle-usage-open {
   display: grid;
   gap: 18px;
   justify-items: center;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   padding: 18px;
 }
@@ -40535,9 +40566,23 @@ body.is-vehicle-usage-open {
   font-size: 9pt;
 }
 
+.documentation-spr-paper.is-landscape {
+  width: 297mm;
+  height: 209.5mm;
+  min-height: 209.5mm;
+  padding: 10mm 9mm 16mm;
+}
+
 .documentation-spr-paper-measure-title {
   margin: 4px 0 2px;
   font-style: italic;
+}
+
+.documentation-spr-paper-measure-title small {
+  margin-left: 8px;
+  color: #6e7379;
+  font-size: 7.2pt;
+  font-style: normal;
 }
 
 .documentation-spr-paper-measure-table {
@@ -40553,6 +40598,8 @@ body.is-vehicle-usage-open {
   border: 1px solid #111;
   text-align: center;
   vertical-align: middle;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .documentation-spr-paper-measure-table th {
@@ -40567,21 +40614,12 @@ body.is-vehicle-usage-open {
   text-align: left;
 }
 
-.documentation-spr-paper-measure-table th:nth-child(1) {
-  width: 52px;
+.documentation-spr-paper.is-landscape .documentation-spr-paper-measure-table {
+  font-size: 7.2pt;
 }
 
-.documentation-spr-paper-measure-table th:nth-child(3) {
-  width: 78px;
-}
-
-.documentation-spr-paper-measure-table th:nth-child(4),
-.documentation-spr-paper-measure-table th:nth-child(5) {
-  width: 74px;
-}
-
-.documentation-spr-paper-measure-table th:nth-child(6) {
-  width: 118px;
+.documentation-spr-paper.is-landscape .documentation-spr-paper-measure-table.is-dense {
+  font-size: 6.4pt;
 }
 
 .documentation-spr-paper-signature-area {
