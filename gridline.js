@@ -13,6 +13,8 @@
   var MIN_ROW_HEIGHT = 28;
   var MAX_ROW_HEIGHT = 96;
   var DEFAULT_ROW_HEIGHT = 36;
+  var UNDO_LIMIT = 80;
+  var REFERENCE_COLORS = ["#1f6fff", "#d9480f", "#0f8a5f", "#7c3aed", "#c2255c", "#087f5b"];
 
   function clampInteger(value, fallback, min, max) {
     var numeric = Math.round(Number(value));
@@ -42,6 +44,59 @@
 
   function cellKey(row, column) {
     return row + ":" + column;
+  }
+
+  function isValidHexColor(value) {
+    return /^#[0-9a-f]{6}$/i.test(String(value || "").trim());
+  }
+
+  function normalizeStyleEntry(entry) {
+    var source = entry && typeof entry === "object" ? entry : {};
+    var style = {};
+    var backgroundColor = String(source.backgroundColor || "").trim();
+    var color = String(source.color || source.textColor || "").trim();
+    var textAlign = String(source.textAlign || source.align || "").trim().toLowerCase();
+    var border = String(source.border || source.borderStyle || "").trim().toLowerCase();
+    if (isValidHexColor(backgroundColor)) {
+      style.backgroundColor = backgroundColor;
+    }
+    if (isValidHexColor(color)) {
+      style.color = color;
+    }
+    if (["left", "center", "right"].indexOf(textAlign) >= 0) {
+      style.textAlign = textAlign;
+    }
+    if (source.fontWeight === "bold" || source.bold === true) {
+      style.fontWeight = "bold";
+    }
+    if (source.fontStyle === "italic" || source.italic === true) {
+      style.fontStyle = "italic";
+    }
+    if (String(source.textDecoration || "").indexOf("underline") >= 0 || source.underline === true) {
+      style.textDecoration = "underline";
+    }
+    if (["all", "outer", "bottom"].indexOf(border) >= 0) {
+      style.border = border;
+    }
+    if (source.required === true) {
+      style.required = true;
+    }
+    if (String(source.allowedValues || source.validationValues || "").trim()) {
+      style.allowedValues = String(source.allowedValues || source.validationValues).trim();
+    }
+    return style;
+  }
+
+  function hasObjectKeys(value) {
+    return Boolean(value && typeof value === "object" && Object.keys(value).length);
+  }
+
+  function formatNumberForStatus(value) {
+    var rounded = Math.round(Number(value) * 1000) / 1000;
+    if (!Number.isFinite(rounded)) {
+      return "";
+    }
+    return String(rounded).replace(".", ",");
   }
 
   var formulaTools = window.SafeNexusMeasurementFormula || null;
@@ -151,10 +206,10 @@
               ? formulaTools.parseMeasurementCellReference(reference)
               : parseCellReferenceText(reference);
             if (!parsed || parsed.rowIndex < 0 || parsed.columnIndex < 0) {
-              return "";
+              throw new Error("REF");
             }
             if (parsed.rowIndex >= model.rowCount || parsed.columnIndex >= model.columnCount) {
-              return "";
+              throw new Error("REF");
             }
             return evaluateCell(parsed.rowIndex, parsed.columnIndex);
           },
@@ -211,6 +266,13 @@
     try {
       return formatFormulaResult(createFormulaContext(model, options).evaluateCell(row, column));
     } catch (error) {
+      var message = String(error && error.message || "");
+      if (/nul|zero|div/i.test(message)) {
+        return "#DIV/0!";
+      }
+      if (/ref/i.test(message)) {
+        return "#REF!";
+      }
       return "#ERROR";
     }
   }
@@ -292,9 +354,7 @@
       var row = Number(parts[0]);
       var column = Number(parts[1]);
       var entry = source[key] && typeof source[key] === "object" ? source[key] : {};
-      var backgroundColor = String(entry.backgroundColor || "").trim();
-      var textAlign = String(entry.textAlign || entry.align || "").trim().toLowerCase();
-      var nextEntry = {};
+      var nextEntry = normalizeStyleEntry(entry);
       if (
         !Number.isInteger(row)
         || !Number.isInteger(column)
@@ -305,13 +365,7 @@
       ) {
         return;
       }
-      if (/^#[0-9a-f]{6}$/i.test(backgroundColor)) {
-        nextEntry.backgroundColor = backgroundColor;
-      }
-      if (["left", "center", "right"].indexOf(textAlign) >= 0) {
-        nextEntry.textAlign = textAlign;
-      }
-      if (Object.keys(nextEntry).length) {
+      if (hasObjectKeys(nextEntry)) {
         normalized[cellKey(row, column)] = nextEntry;
       }
     });
@@ -410,13 +464,17 @@
     );
   }
 
-  function makeCellStyle(backgroundColor, textAlign) {
-    var style = {};
-    if (/^#[0-9a-f]{6}$/i.test(String(backgroundColor || "").trim())) {
+  function makeCellStyle(backgroundColor, textAlign, existing) {
+    var style = normalizeStyleEntry(existing);
+    if (isValidHexColor(String(backgroundColor || "").trim())) {
       style.backgroundColor = String(backgroundColor).trim();
+    } else {
+      delete style.backgroundColor;
     }
     if (["left", "center", "right"].indexOf(String(textAlign || "").trim().toLowerCase()) >= 0) {
       style.textAlign = String(textAlign).trim().toLowerCase();
+    } else if (textAlign !== undefined) {
+      delete style.textAlign;
     }
     return style;
   }
@@ -618,8 +676,33 @@
       ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='background-color']"))
       : [];
     var clearButton = resolveElement(host, "[data-gridline-action='clear']", "#clear");
+    var saveButton = resolveElement(host, "[data-gridline-action='save']");
     var downloadButton = resolveElement(host, "[data-gridline-action='download']", "#download");
+    var exportButton = resolveElement(host, "[data-gridline-action='export']");
     var quickFillButton = resolveElement(host, "[data-gridline-action='quick-fill']", "#quick-fill");
+    var undoButton = resolveElement(host, "[data-gridline-action='undo']");
+    var redoButton = resolveElement(host, "[data-gridline-action='redo']");
+    var copyButton = resolveElement(host, "[data-gridline-action='copy']");
+    var cutButton = resolveElement(host, "[data-gridline-action='cut']");
+    var pasteButton = resolveElement(host, "[data-gridline-action='paste']");
+    var boldButton = resolveElement(host, "[data-gridline-action='bold']");
+    var italicButton = resolveElement(host, "[data-gridline-action='italic']");
+    var underlineButton = resolveElement(host, "[data-gridline-action='underline']");
+    var textColorButtons = host && typeof host.querySelectorAll === "function"
+      ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='text-color']"))
+      : [];
+    var borderButton = resolveElement(host, "[data-gridline-action='border']");
+    var clearFormattingButton = resolveElement(host, "[data-gridline-action='clear-formatting']");
+    var deleteRowButton = resolveElement(host, "[data-gridline-action='delete-row']");
+    var deleteColumnButton = resolveElement(host, "[data-gridline-action='delete-column']");
+    var sortAscButton = resolveElement(host, "[data-gridline-action='sort-asc']");
+    var sortDescButton = resolveElement(host, "[data-gridline-action='sort-desc']");
+    var filterButton = resolveElement(host, "[data-gridline-action='filter']");
+    var findButton = resolveElement(host, "[data-gridline-action='find']");
+    var freezeRowButton = resolveElement(host, "[data-gridline-action='freeze-row']");
+    var freezeColumnButton = resolveElement(host, "[data-gridline-action='freeze-column']");
+    var zoomSelect = resolveElement(host, "[data-gridline-action='zoom']");
+    var statusBar = resolveElement(host, "[data-gridline-role='summary']");
     var rootElement = grid ? grid.closest("[data-gridline-instance]") || host : host;
     var model;
     var active = { row: 0, column: 0 };
@@ -644,8 +727,20 @@
     var pendingExternalChange = false;
     var fillDrag = null;
     var columnResize = null;
+    var rowResize = null;
     var selectionDrag = null;
     var selection = { startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 };
+    var undoStack = [];
+    var redoStack = [];
+    var isRestoringHistory = false;
+    var editingSnapshot = null;
+    var columnFilters = Object.create(null);
+    var filterPanel = null;
+    var validationPanel = null;
+    var referenceHighlights = [];
+    var freezeFirstRow = true;
+    var freezeFirstColumn = true;
+    var zoomLevel = 1;
     var quickFillPanel = null;
     var contextMenu = null;
     var aiPanel = null;
@@ -670,6 +765,28 @@
       ? normalizeModel(options.model, options)
       : (readStoredModel(storageKey, options) || createDefaultModel(options));
 
+    if (grid && !grid.hasAttribute("tabindex")) {
+      grid.tabIndex = 0;
+    }
+
+    if (!statusBar && rootElement && rootElement.appendChild) {
+      statusBar = document.createElement("div");
+      statusBar.className = "gridline-statusbar";
+      statusBar.dataset.gridlineRole = "summary";
+      statusBar.textContent = "Spremno";
+      rootElement.appendChild(statusBar);
+    }
+
+    if (zoomSelect) {
+      zoomLevel = Number(zoomSelect.value || 100) / 100;
+      if (!Number.isFinite(zoomLevel) || zoomLevel <= 0) {
+        zoomLevel = 1;
+      }
+    }
+    if (rootElement && rootElement.classList) {
+      rootElement.classList.add("is-gridline-freeze-row", "is-gridline-freeze-column");
+    }
+
     function setStatus(text, className) {
       var nextClassName = ("status " + (className || "")).trim();
       if (status.textContent === text && status.className === nextClassName) {
@@ -677,6 +794,7 @@
       }
       status.textContent = text;
       status.className = nextClassName;
+      updateStatusSummary();
     }
 
     function showGridError(error) {
@@ -724,6 +842,51 @@
       return model.cellStyles && model.cellStyles[cellKey(row, column)] || null;
     }
 
+    function applyCellStyleToElement(td, input, style) {
+      var normalized = normalizeStyleEntry(style);
+      [td, input].forEach(function (element) {
+        if (!element) {
+          return;
+        }
+        element.style.backgroundColor = normalized.backgroundColor || "";
+        element.style.color = normalized.color || "";
+        element.style.textAlign = normalized.textAlign || "";
+        element.style.fontWeight = normalized.fontWeight || "";
+        element.style.fontStyle = normalized.fontStyle || "";
+        element.style.textDecoration = normalized.textDecoration || "";
+      });
+      if (td) {
+        td.classList.toggle("is-required-cell", Boolean(normalized.required));
+        td.classList.toggle("has-cell-border", Boolean(normalized.border));
+        td.dataset.gridlineBorder = normalized.border || "";
+      }
+    }
+
+    function parseAllowedValues(value) {
+      return String(value || "")
+        .split(/[\n;,|]+/)
+        .map(function (entry) { return entry.trim(); })
+        .filter(Boolean);
+    }
+
+    function getAllowedValues(row, column) {
+      var style = getCellStyle(row, column) || {};
+      var direct = parseAllowedValues(style.allowedValues || style.validationValues);
+      var columnAi = model.aiColumns && model.aiColumns[String(column)];
+      var aiValues = parseAllowedValues(columnAi && columnAi.allowedValues);
+      return direct.length ? direct : aiValues;
+    }
+
+    function isValueAllowed(row, column, value) {
+      var allowed = getAllowedValues(row, column);
+      if (!allowed.length || !String(value || "").trim()) {
+        return true;
+      }
+      return allowed.some(function (entry) {
+        return entry.toLowerCase() === String(value || "").trim().toLowerCase();
+      });
+    }
+
     function isInputEditing(input) {
       return input && document.activeElement === input;
     }
@@ -746,8 +909,11 @@
       input.dataset.rawValue = rawValue;
       input.classList.toggle("is-formula", isFormulaText(rawValue));
       input.classList.toggle("is-formula-error", isFormulaText(rawValue) && displayValue === "#ERROR");
+      input.classList.toggle("is-invalid-value", !isValueAllowed(row, column, rawValue));
       input.title = isFormulaText(rawValue) && displayValue === "#ERROR"
         ? "Formula se ne moze izracunati."
+        : !isValueAllowed(row, column, rawValue)
+          ? "Vrijednost nije na listi dopustenih vrijednosti."
         : "";
     }
 
@@ -833,6 +999,172 @@
         }
       }
       return cells;
+    }
+
+    function formatSelectionLabel() {
+      var bounds = getSelectionBounds();
+      var start = columnLabel(bounds.left) + (bounds.top + 1);
+      var end = columnLabel(bounds.right) + (bounds.bottom + 1);
+      return start === end ? start : start + ":" + end;
+    }
+
+    function updateStatusSummary() {
+      var cells;
+      var numericValues;
+      var count;
+      var sum;
+      var average;
+      if (!statusBar) {
+        return;
+      }
+      cells = getSelectedCells();
+      numericValues = cells.map(function (cell) {
+        var value = getDisplayValue(cell.row, cell.column);
+        var parsed = Number(String(value == null ? "" : value).trim().replace(",", "."));
+        return Number.isFinite(parsed) ? parsed : null;
+      }).filter(function (value) {
+        return value !== null;
+      });
+      count = cells.length;
+      sum = numericValues.reduce(function (total, value) { return total + value; }, 0);
+      average = numericValues.length ? sum / numericValues.length : 0;
+      statusBar.innerHTML = "";
+      statusBar.appendChild(document.createTextNode("Spremno"));
+      if (count > 1) {
+        var countChip = document.createElement("span");
+        countChip.textContent = count + " celija";
+        statusBar.appendChild(countChip);
+      }
+      if (numericValues.length) {
+        [
+          ["SUM", sum],
+          ["AVERAGE", average],
+          ["COUNT", numericValues.length],
+        ].forEach(function (entry) {
+          var chip = document.createElement("span");
+          chip.textContent = entry[0] + " " + formatNumberForStatus(entry[1]);
+          statusBar.appendChild(chip);
+        });
+      }
+    }
+
+    function parseReferenceBounds(reference) {
+      var text = String(reference && typeof reference === "object" ? reference.reference : reference || "")
+        .replace(/^.*!/, "")
+        .replace(/\$/g, "")
+        .toUpperCase()
+        .trim();
+      var parts = text.split(":");
+      var start = parseCellReferenceText(parts[0]);
+      var end = parseCellReferenceText(parts[1] || parts[0]);
+      if (!start || !end) {
+        return null;
+      }
+      return {
+        top: Math.max(0, Math.min(start.rowIndex, end.rowIndex)),
+        bottom: Math.min(model.rowCount - 1, Math.max(start.rowIndex, end.rowIndex)),
+        left: Math.max(0, Math.min(start.columnIndex, end.columnIndex)),
+        right: Math.min(model.columnCount - 1, Math.max(start.columnIndex, end.columnIndex)),
+      };
+    }
+
+    function listFormulaReferenceBounds(value) {
+      var raw = String(value || "");
+      var refs = [];
+      if (!isFormulaText(raw)) {
+        return refs;
+      }
+      if (formulaTools && typeof formulaTools.listMeasurementFormulaReferences === "function") {
+        try {
+          refs = formulaTools.listMeasurementFormulaReferences(raw).map(function (entry) {
+            if (entry && entry.startReference && entry.endReference) {
+              return entry.startReference + ":" + entry.endReference;
+            }
+            return entry && (entry.reference || entry);
+          });
+        } catch (error) {
+          refs = [];
+        }
+      }
+      if (!refs.length) {
+        raw.replace(/\$?[A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?/g, function (match) {
+          refs.push(match);
+          return match;
+        });
+      }
+      return refs.map(parseReferenceBounds).filter(Boolean);
+    }
+
+    function updateReferenceHighlights() {
+      referenceHighlights = listFormulaReferenceBounds(formulaInput && formulaInput.value);
+      Array.prototype.forEach.call(grid.querySelectorAll("td[data-row][data-column]"), function (node) {
+        var row = Number(node.dataset.row);
+        var column = Number(node.dataset.column);
+        var highlightIndex = referenceHighlights.findIndex(function (bounds) {
+          return row >= bounds.top && row <= bounds.bottom && column >= bounds.left && column <= bounds.right;
+        });
+        if (highlightIndex >= 0) {
+          node.classList.add("is-formula-reference");
+          node.style.setProperty("--gridline-reference-color", REFERENCE_COLORS[highlightIndex % REFERENCE_COLORS.length]);
+        } else {
+          node.classList.remove("is-formula-reference");
+          node.style.removeProperty("--gridline-reference-color");
+        }
+      });
+    }
+
+    function updateHistoryButtons() {
+      if (undoButton) {
+        undoButton.disabled = !undoStack.length;
+      }
+      if (redoButton) {
+        redoButton.disabled = !redoStack.length;
+      }
+    }
+
+    function recordUndo() {
+      if (isRestoringHistory) {
+        return;
+      }
+      undoStack.push(cloneModel(model));
+      if (undoStack.length > UNDO_LIMIT) {
+        undoStack.shift();
+      }
+      redoStack = [];
+      updateHistoryButtons();
+    }
+
+    function restoreHistorySnapshot(snapshot) {
+      if (!snapshot) {
+        return;
+      }
+      isRestoringHistory = true;
+      model = normalizeModel(snapshot, options);
+      active.row = Math.min(active.row, model.rowCount - 1);
+      active.column = Math.min(active.column, model.columnCount - 1);
+      selection = normalizeSelectionRange(selection, model.rowCount, model.columnCount);
+      render();
+      scheduleSave();
+      isRestoringHistory = false;
+      updateHistoryButtons();
+    }
+
+    function undo() {
+      var snapshot = undoStack.pop();
+      if (!snapshot) {
+        return;
+      }
+      redoStack.push(cloneModel(model));
+      restoreHistorySnapshot(snapshot);
+    }
+
+    function redo() {
+      var snapshot = redoStack.pop();
+      if (!snapshot) {
+        return;
+      }
+      undoStack.push(cloneModel(model));
+      restoreHistorySnapshot(snapshot);
     }
 
     function emitChange() {
@@ -990,11 +1322,35 @@
       var rowOffset;
       var columnOffset;
       var changedSize = false;
+      function getSeriesFillValue(rowOffset, columnOffset) {
+        var numericSource = Number(String(sourceValue || "").trim().replace(",", "."));
+        var previousValue;
+        var numericPrevious;
+        var step;
+        if (isFormulaText(sourceValue)) {
+          return shiftFormulaValue(sourceValue, rowOffset, columnOffset);
+        }
+        if (!Number.isFinite(numericSource)) {
+          return sourceValue;
+        }
+        if (rowOffset) {
+          previousValue = getValue(source.row - Math.sign(rowOffset), source.column);
+        } else if (columnOffset) {
+          previousValue = getValue(source.row, source.column - Math.sign(columnOffset));
+        }
+        numericPrevious = Number(String(previousValue || "").trim().replace(",", "."));
+        if (!Number.isFinite(numericPrevious)) {
+          return sourceValue;
+        }
+        step = numericSource - numericPrevious;
+        return String(numericSource + (rowOffset || columnOffset) * step);
+      }
       if (!fillDrag) {
         return;
       }
       source = fillDrag.source;
       sourceValue = getValue(source.row, source.column);
+      recordUndo();
       if (targetRow !== source.row) {
         start = Math.min(source.row, targetRow);
         end = Math.max(source.row, targetRow);
@@ -1006,7 +1362,7 @@
             continue;
           }
           rowOffset = index - source.row;
-          setValue(index, source.column, shiftFormulaValue(sourceValue, rowOffset, 0));
+          setValue(index, source.column, getSeriesFillValue(rowOffset, 0));
         }
       } else if (targetColumn !== source.column) {
         start = Math.min(source.column, targetColumn);
@@ -1019,7 +1375,7 @@
             continue;
           }
           columnOffset = index - source.column;
-          setValue(source.row, index, shiftFormulaValue(sourceValue, 0, columnOffset));
+          setValue(source.row, index, getSeriesFillValue(0, columnOffset));
         }
       }
       if (changedSize) {
@@ -1136,15 +1492,291 @@
       scheduleSave();
     }
 
+    function handleRowResizeMove(event) {
+      var nextHeight;
+      if (!rowResize) {
+        return;
+      }
+      event.preventDefault();
+      nextHeight = clampInteger(
+        rowResize.startHeight + (event.clientY - rowResize.startY),
+        rowResize.startHeight,
+        MIN_ROW_HEIGHT,
+        MAX_ROW_HEIGHT
+      );
+      if (!model.rowHeights) {
+        model.rowHeights = Object.create(null);
+      }
+      model.rowHeights[String(rowResize.row)] = nextHeight;
+      render();
+      selectCell(active.row, active.column, { focus: false });
+    }
+
+    function handleRowResizeUp() {
+      if (!rowResize) {
+        return;
+      }
+      document.removeEventListener("pointermove", handleRowResizeMove);
+      document.removeEventListener("pointerup", handleRowResizeUp);
+      rowResize = null;
+      scheduleSave();
+    }
+
+    function closeValidationPanel() {
+      if (validationPanel) {
+        validationPanel.remove();
+        validationPanel = null;
+      }
+    }
+
+    function closeFilterPanel() {
+      if (filterPanel) {
+        filterPanel.remove();
+        filterPanel = null;
+      }
+    }
+
+    function showValidationDropdown(event, row, column) {
+      var values = getAllowedValues(row, column);
+      var search;
+      var list;
+      var rect;
+      if (!values.length || !rootElement) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      closeValidationPanel();
+      validationPanel = document.createElement("section");
+      validationPanel.className = "gridline-popover gridline-validation-panel";
+      validationPanel.setAttribute("role", "listbox");
+      rect = event.target.getBoundingClientRect();
+      validationPanel.style.left = Math.min(rect.left, window.innerWidth - 300) + "px";
+      validationPanel.style.top = Math.min(rect.bottom + 4, window.innerHeight - 320) + "px";
+      search = document.createElement("input");
+      search.type = "search";
+      search.placeholder = "Trazi vrijednost...";
+      search.className = "gridline-dropdown-search";
+      list = document.createElement("div");
+      list.className = "gridline-dropdown-list";
+      function renderValues(filterText) {
+        clearNode(list);
+        values.filter(function (value) {
+          return !filterText || value.toLowerCase().indexOf(filterText.toLowerCase()) >= 0;
+        }).forEach(function (value) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.textContent = value;
+          button.addEventListener("click", function () {
+            recordUndo();
+            setValue(row, column, value);
+            closeValidationPanel();
+            render();
+            selectCell(row, column, { focus: false });
+            scheduleSave();
+          });
+          list.appendChild(button);
+        });
+      }
+      search.addEventListener("input", function () {
+        renderValues(search.value);
+      });
+      search.addEventListener("keydown", function (keyboardEvent) {
+        var firstButton;
+        if (keyboardEvent.key === "Escape") {
+          keyboardEvent.preventDefault();
+          closeValidationPanel();
+          return;
+        }
+        if (keyboardEvent.key === "Enter" || keyboardEvent.key === "ArrowDown") {
+          keyboardEvent.preventDefault();
+          firstButton = list.querySelector("button");
+          if (firstButton) {
+            firstButton.focus();
+          }
+        }
+      });
+      validationPanel.append(search, list);
+      document.body.appendChild(validationPanel);
+      renderValues("");
+      search.focus();
+    }
+
+    function getUniqueColumnValues(column) {
+      var seen = Object.create(null);
+      var values = [];
+      var row;
+      for (row = 0; row < model.rowCount; row += 1) {
+        var value = String(getDisplayValue(row, column) || "");
+        if (!seen[value]) {
+          seen[value] = true;
+          values.push(value);
+        }
+      }
+      return values.sort(function (left, right) {
+        return left.localeCompare(right, "hr", { numeric: true, sensitivity: "base" });
+      });
+    }
+
+    function showFilterPanel(event, column) {
+      var values = getUniqueColumnValues(column);
+      var current = columnFilters[String(column)] || values.slice();
+      var search;
+      var list;
+      var actions;
+      var rect;
+      event.preventDefault();
+      event.stopPropagation();
+      closeFilterPanel();
+      filterPanel = document.createElement("section");
+      filterPanel.className = "gridline-popover gridline-filter-panel";
+      rect = event.target.getBoundingClientRect();
+      filterPanel.style.left = Math.min(rect.left, window.innerWidth - 340) + "px";
+      filterPanel.style.top = Math.min(rect.bottom + 4, window.innerHeight - 420) + "px";
+      search = document.createElement("input");
+      search.type = "search";
+      search.placeholder = "Filter...";
+      search.className = "gridline-dropdown-search";
+      list = document.createElement("div");
+      list.className = "gridline-filter-values";
+      function renderFilterValues(filterText) {
+        clearNode(list);
+        values.filter(function (value) {
+          return !filterText || value.toLowerCase().indexOf(filterText.toLowerCase()) >= 0;
+        }).forEach(function (value) {
+          var label = document.createElement("label");
+          var checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = current.indexOf(value) >= 0;
+          checkbox.addEventListener("change", function () {
+            if (checkbox.checked && current.indexOf(value) < 0) {
+              current.push(value);
+            } else if (!checkbox.checked) {
+              current = current.filter(function (entry) { return entry !== value; });
+            }
+          });
+          label.append(checkbox, document.createTextNode(value || "(prazno)"));
+          list.appendChild(label);
+        });
+      }
+      actions = createPopoverActions([
+        (function () {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "ghost-button";
+          button.textContent = "A-Z";
+          button.addEventListener("click", function () {
+            closeFilterPanel();
+            sortByColumn(column, "asc");
+          });
+          return button;
+        }()),
+        (function () {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "ghost-button";
+          button.textContent = "Z-A";
+          button.addEventListener("click", function () {
+            closeFilterPanel();
+            sortByColumn(column, "desc");
+          });
+          return button;
+        }()),
+        (function () {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "ghost-button";
+          button.textContent = "Ocisti";
+          button.addEventListener("click", function () {
+            delete columnFilters[String(column)];
+            closeFilterPanel();
+            render();
+          });
+          return button;
+        }()),
+        (function () {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "primary-button";
+          button.textContent = "Primijeni";
+          button.addEventListener("click", function () {
+            columnFilters[String(column)] = current.slice();
+            closeFilterPanel();
+            render();
+          });
+          return button;
+        }()),
+      ]);
+      search.addEventListener("input", function () {
+        renderFilterValues(search.value);
+      });
+      filterPanel.append(
+        createPopoverHeader("Filter " + columnLabel(column), "Odaberi vrijednosti ili sortiraj kolonu."),
+        search,
+        list,
+        actions
+      );
+      document.body.appendChild(filterPanel);
+      renderFilterValues("");
+      search.focus();
+    }
+
+    function formatCellReference(row, column) {
+      return columnLabel(column) + String(row + 1);
+    }
+
+    function insertFormulaReference(referenceText) {
+      var start = formulaInput.selectionStart == null ? formulaInput.value.length : formulaInput.selectionStart;
+      var end = formulaInput.selectionEnd == null ? formulaInput.value.length : formulaInput.selectionEnd;
+      var value = formulaInput.value || "=";
+      if (!value.trim().startsWith("=")) {
+        value = "=";
+        start = 1;
+        end = 1;
+      }
+      formulaInput.value = value.slice(0, start) + referenceText + value.slice(end);
+      formulaInput.focus();
+      formulaInput.setSelectionRange(start + referenceText.length, start + referenceText.length);
+      handleFormulaInput();
+    }
+
     function handleGridPointerDown(event) {
       var resizer = event.target && event.target.closest
         ? event.target.closest("[data-gridline-column-resizer]")
         : null;
+      var rowResizer = event.target && event.target.closest
+        ? event.target.closest("[data-gridline-row-resizer]")
+        : null;
+      var columnHeader = event.target && event.target.closest
+        ? event.target.closest("thead th[data-column]")
+        : null;
+      var rowHeader = event.target && event.target.closest
+        ? event.target.closest("tbody th[data-row-header]")
+        : null;
+      var filterTrigger = event.target && event.target.closest
+        ? event.target.closest("[data-gridline-filter-column]")
+        : null;
+      var validationTrigger = event.target && event.target.closest
+        ? event.target.closest("[data-gridline-validation-row][data-gridline-validation-column]")
+        : null;
       var input;
       var cell;
+      if (filterTrigger && grid.contains(filterTrigger)) {
+        showFilterPanel(event, clampInteger(filterTrigger.dataset.gridlineFilterColumn, active.column, 0, model.columnCount - 1));
+        return;
+      }
+      if (validationTrigger && grid.contains(validationTrigger)) {
+        showValidationDropdown(
+          event,
+          clampInteger(validationTrigger.dataset.gridlineValidationRow, active.row, 0, model.rowCount - 1),
+          clampInteger(validationTrigger.dataset.gridlineValidationColumn, active.column, 0, model.columnCount - 1)
+        );
+        return;
+      }
       if (resizer && grid.contains(resizer)) {
         event.preventDefault();
         event.stopPropagation();
+        recordUndo();
         columnResize = {
           column: clampInteger(resizer.dataset.gridlineColumnResizer, active.column, 0, model.columnCount - 1),
           startX: event.clientX,
@@ -1152,6 +1784,45 @@
         };
         document.addEventListener("pointermove", handleColumnResizeMove);
         document.addEventListener("pointerup", handleColumnResizeUp);
+        return;
+      }
+      if (rowResizer && grid.contains(rowResizer)) {
+        event.preventDefault();
+        event.stopPropagation();
+        recordUndo();
+        rowResize = {
+          row: clampInteger(rowResizer.dataset.gridlineRowResizer, active.row, 0, model.rowCount - 1),
+          startY: event.clientY,
+          startHeight: getRowHeight(clampInteger(rowResizer.dataset.gridlineRowResizer, active.row, 0, model.rowCount - 1)),
+        };
+        document.addEventListener("pointermove", handleRowResizeMove);
+        document.addEventListener("pointerup", handleRowResizeUp);
+        return;
+      }
+      if (columnHeader && grid.contains(columnHeader) && event.button === 0) {
+        var headerColumn = Number(columnHeader.dataset.column);
+        event.preventDefault();
+        selection = {
+          startRow: 0,
+          startColumn: headerColumn,
+          endRow: model.rowCount - 1,
+          endColumn: headerColumn,
+        };
+        selectCell(active.row, headerColumn, { focus: false, preserveSelection: true });
+        grid.focus({ preventScroll: true });
+        return;
+      }
+      if (rowHeader && grid.contains(rowHeader) && event.button === 0) {
+        var headerRow = Number(rowHeader.dataset.rowHeader);
+        event.preventDefault();
+        selection = {
+          startRow: headerRow,
+          startColumn: 0,
+          endRow: headerRow,
+          endColumn: model.columnCount - 1,
+        };
+        selectCell(headerRow, active.column, { focus: false, preserveSelection: true });
+        grid.focus({ preventScroll: true });
         return;
       }
       handleFillPointerDown(event);
@@ -1165,6 +1836,11 @@
         ? event.target.closest("td[data-row][data-column]")
         : null;
       if (cell && grid.contains(cell)) {
+        if (document.activeElement === formulaInput && String(formulaInput.value || "").trim().startsWith("=")) {
+          event.preventDefault();
+          insertFormulaReference(formatCellReference(Number(cell.dataset.row), Number(cell.dataset.column)));
+          return;
+        }
         if (event.shiftKey) {
           selectCell(Number(cell.dataset.row), Number(cell.dataset.column), {
             focus: false,
@@ -1177,6 +1853,7 @@
           startColumn: Number(cell.dataset.column),
         };
         selectCell(selectionDrag.startRow, selectionDrag.startColumn, { focus: false });
+        grid.focus({ preventScroll: true });
         document.addEventListener("pointermove", handleSelectionPointerMove);
         document.addEventListener("pointerup", handleSelectionPointerUp, { once: true });
         return;
@@ -1192,8 +1869,26 @@
 
     function handleFillDoubleClick(event) {
       var handle = event.target && event.target.closest ? event.target.closest(".gridline-fill-handle") : null;
+      var cell;
+      var input;
       var endRow;
       if (!handle) {
+        cell = event.target && event.target.closest ? event.target.closest("td[data-row][data-column]") : null;
+        if (cell && grid.contains(cell)) {
+          event.preventDefault();
+          input = getInput(Number(cell.dataset.row), Number(cell.dataset.column));
+          if (input) {
+            selectCell(Number(cell.dataset.row), Number(cell.dataset.column), { focus: false });
+            input.focus();
+            input.value = getValue(active.row, active.column);
+            input.setSelectionRange(input.value.length, input.value.length);
+            editingSnapshot = {
+              row: active.row,
+              column: active.column,
+              value: getValue(active.row, active.column),
+            };
+          }
+        }
         return;
       }
       event.preventDefault();
@@ -1212,6 +1907,7 @@
     function selectCell(row, column, selectOptions) {
       var focus = !selectOptions || selectOptions.focus !== false;
       var extend = Boolean(selectOptions && selectOptions.extend);
+      var preserveSelection = Boolean(selectOptions && selectOptions.preserveSelection);
       var input;
       var td;
       var start = getMergeStart(
@@ -1222,7 +1918,9 @@
         row: start.row,
         column: start.column,
       };
-      if (extend) {
+      if (preserveSelection) {
+        selection = normalizeSelectionRange(selection, model.rowCount, model.columnCount);
+      } else if (extend) {
         selection = {
           startRow: selection.startRow,
           startColumn: selection.startColumn,
@@ -1251,7 +1949,7 @@
         selectedCell = td;
         attachFillHandle(td);
       }
-      cellRef.textContent = columnLabel(active.column) + (active.row + 1);
+      cellRef.textContent = formatSelectionLabel();
       formulaInput.value = getValue(active.row, active.column);
       Array.prototype.forEach.call(grid.querySelectorAll("td.is-range-selected"), function (node) {
         node.classList.remove("is-range-selected");
@@ -1267,7 +1965,28 @@
       if (focus && input) {
         input.focus();
         input.select();
+        editingSnapshot = {
+          row: active.row,
+          column: active.column,
+          value: getValue(active.row, active.column),
+        };
       }
+      updateStatusSummary();
+      updateReferenceHighlights();
+    }
+
+    function isRowFilteredOut(row) {
+      var filterColumns = Object.keys(columnFilters || {});
+      if (!filterColumns.length) {
+        return false;
+      }
+      return filterColumns.some(function (columnKey) {
+        var allowed = columnFilters[columnKey];
+        if (!allowed || !allowed.length) {
+          return false;
+        }
+        return allowed.indexOf(String(getDisplayValue(row, Number(columnKey)) || "")) < 0;
+      });
     }
 
     function render() {
@@ -1289,15 +2008,25 @@
       for (column = 0; column < model.columnCount; column += 1) {
         var columnAi = model.aiColumns && model.aiColumns[String(column)];
         var resizer = document.createElement("button");
+        var filterControl = document.createElement("button");
         th = document.createElement("th");
-        th.textContent = columnLabel(column);
         th.dataset.column = String(column);
+        th.dataset.gridlineColumnHeader = String(column);
         th.style.width = getColumnWidth(column) + "px";
         th.style.minWidth = getColumnWidth(column) + "px";
         th.classList.toggle("has-ai-column", Boolean(columnAi && columnAi.enabled !== false));
+        th.classList.toggle("is-filtered", Boolean(columnFilters[String(column)]));
         th.title = columnAi
           ? "Desni klik: NexAI postavke kolone"
           : "Povuci rub za promjenu širine. Desni klik: NexAI postavke kolone";
+        th.appendChild(document.createTextNode(columnLabel(column)));
+        filterControl.type = "button";
+        filterControl.className = "gridline-filter-button";
+        filterControl.dataset.gridlineFilterColumn = String(column);
+        filterControl.title = "Filter i sortiranje";
+        filterControl.setAttribute("aria-label", "Filter kolone " + columnLabel(column));
+        filterControl.textContent = "⌄";
+        th.appendChild(filterControl);
         resizer.type = "button";
         resizer.className = "gridline-column-resizer";
         resizer.dataset.gridlineColumnResizer = String(column);
@@ -1311,13 +2040,21 @@
       for (row = 0; row < model.rowCount; row += 1) {
         tr = document.createElement("tr");
         tr.style.height = getRowHeight(row) + "px";
+        tr.hidden = isRowFilteredOut(row);
         rowHead = document.createElement("th");
-        rowHead.textContent = String(row + 1);
+        rowHead.dataset.rowHeader = String(row);
         rowHead.style.height = getRowHeight(row) + "px";
         rowHead.classList.toggle("is-header-row", isHeaderRow(row));
         if (isHeaderRow(row)) {
           rowHead.title = "Naslovni red koji se ponavlja u PDF-u";
         }
+        rowHead.appendChild(document.createTextNode(String(row + 1)));
+        var rowResizer = document.createElement("button");
+        rowResizer.type = "button";
+        rowResizer.className = "gridline-row-resizer";
+        rowResizer.dataset.gridlineRowResizer = String(row);
+        rowResizer.setAttribute("aria-label", "Promijeni visinu reda " + (row + 1));
+        rowHead.appendChild(rowResizer);
         tr.appendChild(rowHead);
         for (column = 0; column < model.columnCount; column += 1) {
           var merge = getCoveringMerge(row, column);
@@ -1336,12 +2073,6 @@
             td.rowSpan = merge.rowSpan;
             td.classList.add("is-merged-cell");
           }
-          if (cellStyle && cellStyle.backgroundColor) {
-            td.style.backgroundColor = cellStyle.backgroundColor;
-          }
-          if (cellStyle && cellStyle.textAlign) {
-            td.style.textAlign = cellStyle.textAlign;
-          }
           if (isCellInSelection(row, column)) {
             td.classList.add("is-range-selected");
           }
@@ -1351,14 +2082,19 @@
           input.spellcheck = false;
           input.dataset.row = String(row);
           input.dataset.column = String(column);
-          if (cellStyle && cellStyle.backgroundColor) {
-            input.style.backgroundColor = cellStyle.backgroundColor;
-          }
-          if (cellStyle && cellStyle.textAlign) {
-            input.style.textAlign = cellStyle.textAlign;
-          }
+          applyCellStyleToElement(td, input, cellStyle);
           syncInputDisplay(input, false);
           td.appendChild(input);
+          if (getAllowedValues(row, column).length) {
+            var dropdownButton = document.createElement("button");
+            dropdownButton.type = "button";
+            dropdownButton.className = "gridline-validation-button";
+            dropdownButton.dataset.gridlineValidationRow = String(row);
+            dropdownButton.dataset.gridlineValidationColumn = String(column);
+            dropdownButton.setAttribute("aria-label", "Odaberi vrijednost");
+            dropdownButton.textContent = "⌄";
+            td.appendChild(dropdownButton);
+          }
           tr.appendChild(td);
         }
         tbody.appendChild(tr);
@@ -1370,15 +2106,65 @@
       selectCell(active.row, active.column, { focus: false });
     }
 
-    function handlePaste(event) {
-      var text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
-      var rows;
-      var changedSize = false;
-      if (text.indexOf("\t") === -1 && text.indexOf("\n") === -1) {
+    function serializeSelection() {
+      var bounds = getSelectionBounds();
+      var rows = [];
+      var row;
+      var column;
+      for (row = bounds.top; row <= bounds.bottom; row += 1) {
+        var values = [];
+        for (column = bounds.left; column <= bounds.right; column += 1) {
+          values.push(getValue(row, column));
+        }
+        rows.push(values.join("\t"));
+      }
+      return rows.join("\n");
+    }
+
+    function writeClipboardText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).catch(function () {});
+      }
+      return Promise.resolve();
+    }
+
+    function clearSelectionValues() {
+      getSelectedCells().forEach(function (cell) {
+        setValue(cell.row, cell.column, "");
+      });
+      render();
+      scheduleSave();
+    }
+
+    function copySelection(cut) {
+      var text = serializeSelection();
+      if (!text && text !== "") {
         return;
       }
-      event.preventDefault();
-      rows = text.replace(/\r/g, "").split("\n").filter(function (row) {
+      writeClipboardText(text);
+      if (cut) {
+        recordUndo();
+        clearSelectionValues();
+        setStatus("Izrezano", "is-saving");
+      } else {
+        setStatus("Kopirano", "is-saved");
+      }
+    }
+
+    function applyClipboardText(text) {
+      var rows;
+      var changedSize = false;
+      var sourceText = String(text == null ? "" : text).replace(/\r/g, "");
+      if (sourceText.indexOf("\t") === -1 && sourceText.indexOf("\n") === -1) {
+        recordUndo();
+        setValue(active.row, active.column, sourceText);
+        render();
+        selectCell(active.row, active.column, { focus: false });
+        scheduleSave();
+        return true;
+      }
+      recordUndo();
+      rows = sourceText.split("\n").filter(function (row) {
         return row.length > 0;
       });
       rows.forEach(function (line, rowOffset) {
@@ -1404,6 +2190,30 @@
       }
       formulaInput.value = getValue(active.row, active.column);
       scheduleSave();
+      return true;
+    }
+
+    function handlePaste(event) {
+      var text = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
+      if (!text && text !== "") {
+        return;
+      }
+      event.preventDefault();
+      applyClipboardText(text);
+    }
+
+    function handleCopy(event) {
+      event.preventDefault();
+      event.clipboardData.setData("text/plain", serializeSelection());
+      setStatus("Kopirano", "is-saved");
+    }
+
+    function handleCut(event) {
+      event.preventDefault();
+      event.clipboardData.setData("text/plain", serializeSelection());
+      recordUndo();
+      clearSelectionValues();
+      setStatus("Izrezano", "is-saving");
     }
 
     function handleFocusIn(event) {
@@ -1421,6 +2231,7 @@
       }
       window.setTimeout(function () {
         if (!isInputEditing(input)) {
+          input.dataset.gridlineUndoRecorded = "";
           syncInputDisplay(input, false);
         }
       }, 0);
@@ -1433,6 +2244,10 @@
       if (!input) {
         return;
       }
+      if (input.dataset.gridlineUndoRecorded !== "true") {
+        recordUndo();
+        input.dataset.gridlineUndoRecorded = "true";
+      }
       row = Number(input.dataset.row);
       column = Number(input.dataset.column);
       setValue(row, column, input.value);
@@ -1440,6 +2255,97 @@
         formulaInput.value = input.value;
       }
       scheduleSave();
+    }
+
+    function isPrintableKey(event) {
+      return event.key
+        && event.key.length === 1
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey;
+    }
+
+    function beginCellEdit(row, column, initialValue, replace) {
+      var input = getInput(row, column);
+      if (!input) {
+        return;
+      }
+      selectCell(row, column, { focus: false });
+      input.focus();
+      editingSnapshot = {
+        row: row,
+        column: column,
+        value: getValue(row, column),
+      };
+      input.dataset.gridlineUndoRecorded = "true";
+      recordUndo();
+      if (replace) {
+        input.value = String(initialValue || "");
+        setValue(row, column, input.value);
+        formulaInput.value = input.value;
+      } else {
+        input.value = getValue(row, column);
+      }
+      input.setSelectionRange(input.value.length, input.value.length);
+      scheduleSave();
+    }
+
+    function moveSelection(rowOffset, columnOffset, extend) {
+      var nextRow = Math.max(0, active.row + rowOffset);
+      var nextColumn = Math.max(0, active.column + columnOffset);
+      if (ensureSize(nextRow, nextColumn)) {
+        render();
+      }
+      selectCell(nextRow, nextColumn, {
+        focus: false,
+        extend: extend,
+      });
+      grid.focus({ preventScroll: true });
+    }
+
+    function handleKeyboardClipboard(event) {
+      var key = String(event.key || "").toLowerCase();
+      if (!(event.ctrlKey || event.metaKey)) {
+        return false;
+      }
+      if (event.target === formulaInput && ["c", "v", "x"].indexOf(key) >= 0) {
+        return false;
+      }
+      if (key === "c") {
+        event.preventDefault();
+        copySelection(false);
+        return true;
+      }
+      if (key === "x") {
+        event.preventDefault();
+        copySelection(true);
+        return true;
+      }
+      if (key === "v") {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          event.preventDefault();
+          navigator.clipboard.readText().then(applyClipboardText).catch(function () {
+            setStatus("Zalijepi nije dostupan u ovom browseru", "is-saving");
+          });
+          return true;
+        }
+        return false;
+      }
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return true;
+      }
+      if (key === "y") {
+        event.preventDefault();
+        redo();
+        return true;
+      }
+      return false;
     }
 
     function handleKeydown(event) {
@@ -1453,24 +2359,60 @@
         }
         selectCell(nextRow, nextColumn);
       }
-      if (!input) {
+      if (handleKeyboardClipboard(event)) {
         return;
       }
-      row = Number(input.dataset.row);
-      column = Number(input.dataset.column);
+      row = input ? Number(input.dataset.row) : active.row;
+      column = input ? Number(input.dataset.column) : active.column;
       if (event.key === "Enter") {
+        if (input) {
+          input.dataset.gridlineUndoRecorded = "";
+          syncInputDisplay(input, false);
+        }
         move(row + (event.shiftKey ? -1 : 1), column);
       } else if (event.key === "Tab") {
+        if (input) {
+          input.dataset.gridlineUndoRecorded = "";
+          syncInputDisplay(input, false);
+        }
         move(row, column + (event.shiftKey ? -1 : 1));
-      } else if (event.key === "ArrowDown" && input.selectionStart === input.value.length) {
-        move(row + 1, column);
-      } else if (event.key === "ArrowUp" && input.selectionStart === 0) {
-        move(row - 1, column);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        if (editingSnapshot && input) {
+          setValue(editingSnapshot.row, editingSnapshot.column, editingSnapshot.value);
+          input.dataset.gridlineUndoRecorded = "";
+          syncInputDisplay(input, false);
+          formulaInput.value = editingSnapshot.value;
+        }
+        editingSnapshot = null;
+        grid.focus({ preventScroll: true });
+      } else if (event.key === "ArrowDown" && (!input || event.shiftKey || input.selectionStart === input.value.length)) {
+        event.preventDefault();
+        moveSelection(1, 0, event.shiftKey);
+      } else if (event.key === "ArrowUp" && (!input || event.shiftKey || input.selectionStart === 0)) {
+        event.preventDefault();
+        moveSelection(-1, 0, event.shiftKey);
+      } else if (event.key === "ArrowRight" && (!input || event.shiftKey || input.selectionStart === input.value.length)) {
+        event.preventDefault();
+        moveSelection(0, 1, event.shiftKey);
+      } else if (event.key === "ArrowLeft" && (!input || event.shiftKey || input.selectionStart === 0)) {
+        event.preventDefault();
+        moveSelection(0, -1, event.shiftKey);
+      } else if (!input && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        clearSelectedContent();
+      } else if (!input && isPrintableKey(event)) {
+        event.preventDefault();
+        beginCellEdit(active.row, active.column, event.key, true);
       }
     }
 
     function handleFormulaInput() {
       var input;
+      if (!formulaInput.dataset.gridlineUndoRecorded) {
+        recordUndo();
+        formulaInput.dataset.gridlineUndoRecorded = "true";
+      }
       setValue(active.row, active.column, formulaInput.value);
       input = getInput(active.row, active.column);
       if (input) {
@@ -1478,6 +2420,7 @@
         input.dataset.rawValue = formulaInput.value;
         input.classList.toggle("is-formula", isFormulaText(formulaInput.value));
       }
+      updateReferenceHighlights();
       scheduleSave();
     }
 
@@ -1698,6 +2641,7 @@
       if (!rowCount) {
         return;
       }
+      recordUndo();
       ensureSize(startRowIndex + rowCount - 1, model.columnCount - 1);
       Object.keys(model.data).forEach(function (key) {
         var parts = key.split(":");
@@ -2592,6 +3536,17 @@
       return button;
     }
 
+    function createContextActionButton(label, handler) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", function () {
+        hideContextMenu();
+        handler();
+      });
+      return button;
+    }
+
     function showAiContextMenu(event, row, column) {
       if (!enableAiContextMenu) {
         return;
@@ -2762,15 +3717,96 @@
       var columnHeader = event.target && event.target.closest
         ? event.target.closest("thead th[data-column]")
         : null;
+      var rowHeader = event.target && event.target.closest
+        ? event.target.closest("tbody th[data-row-header]")
+        : null;
       var input = getClosestCellInput(event.target);
+      var bounds;
+      event.preventDefault();
+      hideContextMenu();
+      contextMenu = document.createElement("div");
+      contextMenu.className = "gridline-context-menu";
+      contextMenu.style.left = event.clientX + "px";
+      contextMenu.style.top = event.clientY + "px";
       if (columnHeader && grid.contains(columnHeader)) {
-        showColumnAiSettingsPanel(event, Number(columnHeader.dataset.column));
+        var columnIndex = Number(columnHeader.dataset.column);
+        selection = {
+          startRow: 0,
+          startColumn: columnIndex,
+          endRow: model.rowCount - 1,
+          endColumn: columnIndex,
+        };
+        selectCell(active.row, columnIndex, { focus: false, preserveSelection: true });
+        contextMenu.append(
+          createContextActionButton("Kopiraj", function () { copySelection(false); }),
+          createContextActionButton("Zalijepi", function () {
+            if (navigator.clipboard && navigator.clipboard.readText) {
+              navigator.clipboard.readText().then(applyClipboardText);
+            }
+          }),
+          createContextActionButton("Umetni stupac lijevo", function () { insertColumns(columnIndex, 1); }),
+          createContextActionButton("Umetni stupac desno", function () { insertColumns(columnIndex + 1, 1); }),
+          createContextActionButton("Obrisi stupac", function () { deleteColumnsInRange(columnIndex, columnIndex); }),
+          createContextActionButton("Sort A-Z", function () { sortByColumn(columnIndex, "asc"); }),
+          createContextActionButton("Sort Z-A", function () { sortByColumn(columnIndex, "desc"); }),
+          createContextActionButton("NexAI postavke kolone", function () { showColumnAiSettingsPanel(event, columnIndex); })
+        );
+        document.body.appendChild(contextMenu);
+        return;
+      }
+      if (rowHeader && grid.contains(rowHeader)) {
+        var rowIndex = Number(rowHeader.dataset.rowHeader);
+        selection = {
+          startRow: rowIndex,
+          startColumn: 0,
+          endRow: rowIndex,
+          endColumn: model.columnCount - 1,
+        };
+        selectCell(rowIndex, active.column, { focus: false, preserveSelection: true });
+        contextMenu.append(
+          createContextActionButton("Kopiraj", function () { copySelection(false); }),
+          createContextActionButton("Izrezi", function () { copySelection(true); }),
+          createContextActionButton("Umetni red iznad", function () { insertMatrixRows(rowIndex, [Array.from({ length: model.columnCount }, function () { return ""; })]); }),
+          createContextActionButton("Umetni red ispod", function () { insertMatrixRows(rowIndex + 1, [Array.from({ length: model.columnCount }, function () { return ""; })]); }),
+          createContextActionButton("Obrisi red", function () { deleteRowsInRange(rowIndex, rowIndex); }),
+          createContextActionButton("Ocisti sadrzaj", clearSelectedContent),
+          createContextActionButton("Ocisti formatiranje", clearSelectedFormatting)
+        );
+        document.body.appendChild(contextMenu);
         return;
       }
       if (!input) {
         return;
       }
-      showAiContextMenu(event, Number(input.dataset.row), Number(input.dataset.column));
+      if (!isCellInSelection(Number(input.dataset.row), Number(input.dataset.column))) {
+        selectCell(Number(input.dataset.row), Number(input.dataset.column), { focus: false });
+      }
+      bounds = getSelectionBounds();
+      contextMenu.append(
+        createContextActionButton("Kopiraj", function () { copySelection(false); }),
+        createContextActionButton("Zalijepi", function () {
+          if (navigator.clipboard && navigator.clipboard.readText) {
+            navigator.clipboard.readText().then(applyClipboardText);
+          }
+        }),
+        createContextActionButton("Izrezi", function () { copySelection(true); }),
+        createContextActionButton("Umetni red iznad", function () { insertMatrixRows(bounds.top, [Array.from({ length: model.columnCount }, function () { return ""; })]); }),
+        createContextActionButton("Umetni red ispod", function () { insertMatrixRows(bounds.bottom + 1, [Array.from({ length: model.columnCount }, function () { return ""; })]); }),
+        createContextActionButton("Obrisi red", function () { deleteRowsInRange(bounds.top, bounds.bottom); }),
+        createContextActionButton("Umetni stupac lijevo", function () { insertColumns(bounds.left, 1); }),
+        createContextActionButton("Umetni stupac desno", function () { insertColumns(bounds.right + 1, 1); }),
+        createContextActionButton("Obrisi stupac", function () { deleteColumnsInRange(bounds.left, bounds.right); }),
+        createContextActionButton("Ocisti sadrzaj", clearSelectedContent),
+        createContextActionButton("Ocisti formatiranje", clearSelectedFormatting)
+      );
+      if (enableAiContextMenu) {
+        contextMenu.append(
+          createContextMenuButton("NexAI popuni celiju", "cell"),
+          createContextMenuButton("NexAI popuni red", "row"),
+          createContextMenuButton("NexAI popuni tablicu", "table")
+        );
+      }
+      document.body.appendChild(contextMenu);
     }
 
     function handleAiPanelClick(event) {
@@ -2815,13 +3851,244 @@
       });
     }
 
+    function insertColumns(startColumnIndex, count) {
+      var columnCount = clampInteger(count, 1, 1, 20);
+      var insertAt = clampInteger(startColumnIndex, active.column + 1, 0, model.columnCount);
+      var nextData = Object.create(null);
+      var nextWidths = Object.create(null);
+      var nextStyles = Object.create(null);
+      var nextAiColumns = Object.create(null);
+      var nextMerges = [];
+      var nextColumnCount = clampInteger(model.columnCount + columnCount, model.columnCount, MIN_COLUMNS, MAX_COLUMNS);
+      recordUndo();
+      Object.keys(model.data || {}).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        var nextColumn = column >= insertAt ? column + columnCount : column;
+        if (nextColumn < nextColumnCount) {
+          nextData[cellKey(row, nextColumn)] = model.data[key];
+        }
+      });
+      Object.keys(model.columnWidths || {}).forEach(function (key) {
+        var column = Number(key);
+        var nextColumn = column >= insertAt ? column + columnCount : column;
+        if (nextColumn < nextColumnCount) {
+          nextWidths[String(nextColumn)] = model.columnWidths[key];
+        }
+      });
+      Object.keys(model.cellStyles || {}).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        var nextColumn = column >= insertAt ? column + columnCount : column;
+        if (nextColumn < nextColumnCount) {
+          nextStyles[cellKey(row, nextColumn)] = model.cellStyles[key];
+        }
+      });
+      Object.keys(model.aiColumns || {}).forEach(function (key) {
+        var column = Number(key);
+        var nextColumn = column >= insertAt ? column + columnCount : column;
+        if (nextColumn < nextColumnCount) {
+          nextAiColumns[String(nextColumn)] = model.aiColumns[key];
+        }
+      });
+      (model.merges || []).forEach(function (merge) {
+        if (merge.column >= insertAt) {
+          nextMerges.push(Object.assign({}, merge, { column: merge.column + columnCount }));
+        } else {
+          nextMerges.push(Object.assign({}, merge));
+        }
+      });
+      model.columnCount = nextColumnCount;
+      model.data = nextData;
+      model.columnWidths = normalizeNumberMap(nextWidths, model.columnCount, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+      model.cellStyles = normalizeCellStyles(nextStyles, model.rowCount, model.columnCount);
+      model.aiColumns = cloneAiColumns(nextAiColumns, model.columnCount);
+      model.merges = normalizeMerges(nextMerges, model.rowCount, model.columnCount);
+      render();
+      selectCell(active.row, Math.min(insertAt, model.columnCount - 1), { focus: false });
+      scheduleSave();
+    }
+
+    function deleteRowsInRange(startRow, endRow) {
+      var boundsTop = clampInteger(startRow, active.row, 0, model.rowCount - 1);
+      var boundsBottom = clampInteger(endRow, boundsTop, 0, model.rowCount - 1);
+      var count = boundsBottom - boundsTop + 1;
+      var nextData = Object.create(null);
+      var nextHeights = Object.create(null);
+      var nextStyles = Object.create(null);
+      var nextMerges = [];
+      if (model.rowCount <= 1) {
+        return;
+      }
+      recordUndo();
+      Object.keys(model.data || {}).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        if (row >= boundsTop && row <= boundsBottom) {
+          return;
+        }
+        nextData[cellKey(row > boundsBottom ? row - count : row, column)] = model.data[key];
+      });
+      Object.keys(model.rowHeights || {}).forEach(function (key) {
+        var row = Number(key);
+        if (row >= boundsTop && row <= boundsBottom) {
+          return;
+        }
+        nextHeights[String(row > boundsBottom ? row - count : row)] = model.rowHeights[key];
+      });
+      Object.keys(model.cellStyles || {}).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        if (row >= boundsTop && row <= boundsBottom) {
+          return;
+        }
+        nextStyles[cellKey(row > boundsBottom ? row - count : row, column)] = model.cellStyles[key];
+      });
+      (model.merges || []).forEach(function (merge) {
+        var mergeBottom = merge.row + merge.rowSpan - 1;
+        if (!(mergeBottom < boundsTop || merge.row > boundsBottom)) {
+          return;
+        }
+        nextMerges.push(Object.assign({}, merge, {
+          row: merge.row > boundsBottom ? merge.row - count : merge.row,
+        }));
+      });
+      model.rowCount = Math.max(MIN_ROWS, model.rowCount - count);
+      model.data = nextData;
+      model.rowHeights = normalizeNumberMap(nextHeights, model.rowCount, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+      model.cellStyles = normalizeCellStyles(nextStyles, model.rowCount, model.columnCount);
+      model.merges = normalizeMerges(nextMerges, model.rowCount, model.columnCount);
+      model.headerRows = normalizeHeaderRows((model.headerRows || []).map(function (row) {
+        return row > boundsBottom ? row - count : row;
+      }).filter(function (row) {
+        return row < boundsTop || row > boundsBottom;
+      }), model.rowCount);
+      render();
+      selectCell(Math.min(boundsTop, model.rowCount - 1), active.column, { focus: false });
+      scheduleSave();
+    }
+
+    function deleteColumnsInRange(startColumn, endColumn) {
+      var left = clampInteger(startColumn, active.column, 0, model.columnCount - 1);
+      var right = clampInteger(endColumn, left, 0, model.columnCount - 1);
+      var count = right - left + 1;
+      var nextData = Object.create(null);
+      var nextWidths = Object.create(null);
+      var nextStyles = Object.create(null);
+      var nextAiColumns = Object.create(null);
+      var nextMerges = [];
+      if (model.columnCount <= 1) {
+        return;
+      }
+      recordUndo();
+      Object.keys(model.data || {}).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        if (column >= left && column <= right) {
+          return;
+        }
+        nextData[cellKey(row, column > right ? column - count : column)] = model.data[key];
+      });
+      Object.keys(model.columnWidths || {}).forEach(function (key) {
+        var column = Number(key);
+        if (column >= left && column <= right) {
+          return;
+        }
+        nextWidths[String(column > right ? column - count : column)] = model.columnWidths[key];
+      });
+      Object.keys(model.cellStyles || {}).forEach(function (key) {
+        var parts = key.split(":");
+        var row = Number(parts[0]);
+        var column = Number(parts[1]);
+        if (column >= left && column <= right) {
+          return;
+        }
+        nextStyles[cellKey(row, column > right ? column - count : column)] = model.cellStyles[key];
+      });
+      Object.keys(model.aiColumns || {}).forEach(function (key) {
+        var column = Number(key);
+        if (column >= left && column <= right) {
+          return;
+        }
+        nextAiColumns[String(column > right ? column - count : column)] = model.aiColumns[key];
+      });
+      (model.merges || []).forEach(function (merge) {
+        var mergeRight = merge.column + merge.columnSpan - 1;
+        if (!(mergeRight < left || merge.column > right)) {
+          return;
+        }
+        nextMerges.push(Object.assign({}, merge, {
+          column: merge.column > right ? merge.column - count : merge.column,
+        }));
+      });
+      model.columnCount = Math.max(MIN_COLUMNS, model.columnCount - count);
+      model.data = nextData;
+      model.columnWidths = normalizeNumberMap(nextWidths, model.columnCount, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+      model.cellStyles = normalizeCellStyles(nextStyles, model.rowCount, model.columnCount);
+      model.aiColumns = cloneAiColumns(nextAiColumns, model.columnCount);
+      model.merges = normalizeMerges(nextMerges, model.rowCount, model.columnCount);
+      render();
+      selectCell(active.row, Math.min(left, model.columnCount - 1), { focus: false });
+      scheduleSave();
+    }
+
+    function sortByColumn(column, direction) {
+      var startRow = (model.headerRows || []).length ? Math.max.apply(null, model.headerRows) + 1 : 1;
+      var rows = [];
+      var nextData = Object.create(null);
+      var row;
+      var col;
+      if (startRow >= model.rowCount) {
+        return;
+      }
+      recordUndo();
+      for (row = 0; row < startRow; row += 1) {
+        for (col = 0; col < model.columnCount; col += 1) {
+          if (getValue(row, col)) {
+            nextData[cellKey(row, col)] = getValue(row, col);
+          }
+        }
+      }
+      for (row = startRow; row < model.rowCount; row += 1) {
+        rows.push({
+          originalRow: row,
+          values: Array.from({ length: model.columnCount }, function (_, colIndex) {
+            return getValue(row, colIndex);
+          }),
+        });
+      }
+      rows.sort(function (leftRow, rightRow) {
+        var leftValue = String(leftRow.values[column] || "");
+        var rightValue = String(rightRow.values[column] || "");
+        var result = leftValue.localeCompare(rightValue, "hr", { numeric: true, sensitivity: "base" });
+        return direction === "desc" ? -result : result;
+      });
+      rows.forEach(function (rowEntry, rowOffset) {
+        rowEntry.values.forEach(function (value, colIndex) {
+          if (String(value || "")) {
+            nextData[cellKey(startRow + rowOffset, colIndex)] = value;
+          }
+        });
+      });
+      model.data = nextData;
+      render();
+      scheduleSave();
+    }
+
     function addRows(count) {
+      recordUndo();
       model.rowCount = clampInteger(model.rowCount + count, model.rowCount, MIN_ROWS, MAX_ROWS);
       render();
       scheduleSave();
     }
 
     function addColumns(count) {
+      recordUndo();
       model.columnCount = clampInteger(model.columnCount + count, model.columnCount, MIN_COLUMNS, MAX_COLUMNS);
       render();
       scheduleSave();
@@ -2830,6 +4097,7 @@
     function resizeActiveColumn(delta) {
       var column = Math.max(0, Math.min(model.columnCount - 1, active.column));
       var nextWidth = clampInteger(getColumnWidth(column) + delta, DEFAULT_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+      recordUndo();
       if (!model.columnWidths) {
         model.columnWidths = Object.create(null);
       }
@@ -2841,6 +4109,7 @@
     function resizeActiveRow(delta) {
       var row = Math.max(0, Math.min(model.rowCount - 1, active.row));
       var nextHeight = clampInteger(getRowHeight(row) + delta, DEFAULT_ROW_HEIGHT, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+      recordUndo();
       if (!model.rowHeights) {
         model.rowHeights = Object.create(null);
       }
@@ -2862,6 +4131,7 @@
       if (range.top === range.bottom && range.left === range.right) {
         return;
       }
+      recordUndo();
       model.merges = normalizeMerges(model.merges, model.rowCount, model.columnCount).filter(function (merge) {
         return !rangesOverlap(range, {
           top: merge.row,
@@ -2895,6 +4165,7 @@
       if (!merge) {
         return;
       }
+      recordUndo();
       model.merges = normalizeMerges(model.merges, model.rowCount, model.columnCount).filter(function (entry) {
         return !(
           entry.row === merge.row
@@ -2922,6 +4193,7 @@
       } else {
         rows.push(active.row);
       }
+      recordUndo();
       model.headerRows = normalizeHeaderRows(rows, model.rowCount);
       render();
       scheduleSave();
@@ -2935,11 +4207,12 @@
       if (!model.cellStyles) {
         model.cellStyles = Object.create(null);
       }
+      recordUndo();
       getSelectedCells().forEach(function (cell) {
         var key = cellKey(cell.row, cell.column);
         var existing = model.cellStyles[key] || {};
-        var nextStyle = makeCellStyle(existing.backgroundColor || "", normalizedAlign);
-        if (Object.keys(nextStyle).length) {
+        var nextStyle = makeCellStyle(existing.backgroundColor || "", normalizedAlign, existing);
+        if (hasObjectKeys(nextStyle)) {
           model.cellStyles[key] = nextStyle;
         } else {
           delete model.cellStyles[key];
@@ -2955,11 +4228,12 @@
       if (!model.cellStyles) {
         model.cellStyles = Object.create(null);
       }
+      recordUndo();
       cells.forEach(function (cell) {
         var key = cellKey(cell.row, cell.column);
         var existing = model.cellStyles[key] || {};
-        var nextStyle = makeCellStyle(normalizedColor, existing.textAlign || "");
-        if (Object.keys(nextStyle).length) {
+        var nextStyle = makeCellStyle(normalizedColor, existing.textAlign || "", existing);
+        if (hasObjectKeys(nextStyle)) {
           model.cellStyles[key] = nextStyle;
         } else {
           delete model.cellStyles[key];
@@ -2969,10 +4243,83 @@
       scheduleSave();
     }
 
+    function updateSelectedCellStyles(mutator) {
+      if (!model.cellStyles) {
+        model.cellStyles = Object.create(null);
+      }
+      recordUndo();
+      getSelectedCells().forEach(function (cell) {
+        var key = cellKey(cell.row, cell.column);
+        var nextStyle = normalizeStyleEntry(mutator(Object.assign({}, model.cellStyles[key] || {})) || {});
+        if (hasObjectKeys(nextStyle)) {
+          model.cellStyles[key] = nextStyle;
+        } else {
+          delete model.cellStyles[key];
+        }
+      });
+      render();
+      scheduleSave();
+    }
+
+    function toggleSelectedCellStyle(propertyName, enabledValue) {
+      updateSelectedCellStyles(function (style) {
+        if (style[propertyName] === enabledValue) {
+          delete style[propertyName];
+        } else {
+          style[propertyName] = enabledValue;
+        }
+        return style;
+      });
+    }
+
+    function setSelectedTextColor(color) {
+      var normalizedColor = String(color || "").trim();
+      updateSelectedCellStyles(function (style) {
+        if (isValidHexColor(normalizedColor)) {
+          style.color = normalizedColor;
+        } else {
+          delete style.color;
+        }
+        return style;
+      });
+    }
+
+    function toggleSelectedBorder() {
+      updateSelectedCellStyles(function (style) {
+        if (style.border === "all") {
+          delete style.border;
+        } else {
+          style.border = "all";
+        }
+        return style;
+      });
+    }
+
+    function clearSelectedFormatting() {
+      recordUndo();
+      if (model.cellStyles) {
+        getSelectedCells().forEach(function (cell) {
+          delete model.cellStyles[cellKey(cell.row, cell.column)];
+        });
+      }
+      render();
+      scheduleSave();
+    }
+
+    function clearSelectedContent() {
+      recordUndo();
+      getSelectedCells().forEach(function (cell) {
+        setValue(cell.row, cell.column, "");
+      });
+      render();
+      scheduleSave();
+    }
+
     function clearGrid() {
       if (!confirm("Ocistiti cijelu tablicu?")) {
         return;
       }
+      recordUndo();
       model.data = Object.create(null);
       model.merges = [];
       model.columnWidths = Object.create(null);
@@ -3000,17 +4347,25 @@
     grid.addEventListener("input", handleInput);
     grid.addEventListener("keydown", handleKeydown);
     grid.addEventListener("paste", handlePaste);
+    grid.addEventListener("copy", handleCopy);
+    grid.addEventListener("cut", handleCut);
     grid.addEventListener("pointerdown", handleGridPointerDown);
     grid.addEventListener("dblclick", handleFillDoubleClick);
     if (enableAiContextMenu || enableColumnAiSettings) {
       grid.addEventListener("contextmenu", handleGridContextMenu);
     }
     formulaInput.addEventListener("input", handleFormulaInput);
+    formulaInput.addEventListener("keydown", handleKeydown);
+    formulaInput.addEventListener("blur", function () {
+      formulaInput.dataset.gridlineUndoRecorded = "";
+      updateReferenceHighlights();
+    });
+    formulaInput.addEventListener("focus", updateReferenceHighlights);
     if (addRowButton) {
-      addRowButton.addEventListener("click", function () { addRows(20); });
+      addRowButton.addEventListener("click", function () { addRows(1); });
     }
     if (addColumnButton) {
-      addColumnButton.addEventListener("click", function () { addColumns(4); });
+      addColumnButton.addEventListener("click", function () { insertColumns(active.column + 1, 1); });
     }
     if (widenColumnButton) {
       widenColumnButton.addEventListener("click", function () { resizeActiveColumn(18); });
@@ -3049,10 +4404,122 @@
     if (downloadButton) {
       downloadButton.addEventListener("click", downloadJson);
     }
+    if (saveButton) {
+      saveButton.addEventListener("click", flushPendingChange);
+    }
+    if (exportButton) {
+      exportButton.addEventListener("click", downloadJson);
+    }
     if (quickFillButton) {
       quickFillButton.addEventListener("click", handleQuickFillButtonClick);
     }
+    if (undoButton) {
+      undoButton.addEventListener("click", undo);
+    }
+    if (redoButton) {
+      redoButton.addEventListener("click", redo);
+    }
+    if (copyButton) {
+      copyButton.addEventListener("click", function () { copySelection(false); });
+    }
+    if (cutButton) {
+      cutButton.addEventListener("click", function () { copySelection(true); });
+    }
+    if (pasteButton) {
+      pasteButton.addEventListener("click", function () {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          navigator.clipboard.readText().then(applyClipboardText).catch(function () {
+            setStatus("Zalijepi nije dostupan", "is-saving");
+          });
+        }
+      });
+    }
+    if (boldButton) {
+      boldButton.addEventListener("click", function () { toggleSelectedCellStyle("fontWeight", "bold"); });
+    }
+    if (italicButton) {
+      italicButton.addEventListener("click", function () { toggleSelectedCellStyle("fontStyle", "italic"); });
+    }
+    if (underlineButton) {
+      underlineButton.addEventListener("click", function () { toggleSelectedCellStyle("textDecoration", "underline"); });
+    }
+    textColorButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        setSelectedTextColor(button.dataset.gridlineColor || button.dataset.gridlineTextColor || "");
+      });
+    });
+    if (borderButton) {
+      borderButton.addEventListener("click", toggleSelectedBorder);
+    }
+    if (clearFormattingButton) {
+      clearFormattingButton.addEventListener("click", clearSelectedFormatting);
+    }
+    if (deleteRowButton) {
+      deleteRowButton.addEventListener("click", function () {
+        var bounds = getSelectionBounds();
+        deleteRowsInRange(bounds.top, bounds.bottom);
+      });
+    }
+    if (deleteColumnButton) {
+      deleteColumnButton.addEventListener("click", function () {
+        var bounds = getSelectionBounds();
+        deleteColumnsInRange(bounds.left, bounds.right);
+      });
+    }
+    if (sortAscButton) {
+      sortAscButton.addEventListener("click", function () { sortByColumn(active.column, "asc"); });
+    }
+    if (sortDescButton) {
+      sortDescButton.addEventListener("click", function () { sortByColumn(active.column, "desc"); });
+    }
+    if (filterButton) {
+      filterButton.addEventListener("click", function (event) { showFilterPanel(event, active.column); });
+    }
+    if (findButton) {
+      findButton.addEventListener("click", function () {
+        var query = window.prompt("Pronadi u tablici");
+        var row;
+        var column;
+        if (!query) {
+          return;
+        }
+        for (row = 0; row < model.rowCount; row += 1) {
+          for (column = 0; column < model.columnCount; column += 1) {
+            if (String(getValue(row, column)).toLowerCase().indexOf(String(query).toLowerCase()) >= 0) {
+              selectCell(row, column, { focus: false });
+              return;
+            }
+          }
+        }
+        setStatus("Nema rezultata", "is-saving");
+      });
+    }
+    if (freezeRowButton) {
+      freezeRowButton.addEventListener("click", function () {
+        freezeFirstRow = !freezeFirstRow;
+        rootElement.classList.toggle("is-gridline-freeze-row", freezeFirstRow);
+      });
+    }
+    if (freezeColumnButton) {
+      freezeColumnButton.addEventListener("click", function () {
+        freezeFirstColumn = !freezeFirstColumn;
+        rootElement.classList.toggle("is-gridline-freeze-column", freezeFirstColumn);
+      });
+    }
+    if (zoomSelect) {
+      zoomSelect.addEventListener("change", function () {
+        zoomLevel = Number(zoomSelect.value || 100) / 100;
+        if (!Number.isFinite(zoomLevel) || zoomLevel <= 0) {
+          zoomLevel = 1;
+        }
+        rootElement.style.setProperty("--gridline-zoom", String(zoomLevel));
+      });
+      rootElement.style.setProperty("--gridline-zoom", String(zoomLevel));
+    }
     document.addEventListener("click", hideContextMenu);
+    document.addEventListener("click", closeValidationPanel);
+    document.addEventListener("click", closeFilterPanel);
+    updateHistoryButtons();
 
     function destroy() {
       flushPendingChange();
@@ -3075,19 +4542,27 @@
       document.removeEventListener("pointerup", handleFillPointerUp);
       document.removeEventListener("pointermove", handleColumnResizeMove);
       document.removeEventListener("pointerup", handleColumnResizeUp);
+      document.removeEventListener("pointermove", handleRowResizeMove);
+      document.removeEventListener("pointerup", handleRowResizeUp);
       selectionDrag = null;
       fillDrag = null;
       columnResize = null;
+      rowResize = null;
       closeColumnAiPanel();
+      closeValidationPanel();
+      closeFilterPanel();
       grid.removeEventListener("focusin", handleFocusIn);
       grid.removeEventListener("focusout", handleFocusOut);
       grid.removeEventListener("input", handleInput);
       grid.removeEventListener("keydown", handleKeydown);
       grid.removeEventListener("paste", handlePaste);
+      grid.removeEventListener("copy", handleCopy);
+      grid.removeEventListener("cut", handleCut);
       grid.removeEventListener("pointerdown", handleGridPointerDown);
       grid.removeEventListener("dblclick", handleFillDoubleClick);
       grid.removeEventListener("contextmenu", handleGridContextMenu);
       formulaInput.removeEventListener("input", handleFormulaInput);
+      formulaInput.removeEventListener("keydown", handleKeydown);
       if (quickFillButton) {
         quickFillButton.removeEventListener("click", handleQuickFillButtonClick);
       }

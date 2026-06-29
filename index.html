@@ -6897,17 +6897,29 @@
                           </div>
                           <div class="documentation-gridline-actions">
                             <span class="status is-saved" data-gridline-role="status">Spremno</span>
-                            <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
-                            <button type="button" class="ghost-button" data-gridline-action="add-row">+ 20 redova</button>
-                            <button type="button" class="ghost-button" data-gridline-action="add-column" title="Dodaj 4 kolone">+ kolone</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="taller-row" title="Povećaj aktivni red">↕+</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="shorter-row" title="Smanji aktivni red">↕-</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">⇤</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">≡</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">⇥</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="merge" title="Spoji označene ćelije">▦</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">□</button>
-                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-header-row" title="Naslovni red koji se ponavlja u PDF-u">H</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="save" title="Spremi">▣</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="export" title="Izvoz">⇩</button>
+                            <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="undo" title="Undo">↶</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="redo" title="Redo">↷</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="copy" title="Kopiraj">⧉</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="cut" title="Izreži">✂</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="paste" title="Zalijepi">▤</button>
+                            <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="bold" title="Bold">B</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="italic" title="Italic"><i>I</i></button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="underline" title="Underline"><u>U</u></button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="text-color" data-gridline-color="#111827" title="Boja teksta">A</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="border" title="Obrubi ćelije">□</button>
+                            <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">≡</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">☰</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">≣</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="merge" title="Spoji ćelije">▦</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="unmerge" title="Razdvoji ćelije">▥</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-header-row" title="Naslov na svakoj PDF stranici">H</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="freeze-row" title="Zamrzni prvi red">F↕</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="freeze-column" title="Zamrzni prvi stupac">F↔</button>
                             <span class="documentation-gridline-colors" aria-label="Pozadinska boja ćelije">
                               <button type="button" data-gridline-action="background-color" data-gridline-color="" title="Bez boje"></button>
                               <button type="button" data-gridline-action="background-color" data-gridline-color="#fff3bf" title="Žuta"></button>
@@ -6915,11 +6927,28 @@
                               <button type="button" data-gridline-action="background-color" data-gridline-color="#ffe3e3" title="Crvena"></button>
                               <button type="button" data-gridline-action="background-color" data-gridline-color="#d0ebff" title="Plava"></button>
                             </span>
-                            <button type="button" class="ghost-button" data-gridline-action="clear">Očisti</button>
+                            <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="add-row" title="Dodaj red">R+</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="delete-row" title="Obriši red">R-</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="add-column" title="Dodaj stupac">C+</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="delete-column" title="Obriši stupac">C-</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-asc" title="Sortiraj A-Z">A↓</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-desc" title="Sortiraj Z-A">Z↓</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="filter" title="Filter">⌄</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="find" title="Pronađi">⌕</button>
+                            <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="clear-formatting" title="Očisti formatiranje">Tx</button>
+                            <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
+                            <select class="gridline-zoom-select" data-gridline-action="zoom" title="Zoom">
+                              <option value="90">90%</option>
+                              <option value="100" selected>100%</option>
+                              <option value="110">110%</option>
+                              <option value="125">125%</option>
+                            </select>
                           </div>
                         </header>
                         <section class="documentation-gridline-formula" aria-label="Formula bar">
                           <div class="cell-ref" data-gridline-role="cell-ref">A1</div>
+                          <span class="gridline-fx" aria-hidden="true">fx</span>
                           <input data-gridline-role="formula" type="text" autocomplete="off" spellcheck="false" placeholder="Vrijednost aktivne ćelije" />
                         </section>
                         <section class="documentation-gridline-shell" aria-label="Gridline editor">

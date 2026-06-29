@@ -643,6 +643,36 @@ function collectFormulaNumberArguments(node, context) {
     .map((value) => coerceToNumber(value));
 }
 
+function formatFormulaDate(value, includeTime = false) {
+  const day = String(value.getDate()).padStart(2, "0");
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const year = String(value.getFullYear());
+  if (!includeTime) {
+    return `${day}.${month}.${year}`;
+  }
+  const hours = String(value.getHours()).padStart(2, "0");
+  const minutes = String(value.getMinutes()).padStart(2, "0");
+  return `${day}.${month}.${year} ${hours}:${minutes}`;
+}
+
+function evaluateRoundFunction(node, context, mode = "nearest") {
+  if (node.args.length < 1 || node.args.length > 2) {
+    throw new MeasurementFormulaError(`${node.name} trazi 1 ili 2 argumenta.`);
+  }
+  const value = coerceToNumber(evaluateFormulaAst(node.args[0], context));
+  const digits = node.args.length === 2
+    ? Math.floor(coerceToNumber(evaluateFormulaAst(node.args[1], context)))
+    : 0;
+  const factor = 10 ** digits;
+  if (mode === "up") {
+    return Math.ceil(value * factor) / factor;
+  }
+  if (mode === "down") {
+    return Math.floor(value * factor) / factor;
+  }
+  return Math.round(value * factor) / factor;
+}
+
 function evaluateRowFunction(node, context) {
   if (node.args.length > 1) {
     throw new MeasurementFormulaError("ROW trazi 0 ili 1 argument.");
@@ -826,6 +856,67 @@ function evaluateFormulaAst(node, context) {
         }
       }
 
+      if (node.name === "COUNTA") {
+        return node.args
+          .flatMap((argument) => flattenFormulaValue(evaluateFormulaAst(argument, context)))
+          .reduce((count, value) => count + (String(value ?? "").trim() ? 1 : 0), 0);
+      }
+
+      if (node.name === "AND") {
+        return node.args.every((argument) => isTruthyFormulaValue(evaluateFormulaAst(argument, context)));
+      }
+
+      if (node.name === "OR") {
+        return node.args.some((argument) => isTruthyFormulaValue(evaluateFormulaAst(argument, context)));
+      }
+
+      if (node.name === "NOT") {
+        if (node.args.length !== 1) {
+          throw new MeasurementFormulaError("NOT trazi 1 argument.");
+        }
+        return !isTruthyFormulaValue(evaluateFormulaAst(node.args[0], context));
+      }
+
+      if (node.name === "ROUND") {
+        return evaluateRoundFunction(node, context, "nearest");
+      }
+
+      if (node.name === "ROUNDUP") {
+        return evaluateRoundFunction(node, context, "up");
+      }
+
+      if (node.name === "ROUNDDOWN") {
+        return evaluateRoundFunction(node, context, "down");
+      }
+
+      if (node.name === "TODAY") {
+        if (node.args.length !== 0) {
+          throw new MeasurementFormulaError("TODAY ne prima argumente.");
+        }
+        return formatFormulaDate(new Date(), false);
+      }
+
+      if (node.name === "NOW") {
+        if (node.args.length !== 0) {
+          throw new MeasurementFormulaError("NOW ne prima argumente.");
+        }
+        return formatFormulaDate(new Date(), true);
+      }
+
+      if (node.name === "ISBLANK") {
+        if (node.args.length !== 1) {
+          throw new MeasurementFormulaError("ISBLANK trazi 1 argument.");
+        }
+        return String(evaluateFormulaAst(node.args[0], context) ?? "").trim() === "";
+      }
+
+      if (node.name === "LEN") {
+        if (node.args.length !== 1) {
+          throw new MeasurementFormulaError("LEN trazi 1 argument.");
+        }
+        return String(evaluateFormulaAst(node.args[0], context) ?? "").length;
+      }
+
       if (node.name === "ROWS") {
         return evaluateRowsFunction(node, context);
       }
@@ -842,7 +933,7 @@ function evaluateFormulaAst(node, context) {
         return evaluateCountIfs(node, context);
       }
 
-      if (node.name === "CONCATENATE") {
+      if (node.name === "CONCATENATE" || node.name === "CONCAT") {
         return node.args
           .flatMap((argument) => flattenFormulaValue(evaluateFormulaAst(argument, context)))
           .map((value) => String(value ?? ""))

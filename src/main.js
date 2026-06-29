@@ -52633,6 +52633,96 @@ function createActionButton(label, className, onClick) {
   return button;
 }
 
+function appendGridlineSpreadsheetToolbar(actions, {
+  status = null,
+  summary = null,
+  applyButton = null,
+  includeQuickFill = false,
+} = {}) {
+  const makeButton = (label, action, title = label, extra = {}) => {
+    const button = createActionButton(label, "ghost-button gridline-icon-button");
+    button.dataset.gridlineAction = action;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    Object.entries(extra).forEach(([key, value]) => {
+      button.dataset[key] = value;
+    });
+    return button;
+  };
+  const separator = () => {
+    const node = document.createElement("span");
+    node.className = "gridline-toolbar-separator";
+    node.setAttribute("aria-hidden", "true");
+    return node;
+  };
+  const colors = document.createElement("span");
+  colors.className = "documentation-gridline-colors";
+  colors.setAttribute("aria-label", "Pozadinska boja celije");
+  ["", "#fff3bf", "#d3f9d8", "#ffe3e3", "#d0ebff"].forEach((color) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.gridlineAction = "background-color";
+    button.dataset.gridlineColor = color;
+    button.title = color ? "Boja pozadine" : "Bez boje";
+    colors.appendChild(button);
+  });
+  const zoom = document.createElement("select");
+  zoom.className = "gridline-zoom-select";
+  zoom.dataset.gridlineAction = "zoom";
+  zoom.title = "Zoom";
+  [90, 100, 110, 125].forEach((value) => {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = `${value}%`;
+    option.selected = value === 100;
+    zoom.appendChild(option);
+  });
+  actions.append(
+    ...(status ? [status] : []),
+    ...(summary ? [summary] : []),
+    makeButton("▣", "save", "Spremi"),
+    makeButton("⇩", "export", "Izvoz"),
+    separator(),
+    makeButton("↶", "undo", "Undo"),
+    makeButton("↷", "redo", "Redo"),
+    makeButton("⧉", "copy", "Kopiraj"),
+    makeButton("✂", "cut", "Izrezi"),
+    makeButton("▤", "paste", "Zalijepi"),
+    separator(),
+    makeButton("B", "bold", "Bold"),
+    makeButton("I", "italic", "Italic"),
+    makeButton("U", "underline", "Underline"),
+    makeButton("A", "text-color", "Boja teksta", { gridlineColor: "#111827" }),
+    makeButton("□", "border", "Obrubi celije"),
+    separator(),
+    makeButton("≡", "align", "Poravnaj lijevo", { gridlineAlign: "left" }),
+    makeButton("☰", "align", "Poravnaj sredina", { gridlineAlign: "center" }),
+    makeButton("≣", "align", "Poravnaj desno", { gridlineAlign: "right" }),
+    makeButton("▦", "merge", "Spoji celije"),
+    makeButton("▥", "unmerge", "Razdvoji celije"),
+    makeButton("H", "toggle-header-row", "Naslov na svakoj PDF stranici"),
+    makeButton("F↕", "freeze-row", "Zamrzni prvi red"),
+    makeButton("F↔", "freeze-column", "Zamrzni prvi stupac"),
+    colors,
+    separator(),
+    makeButton("R+", "add-row", "Dodaj red"),
+    makeButton("R-", "delete-row", "Obrisi red"),
+    makeButton("C+", "add-column", "Dodaj stupac"),
+    makeButton("C-", "delete-column", "Obrisi stupac"),
+    makeButton("A↓", "sort-asc", "Sortiraj A-Z"),
+    makeButton("Z↓", "sort-desc", "Sortiraj Z-A"),
+    makeButton("⌄", "filter", "Filter"),
+    makeButton("⌕", "find", "Pronadi"),
+    makeButton("Tx", "clear-formatting", "Ocisti formatiranje"),
+    ...(includeQuickFill ? [createActionButton("Brzi unos", "ghost-button")] : []),
+    zoom,
+    ...(applyButton ? [applyButton] : []),
+  );
+  if (includeQuickFill) {
+    actions.querySelector(".ghost-button:not(.gridline-icon-button)")?.setAttribute("data-gridline-action", "quick-fill");
+  }
+}
+
 function createIconActionButton(label, iconName, className = "", onClick) {
   const button = createActionButton(
     label,
@@ -61456,17 +61546,29 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
       </div>
       <div class="documentation-gridline-actions">
         <span class="status is-saved" data-gridline-role="status">Spremno</span>
-        <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
-        <button type="button" class="ghost-button" data-gridline-action="add-row">+ 20 redova</button>
-        <button type="button" class="ghost-button" data-gridline-action="add-column">+ kolone</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="taller-row" title="Povećaj aktivni red">↕+</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="shorter-row" title="Smanji aktivni red">↕-</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">⇤</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">≡</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">⇥</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="save" title="Spremi">▣</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="export" title="Izvoz">⇩</button>
+        <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="undo" title="Undo">↶</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="redo" title="Redo">↷</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="copy" title="Kopiraj">⧉</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="cut" title="Izreži">✂</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="paste" title="Zalijepi">▤</button>
+        <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="bold" title="Bold">B</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="italic" title="Italic">I</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="underline" title="Underline">U</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="text-color" data-gridline-color="#111827" title="Boja teksta">A</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="border" title="Obrubi ćelije">□</button>
+        <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">≡</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">☰</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">≣</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="merge" title="Spoji označene ćelije">▦</button>
-        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">□</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">▥</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-header-row" title="Naslovni red koji se ponavlja u PDF-u">H</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="freeze-row" title="Zamrzni prvi red">F↕</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="freeze-column" title="Zamrzni prvi stupac">F↔</button>
         <span class="documentation-gridline-colors" aria-label="Pozadinska boja ćelije">
           <button type="button" data-gridline-action="background-color" data-gridline-color="" title="Bez boje"></button>
           <button type="button" data-gridline-action="background-color" data-gridline-color="#fff3bf" title="Žuta"></button>
@@ -61474,11 +61576,28 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
           <button type="button" data-gridline-action="background-color" data-gridline-color="#ffe3e3" title="Crvena"></button>
           <button type="button" data-gridline-action="background-color" data-gridline-color="#d0ebff" title="Plava"></button>
         </span>
-        <button type="button" class="ghost-button" data-gridline-action="clear">Očisti</button>
+        <span class="gridline-toolbar-separator" aria-hidden="true"></span>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="add-row" title="Dodaj red">R+</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="delete-row" title="Obriši red">R-</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="add-column" title="Dodaj stupac">C+</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="delete-column" title="Obriši stupac">C-</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-asc" title="Sortiraj A-Z">A↓</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="sort-desc" title="Sortiraj Z-A">Z↓</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="filter" title="Filter">⌄</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="find" title="Pronađi">⌕</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="clear-formatting" title="Očisti formatiranje">Tx</button>
+        <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
+        <select class="gridline-zoom-select" data-gridline-action="zoom" title="Zoom">
+          <option value="90">90%</option>
+          <option value="100" selected>100%</option>
+          <option value="110">110%</option>
+          <option value="125">125%</option>
+        </select>
       </div>
     </header>
     <section class="documentation-gridline-formula" aria-label="Formula bar">
       <div class="cell-ref" data-gridline-role="cell-ref">A1</div>
+      <span class="gridline-fx" aria-hidden="true">fx</span>
       <input data-gridline-role="formula" type="text" autocomplete="off" spellcheck="false" placeholder="Vrijednost aktivne ćelije" />
     </section>
     <section class="documentation-gridline-shell" aria-label="${escapeHtml(table.label || "Gridline tablica")}">
@@ -62597,6 +62716,7 @@ function buildDocumentationSprPdfStyles() {
       min-height: 0;
       margin: 0 auto;
       padding: 12mm 10mm 18mm;
+      box-sizing: border-box;
       background: #fff;
       color: #101010;
       font-family: Arial, Helvetica, sans-serif;
@@ -67435,12 +67555,6 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
   const summary = document.createElement("span");
   summary.className = "document-template-gridline-demo-summary";
   summary.textContent = getDocumentTemplateGridlineSummary(model);
-  const addRowButton = createActionButton("+ 20 redova", "ghost-button");
-  addRowButton.dataset.gridlineAction = "add-row";
-  const addColumnButton = createActionButton("+ Kolone", "ghost-button");
-  addColumnButton.dataset.gridlineAction = "add-column";
-  const clearButton = createActionButton("Očisti", "ghost-button");
-  clearButton.dataset.gridlineAction = "clear";
   const applyButton = createActionButton("Primijeni", "ghost-button", () => {
     const entry = documentTemplateGridlineDesignerEditors.get(editorKey);
     entry?.api?.flush?.();
@@ -67449,7 +67563,12 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
       refreshPreview: true,
     });
   });
-  actions.append(status, summary, addRowButton, addColumnButton, clearButton, applyButton);
+  appendGridlineSpreadsheetToolbar(actions, {
+    status,
+    summary,
+    applyButton,
+    includeQuickFill: true,
+  });
   topbar.append(titleWrap, actions);
 
   const formula = document.createElement("div");
@@ -67462,7 +67581,11 @@ function createDocumentTemplateGridlinePreview(field = {}, draftIndex = -1) {
   formulaInput.type = "text";
   formulaInput.dataset.gridlineRole = "formula";
   formulaInput.placeholder = "Vrijednost aktivne ćelije";
-  formula.append(cellRef, formulaInput);
+  const fxLabel = document.createElement("span");
+  fxLabel.className = "gridline-fx";
+  fxLabel.setAttribute("aria-hidden", "true");
+  fxLabel.textContent = "fx";
+  formula.append(cellRef, fxLabel, formulaInput);
 
   const gridShell = document.createElement("div");
   gridShell.className = "documentation-gridline-shell document-template-gridline-designer-shell";
@@ -95459,13 +95582,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
     status.className = "status is-saved";
     status.dataset.gridlineRole = "status";
     status.textContent = "Spremno";
-    const addRowButton = createActionButton("+ 20 redova", "ghost-button");
-    addRowButton.dataset.gridlineAction = "add-row";
-    const addColumnButton = createActionButton("+ Kolone", "ghost-button");
-    addColumnButton.dataset.gridlineAction = "add-column";
-    const clearButton = createActionButton("Očisti", "ghost-button");
-    clearButton.dataset.gridlineAction = "clear";
-    actions.append(status, addRowButton, addColumnButton, clearButton);
+    appendGridlineSpreadsheetToolbar(actions, {
+      status,
+      includeQuickFill: true,
+    });
     topbar.append(titleWrap, actions);
 
     const formula = document.createElement("div");
@@ -95478,7 +95598,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
     formulaInput.type = "text";
     formulaInput.dataset.gridlineRole = "formula";
     formulaInput.placeholder = "Vrijednost aktivne ćelije";
-    formula.append(cellRef, formulaInput);
+    const fxLabel = document.createElement("span");
+    fxLabel.className = "gridline-fx";
+    fxLabel.setAttribute("aria-hidden", "true");
+    fxLabel.textContent = "fx";
+    formula.append(cellRef, fxLabel, formulaInput);
 
     const gridShell = document.createElement("div");
     gridShell.className = "documentation-gridline-shell";
