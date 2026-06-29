@@ -17257,7 +17257,14 @@ body.is-selecting-gridline-cells * {
   user-select: none !important;
 }
 
-body.is-selecting-gridline-cells .documentation-gridline-module input.cell {
+body.is-filling-gridline-cells,
+body.is-filling-gridline-cells * {
+  cursor: crosshair !important;
+  user-select: none !important;
+}
+
+body.is-selecting-gridline-cells .documentation-gridline-module input.cell,
+body.is-filling-gridline-cells .documentation-gridline-module input.cell {
   pointer-events: none;
 }
 

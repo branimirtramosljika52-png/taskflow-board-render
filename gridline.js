@@ -1584,14 +1584,20 @@
 
     function handleGridMouseDown(event) {
       var cell;
+      var handle = event.target && event.target.closest ? event.target.closest(".gridline-fill-handle") : null;
       var row;
       var column;
       if (event.button !== 0) {
         return;
       }
+      if (handle && grid.contains(handle)) {
+        event.preventDefault();
+        event.stopPropagation();
+        startFillDrag("mouse");
+        return;
+      }
       if (event.target && event.target.closest && (
-        event.target.closest(".gridline-fill-handle")
-        || event.target.closest("[data-gridline-validation-row][data-gridline-validation-column]")
+        event.target.closest("[data-gridline-validation-row][data-gridline-validation-column]")
         || event.target.closest("[data-gridline-filter-column]")
         || event.target.closest("[data-gridline-column-resizer]")
         || event.target.closest("[data-gridline-row-resizer]")
@@ -1633,6 +1639,15 @@
 
     function handleGridMouseOver(event) {
       var cell;
+      if (fillDrag && fillDrag.mode === "mouse") {
+        cell = getCellFromEventTarget(event.target);
+        if (!cell) {
+          return;
+        }
+        event.preventDefault();
+        updateFillDragTarget(Number(cell.dataset.row), Number(cell.dataset.column));
+        return;
+      }
       if (!selectionDrag || selectionDrag.mode !== "mouse") {
         return;
       }
@@ -1645,6 +1660,10 @@
     }
 
     function handleDocumentMouseUp() {
+      if (fillDrag && fillDrag.mode === "mouse") {
+        finishFillDrag();
+        return;
+      }
       if (!selectionDrag || selectionDrag.mode !== "mouse") {
         return;
       }
@@ -1792,19 +1811,10 @@
       return Math.max(leftEnd, rightEnd, anyEnd);
     }
 
-    function handleFillPointerMove(event) {
-      var td;
-      var targetRow;
-      var targetColumn;
+    function updateFillDragTarget(targetRow, targetColumn) {
       if (!fillDrag) {
         return;
       }
-      td = getCellFromPoint(event.clientX, event.clientY);
-      if (!td) {
-        return;
-      }
-      targetRow = Number(td.dataset.row);
-      targetColumn = Number(td.dataset.column);
       if (Math.abs(targetRow - fillDrag.source.row) >= Math.abs(targetColumn - fillDrag.source.column)) {
         targetColumn = fillDrag.source.column;
       } else {
@@ -1814,15 +1824,59 @@
       markFillPreview(targetRow, targetColumn);
     }
 
-    function handleFillPointerUp() {
+    function startFillDrag(mode) {
+      fillDrag = {
+        source: { row: active.row, column: active.column },
+        target: null,
+        mode: mode || "pointer",
+      };
+      document.body.classList.add("is-filling-gridline-cells");
+      if (fillDrag.mode === "mouse") {
+        document.addEventListener("mousemove", handleFillMouseMove);
+      }
+    }
+
+    function finishFillDrag() {
       var target = fillDrag && fillDrag.target;
+      document.removeEventListener("mousemove", handleFillMouseMove);
       document.removeEventListener("pointermove", handleFillPointerMove);
       document.removeEventListener("pointerup", handleFillPointerUp);
       clearFillPreview();
       if (target) {
         applyFillRange(target.row, target.column);
       }
+      document.body.classList.remove("is-filling-gridline-cells");
       fillDrag = null;
+    }
+
+    function handleFillPointerMove(event) {
+      var td;
+      if (!fillDrag) {
+        return;
+      }
+      event.preventDefault();
+      td = getCellFromPoint(event.clientX, event.clientY);
+      if (!td) {
+        return;
+      }
+      updateFillDragTarget(Number(td.dataset.row), Number(td.dataset.column));
+    }
+
+    function handleFillMouseMove(event) {
+      var td;
+      if (!fillDrag || fillDrag.mode !== "mouse") {
+        return;
+      }
+      event.preventDefault();
+      td = getCellFromPoint(event.clientX, event.clientY);
+      if (!td) {
+        return;
+      }
+      updateFillDragTarget(Number(td.dataset.row), Number(td.dataset.column));
+    }
+
+    function handleFillPointerUp() {
+      finishFillDrag();
     }
 
     function handleFillPointerDown(event) {
@@ -1830,12 +1884,12 @@
       if (!handle) {
         return;
       }
+      if (event.pointerType === "mouse") {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
-      fillDrag = {
-        source: { row: active.row, column: active.column },
-        target: null,
-      };
+      startFillDrag("pointer");
       document.addEventListener("pointermove", handleFillPointerMove);
       document.addEventListener("pointerup", handleFillPointerUp, { once: true });
     }
@@ -5041,6 +5095,7 @@
       }
       document.removeEventListener("pointermove", handleSelectionPointerMove);
       document.removeEventListener("pointerup", handleSelectionPointerUp);
+      document.removeEventListener("mousemove", handleFillMouseMove);
       document.removeEventListener("pointermove", handleFillPointerMove);
       document.removeEventListener("pointerup", handleFillPointerUp);
       document.removeEventListener("pointermove", handleColumnResizeMove);
@@ -5049,6 +5104,7 @@
       document.removeEventListener("pointerup", handleRowResizeUp);
       document.removeEventListener("mouseup", handleDocumentMouseUp);
       document.body.classList.remove("is-selecting-gridline-cells");
+      document.body.classList.remove("is-filling-gridline-cells");
       selectionDrag = null;
       fillDrag = null;
       columnResize = null;
