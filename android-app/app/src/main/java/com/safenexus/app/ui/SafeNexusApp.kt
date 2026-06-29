@@ -24046,8 +24046,14 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         }
     }
+    val activeTemplatesHaveGridline = remember(activeTemplates) {
+        activeTemplates.any { template ->
+            template.measurementTables.any { table -> table.sheet.columns.isNotEmpty() }
+        }
+    }
     val sprBrowserFlowSelected = remember(
         activeTemplates,
+        activeTemplatesHaveGridline,
         selectedFlowItem,
         workOrder.displayService,
         basicsFlowSelected,
@@ -24059,6 +24065,7 @@ private fun WorkOrderDocumentationWizardDialog(
             !summaryFlowSelected &&
             !workEquipmentFlowSelected &&
             !physicalFactorsFlowSelected &&
+            !activeTemplatesHaveGridline &&
             (
                 selectedFlowItem?.let { isDocumentationSprService(it) } == true ||
                     activeTemplates.any { it.isSprDocumentationTemplate() } ||
@@ -27074,6 +27081,47 @@ private fun duplicateLastMeasurementRow(sheet: WorkOrderMeasurementSheet): WorkO
     return sheet.copy(rows = nextRows)
 }
 
+private fun shiftMeasurementFormulaReferencesMobile(value: String, rowOffset: Int): String {
+    if (!value.trim().startsWith("=") || rowOffset == 0) return value
+    val referenceRegex = Regex("(\\$?)([A-Za-z]+)(\\$?)(\\d+)")
+    return referenceRegex.replace(value) { match ->
+        val columnAbsolute = match.groupValues[1]
+        val column = match.groupValues[2]
+        val rowAbsolute = match.groupValues[3]
+        val rowNumber = match.groupValues[4].toIntOrNull() ?: return@replace match.value
+        val nextRowNumber = if (rowAbsolute.isNotBlank()) {
+            rowNumber
+        } else {
+            (rowNumber + rowOffset).coerceAtLeast(1)
+        }
+        "$columnAbsolute$column$rowAbsolute$nextRowNumber"
+    }
+}
+
+private fun fillMeasurementCellDown(
+    sheet: WorkOrderMeasurementSheet,
+    selection: MeasurementCellSelection,
+): WorkOrderMeasurementSheet {
+    val sourceRow = sheet.rows.getOrNull(selection.rowIndex) ?: return sheet
+    val column = sheet.columns.getOrNull(selection.columnIndex) ?: return sheet
+    if (!column.isEditableMeasurementColumn()) return sheet
+    val sourceValue = sourceRow.cells[column.id].orEmpty()
+    if (sourceValue.isBlank()) return sheet
+    val lastTargetIndex = sheet.lastMeaningfulMeasurementRowIndex()
+        .coerceAtLeast(selection.rowIndex + 1)
+        .coerceAtMost(sheet.rows.lastIndex)
+    if (lastTargetIndex <= selection.rowIndex) return sheet
+    val nextRows = sheet.rows.mapIndexed { rowIndex, row ->
+        if (rowIndex <= selection.rowIndex || rowIndex > lastTargetIndex || row.id in sheet.headerRows) {
+            row
+        } else {
+            val nextValue = shiftMeasurementFormulaReferencesMobile(sourceValue, rowIndex - selection.rowIndex)
+            row.copy(cells = row.cells + (column.id to nextValue))
+        }
+    }
+    return sheet.copy(rows = nextRows)
+}
+
 private fun normalizeMeasurementQuickLookup(value: String): String =
     value.trim()
         .lowercase(Locale.getDefault())
@@ -27587,6 +27635,15 @@ private class MobileMeasurementFormulaParser(
             "CONCATENATE" -> MobileFormulaValue.scalar(
                 args.flatMap { evaluate(it).flatten() }.joinToString("") { formulaScalarTextMobile(it) },
             )
+            "TEXTAFTER" -> {
+                if (args.size !in 2..6) error("TEXTAFTER trazi tekst i delimiter.")
+                val text = formulaScalarTextMobile(evaluate(args[0]).value)
+                val delimiter = formulaScalarTextMobile(evaluate(args[1]).value)
+                val instanceNumber = args.getOrNull(2)?.takeIf { it.trim().isNotBlank() }?.let { evaluate(it).asNumber().toInt() } ?: 1
+                val matchMode = args.getOrNull(3)?.takeIf { it.trim().isNotBlank() }?.let { evaluate(it).asNumber().toInt() } ?: 0
+                val ifNotFound = args.getOrNull(5)?.takeIf { it.trim().isNotBlank() }?.let { formulaScalarTextMobile(evaluate(it).value) }
+                MobileFormulaValue.scalar(textAfterFormulaMobile(text, delimiter, instanceNumber, matchMode, ifNotFound))
+            }
             "VLOOKUP" -> {
                 if (args.size !in 3..4) error("VLOOKUP trazi 3 ili 4 argumenta.")
                 val lookupValue = evaluate(args[0]).value
@@ -27899,6 +27956,38 @@ private fun formulaScalarTextMobile(value: Any?): String {
         is Boolean -> if (scalar) "TRUE" else "FALSE"
         else -> scalar.toString()
     }
+}
+
+private fun textAfterFormulaMobile(
+    text: String,
+    delimiter: String,
+    instanceNumber: Int,
+    matchMode: Int,
+    ifNotFound: String?,
+): String {
+    if (delimiter.isEmpty() || instanceNumber == 0) return ifNotFound ?: ""
+    val searchText = if (matchMode == 1) text.lowercase(Locale.getDefault()) else text
+    val searchDelimiter = if (matchMode == 1) delimiter.lowercase(Locale.getDefault()) else delimiter
+    val delimiterIndex = if (instanceNumber > 0) {
+        var fromIndex = 0
+        var foundIndex = -1
+        repeat(instanceNumber) {
+            foundIndex = searchText.indexOf(searchDelimiter, fromIndex)
+            if (foundIndex < 0) return ifNotFound ?: ""
+            fromIndex = foundIndex + searchDelimiter.length
+        }
+        foundIndex
+    } else {
+        var fromIndex = text.length
+        var foundIndex = -1
+        repeat(kotlin.math.abs(instanceNumber)) {
+            foundIndex = searchText.lastIndexOf(searchDelimiter, fromIndex - 1)
+            if (foundIndex < 0) return ifNotFound ?: ""
+            fromIndex = foundIndex
+        }
+        foundIndex
+    }
+    return text.substring((delimiterIndex + delimiter.length).coerceAtMost(text.length))
 }
 
 private fun formulaCriterionMatcherMobile(criterion: Any?): (Any?) -> Boolean =
@@ -28808,7 +28897,7 @@ private fun MeasurementTableEditor(
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
 ) {
     val historyLimit = 24
-    val columnWindowSize = if (tableOnly) 10 else if (expanded) 8 else 10
+    val columnWindowSize = if (tableOnly || expanded) sheet.columns.size.coerceAtLeast(1) else 10
     var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
     var undoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
     var redoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
@@ -28830,13 +28919,13 @@ private fun MeasurementTableEditor(
         undoStack = (undoStack + sheet).takeLast(historyLimit)
         onSheetChange(next)
     }
-    LaunchedEffect(sheet.columns.size) {
+    LaunchedEffect(sheet.columns.size, columnWindowSize) {
         val maxStart = (sheet.columns.size - columnWindowSize).coerceAtLeast(0)
         if (columnWindowStart > maxStart) {
             columnWindowStart = maxStart
         }
     }
-    val visibleColumns = remember(sheet.columns, columnWindowStart) {
+    val visibleColumns = remember(sheet.columns, columnWindowStart, columnWindowSize) {
         sheet.columns.drop(columnWindowStart).take(columnWindowSize)
     }
     val lastMeaningfulRowIndex = remember(sheet.rows, sheet.columns, sheet.headerRows) {
@@ -29142,6 +29231,11 @@ private fun MeasurementTableEditor(
                         label = { Text("R.br.") },
                     )
                     AssistChip(
+                        onClick = { commitSheetChange(fillMeasurementCellDown(sheetWithPendingCellValue(sheet), selectedCell)) },
+                        enabled = enabled && selectedEditable && selectedRaw.isNotBlank() && selectedCell.rowIndex < sheet.rows.lastIndex,
+                        label = { Text("Popuni dolje") },
+                    )
+                    AssistChip(
                         onClick = { commitSheetChange(appendMeasurementColumn(sheetWithPendingCellValue(sheet))) },
                         enabled = enabled,
                         label = { Text("+ Kolona") },
@@ -29158,7 +29252,7 @@ private fun MeasurementTableEditor(
                     )
                 }
                 if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable && !selectedRequiresSpaceSelection) {
-                    val formulaSeeds = listOf("SUM", "AVERAGE", "IF", "IFERROR", "COUNTIF", "VLOOKUP", "RANDBETWEEN")
+                    val formulaSeeds = listOf("SUM", "AVERAGE", "IF", "IFERROR", "COUNTIF", "TEXTAFTER", "VLOOKUP", "RANDBETWEEN")
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
