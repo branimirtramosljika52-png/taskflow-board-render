@@ -378,7 +378,7 @@
       return Promise.resolve(formulaTools);
     }
     if (!formulaToolsPromise) {
-      formulaToolsPromise = import("/src/measurementFormula.js")
+      formulaToolsPromise = import("/src/measurementFormula.js?v=20260629-eiz-template-gridline-v1")
         .then(function (module) {
           formulaTools = module || null;
           window.SafeNexusMeasurementFormula = formulaTools;
@@ -2081,8 +2081,10 @@
 
     function markFillPreview(targetRow, targetColumn) {
       var source;
+      var bounds;
       var start;
       var end;
+      var row;
       var index;
       var td;
       clearFillPreview();
@@ -2090,44 +2092,69 @@
         return;
       }
       source = fillDrag.source;
-      if (targetRow !== source.row) {
-        start = Math.min(source.row, targetRow);
-        end = Math.max(source.row, targetRow);
-        for (index = start; index <= end; index += 1) {
-          if (index === source.row) {
-            continue;
-          }
-          td = grid.querySelector('td[data-row="' + index + '"][data-column="' + source.column + '"]');
-          if (td) {
-            td.classList.add("is-fill-preview");
+      bounds = fillDrag.sourceBounds || {
+        top: source.row,
+        bottom: source.row,
+        left: source.column,
+        right: source.column,
+      };
+      if (targetRow < bounds.top || targetRow > bounds.bottom) {
+        start = targetRow < bounds.top ? targetRow : bounds.bottom + 1;
+        end = targetRow < bounds.top ? bounds.top - 1 : targetRow;
+        for (row = start; row <= end; row += 1) {
+          for (index = bounds.left; index <= bounds.right; index += 1) {
+            td = grid.querySelector('td[data-row="' + row + '"][data-column="' + index + '"]');
+            if (td) {
+              td.classList.add("is-fill-preview");
+            }
           }
         }
         return;
       }
-      if (targetColumn !== source.column) {
-        start = Math.min(source.column, targetColumn);
-        end = Math.max(source.column, targetColumn);
+      if (targetColumn < bounds.left || targetColumn > bounds.right) {
+        start = targetColumn < bounds.left ? targetColumn : bounds.right + 1;
+        end = targetColumn < bounds.left ? bounds.left - 1 : targetColumn;
         for (index = start; index <= end; index += 1) {
-          if (index === source.column) {
-            continue;
-          }
-          td = grid.querySelector('td[data-row="' + source.row + '"][data-column="' + index + '"]');
-          if (td) {
-            td.classList.add("is-fill-preview");
+          for (row = bounds.top; row <= bounds.bottom; row += 1) {
+            td = grid.querySelector('td[data-row="' + row + '"][data-column="' + index + '"]');
+            if (td) {
+              td.classList.add("is-fill-preview");
+            }
           }
         }
       }
     }
 
+    function getFillSourceBounds() {
+      var bounds = getSelectionBounds();
+      if (isCellInSelection(active.row, active.column)) {
+        return bounds;
+      }
+      return {
+        top: active.row,
+        bottom: active.row,
+        left: active.column,
+        right: active.column,
+      };
+    }
+
     function applyFillRange(targetRow, targetColumn) {
       var source;
+      var sourceBounds;
+      var sourceRowCount;
+      var sourceColumnCount;
       var sourceValue;
       var start;
       var end;
       var index;
+      var row;
+      var column;
+      var sourceRow;
+      var sourceColumn;
       var rowOffset;
       var columnOffset;
       var changedSize = false;
+      var isBlockFill = false;
       function getSeriesFillValue(rowOffset, columnOffset) {
         var numericSource = Number(String(sourceValue || "").trim().replace(",", "."));
         var previousValue;
@@ -2151,37 +2178,65 @@
         step = numericSource - numericPrevious;
         return String(numericSource + (rowOffset || columnOffset) * step);
       }
+      function getBlockFillValue(row, column, sourceRow, sourceColumn) {
+        var value = getValue(sourceRow, sourceColumn);
+        if (isFormulaText(value)) {
+          return shiftFormulaValue(value, row - sourceRow, column - sourceColumn);
+        }
+        return value;
+      }
       if (!fillDrag) {
         return;
       }
       source = fillDrag.source;
+      sourceBounds = fillDrag.sourceBounds || {
+        top: source.row,
+        bottom: source.row,
+        left: source.column,
+        right: source.column,
+      };
+      sourceRowCount = Math.max(1, sourceBounds.bottom - sourceBounds.top + 1);
+      sourceColumnCount = Math.max(1, sourceBounds.right - sourceBounds.left + 1);
+      isBlockFill = sourceRowCount > 1 || sourceColumnCount > 1;
       sourceValue = getValue(source.row, source.column);
       recordUndo();
-      if (targetRow !== source.row) {
-        start = Math.min(source.row, targetRow);
-        end = Math.max(source.row, targetRow);
-        if (ensureSize(end, source.column)) {
+      if (targetRow < sourceBounds.top || targetRow > sourceBounds.bottom) {
+        start = targetRow < sourceBounds.top ? targetRow : sourceBounds.bottom + 1;
+        end = targetRow < sourceBounds.top ? sourceBounds.top - 1 : targetRow;
+        if (ensureSize(Math.max(end, sourceBounds.bottom), sourceBounds.right)) {
+          changedSize = true;
+        }
+        for (row = start; row <= end; row += 1) {
+          sourceRow = targetRow < sourceBounds.top
+            ? sourceBounds.bottom - ((sourceBounds.top - 1 - row) % sourceRowCount)
+            : sourceBounds.top + ((row - sourceBounds.bottom - 1) % sourceRowCount);
+          for (column = sourceBounds.left; column <= sourceBounds.right; column += 1) {
+            if (isBlockFill) {
+              setValue(row, column, getBlockFillValue(row, column, sourceRow, column));
+            } else {
+              rowOffset = row - source.row;
+              setValue(row, column, getSeriesFillValue(rowOffset, 0));
+            }
+          }
+        }
+      } else if (targetColumn < sourceBounds.left || targetColumn > sourceBounds.right) {
+        start = targetColumn < sourceBounds.left ? targetColumn : sourceBounds.right + 1;
+        end = targetColumn < sourceBounds.left ? sourceBounds.left - 1 : targetColumn;
+        if (ensureSize(sourceBounds.bottom, Math.max(end, sourceBounds.right))) {
           changedSize = true;
         }
         for (index = start; index <= end; index += 1) {
-          if (index === source.row) {
-            continue;
+          sourceColumn = targetColumn < sourceBounds.left
+            ? sourceBounds.right - ((sourceBounds.left - 1 - index) % sourceColumnCount)
+            : sourceBounds.left + ((index - sourceBounds.right - 1) % sourceColumnCount);
+          for (row = sourceBounds.top; row <= sourceBounds.bottom; row += 1) {
+            if (isBlockFill) {
+              setValue(row, index, getBlockFillValue(row, index, row, sourceColumn));
+            } else {
+              columnOffset = index - source.column;
+              setValue(row, index, getSeriesFillValue(0, columnOffset));
+            }
           }
-          rowOffset = index - source.row;
-          setValue(index, source.column, getSeriesFillValue(rowOffset, 0));
-        }
-      } else if (targetColumn !== source.column) {
-        start = Math.min(source.column, targetColumn);
-        end = Math.max(source.column, targetColumn);
-        if (ensureSize(source.row, end)) {
-          changedSize = true;
-        }
-        for (index = start; index <= end; index += 1) {
-          if (index === source.column) {
-            continue;
-          }
-          columnOffset = index - source.column;
-          setValue(source.row, index, getSeriesFillValue(0, columnOffset));
         }
       }
       if (changedSize) {
@@ -2221,21 +2276,34 @@
     }
 
     function updateFillDragTarget(targetRow, targetColumn) {
+      var bounds;
       if (!fillDrag) {
         return;
       }
+      bounds = fillDrag.sourceBounds || {
+        top: fillDrag.source.row,
+        bottom: fillDrag.source.row,
+        left: fillDrag.source.column,
+        right: fillDrag.source.column,
+      };
       if (Math.abs(targetRow - fillDrag.source.row) >= Math.abs(targetColumn - fillDrag.source.column)) {
-        targetColumn = fillDrag.source.column;
+        targetColumn = targetColumn < bounds.left || targetColumn > bounds.right
+          ? fillDrag.source.column
+          : Math.max(bounds.left, Math.min(bounds.right, targetColumn));
       } else {
-        targetRow = fillDrag.source.row;
+        targetRow = targetRow < bounds.top || targetRow > bounds.bottom
+          ? fillDrag.source.row
+          : Math.max(bounds.top, Math.min(bounds.bottom, targetRow));
       }
       fillDrag.target = { row: targetRow, column: targetColumn };
       markFillPreview(targetRow, targetColumn);
     }
 
     function startFillDrag(mode) {
+      flushPendingChange();
       fillDrag = {
         source: { row: active.row, column: active.column },
+        sourceBounds: getFillSourceBounds(),
         target: null,
         mode: mode || "pointer",
       };
@@ -2805,8 +2873,10 @@
       }
       event.preventDefault();
       event.stopPropagation();
+      flushPendingChange();
       fillDrag = {
         source: { row: active.row, column: active.column },
+        sourceBounds: getFillSourceBounds(),
         target: null,
       };
       endRow = getDoubleClickFillEndRow(fillDrag.source);
@@ -4846,6 +4916,7 @@
         : null;
       var input = getClosestCellInput(event.target);
       var bounds;
+      var actions;
       event.preventDefault();
       hideContextMenu();
       contextMenu = document.createElement("div");
@@ -4861,7 +4932,7 @@
           endColumn: columnIndex,
         };
         selectCell(active.row, columnIndex, { focus: false, preserveSelection: true });
-        contextMenu.append(
+        actions = [
           createContextActionButton("Kopiraj", function () { copySelection(false); }),
           createContextActionButton("Zalijepi", function () {
             if (navigator.clipboard && navigator.clipboard.readText) {
@@ -4872,9 +4943,15 @@
           createContextActionButton("Umetni stupac desno", function () { insertColumns(columnIndex + 1, 1); }),
           createContextActionButton("Obrisi stupac", function () { deleteColumnsInRange(columnIndex, columnIndex); }),
           createContextActionButton("Sort A-Z", function () { sortByColumn(columnIndex, "asc"); }),
-          createContextActionButton("Sort Z-A", function () { sortByColumn(columnIndex, "desc"); }),
-          createContextActionButton("NexAI postavke kolone", function () { showColumnAiSettingsPanel(event, columnIndex); })
-        );
+          createContextActionButton("Sort Z-A", function () { sortByColumn(columnIndex, "desc"); })
+        ];
+        if (enableAiContextMenu) {
+          actions.push(createContextActionButton("NexAI popuni kolonu", function () { openAiPanel("table"); }));
+        }
+        if (enableColumnAiSettings) {
+          actions.push(createContextActionButton("NexAI postavke kolone", function () { showColumnAiSettingsPanel(event, columnIndex); }));
+        }
+        contextMenu.append.apply(contextMenu, actions);
         document.body.appendChild(contextMenu);
         return;
       }
@@ -4887,7 +4964,7 @@
           endColumn: model.columnCount - 1,
         };
         selectCell(rowIndex, active.column, { focus: false, preserveSelection: true });
-        contextMenu.append(
+        actions = [
           createContextActionButton("Kopiraj", function () { copySelection(false); }),
           createContextActionButton("Izrezi", function () { copySelection(true); }),
           createContextActionButton("Umetni red iznad", function () { insertMatrixRows(rowIndex, [Array.from({ length: model.columnCount }, function () { return ""; })]); }),
@@ -4895,7 +4972,11 @@
           createContextActionButton("Obrisi red", function () { deleteRowsInRange(rowIndex, rowIndex); }),
           createContextActionButton("Ocisti sadrzaj", clearSelectedContent),
           createContextActionButton("Ocisti formatiranje", clearSelectedFormatting)
-        );
+        ];
+        if (enableAiContextMenu) {
+          actions.push(createContextActionButton("NexAI popuni red", function () { openAiPanel("row"); }));
+        }
+        contextMenu.append.apply(contextMenu, actions);
         document.body.appendChild(contextMenu);
         return;
       }
@@ -4906,7 +4987,7 @@
         selectCell(Number(input.dataset.row), Number(input.dataset.column), { focus: false });
       }
       bounds = getSelectionBounds();
-      contextMenu.append(
+      actions = [
         createContextActionButton("Kopiraj", function () { copySelection(false); }),
         createContextActionButton("Zalijepi", function () {
           if (navigator.clipboard && navigator.clipboard.readText) {
@@ -4922,7 +5003,15 @@
         createContextActionButton("Obrisi stupac", function () { deleteColumnsInRange(bounds.left, bounds.right); }),
         createContextActionButton("Ocisti sadrzaj", clearSelectedContent),
         createContextActionButton("Ocisti formatiranje", clearSelectedFormatting)
-      );
+      ];
+      if (enableAiContextMenu) {
+        actions.push(
+          createContextActionButton("NexAI popuni celiju", function () { openAiPanel("cell"); }),
+          createContextActionButton("NexAI popuni red", function () { openAiPanel("row"); }),
+          createContextActionButton("NexAI popuni tablicu", function () { openAiPanel("table"); })
+        );
+      }
+      contextMenu.append.apply(contextMenu, actions);
       document.body.appendChild(contextMenu);
     }
 

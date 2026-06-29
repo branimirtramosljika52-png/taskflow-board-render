@@ -673,6 +673,57 @@ function evaluateRoundFunction(node, context, mode = "nearest") {
   return Math.round(value * factor) / factor;
 }
 
+function evaluateTextAfterFunction(node, context) {
+  if (node.args.length < 2 || node.args.length > 6) {
+    throw new MeasurementFormulaError("TEXTAFTER trazi 2 do 6 argumenata.");
+  }
+
+  const text = String(evaluateFormulaAst(node.args[0], context) ?? "");
+  const delimiter = String(evaluateFormulaAst(node.args[1], context) ?? "");
+  const instanceNumber = node.args.length >= 3
+    ? Math.trunc(coerceToNumber(evaluateFormulaAst(node.args[2], context)))
+    : 1;
+  const matchMode = node.args.length >= 4
+    ? Math.trunc(coerceToNumber(evaluateFormulaAst(node.args[3], context)))
+    : 0;
+  const ifNotFound = node.args.length >= 6
+    ? evaluateFormulaAst(node.args[5], context)
+    : "";
+
+  if (!delimiter) {
+    return text;
+  }
+  if (!instanceNumber) {
+    throw new MeasurementFormulaError("TEXTAFTER instance_num ne smije biti 0.");
+  }
+
+  const source = matchMode ? text.toLowerCase() : text;
+  const needle = matchMode ? delimiter.toLowerCase() : delimiter;
+  let foundIndex = -1;
+
+  if (instanceNumber > 0) {
+    let cursor = 0;
+    for (let count = 0; count < instanceNumber; count += 1) {
+      foundIndex = source.indexOf(needle, cursor);
+      if (foundIndex < 0) {
+        return ifNotFound;
+      }
+      cursor = foundIndex + needle.length;
+    }
+  } else {
+    let cursor = source.length;
+    for (let count = 0; count < Math.abs(instanceNumber); count += 1) {
+      foundIndex = source.lastIndexOf(needle, cursor - 1);
+      if (foundIndex < 0) {
+        return ifNotFound;
+      }
+      cursor = foundIndex;
+    }
+  }
+
+  return text.slice(foundIndex + delimiter.length);
+}
+
 function evaluateRowFunction(node, context) {
   if (node.args.length > 1) {
     throw new MeasurementFormulaError("ROW trazi 0 ili 1 argument.");
@@ -915,6 +966,10 @@ function evaluateFormulaAst(node, context) {
           throw new MeasurementFormulaError("LEN trazi 1 argument.");
         }
         return String(evaluateFormulaAst(node.args[0], context) ?? "").length;
+      }
+
+      if (node.name === "TEXTAFTER") {
+        return evaluateTextAfterFunction(node, context);
       }
 
       if (node.name === "ROWS") {

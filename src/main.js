@@ -57157,6 +57157,8 @@ function createDefaultDocumentationSprModel() {
     layoutPreset: DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET,
     workOrderId: "",
     workOrderNumber: "25-1287",
+    companyId: "",
+    locationId: "",
     serviceId: "",
     serviceCode: reportDefaults.serviceCode,
     serviceName: reportDefaults.serviceName,
@@ -57241,6 +57243,8 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     layoutPreset: DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET,
     workOrderId: "",
     workOrderNumber: "",
+    companyId: "",
+    locationId: "",
     serviceId: "",
     serviceCode: "",
     serviceName: "",
@@ -57588,9 +57592,13 @@ function normalizeDocumentationSprModel(value) {
   const source = value && typeof value === "object" ? value : {};
   const serviceDefaults = createDocumentationReportModelDefaults(getDocumentationSprServiceCode({ ...fallback, ...source }));
   const defaultTechnicalData = formatDocumentationTechnicalDataFields(serviceDefaults.technicalDataFields || []);
+  const inspectorUserIds = normalizeDocumentationSprIdList(source.inspectorUserIds);
+  const responsiblePersonUserId = String(source.responsiblePersonUserId || "").trim();
   return {
     ...fallback,
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
+    companyId: String(source.companyId || fallback.companyId || "").trim(),
+    locationId: String(source.locationId || fallback.locationId || "").trim(),
     serviceCode: source.serviceCode || serviceDefaults.serviceCode || fallback.serviceCode,
     serviceName: source.serviceName || serviceDefaults.serviceName || fallback.serviceName,
     reportTitle: source.reportTitle || serviceDefaults.reportTitle || fallback.reportTitle,
@@ -57610,8 +57618,10 @@ function normalizeDocumentationSprModel(value) {
     legalFrameworkIds: normalizeDocumentationSprIdList(source.legalFrameworkIds),
     customRegulations: normalizeDocumentationSprTextList(source.customRegulations),
     customObjects: normalizeDocumentationSprCustomObjects(source.customObjects),
-    inspectorUserIds: normalizeDocumentationSprIdList(source.inspectorUserIds),
-    responsiblePersonUserId: String(source.responsiblePersonUserId || "").trim(),
+    inspectorUserIds,
+    responsiblePersonUserId,
+    inspectors: inspectorUserIds.length > 0 ? String(source.inspectors || "").trim() : "",
+    responsiblePerson: responsiblePersonUserId ? String(source.responsiblePerson || "").trim() : "",
     signatureMode: normalizeDocumentTemplateSignatureMethod(source.signatureMode || fallback.signatureMode),
     signatureFieldOib: normalizeDocumentationSprSignatureOib(source.signatureFieldOib || source.responsiblePersonOib || ""),
     signatureImageUrl: String(source.signatureImageUrl || source.signatureDataUrl || "").trim(),
@@ -59688,23 +59698,76 @@ function getDocumentationSprCurrentWorkOrder(model = documentationSprModel) {
   return null;
 }
 
+function getDocumentationSprLocationMatchTokens(location = {}) {
+  return [
+    location.name,
+    location.address,
+    location.streetAddress,
+    location.city,
+    [location.name, location.address].filter(Boolean).join(", "),
+    [location.name, location.streetAddress].filter(Boolean).join(", "),
+  ].map((value) => normalizeLooseName(value)).filter(Boolean);
+}
+
+function findDocumentationSprLocationFromModel(model = documentationSprModel, workOrder = getDocumentationSprCurrentWorkOrder(model)) {
+  const explicitLocationId = String(model?.locationId || workOrder?.locationId || "").trim();
+  if (explicitLocationId) {
+    return getLocation(explicitLocationId);
+  }
+
+  const companyId = String(model?.companyId || workOrder?.companyId || "").trim();
+  const place = normalizeLooseName(model?.inspectionPlace || workOrder?.locationName || "");
+  if (!place) {
+    return null;
+  }
+
+  return (state.locations || []).find((location) => {
+    if (companyId && String(location.companyId || "").trim() !== companyId) {
+      return false;
+    }
+    return getDocumentationSprLocationMatchTokens(location).some((token) => (
+      token && (place.includes(token) || token.includes(place))
+    ));
+  }) || null;
+}
+
+function getDocumentationSprObjectScope(model = documentationSprModel) {
+  const workOrder = getDocumentationSprCurrentWorkOrder(model);
+  const location = findDocumentationSprLocationFromModel(model, workOrder);
+  return {
+    workOrder,
+    companyId: String(model?.companyId || workOrder?.companyId || location?.companyId || "").trim(),
+    locationId: String(model?.locationId || workOrder?.locationId || location?.id || "").trim(),
+    locationText: normalizeLooseName(model?.inspectionPlace || workOrder?.locationName || ""),
+  };
+}
+
+function isDocumentationSprObjectInScope(item = {}, scope = {}) {
+  const itemLocationId = String(item.locationId || "").trim();
+  const itemCompanyId = String(item.companyId || "").trim();
+  if (scope.locationId) {
+    return itemLocationId === scope.locationId;
+  }
+  if (scope.locationText) {
+    const location = itemLocationId ? getLocation(itemLocationId) : null;
+    const tokens = getDocumentationSprLocationMatchTokens({
+      ...location,
+      name: location?.name || item.locationName || item.location || "",
+      address: location?.address || item.locationAddress || "",
+    });
+    return tokens.some((token) => token && (scope.locationText.includes(token) || token.includes(scope.locationText)));
+  }
+  if (scope.companyId) {
+    return itemCompanyId === scope.companyId;
+  }
+  return true;
+}
+
 function getDocumentationSprObjectItems() {
-  const workOrder = getDocumentationSprCurrentWorkOrder();
-  const companyId = String(workOrder?.companyId || "").trim();
-  const locationId = String(workOrder?.locationId || "").trim();
+  const scope = getDocumentationSprObjectScope();
   const moduleObjects = (state.locationObjects ?? [])
     .filter((item) => item && item.isActive !== false)
-    .filter((item) => {
-      const itemLocationId = String(item.locationId || "").trim();
-      const itemCompanyId = String(item.companyId || "").trim();
-      if (locationId) {
-        return itemLocationId === locationId;
-      }
-      if (companyId) {
-        return itemCompanyId === companyId;
-      }
-      return true;
-    })
+    .filter((item) => isDocumentationSprObjectInScope(item, scope))
     .map((item) => ({
       id: String(item.id || "").trim(),
       name: String(item.name || item.title || item.code || "Objekt").trim(),
@@ -59715,15 +59778,7 @@ function getDocumentationSprObjectItems() {
     }))
     .filter((item) => item.id && item.name);
   const customObjects = normalizeDocumentationSprCustomObjects(documentationSprModel?.customObjects ?? [])
-    .filter((item) => {
-      if (locationId) {
-        return item.locationId === locationId;
-      }
-      if (companyId) {
-        return item.companyId === companyId;
-      }
-      return true;
-    });
+    .filter((item) => isDocumentationSprObjectInScope(item, scope));
   return [...moduleObjects, ...customObjects]
     .sort((left, right) => (
       Number(left.isCustom) - Number(right.isCustom)
@@ -59784,14 +59839,14 @@ function applyDocumentationSprObjectSelection(objectId = "") {
     }
     const objectName = String(name || "").trim();
     const id = `custom-object-${Date.now().toString(36)}-${slugifyValue(objectName)}`;
-    const workOrder = getDocumentationSprCurrentWorkOrder();
+    const scope = getDocumentationSprObjectScope();
     documentationSprModel.customObjects = normalizeDocumentationSprCustomObjects([
       ...(documentationSprModel.customObjects || []),
       {
         id,
         name: objectName,
-        companyId: String(workOrder?.companyId || "").trim(),
-        locationId: String(workOrder?.locationId || "").trim(),
+        companyId: scope.companyId,
+        locationId: scope.locationId,
       },
     ]);
     documentationSprModel.inspectionObjectId = id;
@@ -59936,6 +59991,8 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
   const objectName = String(object?.name || workOrder.objectName || workOrder.locationObjectName || "").trim();
   const workOrderId = String(workOrder.id || "").trim();
   const workOrderNumber = String(workOrder.workOrderNumber || workOrder.number || "").trim();
+  const companyId = String(workOrder.companyId || company.id || baseModel.companyId || "").trim();
+  const locationId = String(workOrder.locationId || location.id || baseModel.locationId || "").trim();
   const serviceCode = String(serviceBinding?.serviceCode || service.serviceCode || "").trim();
   const serviceId = String(service.serviceId || service.id || serviceBinding?.serviceId || "").trim();
   const serviceName = String(serviceBinding?.serviceName || service.name || service.title || "").trim();
@@ -59952,6 +60009,8 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
     templateCode: templateName,
     workOrderId,
     workOrderNumber,
+    companyId,
+    locationId,
     serviceId,
     serviceCode,
     serviceName,
@@ -60015,6 +60074,8 @@ function mergeDocumentationSprModelWithWorkOrderContext(model = {}, workOrder = 
     ...current,
     workOrderId: fromContext.workOrderId,
     workOrderNumber: fromContext.workOrderNumber,
+    companyId: fromContext.companyId,
+    locationId: fromContext.locationId,
     serviceId: fromContext.serviceId,
     serviceCode: fromContext.serviceCode,
     serviceName: fromContext.serviceName,
@@ -61779,7 +61840,7 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
     changeMode: "debounced",
     saveDelayMs: 220,
     enableQuickFill: true,
-    enableAiContextMenu: false,
+    enableAiContextMenu: true,
     enableColumnAiSettings: false,
     disableAiUpload: true,
     aiFiles: getDocumentationSprGridlineAiFiles(),
@@ -62432,7 +62493,6 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
         <tr><td>Vrsta ispitivanja:</td><td>${escapeHtml(model.inspectionType)}</td></tr>
         <tr><td>Datum ispitivanja:</td><td><strong>${escapeHtml(formatDocumentationSprDateForDocument(model.inspectionDate))}</strong></td></tr>
         <tr><td>Broj zapisnika:</td><td>${escapeHtml(model.recordNumber)}</td></tr>
-        <tr><td>Ispitivanje obavili:</td><td>${escapeHtml(model.inspectors)}</td></tr>
       </table>
       ${technicalData ? `${renderDocumentationSprSectionTitle(2, getDocumentationSprTechnicalSectionTitle(model))}<div class="documentation-spr-paper-list">${renderDocumentationSprLineList(technicalData)}</div>` : ""}
       ${renderDocumentationSprSectionTitle(2 + sectionOffset, "MJERNA I ISPITNA OPREMA")}
@@ -62761,7 +62821,11 @@ function splitDocumentationSprMeasurementRowsForPreview(table = {}, headerRows =
 
 function renderDocumentationSprMeasurementPage(model, table, pageNumber = 3, totalPages = 4, rowsOverride = null, tablePageIndex = 0) {
   const columns = table?.sheet?.columns || [];
-  const title = table?.summary || table?.label || getDocumentationSprMeasurementTableTitle(model);
+  const primaryTitle = String(table?.label || getDocumentationSprMeasurementTableTitle(model) || "").trim();
+  const summaryTitle = String(table?.summary || "").trim();
+  const title = [primaryTitle, summaryTitle && normalizeLooseName(summaryTitle) !== normalizeLooseName(primaryTitle) ? summaryTitle : ""]
+    .filter(Boolean)
+    .join(" - ");
   const orientation = getDocumentationSprMeasurementPageOrientation(table);
   return `
     <section class="documentation-spr-paper ${orientation === "landscape" ? "is-landscape" : ""}">
@@ -62826,11 +62890,6 @@ function renderDocumentationSprPageFour(model, pageNumber = 4, totalPages = 4) {
   return `
     <section class="documentation-spr-paper documentation-spr-paper-conclusion-page">
       ${renderDocumentationSprSimpleHeader(model)}
-      <strong class="documentation-spr-paper-signature-lead">Pregled i ispitivanje sukladno Tablici 1 obavili:</strong>
-      <div class="documentation-spr-paper-signature-area">
-        <div></div>
-        ${renderDocumentationSprSignature(model)}
-      </div>
       ${showDefects ? `${renderDocumentationSprSectionTitle(6 + sectionOffset, "NEDOSTATCI")}<div class="documentation-spr-paper-list">${defects}</div>` : ""}
       ${renderDocumentationSprSectionTitle(7 + sectionOffset, "PREPORUKE")}
       <div class="documentation-spr-paper-list">${recommendations}</div>
@@ -64441,7 +64500,7 @@ function mountDocumentationSprGridline() {
     changeMode: "debounced",
     saveDelayMs: 220,
     enableQuickFill: true,
-    enableAiContextMenu: false,
+    enableAiContextMenu: true,
     enableColumnAiSettings: false,
     disableAiUpload: true,
     aiFiles: getDocumentationSprGridlineAiFiles(),
@@ -136384,6 +136443,8 @@ function normalizeDocumentTemplateRuntimeSequenceEntries(entries = []) {
       templateId: String(entry?.templateId ?? "").trim(),
       workOrderId: String(entry?.workOrderId ?? "").trim(),
       templateTitle: String(entry?.templateTitle ?? "").trim(),
+      serviceCode: String(entry?.serviceCode ?? "").trim(),
+      serviceName: String(entry?.serviceName ?? "").trim(),
       workOrderNumber: String(entry?.workOrderNumber ?? "").trim(),
       companyName: String(entry?.companyName ?? "").trim(),
       locationName: String(entry?.locationName ?? "").trim(),
@@ -136439,7 +136500,10 @@ function buildWorkOrderDocumentWizardSequence(workOrders = getAllSelectedWorkOrd
           return;
         }
 
-        const pairKey = `${String(workOrder.id)}::${String(template.id)}`;
+        const serviceCode = String(service.serviceCode || service.code || service.shortCode || service.service?.code || "").trim();
+        const serviceName = String(service.serviceName || service.name || service.title || service.service?.name || "").trim();
+        const serviceKey = String(service.serviceId || service.id || serviceCode || serviceName || "").trim();
+        const pairKey = `${String(workOrder.id)}::${String(template.id)}::${serviceKey || sequence.length}`;
         if (seenPairs.has(pairKey)) {
           return;
         }
@@ -136449,6 +136513,8 @@ function buildWorkOrderDocumentWizardSequence(workOrders = getAllSelectedWorkOrd
           templateId: String(template.id),
           workOrderId: String(workOrder.id),
           templateTitle: String(template.title || getDocumentTemplateTypeLabel(template.documentType) || "Zapisnik").trim(),
+          serviceCode,
+          serviceName,
           workOrderNumber: String(workOrder.workOrderNumber || "Bez broja").trim(),
           companyName: String(workOrder.companyName || "").trim(),
           locationName: String(workOrder.locationName || "").trim(),
@@ -136466,7 +136532,8 @@ function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
   }
 
   const companyCount = new Set(workOrders.map((item) => String(item.companyName || "").trim()).filter(Boolean)).size;
-  const templateCount = getDocumentationSprBatchEntriesForWorkOrders(workOrders).length;
+  const templateCount = buildWorkOrderDocumentWizardSequence(workOrders).length
+    + getWorkOrderDocumentWizardNativeServiceTargets(workOrders).length;
   const learningTestCount = getWorkOrderLearningTestRecommendations(workOrders).recommendations.length;
   const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
   const isSingleWorkOrderFlow = state.workOrderDocumentWizard.launchSource === "editor" && workOrders.length === 1;
@@ -138575,34 +138642,36 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     return;
   }
 
-  const browserEntries = getDocumentationSprBatchEntriesForWorkOrders(workOrders);
-  const browserGroups = getDocumentationSprBatchGroupsFromEntries(browserEntries);
-  const browserTemplateCount = browserEntries.filter((entry) => entry.hasTemplate).length;
+  const useLegacyDocumentationWorkbenchFallback = false;
+  if (useLegacyDocumentationWorkbenchFallback) {
+    const browserEntries = getDocumentationSprBatchEntriesForWorkOrders(workOrders);
+    const browserGroups = getDocumentationSprBatchGroupsFromEntries(browserEntries);
+    const browserTemplateCount = browserEntries.filter((entry) => entry.hasTemplate).length;
 
-  workOrderDocumentWizardTemplateSummary.replaceChildren();
-  const browserSummary = document.createElement("div");
-  browserSummary.className = "work-order-document-template-summary-card";
-  browserSummary.innerHTML = `
-    <strong>${browserEntries.length} zapisnika · ${browserGroups.length} šifri usluga</strong>
-    <span>${browserEntries.length > 0 ? `${browserTemplateCount} zapisnika ima spremljeni predložak, ostali se otvaraju kao novi zapisnici vezani na uslugu.` : "Na odabranim RN-ovima nema usluga za izradu zapisnika."}</span>
-  `;
-  workOrderDocumentWizardTemplateSummary.append(browserSummary);
+    workOrderDocumentWizardTemplateSummary.replaceChildren();
+    const browserSummary = document.createElement("div");
+    browserSummary.className = "work-order-document-template-summary-card";
+    browserSummary.innerHTML = `
+      <strong>${browserEntries.length} zapisnika · ${browserGroups.length} šifri usluga</strong>
+      <span>${browserEntries.length > 0 ? `${browserTemplateCount} zapisnika ima spremljeni predložak, ostali se otvaraju kao novi zapisnici vezani na uslugu.` : "Na odabranim RN-ovima nema usluga za izradu zapisnika."}</span>
+    `;
+    workOrderDocumentWizardTemplateSummary.append(browserSummary);
 
-  if (browserGroups.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "helper-copy module-copy";
-    empty.textContent = "Dodaj usluge na RN pa će se ovdje pojaviti zapisnici po šiframa usluga.";
-    workOrderDocumentWizardTemplateList.replaceChildren(empty);
-    renderWorkOrderDocumentWizardTemplateDock([]);
-    return;
-  }
+    if (browserGroups.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "Dodaj usluge na RN pa će se ovdje pojaviti zapisnici po šiframa usluga.";
+      workOrderDocumentWizardTemplateList.replaceChildren(empty);
+      renderWorkOrderDocumentWizardTemplateDock([]);
+      return;
+    }
 
-  workOrderDocumentWizardTemplateList.replaceChildren(...browserGroups.map((group) => {
-    group.entries.forEach((entry) => {
-      void ensureDocumentationSprPreviousRecordSourceForEntry(entry, { render: true });
-    });
-    const card = document.createElement("article");
-    card.className = "work-order-document-template-card work-order-document-browser-template-card";
+    workOrderDocumentWizardTemplateList.replaceChildren(...browserGroups.map((group) => {
+      group.entries.forEach((entry) => {
+        void ensureDocumentationSprPreviousRecordSourceForEntry(entry, { render: true });
+      });
+      const card = document.createElement("article");
+      card.className = "work-order-document-template-card work-order-document-browser-template-card";
 
     const head = document.createElement("div");
     head.className = "work-order-document-template-card-head";
@@ -138664,10 +138733,11 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
 
     footer.append(note, openButton);
     card.append(head, workOrderList, footer);
-    return card;
-  }));
-  renderWorkOrderDocumentWizardTemplateDock([]);
-  return;
+      return card;
+    }));
+    renderWorkOrderDocumentWizardTemplateDock([]);
+    return;
+  }
 
   const { recommendations, unmatchedWorkOrders } = getWorkOrderDocumentTemplateRecommendations(workOrders);
   const workEquipmentWorkOrders = getWorkOrderDocumentWizardWorkEquipmentCandidates(workOrders);
@@ -138847,9 +138917,9 @@ function renderWorkOrderDocumentWizard() {
   }
   if (workOrderDocumentWizardNextButton) {
     const trainingModeOption = getWorkOrderDocumentTrainingModeOption();
-    const hasBrowserEntries = isInspectionMode && getDocumentationSprBatchEntriesForWorkOrders(workOrders).length > 0;
+    const hasTemplateSequence = isInspectionMode && buildWorkOrderDocumentWizardSequence(workOrders).length > 0;
     workOrderDocumentWizardNextButton.textContent = isInspectionMode
-      ? (hasBrowserEntries ? "Nastavi na zapisnike" : "Otvori zapisnik")
+      ? (hasTemplateSequence ? "Nastavi na zapisnike" : "Otvori zapisnik")
       : trainingModeOption.actionLabel;
     workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates";
     workOrderDocumentWizardNextButton.disabled = !isInspectionMode && state.workOrderDocumentWizard.trainingBusy;
@@ -144822,12 +144892,6 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     return;
   }
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
-  const browserEntries = getDocumentationSprBatchEntriesForWorkOrders(selectedWorkOrders);
-  if (browserEntries.length > 0) {
-    setWorkOrderDocumentWizardStep("templates");
-    void ensureDocumentationSprPreviousRecordSources(browserEntries, { render: true });
-    return;
-  }
   const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
   if (sequence.length === 0) {
     const nativeTargets = getWorkOrderDocumentWizardNativeServiceTargets(selectedWorkOrders);

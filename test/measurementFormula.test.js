@@ -161,6 +161,9 @@ test("measurement formulas support Excel-style business helpers", () => {
   assert.equal(evaluateMeasurementFormula("=ISBLANK(A2)", context), true);
   assert.equal(evaluateMeasurementFormula("=LEN(A1)", context), 4);
   assert.equal(evaluateMeasurementFormula('=CONCAT(A1;" ";A3)', context), "Safe Nexus");
+  assert.equal(evaluateMeasurementFormula('=TEXTAFTER("F100.4/RO BS";"/")', context), "RO BS");
+  assert.equal(evaluateMeasurementFormula('=TEXTAFTER("A/B/C";"/";-1)', context), "C");
+  assert.equal(evaluateMeasurementFormula('=TEXTAFTER("A-B";"/";1;0;0;"")', context), "");
   assert.equal(evaluateMeasurementFormula("=TODAY()", context), "29.06.2026");
   assert.equal(evaluateMeasurementFormula("=NOW()", context), "29.06.2026 10:15");
 });

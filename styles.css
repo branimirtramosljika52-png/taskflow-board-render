@@ -37918,6 +37918,8 @@ body.is-vehicle-usage-open {
 
 .documentation-gridline-module:fullscreen,
 .documentation-gridline-module.is-gridline-fullscreen {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: 100vw;
   height: 100dvh;
   min-height: 100dvh;
@@ -37934,8 +37936,14 @@ body.is-vehicle-usage-open {
 
 .documentation-gridline-module:fullscreen .documentation-gridline-scroll,
 .documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-scroll {
+  height: 100%;
   min-height: 0;
   max-height: none;
+}
+
+.documentation-gridline-module:fullscreen .documentation-gridline-shell,
+.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-shell {
+  min-height: 0;
 }
 
 .gridline-toolbar-svg {
@@ -38194,7 +38202,7 @@ body.is-vehicle-usage-open {
 .documentation-gridline-module table {
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 1600px;
+  min-width: 0;
   width: max-content;
   table-layout: fixed;
   font-size: 0.86rem;
@@ -40856,12 +40864,12 @@ body.is-vehicle-usage-open {
 
 .documentation-spr-gridline table,
 .documentation-spr-native-gridline table {
-  min-width: 100%;
+  min-width: 0;
 }
 
 .documentation-spr-gridline td {
-  width: 132px;
-  min-width: 132px;
+  width: auto;
+  min-width: 0;
 }
 
 .documentation-spr-gridline td:nth-child(3),
@@ -40869,8 +40877,8 @@ body.is-vehicle-usage-open {
 .documentation-spr-gridline td:nth-child(5),
 .documentation-spr-gridline td:nth-child(6),
 .documentation-spr-gridline td:nth-child(7) {
-  width: 104px;
-  min-width: 104px;
+  width: auto;
+  min-width: 0;
 }
 
 .documentation-spr-preview-panel {

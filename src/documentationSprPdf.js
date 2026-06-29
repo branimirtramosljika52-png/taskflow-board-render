@@ -729,7 +729,6 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
     ["Vrsta ispitivanja:", clean(model.inspectionType)],
     ["Datum ispitivanja:", formatDocumentDate(model.inspectionDate), true],
     ["Broj zapisnika:", clean(model.recordNumber)],
-    ["Ispitivanje obavili:", clean(model.inspectors)],
   ], y, fonts, { fontSize: 9, lineHeight: 11.4 });
   y -= 4;
   if (hasTechnicalData) {
@@ -1248,7 +1247,12 @@ function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex =
   const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
   const page = pdfDoc.addPage([metrics.width, metrics.height]);
   let y = drawMeasurementSimpleHeader(page, model, fonts, metrics);
-  drawTextLine(page, table.summary || table.label || getMeasurementTableTitle(model), {
+  const primaryTitle = clean(table.label || getMeasurementTableTitle(model));
+  const summaryTitle = clean(table.summary || "");
+  const tableTitle = [primaryTitle, summaryTitle.toLowerCase() !== primaryTitle.toLowerCase() ? summaryTitle : ""]
+    .filter(Boolean)
+    .join(" - ");
+  drawTextLine(page, tableTitle, {
     x: metrics.marginX,
     y: y + 6,
     font: fonts.regular,
@@ -1436,28 +1440,7 @@ function drawSignatureText(page, model, fonts, x, y, width, {
 function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = drawSimpleHeader(page, model, fonts);
-  drawTextLine(page, "Pregled i ispitivanje sukladno Tablici 1 obavili:", {
-    x: MARGIN_X,
-    y,
-    font: fonts.bold,
-    size: 9,
-  });
-  const topSignatureX = PAGE_WIDTH - MARGIN_X - 205;
-  const fieldName = model.signatureMode === "digital" ? signatureFieldName(model) : "";
-  drawSignatureText(page, model, fonts, topSignatureX, y - 22, 205, {
-    includeFieldLabel: true,
-    fieldName,
-    signatureImage,
-  });
-  if (fieldName) {
-    addSignatureWidget(pdfDoc, page, {
-      x: topSignatureX + 18,
-      y: y - 106,
-      width: 170,
-      height: 38,
-    }, fieldName);
-  }
-  y -= 128;
+  y -= 8;
   if (isFailingResult(model)) {
   y = drawSectionTitle(page, 6, "NEDOSTATCI", y, fonts);
   y = drawPlainList(page, model.defects || "Nema utvrđenih nedostataka.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
@@ -1545,6 +1528,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     size: 9.2,
   });
   if (clean(model.responsiblePerson)) {
+    const fieldName = model.signatureMode === "digital" ? signatureFieldName(model) : "";
     drawTextLine(page, "Dokaze iz Zapisnika ocijenio:", {
       x: PAGE_WIDTH - MARGIN_X - 230,
       y: 154,
@@ -1554,8 +1538,18 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
       size: 8,
     });
     drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230, {
+      includeFieldLabel: true,
+      fieldName,
       signatureImage,
     });
+    if (fieldName) {
+      addSignatureWidget(pdfDoc, page, {
+        x: PAGE_WIDTH - MARGIN_X - 200,
+        y: 34,
+        width: 170,
+        height: 38,
+      }, fieldName);
+    }
   }
   drawFooter(page, "SPR-4/4", fonts);
   return page;

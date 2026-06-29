@@ -222,6 +222,13 @@ export function getDocumentTemplateRuntimeServiceBadgeLabel(service = {}) {
 }
 
 export function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
+  const serviceCode = String(entry?.serviceCode || "").trim().toUpperCase();
+  if (serviceCode) {
+    const objectSequence = Number.parseInt(entry?.objectSequence, 10);
+    const suffix = Number.isFinite(objectSequence) && objectSequence > 0 ? String(objectSequence) : "";
+    return `${serviceCode}${suffix}`;
+  }
+
   const rawTitle = String(entry?.templateTitle || "").trim();
   if (!rawTitle) {
     return "Zapisnik";
