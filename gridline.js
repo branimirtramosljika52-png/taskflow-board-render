@@ -966,6 +966,9 @@
     var verticalAlignButtons = host && typeof host.querySelectorAll === "function"
       ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='vertical-align']"))
       : [];
+    var toolbarActionButtons = host && typeof host.querySelectorAll === "function"
+      ? Array.prototype.slice.call(host.querySelectorAll("button[data-gridline-action]"))
+      : [];
     var backgroundColorButtons = host && typeof host.querySelectorAll === "function"
       ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='background-color']"))
       : [];
@@ -1035,6 +1038,7 @@
     var selectionDrag = null;
     var editingCell = null;
     var selection = { startRow: 0, startColumn: 0, endRow: 0, endColumn: 0 };
+    var toolbarSelection = null;
     var undoStack = [];
     var redoStack = [];
     var isRestoringHistory = false;
@@ -1399,6 +1403,14 @@
 
     function applyCellStyleToElement(td, input, style) {
       var normalized = normalizeStyleEntry(style);
+      var rowHeight = td ? parseFloat(td.style.height || "34") || 34 : 34;
+      var lineHeight = 17;
+      var verticalPaddingTop = "";
+      if (normalized.verticalAlign === "middle") {
+        verticalPaddingTop = Math.max(0, Math.floor((rowHeight - lineHeight) / 2)) + "px";
+      } else if (normalized.verticalAlign === "bottom") {
+        verticalPaddingTop = Math.max(0, Math.floor(rowHeight - lineHeight - 4)) + "px";
+      }
       [td, input].forEach(function (element) {
         if (!element) {
           return;
@@ -1414,7 +1426,13 @@
       if (td) {
         td.classList.toggle("is-required-cell", Boolean(normalized.required));
         td.classList.toggle("has-cell-border", Boolean(normalized.border));
+        td.classList.toggle("is-v-align-top", normalized.verticalAlign === "top");
+        td.classList.toggle("is-v-align-middle", normalized.verticalAlign === "middle");
+        td.classList.toggle("is-v-align-bottom", normalized.verticalAlign === "bottom");
         td.dataset.gridlineBorder = normalized.border || "";
+      }
+      if (input) {
+        input.style.paddingTop = verticalPaddingTop;
       }
     }
 
@@ -1539,8 +1557,8 @@
       return Boolean(merge && (merge.row !== row || merge.column !== column));
     }
 
-    function getSelectionBounds() {
-      return getRangeBounds(normalizeSelectionRange(selection, model.rowCount, model.columnCount));
+    function getSelectionBounds(selectionOverride) {
+      return getRangeBounds(normalizeSelectionRange(selectionOverride || selection, model.rowCount, model.columnCount));
     }
 
     function isCellInSelection(row, column) {
@@ -1552,8 +1570,8 @@
       return normalizeHeaderRows(model.headerRows, model.rowCount).indexOf(row) >= 0;
     }
 
-    function getSelectedCells() {
-      var bounds = getSelectionBounds();
+    function getSelectedCells(selectionOverride) {
+      var bounds = getSelectionBounds(selectionOverride);
       var cells = [];
       var row;
       var column;
@@ -1563,6 +1581,16 @@
         }
       }
       return cells;
+    }
+
+    function captureToolbarSelection() {
+      toolbarSelection = normalizeSelectionRange(selection, model.rowCount, model.columnCount);
+    }
+
+    function consumeToolbarSelection() {
+      var pendingSelection = toolbarSelection;
+      toolbarSelection = null;
+      return pendingSelection;
     }
 
     function formatSelectionLabel() {
@@ -5443,6 +5471,7 @@
 
     function setSelectedCellsAlign(align) {
       var normalizedAlign = String(align || "").trim().toLowerCase();
+      var targetSelection;
       if (["left", "center", "right"].indexOf(normalizedAlign) < 0) {
         return;
       }
@@ -5450,7 +5479,8 @@
         model.cellStyles = Object.create(null);
       }
       recordUndo();
-      getSelectedCells().forEach(function (cell) {
+      targetSelection = consumeToolbarSelection();
+      getSelectedCells(targetSelection).forEach(function (cell) {
         var key = cellKey(cell.row, cell.column);
         var existing = model.cellStyles[key] || {};
         var nextStyle = makeCellStyle(existing.backgroundColor || "", normalizedAlign, existing);
@@ -5481,7 +5511,7 @@
 
     function setActiveCellBackground(color) {
       var normalizedColor = String(color || "").trim();
-      var cells = getSelectedCells();
+      var cells = getSelectedCells(consumeToolbarSelection());
       if (!model.cellStyles) {
         model.cellStyles = Object.create(null);
       }
@@ -5501,11 +5531,12 @@
     }
 
     function updateSelectedCellStyles(mutator) {
+      var targetSelection = consumeToolbarSelection();
       if (!model.cellStyles) {
         model.cellStyles = Object.create(null);
       }
       recordUndo();
-      getSelectedCells().forEach(function (cell) {
+      getSelectedCells(targetSelection).forEach(function (cell) {
         var key = cellKey(cell.row, cell.column);
         var nextStyle = normalizeStyleEntry(mutator(Object.assign({}, model.cellStyles[key] || {})) || {});
         if (hasObjectKeys(nextStyle)) {
@@ -5681,6 +5712,12 @@
     if (headerRowButton) {
       headerRowButton.addEventListener("click", toggleHeaderRow);
     }
+    toolbarActionButtons.forEach(function (button) {
+      button.addEventListener("mousedown", function (event) {
+        captureToolbarSelection();
+        event.preventDefault();
+      });
+    });
     alignButtons.forEach(function (button) {
       button.addEventListener("click", function () {
         setSelectedCellsAlign(button.dataset.gridlineAlign || "");

@@ -2858,6 +2858,7 @@ const state = {
     perfLog: [],
     selectionAnchor: null,
     selectedRange: null,
+    toolbarSelectionRange: null,
     selectionDrag: null,
     fillDrag: null,
     fillAutoScrollFrame: 0,
@@ -6146,6 +6147,7 @@ const measurementMergeRowsButton = document.querySelector("#measurement-merge-ro
 const measurementMergeColumnsButton = document.querySelector("#measurement-merge-columns");
 const measurementUnmergeButton = document.querySelector("#measurement-unmerge");
 const measurementSheetPanel = document.querySelector(".measurement-sheet-panel");
+const measurementSheetToolbar = document.querySelector(".measurement-sheet-toolbar");
 const measurementSheetGridWrap = document.querySelector(".measurement-sheet-grid-wrap");
 const measurementSheetColgroup = document.querySelector("#measurement-sheet-colgroup");
 const measurementSheetHead = document.querySelector("#measurement-sheet-head");
@@ -45116,6 +45118,22 @@ function getMeasurementSelectedRange() {
   return createMeasurementSelectionRange(rowIndex, columnIndex, rowIndex, columnIndex);
 }
 
+function getMeasurementToolbarTargetRange(rangeOverride = null) {
+  const range = rangeOverride
+    ?? state.measurementSheet.toolbarSelectionRange
+    ?? getMeasurementSelectedRange();
+  return range ? { ...range } : null;
+}
+
+function captureMeasurementToolbarSelectionRange() {
+  const range = getMeasurementSelectedRange();
+  state.measurementSheet.toolbarSelectionRange = range ? { ...range } : null;
+}
+
+function clearMeasurementToolbarSelectionRange() {
+  state.measurementSheet.toolbarSelectionRange = null;
+}
+
 function getMeasurementMergeDescriptor(merge = {}) {
   const anchorRowIndex = getMeasurementRowIndex(merge.rowId);
   const anchorColumnIndex = getMeasurementColumnIndex(merge.columnId);
@@ -48024,8 +48042,8 @@ function setMeasurementCellRawValue(rowId, columnId, value, options = {}) {
   );
 }
 
-function applyMeasurementFormatToRange(formatOverrides = {}) {
-  const range = getMeasurementSelectedRange();
+function applyMeasurementFormatToRange(formatOverrides = {}, rangeOverride = null) {
+  const range = rangeOverride ?? getMeasurementSelectedRange();
 
   if (!range) {
     return;
@@ -48105,8 +48123,8 @@ function applyMeasurementFormatToRange(formatOverrides = {}) {
   }
 }
 
-function applyMeasurementConditionalFormatToRange(formatOverrides = {}) {
-  const range = getMeasurementSelectedRange();
+function applyMeasurementConditionalFormatToRange(formatOverrides = {}, rangeOverride = null) {
+  const range = rangeOverride ?? getMeasurementSelectedRange();
 
   if (!range) {
     return;
@@ -48175,14 +48193,15 @@ function applyMeasurementConditionalFormatToRange(formatOverrides = {}) {
   }
 }
 
-function applyMeasurementToolbarFormat(overrides = {}) {
-  if (!state.measurementSheet.activeCell) {
+function applyMeasurementToolbarFormat(overrides = {}, rangeOverride = null) {
+  const range = getMeasurementToolbarTargetRange(rangeOverride);
+  clearMeasurementToolbarSelectionRange();
+  if (!range) {
     return;
   }
 
   pushMeasurementSheetHistorySnapshot();
-  const range = getMeasurementSelectedRange();
-  applyMeasurementFormatToRange(overrides);
+  applyMeasurementFormatToRange(overrides, range);
   refreshMeasurementRenderedRange(range);
   renderMeasurementSelection();
   renderMeasurementActiveCell();
@@ -48190,14 +48209,15 @@ function applyMeasurementToolbarFormat(overrides = {}) {
   scheduleMeasurementCellMutation({ skipFormulaInvalidation: true });
 }
 
-function applyMeasurementConditionalToolbarFormat(overrides = {}) {
-  if (!state.measurementSheet.activeCell) {
+function applyMeasurementConditionalToolbarFormat(overrides = {}, rangeOverride = null) {
+  const range = getMeasurementToolbarTargetRange(rangeOverride);
+  clearMeasurementToolbarSelectionRange();
+  if (!range) {
     return;
   }
 
   pushMeasurementSheetHistorySnapshot();
-  const range = getMeasurementSelectedRange();
-  applyMeasurementConditionalFormatToRange(overrides);
+  applyMeasurementConditionalFormatToRange(overrides, range);
   refreshMeasurementRenderedRange(range);
   renderMeasurementSelection();
   renderMeasurementActiveCell();
@@ -48249,17 +48269,18 @@ function applyMeasurementStylePresetToSelectedRows(presetKey) {
 
   const previousRange = state.measurementSheet.selectedRange;
   const previousAnchor = state.measurementSheet.selectionAnchor;
-  state.measurementSheet.selectedRange = createMeasurementSelectionRange(
+  const rowPresetRange = createMeasurementSelectionRange(
     range.startRowIndex,
     firstColumnIndex,
     range.endRowIndex,
     lastColumnIndex,
   );
+  state.measurementSheet.selectedRange = rowPresetRange;
   state.measurementSheet.selectionAnchor = {
     rowIndex: range.startRowIndex,
     columnIndex: firstColumnIndex,
   };
-  applyMeasurementToolbarFormat(preset);
+  applyMeasurementToolbarFormat(preset, rowPresetRange);
   state.measurementSheet.selectedRange = previousRange;
   state.measurementSheet.selectionAnchor = previousAnchor;
   renderMeasurementSelection();
@@ -49802,6 +49823,7 @@ function openMeasurementFillMenu(pendingFill, pointerX, pointerY) {
   state.measurementSheet.fillMenu = {
     x: pointerX,
     y: pointerY,
+    openedAt: performance.now(),
     pendingFill,
   };
   renderMeasurementFillPreview();
@@ -51970,8 +51992,8 @@ function renderMeasurementSheet(options = {}) {
       fillHandle.className = "measurement-fill-handle";
       fillHandle.setAttribute("aria-label", `Kopiraj vrijednost prema dolje za kolonu ${column.label}`);
       fillHandle.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
         fillHandle.setPointerCapture?.(event.pointerId);
         const currentRange = getMeasurementSelectedRange();
 
@@ -51988,12 +52010,33 @@ function renderMeasurementSheet(options = {}) {
           return;
         }
 
-        const snapshotRows = state.measurementSheet.rows
-          .slice(selectionRange.startRowIndex, selectionRange.endRowIndex + 1)
-          .map((sourceRow) => ({
-            cells: { ...sourceRow.cells },
-            formats: { ...(sourceRow.formats ?? {}) },
-          }));
+        const rangeKey = getMeasurementFillRangeKey(selectionRange);
+        const now = performance.now();
+        const previousTap = state.measurementSheet.lastFillHandleTap;
+        const isDoubleTap = previousTap
+          && previousTap.rangeKey === rangeKey
+          && now - previousTap.time <= 450;
+        state.measurementSheet.lastFillHandleTap = {
+          rangeKey,
+          time: now,
+        };
+        const snapshotRows = snapshotMeasurementFillRows(selectionRange);
+
+        if (isDoubleTap) {
+          state.measurementSheet.fillDrag = null;
+          stopMeasurementFillAutoScroll();
+          document.body.classList.remove("is-filling-measurement-cells");
+          const targetEndRowIndex = getMeasurementFillDoubleClickEndRowIndex(selectionRange);
+
+          if (targetEndRowIndex > selectionRange.endRowIndex) {
+            openMeasurementFillMenu({
+              selectionRange,
+              endRowIndex: targetEndRowIndex,
+              snapshotRows,
+            }, event.clientX, event.clientY);
+          }
+          return;
+        }
 
         state.measurementSheet.fillDrag = {
           selectionRange,
@@ -52019,12 +52062,7 @@ function renderMeasurementSheet(options = {}) {
           return;
         }
 
-        const snapshotRows = state.measurementSheet.rows
-          .slice(selectionRange.startRowIndex, selectionRange.endRowIndex + 1)
-          .map((sourceRow) => ({
-            cells: { ...sourceRow.cells },
-            formats: { ...(sourceRow.formats ?? {}) },
-          }));
+        const snapshotRows = snapshotMeasurementFillRows(selectionRange);
         const targetEndRowIndex = getMeasurementFillDoubleClickEndRowIndex(selectionRange);
 
         if (targetEndRowIndex <= selectionRange.endRowIndex) {
@@ -52032,10 +52070,10 @@ function renderMeasurementSheet(options = {}) {
         }
 
         openMeasurementFillMenu({
-            selectionRange,
-            endRowIndex: targetEndRowIndex,
-            snapshotRows,
-          }, event.clientX, event.clientY);
+          selectionRange,
+          endRowIndex: targetEndRowIndex,
+          snapshotRows,
+        }, event.clientX, event.clientY);
       });
 
       shell.append(fillHandle);
@@ -52209,6 +52247,7 @@ function resetMeasurementSheet() {
   invalidateMeasurementSheetFormulaCache();
   state.measurementSheet.selectionAnchor = null;
   state.measurementSheet.selectedRange = null;
+  state.measurementSheet.toolbarSelectionRange = null;
   state.measurementSheet.selectionDrag = null;
   state.measurementSheet.fillDrag = null;
   state.measurementSheet.fillMenu = null;
@@ -52446,6 +52485,30 @@ function formatMeasurementSeriesValue(value) {
   }
 
   return String(Number(value.toFixed(2))).replace(".", ",");
+}
+
+function getMeasurementFillRangeKey(range) {
+  if (!range) {
+    return "";
+  }
+  return [
+    range.startRowIndex,
+    range.startColumnIndex,
+    range.endRowIndex,
+    range.endColumnIndex,
+  ].join(":");
+}
+
+function snapshotMeasurementFillRows(selectionRange) {
+  if (!selectionRange) {
+    return [];
+  }
+  return state.measurementSheet.rows
+    .slice(selectionRange.startRowIndex, selectionRange.endRowIndex + 1)
+    .map((sourceRow) => ({
+      cells: { ...sourceRow.cells },
+      formats: { ...(sourceRow.formats ?? {}) },
+    }));
 }
 
 function getMeasurementFillDoubleClickEndRowIndex(selectionRange) {
@@ -146984,6 +147047,12 @@ measurementStyleTitleButton?.addEventListener("click", () => {
     applyMeasurementStylePresetToSelectedRows("title");
   }
 });
+measurementSheetToolbar?.addEventListener("mousedown", (event) => {
+  if (event.target instanceof HTMLElement && event.target.closest("button")) {
+    captureMeasurementToolbarSelectionRange();
+    event.preventDefault();
+  }
+});
 measurementColorSwatchButtons.forEach((button) => {
   button.addEventListener("click", () => {
     applyMeasurementToolbarFormat({
@@ -154080,6 +154149,10 @@ document.addEventListener("click", (event) => {
   }
 
   if (state.measurementSheet.fillMenu && event.target instanceof Node) {
+    const openedAt = Number(state.measurementSheet.fillMenu.openedAt) || 0;
+    if (openedAt && performance.now() - openedAt < 250) {
+      return;
+    }
     const clickedFillMenu = measurementFillMenu?.contains(event.target);
     const clickedFillHandle = event.target instanceof HTMLElement && event.target.closest(".measurement-fill-handle");
 
