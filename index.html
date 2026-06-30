@@ -6481,12 +6481,12 @@
                   <div class="documentation-spr-actions">
                     <span id="documentation-spr-source-status" class="documentation-spr-source-status">Izvori se učitavaju</span>
                     <span id="documentation-spr-status" class="documentation-spr-status is-saved">Spremljeno lokalno</span>
-                    <button type="button" id="documentation-spr-library-back" class="ghost-button">Predlošci</button>
+                    <button type="button" id="documentation-spr-library-back" class="ghost-button" hidden>Predlošci</button>
                     <button type="button" id="documentation-spr-preview-toggle" class="ghost-button" aria-pressed="false">Sakrij preview</button>
-                    <button type="button" id="documentation-spr-reset" class="ghost-button">Vrati primjer</button>
+                    <button type="button" id="documentation-spr-reset" class="ghost-button" hidden>Vrati primjer</button>
                     <button type="button" id="documentation-spr-pdf" class="primary-button">Preuzmi PDF</button>
-                    <button type="button" id="documentation-spr-signature" class="ghost-button">Spremi za potpis</button>
-                    <button type="button" id="documentation-spr-download" class="ghost-button">JSON</button>
+                    <button type="button" id="documentation-spr-signature" class="ghost-button" hidden>Spremi za potpis</button>
+                    <button type="button" id="documentation-spr-download" class="ghost-button" hidden>JSON</button>
                   </div>
                 </header>
 
@@ -6568,9 +6568,9 @@
                     </select>
                   </label>
                   <div class="documentation-spr-template-actions" aria-label="Akcije predložaka">
-                    <button type="button" id="documentation-spr-template-new" class="ghost-button">Novi</button>
+                    <button type="button" id="documentation-spr-template-new" class="ghost-button" hidden>Novi</button>
                     <button type="button" id="documentation-spr-template-save" class="primary-button">Spremi</button>
-                    <button type="button" id="documentation-spr-template-load" class="ghost-button">Učitaj</button>
+                    <button type="button" id="documentation-spr-template-load" class="ghost-button" hidden>Učitaj</button>
                     <button type="button" id="documentation-spr-template-delete" class="ghost-button card-danger">Obriši</button>
                   </div>
                   <span id="documentation-spr-template-meta" class="documentation-spr-template-meta">0 predložaka</span>
@@ -6994,7 +6994,16 @@
                       <input data-documentation-spr-field="signatureNumber" type="hidden" />
                       <input data-documentation-spr-field="signatureMode" type="hidden" />
                       <div class="documentation-spr-conclusion-grid">
-                        <div class="documentation-spr-result-card">
+                        <div id="documentation-spr-assessments-editor" class="documentation-spr-assessments-editor is-wide"></div>
+                        <label class="field documentation-spr-field documentation-spr-defects-field is-wide">
+                          <span>Nedostaci</span>
+                          <textarea data-documentation-spr-field="defects" rows="4" placeholder="Upiši nedostatke ili ostavi prazno ako ih nema."></textarea>
+                        </label>
+                        <label class="field documentation-spr-field is-wide">
+                          <span>Preporuke</span>
+                          <textarea data-documentation-spr-field="recommendations" rows="4" placeholder="Upiši preporuke ili napomene za korisnika."></textarea>
+                        </label>
+                        <div class="documentation-spr-result-card is-final">
                           <div class="documentation-spr-result-icon" aria-hidden="true">OK</div>
                           <label class="field documentation-spr-field documentation-spr-status-field">
                             <span>Zaključna ocjena</span>
@@ -7005,15 +7014,6 @@
                           </label>
                           <p id="documentation-spr-result-helper">Zapisnik je spreman bez obveznog unosa nedostataka.</p>
                         </div>
-                        <div id="documentation-spr-assessments-editor" class="documentation-spr-assessments-editor is-wide"></div>
-                        <label class="field documentation-spr-field documentation-spr-defects-field is-wide">
-                          <span>Nedostaci</span>
-                          <textarea data-documentation-spr-field="defects" rows="4" placeholder="Upiši nedostatke ili ostavi prazno ako ih nema."></textarea>
-                        </label>
-                        <label class="field documentation-spr-field is-wide">
-                          <span>Preporuke</span>
-                          <textarea data-documentation-spr-field="recommendations" rows="4" placeholder="Upiši preporuke ili napomene za korisnika."></textarea>
-                        </label>
                       </div>
                       <section class="documentation-spr-attachments" aria-label="Prilozi zapisnika">
                         <div class="documentation-spr-attachments-head">

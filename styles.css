@@ -40115,7 +40115,7 @@ body.is-vehicle-usage-open {
 
 .documentation-spr-checklist-row select,
 .documentation-spr-assessment-row select {
-  min-height: 34px;
+  min-height: 30px;
 }
 
 .documentation-spr-assessment-grid {
@@ -40126,10 +40126,11 @@ body.is-vehicle-usage-open {
 
 .documentation-spr-assessment-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 172px);
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  gap: 8px;
+  min-height: 42px;
+  padding: 6px 8px;
   border: 1px solid rgba(22, 163, 74, 0.46);
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(220, 252, 231, 0.98), rgba(240, 253, 244, 0.96));
@@ -40158,7 +40159,7 @@ body.is-vehicle-usage-open {
 
 .documentation-spr-assessment-label {
   color: var(--documentation-spr-text);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 900;
   line-height: 1.25;
 }
@@ -40197,7 +40198,7 @@ body.is-vehicle-usage-open {
 }
 
 .documentation-spr-section-conclusion .documentation-spr-conclusion-grid {
-  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -40214,8 +40215,21 @@ body.is-vehicle-usage-open {
   box-shadow: 0 12px 28px rgba(18, 38, 72, 0.06);
 }
 
+.documentation-spr-result-card.is-final {
+  margin-top: 2px;
+  border-color: rgba(22, 163, 74, 0.38);
+  background: linear-gradient(180deg, rgba(240, 253, 244, 0.98), #ffffff);
+  box-shadow: 0 14px 32px rgba(22, 101, 52, 0.1);
+}
+
 .documentation-spr-section-conclusion.is-failing .documentation-spr-result-card {
   border-color: rgba(220, 38, 38, 0.28);
+}
+
+.documentation-spr-section-conclusion.is-failing .documentation-spr-result-card.is-final {
+  border-color: rgba(220, 38, 38, 0.42);
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.98), #ffffff);
+  box-shadow: 0 14px 32px rgba(153, 27, 27, 0.1);
 }
 
 .documentation-spr-result-icon {
@@ -40245,6 +40259,10 @@ body.is-vehicle-usage-open {
   color: var(--documentation-spr-muted);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.documentation-spr-assessments-editor.is-wide {
+  grid-column: 1 / -1;
 }
 
 .documentation-spr-section-conclusion.is-failing .documentation-spr-result-card p {
@@ -40838,14 +40856,21 @@ body.is-vehicle-usage-open {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 9px;
+  min-height: 50px;
+  padding: 8px 9px;
   border: 1px solid rgba(126, 149, 178, 0.2);
   border-radius: 8px;
   background: #fff;
 }
 
-.documentation-spr-attachment-row strong,
-.documentation-spr-attachment-row span {
+.documentation-spr-attachment-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.documentation-spr-attachment-copy strong,
+.documentation-spr-attachment-copy span {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -40853,15 +40878,30 @@ body.is-vehicle-usage-open {
   white-space: nowrap;
 }
 
-.documentation-spr-attachment-row strong {
+.documentation-spr-attachment-copy strong {
   color: var(--documentation-spr-text);
   font-size: 0.86rem;
 }
 
-.documentation-spr-attachment-row span {
+.documentation-spr-attachment-copy span {
   color: var(--documentation-spr-muted);
   font-size: 0.74rem;
   font-weight: 800;
+}
+
+.documentation-spr-attachment-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.documentation-spr-attachment-actions .ghost-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 900;
 }
 
 .documentation-spr-gridline.documentation-gridline-module {
@@ -41547,7 +41587,7 @@ body.is-vehicle-usage-open {
 
   .documentation-spr-section-conclusion .documentation-spr-conclusion-grid,
   .documentation-spr-people-picker.is-basic {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .documentation-spr-preview-panel {
@@ -41646,6 +41686,18 @@ body.is-vehicle-usage-open {
 
   .documentation-spr-result-card {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .documentation-spr-attachment-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .documentation-spr-attachment-actions {
+    justify-content: stretch;
+  }
+
+  .documentation-spr-attachment-actions .ghost-button {
+    flex: 1;
   }
 
   .gridline-quick-column-row {

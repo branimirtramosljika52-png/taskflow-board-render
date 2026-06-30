@@ -58340,7 +58340,9 @@ function setDocumentationSprWorkbenchMode(mode = "library", { renderLibrary = tr
       : "Predlošci rade u browseru, s Gridline tablicom i A4 previewom.";
   }
   documentationSprLibraryPanel?.toggleAttribute("hidden", !isLibraryMode);
-  documentationSprLibraryBackButton?.toggleAttribute("hidden", isLibraryMode);
+  if (documentationSprLibraryBackButton) {
+    documentationSprLibraryBackButton.hidden = true;
+  }
   documentationWorkbenchModule
     ?.querySelector(".documentation-spr-workbench")
     ?.classList.toggle("is-library-mode", isLibraryMode);
@@ -58934,7 +58936,6 @@ function syncDocumentationSprSourceSummary() {
   }
   const equipmentItems = getDocumentationSprMeasurementEquipmentItems();
   const legalItems = getDocumentationSprLegalFrameworkItems();
-  const peopleItems = getActiveOrganizationUsers();
   const selectedEquipment = getDocumentationSprEquipmentByIds();
   const selectedLegal = getDocumentationSprLegalFrameworksByIds();
   const selectedInspectors = getDocumentationSprUsersByIds(documentationSprModel.inspectorUserIds);
@@ -58951,14 +58952,27 @@ function syncDocumentationSprSourceSummary() {
       : `${legalItems.length} propisa`;
   }
   if (documentationSprSourceStatus) {
-    documentationSprSourceStatus.textContent = `${equipmentItems.length} opreme · ${legalItems.length} propisa · ${peopleItems.length} osoba`;
+    const statusParts = [
+      selectedEquipment.length ? `${selectedEquipment.length} opreme` : "",
+      selectedLegal.length ? `${selectedLegal.length} propisa` : "",
+      selectedInspectors.length ? `${selectedInspectors.length} ispitivača` : "",
+      selectedResponsible.length ? "1 odgovorna" : "",
+    ].filter(Boolean);
+    documentationSprSourceStatus.textContent = statusParts.length
+      ? statusParts.join(" · ")
+      : "Predložak spreman";
   }
   if (documentationSprSourceSummary) {
     documentationSprSourceSummary.textContent = `${selectedEquipment.length} opreme · ${selectedLegal.length} propisa`;
   }
   if (documentationSprPeopleSummary) {
-    const totalPeople = peopleItems.length;
-    documentationSprPeopleSummary.textContent = `${selectedInspectors.length} ispitivača · ${selectedResponsible.length ? "1 odgovorna" : "0 odgovornih"} · ${totalPeople} People`;
+    const peopleParts = [
+      selectedInspectors.length ? `${selectedInspectors.length} ispitivača` : "",
+      selectedResponsible.length ? "1 odgovorna" : "",
+    ].filter(Boolean);
+    documentationSprPeopleSummary.textContent = peopleParts.length
+      ? peopleParts.join(" · ")
+      : "Odaberi osobe za zapisnik";
   }
 
   renderDocumentationSprChips(documentationSprEquipmentChips, selectedEquipment, {
@@ -60209,8 +60223,7 @@ function getDocumentationSprBatchEntrySummary(entry = {}, index = 0) {
   const model = getDocumentationSprBatchEntryModel(entry, { create: true }) || {};
   const completion = getDocumentationSprBatchCompletion(model);
   const workOrderNumber = String(entry.workOrder?.workOrderNumber || model.workOrderNumber || `RN ${index + 1}`).trim();
-  const serviceCode = String(entry.serviceCode || model.serviceBinding?.serviceCode || model.serviceCode || "").trim();
-  const serviceName = String(entry.serviceName || model.serviceBinding?.serviceName || entry.service?.name || "").trim();
+  const { serviceCode, serviceName } = getDocumentationSprBatchEntryServiceDisplay(entry, model);
   return {
     entry,
     model,
@@ -60228,6 +60241,34 @@ function getDocumentationSprBatchEntrySummary(entry = {}, index = 0) {
 
 function getDocumentationSprBatchSummaries() {
   return getDocumentationSprBatchEntries().map((entry, index) => getDocumentationSprBatchEntrySummary(entry, index));
+}
+
+function getDocumentationSprBatchEntryServiceDisplay(entry = {}, model = {}) {
+  const template = entry.templateId
+    ? getDocumentationSprTemplateById(entry.templateId)
+    : getDocumentationSprTemplateForService(entry.service);
+  const templateBinding = getDocumentationSprTemplateServiceBinding(template);
+  const templateModel = template?.model && typeof template.model === "object" ? template.model : {};
+  const templateCodeMatch = String(templateModel.templateCode || template?.name || "").match(/\b[A-ZČĆŽŠĐ]{2,8}\b/i);
+  const serviceCode = String(
+    templateBinding?.serviceCode
+    || templateModel.serviceCode
+    || (templateCodeMatch ? templateCodeMatch[0].toUpperCase() : "")
+    || model.serviceBinding?.serviceCode
+    || model.serviceCode
+    || entry.serviceCode
+    || "",
+  ).trim();
+  const serviceName = String(
+    templateBinding?.serviceName
+    || templateModel.serviceName
+    || model.serviceBinding?.serviceName
+    || model.serviceName
+    || entry.serviceName
+    || entry.service?.name
+    || "",
+  ).trim();
+  return { serviceCode, serviceName };
 }
 
 function getDocumentationSprBatchDockGroups(entries = getDocumentationSprBatchEntries()) {
@@ -60783,6 +60824,21 @@ function saveCurrentDocumentationSprTemplate() {
   persistDocumentationSprModelNow("Predložak spremljen");
   documentationSprDraftServiceBinding = serviceBinding;
   syncDocumentationSprTemplateManager();
+  getDocumentationSprBatchEntries().forEach((entry) => {
+    if (!documentationSprTemplateMatchesService(nextEntry, entry.service)) {
+      return;
+    }
+    entry.templateId = nextEntry.id;
+    entry.templateName = nextEntry.name;
+    entry.hasTemplate = true;
+    entry.serviceBinding = serviceBinding || entry.serviceBinding;
+    entry.serviceCode = serviceBinding?.serviceCode || entry.serviceCode;
+    entry.serviceName = serviceBinding?.serviceName || entry.serviceName;
+  });
+  renderDocumentationSprBatchContext();
+  if (state.workOrderDocumentWizard?.open) {
+    renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+  }
 }
 
 function loadSelectedDocumentationSprTemplate() {
@@ -61045,12 +61101,14 @@ function renderDocumentationSprAttachmentList() {
   }
   documentationSprAttachmentList.innerHTML = attachments.map((attachment) => `
     <div class="documentation-spr-attachment-row" data-documentation-spr-attachment-id="${escapeHtml(attachment.id)}">
-      <div>
+      <div class="documentation-spr-attachment-copy">
         <strong>${escapeHtml(attachment.fileName)}</strong>
-        <span>${escapeHtml(attachment.fileType === "application/pdf" ? "PDF" : "Slika")} · ${escapeHtml(formatFileSize(attachment.fileSize) || "datoteka")} · ${attachment.pageCount} ${attachment.pageCount === 1 ? "stranica" : "stranice"}</span>
+        <span>${escapeHtml(attachment.fileType === "application/pdf" ? "PDF dokument" : "Slikovni prilog")} · ${escapeHtml(formatFileSize(attachment.fileSize) || "datoteka")} · ${attachment.pageCount} ${attachment.pageCount === 1 ? "stranica" : "stranice"}</span>
       </div>
-      <button type="button" class="ghost-button" data-documentation-spr-attachment-open="${escapeHtml(attachment.id)}">Otvori</button>
-      <button type="button" class="ghost-button" data-documentation-spr-attachment-remove="${escapeHtml(attachment.id)}">Ukloni</button>
+      <div class="documentation-spr-attachment-actions" aria-label="Akcije priloga ${escapeHtml(attachment.fileName)}">
+        <button type="button" class="ghost-button" data-documentation-spr-attachment-open="${escapeHtml(attachment.id)}">Pregled</button>
+        <button type="button" class="ghost-button card-danger" data-documentation-spr-attachment-remove="${escapeHtml(attachment.id)}">Obriši</button>
+      </div>
     </div>
   `).join("");
 }
@@ -136816,8 +136874,10 @@ function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
   }
 
   const companyCount = new Set(workOrders.map((item) => String(item.companyName || "").trim()).filter(Boolean)).size;
-  const templateCount = buildWorkOrderDocumentWizardSequence(workOrders).length
-    + getWorkOrderDocumentWizardNativeServiceTargets(workOrders).length;
+  const documentationSprCount = getDocumentationSprBatchEntriesForWorkOrders(workOrders).length;
+  const templateCount = documentationSprCount
+    || (buildWorkOrderDocumentWizardSequence(workOrders).length
+      + getWorkOrderDocumentWizardNativeServiceTargets(workOrders).length);
   const learningTestCount = getWorkOrderLearningTestRecommendations(workOrders).recommendations.length;
   const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
   const isSingleWorkOrderFlow = state.workOrderDocumentWizard.launchSource === "editor" && workOrders.length === 1;
@@ -138926,11 +138986,14 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     return;
   }
 
-  const useLegacyDocumentationWorkbenchFallback = false;
-  if (useLegacyDocumentationWorkbenchFallback) {
+  const useDocumentationSprWorkbenchFlow = true;
+  if (useDocumentationSprWorkbenchFlow) {
     const browserEntries = getDocumentationSprBatchEntriesForWorkOrders(workOrders);
     const browserGroups = getDocumentationSprBatchGroupsFromEntries(browserEntries);
     const browserTemplateCount = browserEntries.filter((entry) => entry.hasTemplate).length;
+    browserEntries.forEach((entry) => {
+      void ensureDocumentationSprPreviousRecordSourceForEntry(entry, { render: true });
+    });
 
     workOrderDocumentWizardTemplateSummary.replaceChildren();
     const browserSummary = document.createElement("div");
@@ -138951,9 +139014,6 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     }
 
     workOrderDocumentWizardTemplateList.replaceChildren(...browserGroups.map((group) => {
-      group.entries.forEach((entry) => {
-        void ensureDocumentationSprPreviousRecordSourceForEntry(entry, { render: true });
-      });
       const card = document.createElement("article");
       card.className = "work-order-document-template-card work-order-document-browser-template-card";
 
@@ -139012,7 +139072,8 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     openButton.className = "primary-button";
     openButton.textContent = "Otvori zapisnike";
     openButton.addEventListener("click", () => {
-      void openDocumentationSprWorkbenchFromBatchEntriesWithSources(group.entries);
+      const activeIndex = Math.max(0, browserEntries.findIndex((entry) => entry.id === group.entries[0]?.id));
+      void openDocumentationSprWorkbenchFromBatchEntriesWithSources(browserEntries, { activeIndex });
     });
 
     footer.append(note, openButton);
@@ -139201,7 +139262,10 @@ function renderWorkOrderDocumentWizard() {
   }
   if (workOrderDocumentWizardNextButton) {
     const trainingModeOption = getWorkOrderDocumentTrainingModeOption();
-    const hasTemplateSequence = isInspectionMode && buildWorkOrderDocumentWizardSequence(workOrders).length > 0;
+    const hasTemplateSequence = isInspectionMode && (
+      getDocumentationSprBatchEntriesForWorkOrders(workOrders).length > 0
+      || buildWorkOrderDocumentWizardSequence(workOrders).length > 0
+    );
     workOrderDocumentWizardNextButton.textContent = isInspectionMode
       ? (hasTemplateSequence ? "Nastavi na zapisnike" : "Otvori zapisnik")
       : trainingModeOption.actionLabel;
@@ -145176,6 +145240,11 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     return;
   }
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const browserEntries = getDocumentationSprBatchEntriesForWorkOrders(selectedWorkOrders);
+  if (browserEntries.length > 0) {
+    void openDocumentationSprWorkbenchFromBatchEntriesWithSources(browserEntries);
+    return;
+  }
   const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
   if (sequence.length === 0) {
     const nativeTargets = getWorkOrderDocumentWizardNativeServiceTargets(selectedWorkOrders);
