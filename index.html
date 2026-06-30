@@ -6475,14 +6475,14 @@
                     <div>
                       <p class="section-kicker">Operations</p>
                       <h3 id="documentation-spr-workbench-title">Izrada dokumentacije</h3>
-                      <span id="documentation-spr-workbench-subtitle">Predlošci rade u browseru, s Gridline tablicom i A4 previewom.</span>
+                      <span id="documentation-spr-workbench-subtitle">Predlošci rade u browseru, s Gridline tablicom i PDF izlazom.</span>
                     </div>
                   </div>
                   <div class="documentation-spr-actions">
                     <span id="documentation-spr-source-status" class="documentation-spr-source-status">Izvori se učitavaju</span>
                     <span id="documentation-spr-status" class="documentation-spr-status is-saved">Spremljeno lokalno</span>
                     <button type="button" id="documentation-spr-library-back" class="ghost-button" hidden>Predlošci</button>
-                    <button type="button" id="documentation-spr-preview-toggle" class="ghost-button" aria-pressed="false">Sakrij preview</button>
+                    <button type="button" id="documentation-spr-preview-toggle" class="ghost-button" aria-pressed="false" hidden>Sakrij preview</button>
                     <button type="button" id="documentation-spr-reset" class="ghost-button" hidden>Vrati primjer</button>
                     <button type="button" id="documentation-spr-pdf" class="primary-button">Preuzmi PDF</button>
                     <button type="button" id="documentation-spr-signature" class="ghost-button" hidden>Spremi za potpis</button>
@@ -6542,6 +6542,15 @@
                     <button type="button" id="documentation-spr-batch-next" class="ghost-button">Sljedeći</button>
                     <button type="button" id="documentation-spr-batch-clear" class="ghost-button">Makni RN kontekst</button>
                   </div>
+                </section>
+
+                <section id="documentation-spr-record-source-card" class="documentation-spr-record-source-card" hidden aria-label="Izvor vrijednosti zapisnika">
+                  <div class="documentation-spr-record-source-copy">
+                    <span>Izvor vrijednosti</span>
+                    <strong id="documentation-spr-record-source-title">Podaci iz templatea</strong>
+                    <small id="documentation-spr-record-source-detail">Ako nema ranijeg zapisnika za isti objekt, koristi se odabrani template.</small>
+                  </div>
+                  <div id="documentation-spr-record-source-badges" class="documentation-spr-record-source-badges"></div>
                 </section>
 
                 <section class="documentation-spr-template-manager" aria-label="Predlošci izrade dokumentacije">
@@ -6624,6 +6633,17 @@
 
                 <section class="documentation-spr-shell">
                   <form id="documentation-spr-form" class="documentation-spr-editor">
+                    <section id="documentation-spr-inline-document" class="documentation-spr-inline-document" aria-label="Trenutni izgled zapisnika">
+                      <div class="documentation-spr-inline-document-head">
+                        <div>
+                          <span>Izgled zapisnika</span>
+                          <strong>Trenutni PDF prikaz</strong>
+                        </div>
+                        <small id="documentation-spr-inline-document-summary">Učitavam izgled...</small>
+                      </div>
+                      <div id="documentation-spr-inline-document-body" class="documentation-spr-inline-document-body"></div>
+                    </section>
+
                     <section class="documentation-spr-section documentation-spr-section-basic">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
@@ -6850,7 +6870,8 @@
                       </div>
                       <label class="field documentation-spr-field">
                         <span>Opis i rezultati ispitivanja</span>
-                        <textarea data-documentation-spr-field="resultsText" rows="10"></textarea>
+                        <div id="documentation-spr-results-rich-host" class="documentation-spr-results-rich-host"></div>
+                        <textarea id="documentation-spr-results-text" data-documentation-spr-field="resultsText" rows="10" hidden></textarea>
                       </label>
                       <textarea data-documentation-spr-field="eiNote" rows="2" hidden></textarea>
                       <textarea data-documentation-spr-field="eiminNote" rows="2" hidden></textarea>
@@ -7024,7 +7045,7 @@
                           <button type="button" id="documentation-spr-attachment-upload" class="ghost-button">Dodaj prilog</button>
                         </div>
                         <input id="documentation-spr-attachment-file" type="file" accept="application/pdf,image/png,image/jpeg" multiple hidden />
-                        <div id="documentation-spr-attachment-drop" class="documentation-spr-attachment-drop">
+                        <div id="documentation-spr-attachment-drop" class="documentation-spr-attachment-drop" role="button" tabindex="0">
                           <strong>PDF, PNG ili JPG</strong>
                           <span>Prilozi se nastavljaju nakon zapisnika i dobivaju isti footer s brojem stranica.</span>
                         </div>
@@ -7033,7 +7054,7 @@
                     </section>
                   </form>
 
-                  <aside id="documentation-spr-preview-panel" class="documentation-spr-preview-panel">
+                  <aside id="documentation-spr-preview-panel" class="documentation-spr-preview-panel" hidden>
                     <div class="documentation-spr-preview-head">
                       <div>
                         <p class="section-kicker">Preview</p>

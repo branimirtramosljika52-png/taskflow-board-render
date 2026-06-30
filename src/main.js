@@ -3946,6 +3946,8 @@ const documentationSprWorkbenchTitle = document.querySelector("#documentation-sp
 const documentationSprWorkbenchSubtitle = document.querySelector("#documentation-spr-workbench-subtitle");
 const documentationSprForm = document.querySelector("#documentation-spr-form");
 const documentationSprShell = document.querySelector(".documentation-spr-shell");
+const documentationSprInlineDocumentBody = document.querySelector("#documentation-spr-inline-document-body");
+const documentationSprInlineDocumentSummary = document.querySelector("#documentation-spr-inline-document-summary");
 const documentationSprPreviewPanel = document.querySelector("#documentation-spr-preview-panel");
 const documentationSprPreview = document.querySelector("#documentation-spr-preview");
 const documentationSprPreviewSummary = document.querySelector("#documentation-spr-preview-summary");
@@ -3989,6 +3991,10 @@ const documentationSprBatchTrack = document.querySelector("#documentation-spr-ba
 const documentationSprBatchPrevButton = document.querySelector("#documentation-spr-batch-prev");
 const documentationSprBatchNextButton = document.querySelector("#documentation-spr-batch-next");
 const documentationSprBatchClearButton = document.querySelector("#documentation-spr-batch-clear");
+const documentationSprRecordSourceCard = document.querySelector("#documentation-spr-record-source-card");
+const documentationSprRecordSourceTitle = document.querySelector("#documentation-spr-record-source-title");
+const documentationSprRecordSourceDetail = document.querySelector("#documentation-spr-record-source-detail");
+const documentationSprRecordSourceBadges = document.querySelector("#documentation-spr-record-source-badges");
 const documentationSprBatchSummaryPanel = document.querySelector("#documentation-spr-batch-summary");
 const documentationSprBatchSummaryBody = document.querySelector("#documentation-spr-batch-summary-body");
 const documentationSprBatchSummaryExportButton = document.querySelector("#documentation-spr-batch-summary-export");
@@ -4051,6 +4057,8 @@ const documentationSprPeopleApplyButton = document.querySelector("#documentation
 const documentationSprPeopleClearButton = document.querySelector("#documentation-spr-people-clear");
 const documentationSprConclusionSection = document.querySelector("#documentation-spr-conclusion-section");
 const documentationSprResultHelper = document.querySelector("#documentation-spr-result-helper");
+const documentationSprResultsTextInput = document.querySelector("#documentation-spr-results-text");
+const documentationSprResultsRichHost = document.querySelector("#documentation-spr-results-rich-host");
 const documentationSprAttachmentUploadButton = document.querySelector("#documentation-spr-attachment-upload");
 const documentationSprAttachmentFileInput = document.querySelector("#documentation-spr-attachment-file");
 const documentationSprAttachmentDrop = document.querySelector("#documentation-spr-attachment-drop");
@@ -57075,6 +57083,7 @@ let documentationSprTemplateLibrary = { version: 1, activeTemplateId: "", templa
 let documentationSprGlobalHeader = { dataUrl: "", name: "", updatedAt: "" };
 let documentationSprGridlineApi = null;
 let documentationSprNativeMeasurementGridlineApis = new Map();
+let documentationSprResultsRichControl = null;
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
 let documentationSprGridlineRetryTimer = 0;
@@ -58336,8 +58345,8 @@ function setDocumentationSprWorkbenchMode(mode = "library", { renderLibrary = tr
   }
   if (documentationSprWorkbenchSubtitle) {
     documentationSprWorkbenchSubtitle.textContent = isBatchRecordMode
-      ? "Zapisnici se izrađuju iz RN-a, a predlošci iz Izrade dokumentacije koriste se u pozadini."
-      : "Predlošci rade u browseru, s Gridline tablicom i A4 previewom.";
+      ? "Aktivni zapisnik koristi vrijednosti iz prethodnog zapisnika kada postoje, inače iz templatea."
+      : "Predlošci rade u browseru, s Gridline tablicom i PDF izlazom.";
   }
   documentationSprLibraryPanel?.toggleAttribute("hidden", !isLibraryMode);
   if (documentationSprLibraryBackButton) {
@@ -58346,13 +58355,18 @@ function setDocumentationSprWorkbenchMode(mode = "library", { renderLibrary = tr
   documentationWorkbenchModule
     ?.querySelector(".documentation-spr-workbench")
     ?.classList.toggle("is-library-mode", isLibraryMode);
+  documentationWorkbenchModule
+    ?.querySelector(".documentation-spr-workbench")
+    ?.classList.toggle("is-batch-record-mode", isBatchRecordMode);
   if (renderLibrary && isLibraryMode) {
     renderDocumentationSprLibrary();
   }
   if (!isLibraryMode) {
     renderDocumentationSprBatchContext();
+    renderDocumentationSprRecordSourceCard();
   } else {
     renderDocumentationSprBatchDock();
+    renderDocumentationSprRecordSourceCard();
   }
   syncDocumentationSprAiSourcesVisibility();
 }
@@ -58951,7 +58965,7 @@ function syncDocumentationSprSourceSummary() {
       ? `${selectedLegal.length} / ${legalItems.length} odabrano`
       : `${legalItems.length} propisa`;
   }
-  if (documentationSprSourceStatus) {
+  if (documentationSprSourceStatus && getDocumentationSprBatchEntries().length === 0) {
     const statusParts = [
       selectedEquipment.length ? `${selectedEquipment.length} opreme` : "",
       selectedLegal.length ? `${selectedLegal.length} propisa` : "",
@@ -58962,6 +58976,7 @@ function syncDocumentationSprSourceSummary() {
       ? statusParts.join(" · ")
       : "Predložak spreman";
   }
+  renderDocumentationSprRecordSourceCard();
   if (documentationSprSourceSummary) {
     documentationSprSourceSummary.textContent = `${selectedEquipment.length} opreme · ${selectedLegal.length} propisa`;
   }
@@ -59385,8 +59400,8 @@ function findDocumentationSprPreviousRecord(entry = {}, records = []) {
     }))
     .filter((candidate) => candidate.score >= 35)
     .sort((left, right) => (
-      right.score - left.score
-      || String(right.date || "").localeCompare(String(left.date || ""))
+      String(right.date || "").localeCompare(String(left.date || ""))
+      || right.score - left.score
       || left.index - right.index
     ))
     [0]?.record || null;
@@ -59669,6 +59684,61 @@ function getDocumentationSprEntrySourceLabel(entry = {}) {
     return "Predložak (prethodni zapisnik nije učitan)";
   }
   return "Predložak";
+}
+
+function renderDocumentationSprRecordSourceCard() {
+  const entries = getDocumentationSprBatchEntries();
+  const isVisible = documentationSprWorkbenchMode === "editor" && entries.length > 0;
+  documentationWorkbenchModule
+    ?.querySelector(".documentation-spr-workbench")
+    ?.classList.toggle("is-batch-record-mode", isVisible);
+  if (documentationSprRecordSourceCard instanceof HTMLElement) {
+    documentationSprRecordSourceCard.hidden = !isVisible;
+  }
+  if (!isVisible) {
+    documentationSprRecordSourceBadges?.replaceChildren();
+    return;
+  }
+  const activeIndex = Math.max(0, Math.min(entries.length - 1, Number(documentationSprWorkOrderBatch.activeIndex || 0)));
+  const entry = entries[activeIndex] || {};
+  const sourceState = getDocumentationSprPreviousRecordSourceState(entry);
+  const hasPrevious = Boolean(sourceState?.record || entry.sourceType === "previous_inspection" || entry.model?.sourceType === "previous_inspection");
+  const sourceLabel = sourceState?.label || entry.sourceRecordLabel || entry.model?.sourceRecordLabel || "";
+  const loading = sourceState?.status === "loading";
+  if (documentationSprRecordSourceTitle) {
+    documentationSprRecordSourceTitle.textContent = loading
+      ? "Tražim prethodni zapisnik"
+      : hasPrevious
+        ? `Podaci iz prethodnog zapisnika${sourceLabel ? `: ${sourceLabel}` : ""}`
+        : "Podaci iz templatea";
+  }
+  if (documentationSprRecordSourceDetail) {
+    documentationSprRecordSourceDetail.textContent = loading
+      ? "Prvo se traži zadnji zapisnik za istu lokaciju i objekt; ako ga nema, koristi se template."
+      : hasPrevious
+        ? "Vrijednosti su prvo povučene iz najnovijeg pronađenog zapisnika za isti kontekst. Ako taj zapis nema polje, ostaje vrijednost iz templatea."
+        : "Nema pronađenog ranijeg zapisnika za ovaj kontekst, pa se zapisnik puni iz odabranog templatea.";
+  }
+  if (documentationSprSourceStatus) {
+    documentationSprSourceStatus.textContent = loading
+      ? "Tražim prethodni zapisnik"
+      : hasPrevious
+        ? "Vrijednosti iz prethodnog zapisnika"
+        : "Vrijednosti iz templatea";
+  }
+  if (documentationSprRecordSourceBadges instanceof HTMLElement) {
+    const badgeLabels = [
+      entry.workOrder?.workOrderNumber ? `RN ${entry.workOrder.workOrderNumber}` : "",
+      entry.serviceCode || entry.serviceName || "",
+      hasPrevious ? "Prethodni zapisnik" : "Template",
+      sourceState?.status === "error" ? "Prethodni nije učitan" : "",
+    ].filter(Boolean);
+    documentationSprRecordSourceBadges.replaceChildren(...badgeLabels.map((label) => {
+      const badge = document.createElement("span");
+      badge.textContent = label;
+      return badge;
+    }));
+  }
 }
 
 function getDocumentationSprGroupSourceSummary(group = {}) {
@@ -60348,8 +60418,7 @@ function createDocumentationSprBatchDockCard(group = {}, activeIndex = 0) {
 
   const serviceRow = document.createElement("span");
   serviceRow.className = "work-order-bottom-card-services";
-  const visibleItems = items.length > 3 ? items.slice(0, 2) : items.slice(0, 3);
-  visibleItems.forEach((item) => {
+  items.forEach((item) => {
     const badge = document.createElement("button");
     const index = Number(item.dockIndex);
     const isItemActive = Number.isFinite(index) && index === activeIndex && !documentationSprWorkOrderBatch.summaryVisible;
@@ -60373,12 +60442,6 @@ function createDocumentationSprBatchDockCard(group = {}, activeIndex = 0) {
     });
     serviceRow.append(badge);
   });
-  if (items.length > visibleItems.length) {
-    const more = document.createElement("span");
-    more.className = "work-order-bottom-card-service is-neutral";
-    more.textContent = `+${items.length - visibleItems.length}`;
-    serviceRow.append(more);
-  }
   if (!items.length) {
     const empty = document.createElement("span");
     empty.className = "work-order-bottom-card-service is-neutral";
@@ -60551,11 +60614,12 @@ function renderDocumentationSprBatchContext() {
   const activeIndex = Math.max(0, Math.min(entries.length - 1, documentationSprWorkOrderBatch.activeIndex || 0));
   const activeEntry = entries[activeIndex] || null;
   if (documentationSprBatchContext) {
-    documentationSprBatchContext.hidden = !activeEntry;
+    documentationSprBatchContext.hidden = true;
   }
   if (!activeEntry) {
     documentationSprBatchTrack?.replaceChildren();
     renderDocumentationSprBatchDock();
+    renderDocumentationSprRecordSourceCard();
     return;
   }
   if (documentationSprBatchKicker) {
@@ -60595,6 +60659,7 @@ function renderDocumentationSprBatchContext() {
     }));
   }
   renderDocumentationSprBatchDock();
+  renderDocumentationSprRecordSourceCard();
 }
 
 function clearDocumentationSprBatchContext() {
@@ -60716,6 +60781,7 @@ function scheduleDocumentationSprSave() {
   }
   syncDocumentationSprActiveBatchEntryModel({ readForm: false });
   renderDocumentationSprBatchDock();
+  renderDocumentationSprRecordSourceCard();
   setDocumentationSprStatus("Lokalna izmjena", "saving");
   if (documentationSprSaveTimer) {
     window.clearTimeout(documentationSprSaveTimer);
@@ -60885,15 +60951,16 @@ function deleteSelectedDocumentationSprTemplate() {
 }
 
 function syncDocumentationSprPreviewControls() {
-  const isHidden = Boolean(documentationSprModel?.previewHidden);
-  documentationSprShell?.classList.toggle("is-preview-hidden", isHidden);
+  const isHidden = true;
+  documentationSprShell?.classList.toggle("is-preview-hidden", true);
   if (documentationSprPreviewPanel) {
-    documentationSprPreviewPanel.hidden = isHidden;
+    documentationSprPreviewPanel.hidden = true;
   }
   [documentationSprPreviewToggleButton, documentationSprPreviewPanelToggleButton].forEach((button) => {
     if (!(button instanceof HTMLButtonElement)) {
       return;
     }
+    button.hidden = true;
     button.setAttribute("aria-pressed", isHidden ? "true" : "false");
     button.textContent = isHidden ? "Prikaži preview" : (button === documentationSprPreviewPanelToggleButton ? "Sakrij" : "Sakrij preview");
   });
@@ -61123,6 +61190,14 @@ function openDocumentationSprAttachment(id = "") {
   }
   const opened = window.open(attachment.dataUrl, "_blank", "noopener,noreferrer");
   setDocumentationSprStatus(opened ? `Otvoren prilog: ${attachment.fileName}` : "Preglednik je blokirao otvaranje priloga", opened ? "saved" : "saving");
+}
+
+function openDocumentationSprAttachmentPicker() {
+  if (!(documentationSprAttachmentFileInput instanceof HTMLInputElement)) {
+    setDocumentationSprStatus("Upload priloga nije dostupan", "saving");
+    return;
+  }
+  documentationSprAttachmentFileInput.click();
 }
 
 async function appendDocumentationSprAttachments(files = []) {
@@ -62199,10 +62274,69 @@ function handleDocumentationSprDatePickerChange(event) {
   return true;
 }
 
+function mountDocumentationSprResultsRichEditor() {
+  if (!(documentationSprResultsRichHost instanceof HTMLElement) || documentationSprResultsRichControl) {
+    return;
+  }
+  documentationSprResultsRichControl = createDocumentTemplateRuntimeRichTextControl({
+    value: documentationSprModel?.resultsText || "",
+    minHeight: 220,
+    placeholder: "Upiši opis, zalijepi iz Worda ili dodaj naslov, listu i tablicu...",
+    onChange: (html) => {
+      const normalizedHtml = normalizeRichTextHtml(html);
+      if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
+        documentationSprResultsTextInput.value = normalizedHtml;
+      }
+      if (documentationSprModel) {
+        documentationSprModel.resultsText = normalizedHtml;
+      }
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    },
+  });
+  documentationSprResultsRichHost.replaceChildren(documentationSprResultsRichControl);
+}
+
+function getDocumentationSprResultsRichEditor() {
+  return documentationSprResultsRichHost?.querySelector?.(".document-template-runtime-rich-editor") || null;
+}
+
+function setDocumentationSprResultsRichValue(value = "") {
+  mountDocumentationSprResultsRichEditor();
+  const html = normalizeRichTextHtml(value);
+  if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
+    documentationSprResultsTextInput.value = html;
+  }
+  const editor = getDocumentationSprResultsRichEditor();
+  if (editor instanceof HTMLElement && editor.innerHTML !== html) {
+    editor.innerHTML = html;
+  }
+}
+
+function syncDocumentationSprResultsRichValueIntoModel() {
+  if (!documentationSprModel) {
+    return;
+  }
+  const editor = getDocumentationSprResultsRichEditor();
+  if (editor instanceof HTMLElement) {
+    const html = normalizeRichTextHtml(editor.innerHTML);
+    const text = richTextHtmlToPlainText(html);
+    documentationSprModel.resultsText = text ? html : "";
+    if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
+      documentationSprResultsTextInput.value = documentationSprModel.resultsText;
+    }
+    return;
+  }
+  if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
+    documentationSprModel.resultsText = normalizeRichTextHtml(documentationSprResultsTextInput.value);
+  }
+}
+
 function readDocumentationSprFormIntoModel() {
   if (!documentationSprModel || !documentationWorkbenchModule) {
     return;
   }
+  syncDocumentationSprResultsRichValueIntoModel();
   documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
     if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
       const fieldName = control.dataset.documentationSprField || "";
@@ -62216,12 +62350,14 @@ function writeDocumentationSprModelToForm() {
   if (!documentationSprModel || !documentationWorkbenchModule) {
     return;
   }
+  mountDocumentationSprResultsRichEditor();
   documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
     if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
       const fieldName = control.dataset.documentationSprField || "";
       writeDocumentationSprControlValue(control, fieldName, documentationSprModel[fieldName] ?? "");
     }
   });
+  setDocumentationSprResultsRichValue(documentationSprModel.resultsText || "");
   renderDocumentationSprObjectSelect();
   renderDocumentationSprNativeEditors();
   syncDocumentationSprConclusionUi();
@@ -62400,6 +62536,14 @@ function renderDocumentationSprLineList(value = "") {
   return lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
 }
 
+function renderDocumentationSprRichTextBlock(value = "") {
+  const html = normalizeRichTextHtml(value);
+  if (!richTextHtmlToPlainText(html)) {
+    return "&nbsp;";
+  }
+  return `<div class="document-template-rich-text">${sanitizeRichTextHtml(html)}</div>`;
+}
+
 function renderDocumentationSprPaperHeader(model, { useUploadedHeader = false } = {}) {
   if (useUploadedHeader && model.headerImageDataUrl) {
     return `
@@ -62570,7 +62714,7 @@ function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
       ${renderDocumentationSprSectionTitle(4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
       ${renderDocumentationSprSectionTitle(5 + sectionOffset, "REZULTATI ISPITIVANJA")}
-      <div class="documentation-spr-paper-text">${escapeHtml(model.resultsText)}</div>
+      <div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(model.resultsText)}</div>
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
@@ -63044,9 +63188,15 @@ function renderDocumentationSprPreview() {
     gridlineModel: getDocumentationSprActiveGridlineModel(),
   });
   documentationSprPreview.innerHTML = pages.join("");
+  if (documentationSprInlineDocumentBody instanceof HTMLElement) {
+    documentationSprInlineDocumentBody.innerHTML = pages.join("");
+  }
 
   if (documentationSprPreviewSummary) {
     documentationSprPreviewSummary.textContent = `${tables.length} tablica · ${tableRowCount} redaka · ${pages.length} ${pages.length === 1 ? "stranica" : "stranice"}`;
+  }
+  if (documentationSprInlineDocumentSummary) {
+    documentationSprInlineDocumentSummary.textContent = `${tables.length} tablica · ${tableRowCount} redaka · ${pages.length} ${pages.length === 1 ? "stranica" : "stranice"}`;
   }
   if (documentationSprGridSummary) {
     documentationSprGridSummary.textContent = `${rows.length} redaka iz aktivne Gridline tablice`;
@@ -64588,6 +64738,8 @@ function initDocumentationSprWorkbench() {
     documentationSprModel = loadDocumentationSprModel();
     writeDocumentationSprModelToForm();
   }
+  mountDocumentationSprResultsRichEditor();
+  setDocumentationSprResultsRichValue(documentationSprModel.resultsText || "");
   seedDocumentationSprGlobalHeaderFromLegacySources(documentationSprModel);
   renderDocumentationSprSourceControls();
   syncDocumentationSprTemplateManager();
@@ -64696,9 +64848,7 @@ function initDocumentationSprWorkbench() {
       }
       removeDocumentationSprAiSource(button.getAttribute("data-documentation-spr-ai-source-remove") || "");
     });
-    documentationSprAttachmentUploadButton?.addEventListener("click", () => {
-      documentationSprAttachmentFileInput?.click();
-    });
+    documentationSprAttachmentUploadButton?.addEventListener("click", openDocumentationSprAttachmentPicker);
     documentationSprAttachmentFileInput?.addEventListener("change", () => {
       const files = documentationSprAttachmentFileInput.files;
       if (documentationSprAttachmentFileInput instanceof HTMLInputElement) {
@@ -64709,6 +64859,13 @@ function initDocumentationSprWorkbench() {
     documentationSprAttachmentDrop?.addEventListener("dragover", (event) => {
       event.preventDefault();
       documentationSprAttachmentDrop.classList.add("is-dragging");
+    });
+    documentationSprAttachmentDrop?.addEventListener("click", openDocumentationSprAttachmentPicker);
+    documentationSprAttachmentDrop?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openDocumentationSprAttachmentPicker();
+      }
     });
     documentationSprAttachmentDrop?.addEventListener("dragleave", () => {
       documentationSprAttachmentDrop.classList.remove("is-dragging");
