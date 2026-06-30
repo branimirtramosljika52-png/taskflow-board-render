@@ -29501,7 +29501,7 @@ private fun MeasurementTableEditor(
                                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f),
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Text("H", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
+                                    Text("", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
                                 }
                             }
                         }
@@ -29886,7 +29886,7 @@ private fun MeasurementGridCell(
     )
     val hasError = value == "#ERROR"
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
-    val cellWidth = column.width.coerceIn(120, 260).dp
+    val cellWidth = column.width.coerceIn(46, 260).dp
     val fillColor = measurementFormatFillColor(cellFormat, value)
     val textColor = measurementFormatTextColor(cellFormat)
     val textAlign = measurementFormatTextAlign(cellFormat)
@@ -30265,8 +30265,15 @@ private fun DocumentationSprTemplateSectionPanel(
     var expanded by rememberSaveable(entry.key) { mutableStateOf(false) }
     val isBasicSection = remember(entry.section) { isBasicTemplateSection(entry.section) }
     val isAttachmentSection = remember(entry.section) { isDocumentationAttachmentTemplateSection(entry.section) }
+    val isResultsTextSection = remember(entry.section) { isDocumentationResultsTextSection(entry.section) }
+    val isAssessmentSection = remember(entry.section) { isDocumentationAssessmentSection(entry.section) }
     val hideDefects = remember(entry.template, entry.section.blocks, values) {
         shouldHideDocumentationDefects(entry.template, entry.section.blocks, values)
+    }
+    val visibleBlocks = remember(entry.section, isResultsTextSection, isAssessmentSection) {
+        entry.section.blocks.filterNot { block ->
+            block.type.equals("measurement_table", ignoreCase = true) && (isResultsTextSection || isAssessmentSection)
+        }
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -30302,10 +30309,14 @@ private fun DocumentationSprTemplateSectionPanel(
                         listOf(
                             if (isAttachmentSection) {
                                 "${attachmentFiles.size} prilog(a)"
+                            } else if (isResultsTextSection) {
+                                "Tekstualni opis"
+                            } else if (isAssessmentSection) {
+                                "Popis ocjena"
                             } else if (isBasicSection) {
                                 "Osnovni podaci"
-                            } else if (entry.section.blocks.isNotEmpty()) {
-                                "${entry.section.blocks.size} polja"
+                            } else if (visibleBlocks.isNotEmpty()) {
+                                "${visibleBlocks.size} polja"
                             } else {
                                 "Nema polja"
                             },
@@ -30353,10 +30364,21 @@ private fun DocumentationSprTemplateSectionPanel(
                             onRemove = onRemoveAttachment,
                         )
                     }
+                    if ((isResultsTextSection || isAssessmentSection) && visibleBlocks.isEmpty()) {
+                        Text(
+                            if (isResultsTextSection) {
+                                "Ovdje ide tekstualni opis rezultata. Gridline tablice su odvojene u svojim ispitnim listovima."
+                            } else {
+                                "Ovdje ide popis ocjena ispitnih listova. Gridline tablice se uređuju u odvojenim ispitnim listovima."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        )
+                    }
                     if (isBasicSection) {
                         TemplateBasicControls(standardControls)
                     }
-                    entry.section.blocks.forEach { block ->
+                    visibleBlocks.forEach { block ->
                         if (isAttachmentSection || (isBasicSection && isBasicStandardTemplateBlock(block))) {
                             return@forEach
                         }
@@ -32701,11 +32723,20 @@ private fun isLegalTemplateSection(section: TemplateBlockSection): Boolean {
 }
 
 private fun isMeasurementTemplateSection(section: TemplateBlockSection): Boolean {
+    return section.blocks.any { it.type.equals("measurement_table", ignoreCase = true) }
+}
+
+private fun isDocumentationResultsTextSection(section: TemplateBlockSection): Boolean {
     val lookup = section.lookupText()
-    return section.blocks.any { it.type.equals("measurement_table", ignoreCase = true) } ||
-        lookup.contains("rezultat") ||
-        lookup.contains("mjerenj") ||
-        lookup.contains("excel")
+    return lookup.contains("rezultati ispitivanja") &&
+        !lookup.contains("ocjena rezultata") &&
+        !lookup.contains("zakljuc")
+}
+
+private fun isDocumentationAssessmentSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return lookup.contains("ocjena rezultata") ||
+        (lookup.contains("ocjena") && lookup.contains("ispitivanja"))
 }
 
 private fun isBasicStandardTemplateBlock(block: WorkOrderDocumentationTemplateBlock): Boolean {
@@ -32779,7 +32810,11 @@ private fun documentationSignatureBlockSelectionSummary(
 
 private fun isDocumentationAttachmentTemplateSection(section: TemplateBlockSection): Boolean {
     val lookup = section.lookupText()
-    return lookup.contains("dodaj dokument") ||
+    return section.blocks.any { block ->
+        block.type.equals("sketch_upload", ignoreCase = true) ||
+            block.type.equals("image_upload", ignoreCase = true)
+    } ||
+        lookup.contains("dodaj dokument") ||
         lookup.contains("dokumenti") ||
         lookup.contains("prilog") ||
         lookup.contains("privit") ||
@@ -33360,7 +33395,7 @@ private fun TemplateFieldInput(
     val label = if (field.required) "${field.label} *" else field.label
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         when (field.type.lowercase(Locale.getDefault())) {
-            "dropdown" -> WorkOrderSelectField(
+            "dropdown", "select" -> WorkOrderSelectField(
                 label = label,
                 value = value,
                 valueLabel = field.options.firstOrNull { it.value == value }?.label ?: value.ifBlank { "Odaberi" },
@@ -33393,7 +33428,7 @@ private fun TemplateFieldInput(
                     }
                 }
             }
-            "longtext" -> OutlinedTextField(
+            "longtext", "textarea", "richtext" -> OutlinedTextField(
                 value = value,
                 onValueChange = onChange,
                 modifier = Modifier.fillMaxWidth(),
