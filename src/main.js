@@ -57635,10 +57635,18 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
 function normalizeDocumentationSprGridlineModel(model) {
   const gridlineApi = typeof window !== "undefined" ? window.SafeNexusGridline : null;
   if (gridlineApi?.normalizeModel) {
-    return gridlineApi.normalizeModel(model, {
+    const source = model && typeof model === "object" && !Array.isArray(model) ? model : {};
+    const normalized = gridlineApi.normalizeModel(source, {
       defaultRows: DOCUMENTATION_SPR_GRID_ROW_COUNT,
       defaultColumns: DOCUMENTATION_SPR_GRID_COLUMN_COUNT,
     });
+    const pageOrientation = String(source.pageOrientation || source.orientation || "").trim().toLowerCase() === "landscape"
+      ? "landscape"
+      : "";
+    return {
+      ...normalized,
+      pageOrientation,
+    };
   }
   return model && typeof model === "object"
     ? model
@@ -57717,6 +57725,9 @@ function cloneDocumentationSprMeasurementSheet(sheet = {}) {
     rows,
     merges,
     headerRows,
+    pageOrientation: normalizeDocumentationSprPageOrientation(source.pageOrientation || source.orientation) === "landscape"
+      ? "landscape"
+      : "",
   };
 }
 
@@ -57755,6 +57766,12 @@ function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
     chapterTitle: String(table.chapterTitle || "").trim(),
     pageOrientation: getDocumentationSprMeasurementPageOrientation(table),
     sheet: cloneDocumentationSprMeasurementSheet(table.sheet),
+    gridlineModel: table.gridlineModel && typeof table.gridlineModel === "object" && !Array.isArray(table.gridlineModel)
+      ? normalizeDocumentationSprGridlineModel({
+        ...table.gridlineModel,
+        pageOrientation: table.gridlineModel.pageOrientation || table.pageOrientation || table.orientation || table.sheet?.pageOrientation || "",
+      })
+      : null,
   };
 }
 
@@ -57797,8 +57814,15 @@ function mergeDocumentationSprMeasurementTableWithDefault(defaultTable = {}, exi
     && defaultColumnIds.every((id, index) => existingColumnIds[index] === id);
   return {
     ...defaultTable,
+    label: String(existingTable.label || defaultTable.label || "").trim(),
+    helpText: String(existingTable.helpText || defaultTable.helpText || "").trim(),
+    summary: String(existingTable.summary || defaultTable.summary || existingTable.label || defaultTable.label || "").trim(),
+    chapterTitle: String(existingTable.chapterTitle || defaultTable.chapterTitle || "").trim(),
+    assessmentLabel: String(existingTable.assessmentLabel || defaultTable.assessmentLabel || "").trim(),
+    pageOrientation: existingTable.pageOrientation || existingTable.orientation || defaultTable.pageOrientation,
     enabled: existingTable.enabled !== false,
     sheet: hasCompatibleSheet ? existingTable.sheet : defaultTable.sheet,
+    gridlineModel: existingTable.gridlineModel || defaultTable.gridlineModel || null,
   };
 }
 
@@ -58433,6 +58457,15 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   }
   const nativeModel = buildDocumentationNativeTemplateModel(preset);
   const currentModel = normalizeDocumentationSprModel(entry.model);
+  const currentChecklists = Array.isArray(currentModel.checklists) && currentModel.checklists.length
+    ? currentModel.checklists
+    : nativeModel.checklists;
+  const currentAssessments = Array.isArray(currentModel.measurementAssessments) && currentModel.measurementAssessments.length
+    ? currentModel.measurementAssessments
+    : nativeModel.measurementAssessments;
+  const currentTables = Array.isArray(currentModel.measurementTables) && currentModel.measurementTables.length
+    ? currentModel.measurementTables
+    : nativeModel.measurementTables;
   return {
     ...entry,
     name: entry.name || preset.name,
@@ -58446,20 +58479,20 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       templateCode: entry.name || preset.name,
       serviceCode: nativeModel.serviceCode,
       serviceName: nativeModel.serviceName,
-      reportTitle: nativeModel.reportTitle,
-      coverSubtitle: nativeModel.coverSubtitle,
-      measurementTableTitle: nativeModel.measurementTableTitle,
-      resultsText: nativeModel.resultsText,
+      reportTitle: currentModel.reportTitle || nativeModel.reportTitle,
+      coverSubtitle: currentModel.coverSubtitle || nativeModel.coverSubtitle,
+      measurementTableTitle: currentModel.measurementTableTitle || nativeModel.measurementTableTitle,
+      resultsText: currentModel.resultsText || nativeModel.resultsText,
       technicalData: currentModel.technicalData || nativeModel.technicalData,
-      eiNote: nativeModel.eiNote,
-      eiminNote: nativeModel.eiminNote,
-      assessmentLabel: nativeModel.assessmentLabel,
-      conclusionLead: nativeModel.conclusionLead,
-      validitySentence: nativeModel.validitySentence,
-      checklists: nativeModel.checklists,
-      measurementAssessments: nativeModel.measurementAssessments,
-      measurementTables: nativeModel.measurementTables,
-      gridlineModel: nativeModel.gridlineModel,
+      eiNote: currentModel.eiNote || nativeModel.eiNote,
+      eiminNote: currentModel.eiminNote || nativeModel.eiminNote,
+      assessmentLabel: currentModel.assessmentLabel || nativeModel.assessmentLabel,
+      conclusionLead: currentModel.conclusionLead || nativeModel.conclusionLead,
+      validitySentence: currentModel.validitySentence || nativeModel.validitySentence,
+      checklists: currentChecklists,
+      measurementAssessments: currentAssessments,
+      measurementTables: currentTables,
+      gridlineModel: currentModel.gridlineModel || nativeModel.gridlineModel,
     }),
   };
 }
@@ -62321,6 +62354,15 @@ function buildDocumentationSprMeasurementFormatFromGridlineStyle(style = {}, val
 }
 
 function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
+  if (table?.gridlineModel && typeof table.gridlineModel === "object" && !Array.isArray(table.gridlineModel)) {
+    const sourceModel = table.gridlineModel;
+    return normalizeDocumentationSprGridlineModel({
+      ...sourceModel,
+      title: sourceModel.title || table.label || "Gridline tablica",
+      subtitle: sourceModel.subtitle || table.summary || table.chapterTitle || "Gridline tablica",
+      pageOrientation: sourceModel.pageOrientation || table.pageOrientation || table.orientation || table.sheet?.pageOrientation || "",
+    });
+  }
   const columns = table?.sheet?.columns || [];
   const rows = [
     columns.map((column) => column.label || column.id || ""),
@@ -62373,6 +62415,9 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
         }
       });
     });
+    model.pageOrientation = table.pageOrientation === "landscape" || table.sheet?.pageOrientation === "landscape"
+      ? "landscape"
+      : "";
     model.aiColumns = Object.fromEntries(columns.map((column, columnIndex) => [
       String(columnIndex),
       column.aiMapping && typeof column.aiMapping === "object"
@@ -62404,6 +62449,9 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
     ])),
     rowHeights: {},
     cellStyles: {},
+    pageOrientation: table.pageOrientation === "landscape" || table.sheet?.pageOrientation === "landscape"
+      ? "landscape"
+      : "",
     aiColumns: Object.fromEntries(columns.map((column, columnIndex) => [
       String(columnIndex),
       column.aiMapping && typeof column.aiMapping === "object"
@@ -62424,13 +62472,18 @@ function syncDocumentationSprNativeMeasurementTablesIntoModel() {
       return;
     }
     entry.api.flush?.();
-    const gridlineModel = normalizeDocumentationSprGridlineModel(entry.api.getModel());
+    const rawGridlineModel = entry.api.getModel();
+    const gridlineModel = normalizeDocumentationSprGridlineModel({
+      ...rawGridlineModel,
+      pageOrientation: rawGridlineModel?.pageOrientation || table.pageOrientation || table.sheet?.pageOrientation || "",
+    });
     const title = String(gridlineModel.title || table.label || "").trim();
     const subtitle = String(gridlineModel.subtitle || table.summary || table.chapterTitle || "").trim();
     documentationSprModel.measurementTables[index] = {
       ...table,
       label: title || table.label,
       summary: subtitle || table.summary,
+      gridlineModel,
       sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel }, table),
     };
   });
@@ -62618,13 +62671,17 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
       if (!currentTable) {
         return;
       }
-      const gridlineModel = normalizeDocumentationSprGridlineModel(nextModel);
+      const gridlineModel = normalizeDocumentationSprGridlineModel({
+        ...nextModel,
+        pageOrientation: nextModel?.pageOrientation || currentTable.pageOrientation || currentTable.sheet?.pageOrientation || "",
+      });
       const title = String(gridlineModel.title || currentTable.label || "").trim();
       const subtitle = String(gridlineModel.subtitle || currentTable.summary || currentTable.chapterTitle || "").trim();
       documentationSprModel.measurementTables[tableIndex] = {
         ...currentTable,
         label: title || currentTable.label,
         summary: subtitle || currentTable.summary,
+        gridlineModel,
         sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel }, currentTable),
       };
       syncDocumentationSprSectionTags();
