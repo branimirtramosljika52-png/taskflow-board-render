@@ -161061,6 +161061,32 @@ const JOB_AI_STYLE_LABELS = Object.freeze({
   legal: "formalno / dokumentacijski",
 });
 
+const JOB_AI_RESPONSE_TYPE_LABELS = Object.freeze({
+  paragraph: "Odlomak",
+  sentence: "Jedna rečenica",
+  bullets: "Lista",
+  table: "Tablica",
+  condition: "Zadovoljava / Ne zadovoljava",
+});
+
+const JOB_AI_STRUCTURE_LABELS = Object.freeze({
+  answer_reason: "Odgovor + razlog",
+  conclusion_reason: "Zaključak + razlog",
+  answer_only: "Samo odgovor",
+  finding_measure: "Nalaz + mjera",
+});
+
+const JOB_AI_TENSE_LABELS = Object.freeze({
+  present: "Sadašnje vrijeme",
+  past: "Prošlo vrijeme",
+});
+
+const JOB_AI_VOICE_LABELS = Object.freeze({
+  neutral: "Bez osobe",
+  active: "Aktiv",
+  passive: "Pasiv",
+});
+
 function normalizeJobSheet(value = "basic") {
   const normalized = String(value || "").trim();
   return ["basic", "environment", "conditions", "hazards", "ppe"].includes(normalized) ? normalized : "basic";
@@ -161205,14 +161231,26 @@ function createJobHazardDraft(row = {}, options = {}) {
 function normalizeJobAiInstructionConfig(config = {}) {
   const source = config && typeof config === "object" ? config : {};
   const style = String(source.style || "professional").trim();
+  const responseType = String(source.responseType || "paragraph").trim();
+  const answerStructure = String(source.answerStructure || "answer_reason").trim();
+  const tense = String(source.tense || "present").trim();
+  const voice = String(source.voice || "neutral").trim();
   const probability = String(source.probability || "").trim().toLowerCase();
   const consequence = normalizeRiskAssessmentConsequenceKey(source.consequence || "");
   return {
     instruction: String(source.instruction || "").trim(),
     mustInclude: String(source.mustInclude || "").trim(),
     avoid: String(source.avoid || "").trim(),
+    responseType: JOB_AI_RESPONSE_TYPE_LABELS[responseType] ? responseType : "paragraph",
+    answerStructure: JOB_AI_STRUCTURE_LABELS[answerStructure] ? answerStructure : "answer_reason",
     style: JOB_AI_STYLE_LABELS[style] ? style : "professional",
     textLength: String(source.textLength || "").trim(),
+    tense: JOB_AI_TENSE_LABELS[tense] ? tense : "present",
+    voice: JOB_AI_VOICE_LABELS[voice] ? voice : "neutral",
+    template: String(source.template || "").trim(),
+    correctExample: String(source.correctExample || "").trim(),
+    wrongExample: String(source.wrongExample || "").trim(),
+    userQuestions: String(source.userQuestions || "").trim(),
     probability: ["mv", "v", "vv"].includes(probability) ? probability : "",
     consequence,
     possibleConsequences: String(source.possibleConsequences || "").trim(),
@@ -161230,8 +161268,16 @@ function hasJobAiInstructionConfig(config = {}) {
     normalized.instruction
     || normalized.mustInclude
     || normalized.avoid
+    || normalized.responseType !== "paragraph"
+    || normalized.answerStructure !== "answer_reason"
     || normalized.style !== "professional"
     || normalized.textLength
+    || normalized.tense !== "present"
+    || normalized.voice !== "neutral"
+    || normalized.template
+    || normalized.correctExample
+    || normalized.wrongExample
+    || normalized.userQuestions
     || normalized.probability
     || normalized.consequence
     || normalized.possibleConsequences
@@ -161952,8 +161998,16 @@ function collectSettingsJobAiConfigFromContainer(container = null) {
     instruction: container.querySelector('[data-settings-job-ai-field="instruction"]')?.value || "",
     mustInclude: container.querySelector('[data-settings-job-ai-field="mustInclude"]')?.value || "",
     avoid: container.querySelector('[data-settings-job-ai-field="avoid"]')?.value || "",
+    responseType: container.querySelector('[data-settings-job-ai-field="responseType"]')?.value || "paragraph",
+    answerStructure: container.querySelector('[data-settings-job-ai-field="answerStructure"]')?.value || "answer_reason",
     style: container.querySelector('[data-settings-job-ai-field="style"]')?.value || "professional",
     textLength: container.querySelector('[data-settings-job-ai-field="textLength"]')?.value || "",
+    tense: container.querySelector('[data-settings-job-ai-field="tense"]')?.value || "present",
+    voice: container.querySelector('[data-settings-job-ai-field="voice"]')?.value || "neutral",
+    template: container.querySelector('[data-settings-job-ai-field="template"]')?.value || "",
+    correctExample: container.querySelector('[data-settings-job-ai-field="correctExample"]')?.value || "",
+    wrongExample: container.querySelector('[data-settings-job-ai-field="wrongExample"]')?.value || "",
+    userQuestions: container.querySelector('[data-settings-job-ai-field="userQuestions"]')?.value || "",
     probability: container.querySelector('[data-settings-job-ai-field="probability"]')?.value || "",
     consequence: container.querySelector('[data-settings-job-ai-field="consequence"]')?.value || "",
     possibleConsequences: container.querySelector('[data-settings-job-ai-field="possibleConsequences"]')?.value || "",
@@ -162003,6 +162057,376 @@ function renderSettingsJobAiSelectOptions(options = [], selectedValue = "", empt
       .filter((option) => option.value)
       .map((option) => `<option value="${escapeHtml(option.value)}"${String(option.value) === String(selectedValue ?? "") ? " selected" : ""}>${escapeHtml(option.label)}</option>`),
   ].join("");
+}
+
+function renderSettingsJobAiLabelOptions(labels = {}, selectedValue = "") {
+  return Object.entries(labels)
+    .map(([value, label]) => `<option value="${escapeHtml(value)}"${String(value) === String(selectedValue ?? "") ? " selected" : ""}>${escapeHtml(label)}</option>`)
+    .join("");
+}
+
+function getSettingsJobAiEditorTypeLabel(field = {}) {
+  if (field.type === "riskRow") {
+    return "Zadovoljava / Ne zadovoljava / Nije moguće utvrditi";
+  }
+  if (field.type === "purPoint") {
+    return "Posebni uvjeti rada";
+  }
+  if (String(field.key || "").startsWith("riskJob:")) {
+    return "ARMOR obrazac";
+  }
+  return "Tekstualno polje";
+}
+
+function getSettingsJobAiEditorUsageTags(field = {}) {
+  const tags = [];
+  const group = String(field.group || "").trim();
+  if (group.includes("ARMOR")) {
+    tags.push("ARMOR obrasci");
+  }
+  if (group.includes("Radni okoliš")) {
+    tags.push("Radni okoliš");
+  }
+  if (field.type === "riskRow") {
+    tags.push("Opasnosti / štetnosti / napori");
+  }
+  if (field.type === "purPoint") {
+    tags.push("PUR");
+  }
+  if (!tags.length) {
+    tags.push("NexAI polje");
+  }
+  return Array.from(new Set(tags)).slice(0, 5);
+}
+
+function renderSettingsJobAiEditorPanel(panelKey = "", activePanel = "format", innerHtml = "") {
+  return `<section class="settings-ai-editor-panel" data-settings-job-ai-editor-panel="${escapeHtml(panelKey)}"${panelKey === activePanel ? "" : " hidden"}>${innerHtml}</section>`;
+}
+
+function renderSettingsJobAiEditorBody(field = {}, config = {}, canManage = false) {
+  const disabled = canManage ? "" : "disabled";
+  const activePanel = "format";
+  const row = field.row || {};
+  const point = field.point || {};
+  const defaultProbability = field.type === "riskRow"
+    ? getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, row.probability, "nije zadano")
+    : "";
+  const defaultConsequence = field.type === "riskRow"
+    ? getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, row.consequence, "nije zadano")
+    : "";
+  const defaultRisk = field.type === "riskRow"
+    ? (row.riskLevel || calculateRiskAssessmentRiskLevel(row.probability, row.consequence) || "N/P")
+    : "";
+  const usageTags = getSettingsJobAiEditorUsageTags(field);
+  const configured = hasJobAiInstructionConfig(config);
+  const requiredPhrases = String(config.mustInclude || "").split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
+  const forbiddenPhrases = String(config.avoid || "").split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
+  const questionLines = String(config.userQuestions || "").split(/\n+/).map((item) => item.trim()).filter(Boolean);
+  const title = field.label || "AI polje";
+  const meta = [field.group, field.meta].filter(Boolean).join(" · ");
+  const defaultDescription = field.type === "riskRow"
+    ? [row.category, row.group, row.code, row.hazard].filter(Boolean).join(" · ")
+    : (field.type === "purPoint" ? point.description : meta);
+  const generalPanel = `
+    <div class="settings-ai-editor-section-card">
+      <div class="settings-ai-editor-section-head">
+        <span>1.</span>
+        <strong>Osnovni podaci</strong>
+      </div>
+      <div class="settings-ai-editor-field-grid">
+        <div class="settings-ai-editor-readonly">
+          <small>Naziv</small>
+          <strong>${escapeHtml(title)}</strong>
+        </div>
+        <div class="settings-ai-editor-readonly">
+          <small>Tip odgovora</small>
+          <strong>${escapeHtml(getSettingsJobAiEditorTypeLabel(field))}</strong>
+        </div>
+        <div class="settings-ai-editor-readonly field-span-full">
+          <small>Opis / kontekst</small>
+          <strong>${escapeHtml(defaultDescription || "Nema dodatnog konteksta.")}</strong>
+        </div>
+        ${field.type === "riskRow" ? `
+          <label class="field">
+            <span>Vjerojatnost</span>
+            <select data-settings-job-ai-field="probability" ${disabled}>
+              ${renderSettingsJobAiSelectOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, config.probability, "Default")}
+            </select>
+          </label>
+          <label class="field">
+            <span>Posljedice</span>
+            <select data-settings-job-ai-field="consequence" ${disabled}>
+              ${renderSettingsJobAiSelectOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, config.consequence, "Default")}
+            </select>
+          </label>
+        ` : ""}
+      </div>
+    </div>
+  `;
+  const rulesPanel = `
+    <div class="settings-ai-editor-section-card">
+      <div class="settings-ai-editor-section-head">
+        <span>2.</span>
+        <strong>Opća AI pravila</strong>
+      </div>
+      <div class="settings-ai-editor-field-grid">
+        <label class="field field-span-full">
+          <span>Uputa za NexAI</span>
+          <textarea data-settings-job-ai-field="instruction" rows="5" placeholder="Kada i kako NexAI smije popuniti ovo polje..." ${disabled}>${escapeHtml(config.instruction)}</textarea>
+        </label>
+        <label class="field">
+          <span>Obavezne riječi / izrazi</span>
+          <textarea data-settings-job-ai-field="mustInclude" rows="4" placeholder="Jedan izraz po retku ili odvojeno zarezom." ${disabled}>${escapeHtml(config.mustInclude)}</textarea>
+        </label>
+        <label class="field">
+          <span>Zabranjene riječi / izrazi</span>
+          <textarea data-settings-job-ai-field="avoid" rows="4" placeholder="Npr. čini se, izgleda, možda, pretpostavlja se..." ${disabled}>${escapeHtml(config.avoid)}</textarea>
+        </label>
+        <label class="field field-span-full">
+          <span>Dodatni uvjeti / interna napomena</span>
+          <textarea data-settings-job-ai-field="note" rows="3" placeholder="Napomena za provjeru prije korištenja AI odgovora." ${disabled}>${escapeHtml(config.note)}</textarea>
+        </label>
+      </div>
+    </div>
+  `;
+  const formatPanel = `
+    <div class="settings-ai-editor-section-card">
+      <div class="settings-ai-editor-section-head">
+        <span>3.</span>
+        <strong>Format odgovora</strong>
+      </div>
+      <p class="settings-ai-editor-section-copy">Definiraj kako AI treba formulirati odgovor za ovo pitanje.</p>
+      <div class="settings-ai-editor-format-grid">
+        <label class="field">
+          <span>1. Tip odgovora</span>
+          <select data-settings-job-ai-field="responseType" ${disabled}>
+            ${renderSettingsJobAiLabelOptions(JOB_AI_RESPONSE_TYPE_LABELS, config.responseType)}
+          </select>
+        </label>
+        <label class="field">
+          <span>2. Maksimalna duljina</span>
+          <input data-settings-job-ai-field="textLength" value="${escapeHtml(config.textLength)}" placeholder="npr. 250 znakova" ${disabled} />
+        </label>
+        <label class="field">
+          <span>3. Stil</span>
+          <select data-settings-job-ai-field="style" ${disabled}>
+            ${renderSettingsJobAiLabelOptions(JOB_AI_STYLE_LABELS, config.style)}
+          </select>
+        </label>
+        <label class="field">
+          <span>4. Struktura odgovora</span>
+          <select data-settings-job-ai-field="answerStructure" ${disabled}>
+            ${renderSettingsJobAiLabelOptions(JOB_AI_STRUCTURE_LABELS, config.answerStructure)}
+          </select>
+        </label>
+        <label class="field">
+          <span>5. Vrijeme</span>
+          <select data-settings-job-ai-field="tense" ${disabled}>
+            ${renderSettingsJobAiLabelOptions(JOB_AI_TENSE_LABELS, config.tense)}
+          </select>
+        </label>
+        <label class="field">
+          <span>6. Osoba</span>
+          <select data-settings-job-ai-field="voice" ${disabled}>
+            ${renderSettingsJobAiLabelOptions(JOB_AI_VOICE_LABELS, config.voice)}
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="settings-ai-editor-section-grid">
+      <div class="settings-ai-editor-section-card">
+        <div class="settings-ai-editor-section-head">
+          <span>7.</span>
+          <strong>Obavezne riječi / izrazi</strong>
+        </div>
+        <div class="settings-ai-editor-chip-list">
+          ${requiredPhrases.length ? requiredPhrases.map((phrase) => `<span>${escapeHtml(phrase)}</span>`).join("") : "<em>Nema obaveznih izraza.</em>"}
+        </div>
+      </div>
+      <div class="settings-ai-editor-section-card">
+        <div class="settings-ai-editor-section-head">
+          <span>8.</span>
+          <strong>Zabranjene riječi / izrazi</strong>
+        </div>
+        <div class="settings-ai-editor-chip-list is-danger">
+          ${forbiddenPhrases.length ? forbiddenPhrases.map((phrase) => `<span>${escapeHtml(phrase)}</span>`).join("") : "<em>Nema zabranjenih izraza.</em>"}
+        </div>
+      </div>
+    </div>
+    <div class="settings-ai-editor-section-card">
+      <div class="settings-ai-editor-section-head">
+        <span>9.</span>
+        <strong>Predložak odgovora</strong>
+      </div>
+      <label class="field field-span-full">
+        <span>Template</span>
+        <textarea data-settings-job-ai-field="template" rows="4" placeholder="Primjer: {zaključak}.&#10;&#10;{razlog}." ${disabled}>${escapeHtml(config.template)}</textarea>
+      </label>
+      <p class="settings-ai-editor-section-copy">Dostupne varijable: {zaključak}, {razlog}, {napomena}, {stanje}, {preporuka}, {posao}, {stavka}, {sifra}.</p>
+    </div>
+  `;
+  const examplesPanel = `
+    <div class="settings-ai-editor-section-grid">
+      <div class="settings-ai-editor-section-card is-positive">
+        <div class="settings-ai-editor-section-head">
+          <span>10.</span>
+          <strong>Primjer ispravnog odgovora</strong>
+        </div>
+        <textarea data-settings-job-ai-field="correctExample" rows="8" placeholder="Kako bi trebao izgledati dobar odgovor." ${disabled}>${escapeHtml(config.correctExample)}</textarea>
+      </div>
+      <div class="settings-ai-editor-section-card is-negative">
+        <div class="settings-ai-editor-section-head">
+          <span>11.</span>
+          <strong>Primjer neispravnog odgovora</strong>
+        </div>
+        <textarea data-settings-job-ai-field="wrongExample" rows="8" placeholder="Primjer odgovora koji nije u skladu s pravilima." ${disabled}>${escapeHtml(config.wrongExample)}</textarea>
+      </div>
+    </div>
+  `;
+  const questionsPanel = `
+    <div class="settings-ai-editor-section-card">
+      <div class="settings-ai-editor-section-head">
+        <span>12.</span>
+        <strong>AI pitanja korisniku</strong>
+      </div>
+      <p class="settings-ai-editor-section-copy">Ova pitanja NexAI može postaviti korisniku kada nema dovoljno podataka za siguran odgovor.</p>
+      <label class="field field-span-full">
+        <span>Pitanja</span>
+        <textarea data-settings-job-ai-field="userQuestions" rows="9" placeholder="Jedno pitanje po retku." ${disabled}>${escapeHtml(config.userQuestions)}</textarea>
+      </label>
+    </div>
+  `;
+  const testPanel = `
+    <div class="settings-ai-editor-section-card">
+      <div class="settings-ai-editor-section-head">
+        <span>13.</span>
+        <strong>Brzi test formata</strong>
+      </div>
+      <div class="settings-ai-editor-test-grid">
+        <label class="field field-span-full">
+          <span>Test unos</span>
+          <textarea data-settings-job-ai-test-input rows="5" placeholder="Upiši test odgovor ili situaciju za provjeru formata."></textarea>
+        </label>
+        <button type="button" class="ghost-button" data-settings-job-ai-test>Provjeri format</button>
+        <output data-settings-job-ai-test-output>Rezultat testa prikazat će se ovdje.</output>
+      </div>
+    </div>
+  `;
+  const measuresPanel = `
+    <div class="settings-ai-editor-section-card">
+      <div class="settings-ai-editor-section-head">
+        <span>14.</span>
+        <strong>ARMOR tekstovi i mjere</strong>
+      </div>
+      <div class="settings-ai-editor-field-grid">
+        <label class="field field-span-full">
+          <span>Objašnjenje / napomena</span>
+          <textarea data-settings-job-ai-field="workNote" rows="3" placeholder="Tekst koji ide u objašnjenje/napomenu ARMOR retka." ${disabled}>${escapeHtml(config.workNote)}</textarea>
+        </label>
+        <label class="field field-span-full">
+          <span>Moguće posljedice</span>
+          <textarea data-settings-job-ai-field="possibleConsequences" rows="3" placeholder="npr. ozljeda, pad, udar, oštećenje zdravlja..." ${disabled}>${escapeHtml(config.possibleConsequences)}</textarea>
+        </label>
+        <label class="field">
+          <span>Postojeće mjere</span>
+          <textarea data-settings-job-ai-field="existingMeasures" rows="4" placeholder="Primijenjene mjere i postupci." ${disabled}>${escapeHtml(config.existingMeasures)}</textarea>
+        </label>
+        <label class="field">
+          <span>Dodatne mjere</span>
+          <textarea data-settings-job-ai-field="additionalMeasures" rows="4" placeholder="Dodatne mjere ili rokovi." ${disabled}>${escapeHtml(config.additionalMeasures)}</textarea>
+        </label>
+        <label class="field field-span-full">
+          <span>Mjere / zaključak</span>
+          <textarea data-settings-job-ai-field="measures" rows="3" placeholder="Završne mjere koje se spajaju u procjenu." ${disabled}>${escapeHtml(config.measures)}</textarea>
+        </label>
+      </div>
+    </div>
+  `;
+  const tabs = [
+    ["general", "OPĆENITO"],
+    ["rules", "OPĆA AI PRAVILA"],
+    ["format", "FORMAT ODGOVORA"],
+    ["examples", "PRIMJERI ODGOVORA"],
+    ["questions", "AI PITANJA KORISNIKU"],
+    ["test", "TEST AI"],
+  ];
+  const panels = [
+    renderSettingsJobAiEditorPanel("general", activePanel, generalPanel),
+    renderSettingsJobAiEditorPanel("rules", activePanel, rulesPanel),
+    renderSettingsJobAiEditorPanel("format", activePanel, formatPanel),
+    renderSettingsJobAiEditorPanel("examples", activePanel, examplesPanel),
+    renderSettingsJobAiEditorPanel("questions", activePanel, questionsPanel),
+    renderSettingsJobAiEditorPanel("test", activePanel, testPanel),
+    renderSettingsJobAiEditorPanel("measures", activePanel, measuresPanel),
+  ].join("");
+  const sideFormatRows = [
+    ["Tip odgovora", JOB_AI_RESPONSE_TYPE_LABELS[config.responseType] || JOB_AI_RESPONSE_TYPE_LABELS.paragraph],
+    ["Maks. duljina", config.textLength || "Nije zadano"],
+    ["Stil", JOB_AI_STYLE_LABELS[config.style] || JOB_AI_STYLE_LABELS.professional],
+    ["Struktura", JOB_AI_STRUCTURE_LABELS[config.answerStructure] || JOB_AI_STRUCTURE_LABELS.answer_reason],
+    ["Vrijeme", JOB_AI_TENSE_LABELS[config.tense] || JOB_AI_TENSE_LABELS.present],
+    ["Osoba", JOB_AI_VOICE_LABELS[config.voice] || JOB_AI_VOICE_LABELS.neutral],
+    ["Obavezne riječi", String(requiredPhrases.length)],
+    ["Zabranjene riječi", String(forbiddenPhrases.length)],
+  ];
+  return `
+    <div class="settings-ai-editor-shell">
+      <div class="settings-ai-editor-titlebar">
+        <div>
+          <p><span>Settings</span> › <span>NexAI blokovi</span> › <b>${escapeHtml(title)}</b></p>
+          <h3>Uredi AI polje <span class="settings-ai-editor-active-badge">${configured ? "Aktivno" : "Default"}</span></h3>
+        </div>
+        <div class="settings-ai-editor-toolbar">
+          <button type="button" class="ghost-button" disabled>Povijest verzija</button>
+          <button type="button" class="ghost-button danger" data-settings-job-ai-editor-clear ${canManage ? "" : "disabled"}>Obriši</button>
+          <button type="button" class="primary-button" data-settings-job-ai-editor-save>${canManage ? "Spremi promjene" : "Zatvori"}</button>
+        </div>
+      </div>
+      <nav class="settings-ai-editor-tabs" aria-label="AI editor tabovi">
+        ${tabs.map(([key, label]) => `<button type="button" data-settings-job-ai-editor-tab="${escapeHtml(key)}" aria-selected="${key === activePanel ? "true" : "false"}">${escapeHtml(label)}</button>`).join("")}
+      </nav>
+      <div class="settings-ai-editor-layout">
+        <main class="settings-ai-editor-main">${panels}</main>
+        <aside class="settings-ai-editor-side">
+          <section>
+            <h4>Pregled pitanja</h4>
+            <dl>
+              <dt>Naziv</dt><dd>${escapeHtml(title)}</dd>
+              <dt>Opis</dt><dd>${escapeHtml(defaultDescription || "Nema opisa.")}</dd>
+              <dt>Tip odgovora</dt><dd>${escapeHtml(getSettingsJobAiEditorTypeLabel(field))}</dd>
+              <dt>Aktivno</dt><dd><span class="settings-ai-editor-mini-badge ${configured ? "is-active" : ""}">${configured ? "Da" : "Default"}</span></dd>
+            </dl>
+            <div class="settings-ai-editor-side-tags">${usageTags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+          </section>
+          <section>
+            <h4>Pregled formata</h4>
+            <ul>
+              ${sideFormatRows.map(([label, value]) => `<li><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></li>`).join("")}
+            </ul>
+          </section>
+          ${field.type === "riskRow" ? `
+            <section>
+              <h4>ARMOR default</h4>
+              <ul>
+                <li><span>Vjerojatnost</span><strong>${escapeHtml(defaultProbability)}</strong></li>
+                <li><span>Posljedica</span><strong>${escapeHtml(defaultConsequence)}</strong></li>
+                <li><span>Rizik</span><strong>${escapeHtml(defaultRisk)}</strong></li>
+              </ul>
+            </section>
+          ` : ""}
+          <section>
+            <h4>Brzi test formata</h4>
+            <textarea data-settings-job-ai-side-test-input rows="5" placeholder="Upiši test odgovor..."></textarea>
+            <button type="button" class="ghost-button" data-settings-job-ai-test>Provjeri format</button>
+          </section>
+          <section>
+            <h4>Pitanja korisniku</h4>
+            <p>${questionLines.length ? `${questionLines.length} pitanja definirano.` : "Nema definiranih pitanja."}</p>
+          </section>
+        </aside>
+      </div>
+    </div>
+  `;
 }
 
 function renderSettingsJobAiGeneralCard(field = {}, config = {}, canManage = false) {
@@ -162265,10 +162689,10 @@ function ensureSettingsJobAiModal() {
     if (!settingsJobAiActiveModalKey || !settingsJobAiModalElements?.body) {
       return;
     }
-    settingsJobAiModalElements.body.querySelectorAll("input, textarea").forEach((input) => {
+    settingsJobAiModalElements.body.querySelectorAll("[data-settings-job-ai-field]").forEach((input) => {
       input.value = "";
     });
-    settingsJobAiModalElements.body.querySelectorAll("select").forEach((select) => {
+    settingsJobAiModalElements.body.querySelectorAll("select[data-settings-job-ai-field]").forEach((select) => {
       select.value = select.querySelector("option")?.value || "";
     });
     setSettingsJobAiDraftConfig(settingsJobAiActiveModalKey, collectSettingsJobAiConfigFromContainer(settingsJobAiModalElements.body));
@@ -162281,6 +162705,63 @@ function ensureSettingsJobAiModal() {
   settingsJobAiModalElements.body?.addEventListener("change", () => {
     syncSettingsJobAiActiveModalDraft();
     refreshSettingsJobAiCardStatuses();
+  });
+  settingsJobAiModalElements.body?.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const tab = target?.closest("[data-settings-job-ai-editor-tab]");
+    if (tab instanceof HTMLElement) {
+      event.preventDefault();
+      const key = String(tab.dataset.settingsJobAiEditorTab || "").trim();
+      const shell = tab.closest(".settings-ai-editor-shell");
+      if (!key || !shell) {
+        return;
+      }
+      shell.querySelectorAll("[data-settings-job-ai-editor-tab]").forEach((button) => {
+        button.setAttribute("aria-selected", button === tab ? "true" : "false");
+      });
+      shell.querySelectorAll("[data-settings-job-ai-editor-panel]").forEach((panel) => {
+        panel.hidden = String(panel.dataset.settingsJobAiEditorPanel || "").trim() !== key;
+      });
+      return;
+    }
+    const clearProxy = target?.closest("[data-settings-job-ai-editor-clear]");
+    if (clearProxy instanceof HTMLElement) {
+      event.preventDefault();
+      settingsJobAiModalElements.clearButton?.click();
+      return;
+    }
+    const saveProxy = target?.closest("[data-settings-job-ai-editor-save]");
+    if (saveProxy instanceof HTMLElement) {
+      event.preventDefault();
+      closeSettingsJobAiModal();
+      return;
+    }
+    const testButton = target?.closest("[data-settings-job-ai-test]");
+    if (testButton instanceof HTMLElement) {
+      event.preventDefault();
+      const body = settingsJobAiModalElements?.body;
+      if (!body) {
+        return;
+      }
+      syncSettingsJobAiActiveModalDraft();
+      const field = getSettingsJobAiFieldDefinition(settingsJobAiActiveModalKey);
+      const config = collectSettingsJobAiConfigFromContainer(body);
+      const testValue = String(
+        body.querySelector("[data-settings-job-ai-test-input]")?.value
+        || body.querySelector("[data-settings-job-ai-side-test-input]")?.value
+        || "",
+      ).trim();
+      const summary = [
+        `${field?.label || "AI polje"}: ${testValue || "Primjer odgovora"}`,
+        `Format: ${JOB_AI_RESPONSE_TYPE_LABELS[config.responseType] || JOB_AI_RESPONSE_TYPE_LABELS.paragraph}, ${JOB_AI_STRUCTURE_LABELS[config.answerStructure] || JOB_AI_STRUCTURE_LABELS.answer_reason}.`,
+        config.textLength ? `Duljina: ${config.textLength}.` : "",
+        config.mustInclude ? `Mora uključiti: ${config.mustInclude}.` : "",
+        config.avoid ? `Ne smije koristiti: ${config.avoid}.` : "",
+      ].filter(Boolean).join(" ");
+      body.querySelectorAll("[data-settings-job-ai-test-output]").forEach((output) => {
+        output.textContent = summary;
+      });
+    }
   });
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop) {
@@ -162296,13 +162777,7 @@ function ensureSettingsJobAiModal() {
 }
 
 function renderSettingsJobAiModalBody(field = {}, config = {}, canManage = false) {
-  if (field.type === "riskRow") {
-    return renderSettingsJobAiRiskRowCard(field, config, canManage);
-  }
-  if (field.type === "purPoint") {
-    return renderSettingsJobAiPurPointCard(field, config, canManage);
-  }
-  return renderSettingsJobAiGeneralCard(field, config, canManage);
+  return renderSettingsJobAiEditorBody(field, config, canManage);
 }
 
 function openSettingsJobAiModal(key = "") {
@@ -162333,7 +162808,7 @@ function openSettingsJobAiModal(key = "") {
   modal.backdrop.hidden = false;
   document.body.classList.add("is-settings-job-ai-modal-open");
   requestAnimationFrame(() => {
-    modal.body?.querySelector("textarea, input, select")?.focus({ preventScroll: true });
+    modal.body?.querySelector(".settings-ai-editor-panel:not([hidden]) textarea, .settings-ai-editor-panel:not([hidden]) input, .settings-ai-editor-panel:not([hidden]) select")?.focus({ preventScroll: true });
   });
 }
 
@@ -163698,6 +164173,21 @@ function applyJobAiInstructionToText(text = "", kind = "description") {
   }
   if (config.textLength) {
     additions.push(`Duljina teksta: ${config.textLength}.`);
+  }
+  if (config.responseType && config.responseType !== "paragraph") {
+    additions.push(`Format odgovora: ${JOB_AI_RESPONSE_TYPE_LABELS[config.responseType] || config.responseType}.`);
+  }
+  if (config.answerStructure && config.answerStructure !== "answer_reason") {
+    additions.push(`Struktura odgovora: ${JOB_AI_STRUCTURE_LABELS[config.answerStructure] || config.answerStructure}.`);
+  }
+  if (config.tense && config.tense !== "present") {
+    additions.push(`Vrijeme: ${JOB_AI_TENSE_LABELS[config.tense] || config.tense}.`);
+  }
+  if (config.voice && config.voice !== "neutral") {
+    additions.push(`Osoba: ${JOB_AI_VOICE_LABELS[config.voice] || config.voice}.`);
+  }
+  if (config.template) {
+    additions.push(`Predložak odgovora: ${config.template}.`);
   }
   return [output, ...additions].filter(Boolean).join(" ");
 }
