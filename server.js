@@ -22390,6 +22390,11 @@ function getMobileDocumentRecordTemplateScore(record = {}, template = {}) {
   if (templateId && recordTemplateId === templateId) {
     return 100;
   }
+  const templateNativeCode = getMobileTemplateNativeDocumentationServiceCode(template);
+  const recordNativeCode = getMobileDocumentRecordNativeDocumentationServiceCode(record);
+  if (templateNativeCode && recordNativeCode && templateNativeCode === recordNativeCode) {
+    return 90;
+  }
 
   const genericKeys = new Set(["zapisnik", "izvjestaj", "izvještaj", "document", "template"]);
   const templateKeys = [
@@ -22412,6 +22417,94 @@ function getMobileDocumentRecordTemplateScore(record = {}, template = {}) {
     .filter(Boolean);
 
   return templateKeys.some((key) => recordKeys.includes(key)) ? 60 : 0;
+}
+
+function inferMobileNativeDocumentationServiceCode(value = "") {
+  const lookup = normalizeMobileSprLookupText(value);
+  if (!lookup) {
+    return "";
+  }
+  if (/\btzin\b/u.test(lookup) || lookup.includes("tipkalo") || lookup.includes("isklop elektric")) {
+    return "TZIN";
+  }
+  if (/\bszomv\b/u.test(lookup) || (lookup.includes("vizual") && lookup.includes("munj"))) {
+    return "SZOMV";
+  }
+  if (
+    /\bszom\b/u.test(lookup)
+    || lookup.includes("zastitu od djelovanja munje")
+    || lookup.includes("zastite od djelovanja munje")
+  ) {
+    return "SZOM";
+  }
+  if (/\bspr\b/u.test(lookup) || lookup.includes("panik rasvjet") || lookup.includes("sigurnosna rasvjet")) {
+    return "SPR";
+  }
+  if (/\beiz\b/u.test(lookup) || lookup.includes("elektricn")) {
+    return "EIZ";
+  }
+  if (/\bves\b/u.test(lookup) || lookup.includes("evakuacij")) {
+    return "VES";
+  }
+  return "";
+}
+
+function getMobileDocumentRecordNativeDocumentationServiceCode(record = {}) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  const directCode = normalizeMobileNativeMeasurementServiceCode(
+    record?.serviceCode
+    || record?.code
+    || fieldValues.SERVICE_CODE
+    || fieldValues.SIFRA_USLUGE
+    || "",
+  );
+  if (directCode) {
+    return directCode;
+  }
+  return inferMobileNativeDocumentationServiceCode([
+    record?.serviceName,
+    record?.templateTitle,
+    record?.documentType,
+    record?.documentTitle,
+    record?.documentName,
+    record?.title,
+    record?.fileName,
+    fieldValues.SERVICE_SUMMARY,
+    fieldValues.USLUGA,
+    fieldValues.NAZIV_USLUGE,
+    fieldValues.INSPECTION_TYPE,
+    fieldValues.VRSTA_ISPITIVANJA,
+  ].filter(Boolean).join(" "));
+}
+
+function getMobileTemplateNativeDocumentationServiceCode(template = {}) {
+  const directCode = normalizeMobileNativeMeasurementServiceCode(template?.serviceCode || template?.code || "");
+  if (directCode) {
+    return directCode;
+  }
+  return inferMobileNativeDocumentationServiceCode([
+    template?.serviceName,
+    template?.documentType,
+    template?.title,
+    template?.documentName,
+    template?.dataSourceTitle,
+  ].filter(Boolean).join(" "));
+}
+
+function mobileDocumentRecordMatchesTemplateService(record = {}, template = {}) {
+  const templateNativeCode = getMobileTemplateNativeDocumentationServiceCode(template);
+  if (!templateNativeCode) {
+    return true;
+  }
+  const recordNativeCode = getMobileDocumentRecordNativeDocumentationServiceCode(record);
+  if (recordNativeCode) {
+    return recordNativeCode === templateNativeCode;
+  }
+  const templateId = normalizeInputValue(template?.id);
+  const recordTemplateId = normalizeInputValue(record?.templateId);
+  return Boolean(templateId && recordTemplateId && templateId === recordTemplateId);
 }
 
 function getMobileDocumentRecordObjectScore(record = {}, workOrder = {}) {
@@ -22455,6 +22548,7 @@ function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}
       const record = candidate.record;
       return candidate.templateScore > 0
         && candidate.objectScore > 0
+        && mobileDocumentRecordMatchesTemplateService(record, template)
         && (!companyId || normalizeInputValue(record?.companyId) === companyId)
         && normalizeInputValue(record?.locationId) === locationId;
     })
