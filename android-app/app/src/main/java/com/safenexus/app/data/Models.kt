@@ -821,6 +821,7 @@ data class WorkOrderMeasurementSheet(
     val rows: List<WorkOrderMeasurementRow> = emptyList(),
     val merges: List<WorkOrderMeasurementMerge> = emptyList(),
     val headerRows: List<String> = emptyList(),
+    val pageOrientation: String = "",
 )
 
 data class WorkOrderMeasurementColumn(

@@ -2166,6 +2166,7 @@ private fun WorkOrderMeasurementSheet.toJsonObject(): JSONObject {
         .put("rows", rowArray)
         .put("merges", mergeArray)
         .put("headerRows", headerArray)
+        .put("pageOrientation", pageOrientation)
 }
 
 private fun Map<String, WorkOrderMeasurementSheet>.toMeasurementSheetJsonObject(): JSONObject {
@@ -2426,11 +2427,16 @@ private fun JSONObject?.toWorkOrderMeasurementSheet(): WorkOrderMeasurementSheet
     if (this == null) return WorkOrderMeasurementSheet()
     val columns = optJSONArray("columns").toWorkOrderMeasurementColumns()
     val rows = optJSONArray("rows").toWorkOrderMeasurementRows(columns)
+    val pageOrientation = firstClean("pageOrientation", "orientation")
+        .lowercase()
+        .takeIf { it == "landscape" }
+        .orEmpty()
     return WorkOrderMeasurementSheet(
         columns = columns,
         rows = rows,
         merges = optJSONArray("merges").toWorkOrderMeasurementMerges(),
         headerRows = optJSONArray("headerRows").toStringList(),
+        pageOrientation = pageOrientation,
     )
 }
 
@@ -2464,6 +2470,11 @@ private fun JSONArray?.toWorkOrderMeasurementTables(): List<WorkOrderMeasurement
         for (index in 0 until length()) {
             val item = optJSONObject(index) ?: continue
             val key = item.firstClean("key", "id", "tokenKey")
+            val tableOrientation = item.firstClean("pageOrientation", "orientation")
+                .lowercase()
+                .takeIf { it == "landscape" }
+                .orEmpty()
+            val sheet = item.optJSONObject("sheet").toWorkOrderMeasurementSheet()
             add(
                 WorkOrderMeasurementTable(
                     id = item.firstClean("id").ifBlank { key },
@@ -2472,7 +2483,11 @@ private fun JSONArray?.toWorkOrderMeasurementTables(): List<WorkOrderMeasurement
                     label = item.firstClean("label").ifBlank { "Excel tablica" },
                     helpText = item.firstClean("helpText"),
                     summary = item.firstClean("summary"),
-                    sheet = item.optJSONObject("sheet").toWorkOrderMeasurementSheet(),
+                    sheet = if (sheet.pageOrientation.isBlank() && tableOrientation.isNotBlank()) {
+                        sheet.copy(pageOrientation = tableOrientation)
+                    } else {
+                        sheet
+                    },
                 ),
             )
         }

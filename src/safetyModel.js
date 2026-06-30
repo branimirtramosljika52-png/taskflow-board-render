@@ -2245,12 +2245,16 @@ export function normalizeWorkOrderMeasurementSheet(input = null) {
     .map((merge) => normalizeMeasurementSheetMergeSnapshot(merge, rowIds, columnIds))
     .filter(Boolean);
   const headerRows = normalizeMeasurementSheetHeaderRowsSnapshot(input.headerRows, rowIds);
+  const pageOrientation = normalizeText(input.pageOrientation || input.orientation).toLowerCase() === "landscape"
+    ? "landscape"
+    : "";
 
   return {
     columns: normalizedColumns,
     rows,
     merges,
     headerRows,
+    pageOrientation,
   };
 }
 

@@ -112,7 +112,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.250.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.251.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -21095,8 +21095,13 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
     : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
 
   if (!normalizedSheet?.columns?.length) {
+    const pageOrientation = normalizeInputValue(field?.pageOrientation || field?.orientation || "").toLowerCase() === "landscape"
+      || fallbackColumns.length > 5
+      ? "landscape"
+      : "";
     return {
       __docxBlockType: "table",
+      pageOrientation,
       columns: fallbackColumns.map((column, columnIndex) => {
         const label = column && typeof column === "object" && !Array.isArray(column)
           ? normalizeInputValue(column.label || column.id)
@@ -21151,16 +21156,39 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
         : {},
     })),
   }));
-  const rows = allRows.filter((row) => (
+  const bodyRows = allRows.filter((row) => (
     row.header || doesMobileMeasurementTableRowHaveVisibleResult(row, columns)
   ));
+  const syntheticHeaderRow = headerRows.length === 0
+    ? {
+        id: "column-labels",
+        header: true,
+        cells: columns.map((column) => ({
+          text: column.label,
+          format: {
+            bold: true,
+            fillColor: "#F1F7F4",
+            border: "all",
+          },
+        })),
+      }
+    : null;
+  const rows = syntheticHeaderRow ? [syntheticHeaderRow, ...bodyRows] : bodyRows;
   const visibleRowIds = new Set(rows.map((row) => normalizeInputValue(row.id)).filter(Boolean));
+  const pageOrientation = normalizeInputValue(
+    normalizedSheet.pageOrientation
+    || field?.pageOrientation
+    || field?.orientation
+    || "",
+  ).toLowerCase() === "landscape" || columns.length > 5
+    ? "landscape"
+    : "";
 
   return {
     __docxBlockType: "table",
     columns,
     rows,
-    headerRows,
+    headerRows: syntheticHeaderRow ? [syntheticHeaderRow.id] : headerRows,
     merges: (Array.isArray(normalizedSheet.merges) ? normalizedSheet.merges : []).map((merge) => ({
       rowId: normalizeInputValue(merge?.rowId),
       columnId: normalizeInputValue(merge?.columnId),
@@ -21168,6 +21196,7 @@ function buildMobileMeasurementTablePlaceholderFromSheet(sheet = null, field = {
       colSpan: Math.max(1, Number(merge?.colSpan) || 1),
     })).filter((merge) => merge.rowId && merge.columnId && visibleRowIds.has(merge.rowId)),
     title: normalizeInputValue(field?.label || field?.wordLabel) || `Excel tablica ${index + 1}`,
+    pageOrientation,
   };
 }
 
@@ -24510,16 +24539,31 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
   const baseTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
     ? template.measurementTables
     : createDocumentationMeasurementTablesForService(serviceCode);
-  return baseTables.map((table, index) => ({
-    ...table,
-    enabled: getMobileDocumentationTemplateBooleanValue(
-      common,
-      template,
-      [table.enabledFieldId, `use-${table.key}`, `use-${table.id}`],
-      table.enabledByDefault !== false,
-    ),
-    sheet: getMobileDocumentationMeasurementSheetForTable(table, index, entry, template, common),
-  }));
+  return baseTables.map((table, index) => {
+    const sheet = getMobileDocumentationMeasurementSheetForTable(table, index, entry, template, common);
+    const pageOrientation = normalizeInputValue(
+      sheet?.pageOrientation
+      || table?.pageOrientation
+      || table?.orientation
+      || "",
+    ).toLowerCase() === "landscape" || (sheet?.columns?.length || 0) > 5
+      ? "landscape"
+      : "";
+    return {
+      ...table,
+      pageOrientation,
+      enabled: getMobileDocumentationTemplateBooleanValue(
+        common,
+        template,
+        [table.enabledFieldId, `use-${table.key}`, `use-${table.id}`],
+        table.enabledByDefault !== false,
+      ),
+      sheet: {
+        ...sheet,
+        pageOrientation,
+      },
+    };
+  });
 }
 
 function normalizeMobileTechnicalFieldToken(value = "") {

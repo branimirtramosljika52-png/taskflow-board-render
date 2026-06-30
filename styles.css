@@ -37921,8 +37921,11 @@ body.is-vehicle-usage-open {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: 100vw;
+  max-width: 100vw;
   height: 100dvh;
+  max-height: 100dvh;
   min-height: 100dvh;
+  min-width: 100vw;
   padding: 12px;
   border-radius: 0;
   background: #f8fbff;
@@ -37936,14 +37939,24 @@ body.is-vehicle-usage-open {
 
 .documentation-gridline-module:fullscreen .documentation-gridline-scroll,
 .documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-scroll {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  background: #ffffff;
+}
+
+.documentation-gridline-module:fullscreen .documentation-gridline-shell,
+.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-shell {
+  width: 100%;
   height: 100%;
   min-height: 0;
   max-height: none;
 }
 
-.documentation-gridline-module:fullscreen .documentation-gridline-shell,
-.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-shell {
-  min-height: 0;
+.documentation-gridline-module:fullscreen table,
+.documentation-gridline-module.is-gridline-fullscreen table {
+  min-width: 100%;
 }
 
 .gridline-toolbar-svg {
@@ -38218,13 +38231,14 @@ body.is-vehicle-usage-open {
 .documentation-gridline-module thead th {
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 8;
   height: 34px;
   background: #eef3fb;
   color: #3a4861;
   font-weight: 900;
   text-align: center;
   user-select: none;
+  background-clip: padding-box;
 }
 
 .documentation-gridline-module:not(.is-gridline-freeze-row) thead th {
@@ -38302,7 +38316,7 @@ body.is-vehicle-usage-open {
 
 .documentation-gridline-module .corner {
   left: 0;
-  z-index: 5;
+  z-index: 12;
   width: 52px;
   min-width: 52px;
 }
@@ -38310,13 +38324,14 @@ body.is-vehicle-usage-open {
 .documentation-gridline-module tbody th {
   position: sticky;
   left: 0;
-  z-index: 2;
+  z-index: 7;
   width: 52px;
   min-width: 52px;
   background: #f5f8fd;
   color: #63728d;
   font-weight: 900;
   text-align: center;
+  background-clip: padding-box;
 }
 
 .documentation-gridline-module:not(.is-gridline-freeze-column) .corner,
@@ -38889,6 +38904,32 @@ body.is-vehicle-usage-open {
 
 .document-template-runtime-gridline-field table {
   min-width: 1600px;
+}
+
+.document-template-runtime-gridline-field.documentation-gridline-module:fullscreen,
+.document-template-runtime-gridline-field.documentation-gridline-module.is-gridline-fullscreen {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-width: 100vw;
+  min-height: 100dvh;
+  border-radius: 0;
+}
+
+.document-template-runtime-gridline-field.documentation-gridline-module:fullscreen .documentation-gridline-shell,
+.document-template-runtime-gridline-field.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-shell,
+.document-template-runtime-gridline-field.documentation-gridline-module:fullscreen .documentation-gridline-scroll,
+.document-template-runtime-gridline-field.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-scroll {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.document-template-runtime-gridline-field.documentation-gridline-module:fullscreen table,
+.document-template-runtime-gridline-field.documentation-gridline-module.is-gridline-fullscreen table {
+  min-width: 100%;
 }
 
 .documentation-spr-workbench {
@@ -40879,6 +40920,40 @@ body.is-vehicle-usage-open {
 .documentation-spr-gridline td:nth-child(7) {
   width: auto;
   min-width: 0;
+}
+
+.documentation-spr-gridline.documentation-gridline-module:fullscreen,
+.documentation-spr-gridline.documentation-gridline-module.is-gridline-fullscreen,
+.documentation-spr-native-gridline.documentation-gridline-module:fullscreen,
+.documentation-spr-native-gridline.documentation-gridline-module.is-gridline-fullscreen {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-width: 100vw;
+  min-height: 100dvh;
+  border-radius: 0;
+}
+
+.documentation-spr-gridline.documentation-gridline-module:fullscreen .documentation-gridline-shell,
+.documentation-spr-gridline.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-shell,
+.documentation-spr-gridline.documentation-gridline-module:fullscreen .documentation-gridline-scroll,
+.documentation-spr-gridline.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-scroll,
+.documentation-spr-native-gridline.documentation-gridline-module:fullscreen .documentation-gridline-shell,
+.documentation-spr-native-gridline.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-shell,
+.documentation-spr-native-gridline.documentation-gridline-module:fullscreen .documentation-gridline-scroll,
+.documentation-spr-native-gridline.documentation-gridline-module.is-gridline-fullscreen .documentation-gridline-scroll {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.documentation-spr-gridline.documentation-gridline-module:fullscreen table,
+.documentation-spr-gridline.documentation-gridline-module.is-gridline-fullscreen table,
+.documentation-spr-native-gridline.documentation-gridline-module:fullscreen table,
+.documentation-spr-native-gridline.documentation-gridline-module.is-gridline-fullscreen table {
+  min-width: 100%;
 }
 
 .documentation-spr-preview-panel {

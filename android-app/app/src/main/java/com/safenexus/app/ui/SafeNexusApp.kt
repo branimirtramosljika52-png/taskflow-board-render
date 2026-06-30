@@ -29030,6 +29030,7 @@ private fun MeasurementTableEditor(
     val rowHeaderWidth = if (tableOnly) 46.dp else if (expanded) 54.dp else 46.dp
     val rowHeight = if (tableOnly) 42.dp else if (expanded) 52.dp else 44.dp
     val columnHeaderHeight = if (tableOnly) 34.dp else if (expanded) 40.dp else 34.dp
+    val showColumnLabelRow = remember(sheet.columns) { sheet.hasMeaningfulMeasurementColumnLabels() }
     LaunchedEffect(selectedRow?.id.orEmpty(), selectedColumn?.id.orEmpty()) {
         val nextSheet = sheetWithPendingCellValue(sheet)
         if (nextSheet != sheet) {
@@ -29372,6 +29373,19 @@ private fun MeasurementTableEditor(
                 ) {
                     Column {
                         MeasurementHeaderCell("", rowHeaderWidth.value.toInt(), height = columnHeaderHeight, subtle = true)
+                        if (showColumnLabelRow) {
+                            Surface(
+                                modifier = Modifier
+                                    .width(rowHeaderWidth)
+                                    .height(rowHeight)
+                                    .border(0.6.dp, gridLine),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("H", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
                         visibleRows.forEachIndexed { rowIndex, row ->
                             Surface(
                                 modifier = Modifier
@@ -29400,6 +29414,13 @@ private fun MeasurementTableEditor(
                                 val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
                                     ?: (columnWindowStart + columnIndex)
                                 MeasurementHeaderCell(measurementColumnLabel(absoluteColumnIndex), column.width, height = columnHeaderHeight)
+                            }
+                        }
+                        if (showColumnLabelRow) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                visibleColumns.forEach { column ->
+                                    MeasurementColumnLabelCell(column = column, rowHeight = rowHeight)
+                                }
                             }
                         }
                         visibleRows.forEachIndexed { rowIndex, row ->
@@ -29655,6 +29676,14 @@ private fun MeasurementColorChip(
     }
 }
 
+private fun WorkOrderMeasurementSheet.hasMeaningfulMeasurementColumnLabels(): Boolean =
+    columns.withIndex().any { (index, column) ->
+        val label = column.label.trim()
+        label.isNotBlank() &&
+            !label.equals(column.id, ignoreCase = true) &&
+            !label.equals("Kolona ${index + 1}", ignoreCase = true)
+    }
+
 @Composable
 private fun MeasurementHeaderCell(label: String, width: Int, height: Dp = 34.dp, subtle: Boolean = false) {
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
@@ -29674,6 +29703,43 @@ private fun MeasurementHeaderCell(label: String, width: Int, height: Dp = 34.dp,
         contentAlignment = Alignment.Center,
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 1)
+    }
+}
+
+@Composable
+private fun MeasurementColumnLabelCell(
+    column: WorkOrderMeasurementColumn,
+    rowHeight: Dp,
+) {
+    val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+    val label = column.label.ifBlank { column.id }
+    Box(
+        modifier = Modifier
+            .width(column.width.coerceIn(46, 260).dp)
+            .height(rowHeight)
+            .border(0.6.dp, gridLine)
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (column.placeholder.isNotBlank()) {
+                Text(
+                    column.placeholder,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
@@ -32832,9 +32898,6 @@ private fun TemplateBlockDetailRow(
     val signatureSummary = remember(block, standardValues) {
         documentationSignatureBlockSelectionSummary(block, standardValues)
     }
-    val blockTypeLabel = remember(block) {
-        documentationSignatureBlockTypeLabel(block).ifBlank { block.typeLabel }
-    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -32861,11 +32924,6 @@ private fun TemplateBlockDetailRow(
                         fontWeight = FontWeight.Black,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        blockTypeLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                     )
                 }
             }

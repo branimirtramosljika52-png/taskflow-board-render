@@ -67865,12 +67865,59 @@ function normalizeDocumentTemplateGridlineModel(value = null, fallbackRows = [])
     });
   }
 
+  const columnWidths = {};
+  Object.entries(source.columnWidths && typeof source.columnWidths === "object" ? source.columnWidths : {}).forEach(([key, rawWidth]) => {
+    const columnIndex = Number(key);
+    const width = Number(rawWidth);
+    if (Number.isInteger(columnIndex) && columnIndex >= 0 && columnIndex < columnCount && Number.isFinite(width)) {
+      columnWidths[String(columnIndex)] = Math.max(22, Math.min(320, Math.round(width)));
+    }
+  });
+  const rowHeights = {};
+  Object.entries(source.rowHeights && typeof source.rowHeights === "object" ? source.rowHeights : {}).forEach(([key, rawHeight]) => {
+    const rowIndex = Number(key);
+    const height = Number(rawHeight);
+    if (Number.isInteger(rowIndex) && rowIndex >= 0 && rowIndex < rowCount && Number.isFinite(height)) {
+      rowHeights[String(rowIndex)] = Math.max(12, Math.min(96, Math.round(height)));
+    }
+  });
+  const cellStyles = {};
+  Object.entries(source.cellStyles && typeof source.cellStyles === "object" ? source.cellStyles : {}).forEach(([key, style]) => {
+    const match = /^(\d+):(\d+)$/.exec(String(key || ""));
+    if (!match || !style || typeof style !== "object" || Array.isArray(style)) {
+      return;
+    }
+    const row = Number(match[1]);
+    const column = Number(match[2]);
+    if (row >= 0 && row < rowCount && column >= 0 && column < columnCount) {
+      cellStyles[`${row}:${column}`] = { ...style };
+    }
+  });
+  const headerRows = Array.from(new Set((Array.isArray(source.headerRows) ? source.headerRows : [])
+    .map((row) => Number(row))
+    .filter((row) => Number.isInteger(row) && row >= 0 && row < rowCount)));
+  const merges = (Array.isArray(source.merges) ? source.merges : [])
+    .map((merge) => ({
+      row: Math.max(0, Math.min(rowCount - 1, Math.round(Number(merge?.row) || 0))),
+      column: Math.max(0, Math.min(columnCount - 1, Math.round(Number(merge?.column) || 0))),
+      rowSpan: Math.max(1, Math.round(Number(merge?.rowSpan) || 1)),
+      columnSpan: Math.max(1, Math.round(Number(merge?.columnSpan || merge?.colSpan) || 1)),
+    }))
+    .filter((merge) => merge.rowSpan > 1 || merge.columnSpan > 1);
+
   return {
     title: String(source.title || "").trim(),
     subtitle: String(source.subtitle || "").trim(),
     rowCount,
     columnCount,
     data,
+    columnWidths,
+    rowHeights,
+    cellStyles,
+    headerRows,
+    merges,
+    autoBorderFilled: Boolean(source.autoBorderFilled),
+    pageOrientation: String(source.pageOrientation || source.orientation || "").trim().toLowerCase() === "landscape" ? "landscape" : "",
   };
 }
 
@@ -67909,28 +67956,141 @@ function buildDocumentTemplateGridlineText(model = null) {
     .join("\n");
 }
 
-function cloneDocumentTemplateGridlineModelForEditor(model = null) {
-  const source = model && typeof model === "object" && !Array.isArray(model) ? model : {};
-  const rowCount = Math.max(1, Math.min(1000, Math.round(Number(source.rowCount) || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_ROWS)));
-  const columnCount = Math.max(1, Math.min(60, Math.round(Number(source.columnCount) || DOCUMENT_TEMPLATE_GRIDLINE_DEFAULT_COLUMNS)));
-  const dataSource = source.data && typeof source.data === "object" && !Array.isArray(source.data)
-    ? source.data
-    : {};
-  const data = {};
-
-  Object.entries(dataSource).forEach(([key, rawValue]) => {
-    const value = String(rawValue ?? "");
-    if (value) {
-      data[key] = value.slice(0, 2000);
-    }
-  });
+function buildDocumentTemplateGridlineTableExportModel(field = {}, context = {}) {
+  const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
+  const model = runtimeWorkOrderId
+    ? getDocumentTemplateRuntimeGridlineModel(runtimeWorkOrderId, field)
+    : normalizeDocumentTemplateGridlineModel(field.gridlineModel, field.gridlineRows);
+  const columns = Array.from({ length: model.columnCount }, (_, columnIndex) => getSpreadsheetColumnLabel(columnIndex));
+  const columnWidths = Array.from({ length: model.columnCount }, (_, columnIndex) => (
+    Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(model.columnWidths?.[String(columnIndex)]) || 120)
+  ));
+  const headerRowIndexes = new Set(
+    (Array.isArray(model.headerRows) && model.headerRows.length > 0 ? model.headerRows : [0])
+      .map((row) => Number(row))
+      .filter((row) => Number.isInteger(row) && row >= 0 && row < model.rowCount),
+  );
+  const rowValues = Array.from({ length: model.rowCount }, (_, rowIndex) => (
+    Array.from({ length: model.columnCount }, (__, columnIndex) => (
+      String(model.data?.[`${rowIndex}:${columnIndex}`] ?? "").trim()
+    ))
+  ));
+  const lastRowIndex = Array.from({ length: model.rowCount }, (_, rowIndex) => rowIndex)
+    .reduce((lastIndex, rowIndex) => (
+      headerRowIndexes.has(rowIndex)
+      || rowValues[rowIndex].some(Boolean)
+        ? rowIndex
+        : lastIndex
+    ), headerRowIndexes.size ? Math.max(...headerRowIndexes) : -1);
+  const safeLastRowIndex = Math.max(0, lastRowIndex);
+  const headerRows = Array.from(headerRowIndexes)
+    .sort((left, right) => left - right)
+    .filter((rowIndex) => rowIndex <= safeLastRowIndex)
+    .map((rowIndex) => rowValues[rowIndex]);
+  const rows = rowValues
+    .slice(0, safeLastRowIndex + 1)
+    .filter((row, rowIndex) => !headerRowIndexes.has(rowIndex) && row.some(Boolean));
+  const pageOrientation = String(field.pageOrientation || field.orientation || model.pageOrientation || "").toLowerCase() === "landscape" || columns.length > 5
+    ? "landscape"
+    : "";
 
   return {
-    title: String(source.title || "").trim(),
-    subtitle: String(source.subtitle || "").trim(),
-    rowCount,
-    columnCount,
-    data,
+    title: field.label || field.wordLabel || model.title || "Gridline tablica",
+    columns,
+    columnWidths,
+    headerRows: headerRows.length > 0 ? headerRows : [columns],
+    rows,
+    landscape: pageOrientation === "landscape",
+    pageOrientation,
+  };
+}
+
+function buildDocumentTemplateGridlineWordPlaceholder(field = {}, context = {}) {
+  const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
+  const model = runtimeWorkOrderId
+    ? getDocumentTemplateRuntimeGridlineModel(runtimeWorkOrderId, field)
+    : normalizeDocumentTemplateGridlineModel(field.gridlineModel, field.gridlineRows);
+  const columns = Array.from({ length: model.columnCount }, (_, columnIndex) => ({
+    id: `gridline-column-${columnIndex + 1}`,
+    label: getSpreadsheetColumnLabel(columnIndex),
+    width: Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(model.columnWidths?.[String(columnIndex)]) || 120),
+  }));
+  const headerRowIndexes = new Set(
+    (Array.isArray(model.headerRows) && model.headerRows.length > 0 ? model.headerRows : [0])
+      .map((row) => Number(row))
+      .filter((row) => Number.isInteger(row) && row >= 0 && row < model.rowCount),
+  );
+  const rowValues = Array.from({ length: model.rowCount }, (_, rowIndex) => (
+    Array.from({ length: model.columnCount }, (__, columnIndex) => (
+      String(model.data?.[`${rowIndex}:${columnIndex}`] ?? "").trim()
+    ))
+  ));
+  const lastRowIndex = Array.from({ length: model.rowCount }, (_, rowIndex) => rowIndex)
+    .reduce((lastIndex, rowIndex) => (
+      headerRowIndexes.has(rowIndex) || rowValues[rowIndex].some(Boolean) ? rowIndex : lastIndex
+    ), headerRowIndexes.size ? Math.max(...headerRowIndexes) : -1);
+  const safeLastRowIndex = Math.max(0, lastRowIndex);
+  const rows = Array.from({ length: safeLastRowIndex + 1 }, (_, rowIndex) => ({
+    id: `gridline-row-${rowIndex + 1}`,
+    header: headerRowIndexes.has(rowIndex),
+    cells: columns.map((column, columnIndex) => {
+      const style = model.cellStyles?.[`${rowIndex}:${columnIndex}`] || {};
+      return {
+        text: String(model.data?.[`${rowIndex}:${columnIndex}`] ?? "").trim(),
+        format: normalizeMeasurementCellFormat({
+          bold: style.fontWeight === "bold" || style.bold === true || headerRowIndexes.has(rowIndex),
+          italic: style.fontStyle === "italic" || style.italic === true,
+          underline: String(style.textDecoration || "").includes("underline") || style.underline === true,
+          fillColor: style.backgroundColor || (headerRowIndexes.has(rowIndex) ? "#F1F7F4" : ""),
+          textColor: style.color || "",
+          textAlign: style.textAlign || style.align || "",
+          border: style.border || (model.autoBorderFilled && String(model.data?.[`${rowIndex}:${columnIndex}`] ?? "").trim() ? "all" : ""),
+          type: style.type || style.dataType || "",
+          decimals: style.decimals,
+        }),
+      };
+    }),
+  })).filter((row) => (
+    row.header || row.cells.some((cell) => String(cell.text || "").trim())
+  ));
+  const rowIdsByIndex = new Map(rows.map((row) => [
+    Number(row.id.replace("gridline-row-", "")) - 1,
+    row.id,
+  ]));
+  return {
+    title: field.label || field.wordLabel || model.title || "Gridline tablica",
+    __docxBlockType: "table",
+    columns,
+    rows,
+    headerRows: rows.filter((row) => row.header).map((row) => row.id),
+    merges: (Array.isArray(model.merges) ? model.merges : []).map((merge) => ({
+      rowId: rowIdsByIndex.get(Number(merge.row)),
+      columnId: columns[Number(merge.column)]?.id,
+      rowSpan: Math.max(1, Number(merge.rowSpan) || 1),
+      colSpan: Math.max(1, Number(merge.columnSpan || merge.colSpan) || 1),
+    })).filter((merge) => merge.rowId && merge.columnId),
+    pageOrientation: String(field.pageOrientation || field.orientation || model.pageOrientation || "").toLowerCase() === "landscape" || columns.length > 5
+      ? "landscape"
+      : "",
+  };
+}
+
+function cloneDocumentTemplateGridlineModelForEditor(model = null) {
+  const normalized = normalizeDocumentTemplateGridlineModel(model);
+
+  return {
+    title: String(normalized.title || "").trim(),
+    subtitle: String(normalized.subtitle || "").trim(),
+    rowCount: normalized.rowCount,
+    columnCount: normalized.columnCount,
+    data: { ...(normalized.data ?? {}) },
+    columnWidths: { ...(normalized.columnWidths ?? {}) },
+    rowHeights: { ...(normalized.rowHeights ?? {}) },
+    cellStyles: { ...(normalized.cellStyles ?? {}) },
+    headerRows: Array.isArray(normalized.headerRows) ? [...normalized.headerRows] : [],
+    merges: Array.isArray(normalized.merges) ? normalized.merges.map((merge) => ({ ...merge })) : [],
+    autoBorderFilled: Boolean(normalized.autoBorderFilled),
+    pageOrientation: normalized.pageOrientation === "landscape" ? "landscape" : "",
   };
 }
 
@@ -78561,6 +78721,7 @@ function buildDocumentTemplateMeasurementTableWordPlaceholder(field = {}, contex
       : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"];
     return {
       __docxBlockType: "table",
+      pageOrientation: fallbackColumns.length > 5 ? "landscape" : "",
       columns: fallbackColumns.map((label, index) => ({
         id: `column-${index + 1}`,
         label,
@@ -78589,6 +78750,7 @@ function buildDocumentTemplateMeasurementTableWordPlaceholder(field = {}, contex
 
   return {
     __docxBlockType: "table",
+    pageOrientation: previewTable.columns.length > 5 ? "landscape" : "",
     columns: previewTable.columns.map((column, index) => ({
       id: column.id || `column-${index + 1}`,
       label: column.label || column.id || `Kolona ${index + 1}`,
@@ -78840,6 +79002,10 @@ function buildDocumentTemplateSystemDescriptionWordPlaceholder(field = {}, conte
 function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}, index = 0) {
   if (field.type === "measurement_table") {
     return buildDocumentTemplateMeasurementTableWordPlaceholder(field, context);
+  }
+
+  if (field.type === "gridline") {
+    return buildDocumentTemplateGridlineWordPlaceholder(field, context);
   }
 
   if (field.type === "system_description") {
@@ -80002,6 +80168,14 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
           type: "table",
           title,
           ...buildDocumentTemplateMeasurementTableExportModel(field, context),
+        };
+      }
+
+      if (field.type === "gridline") {
+        return {
+          type: "table",
+          title,
+          ...buildDocumentTemplateGridlineTableExportModel(field, context),
         };
       }
 

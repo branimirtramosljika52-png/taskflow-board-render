@@ -1327,6 +1327,9 @@
       }
       syncGridlineViewButtons();
       scheduleZoomFit();
+      window.requestAnimationFrame(function () {
+        applyZoom();
+      });
     }
 
     function toggleGridlineFullscreen() {
