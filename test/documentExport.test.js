@@ -989,6 +989,35 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.doesNotMatch(html, /\{\{DOCUMENT_TITLE\}\}/);
 });
 
+test("HTML template export keeps rich text inside system description rows", () => {
+  const html = buildHtmlFromTemplateBuffer(Buffer.from(`
+    <main>
+      {{OPIS_SUSTAVA}}
+    </main>
+  `, "utf8"), {
+    OPIS_SUSTAVA: {
+      __docxBlockType: "system_description",
+      blocks: [{
+        title: "Rezultati ispitivanja",
+        rows: [{
+          subtitle: "Opis",
+          description: '<h2>Glavni nalaz</h2><ul><li>Prva stavka</li><li>Druga stavka</li></ul><script>alert("x")</script>',
+          lineCount: 3,
+        }],
+      }],
+    },
+  }, {
+    title: "Rich opis sustava",
+  });
+
+  assert.match(html, /safe-nexus-template-system-block/);
+  assert.match(html, /Rezultati ispitivanja/);
+  assert.match(html, /safe-nexus-template-system-rich-text/);
+  assert.match(html, /<h2>Glavni nalaz<\/h2>/);
+  assert.match(html, /<ul><li>Prva stavka<\/li><li>Druga stavka<\/li><\/ul>/);
+  assert.doesNotMatch(html, /<script/);
+});
+
 test("HTML template export appends a handover protocol block", () => {
   const html = buildHtmlFromTemplateBuffer(Buffer.from(`
     <main>

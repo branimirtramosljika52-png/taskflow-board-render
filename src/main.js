@@ -66329,10 +66329,11 @@ function normalizeDocumentTemplateSystemDescriptionLineCount(value = 1) {
 }
 
 function createEmptyDocumentTemplateSystemDescriptionRowDraft(initial = {}, index = 0) {
+  const rawDescription = String(initial.description ?? initial.value ?? "").replace(/\r\n/g, "\n").trim();
   return {
     id: initial.id || crypto.randomUUID(),
     subtitle: String(initial.subtitle ?? initial.label ?? "").trim(),
-    description: String(initial.description ?? initial.value ?? "").replace(/\r\n/g, "\n").trim(),
+    description: isRichTextHtml(rawDescription) ? sanitizeRichTextHtml(rawDescription) : rawDescription,
     lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(initial.lineCount ?? initial.rows),
     placeholder: String(initial.placeholder ?? "").trim(),
   };
@@ -66616,7 +66617,10 @@ function buildDocumentTemplateSystemDescriptionSummaryLines(value = null) {
     }
     (Array.isArray(block.rows) ? block.rows : []).forEach((row) => {
       const rowSubtitle = String(row.subtitle || "").trim();
-      const description = String(row.description || "").trim();
+      const rawDescription = String(row.description || "").trim();
+      const description = isRichTextHtml(rawDescription)
+        ? richTextHtmlToPlainText(rawDescription)
+        : rawDescription;
       if (!rowSubtitle && !description) {
         return;
       }
@@ -66655,7 +66659,10 @@ function buildDocumentTemplateSystemDescriptionNarrativeText(value = null, {
     }
     (Array.isArray(block.rows) ? block.rows : []).forEach((row) => {
       const rowSubtitle = String(row?.subtitle || "").trim();
-      const description = String(row?.description || "").trim();
+      const rawDescription = String(row?.description || "").trim();
+      const description = isRichTextHtml(rawDescription)
+        ? richTextHtmlToPlainText(rawDescription)
+        : rawDescription;
       if (!rowSubtitle && !description) {
         return;
       }
@@ -66679,7 +66686,11 @@ function hasDocumentTemplateSystemDescriptionContent(value = null) {
   return model.blocks.some((block) => (
     String(block.sectionSubtitle || "").trim()
     || (Array.isArray(block.rows) ? block.rows : []).some((row) => (
-      String(row?.description || "").trim()
+      String(
+        isRichTextHtml(row?.description || "")
+          ? richTextHtmlToPlainText(row?.description || "")
+          : row?.description || "",
+      ).trim()
     ))
   ));
 }
@@ -76623,6 +76634,67 @@ function applyDocumentTemplateRuntimeRichCommand(command, target = documentTempl
   target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertHTML", data: "" }));
 }
 
+function applyDocumentTemplateRuntimeRichToolbarCommand(editor, command = {}, persist = null) {
+  if (!(editor instanceof HTMLElement) || !command?.id) {
+    return;
+  }
+  rememberDocumentTemplateRuntimeRichSelection(editor);
+  restoreDocumentTemplateRuntimeRichSelection(editor);
+  if (command.html) {
+    insertDocumentTemplateRuntimeRichHtml(editor, command.html);
+  } else if (command.exec) {
+    document.execCommand(command.exec, false, command.value || null);
+  }
+  rememberDocumentTemplateRuntimeRichSelection(editor);
+  persist?.({ cleanDom: command.cleanDom });
+}
+
+function createDocumentTemplateRuntimeRichToolbar(editor, persist = null) {
+  const toolbar = document.createElement("div");
+  toolbar.className = "document-template-runtime-rich-toolbar";
+  toolbar.setAttribute("aria-label", "Alati za uređivanje teksta");
+
+  const commands = [
+    { id: "h2", label: "Naslov", exec: "formatBlock", value: "h2" },
+    { id: "h3", label: "Podnaslov", exec: "formatBlock", value: "h3" },
+    { id: "p", label: "Tekst", exec: "formatBlock", value: "p" },
+    { id: "bold", label: "B", exec: "bold" },
+    { id: "italic", label: "I", exec: "italic" },
+    { id: "underline", label: "U", exec: "underline" },
+    { id: "ul", label: "• Lista", exec: "insertUnorderedList" },
+    { id: "ol", label: "1. Lista", exec: "insertOrderedList" },
+    {
+      id: "table",
+      label: "Tablica",
+      html: "<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr></tbody></table>",
+    },
+    { id: "clear", label: "Tx", exec: "removeFormat", cleanDom: true },
+  ];
+
+  commands.forEach((command) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.documentTemplateRuntimeRichToolbarCommand = command.id;
+    button.innerHTML = command.id === "bold"
+      ? "<strong>B</strong>"
+      : command.id === "italic"
+        ? "<em>I</em>"
+        : command.id === "underline"
+          ? "<u>U</u>"
+          : escapeHtml(command.label);
+    button.title = command.label;
+    button.setAttribute("aria-label", command.label);
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyDocumentTemplateRuntimeRichToolbarCommand(editor, command, persist);
+    });
+    toolbar.append(button);
+  });
+
+  return toolbar;
+}
+
 function showDocumentTemplateRuntimeRichCommandMenu(target) {
   if (!(target instanceof HTMLElement)) return;
   rememberDocumentTemplateRuntimeRichSelection(target);
@@ -76713,15 +76785,20 @@ function trapDocumentTemplateRuntimeRichCommandKeyup(event) {
 function createDocumentTemplateRuntimeRichTextControl({
   value = "",
   minHeight = 160,
+  placeholder = "Zalijepi tekst iz Worda ili pritisni / za naslov, listu ili tablicu",
   onChange = null,
 } = {}) {
+  const shell = document.createElement("div");
+  shell.className = "document-template-runtime-rich-control";
+
   const editor = document.createElement("div");
   editor.className = "document-template-runtime-rich-editor";
   editor.contentEditable = "true";
   editor.spellcheck = true;
   editor.setAttribute("role", "textbox");
   editor.setAttribute("aria-multiline", "true");
-  editor.dataset.placeholder = "Zalijepi tekst iz Worda ili pritisni \\ za naslov, listu ili tablicu";
+  editor.dataset.placeholder = placeholder;
+  editor.dataset.documentTemplateRuntimeRichSurface = "true";
   editor.style.minHeight = `${Math.max(120, minHeight)}px`;
   editor.innerHTML = normalizeRichTextHtml(value);
 
@@ -76765,7 +76842,8 @@ function createDocumentTemplateRuntimeRichTextControl({
   editor.addEventListener("keyup", () => rememberDocumentTemplateRuntimeRichSelection(editor));
   editor.addEventListener("mouseup", () => rememberDocumentTemplateRuntimeRichSelection(editor));
 
-  return editor;
+  shell.append(createDocumentTemplateRuntimeRichToolbar(editor, persist), editor);
+  return shell;
 }
 
 function getDocumentTemplateTextListLines(field = {}, value = "") {
@@ -77879,9 +77957,16 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     const blocksMarkup = model.blocks.map((block, blockIndex) => {
       const rowsMarkup = (Array.isArray(block.rows) ? block.rows : []).map((row) => {
         const subtitle = escapeHtml(row.subtitle || "");
-        const description = escapeHtml(row.description || "").replace(/\n/g, "<br />");
+        const rawDescription = String(row.description || "").trim();
+        const description = isRichTextHtml(rawDescription)
+          ? `<div class="document-template-rich-text document-template-preview-system-rich-text">${sanitizeRichTextHtml(rawDescription)}</div>`
+          : escapeHtml(rawDescription).replace(/\n/g, "<br />");
         const hasSubtitle = Boolean(subtitle);
-        const hasDescription = Boolean(String(row.description || "").trim());
+        const hasDescription = Boolean(
+          isRichTextHtml(rawDescription)
+            ? richTextHtmlToPlainText(rawDescription)
+            : rawDescription,
+        );
         const rowValue = hasDescription
           ? description
           : `<span class="document-template-preview-system-placeholder">${escapeHtml(row.placeholder || (placeholderMode ? token : "Vrijednost se unosi u zapisniku."))}</span>`;
@@ -80126,6 +80211,18 @@ function buildDocumentTemplateHtmlPreviewDefaultStyles() {
       .safe-nexus-preview-system-block p { margin: 6px 0; }
       .safe-nexus-preview-system-row { margin: 8px 0; text-align: center; }
       .safe-nexus-preview-system-row strong { font-weight: 700; }
+      .safe-nexus-preview-rich-text { text-align: left; }
+      .safe-nexus-preview-rich-text p { margin: 0 0 .55em; }
+      .safe-nexus-preview-rich-text h1,
+      .safe-nexus-preview-rich-text h2,
+      .safe-nexus-preview-rich-text h3,
+      .safe-nexus-preview-rich-text h4 { margin: .15em 0 .4em; line-height: 1.18; }
+      .safe-nexus-preview-rich-text ul,
+      .safe-nexus-preview-rich-text ol { margin: .25em 0 .65em 1.35em; padding: 0; }
+      .safe-nexus-preview-rich-text table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .35em 0 .75em; }
+      .safe-nexus-preview-rich-text th,
+      .safe-nexus-preview-rich-text td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; }
+      .safe-nexus-preview-rich-text th { background: #eef5f2; font-weight: 700; }
       @media print {
         html, body { background: #fff; padding: 0; }
         .safe-nexus-preview-page { width: auto; min-height: 0; padding: 0; border: 0; box-shadow: none; }
@@ -80201,11 +80298,17 @@ function buildDocumentTemplateHtmlPreviewSystemDescription(value = {}) {
   return blocks.map((block) => {
     const rows = Array.isArray(block?.rows) ? block.rows : [];
     const rowHtml = rows.length > 0
-      ? rows.map((row) => `
-        <p class="safe-nexus-preview-system-row">
+      ? rows.map((row) => {
+        const rawDescription = String(row?.description || "").trim();
+        const description = isRichTextHtml(rawDescription)
+          ? `<div class="safe-nexus-preview-rich-text">${sanitizeRichTextHtml(rawDescription)}</div>`
+          : escapeHtml(rawDescription).replace(/\n/g, "<br>");
+        return `
+        <div class="safe-nexus-preview-system-row">
           ${row?.subtitle ? `<strong>${escapeHtml(`${row.subtitle}: `)}</strong>` : ""}
-          ${escapeHtml(row?.description || "").replace(/\n/g, "<br>")}
-        </p>`).join("")
+          ${description}
+        </div>`;
+      }).join("")
       : '<p class="safe-nexus-preview-system-row">&nbsp;</p>';
     return `
       <section class="safe-nexus-preview-system-block">
@@ -95011,8 +95114,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
         control.style.minHeight = `${Math.max(120, customFieldHeight - 44)}px`;
       } else if (control instanceof HTMLInputElement) {
         control.style.minHeight = `${Math.max(52, customFieldHeight - 52)}px`;
-      } else if (control instanceof HTMLElement && control.classList.contains("document-template-runtime-rich-editor")) {
-        control.style.minHeight = `${Math.max(120, customFieldHeight - 44)}px`;
+      } else if (control instanceof HTMLElement && control.classList.contains("document-template-runtime-rich-control")) {
+        const richSurface = control.querySelector("[data-document-template-runtime-rich-surface]");
+        if (richSurface instanceof HTMLElement) {
+          richSurface.style.minHeight = `${Math.max(120, customFieldHeight - 86)}px`;
+        }
       } else if (control instanceof HTMLElement) {
         control.style.minHeight = `${Math.max(52, customFieldHeight - 40)}px`;
       }
@@ -95587,18 +95693,19 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
         const controlWrap = document.createElement("div");
         controlWrap.className = "document-template-runtime-system-row-control";
-        const control = document.createElement("textarea");
         const lineCount = normalizeDocumentTemplateSystemDescriptionLineCount(row.lineCount);
-        control.rows = lineCount;
-        control.style.minHeight = `${Math.max(64, lineCount * 32)}px`;
-        control.value = row.description || "";
-        control.placeholder = row.placeholder || (row.subtitle
-          ? `Upiši ${String(row.subtitle || "").trim().toLowerCase()}`
-          : "Dodaj opis sustava...");
-        control.addEventListener("input", (event) => {
-          model.blocks[blockIndex].rows[rowIndex].description = String(event.currentTarget.value ?? "");
-          syncValue();
+        const control = createDocumentTemplateRuntimeRichTextControl({
+          value: row.description || "",
+          minHeight: Math.max(74, lineCount * 38),
+          placeholder: row.placeholder || (row.subtitle
+            ? `Upiši ${String(row.subtitle || "").trim().toLowerCase()}`
+            : "Zalijepi tekst iz Worda ili dodaj naslov, listu i tablicu..."),
+          onChange: (value) => {
+            model.blocks[blockIndex].rows[rowIndex].description = value;
+            syncValue();
+          },
         });
+        control.classList.add("document-template-runtime-system-rich-control");
 
         controlWrap.append(control);
         rowCard.append(rowMeta, controlWrap);
@@ -97443,20 +97550,23 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         });
         rowLineField.append(rowLineSpan, rowLineSelect);
 
-        const rowDescriptionField = document.createElement("label");
+        const rowDescriptionField = document.createElement("div");
         rowDescriptionField.className = "field field-span-full";
         const rowDescriptionSpan = document.createElement("span");
         rowDescriptionSpan.textContent = "Opis / vrijednost";
-        const rowDescriptionInput = document.createElement("textarea");
-        rowDescriptionInput.rows = normalizeDocumentTemplateSystemDescriptionLineCount(systemRow.lineCount);
-        rowDescriptionInput.placeholder = systemRow.subtitle
-          ? `Vrijednost za red "${systemRow.subtitle}"`
-          : "Opis koji ide preko cijele širine bloka";
-        rowDescriptionInput.value = systemRow.description || "";
-        rowDescriptionInput.addEventListener("input", (event) => {
-          documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].description = String(event.currentTarget.value || "");
-          refreshEditorSupport();
+        const rowDescriptionInput = createDocumentTemplateRuntimeRichTextControl({
+          value: systemRow.description || "",
+          minHeight: Math.max(96, normalizeDocumentTemplateSystemDescriptionLineCount(systemRow.lineCount) * 40),
+          placeholder: systemRow.subtitle
+            ? `Vrijednost za red "${systemRow.subtitle}"`
+            : "Zalijepi tekst iz Worda ili dodaj naslov, listu i tablicu...",
+          onChange: (value) => {
+            documentTemplateFieldDrafts[draftIndex].systemRows[systemRowIndex].description = value;
+            refreshEditorSupport();
+            renderDocumentTemplatePreviewContent();
+          },
         });
+        rowDescriptionInput.classList.add("document-template-system-config-rich-control");
         rowDescriptionField.append(rowDescriptionSpan, rowDescriptionInput);
 
         rowGrid.append(rowSubtitleField, rowLineField, rowDescriptionField);

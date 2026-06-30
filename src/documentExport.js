@@ -31,6 +31,7 @@ import {
   getWorkOrderExecutors,
 } from "./safetyModel.js";
 import {
+  isRichTextHtml,
   richTextHtmlToPlainText,
   sanitizeRichTextHtml,
 } from "./utils/richText.js";
@@ -1461,12 +1462,17 @@ function normalizeDocxSpecialPlaceholderValue(value) {
         subtitle: clean(block?.subtitle ?? block?.sectionSubtitle),
         rows: (Array.isArray(block?.rows) ? block.rows : [])
           .slice(0, 16)
-          .map((row, rowIndex) => ({
-            id: clean(row?.id) || `system-description-row-${blockIndex + 1}-${rowIndex + 1}`,
-            subtitle: clean(row?.subtitle),
-            description: String(row?.description ?? "").replace(/\r\n/g, "\n"),
-            lineCount: Math.max(1, Math.min(8, Math.round(Number(row?.lineCount) || 1))),
-          })),
+          .map((row, rowIndex) => {
+            const rawDescription = String(row?.description ?? "").replace(/\r\n/g, "\n").trim();
+            return {
+              id: clean(row?.id) || `system-description-row-${blockIndex + 1}-${rowIndex + 1}`,
+              subtitle: clean(row?.subtitle),
+              description: isRichTextHtml(rawDescription)
+                ? sanitizeRichTextHtml(rawDescription)
+                : rawDescription,
+              lineCount: Math.max(1, Math.min(8, Math.round(Number(row?.lineCount) || 1))),
+            };
+          }),
       }));
 
     return {
@@ -2938,7 +2944,10 @@ function buildDocxSystemDescriptionFallbackText(value = {}) {
     clean(block?.subtitle),
     ...((Array.isArray(block?.rows) ? block.rows : []).map((row) => {
       const subtitle = clean(row?.subtitle);
-      const description = clean(row?.description);
+      const rawDescription = String(row?.description || "").trim();
+      const description = isRichTextHtml(rawDescription)
+        ? richTextHtmlToPlainText(rawDescription)
+        : clean(rawDescription);
       return subtitle ? `${subtitle}: ${description}`.trim() : description;
     })),
   ].filter(Boolean))).join("\n");
@@ -2948,6 +2957,22 @@ function buildWordSystemDescriptionRowXml(row = {}) {
   const subtitle = clean(row.subtitle);
   const description = String(row.description ?? "").replace(/\r\n/g, "\n");
   const lineCount = Math.max(1, Math.min(8, Math.round(Number(row.lineCount) || 1)));
+  if (isRichTextHtml(description)) {
+    const richXml = buildWordRichTextXml({ html: description });
+    if (!subtitle) {
+      return richXml || buildWordParagraphXml("", { spacingAfter: Math.max(40, lineCount * 28) });
+    }
+    return [
+      buildWordParagraphXml(`${subtitle}:`, {
+        align: "center",
+        bold: true,
+        size: 22,
+        spacingBefore: 0,
+        spacingAfter: 30,
+      }),
+      richXml,
+    ].filter(Boolean).join("");
+  }
   const lines = description ? description.split("\n") : [""];
 
   if (!subtitle) {
@@ -4332,6 +4357,7 @@ function buildHtmlTemplateDefaultStyles() {
       .safe-nexus-template-system-block p{margin:6px 0}
       .safe-nexus-template-system-row{margin:8px 0;text-align:center}
       .safe-nexus-template-system-row strong{font-weight:700}
+      .safe-nexus-template-system-rich-text{text-align:left}
       .safe-nexus-template-rich-text p{margin:0 0 .55em}
       .safe-nexus-template-rich-text h1,.safe-nexus-template-rich-text h2,.safe-nexus-template-rich-text h3,.safe-nexus-template-rich-text h4{margin:.15em 0 .4em;line-height:1.18}
       .safe-nexus-template-rich-text ul,.safe-nexus-template-rich-text ol{margin:.25em 0 .65em 1.35em;padding:0}
@@ -4642,12 +4668,16 @@ function buildHtmlTemplateSystemDescriptionPlaceholder(value = {}) {
     const rowsHtml = rows.length > 0
       ? rows.map((row) => {
         const subtitle = clean(row?.subtitle);
-        const description = formatTemplateHtmlText(row?.description || "");
+        const rawDescription = String(row?.description || "").trim();
+        const isRichDescription = isRichTextHtml(rawDescription);
+        const description = isRichDescription
+          ? `<div class="safe-nexus-template-rich-text safe-nexus-template-system-rich-text">${sanitizeRichTextHtml(rawDescription)}</div>`
+          : `<span>${formatTemplateHtmlText(rawDescription)}</span>`;
         return `
-          <p class="safe-nexus-template-system-row">
+          <div class="safe-nexus-template-system-row">
             ${subtitle ? `<strong>${escapeTemplateHtml(`${subtitle}: `)}</strong>` : ""}
-            <span>${description}</span>
-          </p>
+            ${description}
+          </div>
         `.trim();
       }).join("")
       : "<p>&nbsp;</p>";
