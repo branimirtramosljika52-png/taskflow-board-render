@@ -44,6 +44,7 @@ import {
   deleteVehicleReservation,
   deriveOfferInitials,
   normalizeJobAiInstructions,
+  normalizeDocumentTemplateAiSettings,
   normalizeRiskAssessmentReportTemplate,
   normalizeWorkOrderMeasurementSheet,
   getWorkOrderExecutors,
@@ -2242,6 +2243,22 @@ function mapWorkEquipmentAiSettingsEntry(row = {}) {
   };
 }
 
+function mapDocumentTemplateAiSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  return {
+    ...normalizeDocumentTemplateAiSettings({
+      organizationId,
+      ...(parseJsonObject(row.settings_json) ?? {}),
+    }),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 const RISK_PPE_BODY_PARTS = new Set(["head", "eyes", "hearing", "respiratory", "hands", "body", "feet", "fall", "other"]);
 
 function normalizeRiskPpeBodyPart(value = "") {
@@ -4260,6 +4277,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapWorkEquipmentAiSettingsEntry(row))
     .filter(Boolean);
 
+  const [documentTemplateAiSettingsRows] = await connection.query(`
+    SELECT organization_id, settings_json, created_at, updated_at
+    FROM web_document_template_ai_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const documentTemplateAiSettings = documentTemplateAiSettingsRows
+    .map((row) => mapDocumentTemplateAiSettingsEntry(row))
+    .filter(Boolean);
+
   const [riskPpeCatalogRows] = await connection.query(`
     SELECT id, organization_id, name, category, body_part, norm, standard_code, description,
            image_url, source_ref, source_url, is_custom, created_by_user_id, created_by_label,
@@ -5070,6 +5097,7 @@ async function fetchSnapshotFromConnection(connection) {
     jobs,
     jobAiSettings,
     workEquipmentAiSettings,
+    documentTemplateAiSettings,
     riskPpeCatalog,
     contracts,
     contractTemplates,
@@ -5182,6 +5210,7 @@ export class InMemorySafetyRepository {
       jobs: [],
       jobAiSettings: [],
       workEquipmentAiSettings: [],
+      documentTemplateAiSettings: [],
       riskPpeCatalog: [],
       contracts: [],
       contractTemplates: [],
@@ -5420,6 +5449,10 @@ export class InMemorySafetyRepository {
             Object.entries(profile.registerDefaults ?? {}).map(([key, values]) => [key, [...(values ?? [])]]),
           ),
         })),
+      })),
+      documentTemplateAiSettings: this.snapshot.documentTemplateAiSettings.map((item) => ({
+        ...item,
+        sourcePriority: [...(item.sourcePriority ?? [])],
       })),
       riskPpeCatalog: this.snapshot.riskPpeCatalog.map((item) => ({ ...item })),
       contracts: this.snapshot.contracts.map((item) => ({
@@ -6528,6 +6561,41 @@ export class InMemorySafetyRepository {
     }
 
     return this.snapshot.workEquipmentAiSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
+  }
+
+  async upsertDocumentTemplateAiSettings({ organizationId = "", settings = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za dokumentacijske NexAI upute.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      ...normalizeDocumentTemplateAiSettings({
+        ...settings,
+        organizationId: safeOrganizationId,
+      }),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.documentTemplateAiSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.documentTemplateAiSettings[currentIndex];
+      this.snapshot.documentTemplateAiSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.documentTemplateAiSettings.push(nextEntry);
+    }
+
+    return this.snapshot.documentTemplateAiSettings.find((entry) => (
       String(entry.organizationId) === safeOrganizationId
     )) ?? nextEntry;
   }
@@ -8267,6 +8335,16 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_work_equipment_ai_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_document_template_ai_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        settings_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_document_template_ai_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -12119,6 +12197,34 @@ export class MySqlSafetyRepository {
     await this.pool.query(
       `
         INSERT INTO web_work_equipment_ai_settings (organization_id, settings_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          settings_json = VALUES(settings_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [safeOrganizationId, JSON.stringify(normalizedSettings)],
+    );
+
+    return {
+      ...normalizedSettings,
+      organizationId: String(safeOrganizationId),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async upsertDocumentTemplateAiSettings({ organizationId = "", settings = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za dokumentacijske NexAI upute.");
+    }
+
+    const normalizedSettings = normalizeDocumentTemplateAiSettings({
+      ...settings,
+      organizationId: String(safeOrganizationId),
+    });
+    await this.pool.query(
+      `
+        INSERT INTO web_document_template_ai_settings (organization_id, settings_json)
         VALUES (?, ?)
         ON DUPLICATE KEY UPDATE
           settings_json = VALUES(settings_json),

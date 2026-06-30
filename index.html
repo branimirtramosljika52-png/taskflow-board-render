@@ -7638,6 +7638,59 @@
                 </div>
                 <p id="settings-work-order-points-feedback" class="form-error" aria-live="polite"></p>
               </section>
+              <section class="panel settings-notifications-panel settings-document-template-ai-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Dokumentacija · NexAI</p>
+                    <h3>AI pravila za predloške i gridline</h3>
+                  </div>
+                  <button id="settings-document-template-ai-save" type="button" class="ghost-button">Spremi dokumentacijski NexAI</button>
+                </div>
+                <p class="helper-copy module-copy">Ove postavke su centralni default za sva AI polja u dokumentacijskim predlošcima i za sve gridline kolone. Ručno podešavanje na pojedinom polju ili koloni ostaje jači override.</p>
+                <div class="settings-notification-group">
+                  <strong>Izvori i sigurnost</strong>
+                  <div class="settings-notification-inline">
+                    <label class="field field-span-full">
+                      <span>Prioritet izvora</span>
+                      <textarea id="settings-document-template-ai-source-priority" rows="4" spellcheck="false" placeholder="previous_report&#10;older_previous_report&#10;uploaded_file&#10;template"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Ako nema izvora</span>
+                      <select id="settings-document-template-ai-no-source-behavior">
+                        <option value="leave_empty">Ostavi prazno</option>
+                        <option value="ask_user">Pitaj korisnika</option>
+                        <option value="use_template">Koristi template</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Potrebna sigurnost</span>
+                      <select id="settings-document-template-ai-confidence">
+                        <option value="high">Visoka</option>
+                        <option value="medium">Srednja</option>
+                        <option value="low">Niska</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div class="settings-notification-group">
+                  <strong>Globalne upute</strong>
+                  <div class="settings-notification-inline">
+                    <label class="field field-span-full">
+                      <span>Što NexAI ne smije raditi</span>
+                      <textarea id="settings-document-template-ai-default-avoid" rows="3"></textarea>
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Default uputa za polja</span>
+                      <textarea id="settings-document-template-ai-field-instruction" rows="4"></textarea>
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Default uputa za gridline kolone</span>
+                      <textarea id="settings-document-template-ai-column-instruction" rows="4" placeholder='Možeš koristiti {label} i {field}.'></textarea>
+                    </label>
+                  </div>
+                </div>
+                <p id="settings-document-template-ai-feedback" class="form-error" aria-live="polite"></p>
+              </section>
               <section class="panel settings-notifications-panel settings-job-ai-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
@@ -11518,7 +11571,7 @@
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
     <script src="/gridline.js?v=20260630-gridline-lock-fill-v2"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260630-ai-field-mapping-v1"></script>
+    <script type="module" src="/src/main.js?v=20260630-document-ai-settings-v1"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

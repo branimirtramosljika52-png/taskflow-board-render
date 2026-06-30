@@ -1228,6 +1228,7 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     group: normalizeText(source?.group).slice(0, 120),
     instructions: normalizeText(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
     locked: normalizeBoolean(source?.locked ?? source?.readonly ?? source?.readOnly, false),
+    inheritSettings: normalizeBoolean(source?.inheritSettings ?? source?.inherit_settings, true),
     sourcePriority: normalizeDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
     noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
@@ -2029,6 +2030,9 @@ const DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT = Object.freeze([
   "template",
 ]);
 const DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS = new Set(["leave_empty", "use_template", "ask_user"]);
+const DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID = "Ne izmisljaj vrijednosti. Ako podatak nije vidljiv u izvoru, ostavi prazno ili oznaci da nije moguce utvrditi.";
+const DOCUMENT_TEMPLATE_AI_DEFAULT_FIELD_INSTRUCTION = "Prvo koristi najnoviji prethodni zapisnik za isti RN/lokaciju/uslugu. Ako nema podatka, koristi stariji prethodni zapisnik, zatim uploadani izvor, a tek na kraju template. Ne izmisljaj vrijednosti.";
+const DOCUMENT_TEMPLATE_AI_DEFAULT_COLUMN_INSTRUCTION = "Popuni gridline kolonu samo ako je vrijednost jasno vidljiva u izvoru. Koristi tocan red mjerenja i ne mijenjaj ostale kolone.";
 
 function normalizeAiConfigList(value, maxItems = 120) {
   return normalizeMeasurementSheetValidationOptions(value).slice(0, maxItems);
@@ -2060,6 +2064,25 @@ function normalizeDocumentTemplateAiSourcePriority(value = []) {
 function normalizeDocumentTemplateAiNoSourceBehavior(value = "") {
   const normalized = normalizeText(value).toLowerCase();
   return DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS.has(normalized) ? normalized : "leave_empty";
+}
+
+export function normalizeDocumentTemplateAiSettings(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    organizationId: normalizeText(source.organizationId),
+    sourcePriority: normalizeDocumentTemplateAiSourcePriority(source.sourcePriority ?? source.source_priority),
+    noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehavior(source.noSourceBehavior ?? source.no_source_behavior),
+    defaultAvoid: normalizeText(
+      source.defaultAvoid ?? source.default_avoid ?? source.aiAvoid ?? source.ai_avoid ?? DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    ).slice(0, 2000) || DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    fieldInstruction: normalizeText(
+      source.fieldInstruction ?? source.field_instruction ?? source.instructions ?? DOCUMENT_TEMPLATE_AI_DEFAULT_FIELD_INSTRUCTION,
+    ).slice(0, 6000) || DOCUMENT_TEMPLATE_AI_DEFAULT_FIELD_INSTRUCTION,
+    columnInstruction: normalizeText(
+      source.columnInstruction ?? source.column_instruction ?? DOCUMENT_TEMPLATE_AI_DEFAULT_COLUMN_INSTRUCTION,
+    ).slice(0, 6000) || DOCUMENT_TEMPLATE_AI_DEFAULT_COLUMN_INSTRUCTION,
+    confidenceRequired: normalizeAiConfidenceLevel(source.confidenceRequired ?? source.confidence_required, "medium"),
+  };
 }
 
 function normalizeAiFieldType(value = "", fallback = "text") {
@@ -2109,6 +2132,7 @@ function normalizeMeasurementSheetColumnAiMappingSnapshot(input = {}) {
     group: normalizeText(source?.group).slice(0, 120),
     instructions: normalizeText(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
     locked: normalizeBoolean(source?.locked ?? source?.readonly ?? source?.readOnly, false),
+    inheritSettings: normalizeBoolean(source?.inheritSettings ?? source?.inherit_settings, true),
     sourcePriority: normalizeDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
     noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };

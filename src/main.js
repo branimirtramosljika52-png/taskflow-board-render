@@ -2184,6 +2184,7 @@ const state = {
     registers: [],
     profiles: [],
   },
+  documentTemplateAiSettings: {},
   riskPpeCatalog: [],
   riskAssessments: [],
   riskAssessmentReportTemplate: null,
@@ -4088,6 +4089,14 @@ const settingsWorkOrderServiceFactorsList = document.querySelector("#settings-wo
 const settingsJobAiFields = document.querySelector("#settings-job-ai-fields");
 const settingsJobAiSaveButton = document.querySelector("#settings-job-ai-save");
 const settingsJobAiFeedback = document.querySelector("#settings-job-ai-feedback");
+const settingsDocumentTemplateAiSaveButton = document.querySelector("#settings-document-template-ai-save");
+const settingsDocumentTemplateAiFeedback = document.querySelector("#settings-document-template-ai-feedback");
+const settingsDocumentTemplateAiSourcePriorityInput = document.querySelector("#settings-document-template-ai-source-priority");
+const settingsDocumentTemplateAiNoSourceBehaviorInput = document.querySelector("#settings-document-template-ai-no-source-behavior");
+const settingsDocumentTemplateAiDefaultAvoidInput = document.querySelector("#settings-document-template-ai-default-avoid");
+const settingsDocumentTemplateAiFieldInstructionInput = document.querySelector("#settings-document-template-ai-field-instruction");
+const settingsDocumentTemplateAiColumnInstructionInput = document.querySelector("#settings-document-template-ai-column-instruction");
+const settingsDocumentTemplateAiConfidenceInput = document.querySelector("#settings-document-template-ai-confidence");
 const settingsWorkEquipmentAiSaveButton = document.querySelector("#settings-work-equipment-ai-save");
 const settingsWorkEquipmentAiRefreshButton = document.querySelector("#settings-work-equipment-ai-refresh");
 const settingsWorkEquipmentAiFeedback = document.querySelector("#settings-work-equipment-ai-feedback");
@@ -10524,6 +10533,7 @@ function applySnapshot(payload, options = {}) {
   state.jobs = payload.jobs ?? [];
   state.jobAiSettings = normalizeJobAiSettings(payload.jobAiSettings ?? {});
   state.workEquipmentAiSettings = normalizeWorkEquipmentAiSettings(payload.workEquipmentAiSettings ?? {});
+  state.documentTemplateAiSettings = normalizeDocumentTemplateAiSettingsLocal(payload.documentTemplateAiSettings ?? {});
   resetSettingsWorkEquipmentAiDrafts();
   state.riskPpeCatalog = normalizeRiskPpeCatalog(payload.riskPpeCatalog ?? []);
   state.riskAssessments = payload.riskAssessments ?? [];
@@ -35600,6 +35610,7 @@ function renderSettingsModule() {
   const jobAiSettings = getJobAiSettings();
   const canManageJobNexAi = getCanManageJobNexAiSettings();
   const workEquipmentAiSettings = getWorkEquipmentAiSettings();
+  const documentTemplateAiSettings = getDocumentTemplateAiSettings();
 
   syncSettingsOrganizationLogo();
   syncSettingsDocumentStamp();
@@ -35714,6 +35725,7 @@ function renderSettingsModule() {
   renderSettingsWorkOrderServiceFactors(periodicsVisualSettings);
   renderSettingsWorkOrderPointsPreview(periodicsVisualSettings);
   renderSettingsJobAiFields(jobAiSettings);
+  renderSettingsDocumentTemplateAi(documentTemplateAiSettings);
   renderSettingsWorkEquipmentAi(workEquipmentAiSettings);
 
   if (settingsSaveAllButton) {
@@ -35734,6 +35746,7 @@ function renderSettingsModule() {
     settingsPeriodicsVisualFeedback,
     settingsWorkOrderPointsFeedback,
     settingsIsznrApiFeedback,
+    settingsDocumentTemplateAiFeedback,
     settingsWorkEquipmentAiFeedback,
   ].forEach((feedbackNode) => {
     if (!feedbackNode) {
@@ -35848,6 +35861,96 @@ async function saveSettingsJobAiSettings(options = {}) {
     });
     renderSettingsJobAiFields(state.jobAiSettings);
     setInlineMessage(settingsJobAiFeedback, successMessage, "success");
+  }
+
+  return success;
+}
+
+function renderSettingsDocumentTemplateAi(settings = getDocumentTemplateAiSettings()) {
+  const normalized = normalizeDocumentTemplateAiSettingsLocal(settings);
+  const canManage = getCanManageSettings();
+  if (settingsDocumentTemplateAiSourcePriorityInput && document.activeElement !== settingsDocumentTemplateAiSourcePriorityInput) {
+    settingsDocumentTemplateAiSourcePriorityInput.value = normalized.sourcePriority.join("\n");
+  }
+  if (settingsDocumentTemplateAiNoSourceBehaviorInput) {
+    settingsDocumentTemplateAiNoSourceBehaviorInput.value = normalized.noSourceBehavior;
+  }
+  if (settingsDocumentTemplateAiDefaultAvoidInput && document.activeElement !== settingsDocumentTemplateAiDefaultAvoidInput) {
+    settingsDocumentTemplateAiDefaultAvoidInput.value = normalized.defaultAvoid;
+  }
+  if (settingsDocumentTemplateAiFieldInstructionInput && document.activeElement !== settingsDocumentTemplateAiFieldInstructionInput) {
+    settingsDocumentTemplateAiFieldInstructionInput.value = normalized.fieldInstruction;
+  }
+  if (settingsDocumentTemplateAiColumnInstructionInput && document.activeElement !== settingsDocumentTemplateAiColumnInstructionInput) {
+    settingsDocumentTemplateAiColumnInstructionInput.value = normalized.columnInstruction;
+  }
+  if (settingsDocumentTemplateAiConfidenceInput) {
+    settingsDocumentTemplateAiConfidenceInput.value = normalized.confidenceRequired;
+  }
+  [
+    settingsDocumentTemplateAiSourcePriorityInput,
+    settingsDocumentTemplateAiNoSourceBehaviorInput,
+    settingsDocumentTemplateAiDefaultAvoidInput,
+    settingsDocumentTemplateAiFieldInstructionInput,
+    settingsDocumentTemplateAiColumnInstructionInput,
+    settingsDocumentTemplateAiConfidenceInput,
+  ].forEach((input) => {
+    if (input) input.disabled = !canManage;
+  });
+  if (settingsDocumentTemplateAiSaveButton) {
+    settingsDocumentTemplateAiSaveButton.hidden = !canManage;
+    settingsDocumentTemplateAiSaveButton.disabled = !canManage;
+  }
+}
+
+function collectSettingsDocumentTemplateAiSettings() {
+  return normalizeDocumentTemplateAiSettingsLocal({
+    organizationId: state.activeOrganizationId,
+    sourcePriority: settingsDocumentTemplateAiSourcePriorityInput?.value || "",
+    noSourceBehavior: settingsDocumentTemplateAiNoSourceBehaviorInput?.value || "",
+    defaultAvoid: settingsDocumentTemplateAiDefaultAvoidInput?.value || "",
+    fieldInstruction: settingsDocumentTemplateAiFieldInstructionInput?.value || "",
+    columnInstruction: settingsDocumentTemplateAiColumnInstructionInput?.value || "",
+    confidenceRequired: settingsDocumentTemplateAiConfidenceInput?.value || "",
+  });
+}
+
+async function saveSettingsDocumentTemplateAiSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Dokumentacijske NexAI postavke su spremljene.";
+
+  if (!getCanManageSettings()) {
+    setInlineMessage(settingsDocumentTemplateAiFeedback, "Nemate pravo spremati dokumentacijske NexAI postavke.");
+    return false;
+  }
+
+  if (!state.activeOrganizationId) {
+    setInlineMessage(settingsDocumentTemplateAiFeedback, "Odaberi organizaciju prije spremanja dokumentacijskih NexAI postavki.");
+    return false;
+  }
+
+  if (settingsDocumentTemplateAiSaveButton) {
+    settingsDocumentTemplateAiSaveButton.disabled = true;
+  }
+
+  const settings = collectSettingsDocumentTemplateAiSettings();
+  const success = await runMutation(() => apiRequest("/document-templates/ai-settings", {
+    method: "POST",
+    body: { settings },
+  }), settingsDocumentTemplateAiFeedback);
+
+  if (settingsDocumentTemplateAiSaveButton) {
+    settingsDocumentTemplateAiSaveButton.disabled = !getCanManageSettings();
+  }
+
+  if (success) {
+    state.documentTemplateAiSettings = normalizeDocumentTemplateAiSettingsLocal({
+      ...settings,
+      organizationId: state.activeOrganizationId,
+    });
+    renderSettingsDocumentTemplateAi(state.documentTemplateAiSettings);
+    setInlineMessage(settingsDocumentTemplateAiFeedback, successMessage, "success");
   }
 
   return success;
@@ -36430,6 +36533,7 @@ async function saveAllSettingsBlocks() {
   );
   const isznrApiPayload = collectSettingsIsznrApiPayload();
   const jobAiInstructions = normalizeJobAiInstructionDrafts(collectSettingsJobAiInstructions());
+  const documentTemplateAiSettings = collectSettingsDocumentTemplateAiSettings();
   const workEquipmentAiSettings = collectSettingsWorkEquipmentAiSettings();
 
   if (settingsMeasurementLeadDaysInput) settingsMeasurementLeadDaysInput.value = String(measurementLeadDays);
@@ -36463,6 +36567,7 @@ async function saveAllSettingsBlocks() {
     settingsWorkOrderPointsFeedback,
     settingsIsznrApiFeedback,
     settingsJobAiFeedback,
+    settingsDocumentTemplateAiFeedback,
     settingsWorkEquipmentAiFeedback,
   ].forEach((feedbackNode) => setInlineMessage(feedbackNode, ""));
 
@@ -36529,6 +36634,12 @@ async function saveAllSettingsBlocks() {
         aiInstructions: jobAiInstructions,
       },
     });
+    payload = await apiRequest("/document-templates/ai-settings", {
+      method: "POST",
+      body: {
+        settings: documentTemplateAiSettings,
+      },
+    });
     payload = await apiRequest("/work-equipment/ai-settings", {
       method: "POST",
       body: {
@@ -36562,6 +36673,7 @@ async function saveAllSettingsBlocks() {
       settingsWorkOrderPointsFeedback,
       settingsIsznrApiFeedback,
       settingsJobAiFeedback,
+      settingsDocumentTemplateAiFeedback,
       settingsWorkEquipmentAiFeedback,
     ].forEach((feedbackNode) => setInlineMessage(feedbackNode, successMessage, "success"));
     return true;
@@ -43636,6 +43748,8 @@ const DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT = Object.freeze([
 ]);
 const DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS = new Set(["leave_empty", "use_template", "ask_user"]);
 const DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID = "Ne izmisljaj vrijednosti. Ako podatak nije vidljiv u izvoru, ostavi prazno ili oznaci da nije moguce utvrditi.";
+const DOCUMENT_TEMPLATE_AI_DEFAULT_FIELD_INSTRUCTION = "Prvo koristi najnoviji prethodni zapisnik za isti RN/lokaciju/uslugu. Ako nema podatka, koristi stariji prethodni zapisnik, zatim uploadani izvor, a tek na kraju template. Ne izmisljaj vrijednosti.";
+const DOCUMENT_TEMPLATE_AI_DEFAULT_COLUMN_INSTRUCTION = "Popuni gridline kolonu samo ako je vrijednost jasno vidljiva u izvoru. Koristi tocan red mjerenja i ne mijenjaj ostale kolone.";
 
 const AI_CONFIDENCE_LABELS = {
   high: "NexAI visoka sigurnost",
@@ -43674,6 +43788,48 @@ function normalizeDocumentTemplateAiSourcePriorityLocal(value = []) {
 function normalizeDocumentTemplateAiNoSourceBehaviorLocal(value = "") {
   const normalized = String(value || "").trim().toLowerCase();
   return DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS.has(normalized) ? normalized : "leave_empty";
+}
+
+function normalizeDocumentTemplateAiSettingsLocal(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    organizationId: String(source.organizationId ?? state.activeOrganizationId ?? "").trim(),
+    sourcePriority: normalizeDocumentTemplateAiSourcePriorityLocal(source.sourcePriority ?? source.source_priority),
+    noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehaviorLocal(source.noSourceBehavior ?? source.no_source_behavior),
+    defaultAvoid: (String(
+      source.defaultAvoid ?? source.default_avoid ?? source.aiAvoid ?? source.ai_avoid ?? DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    ).trim().slice(0, 2000) || DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID),
+    fieldInstruction: (String(
+      source.fieldInstruction ?? source.field_instruction ?? source.instructions ?? DOCUMENT_TEMPLATE_AI_DEFAULT_FIELD_INSTRUCTION,
+    ).trim().slice(0, 6000) || DOCUMENT_TEMPLATE_AI_DEFAULT_FIELD_INSTRUCTION),
+    columnInstruction: (String(
+      source.columnInstruction ?? source.column_instruction ?? DOCUMENT_TEMPLATE_AI_DEFAULT_COLUMN_INSTRUCTION,
+    ).trim().slice(0, 6000) || DOCUMENT_TEMPLATE_AI_DEFAULT_COLUMN_INSTRUCTION),
+    confidenceRequired: normalizeAiConfidenceLevelLocal(source.confidenceRequired ?? source.confidence_required, "medium"),
+  };
+}
+
+function getDocumentTemplateAiSettings() {
+  return normalizeDocumentTemplateAiSettingsLocal(state.documentTemplateAiSettings);
+}
+
+function formatDocumentTemplateAiInstruction(template = "", values = {}) {
+  return String(template || "")
+    .replaceAll("{label}", String(values.label || ""))
+    .replaceAll("{column}", String(values.label || ""))
+    .replaceAll("{field}", String(values.fieldLabel || ""));
+}
+
+function shouldDocumentTemplateAiInheritSettings(source = {}) {
+  const raw = source?.inheritSettings ?? source?.inherit_settings;
+  if (raw === undefined || raw === null || raw === "") {
+    return true;
+  }
+  if (raw === false || raw === 0) {
+    return false;
+  }
+  const normalized = String(raw).trim().toLowerCase();
+  return !["false", "0", "no", "ne"].includes(normalized);
 }
 
 function normalizeAiFieldTypeLocal(value = "", fallback = "text") {
@@ -43727,6 +43883,7 @@ function normalizeMeasurementSheetColumnAiMappingSnapshotLocal(input = {}) {
     validationRules: String(source?.validationRules ?? source?.validation_rules ?? "").trim().slice(0, 1600),
     displayOrder: normalizeAiDisplayOrderLocal(source?.displayOrder ?? source?.display_order),
     group: String(source?.group || "").trim().slice(0, 120),
+    inheritSettings: Boolean(source?.inheritSettings ?? source?.inherit_settings ?? true),
     sourcePriority: normalizeDocumentTemplateAiSourcePriorityLocal(source?.sourcePriority ?? source?.source_priority),
     noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehaviorLocal(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
@@ -69746,6 +69903,7 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     group: String(source?.group || "").trim().slice(0, 120),
     instructions: String(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction ?? "").trim().slice(0, 3000),
     locked: Boolean(source?.locked ?? source?.readonly ?? source?.readOnly),
+    inheritSettings: Boolean(source?.inheritSettings ?? source?.inherit_settings ?? true),
     sourcePriority: normalizeDocumentTemplateAiSourcePriorityLocal(source?.sourcePriority ?? source?.source_priority),
     noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehaviorLocal(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
@@ -69779,6 +69937,7 @@ function shouldDocumentTemplateFieldUseDefaultAi(field = {}) {
 }
 
 function buildDocumentTemplateDefaultAiFieldInput(field = {}, index = 0) {
+  const aiSettings = getDocumentTemplateAiSettings();
   const label = String(field?.label || field?.wordLabel || `Polje ${index + 1}`).trim() || `Polje ${index + 1}`;
   const key = normalizeDocumentTemplateFieldKeyDraft(field?.key || field?.wordLabel || field?.label, `FIELD_${index + 1}`);
   const lookFor = Array.from(new Set([
@@ -69797,12 +69956,13 @@ function buildDocumentTemplateDefaultAiFieldInput(field = {}, index = 0) {
     enabled: shouldDocumentTemplateFieldUseDefaultAi(field),
     aiDescription: `Popuni polje "${label}" iz prethodnog zapisnika, starijeg prethodnog zapisnika, uploadanog izvora ili templatea.`,
     aiLookFor: lookFor,
-    aiAvoid: DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
-    confidenceRequired: "medium",
+    aiAvoid: aiSettings.defaultAvoid,
+    confidenceRequired: aiSettings.confidenceRequired,
     sourceTracking: true,
-    instructions: "Prvo koristi najnoviji prethodni zapisnik za isti RN/lokaciju/uslugu. Ako nema podatka, koristi stariji prethodni zapisnik, zatim uploadani izvor, a tek na kraju template. Ne izmisljaj vrijednosti.",
-    sourcePriority: [...DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
-    noSourceBehavior: "leave_empty",
+    inheritSettings: true,
+    instructions: formatDocumentTemplateAiInstruction(aiSettings.fieldInstruction, { label }),
+    sourcePriority: [...aiSettings.sourcePriority],
+    noSourceBehavior: aiSettings.noSourceBehavior,
   };
 }
 
@@ -69820,16 +69980,19 @@ function getDocumentTemplateFieldAiConfigForTemplate(field = {}, index = 0) {
   }
 
   const defaults = buildDocumentTemplateDefaultAiFieldInput(field, index);
+  const inheritSettings = shouldDocumentTemplateAiInheritSettings(source);
   return normalizeDocumentTemplateFieldAiConfig({
     ...defaults,
     ...source,
+    inheritSettings,
     enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
     aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
     aiLookFor: mergeDocumentTemplateAiListValue(source.aiLookFor ?? source.ai_look_for, defaults.aiLookFor),
-    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? defaults.aiAvoid,
-    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instruction ?? defaults.instructions,
-    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
-    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+    aiAvoid: inheritSettings ? defaults.aiAvoid : (source.aiAvoid ?? source.ai_avoid ?? defaults.aiAvoid),
+    confidenceRequired: inheritSettings ? defaults.confidenceRequired : (source.confidenceRequired ?? source.confidence_required ?? defaults.confidenceRequired),
+    instructions: inheritSettings ? defaults.instructions : (source.instructions ?? source.aiInstructions ?? source.ai_instruction ?? defaults.instructions),
+    sourcePriority: inheritSettings ? defaults.sourcePriority : (source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority),
+    noSourceBehavior: inheritSettings ? defaults.noSourceBehavior : (source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior),
   }, field);
 }
 
@@ -69853,6 +70016,7 @@ function inferMeasurementColumnAiType(column = {}) {
 }
 
 function buildMeasurementColumnDefaultAiMappingInput(column = {}, columnIndex = 0, field = {}) {
+  const aiSettings = getDocumentTemplateAiSettings();
   const label = String(column?.label || column?.placeholder || `Kolona ${columnIndex + 1}`).trim() || `Kolona ${columnIndex + 1}`;
   const key = normalizeDocumentTemplateFieldKeyDraft(column?.id || label, `COLUMN_${columnIndex + 1}`);
   const lookFor = Array.from(new Set([
@@ -69869,7 +70033,10 @@ function buildMeasurementColumnDefaultAiMappingInput(column = {}, columnIndex = 
     key,
     label,
     description: String(field?.label || field?.wordLabel || "Gridline tablica").trim(),
-    instructions: `Popuni kolonu "${label}" samo ako je vrijednost jasno vidljiva u izvoru. Koristi tocan red mjerenja i ne mijenjaj ostale kolone.`,
+    instructions: formatDocumentTemplateAiInstruction(aiSettings.columnInstruction, {
+      label,
+      fieldLabel: String(field?.label || field?.wordLabel || "Gridline tablica").trim(),
+    }),
     type: inferredType,
     format: inferredType,
     required: false,
@@ -69878,11 +70045,12 @@ function buildMeasurementColumnDefaultAiMappingInput(column = {}, columnIndex = 
     aiLookFor: lookFor,
     synonyms: lookFor,
     allowedValues,
-    aiAvoid: DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
-    confidenceRequired: "medium",
+    aiAvoid: aiSettings.defaultAvoid,
+    confidenceRequired: aiSettings.confidenceRequired,
     sourceTracking: true,
-    sourcePriority: [...DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
-    noSourceBehavior: "leave_empty",
+    inheritSettings: true,
+    sourcePriority: [...aiSettings.sourcePriority],
+    noSourceBehavior: aiSettings.noSourceBehavior,
   };
 }
 
@@ -69891,18 +70059,21 @@ function getMeasurementColumnAiMappingForTemplate(column = {}, columnIndex = 0, 
     ? (column.aiMapping ?? column.ai)
     : {};
   const defaults = buildMeasurementColumnDefaultAiMappingInput(column, columnIndex, field);
+  const inheritSettings = shouldDocumentTemplateAiInheritSettings(source);
   return normalizeMeasurementSheetColumnAiMappingSnapshotLocal({
     ...defaults,
     ...source,
+    inheritSettings,
     enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
     aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
     aiLookFor: mergeDocumentTemplateAiListValue(source.aiLookFor ?? source.ai_look_for ?? source.synonyms, defaults.aiLookFor),
     synonyms: mergeDocumentTemplateAiListValue(source.synonyms ?? source.aiLookFor ?? source.ai_look_for, defaults.synonyms, 80),
     allowedValues: mergeDocumentTemplateAiListValue(source.allowedValues ?? source.allowed_values, defaults.allowedValues),
-    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? source.avoid ?? defaults.aiAvoid,
-    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instructions ?? source.ai_instruction ?? defaults.instructions,
-    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
-    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+    aiAvoid: inheritSettings ? defaults.aiAvoid : (source.aiAvoid ?? source.ai_avoid ?? source.avoid ?? defaults.aiAvoid),
+    confidenceRequired: inheritSettings ? defaults.confidenceRequired : (source.confidenceRequired ?? source.confidence_required ?? defaults.confidenceRequired),
+    instructions: inheritSettings ? defaults.instructions : (source.instructions ?? source.aiInstructions ?? source.ai_instructions ?? source.ai_instruction ?? defaults.instructions),
+    sourcePriority: inheritSettings ? defaults.sourcePriority : (source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority),
+    noSourceBehavior: inheritSettings ? defaults.noSourceBehavior : (source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior),
   });
 }
 
@@ -153943,6 +154114,10 @@ settingsPushPreferencesGrid?.addEventListener("change", (event) => {
 settingsJobAiSaveButton?.addEventListener("click", () => {
   syncSettingsJobAiActiveModalDraft();
   void saveSettingsJobAiSettings();
+});
+
+settingsDocumentTemplateAiSaveButton?.addEventListener("click", () => {
+  void saveSettingsDocumentTemplateAiSettings();
 });
 
 settingsJobAiFields?.addEventListener("click", (event) => {

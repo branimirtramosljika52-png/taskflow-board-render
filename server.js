@@ -83,6 +83,7 @@ import {
   doesAbsenceTypeRequireApproval,
   getVehicleAvailabilityStatus,
   getVehicleNextReservation,
+  normalizeDocumentTemplateAiSettings,
   normalizeWorkOrderMeasurementSheet,
   sortVehicleReservations,
 } from "./src/safetyModel.js";
@@ -21859,6 +21860,29 @@ function normalizeMobileDocumentTemplateAiNoSourceBehavior(value = "") {
   return MOBILE_DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS.has(normalized) ? normalized : "leave_empty";
 }
 
+function getMobileDocumentTemplateAiSettings(scopedSnapshot = {}) {
+  return normalizeDocumentTemplateAiSettings(scopedSnapshot?.documentTemplateAiSettings ?? {});
+}
+
+function formatMobileDocumentTemplateAiInstruction(template = "", values = {}) {
+  return normalizeInputValue(template)
+    .replaceAll("{label}", normalizeInputValue(values.label))
+    .replaceAll("{column}", normalizeInputValue(values.label))
+    .replaceAll("{field}", normalizeInputValue(values.fieldLabel));
+}
+
+function shouldMobileDocumentTemplateAiInheritSettings(source = {}) {
+  const raw = source?.inheritSettings ?? source?.inherit_settings;
+  if (raw === undefined || raw === null || raw === "") {
+    return true;
+  }
+  if (raw === false || raw === 0) {
+    return false;
+  }
+  const normalized = normalizeInputValue(raw).toLowerCase();
+  return !["false", "0", "no", "ne"].includes(normalized);
+}
+
 function normalizeMobileDocumentTemplateFieldAiConfig(input = {}, field = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
@@ -21900,6 +21924,7 @@ function normalizeMobileDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     group: normalizeInputValue(source?.group).slice(0, 120),
     instructions: normalizeInputValue(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
     locked: Boolean(source?.locked ?? source?.readonly ?? source?.readOnly),
+    inheritSettings: Boolean(source?.inheritSettings ?? source?.inherit_settings ?? true),
     sourcePriority: normalizeMobileDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
     noSourceBehavior: normalizeMobileDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
@@ -21959,6 +21984,7 @@ function normalizeMobileMeasurementColumnAiMapping(input = {}) {
     group: normalizeInputValue(source?.group).slice(0, 120),
     instructions: normalizeInputValue(source?.instructions ?? source?.aiInstructions ?? source?.ai_instructions ?? source?.ai_instruction).slice(0, 3000),
     locked: Boolean(source?.locked ?? source?.readonly ?? source?.readOnly),
+    inheritSettings: Boolean(source?.inheritSettings ?? source?.inherit_settings ?? true),
     sourcePriority: normalizeMobileDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
     noSourceBehavior: normalizeMobileDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
@@ -22039,7 +22065,8 @@ function mergeMobileAiConfigList(sourceValue, defaultValue, maxItems = 160) {
   return sourceList.length > 0 ? sourceList : normalizeMobileAiConfigList(defaultValue, maxItems);
 }
 
-function buildMobileDocumentTemplateDefaultAiFieldInput(field = {}, index = 0) {
+function buildMobileDocumentTemplateDefaultAiFieldInput(field = {}, index = 0, aiSettings = {}) {
+  const settings = normalizeDocumentTemplateAiSettings(aiSettings);
   const label = normalizeInputValue(field?.label || field?.wordLabel || `Polje ${index + 1}`) || `Polje ${index + 1}`;
   const key = getMobileDocumentTemplateFieldTokenKey(field, index);
   const lookFor = Array.from(new Set([
@@ -22057,33 +22084,37 @@ function buildMobileDocumentTemplateDefaultAiFieldInput(field = {}, index = 0) {
     enabled: shouldMobileDocumentTemplateFieldUseDefaultAi(field),
     aiDescription: `Popuni polje "${label}" iz prethodnog zapisnika, starijeg prethodnog zapisnika, uploadanog izvora ili templatea.`,
     aiLookFor: lookFor,
-    aiAvoid: MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
-    confidenceRequired: "medium",
+    aiAvoid: settings.defaultAvoid || MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    confidenceRequired: settings.confidenceRequired || "medium",
     sourceTracking: true,
-    instructions: "Prvo koristi najnoviji prethodni zapisnik za isti RN/lokaciju/uslugu. Ako nema podatka, koristi stariji prethodni zapisnik, zatim uploadani izvor, a tek na kraju template. Ne izmisljaj vrijednosti.",
-    sourcePriority: [...MOBILE_DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
-    noSourceBehavior: "leave_empty",
+    inheritSettings: true,
+    instructions: formatMobileDocumentTemplateAiInstruction(settings.fieldInstruction, { label }),
+    sourcePriority: normalizeMobileDocumentTemplateAiSourcePriority(settings.sourcePriority),
+    noSourceBehavior: normalizeMobileDocumentTemplateAiNoSourceBehavior(settings.noSourceBehavior),
   };
 }
 
-function getMobileDocumentTemplateFieldAiConfigForRuntime(field = {}, index = 0) {
+function getMobileDocumentTemplateFieldAiConfigForRuntime(field = {}, index = 0, aiSettings = {}) {
   const source = (field?.ai ?? field?.aiConfig) && typeof (field.ai ?? field.aiConfig) === "object"
     ? (field.ai ?? field.aiConfig)
     : {};
   if (!shouldMobileDocumentTemplateFieldUseDefaultAi(field) && !hasMobileDocumentTemplateFieldAiConfig(source, field)) {
     return normalizeMobileDocumentTemplateFieldAiConfig(source, field);
   }
-  const defaults = buildMobileDocumentTemplateDefaultAiFieldInput(field, index);
+  const defaults = buildMobileDocumentTemplateDefaultAiFieldInput(field, index, aiSettings);
+  const inheritSettings = shouldMobileDocumentTemplateAiInheritSettings(source);
   return normalizeMobileDocumentTemplateFieldAiConfig({
     ...defaults,
     ...source,
+    inheritSettings,
     enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
     aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
     aiLookFor: mergeMobileAiConfigList(source.aiLookFor ?? source.ai_look_for, defaults.aiLookFor),
-    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? defaults.aiAvoid,
-    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instruction ?? defaults.instructions,
-    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
-    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+    aiAvoid: inheritSettings ? defaults.aiAvoid : (source.aiAvoid ?? source.ai_avoid ?? defaults.aiAvoid),
+    confidenceRequired: inheritSettings ? defaults.confidenceRequired : (source.confidenceRequired ?? source.confidence_required ?? defaults.confidenceRequired),
+    instructions: inheritSettings ? defaults.instructions : (source.instructions ?? source.aiInstructions ?? source.ai_instruction ?? defaults.instructions),
+    sourcePriority: inheritSettings ? defaults.sourcePriority : (source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority),
+    noSourceBehavior: inheritSettings ? defaults.noSourceBehavior : (source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior),
   }, field);
 }
 
@@ -22106,7 +22137,8 @@ function inferMobileMeasurementColumnAiType(column = {}) {
   return "text";
 }
 
-function buildMobileMeasurementColumnDefaultAiMappingInput(column = {}, columnIndex = 0, field = {}) {
+function buildMobileMeasurementColumnDefaultAiMappingInput(column = {}, columnIndex = 0, field = {}, aiSettings = {}) {
+  const settings = normalizeDocumentTemplateAiSettings(aiSettings);
   const label = normalizeInputValue(column?.label || column?.placeholder || `Kolona ${columnIndex + 1}`) || `Kolona ${columnIndex + 1}`;
   const key = normalizeMobileDocumentTemplateFieldTokenKey(column?.id || label, `COLUMN_${columnIndex + 1}`);
   const lookFor = Array.from(new Set([
@@ -22122,7 +22154,10 @@ function buildMobileMeasurementColumnDefaultAiMappingInput(column = {}, columnIn
     key,
     label,
     description: normalizeInputValue(field?.label || field?.wordLabel || "Gridline tablica"),
-    instructions: `Popuni kolonu "${label}" samo ako je vrijednost jasno vidljiva u izvoru. Koristi tocan red mjerenja i ne mijenjaj ostale kolone.`,
+    instructions: formatMobileDocumentTemplateAiInstruction(settings.columnInstruction, {
+      label,
+      fieldLabel: normalizeInputValue(field?.label || field?.wordLabel || "Gridline tablica"),
+    }),
     type: inferredType,
     format: inferredType,
     required: false,
@@ -22131,31 +22166,35 @@ function buildMobileMeasurementColumnDefaultAiMappingInput(column = {}, columnIn
     aiLookFor: lookFor,
     synonyms: lookFor,
     allowedValues,
-    aiAvoid: MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
-    confidenceRequired: "medium",
+    aiAvoid: settings.defaultAvoid || MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    confidenceRequired: settings.confidenceRequired || "medium",
     sourceTracking: true,
-    sourcePriority: [...MOBILE_DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
-    noSourceBehavior: "leave_empty",
+    inheritSettings: true,
+    sourcePriority: normalizeMobileDocumentTemplateAiSourcePriority(settings.sourcePriority),
+    noSourceBehavior: normalizeMobileDocumentTemplateAiNoSourceBehavior(settings.noSourceBehavior),
   };
 }
 
-function getMobileMeasurementColumnAiMappingForRuntime(column = {}, columnIndex = 0, field = {}) {
+function getMobileMeasurementColumnAiMappingForRuntime(column = {}, columnIndex = 0, field = {}, aiSettings = {}) {
   const source = (column?.aiMapping ?? column?.ai) && typeof (column.aiMapping ?? column.ai) === "object"
     ? (column.aiMapping ?? column.ai)
     : {};
-  const defaults = buildMobileMeasurementColumnDefaultAiMappingInput(column, columnIndex, field);
+  const defaults = buildMobileMeasurementColumnDefaultAiMappingInput(column, columnIndex, field, aiSettings);
+  const inheritSettings = shouldMobileDocumentTemplateAiInheritSettings(source);
   return normalizeMobileMeasurementColumnAiMapping({
     ...defaults,
     ...source,
+    inheritSettings,
     enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
     aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
     aiLookFor: mergeMobileAiConfigList(source.aiLookFor ?? source.ai_look_for ?? source.synonyms, defaults.aiLookFor),
     synonyms: mergeMobileAiConfigList(source.synonyms ?? source.aiLookFor ?? source.ai_look_for, defaults.synonyms, 80),
     allowedValues: mergeMobileAiConfigList(source.allowedValues ?? source.allowed_values, defaults.allowedValues),
-    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? source.avoid ?? defaults.aiAvoid,
-    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instructions ?? source.ai_instruction ?? defaults.instructions,
-    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
-    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+    aiAvoid: inheritSettings ? defaults.aiAvoid : (source.aiAvoid ?? source.ai_avoid ?? source.avoid ?? defaults.aiAvoid),
+    confidenceRequired: inheritSettings ? defaults.confidenceRequired : (source.confidenceRequired ?? source.confidence_required ?? defaults.confidenceRequired),
+    instructions: inheritSettings ? defaults.instructions : (source.instructions ?? source.aiInstructions ?? source.ai_instructions ?? source.ai_instruction ?? defaults.instructions),
+    sourcePriority: inheritSettings ? defaults.sourcePriority : (source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority),
+    noSourceBehavior: inheritSettings ? defaults.noSourceBehavior : (source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior),
   });
 }
 
@@ -22170,7 +22209,7 @@ function getMobileSpreadsheetColumnLabel(index = 0) {
   return label;
 }
 
-function buildMobileDocumentTemplateAiFields(template = {}) {
+function buildMobileDocumentTemplateAiFields(template = {}, aiSettings = {}) {
   return (Array.isArray(template?.customFields) ? template.customFields : [])
     .map((field, index) => {
       if (!field || typeof field !== "object" || Array.isArray(field)) {
@@ -22181,7 +22220,7 @@ function buildMobileDocumentTemplateAiFields(template = {}) {
       }
       const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
       const isSystemDescription = fieldType === "system_description";
-      const config = getMobileDocumentTemplateFieldAiConfigForRuntime(field, index);
+      const config = getMobileDocumentTemplateFieldAiConfigForRuntime(field, index, aiSettings);
       if (!isSystemDescription && !hasMobileDocumentTemplateFieldAiConfig(config, field)) {
         return null;
       }
@@ -22218,7 +22257,7 @@ function buildMobileDocumentTemplateAiFields(template = {}) {
     .filter(Boolean);
 }
 
-function buildMobileDocumentTemplateAiMeasurementColumns(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}, fieldSheets = {}) {
+function buildMobileDocumentTemplateAiMeasurementColumns(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}, fieldSheets = {}, aiSettings = {}) {
   const columns = [];
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, fieldIndex) => {
     if (field?.hidden === true || field?.mobileHidden === true || field?.excludeFromMobile === true) {
@@ -22234,11 +22273,11 @@ function buildMobileDocumentTemplateAiMeasurementColumns(template = {}, workOrde
     if (!sheet?.columns?.length) {
       return;
     }
-    const fieldAi = getMobileDocumentTemplateFieldAiConfigForRuntime(field, fieldIndex);
+    const fieldAi = getMobileDocumentTemplateFieldAiConfigForRuntime(field, fieldIndex, aiSettings);
     sheet.columns
       .filter((column) => !column?.computed)
       .forEach((column, columnIndex) => {
-        const aiMapping = getMobileMeasurementColumnAiMappingForRuntime(column, columnIndex, field);
+        const aiMapping = getMobileMeasurementColumnAiMappingForRuntime(column, columnIndex, field, aiSettings);
         if (!hasMobileMeasurementColumnAiMapping(aiMapping)) {
           return;
         }
@@ -23941,6 +23980,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
 
 function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot = {}) {
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
+  const documentTemplateAiSettings = getMobileDocumentTemplateAiSettings(scopedSnapshot);
   const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
   const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
     ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
@@ -24016,8 +24056,16 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         fieldBlocks: buildMobileDocumentTemplateFieldBlocks(template, workOrder, service, scopedSnapshot, common, fieldSheets),
         inspectionTypeOptions: buildMobileDocumentTemplateInspectionTypeOptions(template),
         measurementTables: buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common),
-        aiFields: buildMobileDocumentTemplateAiFields(template),
-        aiMeasurementColumns: buildMobileDocumentTemplateAiMeasurementColumns(template, workOrder, service, scopedSnapshot, common, fieldSheets),
+        aiFields: buildMobileDocumentTemplateAiFields(template, documentTemplateAiSettings),
+        aiMeasurementColumns: buildMobileDocumentTemplateAiMeasurementColumns(
+          template,
+          workOrder,
+          service,
+          scopedSnapshot,
+          common,
+          fieldSheets,
+          documentTemplateAiSettings,
+        ),
       });
     });
   });
@@ -24035,6 +24083,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     fieldCount: templates.reduce((sum, template) => sum + (template.fields?.length || 0), 0),
     templateBlockCount: templates.reduce((sum, template) => sum + (template.fieldBlocks?.length || 0), 0),
     measurementTableCount: templates.reduce((sum, template) => sum + (template.measurementTables?.length || 0), 0),
+    documentTemplateAiSettings,
     defaults: primaryDefaults || {
       testingLocation: resolveMobileWorkOrderTestingLocation(workOrder, {}),
     },
@@ -32353,6 +32402,22 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       await domainRepository.upsertWorkEquipmentAiSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        settings: body?.settings ?? body ?? {},
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/document-templates/ai-settings") {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
+        sendError(response, 403, "Nemate pravo upravljati dokumentacijskim NexAI uputama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertDocumentTemplateAiSettings({
         organizationId: scopedSnapshot.activeOrganizationId,
         settings: body?.settings ?? body ?? {},
       });

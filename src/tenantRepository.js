@@ -34,6 +34,10 @@ import {
   getObjectStorageConfig,
   uploadDataUrlToObjectStorage,
 } from "./objectStorage.js";
+import {
+  normalizeDocumentTemplateAiSettings,
+  normalizeWorkEquipmentAiSettings,
+} from "./safetyModel.js";
 
 const DEFAULT_ORGANIZATION_NAME = "Default Organization";
 const SIGNUP_STATUS_PENDING = "pending";
@@ -2425,6 +2429,30 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         }
         : { organizationId: String(organizationId), aiInstructions: {} };
     })(),
+    workEquipmentAiSettings: (() => {
+      if (actorIsClientPortal) {
+        return normalizeWorkEquipmentAiSettings({ organizationId: String(organizationId) });
+      }
+      const entry = (rawSnapshot.workEquipmentAiSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      return normalizeWorkEquipmentAiSettings({
+        ...(entry ?? {}),
+        organizationId: String(organizationId),
+      });
+    })(),
+    documentTemplateAiSettings: (() => {
+      if (actorIsClientPortal) {
+        return normalizeDocumentTemplateAiSettings({ organizationId: String(organizationId) });
+      }
+      const entry = (rawSnapshot.documentTemplateAiSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      return normalizeDocumentTemplateAiSettings({
+        ...(entry ?? {}),
+        organizationId: String(organizationId),
+      });
+    })(),
     riskPpeCatalog: (actorIsClientPortal ? [] : (rawSnapshot.riskPpeCatalog ?? [])).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({ ...item })),
@@ -3468,6 +3496,8 @@ export class MemoryTenantRepository {
     purchaseOrders: [],
     jobs: [],
     jobAiSettings: [],
+    workEquipmentAiSettings: [],
+    documentTemplateAiSettings: [],
     riskPpeCatalog: [],
     riskAssessments: [],
     contracts: [],
@@ -4654,6 +4684,8 @@ export class MySqlTenantRepository {
       purchaseOrders: [],
       jobs: [],
       jobAiSettings: [],
+      workEquipmentAiSettings: [],
+      documentTemplateAiSettings: [],
       riskPpeCatalog: [],
       riskAssessments: [],
       contracts: [],
@@ -4716,6 +4748,8 @@ export class MySqlTenantRepository {
       purchaseOrders: [],
       jobs: [],
       jobAiSettings: [],
+      workEquipmentAiSettings: [],
+      documentTemplateAiSettings: [],
       riskPpeCatalog: [],
       riskAssessments: [],
       contracts: [],
