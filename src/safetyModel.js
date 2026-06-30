@@ -1228,6 +1228,8 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     group: normalizeText(source?.group).slice(0, 120),
     instructions: normalizeText(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
     locked: normalizeBoolean(source?.locked ?? source?.readonly ?? source?.readOnly, false),
+    sourcePriority: normalizeDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
+    noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
 }
 
@@ -2020,6 +2022,13 @@ const MEASUREMENT_AI_COLUMN_FORMATS = new Set([
 ]);
 
 const AI_CONFIDENCE_LEVELS = new Set(["high", "medium", "low"]);
+const DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT = Object.freeze([
+  "previous_report",
+  "older_previous_report",
+  "uploaded_file",
+  "template",
+]);
+const DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS = new Set(["leave_empty", "use_template", "ask_user"]);
 
 function normalizeAiConfigList(value, maxItems = 120) {
   return normalizeMeasurementSheetValidationOptions(value).slice(0, maxItems);
@@ -2033,6 +2042,24 @@ function normalizeAiConfidenceLevel(value = "", fallback = "medium") {
 function normalizeAiDisplayOrder(value = "") {
   const parsed = Number.parseInt(normalizeText(value), 10);
   return Number.isFinite(parsed) ? Math.max(0, Math.min(9999, parsed)) : 0;
+}
+
+function normalizeDocumentTemplateAiSourcePriority(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[,;\n]/);
+  const normalized = source
+    .map((entry) => normalizeText(entry).toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
+  return normalized.length > 0
+    ? Array.from(new Set(normalized))
+    : [...DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT];
+}
+
+function normalizeDocumentTemplateAiNoSourceBehavior(value = "") {
+  const normalized = normalizeText(value).toLowerCase();
+  return DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS.has(normalized) ? normalized : "leave_empty";
 }
 
 function normalizeAiFieldType(value = "", fallback = "text") {
@@ -2082,6 +2109,8 @@ function normalizeMeasurementSheetColumnAiMappingSnapshot(input = {}) {
     group: normalizeText(source?.group).slice(0, 120),
     instructions: normalizeText(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
     locked: normalizeBoolean(source?.locked ?? source?.readonly ?? source?.readOnly, false),
+    sourcePriority: normalizeDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
+    noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
 }
 

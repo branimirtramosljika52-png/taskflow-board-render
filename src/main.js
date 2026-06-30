@@ -43628,6 +43628,14 @@ const MEASUREMENT_AI_COLUMN_FORMATS = new Set([
 ]);
 
 const AI_CONFIDENCE_LEVELS = new Set(["high", "medium", "low"]);
+const DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT = Object.freeze([
+  "previous_report",
+  "older_previous_report",
+  "uploaded_file",
+  "template",
+]);
+const DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS = new Set(["leave_empty", "use_template", "ask_user"]);
+const DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID = "Ne izmisljaj vrijednosti. Ako podatak nije vidljiv u izvoru, ostavi prazno ili oznaci da nije moguce utvrditi.";
 
 const AI_CONFIDENCE_LABELS = {
   high: "NexAI visoka sigurnost",
@@ -43647,6 +43655,25 @@ function normalizeAiConfidenceLevelLocal(value = "", fallback = "medium") {
 function normalizeAiDisplayOrderLocal(value = "") {
   const parsed = Number.parseInt(String(value ?? "").trim(), 10);
   return Number.isFinite(parsed) ? Math.max(0, Math.min(9999, parsed)) : 0;
+}
+
+function normalizeDocumentTemplateAiSourcePriorityLocal(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "")
+      .split(/[,;\n]/);
+  const normalized = source
+    .map((entry) => String(entry ?? "").trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
+  return normalized.length > 0
+    ? Array.from(new Set(normalized))
+    : [...DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT];
+}
+
+function normalizeDocumentTemplateAiNoSourceBehaviorLocal(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS.has(normalized) ? normalized : "leave_empty";
 }
 
 function normalizeAiFieldTypeLocal(value = "", fallback = "text") {
@@ -43700,6 +43727,8 @@ function normalizeMeasurementSheetColumnAiMappingSnapshotLocal(input = {}) {
     validationRules: String(source?.validationRules ?? source?.validation_rules ?? "").trim().slice(0, 1600),
     displayOrder: normalizeAiDisplayOrderLocal(source?.displayOrder ?? source?.display_order),
     group: String(source?.group || "").trim().slice(0, 120),
+    sourcePriority: normalizeDocumentTemplateAiSourcePriorityLocal(source?.sourcePriority ?? source?.source_priority),
+    noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehaviorLocal(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
 }
 
@@ -69715,6 +69744,178 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     validationRules: String(source?.validationRules ?? source?.validation_rules ?? "").trim().slice(0, 1600),
     displayOrder: normalizeAiDisplayOrderLocal(source?.displayOrder ?? source?.display_order),
     group: String(source?.group || "").trim().slice(0, 120),
+    instructions: String(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction ?? "").trim().slice(0, 3000),
+    locked: Boolean(source?.locked ?? source?.readonly ?? source?.readOnly),
+    sourcePriority: normalizeDocumentTemplateAiSourcePriorityLocal(source?.sourcePriority ?? source?.source_priority),
+    noSourceBehavior: normalizeDocumentTemplateAiNoSourceBehaviorLocal(source?.noSourceBehavior ?? source?.no_source_behavior),
+  };
+}
+
+function getDocumentTemplateDefaultAiTypeForField(field = {}) {
+  const fieldType = String(field?.type || "text").trim().toLowerCase();
+  if (fieldType === "dropdown") {
+    return "enum";
+  }
+  if (fieldType === "date") {
+    return "date";
+  }
+  if (fieldType === "number") {
+    return "number";
+  }
+  if (fieldType === "checkbox" || fieldType === "toggle") {
+    return "boolean";
+  }
+  if (fieldType === "measurement_table" || fieldType === "gridline") {
+    return "list";
+  }
+  return "text";
+}
+
+function shouldDocumentTemplateFieldUseDefaultAi(field = {}) {
+  const fieldType = String(field?.type || "text").trim().toLowerCase();
+  return fieldType === "measurement_table"
+    || fieldType === "gridline"
+    || DOCUMENT_TEMPLATE_RUNTIME_AI_WRITABLE_FIELD_TYPES.has(fieldType);
+}
+
+function buildDocumentTemplateDefaultAiFieldInput(field = {}, index = 0) {
+  const label = String(field?.label || field?.wordLabel || `Polje ${index + 1}`).trim() || `Polje ${index + 1}`;
+  const key = normalizeDocumentTemplateFieldKeyDraft(field?.key || field?.wordLabel || field?.label, `FIELD_${index + 1}`);
+  const lookFor = Array.from(new Set([
+    label,
+    field?.wordLabel,
+    field?.placeholder,
+    key,
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
+
+  return {
+    key,
+    label,
+    description: String(field?.helpText || "").trim(),
+    type: getDocumentTemplateDefaultAiTypeForField(field),
+    required: Boolean(field?.required),
+    enabled: shouldDocumentTemplateFieldUseDefaultAi(field),
+    aiDescription: `Popuni polje "${label}" iz prethodnog zapisnika, starijeg prethodnog zapisnika, uploadanog izvora ili templatea.`,
+    aiLookFor: lookFor,
+    aiAvoid: DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    confidenceRequired: "medium",
+    sourceTracking: true,
+    instructions: "Prvo koristi najnoviji prethodni zapisnik za isti RN/lokaciju/uslugu. Ako nema podatka, koristi stariji prethodni zapisnik, zatim uploadani izvor, a tek na kraju template. Ne izmisljaj vrijednosti.",
+    sourcePriority: [...DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
+    noSourceBehavior: "leave_empty",
+  };
+}
+
+function mergeDocumentTemplateAiListValue(sourceValue, defaultValue, maxItems = 160) {
+  const sourceList = normalizeAiConfigListLocal(sourceValue, maxItems);
+  return sourceList.length > 0 ? sourceList : normalizeAiConfigListLocal(defaultValue, maxItems);
+}
+
+function getDocumentTemplateFieldAiConfigForTemplate(field = {}, index = 0) {
+  const source = (field?.ai ?? field?.aiConfig) && typeof (field.ai ?? field.aiConfig) === "object"
+    ? (field.ai ?? field.aiConfig)
+    : {};
+  if (!shouldDocumentTemplateFieldUseDefaultAi(field) && !hasDocumentTemplateFieldAiConfig(source, field)) {
+    return normalizeDocumentTemplateFieldAiConfig(source, field);
+  }
+
+  const defaults = buildDocumentTemplateDefaultAiFieldInput(field, index);
+  return normalizeDocumentTemplateFieldAiConfig({
+    ...defaults,
+    ...source,
+    enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
+    aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
+    aiLookFor: mergeDocumentTemplateAiListValue(source.aiLookFor ?? source.ai_look_for, defaults.aiLookFor),
+    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? defaults.aiAvoid,
+    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instruction ?? defaults.instructions,
+    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
+    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+  }, field);
+}
+
+function inferMeasurementColumnAiType(column = {}) {
+  const identity = String([
+    column?.label,
+    column?.placeholder,
+    column?.id,
+  ].filter(Boolean).join(" ")).toLowerCase();
+  if (/\b(datum|date|vrijedi)\b/.test(identity)) {
+    return "date";
+  }
+  if (/\b(da\/ne|zadovoljava|ispravno|ok)\b/.test(identity)) {
+    return "enum";
+  }
+  if (/[[(](a|ma|v|kv|ohm|Ω|ms|s|hz|kw|w|lux|mΩ)[\])]/i.test(identity)
+    || /\b(broj|r\.br|rbr|otpor|struja|napon|vrijednost|isk|idn|tisk|u0)\b/i.test(identity)) {
+    return "measurement";
+  }
+  return "text";
+}
+
+function buildMeasurementColumnDefaultAiMappingInput(column = {}, columnIndex = 0, field = {}) {
+  const label = String(column?.label || column?.placeholder || `Kolona ${columnIndex + 1}`).trim() || `Kolona ${columnIndex + 1}`;
+  const key = normalizeDocumentTemplateFieldKeyDraft(column?.id || label, `COLUMN_${columnIndex + 1}`);
+  const lookFor = Array.from(new Set([
+    label,
+    column?.placeholder,
+    column?.id,
+    key,
+    getSpreadsheetColumnLabel(columnIndex),
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
+  const inferredType = inferMeasurementColumnAiType(column);
+  const allowedValues = inferredType === "enum" ? ["DA", "NE", "ZADOVOLJAVA", "NE ZADOVOLJAVA"] : [];
+
+  return {
+    key,
+    label,
+    description: String(field?.label || field?.wordLabel || "Gridline tablica").trim(),
+    instructions: `Popuni kolonu "${label}" samo ako je vrijednost jasno vidljiva u izvoru. Koristi tocan red mjerenja i ne mijenjaj ostale kolone.`,
+    type: inferredType,
+    format: inferredType,
+    required: false,
+    enabled: !column?.computed,
+    aiDescription: `Vrijednost za gridline kolonu "${label}".`,
+    aiLookFor: lookFor,
+    synonyms: lookFor,
+    allowedValues,
+    aiAvoid: DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    confidenceRequired: "medium",
+    sourceTracking: true,
+    sourcePriority: [...DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
+    noSourceBehavior: "leave_empty",
+  };
+}
+
+function getMeasurementColumnAiMappingForTemplate(column = {}, columnIndex = 0, field = {}) {
+  const source = (column?.aiMapping ?? column?.ai) && typeof (column.aiMapping ?? column.ai) === "object"
+    ? (column.aiMapping ?? column.ai)
+    : {};
+  const defaults = buildMeasurementColumnDefaultAiMappingInput(column, columnIndex, field);
+  return normalizeMeasurementSheetColumnAiMappingSnapshotLocal({
+    ...defaults,
+    ...source,
+    enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
+    aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
+    aiLookFor: mergeDocumentTemplateAiListValue(source.aiLookFor ?? source.ai_look_for ?? source.synonyms, defaults.aiLookFor),
+    synonyms: mergeDocumentTemplateAiListValue(source.synonyms ?? source.aiLookFor ?? source.ai_look_for, defaults.synonyms, 80),
+    allowedValues: mergeDocumentTemplateAiListValue(source.allowedValues ?? source.allowed_values, defaults.allowedValues),
+    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? source.avoid ?? defaults.aiAvoid,
+    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instructions ?? source.ai_instruction ?? defaults.instructions,
+    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
+    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+  });
+}
+
+function applyDocumentTemplateMeasurementSheetDefaultAiMappings(sheet = null, field = {}) {
+  if (!sheet || !Array.isArray(sheet.columns)) {
+    return sheet;
+  }
+  return {
+    ...sheet,
+    columns: sheet.columns.map((column, columnIndex) => ({
+      ...column,
+      aiMapping: getMeasurementColumnAiMappingForTemplate(column, columnIndex, field),
+    })),
   };
 }
 
@@ -69731,6 +69932,8 @@ function hasDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     || config.fallbackValue
     || config.validationRules
     || config.group
+    || config.instructions
+    || config.locked
   );
 }
 
@@ -69739,12 +69942,12 @@ function getDocumentTemplateFieldAiConfidence(field = {}, runtimeConfidence = ""
   if (normalizedRuntime) {
     return normalizedRuntime;
   }
-  const config = normalizeDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field);
+  const config = getDocumentTemplateFieldAiConfigForTemplate(field, 0);
   return normalizeAiConfidenceLevelLocal(config.confidenceRequired, "medium");
 }
 
 function createDocumentTemplateAiStatusPill(field = {}, options = {}) {
-  const config = normalizeDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field);
+  const config = getDocumentTemplateFieldAiConfigForTemplate(field, 0);
   const runtimeMeta = normalizeDocumentTemplateRuntimeFieldAiMeta(options.runtimeMeta);
   if (!hasDocumentTemplateFieldAiConfig(config, field) && !runtimeMeta) {
     return null;
@@ -70095,7 +70298,7 @@ function getDocumentTemplateRuntimeAiFields(template = {}) {
   return fields
     .map((field, index) => {
       const fieldType = String(field?.type || "text").trim().toLowerCase();
-      const config = normalizeDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
+      const config = getDocumentTemplateFieldAiConfigForTemplate(field, index);
       const isSystemDescription = fieldType === "system_description";
       if (!hasDocumentTemplateFieldAiConfig(config, field) && !isSystemDescription) {
         return null;
@@ -70104,7 +70307,9 @@ function getDocumentTemplateRuntimeAiFields(template = {}) {
         id: String(field?.id || `field-${index + 1}`),
         key: config.key || String(field?.key || field?.wordLabel || field?.label || `field_${index + 1}`),
         label: config.label || String(field?.label || field?.wordLabel || `Polje ${index + 1}`),
-        type: isSystemDescription ? "system_description" : (config.type || fieldType || "text"),
+        type: isSystemDescription
+          ? "system_description"
+          : (fieldType === "measurement_table" || fieldType === "gridline" ? fieldType : (config.type || fieldType || "text")),
         fieldType,
         required: Boolean(config.required || field?.required),
         ai: config,
@@ -70140,11 +70345,11 @@ function getDocumentTemplateRuntimeAiMeasurementColumns(template = {}) {
       return;
     }
     const sheet = ensureDocumentTemplateMeasurementFieldSheet(field);
-    const fieldAi = normalizeDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
+    const fieldAi = getDocumentTemplateFieldAiConfigForTemplate(field, 0);
     (Array.isArray(sheet?.columns) ? sheet.columns : [])
       .filter((column) => !column?.computed)
       .forEach((column, columnIndex) => {
-        const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+        const aiMapping = getMeasurementColumnAiMappingForTemplate(column, columnIndex, field);
         if (!hasMeasurementColumnAiMapping(aiMapping)) {
           return;
         }
@@ -70329,7 +70534,7 @@ function getDocumentTemplateRuntimeAiSuggestionLookupValues(suggestion = {}) {
 }
 
 function getDocumentTemplateRuntimeAiFieldLookupValues(candidate = {}) {
-  const aiConfig = normalizeDocumentTemplateFieldAiConfig(candidate?.ai ?? candidate?.aiConfig, candidate);
+  const aiConfig = getDocumentTemplateFieldAiConfigForTemplate(candidate, 0);
   return Array.from(new Set([
     candidate?.id,
     candidate?.key,
@@ -70667,9 +70872,15 @@ function getDocumentTemplateRuntimeAiSuggestionCellValue(values = {}, column = {
   return "";
 }
 
-function getDocumentTemplateRuntimeAiMeasurementTargetColumns(sheet = {}) {
+function getDocumentTemplateRuntimeAiMeasurementTargetColumns(sheet = {}, field = {}) {
   return (Array.isArray(sheet?.columns) ? sheet.columns : [])
-    .map((column, sheetColumnIndex) => ({ column, sheetColumnIndex }))
+    .map((column, sheetColumnIndex) => ({
+      column: {
+        ...column,
+        aiMapping: getMeasurementColumnAiMappingForTemplate(column, sheetColumnIndex, field),
+      },
+      sheetColumnIndex,
+    }))
     .filter(({ column }) => (
       !column?.computed
       && hasMeasurementColumnAiMapping(column?.aiMapping ?? column?.ai)
@@ -70702,7 +70913,7 @@ function buildDocumentTemplateRuntimeAiMeasurementRows(workOrder = {}, field = {
     return null;
   }
 
-  const targetColumns = getDocumentTemplateRuntimeAiMeasurementTargetColumns(normalizedSheet)
+  const targetColumns = getDocumentTemplateRuntimeAiMeasurementTargetColumns(normalizedSheet, field)
     .filter(({ column }) => (
       !payload?.sourcePolicy?.structureOnly
       || !isDocumentTemplateRuntimeAiStructureOnlyColumn(column)
@@ -71595,7 +71806,7 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
   document.querySelector(".document-template-ai-wizard-backdrop")?.remove();
 
   const field = documentTemplateFieldDrafts[fieldIndex];
-  const config = normalizeDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field);
+  const config = getDocumentTemplateFieldAiConfigForTemplate(field, fieldIndex);
   const backdrop = document.createElement("div");
   backdrop.className = "document-template-ai-wizard-backdrop";
   backdrop.addEventListener("pointerdown", (event) => {
@@ -71807,13 +72018,15 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     textListStyle: isDocumentTemplateTextListStyleField(type)
       ? normalizeDocumentTemplateTextListStyleLocal(initial.textListStyle ?? initial.listStyle)
       : "none",
-    ai: normalizeDocumentTemplateFieldAiConfig(initial.ai ?? initial.aiConfig, {
+    ai: getDocumentTemplateFieldAiConfigForTemplate({
       key: initial.key || wordLabel || label || fallbackKey,
       label,
+      wordLabel,
       type,
       helpText: initial.helpText,
       defaultValue: initial.defaultValue,
-    }),
+      ai: initial.ai ?? initial.aiConfig,
+    }, 0),
     toggleTrueLabel: String(initial.toggleTrueLabel ?? "").trim(),
     toggleFalseLabel: String(initial.toggleFalseLabel ?? "").trim(),
     toggleTrueText: String(initial.toggleTrueText ?? initial.toggleTrueDetailText ?? "").trim(),
@@ -73693,7 +73906,7 @@ function buildDocumentTemplateDraft() {
       textListStyle: isDocumentTemplateTextListStyleField(field.type)
         ? normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle)
         : "none",
-      ai: normalizeDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field),
+      ai: getDocumentTemplateFieldAiConfigForTemplate(field, index),
       dropdownOptions: field.type === "dropdown"
         ? normalizeDocumentTemplateDropdownOptionsLocal(field.dropdownOptions ?? field.options ?? field.choices)
         : [],
@@ -73733,7 +73946,7 @@ function buildDocumentTemplateDraft() {
         ? serializeMeasurementQuickFillStructure(field.quickFillStructure || createDefaultMeasurementQuickFillStructure())
         : null,
       sheet: field.type === "measurement_table"
-        ? (field.sheet ?? ensureDocumentTemplateMeasurementFieldSheet(field))
+        ? applyDocumentTemplateMeasurementSheetDefaultAiMappings(field.sheet ?? ensureDocumentTemplateMeasurementFieldSheet(field), field)
         : null,
     }))
     .map((field) => {

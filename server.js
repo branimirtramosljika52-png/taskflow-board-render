@@ -21832,6 +21832,33 @@ function normalizeMobileAiConfidence(value = "", fallback = "medium") {
   return ["low", "medium", "high"].includes(normalized) ? normalized : fallback;
 }
 
+const MOBILE_DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT = Object.freeze([
+  "previous_report",
+  "older_previous_report",
+  "uploaded_file",
+  "template",
+]);
+const MOBILE_DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS = new Set(["leave_empty", "use_template", "ask_user"]);
+const MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID = "Ne izmisljaj vrijednosti. Ako podatak nije vidljiv u izvoru, ostavi prazno ili oznaci da nije moguce utvrditi.";
+
+function normalizeMobileDocumentTemplateAiSourcePriority(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/[,;\n]/);
+  const normalized = source
+    .map((entry) => normalizeInputValue(entry).toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
+  return normalized.length > 0
+    ? Array.from(new Set(normalized))
+    : [...MOBILE_DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT];
+}
+
+function normalizeMobileDocumentTemplateAiNoSourceBehavior(value = "") {
+  const normalized = normalizeInputValue(value).toLowerCase();
+  return MOBILE_DOCUMENT_TEMPLATE_AI_NO_SOURCE_BEHAVIORS.has(normalized) ? normalized : "leave_empty";
+}
+
 function normalizeMobileDocumentTemplateFieldAiConfig(input = {}, field = {}) {
   const source = input && typeof input === "object" && !Array.isArray(input) ? input : {};
   const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
@@ -21871,6 +21898,10 @@ function normalizeMobileDocumentTemplateFieldAiConfig(input = {}, field = {}) {
       ? Number(source?.displayOrder ?? source?.display_order)
       : null,
     group: normalizeInputValue(source?.group).slice(0, 120),
+    instructions: normalizeInputValue(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
+    locked: Boolean(source?.locked ?? source?.readonly ?? source?.readOnly),
+    sourcePriority: normalizeMobileDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
+    noSourceBehavior: normalizeMobileDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
 }
 
@@ -21887,6 +21918,8 @@ function hasMobileDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     || config.fallbackValue
     || config.validationRules
     || config.group
+    || config.instructions
+    || config.locked
   );
 }
 
@@ -21924,6 +21957,10 @@ function normalizeMobileMeasurementColumnAiMapping(input = {}) {
       ? Number(source?.displayOrder ?? source?.display_order)
       : null,
     group: normalizeInputValue(source?.group).slice(0, 120),
+    instructions: normalizeInputValue(source?.instructions ?? source?.aiInstructions ?? source?.ai_instructions ?? source?.ai_instruction).slice(0, 3000),
+    locked: Boolean(source?.locked ?? source?.readonly ?? source?.readOnly),
+    sourcePriority: normalizeMobileDocumentTemplateAiSourcePriority(source?.sourcePriority ?? source?.source_priority),
+    noSourceBehavior: normalizeMobileDocumentTemplateAiNoSourceBehavior(source?.noSourceBehavior ?? source?.no_source_behavior),
   };
 }
 
@@ -21951,7 +21988,175 @@ function hasMobileMeasurementColumnAiMapping(input = {}) {
     || mapping.defaultValue
     || mapping.fallbackValue
     || mapping.validationRules
+    || mapping.instructions
+    || mapping.locked
+    || mapping.displayOrder
+    || mapping.group
   );
+}
+
+function getMobileDocumentTemplateDefaultAiTypeForField(field = {}) {
+  const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+  if (fieldType === "dropdown") {
+    return "enum";
+  }
+  if (fieldType === "date") {
+    return "date";
+  }
+  if (fieldType === "number") {
+    return "number";
+  }
+  if (fieldType === "checkbox" || fieldType === "toggle") {
+    return "boolean";
+  }
+  if (fieldType === "measurement_table" || fieldType === "gridline") {
+    return "list";
+  }
+  if (fieldType === "system_description") {
+    return "system_description";
+  }
+  return "text";
+}
+
+function shouldMobileDocumentTemplateFieldUseDefaultAi(field = {}) {
+  const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+  return [
+    "system_description",
+    "text",
+    "longtext",
+    "dropdown",
+    "date",
+    "number",
+    "checkbox",
+    "toggle",
+    "measurement_table",
+    "gridline",
+  ].includes(fieldType);
+}
+
+function mergeMobileAiConfigList(sourceValue, defaultValue, maxItems = 160) {
+  const sourceList = normalizeMobileAiConfigList(sourceValue, maxItems);
+  return sourceList.length > 0 ? sourceList : normalizeMobileAiConfigList(defaultValue, maxItems);
+}
+
+function buildMobileDocumentTemplateDefaultAiFieldInput(field = {}, index = 0) {
+  const label = normalizeInputValue(field?.label || field?.wordLabel || `Polje ${index + 1}`) || `Polje ${index + 1}`;
+  const key = getMobileDocumentTemplateFieldTokenKey(field, index);
+  const lookFor = Array.from(new Set([
+    label,
+    field?.wordLabel,
+    field?.placeholder,
+    key,
+  ].map((value) => normalizeInputValue(value)).filter(Boolean)));
+  return {
+    key,
+    label,
+    description: normalizeInputValue(field?.helpText),
+    type: getMobileDocumentTemplateDefaultAiTypeForField(field),
+    required: Boolean(field?.required || field?.isRequired),
+    enabled: shouldMobileDocumentTemplateFieldUseDefaultAi(field),
+    aiDescription: `Popuni polje "${label}" iz prethodnog zapisnika, starijeg prethodnog zapisnika, uploadanog izvora ili templatea.`,
+    aiLookFor: lookFor,
+    aiAvoid: MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    confidenceRequired: "medium",
+    sourceTracking: true,
+    instructions: "Prvo koristi najnoviji prethodni zapisnik za isti RN/lokaciju/uslugu. Ako nema podatka, koristi stariji prethodni zapisnik, zatim uploadani izvor, a tek na kraju template. Ne izmisljaj vrijednosti.",
+    sourcePriority: [...MOBILE_DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
+    noSourceBehavior: "leave_empty",
+  };
+}
+
+function getMobileDocumentTemplateFieldAiConfigForRuntime(field = {}, index = 0) {
+  const source = (field?.ai ?? field?.aiConfig) && typeof (field.ai ?? field.aiConfig) === "object"
+    ? (field.ai ?? field.aiConfig)
+    : {};
+  if (!shouldMobileDocumentTemplateFieldUseDefaultAi(field) && !hasMobileDocumentTemplateFieldAiConfig(source, field)) {
+    return normalizeMobileDocumentTemplateFieldAiConfig(source, field);
+  }
+  const defaults = buildMobileDocumentTemplateDefaultAiFieldInput(field, index);
+  return normalizeMobileDocumentTemplateFieldAiConfig({
+    ...defaults,
+    ...source,
+    enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
+    aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
+    aiLookFor: mergeMobileAiConfigList(source.aiLookFor ?? source.ai_look_for, defaults.aiLookFor),
+    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? defaults.aiAvoid,
+    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instruction ?? defaults.instructions,
+    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
+    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+  }, field);
+}
+
+function inferMobileMeasurementColumnAiType(column = {}) {
+  const identity = normalizeInputValue([
+    column?.label,
+    column?.placeholder,
+    column?.id,
+  ].filter(Boolean).join(" ")).toLowerCase();
+  if (/\b(datum|date|vrijedi)\b/.test(identity)) {
+    return "date";
+  }
+  if (/\b(da\/ne|zadovoljava|ispravno|ok)\b/.test(identity)) {
+    return "enum";
+  }
+  if (/[[(](a|ma|v|kv|ohm|Ω|ms|s|hz|kw|w|lux|mΩ)[\])]/i.test(identity)
+    || /\b(broj|r\.br|rbr|otpor|struja|napon|vrijednost|isk|idn|tisk|u0)\b/i.test(identity)) {
+    return "number";
+  }
+  return "text";
+}
+
+function buildMobileMeasurementColumnDefaultAiMappingInput(column = {}, columnIndex = 0, field = {}) {
+  const label = normalizeInputValue(column?.label || column?.placeholder || `Kolona ${columnIndex + 1}`) || `Kolona ${columnIndex + 1}`;
+  const key = normalizeMobileDocumentTemplateFieldTokenKey(column?.id || label, `COLUMN_${columnIndex + 1}`);
+  const lookFor = Array.from(new Set([
+    label,
+    column?.placeholder,
+    column?.id,
+    key,
+    getMobileSpreadsheetColumnLabel(columnIndex),
+  ].map((value) => normalizeInputValue(value)).filter(Boolean)));
+  const inferredType = inferMobileMeasurementColumnAiType(column);
+  const allowedValues = inferredType === "enum" ? ["DA", "NE", "ZADOVOLJAVA", "NE ZADOVOLJAVA"] : [];
+  return {
+    key,
+    label,
+    description: normalizeInputValue(field?.label || field?.wordLabel || "Gridline tablica"),
+    instructions: `Popuni kolonu "${label}" samo ako je vrijednost jasno vidljiva u izvoru. Koristi tocan red mjerenja i ne mijenjaj ostale kolone.`,
+    type: inferredType,
+    format: inferredType,
+    required: false,
+    enabled: !column?.computed,
+    aiDescription: `Vrijednost za gridline kolonu "${label}".`,
+    aiLookFor: lookFor,
+    synonyms: lookFor,
+    allowedValues,
+    aiAvoid: MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
+    confidenceRequired: "medium",
+    sourceTracking: true,
+    sourcePriority: [...MOBILE_DOCUMENT_TEMPLATE_AI_SOURCE_PRIORITY_DEFAULT],
+    noSourceBehavior: "leave_empty",
+  };
+}
+
+function getMobileMeasurementColumnAiMappingForRuntime(column = {}, columnIndex = 0, field = {}) {
+  const source = (column?.aiMapping ?? column?.ai) && typeof (column.aiMapping ?? column.ai) === "object"
+    ? (column.aiMapping ?? column.ai)
+    : {};
+  const defaults = buildMobileMeasurementColumnDefaultAiMappingInput(column, columnIndex, field);
+  return normalizeMobileMeasurementColumnAiMapping({
+    ...defaults,
+    ...source,
+    enabled: source.enabled ?? source.aiEnabled ?? source.ai_enabled ?? defaults.enabled,
+    aiDescription: source.aiDescription ?? source.ai_description ?? source.description ?? defaults.aiDescription,
+    aiLookFor: mergeMobileAiConfigList(source.aiLookFor ?? source.ai_look_for ?? source.synonyms, defaults.aiLookFor),
+    synonyms: mergeMobileAiConfigList(source.synonyms ?? source.aiLookFor ?? source.ai_look_for, defaults.synonyms, 80),
+    allowedValues: mergeMobileAiConfigList(source.allowedValues ?? source.allowed_values, defaults.allowedValues),
+    aiAvoid: source.aiAvoid ?? source.ai_avoid ?? source.avoid ?? defaults.aiAvoid,
+    instructions: source.instructions ?? source.aiInstructions ?? source.ai_instructions ?? source.ai_instruction ?? defaults.instructions,
+    sourcePriority: source.sourcePriority ?? source.source_priority ?? defaults.sourcePriority,
+    noSourceBehavior: source.noSourceBehavior ?? source.no_source_behavior ?? defaults.noSourceBehavior,
+  });
 }
 
 function getMobileSpreadsheetColumnLabel(index = 0) {
@@ -21976,7 +22181,7 @@ function buildMobileDocumentTemplateAiFields(template = {}) {
       }
       const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
       const isSystemDescription = fieldType === "system_description";
-      const config = normalizeMobileDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
+      const config = getMobileDocumentTemplateFieldAiConfigForRuntime(field, index);
       if (!isSystemDescription && !hasMobileDocumentTemplateFieldAiConfig(config, field)) {
         return null;
       }
@@ -21991,7 +22196,9 @@ function buildMobileDocumentTemplateAiFields(template = {}) {
         id: id || key,
         key,
         label,
-        type: isSystemDescription ? "system_description" : (config.type || fieldType || "text"),
+        type: isSystemDescription
+          ? "system_description"
+          : (fieldType === "measurement_table" || fieldType === "gridline" ? fieldType : (config.type || fieldType || "text")),
         fieldType,
         required: Boolean(config.required || field?.required || field?.isRequired),
         ai: config,
@@ -22027,11 +22234,11 @@ function buildMobileDocumentTemplateAiMeasurementColumns(template = {}, workOrde
     if (!sheet?.columns?.length) {
       return;
     }
-    const fieldAi = normalizeMobileDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
+    const fieldAi = getMobileDocumentTemplateFieldAiConfigForRuntime(field, fieldIndex);
     sheet.columns
       .filter((column) => !column?.computed)
       .forEach((column, columnIndex) => {
-        const aiMapping = normalizeMobileMeasurementColumnAiMapping(column?.aiMapping ?? column?.ai);
+        const aiMapping = getMobileMeasurementColumnAiMappingForRuntime(column, columnIndex, field);
         if (!hasMobileMeasurementColumnAiMapping(aiMapping)) {
           return;
         }
