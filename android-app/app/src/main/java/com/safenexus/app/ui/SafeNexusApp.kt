@@ -188,15 +188,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -26996,7 +27000,16 @@ private fun parseMeasurementColorMobile(value: String): Color? {
 }
 
 private fun JSONObject?.measurementBorderCustomized(): Boolean {
-    val border = this?.optJSONObject("border") ?: return false
+    val borderValue = this?.opt("border") ?: return false
+    if (borderValue is String) {
+        return borderValue.equals("all", ignoreCase = true) ||
+            borderValue.equals("outer", ignoreCase = true) ||
+            borderValue.equals("bottom", ignoreCase = true) ||
+            borderValue.equals("top", ignoreCase = true) ||
+            borderValue.equals("left", ignoreCase = true) ||
+            borderValue.equals("right", ignoreCase = true)
+    }
+    val border = borderValue as? JSONObject ?: return false
     return border.optBoolean("top", false) ||
         border.optBoolean("right", false) ||
         border.optBoolean("bottom", false) ||
@@ -27024,9 +27037,15 @@ private fun JSONObject?.isMeasurementFormatCustomizedMobile(): Boolean {
         format.measurementFormatString("fontFamily").let { it.isNotBlank() && it != "default" } ||
         format.measurementFormatInt("fontSize", 14) != 14 ||
         format.measurementFormatBoolean("bold") ||
+        format.measurementFormatString("fontWeight").equals("bold", ignoreCase = true) ||
         format.measurementFormatBoolean("italic") ||
+        format.measurementFormatString("fontStyle").equals("italic", ignoreCase = true) ||
         format.measurementFormatBoolean("underline") ||
+        format.measurementFormatString("textDecoration").contains("underline", ignoreCase = true) ||
         normalizeMeasurementColorValueMobile(format.measurementFormatString("fillColor")).isNotBlank() ||
+        normalizeMeasurementColorValueMobile(format.measurementFormatString("backgroundColor")).isNotBlank() ||
+        normalizeMeasurementColorValueMobile(format.measurementFormatString("textColor")).isNotBlank() ||
+        normalizeMeasurementColorValueMobile(format.measurementFormatString("color")).isNotBlank() ||
         format.measurementBorderCustomized() ||
         format.measurementConditionalCustomized()
 }
@@ -27413,7 +27432,12 @@ private fun measurementFormatFillColor(format: JSONObject?, value: String): Colo
     if (value.isNotBlank() && conditional?.optBoolean("filled", false) == true) {
         parseMeasurementColorMobile(conditional.optString("fillColor", ""))?.let { return it }
     }
-    return parseMeasurementColorMobile(format.measurementFormatString("fillColor"))
+    return parseMeasurementColorMobile(
+        listOf(
+            format.measurementFormatString("fillColor"),
+            format.measurementFormatString("backgroundColor"),
+        ).firstOrNull { it.isNotBlank() }.orEmpty(),
+    )
 }
 
 private fun measurementFormatTextColor(format: JSONObject?): Color? =
@@ -27428,15 +27452,81 @@ private fun measurementFormatTextColor(format: JSONObject?): Color? =
 private fun measurementFormatBold(format: JSONObject?, value: String): Boolean {
     val conditional = format?.optJSONObject("conditional")
     return format.measurementFormatBoolean("bold") ||
+        format.measurementFormatString("fontWeight").equals("bold", ignoreCase = true) ||
         (value.isNotBlank() && conditional?.optBoolean("filled", false) == true && conditional.optBoolean("bold", false))
 }
 
+private fun measurementFormatItalic(format: JSONObject?): Boolean =
+    format.measurementFormatBoolean("italic") ||
+        format.measurementFormatString("fontStyle").equals("italic", ignoreCase = true)
+
+private fun measurementFormatUnderline(format: JSONObject?): Boolean =
+    format.measurementFormatBoolean("underline") ||
+        format.measurementFormatString("textDecoration").contains("underline", ignoreCase = true)
+
 private fun measurementFormatTextAlign(format: JSONObject?): TextAlign =
-    when (format.measurementFormatString("align")) {
+    when (
+        listOf(
+            format.measurementFormatString("align"),
+            format.measurementFormatString("textAlign"),
+        ).firstOrNull { it.isNotBlank() }
+    ) {
         "center" -> TextAlign.Center
         "right" -> TextAlign.Right
         else -> TextAlign.Start
     }
+
+private fun measurementFormatHorizontalAlignment(format: JSONObject?): Alignment.Horizontal =
+    when (
+        listOf(
+            format.measurementFormatString("align"),
+            format.measurementFormatString("textAlign"),
+        ).firstOrNull { it.isNotBlank() }
+    ) {
+        "center" -> Alignment.CenterHorizontally
+        "right" -> Alignment.End
+        else -> Alignment.Start
+    }
+
+private fun measurementFormatVerticalAlignment(format: JSONObject?): Alignment.Vertical =
+    when (
+        listOf(
+            format.measurementFormatString("verticalAlign"),
+            format.measurementFormatString("vAlign"),
+        ).firstOrNull { it.isNotBlank() }
+    ) {
+        "top" -> Alignment.Top
+        "bottom" -> Alignment.Bottom
+        else -> Alignment.CenterVertically
+    }
+
+private fun measurementFormatContentAlignment(format: JSONObject?): Alignment {
+    val horizontal = measurementFormatHorizontalAlignment(format)
+    val vertical = measurementFormatVerticalAlignment(format)
+    return when {
+        vertical == Alignment.Top && horizontal == Alignment.CenterHorizontally -> Alignment.TopCenter
+        vertical == Alignment.Top && horizontal == Alignment.End -> Alignment.TopEnd
+        vertical == Alignment.Top -> Alignment.TopStart
+        vertical == Alignment.Bottom && horizontal == Alignment.CenterHorizontally -> Alignment.BottomCenter
+        vertical == Alignment.Bottom && horizontal == Alignment.End -> Alignment.BottomEnd
+        vertical == Alignment.Bottom -> Alignment.BottomStart
+        horizontal == Alignment.CenterHorizontally -> Alignment.Center
+        horizontal == Alignment.End -> Alignment.CenterEnd
+        else -> Alignment.CenterStart
+    }
+}
+
+private fun measurementFormatFontFamily(format: JSONObject?): FontFamily =
+    when (format.measurementFormatString("fontFamily").lowercase(Locale.getDefault())) {
+        "courier", "mono", "monospace" -> FontFamily.Monospace
+        "georgia", "times", "serif" -> FontFamily.Serif
+        else -> FontFamily.SansSerif
+    }
+
+private fun measurementFormatFontSizeSp(format: JSONObject?, expanded: Boolean): androidx.compose.ui.unit.TextUnit {
+    val fallback = if (expanded) 14 else 12
+    return format.measurementFormatInt("fontSize", fallback).coerceIn(8, 40).sp
+}
 
 private fun measurementColumnLabel(index: Int): String {
     var value = index + 1
@@ -29800,7 +29890,32 @@ private fun MeasurementGridCell(
     val fillColor = measurementFormatFillColor(cellFormat, value)
     val textColor = measurementFormatTextColor(cellFormat)
     val textAlign = measurementFormatTextAlign(cellFormat)
+    val contentAlignment = measurementFormatContentAlignment(cellFormat)
+    val fontSize = measurementFormatFontSizeSp(cellFormat, expanded)
+    val fontFamily = measurementFormatFontFamily(cellFormat)
     val bold = headerRow || measurementFormatBold(cellFormat, value)
+    val italic = measurementFormatItalic(cellFormat)
+    val underline = measurementFormatUnderline(cellFormat)
+    val hasCustomBorder = cellFormat.measurementBorderCustomized()
+    val borderWidth = when {
+        selected -> 2.dp
+        hasCustomBorder -> 1.4.dp
+        else -> 0.6.dp
+    }
+    val borderColor = when {
+        selected -> MaterialTheme.colorScheme.primary
+        hasCustomBorder -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+        else -> gridLine
+    }
+    val textModifier = when (contentAlignment) {
+        Alignment.CenterEnd, Alignment.TopEnd, Alignment.BottomEnd -> Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+        Alignment.Center, Alignment.TopCenter, Alignment.BottomCenter -> Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+        else -> Modifier.padding(horizontal = 8.dp)
+    }
     if (selected && editable && directEditable) {
         OutlinedTextField(
             value = rawValue,
@@ -29810,7 +29925,15 @@ private fun MeasurementGridCell(
                 .height(rowHeight),
             singleLine = true,
             enabled = enabled,
-            textStyle = if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            textStyle = (if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall).copy(
+                color = textColor ?: MaterialTheme.colorScheme.onSurface,
+                fontFamily = fontFamily,
+                fontSize = fontSize,
+                fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+                fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+                textDecoration = if (underline) TextDecoration.Underline else TextDecoration.None,
+                textAlign = textAlign,
+            ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             shape = RoundedCornerShape(2.dp),
         )
@@ -29820,7 +29943,7 @@ private fun MeasurementGridCell(
         modifier = Modifier
             .width(cellWidth)
             .height(rowHeight)
-            .border(if (selected) 2.dp else 0.6.dp, if (selected) MaterialTheme.colorScheme.primary else gridLine)
+            .border(borderWidth, borderColor)
             .background(
                 when {
                     hasError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.58f)
@@ -29832,12 +29955,17 @@ private fun MeasurementGridCell(
                 },
             )
             .clickable(enabled = enabled) { onClick() },
-        contentAlignment = Alignment.CenterStart,
+        contentAlignment = contentAlignment,
     ) {
         Text(
             value.ifBlank { if (isFormula) "" else column.placeholder },
-            modifier = Modifier.padding(horizontal = 8.dp),
-            style = if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            modifier = textModifier,
+            style = (if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall).copy(
+                fontFamily = fontFamily,
+                fontSize = fontSize,
+                fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+                textDecoration = if (underline) TextDecoration.Underline else TextDecoration.None,
+            ),
             fontWeight = if (selected || bold) FontWeight.Bold else FontWeight.Normal,
             textAlign = textAlign,
             maxLines = 1,

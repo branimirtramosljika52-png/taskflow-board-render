@@ -1780,7 +1780,12 @@ test("document template measurement tables preserve full gridline snapshots", ()
           align: "center",
           verticalAlign: "bottom",
           bold: true,
+          italic: true,
+          underline: true,
+          fontFamily: "calibri",
+          fontSize: 18,
           fillColor: "#d9ead3",
+          textColor: "#123456",
           border: "all",
         },
       },
@@ -1846,9 +1851,107 @@ test("document template measurement tables preserve full gridline snapshots", ()
   assert.equal(field.sheet?.rows[3]?.cells.c3, "=C3+D3");
   assert.equal(field.sheet?.rows[2]?.formats.c2.verticalAlign, "bottom");
   assert.equal(field.sheet?.rows[2]?.formats.c2.align, "center");
+  assert.equal(field.sheet?.rows[2]?.formats.c2.fontFamily, "calibri");
+  assert.equal(field.sheet?.rows[2]?.formats.c2.fontSize, 18);
+  assert.equal(field.sheet?.rows[2]?.formats.c2.italic, true);
+  assert.equal(field.sheet?.rows[2]?.formats.c2.underline, true);
+  assert.equal(field.sheet?.rows[2]?.formats.c2.textColor, "#123456");
+  assert.equal(field.sheet?.rows[2]?.formats.c2.fillColor, "#d9ead3");
   assert.equal(field.sheet?.rows[2]?.formats.c2.border.left, true);
   assert.equal(field.sheet?.merges[0]?.colSpan, 2);
   assert.deepEqual(field.sheet?.headerRows, ["measurement-row-1"]);
+});
+
+test("document template gridline fields preserve saved layout and styling", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Gridline style template",
+      customFields: [
+        {
+          label: "Gridline",
+          key: "gridline",
+          type: "gridline",
+          gridlineModel: {
+            title: "Ispitivanje ZUDS",
+            subtitle: "IL - EIZ.ZUDS",
+            rowCount: 32,
+            columnCount: 10,
+            data: {
+              "0:0": "R.br.",
+              "0:1": "Razdjelnik",
+              "3:3": "=C4+D4",
+            },
+            columnWidths: {
+              0: 42,
+              1: 280,
+              3: 96,
+            },
+            rowHeights: {
+              0: 28,
+              3: 36,
+            },
+            cellStyles: {
+              "0:1": {
+                backgroundColor: "#d9ead3",
+                color: "#123456",
+                textAlign: "center",
+                verticalAlign: "bottom",
+                fontWeight: "bold",
+                fontStyle: "italic",
+                textDecoration: "underline",
+                fontFamily: "Calibri",
+                fontSize: 18,
+                border: "all",
+              },
+            },
+            merges: [
+              {
+                row: 0,
+                column: 0,
+                rowSpan: 1,
+                columnSpan: 2,
+              },
+            ],
+            headerRows: [0, 1],
+            aiColumns: {
+              1: {
+                key: "razdjelnik",
+                label: "Razdjelnik",
+                instructions: "Popuni iz prethodnog zapisnika.",
+                locked: true,
+              },
+            },
+            autoBorderFilled: true,
+            pageOrientation: "landscape",
+          },
+        },
+      ],
+    },
+    state,
+    () => "template-gridline-style",
+    () => "2026-06-30T09:00:00.000Z",
+  );
+
+  const model = template.customFields[0]?.gridlineModel;
+  assert.equal(model?.title, "Ispitivanje ZUDS");
+  assert.equal(model?.rowCount, 32);
+  assert.equal(model?.columnCount, 10);
+  assert.equal(model?.data?.["3:3"], "=C4+D4");
+  assert.equal(model?.columnWidths?.["1"], 280);
+  assert.equal(model?.rowHeights?.["3"], 36);
+  assert.equal(model?.cellStyles?.["0:1"]?.backgroundColor, "#d9ead3");
+  assert.equal(model?.cellStyles?.["0:1"]?.color, "#123456");
+  assert.equal(model?.cellStyles?.["0:1"]?.fontFamily, "Calibri");
+  assert.equal(model?.cellStyles?.["0:1"]?.fontSize, 18);
+  assert.equal(model?.cellStyles?.["0:1"]?.border, "all");
+  assert.equal(model?.merges?.[0]?.columnSpan, 2);
+  assert.deepEqual(model?.headerRows, [0, 1]);
+  assert.equal(model?.aiColumns?.["1"]?.instructions, "Popuni iz prethodnog zapisnika.");
+  assert.equal(model?.aiColumns?.["1"]?.locked, true);
+  assert.equal(model?.autoBorderFilled, true);
+  assert.equal(model?.pageOrientation, "landscape");
 });
 
 test("document templates persist selected signature meta fields", () => {

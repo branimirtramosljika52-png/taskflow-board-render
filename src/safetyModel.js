@@ -1739,7 +1739,8 @@ function normalizeWorkOrderExecutors(values = [], fallbackValues = []) {
 
 function normalizeMeasurementSheetBorderSnapshot(border = {}) {
   if (typeof border === "string") {
-    if (border === "all") {
+    const normalizedBorder = normalizeText(border).toLowerCase();
+    if (normalizedBorder === "all" || normalizedBorder === "outer") {
       return {
         top: true,
         right: true,
@@ -1748,12 +1749,12 @@ function normalizeMeasurementSheetBorderSnapshot(border = {}) {
       };
     }
 
-    if (["top", "right", "bottom", "left"].includes(border)) {
+    if (["top", "right", "bottom", "left"].includes(normalizedBorder)) {
       return {
-        top: border === "top",
-        right: border === "right",
-        bottom: border === "bottom",
-        left: border === "left",
+        top: normalizedBorder === "top",
+        right: normalizedBorder === "right",
+        bottom: normalizedBorder === "bottom",
+        left: normalizedBorder === "left",
       };
     }
 
@@ -2788,6 +2789,133 @@ function normalizeDocumentTemplateGridlineRows(value = []) {
   return Array.from({ length: 5 }, () => ["", "", ""]);
 }
 
+function normalizeDocumentTemplateGridlineNumberMap(value = {}, maxIndex = 0, minValue = 0, maxValue = 999) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const normalized = {};
+  Object.entries(source).forEach(([key, rawValue]) => {
+    const index = Number(key);
+    const numericValue = Number(rawValue);
+    if (Number.isInteger(index) && index >= 0 && index < maxIndex && Number.isFinite(numericValue)) {
+      normalized[String(index)] = Math.max(minValue, Math.min(maxValue, Math.round(numericValue)));
+    }
+  });
+  return normalized;
+}
+
+function normalizeDocumentTemplateGridlineCellStyles(value = {}, rowCount = 0, columnCount = 0) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const allowedKeys = new Set([
+    "backgroundColor",
+    "color",
+    "textColor",
+    "fontColor",
+    "textAlign",
+    "align",
+    "verticalAlign",
+    "vAlign",
+    "fontWeight",
+    "fontStyle",
+    "textDecoration",
+    "fontFamily",
+    "font",
+    "fontSize",
+    "size",
+    "bold",
+    "italic",
+    "underline",
+    "border",
+    "borderStyle",
+    "type",
+    "dataType",
+    "valueType",
+    "decimals",
+    "required",
+    "allowedValues",
+    "validationValues",
+  ]);
+  const normalized = {};
+  Object.entries(source).forEach(([key, rawStyle]) => {
+    const match = /^(\d+):(\d+)$/.exec(String(key || ""));
+    if (!match || !rawStyle || typeof rawStyle !== "object" || Array.isArray(rawStyle)) {
+      return;
+    }
+    const row = Number(match[1]);
+    const column = Number(match[2]);
+    if (row < 0 || row >= rowCount || column < 0 || column >= columnCount) {
+      return;
+    }
+    const style = {};
+    Object.entries(rawStyle).forEach(([styleKey, styleValue]) => {
+      if (!allowedKeys.has(styleKey)) {
+        return;
+      }
+      if (typeof styleValue === "boolean") {
+        style[styleKey] = styleValue;
+      } else if (typeof styleValue === "number" && Number.isFinite(styleValue)) {
+        style[styleKey] = Math.max(-1000, Math.min(1000, styleValue));
+      } else {
+        const textValue = normalizeText(styleValue).slice(0, 1000);
+        if (textValue) {
+          style[styleKey] = textValue;
+        }
+      }
+    });
+    if (Object.keys(style).length > 0) {
+      normalized[`${row}:${column}`] = style;
+    }
+  });
+  return normalized;
+}
+
+function normalizeDocumentTemplateGridlineHeaderRows(value = [], rowCount = 0) {
+  return Array.from(new Set((Array.isArray(value) ? value : [])
+    .map((row) => Math.round(normalizeFiniteNumber(row, -1)))
+    .filter((row) => Number.isInteger(row) && row >= 0 && row < rowCount)))
+    .sort((left, right) => left - right);
+}
+
+function normalizeDocumentTemplateGridlineMerges(value = [], rowCount = 0, columnCount = 0) {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, 500)
+    .map((merge) => {
+      const row = Math.max(0, Math.min(rowCount - 1, Math.round(normalizeFiniteNumber(merge?.row, 0))));
+      const column = Math.max(0, Math.min(columnCount - 1, Math.round(normalizeFiniteNumber(merge?.column, 0))));
+      const rowSpan = Math.max(1, Math.min(rowCount - row, Math.round(normalizeFiniteNumber(merge?.rowSpan, 1))));
+      const columnSpan = Math.max(1, Math.min(columnCount - column, Math.round(normalizeFiniteNumber(merge?.columnSpan ?? merge?.colSpan, 1))));
+      return { row, column, rowSpan, columnSpan };
+    })
+    .filter((merge) => merge.rowSpan > 1 || merge.columnSpan > 1);
+}
+
+function normalizeDocumentTemplateGridlineAiColumns(value = {}, columnCount = 0) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const normalized = {};
+  Object.entries(source).forEach(([key, rawEntry]) => {
+    const column = Number(key);
+    const entry = rawEntry && typeof rawEntry === "object" && !Array.isArray(rawEntry) ? rawEntry : {};
+    if (!Number.isInteger(column) || column < 0 || column >= columnCount) {
+      return;
+    }
+    const nextEntry = {
+      enabled: normalizeBoolean(entry.enabled, true),
+      key: normalizeText(entry.key).slice(0, 120),
+      label: normalizeText(entry.label).slice(0, 160),
+      description: normalizeText(entry.description || entry.aiDescription).slice(0, 1000),
+      instructions: normalizeText(entry.instructions || entry.aiInstructions || entry.ai_instruction).slice(0, 4000),
+      lookFor: normalizeText(entry.lookFor || entry.aiLookFor).slice(0, 1000),
+      avoid: normalizeText(entry.avoid || entry.aiAvoid).slice(0, 1000),
+      allowedValues: normalizeText(entry.allowedValues).slice(0, 1000),
+      examples: normalizeText(entry.examples).slice(0, 2000),
+      required: normalizeBoolean(entry.required, false),
+      locked: normalizeBoolean(entry.locked ?? entry.readonly ?? entry.readOnly, false),
+    };
+    if (Object.values(nextEntry).some((entryValue) => entryValue === true || (typeof entryValue === "string" && entryValue))) {
+      normalized[String(column)] = nextEntry;
+    }
+  });
+  return normalized;
+}
+
 function normalizeDocumentTemplateGridlineModel(value = null, fallbackRows = []) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const fallbackRowData = normalizeDocumentTemplateGridlineRows(fallbackRows);
@@ -2826,9 +2954,19 @@ function normalizeDocumentTemplateGridlineModel(value = null, fallbackRows = [])
   }
 
   return {
+    title: normalizeText(source.title).slice(0, 240),
+    subtitle: normalizeText(source.subtitle).slice(0, 500),
     rowCount,
     columnCount,
     data,
+    columnWidths: normalizeDocumentTemplateGridlineNumberMap(source.columnWidths, columnCount, 22, 320),
+    rowHeights: normalizeDocumentTemplateGridlineNumberMap(source.rowHeights, rowCount, 12, 96),
+    cellStyles: normalizeDocumentTemplateGridlineCellStyles(source.cellStyles, rowCount, columnCount),
+    headerRows: normalizeDocumentTemplateGridlineHeaderRows(source.headerRows, rowCount),
+    merges: normalizeDocumentTemplateGridlineMerges(source.merges, rowCount, columnCount),
+    aiColumns: normalizeDocumentTemplateGridlineAiColumns(source.aiColumns, columnCount),
+    autoBorderFilled: normalizeBoolean(source.autoBorderFilled, false),
+    pageOrientation: normalizeText(source.pageOrientation || source.orientation).toLowerCase() === "landscape" ? "landscape" : "",
   };
 }
 

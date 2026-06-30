@@ -9,6 +9,7 @@ const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
   italic: false,
   underline: false,
   fillColor: "",
+  textColor: "",
   border: Object.freeze({
     top: false,
     right: false,
@@ -30,7 +31,7 @@ const DEFAULT_MEASUREMENT_FORMAT = Object.freeze({
   }),
 });
 
-const BORDER_PRESETS = new Set(["none", "all", "top", "right", "bottom", "left"]);
+const BORDER_PRESETS = new Set(["none", "all", "outer", "top", "right", "bottom", "left"]);
 const FONT_FAMILIES = new Set(["default", "arial", "calibri", "georgia", "times", "verdana", "courier"]);
 
 function clampMeasurementDecimals(value) {
@@ -116,7 +117,7 @@ export function normalizeMeasurementBorder(border = {}) {
       return { ...DEFAULT_MEASUREMENT_FORMAT.border };
     }
 
-    if (border === "all") {
+    if (border === "all" || border === "outer") {
       return {
         top: true,
         right: true,
@@ -163,14 +164,17 @@ export function getMeasurementBorderPreset(border = {}) {
 }
 
 export function normalizeMeasurementCellFormat(format = {}) {
-  const type = ["general", "number", "integer", "percent", "text"].includes(format?.type)
-    ? format.type
+  const sourceType = format?.type ?? format?.dataType ?? format?.valueType;
+  const sourceAlign = format?.align ?? format?.textAlign;
+  const sourceVerticalAlign = format?.verticalAlign ?? format?.vAlign;
+  const type = ["general", "number", "integer", "percent", "text"].includes(sourceType)
+    ? sourceType
     : DEFAULT_MEASUREMENT_FORMAT.type;
-  const align = ["auto", "left", "center", "right"].includes(format?.align)
-    ? format.align
+  const align = ["auto", "left", "center", "right"].includes(sourceAlign)
+    ? sourceAlign
     : DEFAULT_MEASUREMENT_FORMAT.align;
-  const verticalAlign = ["top", "middle", "bottom"].includes(format?.verticalAlign)
-    ? format.verticalAlign
+  const verticalAlign = ["top", "middle", "center", "bottom"].includes(sourceVerticalAlign)
+    ? (sourceVerticalAlign === "center" ? "middle" : sourceVerticalAlign)
     : DEFAULT_MEASUREMENT_FORMAT.verticalAlign;
 
   const conditionalSource = format?.conditional && typeof format.conditional === "object"
@@ -184,10 +188,11 @@ export function normalizeMeasurementCellFormat(format = {}) {
     verticalAlign,
     fontFamily: normalizeMeasurementFontFamily(format?.fontFamily),
     fontSize: clampMeasurementFontSize(format?.fontSize),
-    bold: Boolean(format?.bold),
-    italic: Boolean(format?.italic),
-    underline: Boolean(format?.underline),
-    fillColor: normalizeMeasurementFillColor(format?.fillColor),
+    bold: Boolean(format?.bold || format?.fontWeight === "bold"),
+    italic: Boolean(format?.italic || format?.fontStyle === "italic"),
+    underline: Boolean(format?.underline || String(format?.textDecoration || "").includes("underline")),
+    fillColor: normalizeMeasurementFillColor(format?.fillColor ?? format?.backgroundColor),
+    textColor: normalizeMeasurementFillColor(format?.textColor ?? format?.fontColor ?? format?.color),
     border: normalizeMeasurementBorder(format?.border),
     conditional: {
       filled: Boolean(conditionalSource.filled),

@@ -44247,6 +44247,7 @@ function isMeasurementFormatCustomized(format = {}) {
     || normalized.italic
     || normalized.underline
     || normalized.fillColor
+    || normalized.textColor
     || normalized.border.top
     || normalized.border.right
     || normalized.border.bottom
@@ -45737,6 +45738,7 @@ function getMeasurementCellStyleConfig(format = {}) {
     fontStyle: normalized.italic ? "italic" : "normal",
     textDecoration: normalized.underline ? "underline" : "none",
     fillColor: normalized.fillColor || "",
+    textColor: normalized.textColor || "",
   };
 }
 
@@ -45771,6 +45773,7 @@ function applyMeasurementCellStyleToElements(cell, input, format = {}) {
     input.style.fontWeight = styleConfig.fontWeight;
     input.style.fontStyle = styleConfig.fontStyle;
     input.style.textDecoration = styleConfig.textDecoration;
+    input.style.color = styleConfig.textColor || "";
   }
 }
 
@@ -62257,6 +62260,66 @@ function syncDocumentationSprSectionTags() {
   ]);
 }
 
+function buildDocumentationSprGridlineStyleFromMeasurementFormat(format = {}) {
+  const normalized = normalizeMeasurementCellFormat(format);
+  const style = {};
+  if (normalized.fillColor) {
+    style.backgroundColor = normalized.fillColor;
+  }
+  if (normalized.textColor) {
+    style.color = normalized.textColor;
+  }
+  if (normalized.align && normalized.align !== "auto") {
+    style.textAlign = normalized.align;
+  }
+  if (normalized.verticalAlign && normalized.verticalAlign !== "middle") {
+    style.verticalAlign = normalized.verticalAlign;
+  }
+  if (normalized.bold) {
+    style.fontWeight = "bold";
+  }
+  if (normalized.italic) {
+    style.fontStyle = "italic";
+  }
+  if (normalized.underline) {
+    style.textDecoration = "underline";
+  }
+  const borderPreset = getMeasurementBorderPreset(normalized.border);
+  if (borderPreset === "all") {
+    style.border = "all";
+  } else if (borderPreset === "bottom") {
+    style.border = "bottom";
+  } else if (borderPreset !== "none") {
+    style.border = "all";
+  }
+  if (normalized.type && normalized.type !== "general") {
+    style.type = normalized.type;
+  }
+  if (normalized.decimals !== 2) {
+    style.decimals = normalized.decimals;
+  }
+  return style;
+}
+
+function buildDocumentationSprMeasurementFormatFromGridlineStyle(style = {}, value = "", autoBorderFilled = false) {
+  const source = style && typeof style === "object" ? style : {};
+  const border = source.border || (autoBorderFilled && String(value || "").trim() ? "all" : "");
+  return normalizeMeasurementCellFormat({
+    type: source.type || source.dataType || source.valueType,
+    decimals: source.decimals,
+    align: source.textAlign || source.align,
+    verticalAlign: source.verticalAlign || source.vAlign,
+    fillColor: source.backgroundColor || source.fillColor,
+    textColor: source.color || source.textColor || source.fontColor,
+    fontFamily: source.fontFamily,
+    fontSize: source.fontSize,
+    bold: source.fontWeight === "bold" || source.bold === true,
+    italic: source.fontStyle === "italic" || source.italic === true,
+    underline: String(source.textDecoration || "").includes("underline") || source.underline === true,
+    border,
+  });
+}
+
 function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
   const columns = table?.sheet?.columns || [];
   const rows = [
@@ -62303,10 +62366,10 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
       columns.forEach((column, columnIndex) => {
         const format = formats[column.id];
         if (format && typeof format === "object") {
-          model.cellStyles[`${rowIndex + 2}:${columnIndex}`] = {
-            backgroundColor: format.backgroundColor || "",
-            textAlign: format.textAlign || format.align || "",
-          };
+          const style = buildDocumentationSprGridlineStyleFromMeasurementFormat(format);
+          if (Object.keys(style).length > 0) {
+            model.cellStyles[`${rowIndex + 2}:${columnIndex}`] = style;
+          }
         }
       });
     });
@@ -63112,12 +63175,9 @@ function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fall
         formats: Object.fromEntries(columns.map((column, columnIndex) => {
           const style = normalizedGridline.cellStyles?.[`${originalIndex + 2}:${columnIndex}`] || {};
           const value = String(row[columnIndex] ?? "").trim();
-          return [column.id, {
-            backgroundColor: style.backgroundColor || "",
-            textAlign: style.textAlign || "",
-            border: style.border || (normalizedGridline.autoBorderFilled && value ? "all" : ""),
-          }];
-        }).filter(([, format]) => format.backgroundColor || format.textAlign || format.border)),
+          const format = buildDocumentationSprMeasurementFormatFromGridlineStyle(style, value, normalizedGridline.autoBorderFilled);
+          return [column.id, format];
+        }).filter(([, format]) => isMeasurementFormatCustomized(format))),
       };
     });
   const headerRows = (normalizedGridline.headerRows || [])
@@ -63141,6 +63201,7 @@ function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fall
     rows: sheetRows,
     merges,
     headerRows,
+    pageOrientation: normalizedGridline.pageOrientation === "landscape" ? "landscape" : "",
   };
 }
 
@@ -68819,6 +68880,29 @@ function normalizeDocumentTemplateGridlineModel(value = null, fallbackRows = [])
   const headerRows = Array.from(new Set((Array.isArray(source.headerRows) ? source.headerRows : [])
     .map((row) => Number(row))
     .filter((row) => Number.isInteger(row) && row >= 0 && row < rowCount)));
+  const aiColumns = {};
+  Object.entries(source.aiColumns && typeof source.aiColumns === "object" ? source.aiColumns : {}).forEach(([key, entry]) => {
+    const columnIndex = Number(key);
+    if (!Number.isInteger(columnIndex) || columnIndex < 0 || columnIndex >= columnCount || !entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return;
+    }
+    const nextEntry = {
+      enabled: entry.enabled !== false,
+      key: String(entry.key || "").trim(),
+      label: String(entry.label || "").trim(),
+      description: String(entry.description || entry.aiDescription || "").trim(),
+      instructions: String(entry.instructions || entry.aiInstructions || entry.ai_instruction || "").trim(),
+      lookFor: String(entry.lookFor || entry.aiLookFor || "").trim(),
+      avoid: String(entry.avoid || entry.aiAvoid || "").trim(),
+      allowedValues: String(entry.allowedValues || "").trim(),
+      examples: String(entry.examples || "").trim(),
+      required: Boolean(entry.required),
+      locked: Boolean(entry.locked || entry.readonly || entry.readOnly),
+    };
+    if (Object.values(nextEntry).some((value) => value === true || (typeof value === "string" && value))) {
+      aiColumns[String(columnIndex)] = nextEntry;
+    }
+  });
   const merges = (Array.isArray(source.merges) ? source.merges : [])
     .map((merge) => ({
       row: Math.max(0, Math.min(rowCount - 1, Math.round(Number(merge?.row) || 0))),
@@ -68839,6 +68923,7 @@ function normalizeDocumentTemplateGridlineModel(value = null, fallbackRows = [])
     cellStyles,
     headerRows,
     merges,
+    aiColumns,
     autoBorderFilled: Boolean(source.autoBorderFilled),
     pageOrientation: String(source.pageOrientation || source.orientation || "").trim().toLowerCase() === "landscape" ? "landscape" : "",
   };
@@ -68967,6 +69052,9 @@ function buildDocumentTemplateGridlineWordPlaceholder(field = {}, context = {}) 
           fillColor: style.backgroundColor || (headerRowIndexes.has(rowIndex) ? "#F1F7F4" : ""),
           textColor: style.color || "",
           textAlign: style.textAlign || style.align || "",
+          verticalAlign: style.verticalAlign || style.vAlign || "",
+          fontFamily: style.fontFamily || style.font || "",
+          fontSize: style.fontSize || style.size,
           border: style.border || (model.autoBorderFilled && String(model.data?.[`${rowIndex}:${columnIndex}`] ?? "").trim() ? "all" : ""),
           type: style.type || style.dataType || "",
           decimals: style.decimals,
@@ -78891,6 +78979,9 @@ function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column, fo
   styles.push(`font-weight:${styleConfig.fontWeight}`);
   styles.push(`font-style:${styleConfig.fontStyle}`);
   styles.push(`text-decoration:${styleConfig.textDecoration}`);
+  if (styleConfig.textColor) {
+    styles.push(`color:${styleConfig.textColor}`);
+  }
   if (styleConfig.fillColor) {
     styles.push(`background-color:${styleConfig.fillColor}`);
   }

@@ -21,6 +21,7 @@ test("measurement formatting normalizes cell format settings", () => {
     italic: false,
     underline: false,
     fillColor: "",
+    textColor: "",
     border: {
       top: false,
       right: false,
@@ -51,6 +52,7 @@ test("measurement formatting normalizes cell format settings", () => {
     italic: true,
     underline: true,
     fillColor: "#ABC",
+    textColor: "#123456",
     border: "all",
     verticalAlign: "bottom",
   }), {
@@ -64,6 +66,7 @@ test("measurement formatting normalizes cell format settings", () => {
     italic: true,
     underline: true,
     fillColor: "#aabbcc",
+    textColor: "#123456",
     border: {
       top: true,
       right: true,
@@ -91,6 +94,7 @@ test("measurement formatting normalizes cell format settings", () => {
     fontFamily: "unknown",
     fontSize: 99,
     fillColor: "red",
+    color: "#234",
     conditional: {
       filled: true,
       fillColor: "#D9EAD3",
@@ -109,6 +113,7 @@ test("measurement formatting normalizes cell format settings", () => {
     italic: false,
     underline: false,
     fillColor: "",
+    textColor: "#223344",
     border: {
       top: false,
       right: false,

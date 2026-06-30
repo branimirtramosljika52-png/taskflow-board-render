@@ -112,6 +112,8 @@
     var textAlign = String(source.textAlign || source.align || "").trim().toLowerCase();
     var verticalAlign = String(source.verticalAlign || source.vAlign || "").trim().toLowerCase();
     var border = String(source.border || source.borderStyle || "").trim().toLowerCase();
+    var fontFamily = String(source.fontFamily || source.font || "").trim();
+    var fontSize = Number(source.fontSize || source.size || 0);
     var dataType = normalizeDataType(source.type || source.dataType || source.valueType);
     var decimals = normalizeDecimalCount(source.decimals);
     if (isValidHexColor(backgroundColor)) {
@@ -134,6 +136,12 @@
     }
     if (String(source.textDecoration || "").indexOf("underline") >= 0 || source.underline === true) {
       style.textDecoration = "underline";
+    }
+    if (fontFamily) {
+      style.fontFamily = fontFamily.slice(0, 80);
+    }
+    if (Number.isFinite(fontSize) && fontSize > 0) {
+      style.fontSize = Math.max(8, Math.min(40, Math.round(fontSize)));
     }
     if (["all", "outer", "bottom"].indexOf(border) >= 0) {
       style.border = border;
@@ -1429,6 +1437,8 @@
         element.style.fontWeight = normalized.fontWeight || "";
         element.style.fontStyle = normalized.fontStyle || "";
         element.style.textDecoration = normalized.textDecoration || "";
+        element.style.fontFamily = normalized.fontFamily || "";
+        element.style.fontSize = normalized.fontSize ? normalized.fontSize + "px" : "";
       });
       if (td) {
         td.classList.toggle("is-required-cell", Boolean(normalized.required));
