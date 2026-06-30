@@ -9,6 +9,8 @@ import {
   MEASUREMENT_VIRTUALIZATION_ROW_HEIGHT,
 } from "./config.js";
 
+const MEASUREMENT_ROW_HEADER_WIDTH = 54;
+
 function findColumnIndexAtOffset(widths = [], offsets = [], targetOffset = 0, lowerBound = 0) {
   if (!widths.length) {
     return 0;
@@ -73,25 +75,68 @@ export function createMeasurementSheetViewportController({
       && !(sheet.merges ?? []).length;
   };
 
-  const getColumnWidth = (column = {}) => Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column?.width) || 140);
+  const getBaseColumnWidth = (column = {}) => Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column?.width) || 140);
+
+  const getAvailableColumnWidth = () => {
+    const gridWrap = getGridWrap?.();
+    if (!gridWrap) {
+      return 0;
+    }
+    return Math.max(0, Math.floor((gridWrap.clientWidth || 0) - MEASUREMENT_ROW_HEADER_WIDTH - 2));
+  };
+
+  const getColumnWidth = (column = {}) => {
+    const metrics = getCurrentSheet().viewportColumnMetrics;
+    const columnId = column?.id;
+    if (columnId && metrics?.widthByColumnId instanceof Map && metrics.widthByColumnId.has(columnId)) {
+      return metrics.widthByColumnId.get(columnId);
+    }
+    return getBaseColumnWidth(column);
+  };
 
   const getColumnWidthMetrics = () => {
     const sheet = getCurrentSheet();
     const columns = sheet.columns ?? [];
+    const availableWidth = getAvailableColumnWidth();
     const key = columns
-      .map((column) => `${column?.id || ""}:${Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column?.width) || 140)}`)
-      .join("|");
+      .map((column) => `${column?.id || ""}:${getBaseColumnWidth(column)}`)
+      .join("|")
+      + `@${availableWidth}`;
 
     if (sheet.viewportColumnMetrics?.key === key) {
       return sheet.viewportColumnMetrics;
     }
 
-    const widths = columns.map(getColumnWidth);
+    const baseWidths = columns.map(getBaseColumnWidth);
+    const baseTotalWidth = baseWidths.reduce((sum, width) => sum + width, 0);
+    const widths = baseWidths.slice();
+
+    if (columns.length > 0 && baseTotalWidth > 0 && availableWidth > baseTotalWidth) {
+      const scale = availableWidth / baseTotalWidth;
+      let distributedWidth = 0;
+      widths.forEach((width, index) => {
+        widths[index] = Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Math.floor(width * scale));
+        distributedWidth += widths[index];
+      });
+
+      let remainder = availableWidth - distributedWidth;
+      let index = 0;
+      while (remainder > 0 && widths.length > 0) {
+        widths[index % widths.length] += 1;
+        remainder -= 1;
+        index += 1;
+      }
+    }
+
     const offsets = [];
+    const widthByColumnId = new Map();
     let totalWidth = 0;
-    widths.forEach((width) => {
+    widths.forEach((width, index) => {
       offsets.push(totalWidth);
       totalWidth += width;
+      if (columns[index]?.id) {
+        widthByColumnId.set(columns[index].id, width);
+      }
     });
 
     sheet.viewportColumnMetrics = {
@@ -99,6 +144,7 @@ export function createMeasurementSheetViewportController({
       widths,
       offsets,
       totalWidth,
+      widthByColumnId,
     };
     return sheet.viewportColumnMetrics;
   };

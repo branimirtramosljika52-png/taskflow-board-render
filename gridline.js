@@ -110,6 +110,7 @@
     var backgroundColor = String(source.backgroundColor || "").trim();
     var color = String(source.color || source.textColor || "").trim();
     var textAlign = String(source.textAlign || source.align || "").trim().toLowerCase();
+    var verticalAlign = String(source.verticalAlign || source.vAlign || "").trim().toLowerCase();
     var border = String(source.border || source.borderStyle || "").trim().toLowerCase();
     var dataType = normalizeDataType(source.type || source.dataType || source.valueType);
     var decimals = normalizeDecimalCount(source.decimals);
@@ -121,6 +122,9 @@
     }
     if (["left", "center", "right"].indexOf(textAlign) >= 0) {
       style.textAlign = textAlign;
+    }
+    if (["top", "middle", "center", "bottom"].indexOf(verticalAlign) >= 0) {
+      style.verticalAlign = verticalAlign === "center" ? "middle" : verticalAlign;
     }
     if (source.fontWeight === "bold" || source.bold === true) {
       style.fontWeight = "bold";
@@ -959,6 +963,9 @@
     var alignButtons = host && typeof host.querySelectorAll === "function"
       ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='align']"))
       : [];
+    var verticalAlignButtons = host && typeof host.querySelectorAll === "function"
+      ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='vertical-align']"))
+      : [];
     var backgroundColorButtons = host && typeof host.querySelectorAll === "function"
       ? Array.prototype.slice.call(host.querySelectorAll("[data-gridline-action='background-color']"))
       : [];
@@ -999,7 +1006,9 @@
     var titleInput = resolveElement(host, "[data-gridline-role='title']");
     var subtitleInput = resolveElement(host, "[data-gridline-role='subtitle']");
     var rootElement = grid ? grid.closest("[data-gridline-instance]") || host : host;
+    var gridScroll = grid && grid.closest ? grid.closest(".documentation-gridline-scroll") : null;
     var model;
+    var renderColumnWidths = null;
     var active = { row: 0, column: 0 };
     var selectedCell = null;
     var saveTimer = 0;
@@ -1076,17 +1085,6 @@
       grid.tabIndex = 0;
     }
 
-    if (!statusBar && rootElement) {
-      var statusBarTarget = rootElement.nodeType === 9 ? rootElement.body : rootElement;
-      statusBar = document.createElement("div");
-      statusBar.className = "gridline-statusbar";
-      statusBar.dataset.gridlineRole = "summary";
-      statusBar.textContent = "Spremno";
-      if (statusBarTarget && statusBarTarget.appendChild) {
-        statusBarTarget.appendChild(statusBar);
-      }
-    }
-
     readZoomControl();
     if (rootElement && rootElement.classList) {
       rootElement.classList.add("is-gridline-freeze-row", "is-gridline-freeze-column");
@@ -1132,8 +1130,39 @@
       );
     }
 
-    function getColumnWidth(column) {
+    function getBaseColumnWidth(column) {
       return clampInteger(model.columnWidths && model.columnWidths[String(column)], DEFAULT_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+    }
+
+    function buildRenderColumnWidths() {
+      var widths = [];
+      var total = 0;
+      var available = gridScroll ? Math.max(0, Math.floor((gridScroll.clientWidth || 0) - 52 - 2)) : 0;
+      var column;
+      for (column = 0; column < model.columnCount; column += 1) {
+        widths[column] = getBaseColumnWidth(column);
+        total += widths[column];
+      }
+      if (available > total && total > 0 && model.columnCount > 0) {
+        var scale = available / total;
+        var distributed = 0;
+        for (column = 0; column < widths.length; column += 1) {
+          widths[column] = Math.max(MIN_COLUMN_WIDTH, Math.floor(widths[column] * scale));
+          distributed += widths[column];
+        }
+        var remainder = available - distributed;
+        var index = 0;
+        while (remainder > 0 && widths.length) {
+          widths[index % widths.length] += 1;
+          remainder -= 1;
+          index += 1;
+        }
+      }
+      return widths;
+    }
+
+    function getColumnWidth(column) {
+      return renderColumnWidths && renderColumnWidths[column] ? renderColumnWidths[column] : getBaseColumnWidth(column);
     }
 
     function getColumnSpanWidth(column, columnSpan) {
@@ -1273,6 +1302,7 @@
     }
 
     function handleWindowResize() {
+      render();
       scheduleZoomFit();
     }
 
@@ -1326,6 +1356,7 @@
         rootElement.classList.toggle("is-gridline-fullscreen", isGridlineFullscreen());
       }
       syncGridlineViewButtons();
+      render();
       scheduleZoomFit();
       window.requestAnimationFrame(function () {
         applyZoom();
@@ -1375,6 +1406,7 @@
         element.style.backgroundColor = normalized.backgroundColor || "";
         element.style.color = normalized.color || "";
         element.style.textAlign = normalized.textAlign || "";
+        element.style.verticalAlign = normalized.verticalAlign || "";
         element.style.fontWeight = normalized.fontWeight || "";
         element.style.fontStyle = normalized.fontStyle || "";
         element.style.textDecoration = normalized.textDecoration || "";
@@ -3011,6 +3043,7 @@
       var td;
       var input;
 
+      renderColumnWidths = buildRenderColumnWidths();
       corner.className = "corner";
       headRow.appendChild(corner);
       for (column = 0; column < model.columnCount; column += 1) {
@@ -5432,6 +5465,20 @@
       scheduleSave();
     }
 
+    function setSelectedCellsVerticalAlign(align) {
+      var normalizedAlign = String(align || "").trim().toLowerCase();
+      if (normalizedAlign === "center") {
+        normalizedAlign = "middle";
+      }
+      if (["top", "middle", "bottom"].indexOf(normalizedAlign) < 0) {
+        return;
+      }
+      updateSelectedCellStyles(function (style) {
+        style.verticalAlign = normalizedAlign;
+        return style;
+      });
+    }
+
     function setActiveCellBackground(color) {
       var normalizedColor = String(color || "").trim();
       var cells = getSelectedCells();
@@ -5637,6 +5684,11 @@
     alignButtons.forEach(function (button) {
       button.addEventListener("click", function () {
         setSelectedCellsAlign(button.dataset.gridlineAlign || "");
+      });
+    });
+    verticalAlignButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        setSelectedCellsVerticalAlign(button.dataset.gridlineVerticalAlign || "");
       });
     });
     backgroundColorButtons.forEach(function (button) {

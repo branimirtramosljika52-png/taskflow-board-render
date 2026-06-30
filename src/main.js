@@ -6127,6 +6127,10 @@ const measurementColorSwatchButtons = Array.from(document.querySelectorAll(".mea
 const measurementFormatBoldButton = document.querySelector("#measurement-format-bold");
 const measurementFormatItalicButton = document.querySelector("#measurement-format-italic");
 const measurementFormatUnderlineButton = document.querySelector("#measurement-format-underline");
+const measurementFormatSuperscriptButton = document.querySelector("#measurement-format-superscript");
+const measurementFormatSubscriptButton = document.querySelector("#measurement-format-subscript");
+const measurementSymbolsButton = document.querySelector("#measurement-symbols-button");
+const measurementSymbolMenu = document.querySelector("#measurement-symbol-menu");
 const measurementAlignLeftButton = document.querySelector("#measurement-align-left");
 const measurementAlignCenterButton = document.querySelector("#measurement-align-center");
 const measurementAlignRightButton = document.querySelector("#measurement-align-right");
@@ -45670,12 +45674,19 @@ function applyMeasurementCellStyleToElements(cell, input, format = {}) {
 
   if (input instanceof HTMLElement) {
     const shell = input.closest(".measurement-cell-shell");
+    const verticalItems = styleConfig.verticalAlign === "top"
+      ? "flex-start"
+      : styleConfig.verticalAlign === "bottom"
+        ? "flex-end"
+        : "center";
     if (shell instanceof HTMLElement) {
-      shell.style.alignItems = styleConfig.verticalAlign === "top"
-        ? "flex-start"
-        : styleConfig.verticalAlign === "bottom"
-          ? "flex-end"
-          : "center";
+      shell.style.alignItems = verticalItems;
+    }
+    const displayValue = input.matches(".measurement-cell-value")
+      ? input
+      : cell?.querySelector?.(".measurement-cell-value");
+    if (displayValue instanceof HTMLElement) {
+      displayValue.style.alignItems = verticalItems;
     }
     input.style.textAlign = styleConfig.textAlign;
     input.style.fontFamily = styleConfig.fontFamily;
@@ -48264,6 +48275,78 @@ function setMeasurementVerticalAlignment(verticalAlign) {
   applyMeasurementToolbarFormat({ verticalAlign });
 }
 
+function getMeasurementTextInsertTarget() {
+  const activeElement = document.activeElement;
+  if (isMeasurementInputElement(activeElement) || activeElement === measurementFormulaInput) {
+    return activeElement;
+  }
+  if (measurementFormulaInput instanceof HTMLInputElement && state.measurementSheet.activeCell) {
+    return measurementFormulaInput;
+  }
+  return null;
+}
+
+function syncMeasurementInsertedTextTarget(target) {
+  const activeCell = state.measurementSheet.activeCell;
+  if (!(target instanceof HTMLInputElement) || !activeCell) {
+    return;
+  }
+  const source = target === measurementFormulaInput ? "formula-bar" : "cell";
+  const rowId = source === "cell" ? (target.dataset.rowId || activeCell.rowId) : activeCell.rowId;
+  const columnId = source === "cell" ? (target.dataset.columnId || activeCell.columnId) : activeCell.columnId;
+  syncMeasurementEditorLiveValue({
+    rowId,
+    columnId,
+    value: target.value,
+    source,
+  });
+}
+
+function insertMeasurementTextAtCaret(text = "") {
+  const symbol = String(text || "");
+  const target = getMeasurementTextInsertTarget();
+  if (!symbol || !(target instanceof HTMLInputElement)) {
+    return;
+  }
+  target.focus({ preventScroll: true });
+  const start = target.selectionStart ?? target.value.length;
+  const end = target.selectionEnd ?? target.value.length;
+  target.value = `${target.value.slice(0, start)}${symbol}${target.value.slice(end)}`;
+  const nextPosition = start + symbol.length;
+  target.setSelectionRange(nextPosition, nextPosition);
+  syncMeasurementInsertedTextTarget(target);
+}
+
+function renderMeasurementSymbolMenu() {
+  if (!(measurementSymbolMenu instanceof HTMLElement) || !(measurementSymbolsButton instanceof HTMLElement)) {
+    return;
+  }
+  if (measurementSymbolMenu.hidden) {
+    measurementSymbolMenu.style.left = "";
+    measurementSymbolMenu.style.top = "";
+    return;
+  }
+  const panelRect = measurementSheetPanel?.getBoundingClientRect?.() ?? { left: 0, top: 0, width: window.innerWidth };
+  const buttonRect = measurementSymbolsButton.getBoundingClientRect();
+  const menuWidth = 254;
+  const left = Math.min(
+    Math.max(buttonRect.left - panelRect.left, 10),
+    Math.max(10, panelRect.width - menuWidth - 10),
+  );
+  const top = Math.max(10, buttonRect.bottom - panelRect.top + 8);
+  measurementSymbolMenu.style.left = `${left}px`;
+  measurementSymbolMenu.style.top = `${top}px`;
+}
+
+function toggleMeasurementSymbolMenu(forceOpen = null) {
+  if (!(measurementSymbolMenu instanceof HTMLElement)) {
+    return;
+  }
+  const shouldOpen = forceOpen === null ? measurementSymbolMenu.hidden : Boolean(forceOpen);
+  measurementSymbolMenu.hidden = !shouldOpen;
+  renderMeasurementSymbolMenu();
+}
+
 function getEditableMeasurementColumnIndexes() {
   return state.measurementSheet.columns.reduce((indexes, column, index) => {
     if (!column.computed) {
@@ -48559,6 +48642,9 @@ function syncMeasurementToolbar(options = {}) {
     measurementFormatBoldButton,
     measurementFormatItalicButton,
     measurementFormatUnderlineButton,
+    measurementFormatSuperscriptButton,
+    measurementFormatSubscriptButton,
+    measurementSymbolsButton,
   ].forEach((button) => {
     if (button instanceof HTMLButtonElement) {
       button.disabled = !state.measurementSheet.activeCell;
@@ -51939,27 +52025,17 @@ function renderMeasurementSheet(options = {}) {
             cells: { ...sourceRow.cells },
             formats: { ...(sourceRow.formats ?? {}) },
           }));
-        const lastMeaningfulRowIndex = state.measurementSheet.rows.reduce((lastIndex, candidate, candidateIndex) => (
-          isMeasurementSheetRowMeaningful(candidate, state.measurementSheet.columns)
-            ? candidateIndex
-            : lastIndex
-        ), -1);
-        const targetEndRowIndex = Math.max(
-          selectionRange.endRowIndex,
-          lastMeaningfulRowIndex > selectionRange.endRowIndex ? lastMeaningfulRowIndex : Math.min(state.measurementSheet.rows.length - 1, selectionRange.endRowIndex + 12),
-        );
+        const targetEndRowIndex = getMeasurementFillDoubleClickEndRowIndex(selectionRange);
 
         if (targetEndRowIndex <= selectionRange.endRowIndex) {
           return;
         }
 
-        applyMeasurementFill("series", {
-          pendingFill: {
+        openMeasurementFillMenu({
             selectionRange,
             endRowIndex: targetEndRowIndex,
             snapshotRows,
-          },
-        });
+          }, event.clientX, event.clientY);
       });
 
       shell.append(fillHandle);
@@ -52372,6 +52448,46 @@ function formatMeasurementSeriesValue(value) {
   return String(Number(value.toFixed(2))).replace(".", ",");
 }
 
+function getMeasurementFillDoubleClickEndRowIndex(selectionRange) {
+  if (!selectionRange) {
+    return -1;
+  }
+  const startRowIndex = selectionRange.endRowIndex + 1;
+  if (startRowIndex >= state.measurementSheet.rows.length) {
+    return selectionRange.endRowIndex;
+  }
+
+  const leftColumn = state.measurementSheet.columns[selectionRange.startColumnIndex - 1];
+  const rightColumn = state.measurementSheet.columns[selectionRange.endColumnIndex + 1];
+  const targetColumns = getEditableMeasurementColumnsInRange(selectionRange);
+  let endRowIndex = selectionRange.endRowIndex;
+
+  for (let rowIndex = startRowIndex; rowIndex < state.measurementSheet.rows.length; rowIndex += 1) {
+    const row = state.measurementSheet.rows[rowIndex];
+    if (!row) {
+      break;
+    }
+
+    const targetAlreadyFilled = targetColumns.some((column) => (
+      String(row.cells?.[column.id] ?? "").trim()
+    ));
+    if (targetAlreadyFilled) {
+      break;
+    }
+
+    const neighborHasData = [leftColumn, rightColumn].some((column) => (
+      column && String(row.cells?.[column.id] ?? "").trim()
+    ));
+    if (!neighborHasData) {
+      break;
+    }
+
+    endRowIndex = rowIndex;
+  }
+
+  return endRowIndex;
+}
+
 function applyMeasurementFill(mode, options = {}) {
   const {
     pendingFill = state.measurementSheet.fillMenu?.pendingFill,
@@ -52421,11 +52537,13 @@ function applyMeasurementFill(mode, options = {}) {
       const sourceRowIndex = selectionRange.startRowIndex + sourceOffset;
 
       if (row?.cells) {
-        row.cells[column.id] = shiftMeasurementFillValue(
-          snapshotValues[sourceOffset] ?? "",
-          rowIndex - sourceRowIndex,
-          0,
-        );
+        row.cells[column.id] = mode === "copy"
+          ? (snapshotValues[sourceOffset] ?? "")
+          : shiftMeasurementFillValue(
+            snapshotValues[sourceOffset] ?? "",
+            rowIndex - sourceRowIndex,
+            0,
+          );
         row.formats = row.formats ?? {};
         row.formats[column.id] = { ...snapshotFormats[sourceOffset] };
       }
@@ -52612,12 +52730,7 @@ function stopMeasurementFillDrag(applyFill = true, pointerX = 0, pointerY = 0) {
   document.body.classList.remove("is-filling-measurement-cells");
 
   if (applyFill && fillDrag.endRowIndex > fillDrag.selectionRange.endRowIndex) {
-    applyMeasurementFill("copy", {
-      pendingFill: fillDrag,
-      showMenuAfter: true,
-      menuX: pointerX,
-      menuY: pointerY,
-    });
+    openMeasurementFillMenu(fillDrag, pointerX, pointerY);
     return;
   }
 
@@ -52748,6 +52861,9 @@ function appendGridlineSpreadsheetToolbar(actions, {
     makeButton("≡", "align", "Poravnaj lijevo", { gridlineAlign: "left" }),
     makeButton("☰", "align", "Poravnaj sredina", { gridlineAlign: "center" }),
     makeButton("≣", "align", "Poravnaj desno", { gridlineAlign: "right" }),
+    makeButton("↥", "vertical-align", "Poravnaj gore", { gridlineVerticalAlign: "top" }),
+    makeButton("↕", "vertical-align", "Poravnaj sredina po visini", { gridlineVerticalAlign: "middle" }),
+    makeButton("↧", "vertical-align", "Poravnaj dolje", { gridlineVerticalAlign: "bottom" }),
     makeButton("▦", "merge", "Spoji celije"),
     makeButton("▥", "unmerge", "Razdvoji celije"),
     makeButton("H", "toggle-header-row", "Naslov na svakoj PDF stranici"),
@@ -59030,6 +59146,7 @@ function syncDocumentationSprSourceSummary() {
       getPeopleUserOib(user) ? `OIB ${getPeopleUserOib(user)}` : "",
     ].filter(Boolean).join(" · "),
   });
+  syncDocumentationSprSectionTags();
 }
 
 function renderDocumentationSprSourceControls() {
@@ -61819,6 +61936,131 @@ function renderDocumentationSprTechnicalSection() {
   `).join("");
 }
 
+function formatDocumentationSprHeaderTagValue(value = "", maxLength = 34) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) {
+    return "";
+  }
+  return text.length > maxLength ? `${text.slice(0, Math.max(8, maxLength - 1)).trim()}…` : text;
+}
+
+function setDocumentationSprSectionTags(section, tags = []) {
+  if (!(section instanceof HTMLElement)) {
+    return;
+  }
+  const head = section.querySelector(".documentation-spr-section-head");
+  if (!(head instanceof HTMLElement)) {
+    return;
+  }
+  let tagWrap = head.querySelector(".documentation-spr-section-tags");
+  const filteredTags = tags
+    .map((tag) => ({
+      label: String(tag?.label || "").trim(),
+      value: formatDocumentationSprHeaderTagValue(tag?.value || "", tag?.maxLength || 34),
+      tone: String(tag?.tone || "blue").trim(),
+    }))
+    .filter((tag) => tag.label && tag.value);
+
+  if (!filteredTags.length) {
+    tagWrap?.remove();
+    return;
+  }
+
+  if (!(tagWrap instanceof HTMLElement)) {
+    tagWrap = document.createElement("div");
+    tagWrap.className = "documentation-spr-section-tags";
+    const meta = head.querySelector(".documentation-spr-section-meta");
+    if (meta instanceof HTMLElement) {
+      head.insertBefore(tagWrap, meta);
+    } else {
+      head.append(tagWrap);
+    }
+  }
+
+  tagWrap.replaceChildren(...filteredTags.slice(0, 6).map((tag) => {
+    const pill = document.createElement("span");
+    pill.className = `documentation-spr-section-tag is-${tag.tone}`;
+    const label = document.createElement("strong");
+    label.textContent = tag.label;
+    const value = document.createElement("span");
+    value.textContent = tag.value;
+    value.title = tag.value;
+    pill.append(label, value);
+    return pill;
+  }));
+}
+
+function getDocumentationSprMeasurementPointCount() {
+  if (!documentationSprModel) {
+    return 0;
+  }
+  const tables = normalizeDocumentationSprMeasurementTables(
+    documentationSprModel.measurementTables,
+    documentationSprModel,
+  ).filter((table) => table.enabled !== false);
+  if (tables.length) {
+    return tables.reduce((sum, table) => {
+      const columns = table.sheet?.columns || [];
+      return sum + (table.sheet?.rows || []).filter((row) => (
+        columns.some((column) => String(row.cells?.[column.id] ?? "").trim())
+      )).length;
+    }, 0);
+  }
+
+  const rows = getDocumentationSprRowsFromGridlineModel(getDocumentationSprActiveGridlineModel());
+  return rows.slice(2).filter((row) => row.some((value) => String(value || "").trim())).length;
+}
+
+function syncDocumentationSprSectionTags() {
+  if (!documentationSprModel || !documentationWorkbenchModule) {
+    return;
+  }
+  const selectedEquipment = getDocumentationSprEquipmentByIds();
+  const selectedLegal = getDocumentationSprLegalFrameworksByIds();
+  const technicalEntries = parseDocumentationSprTechnicalData(
+    documentationSprModel.technicalData,
+    getDocumentationSprTechnicalFieldDefinitions(documentationSprModel),
+  ).filter((entry) => String(entry.value || "").trim());
+  const resultHtml = String(documentationSprModel.resultsText || "");
+  const resultText = richTextHtmlToPlainText(resultHtml);
+  const resultImageCount = (resultHtml.match(/<img\b/gi) || []).length;
+  const measurementPointCount = getDocumentationSprMeasurementPointCount();
+
+  setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector(".documentation-spr-section-basic"), [
+    { label: "Tvrtka", value: documentationSprModel.companyName, tone: "blue", maxLength: 30 },
+    { label: "Datum", value: documentationSprModel.inspectionDate, tone: "green" },
+    { label: "Vrijedi", value: documentationSprModel.validUntil, tone: "amber" },
+  ]);
+  setDocumentationSprSectionTags(documentationSprTechnicalSection, technicalEntries.slice(0, 4).map((entry, index) => ({
+    label: entry.label,
+    value: entry.value,
+    tone: index % 2 ? "slate" : "blue",
+    maxLength: 28,
+  })));
+  setDocumentationSprSectionTags(documentationSprEquipmentSection, [
+    { label: "Oprema", value: selectedEquipment.length ? `${selectedEquipment.length} odabrano` : "", tone: "green" },
+  ]);
+  setDocumentationSprSectionTags(documentationSprRegulationsSection, [
+    { label: "Propisi", value: selectedLegal.length ? `${selectedLegal.length} odabrano` : "", tone: "green" },
+  ]);
+  setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector("#documentation-spr-project-section"), [
+    { label: "Dok.", value: documentationSprModel.projectDocumentation, tone: "slate", maxLength: 42 },
+  ]);
+  setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector("#documentation-spr-results-section"), [
+    { label: "Opis", value: resultText ? "unesen" : "", tone: "blue" },
+    { label: "Slike", value: resultImageCount ? String(resultImageCount) : "", tone: "green" },
+  ]);
+  setDocumentationSprSectionTags(documentationSprNativeMeasurementsSection, [
+    { label: "Mjernih mjesta", value: measurementPointCount ? String(measurementPointCount) : "", tone: "blue" },
+  ]);
+  setDocumentationSprSectionTags(documentationSprPrimaryGridlineSection, [
+    { label: "Mjernih mjesta", value: measurementPointCount ? String(measurementPointCount) : "", tone: "blue" },
+  ]);
+  setDocumentationSprSectionTags(documentationSprConclusionSection, [
+    { label: "Ocjena", value: documentationSprModel.resultStatus, tone: isDocumentationSprFailingResult() ? "amber" : "green" },
+  ]);
+}
+
 function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
   const columns = table?.sheet?.columns || [];
   const rows = [
@@ -62013,6 +62255,9 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="left" title="Poravnaj lijevo">≡</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="center" title="Poravnaj sredina">☰</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="align" data-gridline-align="right" title="Poravnaj desno">≣</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="vertical-align" data-gridline-vertical-align="top" title="Poravnaj gore">↥</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="vertical-align" data-gridline-vertical-align="middle" title="Poravnaj sredina po visini">↕</button>
+        <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="vertical-align" data-gridline-vertical-align="bottom" title="Poravnaj dolje">↧</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="merge" title="Spoji označene ćelije">▦</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="unmerge" title="Razdvoji spojene ćelije">▥</button>
         <button type="button" class="ghost-button gridline-icon-button" data-gridline-action="toggle-header-row" title="Naslovni red koji se ponavlja u PDF-u">H</button>
@@ -62118,6 +62363,7 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
         summary: subtitle || currentTable.summary,
         sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel }, currentTable),
       };
+      syncDocumentationSprSectionTags();
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
     },
@@ -62579,6 +62825,7 @@ function writeDocumentationSprModelToForm() {
   renderDocumentationSprAiSourceList();
   syncDocumentationSprAiSourcesToGridlines();
   renderDocumentationSprAttachmentList();
+  syncDocumentationSprSectionTags();
 }
 
 function getDocumentationSprRowsFromGridlineModel(model) {
@@ -63697,6 +63944,13 @@ function buildDocumentationSprPdfStyles() {
       text-align: justify;
     }
 
+    .documentation-spr-paper-text .document-template-rich-text,
+    .documentation-spr-paper-text .document-template-rich-text p,
+    .documentation-spr-paper-text .document-template-rich-text li {
+      text-align: justify;
+      text-justify: inter-word;
+    }
+
     .documentation-spr-paper-text .document-template-rich-text img {
       display: block;
       max-width: 100%;
@@ -63704,6 +63958,12 @@ function buildDocumentationSprPdfStyles() {
       margin: 5mm 0;
       border: 1px solid #dbe7f4;
       border-radius: 2mm;
+    }
+
+    .documentation-spr-paper-text .document-template-rich-text table,
+    .documentation-spr-paper-text .document-template-rich-text th,
+    .documentation-spr-paper-text .document-template-rich-text td {
+      text-align: left;
     }
 
     .documentation-spr-paper-note-title {
@@ -64945,6 +65205,7 @@ function mountDocumentationSprGridline() {
     },
     onChange: (nextModel) => {
       documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(nextModel);
+      syncDocumentationSprSectionTags();
       renderDocumentationSprPreview();
       scheduleDocumentationSprSave();
     },
@@ -77440,7 +77701,7 @@ function createDocumentTemplateRuntimeRichTextControl({
     if (cleanDom) {
       editor.innerHTML = html;
     }
-    onChange?.(text ? html : "");
+    onChange?.((text || /<img\b/i.test(html)) ? html : "");
   };
 
   editor.addEventListener("input", () => {
@@ -146673,6 +146934,32 @@ measurementFormatItalicButton?.addEventListener("click", () => {
 measurementFormatUnderlineButton?.addEventListener("click", () => {
   toggleMeasurementTextStyle("underline");
 });
+[
+  measurementFormatSuperscriptButton,
+  measurementFormatSubscriptButton,
+  measurementSymbolsButton,
+].forEach((button) => {
+  button?.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+});
+measurementFormatSuperscriptButton?.addEventListener("click", () => {
+  insertMeasurementTextAtCaret("²");
+});
+measurementFormatSubscriptButton?.addEventListener("click", () => {
+  insertMeasurementTextAtCaret("₂");
+});
+measurementSymbolsButton?.addEventListener("click", () => {
+  toggleMeasurementSymbolMenu();
+});
+measurementSymbolMenu?.querySelectorAll("[data-measurement-symbol]").forEach((button) => {
+  button.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  button.addEventListener("click", () => {
+    insertMeasurementTextAtCaret(button.getAttribute("data-measurement-symbol") || "");
+  });
+});
 measurementAlignLeftButton?.addEventListener("click", () => {
   setMeasurementAlignment("left");
 });
@@ -146714,6 +147001,14 @@ measurementSheetGridWrap?.addEventListener("scroll", () => {
   extendMeasurementSheetRowsIfNeeded();
   scheduleMeasurementVirtualViewportRender();
 });
+if (typeof ResizeObserver !== "undefined" && measurementSheetGridWrap instanceof HTMLElement) {
+  const measurementGridResizeObserver = new ResizeObserver(() => {
+    if (state.measurementSheet.isOpen) {
+      scheduleMeasurementSheetRender({ invalidateFormulaCache: false });
+    }
+  });
+  measurementGridResizeObserver.observe(measurementSheetGridWrap);
+}
 document.addEventListener("pointerdown", (event) => {
   if (
     !state.measurementSheet.validationPopoverOpen
@@ -153791,6 +154086,14 @@ document.addEventListener("click", (event) => {
     if (!clickedFillMenu && !clickedFillHandle) {
       closeMeasurementFillMenu();
     }
+  }
+
+  if (measurementSymbolMenu instanceof HTMLElement
+    && !measurementSymbolMenu.hidden
+    && event.target instanceof Node
+    && !measurementSymbolMenu.contains(event.target)
+    && !measurementSymbolsButton?.contains(event.target)) {
+    toggleMeasurementSymbolMenu(false);
   }
 
   if (state.measurementSheet.contextMenu && event.target instanceof Node) {

@@ -32986,6 +32986,7 @@ private fun TemplateBlockDetailRow(
                         value = value,
                         enabled = enabled,
                         onChange = { onChange(editableField, it) },
+                        showHelpText = false,
                     )
                 }
             } else {
@@ -33003,15 +33004,6 @@ private fun TemplateBlockDetailRow(
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                )
-            }
-            if (block.helpText.isNotBlank() && signatureSummary == null) {
-                Text(
-                    block.helpText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
             if (block.options.isNotEmpty() && editableField == null) {
@@ -33235,6 +33227,7 @@ private fun TemplateFieldInput(
     value: String,
     enabled: Boolean,
     onChange: (String) -> Unit,
+    showHelpText: Boolean = true,
 ) {
     val label = if (field.required) "${field.label} *" else field.label
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -33295,7 +33288,7 @@ private fun TemplateFieldInput(
             "date" -> WorkOrderDatePickerField(label, value, onChange, enabled)
             else -> WorkOrderTextField(label, value, onChange, enabled)
         }
-        if (field.helpText.isNotBlank()) {
+        if (showHelpText && field.helpText.isNotBlank()) {
             Text(
                 field.helpText,
                 style = MaterialTheme.typography.labelSmall,
