@@ -6031,6 +6031,39 @@ body.is-settings-work-equipment-ai-modal-open {
   margin-top: 12px;
 }
 
+.settings-ai-business-blocks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-ai-business-blocks article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(167, 188, 226, 0.84);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.9));
+  box-shadow: 0 12px 26px rgba(40, 55, 95, 0.055);
+}
+
+.settings-ai-business-blocks strong {
+  color: #10203d;
+  font-size: 0.85rem;
+  font-weight: 960;
+  line-height: 1.2;
+}
+
+.settings-ai-business-blocks span {
+  color: #64748b;
+  font-size: 0.73rem;
+  font-weight: 740;
+  line-height: 1.38;
+}
+
 .settings-job-ai-rulebook {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6352,6 +6385,7 @@ body.is-settings-job-ai-modal-open {
   .settings-work-equipment-ai-registers,
   .settings-service-factors-head,
   .settings-service-factor-row,
+  .settings-ai-business-blocks,
   .settings-job-ai-rulebook,
   .settings-job-ai-card-list,
   .settings-job-ai-card-body {

@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260630-gridline-lock-fill-v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260630-nexai-business-blocks-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -7694,12 +7694,30 @@
               <section class="panel settings-notifications-panel settings-job-ai-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
-                    <p class="section-kicker">Jobs · NexAI</p>
-                    <h3>Upute za AI polja</h3>
+                    <p class="section-kicker">ARMOR obrasci · NexAI</p>
+                    <h3>Opasnosti, štetnosti, napori i opis posla</h3>
                   </div>
-                  <button id="settings-job-ai-save" type="button" class="ghost-button">Spremi NexAI upute</button>
+                  <button id="settings-job-ai-save" type="button" class="ghost-button">Spremi ARMOR NexAI</button>
                 </div>
-                <p class="helper-copy module-copy">Ove upute vrijede globalno za Jobs modul i procjenu rizika. Svako AI polje otvara se u popup editoru, gdje možeš zadati duljinu teksta, PUR opise, vjerojatnost, posljedice, napomene i mjere koje NexAI koristi pri popunjavanju.</p>
+                <p class="helper-copy module-copy">Ovdje su centralne NexAI postavke za procjenu rizika: opis posla, radni okoliš/prostore, PUR, ARMOR opasnosti, štetnosti, napore, posljedice i mjere. Svaka stavka otvara detaljni popup editor kao na primjeru za rad na visini.</p>
+                <div class="settings-ai-business-blocks" aria-label="NexAI poslovni blokovi">
+                  <article>
+                    <strong>ARMOR obrasci</strong>
+                    <span>Opasnosti, štetnosti, napori, vjerojatnost, posljedice, mjere i OZO.</span>
+                  </article>
+                  <article>
+                    <strong>Radna oprema</strong>
+                    <span>Strojarski dio, elektro dio i rizik stavke iz IS ZNR šifrarnika.</span>
+                  </article>
+                  <article>
+                    <strong>Radni okoliš / prostori</strong>
+                    <span>Mjesta rada, strojevi, tvari, organizacija rada i uvjeti prostora.</span>
+                  </article>
+                  <article>
+                    <strong>Zapisnici i predlošci</strong>
+                    <span>Default upute za polja i gridline kolone u predlošcima zapisnika.</span>
+                  </article>
+                </div>
                 <div class="settings-job-ai-rulebook">
                   <article>
                     <strong>Opasnost</strong>
@@ -7725,7 +7743,7 @@
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Radna oprema · NexAI</p>
-                    <h3>AI profili, polja i šifrarnici</h3>
+                    <h3>Strojarski dio, elektro dio i IS ZNR stavke</h3>
                   </div>
                   <div class="settings-work-equipment-ai-actions">
                     <button id="settings-work-equipment-ai-refresh" type="button" class="ghost-button">Osvježi šifrarnike</button>
@@ -11571,7 +11589,7 @@
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
     <script src="/gridline.js?v=20260630-gridline-lock-fill-v2"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260630-document-ai-settings-v1"></script>
+    <script type="module" src="/src/main.js?v=20260630-nexai-business-blocks-v1"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

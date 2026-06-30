@@ -35762,7 +35762,7 @@ function renderSettingsModule() {
   });
 
   if (settingsJobAiFeedback) {
-    const permissionMessage = "Samo rola s Jobs NexAI Settings pravom moze mijenjati ove upute.";
+    const permissionMessage = "Samo rola s NexAI Settings pravom moze mijenjati ove upute.";
     if (!canManageJobNexAi) {
       settingsJobAiFeedback.textContent = permissionMessage;
     } else if (settingsJobAiFeedback.textContent === permissionMessage) {
@@ -35828,10 +35828,10 @@ async function saveOrganizationBrandSettings(options = {}) {
 async function saveSettingsJobAiSettings(options = {}) {
   const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
     ? options.successMessage.trim()
-    : "Jobs NexAI upute su spremljene.";
+    : "ARMOR NexAI upute su spremljene.";
 
   if (!getCanManageJobNexAiSettings()) {
-    setInlineMessage(settingsJobAiFeedback, "Nemate pravo spremati Jobs NexAI upute.");
+    setInlineMessage(settingsJobAiFeedback, "Nemate pravo spremati ARMOR NexAI upute.");
     return false;
   }
 
@@ -161836,6 +161836,20 @@ function getRiskAssessmentRowAiInstructionKey(row = {}) {
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join("::")}`;
 }
 
+function getRiskAssessmentNexAiBlockLabel(category = "") {
+  const normalized = normalizeRiskAssessmentIdentityComparable(category);
+  if (normalized.includes("opasnosti")) {
+    return "Opasnosti";
+  }
+  if (normalized.includes("stetnosti")) {
+    return "Štetnosti";
+  }
+  if (normalized.includes("napori")) {
+    return "Napori";
+  }
+  return "Ostale ARMOR stavke";
+}
+
 function getRiskAssessmentRowAiFieldDefinitions() {
   const seen = new Set();
   return sortRiskAssessmentRiskRowsByPrilogOrder(RISK_ASSESSMENT_CATALOG_ROWS)
@@ -161849,7 +161863,7 @@ function getRiskAssessmentRowAiFieldDefinitions() {
       return {
         key,
         type: "riskRow",
-        group: `Prilog III · ${hierarchy.category}`,
+        group: `ARMOR obrasci · ${getRiskAssessmentNexAiBlockLabel(hierarchy.category)}`,
         label: formatRiskAssessmentCodeAndLabel(row.code, row.hazard || row.group || "Stavka"),
         meta: [hierarchy.family, hierarchy.subgroup].filter(Boolean).join(" / "),
         row,
@@ -161871,10 +161885,10 @@ function getJobPurAiFieldDefinitions() {
 
 function getJobAiSettingsFieldDefinitions() {
   return [
-    { key: "description", group: "Osnovni podaci", label: "Opis posla" },
+    { key: "description", group: "ARMOR obrasci · Opis posla", label: "Opis posla" },
     ...JOB_ENVIRONMENT_SECTIONS.map((section) => ({
       key: section.key,
-      group: "Radno okruženje",
+      group: "Radni okoliš / prostori",
       label: section.title,
     })),
     ...JOB_CONDITION_TOGGLES.map((item) => ({
@@ -161889,7 +161903,7 @@ function getJobAiSettingsFieldDefinitions() {
       { key: "riskScoringRules", label: "Pravila za vjerojatnost i posljedicu" },
     ].map((field) => ({
       key: `riskJob:${field.key}`,
-      group: "Procjena rizika · AI kriteriji",
+      group: "ARMOR obrasci · Pravila odabira",
       label: field.label,
     })),
     ...[
@@ -161913,7 +161927,7 @@ function getJobAiSettingsFieldDefinitions() {
       { key: "riskRows", label: "Opasnosti, štetnosti, napori i mjere" },
     ].map((field) => ({
       key: `riskJob:${field.key}`,
-      group: "Procjena rizika · posao",
+      group: "ARMOR obrasci · Polja procjene rizika",
       label: field.label,
     })),
     ...getJobPurAiFieldDefinitions(),
@@ -162030,7 +162044,7 @@ function renderSettingsJobAiRiskRowCard(field = {}, config = {}, canManage = fal
   return `
     <div class="settings-job-ai-card-body settings-job-ai-card-body-risk">
       <div class="settings-job-ai-row-defaults field-span-full">
-        <span>${escapeHtml(field.meta || "Prilog III")}</span>
+        <span>${escapeHtml(field.meta || "ARMOR stavka")}</span>
         <span>Default: ${escapeHtml(defaultProbability)} · ${escapeHtml(defaultConsequence)} · ${escapeHtml(defaultRisk)}</span>
       </div>
       <label class="field">
@@ -162220,7 +162234,7 @@ function ensureSettingsJobAiModal() {
     <section class="settings-job-ai-modal" role="dialog" aria-modal="true" aria-labelledby="settings-job-ai-modal-title">
       <header class="settings-job-ai-modal-head">
         <div>
-          <span class="section-kicker">Jobs · NexAI</span>
+          <span class="section-kicker">ARMOR · NexAI</span>
           <strong id="settings-job-ai-modal-title">AI polje</strong>
           <small data-settings-job-ai-modal-meta></small>
         </div>
@@ -162802,43 +162816,79 @@ function renderSettingsWorkEquipmentAiRegisters() {
     return;
   }
 
-  const sections = groups
-    .map((group) => {
-      const items = Array.isArray(group.items) ? group.items : [];
-      if (!items.length) {
-        return null;
+  const usedGroups = new Set();
+  const createSection = (title = "", rawItems = [], options = {}) => {
+    const items = rawItems.filter(({ group, item }) => group && item);
+    if (!items.length) {
+      return null;
+    }
+    const section = document.createElement("article");
+    section.className = "settings-work-equipment-ai-group settings-work-equipment-ai-register-group";
+    if (options.bucketKey) {
+      section.dataset.roAiRegisterBucket = options.bucketKey;
+    }
+    const cards = items.map(({ group, item }) => {
+      const key = getWorkEquipmentAiRegisterKey(item, group);
+      if (!key) {
+        return "";
       }
-      const section = document.createElement("article");
-      section.className = "settings-work-equipment-ai-group settings-work-equipment-ai-register-group";
-      const cards = items.map((item) => {
-        const key = getWorkEquipmentAiRegisterKey(item, group);
-        if (!key) {
-          return "";
-        }
-        const config = normalizeWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiRegisterDrafts[key] ?? {});
-        const configured = hasWorkEquipmentAiInstructionConfig(config);
-        return renderSettingsWorkEquipmentAiCard({
-          kind: "register",
-          key,
-          label: getWorkEquipmentAiRegisterItemLabel(item, group.label || "IS ZNR stavka"),
-          meta: [item.id || item.isznrId ? `ID ${item.id || item.isznrId}` : "", item.activeFrom ? `od ${item.activeFrom}` : "", item.activeTo ? `do ${item.activeTo}` : ""].filter(Boolean).join(" · "),
-          configured,
-        });
-      }).filter(Boolean).join("");
-      const configuredCount = items.filter((item) => {
-        const key = getWorkEquipmentAiRegisterKey(item, group);
-        return key && hasWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiRegisterDrafts[key] ?? {});
-      }).length;
-      section.innerHTML = `
-        <div class="settings-work-equipment-ai-group-head" data-ro-ai-group-head>
-          <strong>${escapeHtml(getWorkEquipmentAiRegisterGroupLabel(group))}</strong>
-          <span data-ro-ai-group-count>${configuredCount}/${items.length}</span>
-        </div>
-        <div class="settings-work-equipment-ai-card-list">${cards}</div>
-      `;
-      return section;
+      const config = normalizeWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiRegisterDrafts[key] ?? {});
+      const configured = hasWorkEquipmentAiInstructionConfig(config);
+      return renderSettingsWorkEquipmentAiCard({
+        kind: "register",
+        key,
+        label: getWorkEquipmentAiRegisterItemLabel(item, title || group.label || "IS ZNR stavka"),
+        meta: [
+          getWorkEquipmentAiRegisterGroupLabel(group),
+          item.id || item.isznrId ? `ID ${item.id || item.isznrId}` : "",
+          item.activeFrom ? `od ${item.activeFrom}` : "",
+          item.activeTo ? `do ${item.activeTo}` : "",
+        ].filter(Boolean).join(" · "),
+        configured,
+      });
+    }).filter(Boolean).join("");
+    const configuredCount = items.filter(({ group, item }) => {
+      const key = getWorkEquipmentAiRegisterKey(item, group);
+      return key && hasWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiRegisterDrafts[key] ?? {});
+    }).length;
+    section.innerHTML = `
+      <div class="settings-work-equipment-ai-group-head" data-ro-ai-group-head>
+        <strong>${escapeHtml(title || "IS ZNR šifrarnik")}</strong>
+        <span data-ro-ai-group-count>${configuredCount}/${items.length}</span>
+      </div>
+      <div class="settings-work-equipment-ai-card-list">${cards}</div>
+    `;
+    return section;
+  };
+
+  const bucketSections = WORK_EQUIPMENT_AI_PROFILE_REGISTER_BUCKETS
+    .map((bucket) => {
+      const items = groups
+        .filter((group, groupIndex) => {
+          const matches = bucket.paths.includes(String(group.path || "").trim());
+          if (matches) {
+            usedGroups.add(groupIndex);
+          }
+          return matches;
+        })
+        .flatMap((group) => (Array.isArray(group.items) ? group.items : []).map((item) => ({ group, item })));
+      return createSection(bucket.label, items, { bucketKey: bucket.key });
     })
     .filter(Boolean);
+
+  const extraSections = groups
+    .map((group, groupIndex) => {
+      if (usedGroups.has(groupIndex)) {
+        return null;
+      }
+      return createSection(
+        getWorkEquipmentAiRegisterGroupLabel(group),
+        (Array.isArray(group.items) ? group.items : []).map((item) => ({ group, item })),
+      );
+    })
+    .filter(Boolean);
+
+  const sections = [...bucketSections, ...extraSections];
 
   settingsWorkEquipmentAiRegisters.replaceChildren(...(sections.length ? sections : [(() => {
     const empty = document.createElement("p");
@@ -173731,7 +173781,7 @@ function runRiskAssessmentJobCatalogAiSelection({ importNow = false } = {}) {
     return;
   }
   if (!getCanUseJobNexAi()) {
-    setInlineMessage(riskAssessmentJobCatalogAiFeedback || riskAssessmentError, "Nemate pravo koristiti Jobs NexAI prijedloge.", "error");
+    setInlineMessage(riskAssessmentJobCatalogAiFeedback || riskAssessmentError, "Nemate pravo koristiti NexAI prijedloge za procjenu rizika.", "error");
     return;
   }
   const query = getRiskAssessmentJobCatalogAiQuery();
