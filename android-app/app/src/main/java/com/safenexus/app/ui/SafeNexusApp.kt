@@ -1185,7 +1185,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         )
         value?.id?.takeIf { it.isNotBlank() }?.let(::loadWorkOrderDocuments)
         value?.takeIf { it.id.isNotBlank() }?.let { workOrder ->
-            loadWorkOrderDocumentationContext(workOrder, workOrder.objectId, silent = true)
+            loadWorkOrderDocumentationContext(workOrder, workOrder.objectId, forceRefresh = true, silent = true)
         }
     }
 
@@ -3395,7 +3395,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onGenerateDocumentation = { workOrder ->
                         documentationWizardTargetId = workOrder.id
                         documentationWizardObjectId = workOrder.objectId
-                        viewModel.loadWorkOrderDocumentationContext(workOrder, documentationWizardObjectId)
+                        viewModel.loadWorkOrderDocumentationContext(workOrder, documentationWizardObjectId, forceRefresh = true)
                     },
                     onAddDocumentation = openDocumentationActions,
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
@@ -3472,7 +3472,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
             onDismiss = { documentationWizardTargetId = "" },
             onObjectSelectionChange = { objectId ->
                 documentationWizardObjectId = objectId
-                viewModel.loadWorkOrderDocumentationContext(workOrder, objectId)
+                viewModel.loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
             },
             onCreateObject = { name ->
                 viewModel.createWorkOrderLocationObject(workOrder, name) { createdObject ->
@@ -22993,7 +22993,7 @@ private fun isDocumentationSprService(item: DocumentationServiceFlowItem): Boole
         isDocumentationSprText(item.serviceKey)
 
 private fun WorkOrderDocumentationTemplate.isSprDocumentationTemplate(): Boolean =
-    listOf(serviceCode, serviceName, documentType, title, documentName, dataSourceTitle)
+    listOf(serviceCode, serviceName, documentType, title, documentName)
         .any(::isDocumentationSprText)
 
 private fun documentationNativeServiceCodeForText(value: String): String {
@@ -23027,6 +23027,20 @@ private fun documentationNativeServiceCodeForText(value: String): String {
     }
 }
 
+private fun WorkOrderDocumentationTemplate.nativeDocumentationServiceCode(): String =
+    documentationNativeServiceCodeForText(
+        listOf(serviceCode, serviceName, documentType, title, documentName)
+            .filter { it.isNotBlank() }
+            .joinToString(" "),
+    )
+
+private fun WorkOrderDocumentationTemplate.previousDataSourceMatchesService(): Boolean {
+    if (!dataSourceType.trim().equals("previous_inspection", ignoreCase = true)) return true
+    val templateCode = nativeDocumentationServiceCode()
+    val sourceCode = documentationNativeServiceCodeForText(dataSourceTitle)
+    return templateCode.isBlank() || sourceCode.isBlank() || templateCode == sourceCode
+}
+
 private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(item: DocumentationServiceFlowItem): Boolean {
     if (documentationServiceKey().equals(item.serviceKey, ignoreCase = true)) return true
     if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex) return true
@@ -23035,7 +23049,7 @@ private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(i
     val itemCode = normalizeDocumentationWorkEquipmentText(item.serviceCode)
     if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode == itemCode) return true
 
-    val templateLookup = listOf(serviceCode, serviceName, documentType, title, documentName, dataSourceTitle)
+    val templateLookup = listOf(serviceCode, serviceName, documentType, title, documentName)
         .filter { it.isNotBlank() }
         .joinToString(" ")
     val itemLookup = listOf(item.serviceCode, item.serviceName, item.serviceKey)
@@ -24032,7 +24046,7 @@ private fun WorkOrderDocumentationWizardDialog(
             val nativeMatches = if (flowNativeCode.isNotBlank()) {
                 context.templates.filter { template ->
                     val templateNativeCode = documentationNativeServiceCodeForText(
-                        listOf(template.serviceCode, template.serviceName, template.documentType, template.title, template.documentName, template.dataSourceTitle)
+                        listOf(template.serviceCode, template.serviceName, template.documentType, template.title, template.documentName)
                             .filter { it.isNotBlank() }
                             .joinToString(" "),
                     )
@@ -30459,7 +30473,8 @@ private fun DocumentationSprStatusChip(
 
 private fun documentationSprMobileSourceLabel(templates: List<WorkOrderDocumentationTemplate>): String {
     val previous = templates.firstOrNull { template ->
-        template.dataSourceType.trim().equals("previous_inspection", ignoreCase = true)
+        template.dataSourceType.trim().equals("previous_inspection", ignoreCase = true) &&
+            template.previousDataSourceMatchesService()
     }
     if (previous != null) {
         return listOf("Prethodno ispitivanje", formatDatePickerLabel(previous.dataSourceDate))
@@ -30485,7 +30500,7 @@ private fun documentationSprTemplateLabel(templates: List<WorkOrderDocumentation
 private fun documentationTemplateDataSourceTitle(template: WorkOrderDocumentationTemplate): String {
     val type = template.dataSourceType.trim().lowercase(Locale.getDefault())
     val sourceTitle = template.dataSourceTitle.ifBlank { template.title.ifBlank { "Zapisnik" } }
-    return if (type == "previous_inspection") {
+    return if (type == "previous_inspection" && template.previousDataSourceMatchesService()) {
         val dateLabel = formatDatePickerLabel(template.dataSourceDate)
         listOf("Prethodno ispitivanje", dateLabel).filter { it.isNotBlank() }.joinToString(" - ")
     } else {
@@ -30495,7 +30510,7 @@ private fun documentationTemplateDataSourceTitle(template: WorkOrderDocumentatio
 
 private fun documentationTemplateDataSourceDetails(template: WorkOrderDocumentationTemplate): String {
     val type = template.dataSourceType.trim().lowercase(Locale.getDefault())
-    if (type != "previous_inspection") {
+    if (type != "previous_inspection" || !template.previousDataSourceMatchesService()) {
         return ""
     }
     return listOf(
