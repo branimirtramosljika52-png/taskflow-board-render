@@ -222,6 +222,7 @@ import {
   getDocumentTemplateRuntimeNativeServiceShortLabel,
   getDocumentTemplateRuntimeNativeServiceTitle,
   getDocumentTemplateRuntimeServiceBadgeLabel,
+  getDocumentTemplateRuntimeTimelineLabel,
   groupDocumentTemplateRuntimeDockEntries,
   isWorkOrderDocumentChemicalFactorsService,
   isWorkOrderDocumentChemicalFactorsText,
@@ -4059,6 +4060,8 @@ const documentationSprConclusionSection = document.querySelector("#documentation
 const documentationSprResultHelper = document.querySelector("#documentation-spr-result-helper");
 const documentationSprResultsTextInput = document.querySelector("#documentation-spr-results-text");
 const documentationSprResultsRichHost = document.querySelector("#documentation-spr-results-rich-host");
+const documentationSprResultsImageUploadButton = document.querySelector("#documentation-spr-results-image-upload");
+const documentationSprResultsImageFileInput = document.querySelector("#documentation-spr-results-image-file");
 const documentationSprAttachmentUploadButton = document.querySelector("#documentation-spr-attachment-upload");
 const documentationSprAttachmentFileInput = document.querySelector("#documentation-spr-attachment-file");
 const documentationSprAttachmentDrop = document.querySelector("#documentation-spr-attachment-drop");
@@ -57228,6 +57231,7 @@ function createDefaultDocumentationSprModel() {
     defects: "",
     recommendations: "",
     previewHidden: false,
+    collapsedSections: {},
     headerImageDataUrl: "",
     headerImageName: "",
     measurementEquipmentIds: [],
@@ -57296,6 +57300,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     defects: "",
     recommendations: "",
     previewHidden: false,
+    collapsedSections: {},
     headerImageDataUrl: "",
     headerImageName: "",
     measurementEquipmentIds: [],
@@ -57635,6 +57640,7 @@ function normalizeDocumentationSprModel(value) {
     signatureFieldOib: normalizeDocumentationSprSignatureOib(source.signatureFieldOib || source.responsiblePersonOib || ""),
     signatureImageUrl: String(source.signatureImageUrl || source.signatureDataUrl || "").trim(),
     fieldSettings: normalizeDocumentationSprFieldSettings(source.fieldSettings),
+    collapsedSections: normalizeDocumentationSprCollapsedSections(source.collapsedSections),
     aiSources: normalizeDocumentationSprAiSources(source.aiSources),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
     technicalData: String(source.technicalData || defaultTechnicalData || fallback.technicalData || "").trim(),
@@ -57723,6 +57729,15 @@ function normalizeDocumentationSprFieldSettings(value = {}) {
         }];
       })
       .filter(Boolean),
+  );
+}
+
+function normalizeDocumentationSprCollapsedSections(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, entry]) => [String(key || "").trim(), Boolean(entry)])
+      .filter(([key]) => key),
   );
 }
 
@@ -59364,6 +59379,59 @@ function getDocumentationSprRecordSourceSearchText(record = {}) {
   ].map((value) => String(value || "")).join(" ");
 }
 
+function getDocumentationSprKnownServiceCodes() {
+  return new Set([
+    "EIZ",
+    "TZIN",
+    "SZOM",
+    "SZOMV",
+    "VES",
+    "SPR",
+    "ZUDS",
+    "IPK",
+    "OI",
+  ]);
+}
+
+function getDocumentationSprPreviousRecordExplicitCodes(record = {}) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  const directValues = [
+    fieldValues.SERVICE_CODE,
+    fieldValues.WORK_ORDER_SERVICE_CODE,
+    fieldValues.USLUGA_SIFRA,
+    fieldValues.SPR_SERVICE_CODE,
+    fieldValues.DOCUMENTATION_SPR_SERVICE_CODE,
+    record.serviceCode,
+    record.templateCode,
+  ];
+  const codes = new Set();
+  directValues.forEach((value) => {
+    const code = String(value || "").trim().toUpperCase();
+    if (code) {
+      codes.add(code);
+    }
+  });
+
+  const knownCodes = getDocumentationSprKnownServiceCodes();
+  const titleText = normalizeLooseName([
+    record.templateTitle,
+    record.documentType,
+    record.title,
+    record.documentTitle,
+  ].filter(Boolean).join(" "));
+  knownCodes.forEach((code) => {
+    if (titleText.includes(normalizeLooseName(code))) {
+      codes.add(code);
+    }
+  });
+  if (titleText.includes("tipkalo") || titleText.includes("isklop")) {
+    codes.add("TZIN");
+  }
+  return codes;
+}
+
 function scoreDocumentationSprPreviousRecord(entry = {}, record = {}) {
   const sourceText = normalizeLooseName(getDocumentationSprRecordSourceSearchText(record));
   if (!sourceText) {
@@ -59371,6 +59439,13 @@ function scoreDocumentationSprPreviousRecord(entry = {}, record = {}) {
   }
   const serviceCode = normalizeLooseName(entry.serviceCode || entry.serviceBinding?.serviceCode || "");
   const serviceName = normalizeLooseName(entry.serviceName || entry.serviceBinding?.serviceName || "");
+  const explicitCodes = getDocumentationSprPreviousRecordExplicitCodes(record);
+  if (serviceCode && explicitCodes.size > 0) {
+    const hasRequestedCode = [...explicitCodes].some((code) => normalizeLooseName(code) === serviceCode);
+    if (!hasRequestedCode) {
+      return 0;
+    }
+  }
   let score = 0;
   if (serviceCode && sourceText.includes(serviceCode)) {
     score += 80;
@@ -60003,8 +60078,42 @@ function getDocumentationSprValidityMonthsForService(service = {}) {
     || "12";
 }
 
-function getDocumentationSprWizardPeopleContext(workOrder = {}) {
+function getDocumentationSprSignatureAreaForService(service = {}) {
+  const serviceBinding = getDocumentationSprServiceBindingFromService(service);
+  const serviceCode = normalizeDocumentTemplateSignatureServiceCode([
+    serviceBinding?.serviceCode,
+    service?.serviceCode,
+    service?.code,
+    service?.shortCode,
+    serviceBinding?.serviceName,
+    service?.name,
+    service?.serviceName,
+    service?.title,
+  ].filter(Boolean).join(" "));
+  const serviceText = normalizeLooseName([
+    serviceBinding?.serviceName,
+    service?.name,
+    service?.serviceName,
+    service?.title,
+  ].filter(Boolean).join(" "));
+  if (serviceCode === "TZIN" || serviceText.includes("tipkalo") || serviceText.includes("isklop")) {
+    return "tipkalo";
+  }
+  return "elektro";
+}
+
+function getDocumentationSprWizardPeopleContext(workOrder = {}, service = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
+  const signatureArea = getDocumentationSprSignatureAreaForService(service);
+  const areaInspectorListField = getWorkOrderDocumentSignaturePersonListFieldName("inspect", signatureArea);
+  const areaInspectorField = getWorkOrderDocumentSignaturePersonFieldName("inspect", signatureArea);
+  const areaAuthorizationField = getWorkOrderDocumentSignaturePersonFieldName("authorize", signatureArea);
+  const commonAreaInspectors = areaInspectorListField
+    ? normalizeDocumentationSprIdList(state.workOrderDocumentWizard.common?.[areaInspectorListField] ?? [])
+    : [];
+  const areaInspectorsFromSource = workOrderId && areaInspectorListField
+    ? getWorkOrderDocumentWizardSourceValues(workOrderId, areaInspectorListField)
+    : [];
   const commonElectricalInspectors = normalizeDocumentationSprIdList(state.workOrderDocumentWizard.common?.electricalInspectorUserIds ?? []);
   const commonGenericInspectors = normalizeDocumentationSprIdList(state.workOrderDocumentWizard.common?.inspectorUserIds ?? []);
   const electricalInspectorsFromSource = workOrderId
@@ -60019,33 +60128,43 @@ function getDocumentationSprWizardPeopleContext(workOrder = {}) {
   const genericInspectors = genericInspectorsFromSource.length > 0
     ? genericInspectorsFromSource
     : commonGenericInspectors;
-  const inspectorIds = electricalInspectors.length > 0
-    ? electricalInspectors
-    : genericInspectors.length > 0
-      ? genericInspectors
-      : normalizeDocumentationSprIdList([
-        workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalInspectorUserId") : "",
-        workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "inspectorUserId") : "",
-        state.workOrderDocumentWizard.common?.electricalInspectorUserId,
-        state.workOrderDocumentWizard.common?.inspectorUserId,
-      ]);
+  const inspectorIds = areaInspectorsFromSource.length > 0
+    ? areaInspectorsFromSource
+    : commonAreaInspectors.length > 0
+      ? commonAreaInspectors
+      : electricalInspectors.length > 0
+        ? electricalInspectors
+        : genericInspectors.length > 0
+          ? genericInspectors
+          : normalizeDocumentationSprIdList([
+            workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, areaInspectorField) : "",
+            state.workOrderDocumentWizard.common?.[areaInspectorField],
+            workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalInspectorUserId") : "",
+            workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "inspectorUserId") : "",
+            state.workOrderDocumentWizard.common?.electricalInspectorUserId,
+            state.workOrderDocumentWizard.common?.inspectorUserId,
+          ]);
   const executorInspectorIds = getDocumentationSprInspectorIdsFromExecutors(workOrder);
   const resolvedInspectorIds = inspectorIds.length > 0 ? inspectorIds : executorInspectorIds;
   const responsibleUserId = workOrderId
     ? (
-      getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalAuthorizationHolderUserId")
+      getWorkOrderDocumentWizardSourceValue(workOrderId, areaAuthorizationField)
+      || getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalAuthorizationHolderUserId")
       || getWorkOrderDocumentWizardSourceValue(workOrderId, "authorizationHolderUserId")
+      || state.workOrderDocumentWizard.common?.[areaAuthorizationField]
       || state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId
       || state.workOrderDocumentWizard.common?.authorizationHolderUserId
     )
     : (
-      state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId
+      state.workOrderDocumentWizard.common?.[areaAuthorizationField]
+      || state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId
       || state.workOrderDocumentWizard.common?.authorizationHolderUserId
       || ""
     );
   return {
     inspectorIds: resolvedInspectorIds,
     responsibleUserId: String(responsibleUserId || "").trim(),
+    signatureArea,
   };
 }
 
@@ -60080,7 +60199,7 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
   const serviceCode = String(serviceBinding?.serviceCode || service.serviceCode || "").trim();
   const serviceId = String(service.serviceId || service.id || serviceBinding?.serviceId || "").trim();
   const serviceName = String(serviceBinding?.serviceName || service.name || service.title || "").trim();
-  const peopleContext = getDocumentationSprWizardPeopleContext(workOrder);
+  const peopleContext = getDocumentationSprWizardPeopleContext(workOrder, service);
   const inspectorUsers = getDocumentationSprUsersByIds(peopleContext.inspectorIds);
   const responsibleUser = getDocumentationSprUsersByIds([peopleContext.responsibleUserId])[0] || null;
   const linkedEquipmentIds = getDocumentationSprLinkedItemIdsForService(getDocumentationSprMeasurementEquipmentItems(), service);
@@ -60144,7 +60263,7 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
     nextModel.regulations = buildDocumentationSprRegulationsText(legalFrameworkIds, nextModel.customRegulations);
   }
   if (responsibleUser) {
-    const qualification = getUserElectricalQualification(responsibleUser, "elektro");
+    const qualification = getUserElectricalQualification(responsibleUser, peopleContext.signatureArea || "elektro");
     nextModel.signatureClass = qualification.data1 || nextModel.signatureClass;
     nextModel.signatureNumber = qualification.data2 || nextModel.signatureNumber;
   }
@@ -62107,12 +62226,28 @@ function updateDocumentationSprSectionNumbers() {
     if (!(section instanceof HTMLElement) || section.hidden) {
       return;
     }
+    section.dataset.documentationSprSectionKey = key;
+    section.classList.toggle("is-collapsed", Boolean(documentationSprModel?.collapsedSections?.[key]));
     const badge = documentationSprForm.querySelector(`[data-documentation-spr-section-index="${key}"]`);
     if (badge) {
       badge.textContent = String(number);
     }
     number += 1;
   });
+}
+
+function toggleDocumentationSprSectionCollapse(section) {
+  if (!documentationSprModel || !(section instanceof HTMLElement)) {
+    return;
+  }
+  const key = String(section.dataset.documentationSprSectionKey || "").trim();
+  if (!key) {
+    return;
+  }
+  documentationSprModel.collapsedSections = normalizeDocumentationSprCollapsedSections(documentationSprModel.collapsedSections);
+  documentationSprModel.collapsedSections[key] = !documentationSprModel.collapsedSections[key];
+  section.classList.toggle("is-collapsed", documentationSprModel.collapsedSections[key]);
+  scheduleDocumentationSprSave();
 }
 
 function renderDocumentationSprNativeEditors() {
@@ -62295,10 +62430,88 @@ function mountDocumentationSprResultsRichEditor() {
     },
   });
   documentationSprResultsRichHost.replaceChildren(documentationSprResultsRichControl);
+  bindDocumentationSprResultsRichImagePaste();
 }
 
 function getDocumentationSprResultsRichEditor() {
   return documentationSprResultsRichHost?.querySelector?.(".document-template-runtime-rich-editor") || null;
+}
+
+function persistDocumentationSprResultsRichEditorValue({ cleanDom = false } = {}) {
+  const editor = getDocumentationSprResultsRichEditor();
+  if (!(editor instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const html = sanitizeRichTextHtml(editor.innerHTML);
+  const text = richTextHtmlToPlainText(html);
+  if (cleanDom) {
+    editor.innerHTML = html;
+  }
+  documentationSprModel.resultsText = (text || /<img\b/i.test(html)) ? html : "";
+  if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
+    documentationSprResultsTextInput.value = documentationSprModel.resultsText;
+  }
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+}
+
+function insertDocumentationSprResultsImageDataUrl(dataUrl = "", alt = "Slika rezultata ispitivanja") {
+  const source = String(dataUrl || "").trim();
+  if (!/^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,/i.test(source)) {
+    setDocumentationSprStatus("Slika mora biti PNG, JPG, GIF ili WebP", "saving");
+    return;
+  }
+  mountDocumentationSprResultsRichEditor();
+  const editor = getDocumentationSprResultsRichEditor();
+  if (!(editor instanceof HTMLElement)) {
+    return;
+  }
+  const safeAlt = escapeHtml(String(alt || "Slika rezultata ispitivanja").trim() || "Slika rezultata ispitivanja");
+  insertDocumentTemplateRuntimeRichHtml(
+    editor,
+    `<p><img src="${escapeHtml(source)}" alt="${safeAlt}" style="max-width:100%;height:auto;border:1px solid #dbe7f4;border-radius:6px;margin:6px 0;"></p><p><br></p>`,
+  );
+  persistDocumentationSprResultsRichEditorValue({ cleanDom: true });
+  setDocumentationSprStatus("Slika dodana u opis rezultata", "saved");
+}
+
+async function insertDocumentationSprResultsImageFile(file) {
+  if (!file) {
+    return;
+  }
+  if (!/^image\/(?:png|jpe?g|gif|webp|bmp)$/i.test(file.type || "")) {
+    setDocumentationSprStatus("Za opis rezultata možeš dodati PNG, JPG, GIF ili WebP sliku", "saving");
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    setDocumentationSprStatus("Slika je veća od 8 MB", "saving");
+    return;
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati sliku ${file.name || ""}`.trim());
+    insertDocumentationSprResultsImageDataUrl(dataUrl, file.name || "Slika rezultata ispitivanja");
+  } catch {
+    setDocumentationSprStatus("Slika nije učitana", "saving");
+  }
+}
+
+function bindDocumentationSprResultsRichImagePaste() {
+  const editor = getDocumentationSprResultsRichEditor();
+  if (!(editor instanceof HTMLElement) || editor.dataset.documentationSprImagePasteBound === "true") {
+    return;
+  }
+  editor.dataset.documentationSprImagePasteBound = "true";
+  editor.addEventListener("paste", (event) => {
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => /^image\//i.test(item.type || ""));
+    const file = imageItem?.getAsFile?.();
+    if (!file) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void insertDocumentationSprResultsImageFile(file);
+  }, true);
 }
 
 function setDocumentationSprResultsRichValue(value = "") {
@@ -62311,6 +62524,7 @@ function setDocumentationSprResultsRichValue(value = "") {
   if (editor instanceof HTMLElement && editor.innerHTML !== html) {
     editor.innerHTML = html;
   }
+  bindDocumentationSprResultsRichImagePaste();
 }
 
 function syncDocumentationSprResultsRichValueIntoModel() {
@@ -62321,7 +62535,7 @@ function syncDocumentationSprResultsRichValueIntoModel() {
   if (editor instanceof HTMLElement) {
     const html = normalizeRichTextHtml(editor.innerHTML);
     const text = richTextHtmlToPlainText(html);
-    documentationSprModel.resultsText = text ? html : "";
+    documentationSprModel.resultsText = (text || /<img\b/i.test(html)) ? html : "";
     if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
       documentationSprResultsTextInput.value = documentationSprModel.resultsText;
     }
@@ -62538,24 +62752,24 @@ function renderDocumentationSprLineList(value = "") {
 
 function renderDocumentationSprRichTextBlock(value = "") {
   const html = normalizeRichTextHtml(value);
-  if (!richTextHtmlToPlainText(html)) {
+  if (!richTextHtmlToPlainText(html) && !/<img\b/i.test(html)) {
     return "&nbsp;";
   }
   return `<div class="document-template-rich-text">${sanitizeRichTextHtml(html)}</div>`;
 }
 
-function renderDocumentationSprPaperHeader(model, { useUploadedHeader = false } = {}) {
+function renderDocumentationSprPaperHeader(model, { useUploadedHeader = false, showWorkOrderNumber = true } = {}) {
   if (useUploadedHeader && model.headerImageDataUrl) {
     return `
       <div class="documentation-spr-paper-header is-uploaded">
         <img src="${escapeHtml(model.headerImageDataUrl)}" alt="${escapeHtml(model.headerImageName || "Header dokumenta")}" />
-        <div class="documentation-spr-paper-number">${escapeHtml(model.workOrderNumber)}</div>
+        ${showWorkOrderNumber ? `<div class="documentation-spr-paper-number">${escapeHtml(model.workOrderNumber)}</div>` : ""}
       </div>
     `;
   }
   return `
     <div class="documentation-spr-paper-simple-header">
-      <span class="documentation-spr-paper-rn">${escapeHtml(model.workOrderNumber)}</span>
+      ${showWorkOrderNumber ? `<span class="documentation-spr-paper-rn">${escapeHtml(model.workOrderNumber)}</span>` : ""}
       <strong>ISPITNI IZVJEŠTAJ</strong>
       <strong>${escapeHtml(getDocumentationSprReportServiceTitle(model))}</strong>
       <span class="documentation-spr-paper-place">${escapeHtml(model.inspectionPlace)}</span>
@@ -62681,7 +62895,7 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
   const sectionOffset = getDocumentationSprSectionOffset(model);
   return `
     <section class="documentation-spr-paper documentation-spr-paper-first">
-      ${renderDocumentationSprPaperHeader(model, { useUploadedHeader: true })}
+      ${renderDocumentationSprPaperHeader(model, { useUploadedHeader: true, showWorkOrderNumber: false })}
       <div class="documentation-spr-paper-title">
         <h2>ZAPISNIK</h2>
         <strong>${escapeHtml(getDocumentationSprCoverSubtitle(model))}</strong>
@@ -63331,7 +63545,7 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-first::before {
       content: "";
       position: absolute;
-      top: 12mm;
+      top: 24mm;
       bottom: 10mm;
       left: 5mm;
       width: 3px;
@@ -63481,6 +63695,15 @@ function buildDocumentationSprPdfStyles() {
     .documentation-spr-paper-text {
       white-space: pre-line;
       text-align: justify;
+    }
+
+    .documentation-spr-paper-text .document-template-rich-text img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin: 5mm 0;
+      border: 1px solid #dbe7f4;
+      border-radius: 2mm;
     }
 
     .documentation-spr-paper-note-title {
@@ -63852,7 +64075,7 @@ let documentationSprPdfGeneratorPromise = null;
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260629-gridline-output-parity-v3");
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260630-documentation-layout-rich-v1");
   }
   return documentationSprPdfGeneratorPromise;
 }
@@ -64793,7 +65016,16 @@ function initDocumentationSprWorkbench() {
       scheduleDocumentationSprSave();
     });
     documentationWorkbenchModule.addEventListener("click", (event) => {
-      handleDocumentationSprDatePickerOpen(event);
+      if (handleDocumentationSprDatePickerOpen(event)) {
+        return;
+      }
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const sectionHead = target?.closest?.(".documentation-spr-section-head");
+      if (!(sectionHead instanceof HTMLElement) || target?.closest?.("button, a, input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+      const section = sectionHead.closest(".documentation-spr-section");
+      toggleDocumentationSprSectionCollapse(section);
     });
     documentationWorkbenchModule.addEventListener("contextmenu", handleDocumentationSprFieldContextMenu);
     document.addEventListener("click", closeDocumentationSprFieldContextMenu);
@@ -64847,6 +65079,18 @@ function initDocumentationSprWorkbench() {
         return;
       }
       removeDocumentationSprAiSource(button.getAttribute("data-documentation-spr-ai-source-remove") || "");
+    });
+    documentationSprResultsImageUploadButton?.addEventListener("click", () => {
+      documentationSprResultsImageFileInput?.click();
+    });
+    documentationSprResultsImageFileInput?.addEventListener("change", () => {
+      const file = documentationSprResultsImageFileInput.files?.[0] || null;
+      if (documentationSprResultsImageFileInput instanceof HTMLInputElement) {
+        documentationSprResultsImageFileInput.value = "";
+      }
+      if (file) {
+        void insertDocumentationSprResultsImageFile(file);
+      }
     });
     documentationSprAttachmentUploadButton?.addEventListener("click", openDocumentationSprAttachmentPicker);
     documentationSprAttachmentFileInput?.addEventListener("change", () => {
@@ -74084,6 +74328,19 @@ function getWorkOrderRelevantSignatureAreas(workOrder = {}) {
       const template = getDocumentTemplateById(templateId);
       getDocumentTemplateSignatureAreas(template).forEach((area) => areas.add(area));
     });
+    const serviceCode = normalizeDocumentTemplateSignatureServiceCode([
+      service?.serviceCode,
+      service?.code,
+      service?.shortCode,
+      service?.name,
+      service?.serviceName,
+      service?.title,
+    ].filter(Boolean).join(" "));
+    if (serviceCode === "TZIN" || normalizeLooseName([service?.name, service?.serviceName, service?.title].filter(Boolean).join(" ")).includes("tipkalo")) {
+      areas.add("tipkalo");
+    } else if (["EIZ", "SZOM", "SZOMV", "VES", "SPR", "ZUDS"].includes(serviceCode)) {
+      areas.add("elektro");
+    }
   });
 
   return areas.size > 0 ? [...areas] : ["elektro"];
@@ -75583,7 +75840,7 @@ function applyWorkOrderDocumentWizardCommonSignaturePersonPatch({
     renderDocumentTemplatePreviewContent();
   }
 
-  if (normalizedArea === "elektro" && documentationSprModel && getDocumentationSprBatchEntries().length > 0) {
+  if (documentationSprModel && getDocumentationSprBatchEntries().length > 0) {
     refreshDocumentationSprBatchModelsFromWorkOrderContext({ readActiveForm: true, renderActive: true });
   }
 }
@@ -85039,7 +85296,7 @@ function createWorkOrderBottomBarCard({
     return badge;
   };
   const visibleSequenceItems = hasSequence && groupItems.length > 0
-    ? groupItems.slice(0, groupItems.length > 3 ? 2 : 3)
+    ? groupItems
     : [];
   const nativeServiceItems = getDocumentTemplateRuntimeNativeServiceBadges(serviceItems);
   const createServiceBadge = (service) => {
@@ -85064,12 +85321,6 @@ function createWorkOrderBottomBarCard({
     visibleSequenceItems.forEach((entry) => {
       serviceRow.append(createSequenceBadge(entry));
     });
-    if (groupItems.length > visibleSequenceItems.length) {
-      const more = document.createElement("span");
-      more.className = "work-order-bottom-card-service is-neutral";
-      more.textContent = `+${groupItems.length - visibleSequenceItems.length}`;
-      serviceRow.append(more);
-    }
     nativeServiceItems.forEach((service) => {
       serviceRow.append(createServiceBadge(service));
     });
@@ -86190,10 +86441,20 @@ function syncDocumentTemplateEditorChrome() {
     if (fillMode) {
       const sequenceState = getDocumentTemplateRuntimeSequenceState();
       const sequenceEntries = Array.isArray(sequenceState?.entries) ? sequenceState.entries : [];
+      const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+      const activeEntry = sequenceState && !sequenceState.isSummary
+        ? (sequenceEntries[sequenceState.index] || null)
+        : null;
+      const activeLabel = activeEntry
+        ? getDocumentTemplateRuntimeTimelineLabel(activeEntry)
+        : "";
 
       documentTemplateEditorTitle.textContent = sequenceState?.isSummary
         ? `Završni pregled · ${sequenceEntries.length} ${sequenceEntries.length === 1 ? "zapisnik" : "zapisnika"}`
-        : "Novi zapisnik";
+        : [
+          activeLabel || documentTemplateTitleInput?.value?.trim() || "Zapisnik",
+          activeWorkOrder?.workOrderNumber ? `RN ${activeWorkOrder.workOrderNumber}` : "",
+        ].filter(Boolean).join(" · ");
       documentTemplateEditorTitle.hidden = false;
     } else {
       documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value

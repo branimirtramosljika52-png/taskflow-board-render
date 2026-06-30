@@ -6633,17 +6633,6 @@
 
                 <section class="documentation-spr-shell">
                   <form id="documentation-spr-form" class="documentation-spr-editor">
-                    <section id="documentation-spr-inline-document" class="documentation-spr-inline-document" aria-label="Trenutni izgled zapisnika">
-                      <div class="documentation-spr-inline-document-head">
-                        <div>
-                          <span>Izgled zapisnika</span>
-                          <strong>Trenutni PDF prikaz</strong>
-                        </div>
-                        <small id="documentation-spr-inline-document-summary">Učitavam izgled...</small>
-                      </div>
-                      <div id="documentation-spr-inline-document-body" class="documentation-spr-inline-document-body"></div>
-                    </section>
-
                     <section class="documentation-spr-section documentation-spr-section-basic">
                       <div class="documentation-spr-section-head">
                         <div class="documentation-spr-section-title">
@@ -6870,6 +6859,10 @@
                       </div>
                       <label class="field documentation-spr-field">
                         <span>Opis i rezultati ispitivanja</span>
+                        <div class="documentation-spr-results-actions">
+                          <button type="button" id="documentation-spr-results-image-upload" class="ghost-button">Dodaj sliku</button>
+                          <input id="documentation-spr-results-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+                        </div>
                         <div id="documentation-spr-results-rich-host" class="documentation-spr-results-rich-host"></div>
                         <textarea id="documentation-spr-results-text" data-documentation-spr-field="resultsText" rows="10" hidden></textarea>
                       </label>
@@ -7053,18 +7046,7 @@
                       </section>
                     </section>
                   </form>
-
-                  <aside id="documentation-spr-preview-panel" class="documentation-spr-preview-panel" hidden>
-                    <div class="documentation-spr-preview-head">
-                      <div>
-                        <p class="section-kicker">Preview</p>
-                        <strong>A4 pregled</strong>
-                        <span id="documentation-spr-preview-summary">4 stranice</span>
-                      </div>
-                      <button type="button" id="documentation-spr-preview-panel-toggle" class="ghost-button" aria-pressed="false">Sakrij</button>
-                    </div>
-                    <div id="documentation-spr-preview" class="documentation-spr-preview"></div>
-                  </aside>
+                  <div id="documentation-spr-preview" class="documentation-spr-preview" hidden></div>
                 </section>
                 <section id="documentation-spr-batch-summary" class="documentation-spr-batch-summary" hidden aria-label="Sažetak batch zapisnika">
                   <div class="documentation-spr-batch-summary-head">

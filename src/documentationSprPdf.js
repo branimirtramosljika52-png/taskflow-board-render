@@ -456,9 +456,14 @@ function drawCenteredImage(page, image, {
   return true;
 }
 
-function drawUploadedHeader(page, model, image, fonts, y = TOP_Y) {
+function drawUploadedHeader(page, model, image, fonts, y = TOP_Y, {
+  showWorkOrderNumber = true,
+} = {}) {
   if (!image) {
-    return drawDefaultHeader(page, model, fonts, y);
+    return drawDefaultHeader(page, {
+      ...model,
+      workOrderNumber: showWorkOrderNumber ? model.workOrderNumber : "",
+    }, fonts, y);
   }
   const maxWidth = PAGE_WIDTH - (MARGIN_X * 2);
   const maxHeight = 88;
@@ -468,15 +473,17 @@ function drawUploadedHeader(page, model, image, fonts, y = TOP_Y) {
   const x = MARGIN_X + ((maxWidth - width) / 2);
   const imageY = y - height;
   page.drawImage(image, { x, y: imageY, width, height });
-  drawTextLine(page, clean(model.workOrderNumber), {
-    x: MARGIN_X + maxWidth - 90,
-    y: y - 5,
-    width: 90,
-    align: "right",
-    font: fonts.regular,
-    size: 8.6,
-    color: MUTED,
-  });
+  if (showWorkOrderNumber) {
+    drawTextLine(page, clean(model.workOrderNumber), {
+      x: MARGIN_X + maxWidth - 90,
+      y: y - 5,
+      width: 90,
+      align: "right",
+      font: fonts.regular,
+      size: 8.6,
+      color: MUTED,
+    });
+  }
   return imageY - 18;
 }
 
@@ -626,6 +633,7 @@ function drawKeyValueTable(page, entries, y, fonts, {
   keyWidth = 145,
   fontSize = 9.3,
   lineHeight = 12.3,
+  minRowHeight = 18,
   bottomY = BOTTOM_Y,
   valueAlign = "left",
 } = {}) {
@@ -639,7 +647,7 @@ function drawKeyValueTable(page, entries, y, fonts, {
       return;
     }
     const valueLines = wrapText(value, strong ? fonts.bold : fonts.regular, fontSize, valueWidth);
-    const rowHeight = Math.max(20, (Math.max(1, valueLines.length) * lineHeight) + 7);
+    const rowHeight = Math.max(minRowHeight, (Math.max(1, valueLines.length) * lineHeight) + 5);
     drawTextLine(page, key, {
       x,
       y: cursorY - 4,
@@ -690,17 +698,187 @@ function drawPlainList(page, value, y, fonts, {
   return cursorY;
 }
 
+function getPdfTechnicalSectionTitle(model = {}) {
+  return getServiceCode(model) === "EIZ" ? "TEHNIČKI PODACI SUSTAVA" : "TEHNIČKI PODACI";
+}
+
+function getPdfTechnicalDataEntries(value = "") {
+  return splitTextLines(value)
+    .map((line) => {
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex <= 0) {
+        return [line, ""];
+      }
+      return [
+        `${line.slice(0, separatorIndex).trim()}:`,
+        line.slice(separatorIndex + 1).trim(),
+      ];
+    })
+    .filter(([key, valueText]) => key || valueText);
+}
+
+function createContinuationPage(pdfDoc, model, fonts) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  return {
+    page,
+    y: drawSimpleHeader(page, model, fonts),
+  };
+}
+
+function parseRichTextBlocks(value = "") {
+  const source = String(value || "").trim();
+  if (!source) {
+    return [];
+  }
+  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+    return splitTextLines(source.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "\n"))
+      .map((text) => ({ type: "paragraph", text }));
+  }
+  const container = document.createElement("div");
+  container.innerHTML = source;
+  const blocks = [];
+  const cleanNodeText = (node) => clean(String(node?.textContent || "").replace(/\s+/g, " "));
+  const addImage = (element) => {
+    const src = String(element.getAttribute("src") || "").trim();
+    if (/^data:image\/(?:png|jpe?g);base64,/i.test(src) || /^https?:\/\//i.test(src)) {
+      blocks.push({
+        type: "image",
+        src,
+        alt: clean(element.getAttribute("alt") || "Slika rezultata ispitivanja"),
+      });
+    }
+  };
+  const visit = (node) => {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+    const element = node;
+    const tag = element.tagName.toLowerCase();
+    if (tag === "img") {
+      addImage(element);
+      return;
+    }
+    element.querySelectorAll(":scope > img").forEach(addImage);
+    if (/^h[1-4]$/.test(tag)) {
+      const text = cleanNodeText(element);
+      if (text) blocks.push({ type: "heading", text });
+      return;
+    }
+    if (tag === "ul" || tag === "ol") {
+      Array.from(element.children).forEach((child, index) => {
+        if (child.tagName?.toLowerCase() !== "li") return;
+        const text = cleanNodeText(child);
+        if (text) blocks.push({ type: "paragraph", text: tag === "ol" ? `${index + 1}. ${text}` : `- ${text}` });
+      });
+      return;
+    }
+    if (tag === "table") {
+      Array.from(element.querySelectorAll("tr")).forEach((row) => {
+        const text = Array.from(row.querySelectorAll("th,td"))
+          .map((cell) => cleanNodeText(cell))
+          .filter(Boolean)
+          .join(" | ");
+        if (text) blocks.push({ type: "paragraph", text });
+      });
+      return;
+    }
+    if (["p", "div", "blockquote"].includes(tag)) {
+      const childImageCount = element.querySelectorAll(":scope > img").length;
+      const text = cleanNodeText(element);
+      if (text) {
+        blocks.push({ type: "paragraph", text });
+      } else if (!childImageCount) {
+        Array.from(element.children).forEach(visit);
+      }
+      return;
+    }
+    Array.from(element.children).forEach(visit);
+  };
+  Array.from(container.children).forEach(visit);
+  return blocks;
+}
+
+function drawPaginatedTextBlock(pdfDoc, page, model, text, y, fonts, {
+  font = fonts.regular,
+  size = 8.6,
+  lineHeight = 11.4,
+  x = MARGIN_X + 2,
+  width = PAGE_WIDTH - (MARGIN_X * 2) - 4,
+  color = DARK,
+  bottomY = BOTTOM_Y,
+} = {}) {
+  let currentPage = page;
+  let cursorY = y;
+  const lines = wrapText(text, font, size, width);
+  lines.forEach((line) => {
+    if (cursorY - lineHeight < bottomY) {
+      const next = createContinuationPage(pdfDoc, model, fonts);
+      currentPage = next.page;
+      cursorY = next.y;
+    }
+    if (line) {
+      drawTextLine(currentPage, line, { x, y: cursorY, width, font, size, color });
+    }
+    cursorY -= lineHeight;
+  });
+  return { page: currentPage, y: cursorY - 2 };
+}
+
+async function drawRichTextBlocks(pdfDoc, page, model, value, y, fonts) {
+  const blocks = parseRichTextBlocks(value);
+  let currentPage = page;
+  let cursorY = y;
+  if (!blocks.length) {
+    return drawPaginatedTextBlock(pdfDoc, currentPage, model, "", cursorY, fonts);
+  }
+  for (const block of blocks) {
+    if (block.type === "image") {
+      const image = await embedPdfImage(pdfDoc, block.src);
+      if (!image) {
+        continue;
+      }
+      const maxWidth = PAGE_WIDTH - (MARGIN_X * 2) - 8;
+      const maxHeight = 180;
+      const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      if (cursorY - height - 16 < BOTTOM_Y) {
+        const next = createContinuationPage(pdfDoc, model, fonts);
+        currentPage = next.page;
+        cursorY = next.y;
+      }
+      currentPage.drawImage(image, {
+        x: MARGIN_X + ((PAGE_WIDTH - (MARGIN_X * 2) - width) / 2),
+        y: cursorY - height,
+        width,
+        height,
+      });
+      cursorY -= height + 12;
+      continue;
+    }
+    const result = drawPaginatedTextBlock(pdfDoc, currentPage, model, block.text, cursorY, fonts, {
+      font: block.type === "heading" ? fonts.bold : fonts.regular,
+      size: block.type === "heading" ? 9.2 : 8.6,
+      lineHeight: block.type === "heading" ? 12.4 : 11.4,
+    });
+    currentPage = result.page;
+    cursorY = result.y - (block.type === "heading" ? 2 : 0);
+  }
+  return { page: currentPage, y: cursorY };
+}
+
 function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const hasTechnicalData = splitTextLines(model.technicalData).length > 0;
+  const lineTop = PAGE_HEIGHT - 92;
   page.drawRectangle({
     x: 18,
     y: BOTTOM_Y,
     width: 3,
-    height: PAGE_HEIGHT - BOTTOM_Y - 42,
+    height: lineTop - BOTTOM_Y,
     color: BLUE,
   });
-  let y = drawUploadedHeader(page, model, headerImage, fonts);
+  let y = drawUploadedHeader(page, model, headerImage, fonts, TOP_Y, { showWorkOrderNumber: false });
   drawTextLine(page, "ZAPISNIK", {
     x: MARGIN_X,
     y: y - 6,
@@ -729,20 +907,23 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
     ["Vrsta ispitivanja:", clean(model.inspectionType)],
     ["Datum ispitivanja:", formatDocumentDate(model.inspectionDate), true],
     ["Broj zapisnika:", clean(model.recordNumber)],
-  ], y, fonts, { fontSize: 9, lineHeight: 11.4 });
+  ], y, fonts, { fontSize: 8.7, lineHeight: 10.8, minRowHeight: 16.5 });
   y -= 4;
   if (hasTechnicalData) {
-    y = drawSectionTitle(page, 2, "TEHNIČKI PODACI SUSTAVA", y, fonts);
-    y = drawPlainList(page, model.technicalData, y, fonts, { maxLines: 5, fontSize: 8.2, lineHeight: 10.4 });
+    y = drawSectionTitle(page, 2, getPdfTechnicalSectionTitle(model), y, fonts);
+    const technicalEntries = getPdfTechnicalDataEntries(model.technicalData);
+    y = technicalEntries.some(([, value]) => value)
+      ? drawKeyValueTable(page, technicalEntries, y, fonts, { keyWidth: 150, fontSize: 8.1, lineHeight: 10.1, minRowHeight: 15 })
+      : drawPlainList(page, model.technicalData, y, fonts, { maxLines: 5, fontSize: 8.2, lineHeight: 10.4 });
     y -= 4;
   }
   y = drawSectionTitle(page, hasTechnicalData ? 3 : 2, "MJERNA I ISPITNA OPREMA", y, fonts);
   y = drawPlainList(page, model.equipment, y, fonts, { maxLines: 7, fontSize: 8.2, lineHeight: 10.4 });
   y -= 4;
   y = drawSectionTitle(page, hasTechnicalData ? 4 : 3, "PRIMJENJENI PROPISI", y, fonts);
-  drawPlainList(page, model.regulations, y, fonts, { maxLines: 14, fontSize: 7.7, lineHeight: 9.4 });
+  y = drawPlainList(page, model.regulations, y, fonts, { maxLines: 14, fontSize: 7.7, lineHeight: 9.4 });
   drawFooter(page, "SPR-1/4", fonts);
-  return page;
+  return { page, y: y - 5, sectionOffset: hasTechnicalData ? 1 : 0 };
 }
 
 function drawPageTwo(pdfDoc, model, fonts) {
@@ -797,6 +978,58 @@ function drawPageTwo(pdfDoc, model, fonts) {
   });
   drawFooter(page, "SPR-2/4", fonts);
   return page;
+}
+
+async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
+  let { page, y, sectionOffset } = drawPageOne(pdfDoc, model, rows, fonts, headerImage);
+  const ensureSpace = (neededHeight = 72) => {
+    if (y - neededHeight >= BOTTOM_Y) {
+      return;
+    }
+    const next = createContinuationPage(pdfDoc, model, fonts);
+    page = next.page;
+    y = next.y;
+  };
+
+  ensureSpace(64);
+  y = drawSectionTitle(page, 4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
+  y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 4, fontSize: 8.6, lineHeight: 11.2 });
+  y -= 8;
+
+  ensureSpace(96);
+  y = drawSectionTitle(page, 5 + sectionOffset, "REZULTATI ISPITIVANJA", y, fonts);
+  const richResult = await drawRichTextBlocks(pdfDoc, page, model, model.resultsText, y, fonts);
+  page = richResult.page;
+  y = richResult.y - 6;
+
+  const noteLines = [clean(model.eiNote), clean(model.eiminNote)].filter(Boolean);
+  if (noteLines.length) {
+    ensureSpace(58);
+    page.drawRectangle({
+      x: MARGIN_X,
+      y: y - 18,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      height: 18,
+      color: LIGHT_GRAY,
+    });
+    drawTextLine(page, "Značenje oznaka:", {
+      x: MARGIN_X + 5,
+      y: y - 4,
+      font: fonts.bold,
+      size: 9,
+    });
+    y -= 28;
+    for (const note of noteLines) {
+      const noteResult = drawPaginatedTextBlock(pdfDoc, page, model, note, y, fonts, {
+        x: MARGIN_X + 4,
+        width: PAGE_WIDTH - (MARGIN_X * 2) - 8,
+        size: 8.2,
+        lineHeight: 10.8,
+      });
+      page = noteResult.page;
+      y = noteResult.y - 2;
+    }
+  }
 }
 
 function drawCell(page, {
@@ -1761,8 +1994,7 @@ async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts
     ? []
     : normalizeSprRows(rows, model);
 
-  drawPageOne(pdfDoc, model, safeRows, fonts, headerImage);
-  drawPageTwo(pdfDoc, model, fonts);
+  await drawOpeningPages(pdfDoc, model, safeRows, fonts, headerImage);
   drawChecklistPages(pdfDoc, model, fonts);
   drawMeasurementTablePages(pdfDoc, model, safeRows, fonts);
   drawPageFour(pdfDoc, model, fonts, signatureImage);

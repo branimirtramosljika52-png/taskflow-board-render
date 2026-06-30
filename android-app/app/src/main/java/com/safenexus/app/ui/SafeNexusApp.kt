@@ -23042,12 +23042,8 @@ private fun WorkOrderDocumentationTemplate.previousDataSourceMatchesService(): B
 }
 
 private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(item: DocumentationServiceFlowItem): Boolean {
-    if (documentationServiceKey().equals(item.serviceKey, ignoreCase = true)) return true
-    if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex) return true
-
     val templateCode = normalizeDocumentationWorkEquipmentText(serviceCode)
     val itemCode = normalizeDocumentationWorkEquipmentText(item.serviceCode)
-    if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode == itemCode) return true
 
     val templateLookup = listOf(serviceCode, serviceName, documentType, title, documentName)
         .filter { it.isNotBlank() }
@@ -23057,6 +23053,16 @@ private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(i
         .joinToString(" ")
     val templateNativeCode = documentationNativeServiceCodeForText(templateLookup)
     val itemNativeCode = documentationNativeServiceCodeForText(itemLookup)
+    if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank() && templateNativeCode != itemNativeCode) {
+        return false
+    }
+    if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode != itemCode && templateNativeCode.isBlank()) {
+        return false
+    }
+
+    if (documentationServiceKey().equals(item.serviceKey, ignoreCase = true)) return true
+    if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex) return true
+    if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode == itemCode) return true
     if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank() && templateNativeCode == itemNativeCode) return true
 
     val templateName = normalizeDocumentationWorkEquipmentText(serviceName.ifBlank { documentType.ifBlank { title } })
@@ -23313,6 +23319,7 @@ private fun buildDocumentationPersonFieldRules(templates: List<WorkOrderDocument
 
 private fun ensureDocumentationPersonFieldRulesForFlows(
     baseRules: List<DocumentationPersonFieldRule>,
+    flowItems: List<DocumentationServiceFlowItem>,
     includeWorkEquipment: Boolean,
     includePhysicalFactors: Boolean,
 ): List<DocumentationPersonFieldRule> {
@@ -23353,6 +23360,13 @@ private fun ensureDocumentationPersonFieldRulesForFlows(
     if (includePhysicalFactors) {
         ensureRule("radni_okolis", "inspect", "Ispitivač radnog okoliša", true, -18)
         ensureRule("radni_okolis", "authorize", "Odgovorna osoba radnog okoliša", false, -17)
+    }
+    flowItems.filter(::isDocumentationSprService).forEach { item ->
+        inferDocumentationSignatureAreas(emptyList(), item).forEach { area ->
+            val normalizedArea = normalizeDocumentationSignatureAreaKey(area)
+            ensureRule(normalizedArea, "inspect", "Ispitivači", true, -16)
+            ensureRule(normalizedArea, "authorize", "Odgovorna osoba", false, -15)
+        }
     }
 
     return rules.sortedWith(compareBy<DocumentationPersonFieldRule> { it.priority }.thenBy { it.label.lowercase(Locale.getDefault()) })
@@ -24299,9 +24313,10 @@ private fun WorkOrderDocumentationWizardDialog(
             activeTemplates.filter { template -> template.fieldBlocks.isNotEmpty() }
         }
     }
-    val allPersonRules = remember(context.templates, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr) {
+    val allPersonRules = remember(context.templates, serviceFlowItems, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr) {
         ensureDocumentationPersonFieldRulesForFlows(
             baseRules = buildDocumentationPersonFieldRules(context.templates),
+            flowItems = serviceFlowItems,
             includeWorkEquipment = showWorkEquipmentFromIsznr,
             includePhysicalFactors = showPhysicalFactorsFromIsznr,
         )
@@ -29863,7 +29878,6 @@ private fun TemplateBlockOverview(
                 Text(
                     listOf(
                         sourceDetails,
-                        template.documentType,
                         "${template.fieldBlocks.size} blokova",
                         "${template.measurementTables.size} Excel",
                     ).filter { it.isNotBlank() }.joinToString(" - "),
@@ -30477,16 +30491,11 @@ private fun documentationSprMobileSourceLabel(templates: List<WorkOrderDocumenta
             template.previousDataSourceMatchesService()
     }
     if (previous != null) {
-        return listOf("Prethodno ispitivanje", formatDatePickerLabel(previous.dataSourceDate))
+        return listOf("Prethodni zapisnik", formatDatePickerLabel(previous.dataSourceDate))
             .filter { it.isNotBlank() }
             .joinToString(" - ")
     }
-    return templates.firstOrNull()?.let { template ->
-        template.documentName
-            .ifBlank { template.title }
-            .ifBlank { template.documentType }
-            .ifBlank { "Novi zapisnik" }
-    }.orEmpty().ifBlank { "Novi zapisnik" }
+    return "Template"
 }
 
 private fun documentationSprTemplateLabel(templates: List<WorkOrderDocumentationTemplate>): String =
@@ -30499,12 +30508,13 @@ private fun documentationSprTemplateLabel(templates: List<WorkOrderDocumentation
 
 private fun documentationTemplateDataSourceTitle(template: WorkOrderDocumentationTemplate): String {
     val type = template.dataSourceType.trim().lowercase(Locale.getDefault())
-    val sourceTitle = template.dataSourceTitle.ifBlank { template.title.ifBlank { "Zapisnik" } }
     return if (type == "previous_inspection" && template.previousDataSourceMatchesService()) {
         val dateLabel = formatDatePickerLabel(template.dataSourceDate)
-        listOf("Prethodno ispitivanje", dateLabel).filter { it.isNotBlank() }.joinToString(" - ")
+        listOf("Vrijednosti iz prethodnog zapisnika", dateLabel).filter { it.isNotBlank() }.joinToString(" - ")
+    } else if (type == "previous_inspection" || type == "template" || type.isBlank()) {
+        "Vrijednosti iz templatea"
     } else {
-        "Predložak: $sourceTitle"
+        "Vrijednosti iz ${type.replace('_', ' ')}"
     }
 }
 
@@ -30514,7 +30524,6 @@ private fun documentationTemplateDataSourceDetails(template: WorkOrderDocumentat
         return ""
     }
     return listOf(
-        template.dataSourceTitle.ifBlank { template.title }.takeIf { it.isNotBlank() },
         template.dataSourceWorkOrderNumber.takeIf { it.isNotBlank() }?.let { "RN $it" },
     ).filterNotNull().joinToString(" - ")
 }

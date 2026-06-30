@@ -40080,6 +40080,20 @@ body.is-vehicle-usage-open {
   min-width: 0;
 }
 
+.documentation-spr-results-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+
+.documentation-spr-results-actions .ghost-button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
 .documentation-spr-results-rich-host .document-template-runtime-rich-editor {
   min-height: 220px;
   border-color: rgba(183, 199, 218, 0.85);
@@ -40089,6 +40103,16 @@ body.is-vehicle-usage-open {
 .documentation-spr-results-rich-host .document-template-runtime-rich-toolbar {
   border-color: rgba(183, 199, 218, 0.85);
   border-radius: 8px 8px 0 0;
+}
+
+.documentation-spr-results-rich-host .document-template-runtime-rich-editor img,
+.document-template-rich-text img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0;
+  border: 1px solid rgba(183, 199, 218, 0.9);
+  border-radius: 6px;
 }
 
 .documentation-spr-section {
@@ -40104,6 +40128,38 @@ body.is-vehicle-usage-open {
   gap: 10px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--documentation-spr-line);
+  cursor: pointer;
+  user-select: none;
+}
+
+.documentation-spr-section.is-collapsed {
+  gap: 0;
+}
+
+.documentation-spr-section.is-collapsed > :not(.documentation-spr-section-head) {
+  display: none !important;
+}
+
+.documentation-spr-section.is-collapsed .documentation-spr-section-head {
+  padding-bottom: 0;
+  border-bottom-color: transparent;
+}
+
+.documentation-spr-section-title::after {
+  content: "−";
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(183, 199, 218, 0.75);
+  border-radius: 6px;
+  color: var(--documentation-spr-muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.documentation-spr-section.is-collapsed .documentation-spr-section-title::after {
+  content: "+";
 }
 
 .documentation-spr-section-title {
@@ -41249,7 +41305,7 @@ body.is-vehicle-usage-open {
 .documentation-spr-paper-first::before {
   content: "";
   position: absolute;
-  top: 12mm;
+  top: 24mm;
   bottom: 10mm;
   left: 5mm;
   width: 3px;
