@@ -676,11 +676,13 @@
         enabled: entry.enabled !== false,
         label: String(entry.label || "").trim(),
         description: String(entry.description || entry.aiDescription || "").trim(),
+        instructions: String(entry.instructions || entry.aiInstructions || entry.ai_instruction || "").trim(),
         lookFor: String(entry.lookFor || entry.aiLookFor || "").trim(),
         avoid: String(entry.avoid || entry.aiAvoid || "").trim(),
         allowedValues: String(entry.allowedValues || "").trim(),
         examples: String(entry.examples || "").trim(),
         required: Boolean(entry.required),
+        locked: Boolean(entry.locked || entry.readonly || entry.readOnly),
       };
     });
     return normalized;
@@ -1030,6 +1032,9 @@
     var enableColumnAiSettings = options && Object.prototype.hasOwnProperty.call(options, "enableColumnAiSettings")
       ? Boolean(options.enableColumnAiSettings)
       : true;
+    var respectLockedColumns = options && Object.prototype.hasOwnProperty.call(options, "respectLockedColumns")
+      ? Boolean(options.respectLockedColumns)
+      : Boolean(rootElement && rootElement.dataset && rootElement.dataset.gridlineRespectLockedColumns === "true");
     var disableAiUpload = Boolean(options && options.disableAiUpload);
     var pendingExternalChange = false;
     var fillDrag = null;
@@ -1054,6 +1059,8 @@
     var zoomMode = "manual";
     var zoomResizeFrame = 0;
     var quickFillPanel = null;
+    var fillChoicePanel = null;
+    var fillChoicePanelIgnoreClickUntil = 0;
     var contextMenu = null;
     var aiPanel = null;
     var columnAiPanel = null;
@@ -1486,13 +1493,16 @@
         : getDisplayValue(row, column);
       input.value = displayValue;
       input.dataset.rawValue = rawValue;
-      input.readOnly = !isInputEditing(input);
-      input.tabIndex = isInputEditing(input) ? 0 : -1;
+      input.readOnly = isCellLocked(row, column) || !isInputEditing(input);
+      input.tabIndex = !isCellLocked(row, column) && isInputEditing(input) ? 0 : -1;
       input.classList.toggle("is-formula", isFormulaText(rawValue));
       input.classList.toggle("is-editing", isInputEditing(input));
+      input.classList.toggle("is-locked-cell", isCellLocked(row, column));
       input.classList.toggle("is-formula-error", isFormulaText(rawValue) && displayValue === "#ERROR");
       input.classList.toggle("is-invalid-value", !isValueAllowed(row, column, rawValue));
-      input.title = isFormulaText(rawValue) && displayValue === "#ERROR"
+      input.title = isCellLocked(row, column)
+        ? "Kolona je zakljucana u zapisniku."
+        : isFormulaText(rawValue) && displayValue === "#ERROR"
         ? "Formula se ne moze izracunati."
         : !isValueAllowed(row, column, rawValue)
           ? "Vrijednost nije na listi dopustenih vrijednosti."
@@ -1557,6 +1567,20 @@
       return Boolean(merge && (merge.row !== row || merge.column !== column));
     }
 
+    function getColumnAiConfig(column) {
+      return model.aiColumns && model.aiColumns[String(column)] || null;
+    }
+
+    function isColumnLocked(column) {
+      var config = getColumnAiConfig(column);
+      return Boolean(respectLockedColumns && config && config.locked);
+    }
+
+    function isCellLocked(row, column) {
+      var anchor = getMergeStart(row, column);
+      return isColumnLocked(anchor.column);
+    }
+
     function getSelectionBounds(selectionOverride) {
       return getRangeBounds(normalizeSelectionRange(selectionOverride || selection, model.rowCount, model.columnCount));
     }
@@ -1581,6 +1605,20 @@
         }
       }
       return cells;
+    }
+
+    function getSelectedStyleCells(selectionOverride) {
+      var seen = Object.create(null);
+      return getSelectedCells(selectionOverride).map(function (cell) {
+        return getMergeStart(cell.row, cell.column);
+      }).filter(function (cell) {
+        var key = cellKey(cell.row, cell.column);
+        if (seen[key]) {
+          return false;
+        }
+        seen[key] = true;
+        return true;
+      });
     }
 
     function captureToolbarSelection() {
@@ -2045,6 +2083,11 @@
         event.preventDefault();
         return;
       }
+      if (fillDrag && fillDrag.mode === "pointer") {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (handle && grid.contains(handle)) {
         event.preventDefault();
         event.stopPropagation();
@@ -2201,7 +2244,7 @@
       };
     }
 
-    function applyFillRange(targetRow, targetColumn) {
+    function applyFillRange(targetRow, targetColumn, mode, fillState) {
       var source;
       var sourceBounds;
       var sourceRowCount;
@@ -2218,6 +2261,7 @@
       var columnOffset;
       var changedSize = false;
       var isBlockFill = false;
+      mode = mode === "copy" ? "copy" : "series";
       function getSeriesFillValue(rowOffset, columnOffset) {
         var numericSource = Number(String(sourceValue || "").trim().replace(",", "."));
         var previousValue;
@@ -2243,16 +2287,20 @@
       }
       function getBlockFillValue(row, column, sourceRow, sourceColumn) {
         var value = getValue(sourceRow, sourceColumn);
+        if (mode === "copy") {
+          return value;
+        }
         if (isFormulaText(value)) {
           return shiftFormulaValue(value, row - sourceRow, column - sourceColumn);
         }
         return value;
       }
-      if (!fillDrag) {
+      fillState = fillState || fillDrag;
+      if (!fillState) {
         return;
       }
-      source = fillDrag.source;
-      sourceBounds = fillDrag.sourceBounds || {
+      source = fillState.source;
+      sourceBounds = fillState.sourceBounds || {
         top: source.row,
         bottom: source.row,
         left: source.column,
@@ -2274,8 +2322,13 @@
             ? sourceBounds.bottom - ((sourceBounds.top - 1 - row) % sourceRowCount)
             : sourceBounds.top + ((row - sourceBounds.bottom - 1) % sourceRowCount);
           for (column = sourceBounds.left; column <= sourceBounds.right; column += 1) {
+            if (isCellLocked(row, column)) {
+              continue;
+            }
             if (isBlockFill) {
               setValue(row, column, getBlockFillValue(row, column, sourceRow, column));
+            } else if (mode === "copy") {
+              setValue(row, column, sourceValue);
             } else {
               rowOffset = row - source.row;
               setValue(row, column, getSeriesFillValue(rowOffset, 0));
@@ -2293,8 +2346,13 @@
             ? sourceBounds.right - ((sourceBounds.left - 1 - index) % sourceColumnCount)
             : sourceBounds.left + ((index - sourceBounds.right - 1) % sourceColumnCount);
           for (row = sourceBounds.top; row <= sourceBounds.bottom; row += 1) {
+            if (isCellLocked(row, index)) {
+              continue;
+            }
             if (isBlockFill) {
               setValue(row, index, getBlockFillValue(row, index, row, sourceColumn));
+            } else if (mode === "copy") {
+              setValue(row, index, sourceValue);
             } else {
               columnOffset = index - source.column;
               setValue(row, index, getSeriesFillValue(0, columnOffset));
@@ -2308,6 +2366,68 @@
         refreshComputedCells();
       }
       scheduleSave();
+    }
+
+    function closeFillChoicePanel() {
+      if (fillChoicePanel) {
+        fillChoicePanel.remove();
+        fillChoicePanel = null;
+      }
+    }
+
+    function createFillChoiceButton(label, mode, pendingFill) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = mode === "series" ? "primary-button" : "ghost-button";
+      button.textContent = label;
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        applyFillRange(pendingFill.target.row, pendingFill.target.column, mode, pendingFill);
+        closeFillChoicePanel();
+      });
+      return button;
+    }
+
+    function openFillChoicePanel(pendingFill, clientX, clientY) {
+      var panel;
+      var copyButton;
+      var seriesButton;
+      if (!pendingFill || !rootElement) {
+        return;
+      }
+      closeFillChoicePanel();
+      panel = document.createElement("section");
+      panel.className = "gridline-popover gridline-fill-choice-panel";
+      panel.style.left = Math.min(Math.max(12, clientX || 12), window.innerWidth - 240) + "px";
+      panel.style.top = Math.min(Math.max(12, clientY || 12), window.innerHeight - 136) + "px";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-label", "Fill opcije");
+      copyButton = createFillChoiceButton("Copy", "copy", pendingFill);
+      seriesButton = createFillChoiceButton("Fill", "series", pendingFill);
+      panel.append(
+        createPopoverHeader("Fill opcije", "Fill je vec primijenjen. Odaberi Copy ako zelis samo kopirati vrijednost."),
+        createPopoverActions([copyButton, seriesButton])
+      );
+      panel.addEventListener("click", function (event) {
+        event.stopPropagation();
+      });
+      rootElement.appendChild(panel);
+      fillChoicePanel = panel;
+      fillChoicePanelIgnoreClickUntil = Date.now() + 160;
+    }
+
+    function handleFillChoiceDocumentClick(event) {
+      if (!fillChoicePanel) {
+        return;
+      }
+      if (Date.now() < fillChoicePanelIgnoreClickUntil) {
+        return;
+      }
+      if (event.target && fillChoicePanel.contains(event.target)) {
+        return;
+      }
+      closeFillChoicePanel();
     }
 
     function getLastNonEmptyRowInColumn(column, startRow) {
@@ -2324,18 +2444,40 @@
     }
 
     function getDoubleClickFillEndRow(source) {
-      var leftEnd = source.column > 0 ? getLastNonEmptyRowInColumn(source.column - 1, source.row) : source.row;
-      var rightEnd = source.column + 1 < model.columnCount ? getLastNonEmptyRowInColumn(source.column + 1, source.row) : source.row;
-      var anyEnd = source.row;
+      var bounds = fillDrag && fillDrag.sourceBounds || {
+        top: source.row,
+        bottom: source.row,
+        left: source.column,
+        right: source.column,
+      };
+      var leftColumn = bounds.left > 0 ? bounds.left - 1 : -1;
+      var rightColumn = bounds.right + 1 < model.columnCount ? bounds.right + 1 : -1;
+      var endRow = bounds.bottom;
       var row;
-      for (row = source.row + 1; row < model.rowCount; row += 1) {
-        if (Array.from({ length: model.columnCount }, function (_, column) {
-          return column === source.column ? "" : getValue(row, column);
-        }).some(function (value) { return String(value).trim(); })) {
-          anyEnd = row;
+      var column;
+      var targetAlreadyFilled;
+      var neighborHasData;
+      for (row = bounds.bottom + 1; row < model.rowCount; row += 1) {
+        targetAlreadyFilled = false;
+        for (column = bounds.left; column <= bounds.right; column += 1) {
+          if (String(getValue(row, column)).trim()) {
+            targetAlreadyFilled = true;
+            break;
+          }
         }
+        if (targetAlreadyFilled) {
+          break;
+        }
+        neighborHasData = Boolean(
+          leftColumn >= 0 && String(getValue(row, leftColumn)).trim()
+          || rightColumn >= 0 && String(getValue(row, rightColumn)).trim()
+        );
+        if (!neighborHasData) {
+          break;
+        }
+        endRow = row;
       }
-      return Math.max(leftEnd, rightEnd, anyEnd);
+      return endRow;
     }
 
     function updateFillDragTarget(targetRow, targetColumn) {
@@ -2368,6 +2510,8 @@
         source: { row: active.row, column: active.column },
         sourceBounds: getFillSourceBounds(),
         target: null,
+        clientX: 12,
+        clientY: 12,
         mode: mode || "pointer",
       };
       document.body.classList.add("is-filling-gridline-cells");
@@ -2376,14 +2520,23 @@
       }
     }
 
-    function finishFillDrag() {
+    function finishFillDrag(clientX, clientY) {
       var target = fillDrag && fillDrag.target;
+      var pendingFill;
+      var panelX = Number.isFinite(clientX) ? clientX : fillDrag && fillDrag.clientX;
+      var panelY = Number.isFinite(clientY) ? clientY : fillDrag && fillDrag.clientY;
       document.removeEventListener("mousemove", handleFillMouseMove);
       document.removeEventListener("pointermove", handleFillPointerMove);
       document.removeEventListener("pointerup", handleFillPointerUp);
       clearFillPreview();
       if (target) {
-        applyFillRange(target.row, target.column);
+        pendingFill = {
+          source: fillDrag.source,
+          sourceBounds: fillDrag.sourceBounds,
+          target: { row: target.row, column: target.column },
+        };
+        applyFillRange(target.row, target.column, "series", pendingFill);
+        openFillChoicePanel(pendingFill, panelX, panelY);
       }
       document.body.classList.remove("is-filling-gridline-cells");
       fillDrag = null;
@@ -2395,6 +2548,8 @@
         return;
       }
       event.preventDefault();
+      fillDrag.clientX = event.clientX;
+      fillDrag.clientY = event.clientY;
       autoScrollGridNearPointer(event.clientX, event.clientY);
       td = getCellFromPoint(event.clientX, event.clientY);
       if (!td) {
@@ -2409,6 +2564,8 @@
         return;
       }
       event.preventDefault();
+      fillDrag.clientX = event.clientX;
+      fillDrag.clientY = event.clientY;
       autoScrollGridNearPointer(event.clientX, event.clientY);
       td = getCellFromPoint(event.clientX, event.clientY);
       if (!td) {
@@ -2417,8 +2574,8 @@
       updateFillDragTarget(Number(td.dataset.row), Number(td.dataset.column));
     }
 
-    function handleFillPointerUp() {
-      finishFillDrag();
+    function handleFillPointerUp(event) {
+      finishFillDrag(event.clientX, event.clientY);
     }
 
     function handleFillPointerDown(event) {
@@ -2426,7 +2583,7 @@
       if (!handle) {
         return;
       }
-      if (event.pointerType === "mouse") {
+      if (fillDrag) {
         return;
       }
       event.preventDefault();
@@ -2941,10 +3098,18 @@
         source: { row: active.row, column: active.column },
         sourceBounds: getFillSourceBounds(),
         target: null,
+        clientX: event.clientX,
+        clientY: event.clientY,
       };
       endRow = getDoubleClickFillEndRow(fillDrag.source);
       if (endRow > fillDrag.source.row) {
-        applyFillRange(endRow, fillDrag.source.column);
+        fillDrag.target = { row: endRow, column: fillDrag.source.column };
+        applyFillRange(endRow, fillDrag.source.column, "series", fillDrag);
+        openFillChoicePanel({
+          source: fillDrag.source,
+          sourceBounds: fillDrag.sourceBounds,
+          target: fillDrag.target,
+        }, event.clientX, event.clientY);
       }
       fillDrag = null;
     }
@@ -3083,9 +3248,10 @@
         th.style.width = getColumnWidth(column) + "px";
         th.style.minWidth = getColumnWidth(column) + "px";
         th.classList.toggle("has-ai-column", Boolean(enableColumnAiSettings && columnAi && columnAi.enabled !== false));
+        th.classList.toggle("is-locked-column", isColumnLocked(column));
         th.classList.toggle("is-filtered", Boolean(columnFilters[String(column)]));
         th.title = enableColumnAiSettings
-          ? (columnAi ? "Desni klik: NexAI postavke kolone" : "Povuci rub za promjenu sirine. Desni klik: NexAI postavke kolone")
+          ? (columnAi && columnAi.locked ? "Zakljucana kolona. Desni klik: NexAI postavke kolone" : columnAi ? "Desni klik: NexAI postavke kolone" : "Povuci rub za promjenu sirine. Desni klik: NexAI postavke kolone")
           : "Povuci rub za promjenu sirine.";
         th.appendChild(document.createTextNode(columnLabel(column)));
         resizer.type = "button";
@@ -3135,6 +3301,7 @@
             td.rowSpan = merge.rowSpan;
             td.classList.add("is-merged-cell");
           }
+          td.classList.toggle("is-locked-cell", isCellLocked(row, column));
           if (model.autoBorderFilled && String(getValue(row, column)).trim()) {
             cellStyle = Object.assign({}, cellStyle || {}, { border: (cellStyle && cellStyle.border) || "all" });
             td.classList.add("is-auto-border-filled");
@@ -3201,6 +3368,9 @@
 
     function clearSelectionValues() {
       getSelectedCells().forEach(function (cell) {
+        if (isCellLocked(cell.row, cell.column)) {
+          return;
+        }
         setValue(cell.row, cell.column, "");
       });
       render();
@@ -3247,6 +3417,9 @@
             changedSize = ensureSize(row, column) || changedSize;
           }
           if (row >= model.rowCount || column >= model.columnCount) {
+            return;
+          }
+          if (isCellLocked(row, column)) {
             return;
           }
           setValue(row, column, value);
@@ -3502,6 +3675,13 @@
       if (!input) {
         return;
       }
+      if (isCellLocked(row, column)) {
+        selectCell(row, column, { focus: false });
+        formulaInput.value = getValue(row, column);
+        setStatus("Kolona je zakljucana u zapisniku.", "is-saving");
+        grid.focus({ preventScroll: true });
+        return;
+      }
       selectCell(row, column, { focus: false });
       editingCell = { row: row, column: column };
       syncInputDisplay(input, true);
@@ -3657,6 +3837,12 @@
 
     function handleFormulaInput() {
       var input;
+      if (isCellLocked(active.row, active.column)) {
+        formulaInput.value = getValue(active.row, active.column);
+        formulaInput.dataset.gridlineUndoRecorded = "";
+        setStatus("Kolona je zakljucana u zapisniku.", "is-saving");
+        return;
+      }
       if (!formulaInput.dataset.gridlineUndoRecorded) {
         recordUndo();
         formulaInput.dataset.gridlineUndoRecorded = "true";
@@ -4851,6 +5037,8 @@
       var enabledInput;
       var requiredLabel;
       var requiredInput;
+      var lockedLabel;
+      var lockedInput;
       var saveButton;
       var removeButton;
       var closeButton;
@@ -4885,6 +5073,14 @@
       requiredLabel.className = "gridline-popover-check";
       requiredLabel.append(requiredInput, document.createTextNode(" Kolona je obavezna"));
 
+      lockedInput = document.createElement("input");
+      lockedInput.type = "checkbox";
+      lockedInput.checked = Boolean(current.locked);
+      lockedInput.dataset.gridlineColumnAiLocked = "true";
+      lockedLabel = document.createElement("label");
+      lockedLabel.className = "gridline-popover-check";
+      lockedLabel.append(lockedInput, document.createTextNode(" Zakljucaj kolonu u zapisniku"));
+
       saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "primary-button";
@@ -4909,8 +5105,10 @@
           "Ovdje se definira kako AI smije puniti ovu kolonu. Datoteke se uploadiraju na početku izrade."
         ),
         enabledLabel,
+        lockedLabel,
         createColumnAiTextInput("label", "Naziv kolone za AI", current.label || header, false),
         createColumnAiTextInput("description", "Opis polja", current.description || "", true),
+        createColumnAiTextInput("instructions", "AI upute za kolonu", current.instructions || "", true),
         createColumnAiTextInput("lookFor", "NexAI neka traži", current.lookFor || "", true),
         createColumnAiTextInput("avoid", "NexAI ne smije", current.avoid || "", true),
         createColumnAiTextInput("allowedValues", "Dozvoljene vrijednosti", current.allowedValues || "", false),
@@ -4950,6 +5148,7 @@
       if (target.closest("[data-gridline-column-ai-save]")) {
         var enabledInput = columnAiPanel.querySelector("[data-gridline-column-ai-enabled]");
         var requiredInput = columnAiPanel.querySelector("[data-gridline-column-ai-required]");
+        var lockedInput = columnAiPanel.querySelector("[data-gridline-column-ai-locked]");
         if (!model.aiColumns) {
           model.aiColumns = Object.create(null);
         }
@@ -4958,11 +5157,13 @@
             enabled: enabledInput ? enabledInput.checked : true,
             label: readColumnAiPanelValue("label"),
             description: readColumnAiPanelValue("description"),
+            instructions: readColumnAiPanelValue("instructions"),
             lookFor: readColumnAiPanelValue("lookFor"),
             avoid: readColumnAiPanelValue("avoid"),
             allowedValues: readColumnAiPanelValue("allowedValues"),
             examples: readColumnAiPanelValue("examples"),
             required: requiredInput ? requiredInput.checked : false,
+            locked: lockedInput ? lockedInput.checked : false,
           },
         }, model.columnCount)[String(column)];
         closeColumnAiPanel();
@@ -5480,7 +5681,7 @@
       }
       recordUndo();
       targetSelection = consumeToolbarSelection();
-      getSelectedCells(targetSelection).forEach(function (cell) {
+      getSelectedStyleCells(targetSelection).forEach(function (cell) {
         var key = cellKey(cell.row, cell.column);
         var existing = model.cellStyles[key] || {};
         var nextStyle = makeCellStyle(existing.backgroundColor || "", normalizedAlign, existing);
@@ -5511,7 +5712,7 @@
 
     function setActiveCellBackground(color) {
       var normalizedColor = String(color || "").trim();
-      var cells = getSelectedCells(consumeToolbarSelection());
+      var cells = getSelectedStyleCells(consumeToolbarSelection());
       if (!model.cellStyles) {
         model.cellStyles = Object.create(null);
       }
@@ -5536,7 +5737,7 @@
         model.cellStyles = Object.create(null);
       }
       recordUndo();
-      getSelectedCells(targetSelection).forEach(function (cell) {
+      getSelectedStyleCells(targetSelection).forEach(function (cell) {
         var key = cellKey(cell.row, cell.column);
         var nextStyle = normalizeStyleEntry(mutator(Object.assign({}, model.cellStyles[key] || {})) || {});
         if (hasObjectKeys(nextStyle)) {
@@ -5587,7 +5788,7 @@
     function clearSelectedFormatting() {
       recordUndo();
       if (model.cellStyles) {
-        getSelectedCells().forEach(function (cell) {
+        getSelectedStyleCells().forEach(function (cell) {
           delete model.cellStyles[cellKey(cell.row, cell.column)];
         });
       }
@@ -5634,6 +5835,9 @@
     function clearSelectedContent() {
       recordUndo();
       getSelectedCells().forEach(function (cell) {
+        if (isCellLocked(cell.row, cell.column)) {
+          return;
+        }
         setValue(cell.row, cell.column, "");
       });
       render();
@@ -5877,6 +6081,7 @@
     document.addEventListener("fullscreenchange", syncFullscreenState);
     applyZoom();
     document.addEventListener("click", hideContextMenu);
+    document.addEventListener("click", handleFillChoiceDocumentClick);
     document.addEventListener("click", closeValidationPanel);
     document.addEventListener("click", closeFilterPanel);
     document.addEventListener("mouseup", handleDocumentMouseUp);
@@ -5897,6 +6102,7 @@
         quickFillPanel.remove();
         quickFillPanel = null;
       }
+      closeFillChoicePanel();
       if (aiPanel) {
         aiPanel.remove();
         aiPanel = null;
@@ -5953,6 +6159,7 @@
         quickFillButton.removeEventListener("click", handleQuickFillButtonClick);
       }
       document.removeEventListener("click", hideContextMenu);
+      document.removeEventListener("click", handleFillChoiceDocumentClick);
       if (rootElement) {
         rootElement.__safeNexusGridlineDestroy = null;
       }

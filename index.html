@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/vendor/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260630-gridline-fill-v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260630-gridline-lock-fill-v2" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -2857,6 +2857,11 @@
                           <span>NexAI smije popuniti ovu kolonu</span>
                         </label>
 
+                        <label class="measurement-validation-checkbox measurement-ai-full">
+                          <input id="measurement-ai-locked" type="checkbox" />
+                          <span>Zaključaj kolonu u zapisniku</span>
+                        </label>
+
                         <label class="measurement-toolbar-format">
                           <span class="measurement-toolbar-label">Key</span>
                           <input id="measurement-ai-key" type="text" placeholder="machine_placement" />
@@ -2888,6 +2893,11 @@
                         <label class="measurement-toolbar-format measurement-ai-description-field">
                           <span class="measurement-toolbar-label">Opis polja</span>
                           <textarea id="measurement-ai-description" rows="4" placeholder="Npr. Prostor, etaža ili konkretna lokacija unutar objekta gdje se oprema nalazi."></textarea>
+                        </label>
+
+                        <label class="measurement-toolbar-format measurement-ai-description-field">
+                          <span class="measurement-toolbar-label">AI upute za kolonu</span>
+                          <textarea id="measurement-ai-instructions" rows="4" placeholder="Npr. Vrijednost preuzmi samo iz tablice mjerenja. Ako postoji više kandidata, koristi zadnji važeći zapisnik."></textarea>
                         </label>
 
                         <label class="measurement-toolbar-format">
@@ -11506,9 +11516,9 @@
 
     <script src="/assets/vendor/leaflet.js"></script>
     <script src="/assets/vendor/leaflet.markercluster.js"></script>
-    <script src="/gridline.js?v=20260630-gridline-fill-v2"></script>
+    <script src="/gridline.js?v=20260630-gridline-lock-fill-v2"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260629-gridline-output-parity-v3"></script>
+    <script type="module" src="/src/main.js?v=20260630-gridline-lock-fill-v2"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

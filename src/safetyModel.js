@@ -1226,6 +1226,8 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     validationRules: normalizeText(source?.validationRules ?? source?.validation_rules).slice(0, 1600),
     displayOrder: normalizeAiDisplayOrder(source?.displayOrder ?? source?.display_order),
     group: normalizeText(source?.group).slice(0, 120),
+    instructions: normalizeText(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
+    locked: normalizeBoolean(source?.locked ?? source?.readonly ?? source?.readOnly, false),
   };
 }
 
@@ -2077,6 +2079,8 @@ function normalizeMeasurementSheetColumnAiMappingSnapshot(input = {}) {
     validationRules: normalizeText(source?.validationRules ?? source?.validation_rules).slice(0, 1600),
     displayOrder: normalizeAiDisplayOrder(source?.displayOrder ?? source?.display_order),
     group: normalizeText(source?.group).slice(0, 120),
+    instructions: normalizeText(source?.instructions ?? source?.aiInstructions ?? source?.ai_instruction).slice(0, 3000),
+    locked: normalizeBoolean(source?.locked ?? source?.readonly ?? source?.readOnly, false),
   };
 }
 
@@ -2930,7 +2934,7 @@ function normalizeDocumentTemplateFields(fields = []) {
           ?? (columns.length > 0 ? columns.slice(0, 16) : ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]))
         : [],
       rowCount: type === "measurement_table"
-        ? legacyRowCount
+        ? Math.max(legacyRowCount, normalizedSheet?.rows?.length || 0)
         : 0,
       quickFillStructure: type === "measurement_table"
         ? normalizeDocumentTemplateQuickFillStructure(field?.quickFillStructure ?? field?.quickGeneratorStructure)
@@ -3010,7 +3014,7 @@ function normalizeDocumentTemplateSections(sections = []) {
           ?? (columns.length > 0 ? columns.slice(0, 16) : defaultColumns))
         : (columns.length > 0 ? columns.slice(0, 16) : defaultColumns),
       rowCount: type === "measurement_table"
-        ? legacyRowCount
+        ? Math.max(legacyRowCount, normalizedSheet?.rows?.length || 0)
         : 0,
       sheet: normalizedSheet,
     };

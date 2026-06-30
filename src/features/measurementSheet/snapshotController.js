@@ -107,9 +107,11 @@ export function createMeasurementSheetSnapshotController({
       return null;
     }
 
-    const keepRowCount = hasMeaningfulRows
-      ? Math.max(defaultRowCount, Math.min(rows.length, lastMeaningfulRowIndex + 4))
-      : Math.max(defaultRowCount, Math.min(rows.length || defaultRowCount, 40));
+    const keepRowCount = includeBlankStructure
+      ? Math.max(defaultRowCount, rows.length || defaultRowCount)
+      : hasMeaningfulRows
+        ? Math.max(defaultRowCount, Math.min(rows.length, lastMeaningfulRowIndex + 4))
+        : Math.max(defaultRowCount, Math.min(rows.length || defaultRowCount, 40));
 
     return {
       columns,

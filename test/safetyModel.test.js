@@ -1764,6 +1764,93 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(builderOnlyReference.referenceDocument?.builderDocument?.[0]?.children?.[0]?.props?.merges?.[0]?.colSpan, 3);
 });
 
+test("document template measurement tables preserve full gridline snapshots", () => {
+  const state = buildState();
+  const rows = Array.from({ length: 140 }, (_, index) => {
+    const rowNumber = index + 1;
+    return {
+      id: `measurement-row-${rowNumber}`,
+      cells: {
+        c1: rowNumber === 1 ? "R.br." : String(index),
+        c2: rowNumber === 3 ? "=TEXTAFTER(C3,\"/\")" : `RO ${rowNumber}`,
+        c3: rowNumber === 4 ? { formula: "C3+D3" } : `F${100 + rowNumber}`,
+      },
+      formats: {
+        c2: {
+          align: "center",
+          verticalAlign: "bottom",
+          bold: true,
+          fillColor: "#d9ead3",
+          border: "all",
+        },
+      },
+    };
+  });
+
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "EIZ gridline template",
+      customFields: [
+        {
+          label: "Rezultati ispitivanja",
+          key: "rezultati_ispitivanja",
+          type: "measurement_table",
+          rowCount: 140,
+          sheet: {
+            pageOrientation: "landscape",
+            columns: [
+              { id: "c1", label: "R.br.", width: 42 },
+              {
+                id: "c2",
+                label: "Razdjelnik",
+                width: 280,
+                aiMapping: {
+                  enabled: true,
+                  key: "razdjelnik",
+                  label: "Razdjelnik",
+                  instructions: "Popuni iz prethodnog zapisnika i zakljucaj u zapisniku.",
+                  locked: true,
+                },
+              },
+              { id: "c3", label: "Strujni krug", width: 320 },
+            ],
+            rows,
+            merges: [
+              {
+                rowId: "measurement-row-1",
+                columnId: "c1",
+                rowSpan: 1,
+                colSpan: 2,
+              },
+            ],
+            headerRows: ["measurement-row-1"],
+          },
+        },
+      ],
+    },
+    state,
+    () => "template-grid-save",
+    () => "2026-06-30T08:00:00.000Z",
+  );
+
+  const field = template.customFields[0];
+  assert.equal(field.type, "measurement_table");
+  assert.equal(field.rowCount, 140);
+  assert.equal(field.sheet?.rows.length, 140);
+  assert.equal(field.sheet?.pageOrientation, "landscape");
+  assert.equal(field.sheet?.columns[1]?.width, 280);
+  assert.equal(field.sheet?.columns[1]?.aiMapping?.instructions, "Popuni iz prethodnog zapisnika i zakljucaj u zapisniku.");
+  assert.equal(field.sheet?.columns[1]?.aiMapping?.locked, true);
+  assert.equal(field.sheet?.rows[2]?.cells.c2, "=TEXTAFTER(C3,\"/\")");
+  assert.equal(field.sheet?.rows[3]?.cells.c3, "=C3+D3");
+  assert.equal(field.sheet?.rows[2]?.formats.c2.verticalAlign, "bottom");
+  assert.equal(field.sheet?.rows[2]?.formats.c2.align, "center");
+  assert.equal(field.sheet?.rows[2]?.formats.c2.border.left, true);
+  assert.equal(field.sheet?.merges[0]?.colSpan, 2);
+  assert.deepEqual(field.sheet?.headerRows, ["measurement-row-1"]);
+});
+
 test("document templates persist selected signature meta fields", () => {
   const state = buildState();
   const template = createDocumentTemplate(

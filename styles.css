@@ -21264,10 +21264,6 @@ body.is-work-order-document-category-open {
   cursor: cell;
 }
 
-.measurement-sheet-grid td.is-merged-cell {
-  vertical-align: top;
-}
-
 .measurement-sheet-grid td.is-merged-cell .measurement-cell-shell {
   display: flex;
   min-height: 100%;
@@ -21286,6 +21282,23 @@ body.is-work-order-document-category-open {
 
 .measurement-sheet-grid tbody tr.is-measurement-empty-row td:not(.is-selected-cell):not(.is-active-cell) {
   background: #ffffff;
+}
+
+.measurement-sheet-grid th.is-locked-column,
+.documentation-gridline-module th.is-locked-column {
+  color: #596174;
+  background: linear-gradient(180deg, #eef2f7, #e7edf6);
+}
+
+.measurement-sheet-grid td.is-locked-cell,
+.documentation-gridline-module td.is-locked-cell {
+  background: linear-gradient(180deg, rgba(241, 245, 249, 0.86), rgba(248, 250, 252, 0.82));
+}
+
+.measurement-cell-input.is-locked-input,
+.documentation-gridline-module .cell.is-locked-cell {
+  color: #667085;
+  cursor: not-allowed;
 }
 
 .measurement-sheet-grid tbody tr.measurement-sheet-virtual-spacer td {
@@ -38641,6 +38654,30 @@ body.is-vehicle-usage-open {
 
 .gridline-quick-fill-panel .gridline-popover-field:has(.gridline-quick-columns) {
   grid-column: 1 / -1;
+}
+
+.gridline-fill-choice-panel {
+  width: min(260px, calc(100vw - 32px));
+  gap: 10px;
+  padding: 12px;
+}
+
+.gridline-fill-choice-panel .gridline-popover-head strong {
+  font-size: 0.9rem;
+}
+
+.gridline-fill-choice-panel .gridline-popover-head span {
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.gridline-fill-choice-panel .gridline-popover-actions {
+  justify-content: stretch;
+}
+
+.gridline-fill-choice-panel .gridline-popover-actions > button {
+  flex: 1 1 0;
+  justify-content: center;
 }
 
 .gridline-popover[hidden] {
