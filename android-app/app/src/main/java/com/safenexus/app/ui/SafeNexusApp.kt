@@ -24809,7 +24809,6 @@ private fun WorkOrderDocumentationWizardDialog(
     var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId, defaults.attachments.size) {
         mutableStateOf(if (defaults.attachments.isEmpty()) "" else "${defaults.attachments.size} prilog(a) iz prethodnog zapisnika.")
     }
-    var documentationAttachmentSourceDialogOpen by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     fun addDocumentationAttachments(
         uris: List<Uri>,
         mode: WorkOrderDocumentInputMode,
@@ -25769,7 +25768,11 @@ private fun WorkOrderDocumentationWizardDialog(
                         attachmentMessage = documentationAttachmentMessage,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
-                        onAddAttachment = { documentationAttachmentSourceDialogOpen = true },
+                        onAttachmentCamera = startDocumentationAttachmentCamera,
+                        onAttachmentScan = startDocumentationAttachmentScan,
+                        onAttachmentPhotos = { documentationAttachmentPhotoPicker.launch("image/*") },
+                        onAttachmentPdf = { documentationAttachmentPdfPicker.launch(arrayOf("application/pdf")) },
+                        onAttachmentFile = { documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes) },
                         onOpenAttachment = { file ->
                             runCatching {
                                 val document = file.toDownloadedDocument()
@@ -26095,35 +26098,6 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         },
     )
-    }
-
-    if (documentationAttachmentSourceDialogOpen) {
-        DocumentationAttachmentSourceDialog(
-            enabled = !formLoading &&
-                !documentationAttachmentLoading &&
-                documentationAttachmentFiles.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES,
-            onDismiss = { documentationAttachmentSourceDialogOpen = false },
-            onCamera = {
-                documentationAttachmentSourceDialogOpen = false
-                startDocumentationAttachmentCamera()
-            },
-            onScan = {
-                documentationAttachmentSourceDialogOpen = false
-                startDocumentationAttachmentScan()
-            },
-            onPhotos = {
-                documentationAttachmentSourceDialogOpen = false
-                documentationAttachmentPhotoPicker.launch("image/*")
-            },
-            onPdf = {
-                documentationAttachmentSourceDialogOpen = false
-                documentationAttachmentPdfPicker.launch(arrayOf("application/pdf"))
-            },
-            onFile = {
-                documentationAttachmentSourceDialogOpen = false
-                documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes)
-            },
-        )
     }
 
 }
@@ -30427,7 +30401,11 @@ private fun DocumentationSprMobileWorkspace(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onAddAttachment: () -> Unit,
+    onAttachmentCamera: () -> Unit,
+    onAttachmentScan: () -> Unit,
+    onAttachmentPhotos: () -> Unit,
+    onAttachmentPdf: () -> Unit,
+    onAttachmentFile: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
@@ -30578,13 +30556,17 @@ private fun DocumentationSprMobileWorkspace(
                                 rowCount = rowCount,
                                 attachmentFiles = attachmentFiles,
                                 attachmentLoading = attachmentLoading,
-                        attachmentMessage = attachmentMessage,
-                        enabled = enabled,
-                        onOpenMeasurements = onOpenMeasurements,
-                        onAddAttachment = onAddAttachment,
-                        onOpenAttachment = onOpenAttachment,
-                        onRemoveAttachment = onRemoveAttachment,
-                        onFieldChange = onFieldChange,
+                                attachmentMessage = attachmentMessage,
+                                enabled = enabled,
+                                onOpenMeasurements = onOpenMeasurements,
+                                onAttachmentCamera = onAttachmentCamera,
+                                onAttachmentScan = onAttachmentScan,
+                                onAttachmentPhotos = onAttachmentPhotos,
+                                onAttachmentPdf = onAttachmentPdf,
+                                onAttachmentFile = onAttachmentFile,
+                                onOpenAttachment = onOpenAttachment,
+                                onRemoveAttachment = onRemoveAttachment,
+                                onFieldChange = onFieldChange,
                             )
                         }
                     }
@@ -30628,7 +30610,11 @@ private fun DocumentationSprTemplateSectionPanel(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onAddAttachment: () -> Unit,
+    onAttachmentCamera: () -> Unit,
+    onAttachmentScan: () -> Unit,
+    onAttachmentPhotos: () -> Unit,
+    onAttachmentPdf: () -> Unit,
+    onAttachmentFile: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
@@ -30661,12 +30647,7 @@ private fun DocumentationSprTemplateSectionPanel(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
                     .clickable(enabled = enabled) {
-                        if (isAttachmentSection) {
-                            expanded = true
-                            onAddAttachment()
-                        } else {
-                            expanded = !expanded
-                        }
+                        expanded = !expanded
                     },
                 horizontalArrangement = Arrangement.spacedBy(9.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -30706,8 +30687,8 @@ private fun DocumentationSprTemplateSectionPanel(
                     )
                 }
                 Icon(
-                    if (isAttachmentSection) Icons.Rounded.Add else if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                    contentDescription = if (isAttachmentSection) "Dodaj prilog" else if (expanded) "Sakrij poglavlje" else "Prikaži poglavlje",
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (expanded) "Sakrij poglavlje" else "Prikaži poglavlje",
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -30733,7 +30714,11 @@ private fun DocumentationSprTemplateSectionPanel(
                             loading = attachmentLoading,
                             message = attachmentMessage,
                             enabled = enabled,
-                            onAdd = onAddAttachment,
+                            onCamera = onAttachmentCamera,
+                            onScan = onAttachmentScan,
+                            onPhotos = onAttachmentPhotos,
+                            onPdf = onAttachmentPdf,
+                            onFile = onAttachmentFile,
                             onOpen = onOpenAttachment,
                             onRemove = onRemoveAttachment,
                         )
@@ -30849,16 +30834,17 @@ private fun DocumentationSprAttachmentsCard(
     loading: Boolean,
     message: String,
     enabled: Boolean,
-    onAdd: () -> Unit,
+    onCamera: () -> Unit,
+    onScan: () -> Unit,
+    onPhotos: () -> Unit,
+    onPdf: () -> Unit,
+    onFile: () -> Unit,
     onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
 ) {
     val canAdd = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = canAdd) { onAdd() },
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
@@ -30892,18 +30878,17 @@ private fun DocumentationSprAttachmentsCard(
                 }
                 if (loading) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    OutlinedButton(
-                        onClick = onAdd,
-                        enabled = canAdd,
-                        shape = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                    ) {
-                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Dodaj", fontWeight = FontWeight.Bold)
-                    }
                 }
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                DocumentationSprAttachmentActionButton(Icons.Rounded.CameraAlt, "Kamera", canAdd, onCamera)
+                DocumentationSprAttachmentActionButton(WorkOrderDocumentInputMode.Scan.icon, "Sken", canAdd, onScan)
+                DocumentationSprAttachmentActionButton(Icons.Rounded.Image, "Slike", canAdd, onPhotos)
+                DocumentationSprAttachmentActionButton(Icons.Rounded.PictureAsPdf, "PDF", canAdd, onPdf)
+                DocumentationSprAttachmentActionButton(Icons.Rounded.Folder, "Datoteka", canAdd, onFile)
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
