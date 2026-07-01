@@ -24809,6 +24809,7 @@ private fun WorkOrderDocumentationWizardDialog(
     var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId, defaults.attachments.size) {
         mutableStateOf(if (defaults.attachments.isEmpty()) "" else "${defaults.attachments.size} prilog(a) iz prethodnog zapisnika.")
     }
+    var documentationAttachmentUploadSourceDialogOpen by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     fun addDocumentationAttachments(
         uris: List<Uri>,
         mode: WorkOrderDocumentInputMode,
@@ -25228,6 +25229,37 @@ private fun WorkOrderDocumentationWizardDialog(
             onFile = {
                 aiUploadSourceDialogOpen = false
                 aiFilePicker.launch(workOrderDocumentationAiMimeTypes)
+            },
+        )
+    }
+
+    if (documentationAttachmentUploadSourceDialogOpen) {
+        DocumentationAiUploadSourceDialog(
+            title = "Dodaj prilog",
+            description = "Odaberi izvor priloga koji se dodaje iza zapisnika.",
+            enabled = !formLoading &&
+                !documentationAttachmentLoading &&
+                documentationAttachmentFiles.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES,
+            onDismiss = { documentationAttachmentUploadSourceDialogOpen = false },
+            onCamera = {
+                documentationAttachmentUploadSourceDialogOpen = false
+                startDocumentationAttachmentCamera()
+            },
+            onScan = {
+                documentationAttachmentUploadSourceDialogOpen = false
+                startDocumentationAttachmentScan()
+            },
+            onPhotos = {
+                documentationAttachmentUploadSourceDialogOpen = false
+                documentationAttachmentPhotoPicker.launch("image/*")
+            },
+            onPdf = {
+                documentationAttachmentUploadSourceDialogOpen = false
+                documentationAttachmentPdfPicker.launch(arrayOf("application/pdf"))
+            },
+            onFile = {
+                documentationAttachmentUploadSourceDialogOpen = false
+                documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes)
             },
         )
     }
@@ -25768,11 +25800,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         attachmentMessage = documentationAttachmentMessage,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
-                        onAttachmentCamera = startDocumentationAttachmentCamera,
-                        onAttachmentScan = startDocumentationAttachmentScan,
-                        onAttachmentPhotos = { documentationAttachmentPhotoPicker.launch("image/*") },
-                        onAttachmentPdf = { documentationAttachmentPdfPicker.launch(arrayOf("application/pdf")) },
-                        onAttachmentFile = { documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes) },
+                        onPickAttachments = { documentationAttachmentUploadSourceDialogOpen = true },
                         onOpenAttachment = { file ->
                             runCatching {
                                 val document = file.toDownloadedDocument()
@@ -30401,11 +30429,7 @@ private fun DocumentationSprMobileWorkspace(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onAttachmentCamera: () -> Unit,
-    onAttachmentScan: () -> Unit,
-    onAttachmentPhotos: () -> Unit,
-    onAttachmentPdf: () -> Unit,
-    onAttachmentFile: () -> Unit,
+    onPickAttachments: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
@@ -30560,11 +30584,7 @@ private fun DocumentationSprMobileWorkspace(
                                 attachmentMessage = attachmentMessage,
                                 enabled = enabled,
                                 onOpenMeasurements = onOpenMeasurements,
-                                onAttachmentCamera = onAttachmentCamera,
-                                onAttachmentScan = onAttachmentScan,
-                                onAttachmentPhotos = onAttachmentPhotos,
-                                onAttachmentPdf = onAttachmentPdf,
-                                onAttachmentFile = onAttachmentFile,
+                                onPickAttachments = onPickAttachments,
                                 onOpenAttachment = onOpenAttachment,
                                 onRemoveAttachment = onRemoveAttachment,
                                 onFieldChange = onFieldChange,
@@ -30595,11 +30615,7 @@ private fun DocumentationSprMobileWorkspace(
             loading = attachmentLoading,
             message = attachmentMessage,
             enabled = enabled,
-            onCamera = onAttachmentCamera,
-            onScan = onAttachmentScan,
-            onPhotos = onAttachmentPhotos,
-            onPdf = onAttachmentPdf,
-            onFile = onAttachmentFile,
+            onPickFiles = onPickAttachments,
             onOpen = onOpenAttachment,
             onRemove = onRemoveAttachment,
         )
@@ -30619,11 +30635,7 @@ private fun DocumentationSprStandaloneAttachmentsSection(
     loading: Boolean,
     message: String,
     enabled: Boolean,
-    onCamera: () -> Unit,
-    onScan: () -> Unit,
-    onPhotos: () -> Unit,
-    onPdf: () -> Unit,
-    onFile: () -> Unit,
+    onPickFiles: () -> Unit,
     onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
 ) {
@@ -30655,7 +30667,7 @@ private fun DocumentationSprStandaloneAttachmentsSection(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Dodaj dokumente", fontWeight = FontWeight.Black)
                     Text(
-                        "Novo polje za priloge. Nema klika na cijeli blok, koriste se samo gumbi ispod.",
+                        "Prilozi se dodaju iza zapisnika.",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -30666,11 +30678,7 @@ private fun DocumentationSprStandaloneAttachmentsSection(
                 loading = loading,
                 message = message,
                 enabled = enabled,
-                onCamera = onCamera,
-                onScan = onScan,
-                onPhotos = onPhotos,
-                onPdf = onPdf,
-                onFile = onFile,
+                onPickFiles = onPickFiles,
                 onOpen = onOpen,
                 onRemove = onRemove,
             )
@@ -30690,11 +30698,7 @@ private fun DocumentationSprTemplateSectionPanel(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onAttachmentCamera: () -> Unit,
-    onAttachmentScan: () -> Unit,
-    onAttachmentPhotos: () -> Unit,
-    onAttachmentPdf: () -> Unit,
-    onAttachmentFile: () -> Unit,
+    onPickAttachments: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
@@ -30795,11 +30799,7 @@ private fun DocumentationSprTemplateSectionPanel(
                             loading = attachmentLoading,
                             message = attachmentMessage,
                             enabled = enabled,
-                            onCamera = onAttachmentCamera,
-                            onScan = onAttachmentScan,
-                            onPhotos = onAttachmentPhotos,
-                            onPdf = onAttachmentPdf,
-                            onFile = onAttachmentFile,
+                            onPickFiles = onPickAttachments,
                             onOpen = onOpenAttachment,
                             onRemove = onRemoveAttachment,
                         )
@@ -30915,11 +30915,7 @@ private fun DocumentationSprAttachmentsCard(
     loading: Boolean,
     message: String,
     enabled: Boolean,
-    onCamera: () -> Unit,
-    onScan: () -> Unit,
-    onPhotos: () -> Unit,
-    onPdf: () -> Unit,
-    onFile: () -> Unit,
+    onPickFiles: () -> Unit,
     onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
 ) {
@@ -30952,7 +30948,7 @@ private fun DocumentationSprAttachmentsCard(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Dodaj dokumente", fontWeight = FontWeight.Black)
                     Text(
-                        if (files.isEmpty()) "Odaberi jednu od akcija ispod. Klik na poglavlje samo otvara ili zatvara prikaz." else "${files.size} prilog(a) nastavlja se u PDF-u.",
+                        if (files.isEmpty()) "Dodaj PDF, sken, kameru, slike ili datoteku iza zapisnika." else "${files.size} prilog(a) nastavlja se u PDF-u.",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -30961,15 +30957,15 @@ private fun DocumentationSprAttachmentsCard(
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 }
             }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
+            OutlinedButton(
+                onClick = onPickFiles,
+                enabled = canAdd,
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
             ) {
-                DocumentationSprAttachmentActionButton(Icons.Rounded.CameraAlt, "Kamera", canAdd, onCamera)
-                DocumentationSprAttachmentActionButton(WorkOrderDocumentInputMode.Scan.icon, "Sken", canAdd, onScan)
-                DocumentationSprAttachmentActionButton(Icons.Rounded.Image, "Slike", canAdd, onPhotos)
-                DocumentationSprAttachmentActionButton(Icons.Rounded.PictureAsPdf, "PDF", canAdd, onPdf)
-                DocumentationSprAttachmentActionButton(Icons.Rounded.Folder, "Datoteka", canAdd, onFile)
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Dodaj izvor", fontWeight = FontWeight.Bold)
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -31403,6 +31399,8 @@ private fun DocumentationAiAssistantSection(
 
 @Composable
 private fun DocumentationAiUploadSourceDialog(
+    title: String = "Dodaj izvor za NexAI",
+    description: String = "Odaberi kako želiš dodati zapisnik, sliku ili drugi dokument iz kojeg NexAI čita podatke.",
     enabled: Boolean,
     onDismiss: () -> Unit,
     onCamera: () -> Unit,
@@ -31413,11 +31411,11 @@ private fun DocumentationAiUploadSourceDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Dodaj izvor za NexAI", fontWeight = FontWeight.Black) },
+        title = { Text(title, fontWeight = FontWeight.Black) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Odaberi kako želiš dodati zapisnik, sliku ili drugi dokument iz kojeg NexAI čita podatke.",
+                    description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                 )
