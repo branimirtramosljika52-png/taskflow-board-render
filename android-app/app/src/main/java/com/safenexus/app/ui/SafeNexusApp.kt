@@ -30639,6 +30639,7 @@ private fun DocumentationSprStandaloneAttachmentsSection(
     onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
 ) {
+    val canAdd = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -30672,6 +30673,11 @@ private fun DocumentationSprStandaloneAttachmentsSection(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
                 }
+                DocumentationSprAttachmentPlusButton(
+                    enabled = canAdd,
+                    compact = true,
+                    onPickFiles = onPickFiles,
+                )
             }
             DocumentationSprAttachmentsCard(
                 files = files,
@@ -30931,73 +30937,28 @@ private fun DocumentationSprAttachmentsCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
+            Box(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                contentAlignment = Alignment.Center,
             ) {
-                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
-                    Icon(
-                        Icons.Rounded.AttachFile,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .padding(9.dp)
-                            .size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Dodaj dokumente", fontWeight = FontWeight.Black)
-                    Text(
-                        if (files.isEmpty()) "Dodaj PDF, sken, kameru, slike ili datoteku iza zapisnika." else "${files.size} prilog(a) nastavlja se u PDF-u.",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                }
-                if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                }
-            }
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .clip(RoundedCornerShape(999.dp))
-                    .combinedClickable(
-                        enabled = canAdd,
-                        onClick = onPickFiles,
-                        onLongClick = onPickFiles,
-                    ),
-                shape = RoundedCornerShape(999.dp),
-                color = if (canAdd) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                },
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (canAdd) 0.32f else 0.12f)),
-            ) {
-                Icon(
-                    Icons.Rounded.Add,
-                    contentDescription = "Dodaj prilog",
-                    modifier = Modifier
-                        .padding(horizontal = 22.dp, vertical = 12.dp)
-                        .size(24.dp),
-                    tint = if (canAdd) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
-                    },
+                DocumentationSprAttachmentPlusButton(
+                    enabled = canAdd,
+                    compact = false,
+                    onPickFiles = onPickFiles,
                 )
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(18.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-            if (files.isEmpty()) {
-                Text(
-                    "Nema dodanih priloga.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                )
-            } else {
+            if (files.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     files.forEach { file ->
                         Row(
@@ -31045,6 +31006,48 @@ private fun DocumentationSprAttachmentsCard(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DocumentationSprAttachmentPlusButton(
+    enabled: Boolean,
+    compact: Boolean,
+    onPickFiles: () -> Unit,
+) {
+    val size = if (compact) 40.dp else 70.dp
+    val iconSize = if (compact) 22.dp else 34.dp
+    Surface(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .combinedClickable(
+                enabled = enabled,
+                onClick = onPickFiles,
+                onLongClick = onPickFiles,
+            ),
+        shape = CircleShape,
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+        },
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 0.4f else 0.12f)),
+        shadowElevation = if (enabled && !compact) 4.dp else 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Rounded.Add,
+                contentDescription = "Dodaj prilog",
+                modifier = Modifier.size(iconSize),
+                tint = if (enabled) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f)
+                },
+            )
         }
     }
 }
