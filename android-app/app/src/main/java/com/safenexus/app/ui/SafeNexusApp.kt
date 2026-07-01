@@ -30909,6 +30909,7 @@ private fun DocumentationSprGridlineInlineCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DocumentationSprAttachmentsCard(
     files: List<WorkOrderDocumentationAiFile>,
@@ -30957,15 +30958,35 @@ private fun DocumentationSprAttachmentsCard(
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 }
             }
-            OutlinedButton(
-                onClick = onPickFiles,
-                enabled = canAdd,
-                shape = RoundedCornerShape(14.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .clip(RoundedCornerShape(999.dp))
+                    .combinedClickable(
+                        enabled = canAdd,
+                        onClick = onPickFiles,
+                        onLongClick = onPickFiles,
+                    ),
+                shape = RoundedCornerShape(999.dp),
+                color = if (canAdd) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                },
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (canAdd) 0.32f else 0.12f)),
             ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Dodaj izvor", fontWeight = FontWeight.Bold)
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = "Dodaj prilog",
+                    modifier = Modifier
+                        .padding(horizontal = 22.dp, vertical = 12.dp)
+                        .size(24.dp),
+                    tint = if (canAdd) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
+                    },
+                )
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
