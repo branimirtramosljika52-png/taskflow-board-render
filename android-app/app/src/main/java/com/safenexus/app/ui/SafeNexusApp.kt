@@ -30607,18 +30607,17 @@ private fun DocumentationSprMobileWorkspace(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
                 }
+                DocumentationSprStandaloneAttachmentsSection(
+                    files = attachmentFiles,
+                    loading = attachmentLoading,
+                    message = attachmentMessage,
+                    enabled = enabled,
+                    onPickFiles = onPickAttachments,
+                    onOpen = onOpenAttachment,
+                    onRemove = onRemoveAttachment,
+                )
             }
         }
-
-        DocumentationSprStandaloneAttachmentsSection(
-            files = attachmentFiles,
-            loading = attachmentLoading,
-            message = attachmentMessage,
-            enabled = enabled,
-            onPickFiles = onPickAttachments,
-            onOpen = onOpenAttachment,
-            onRemove = onRemoveAttachment,
-        )
     }
 }
 
@@ -30668,7 +30667,7 @@ private fun DocumentationSprStandaloneAttachmentsSection(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Dodaj dokumente", fontWeight = FontWeight.Black)
                     Text(
-                        "Prilozi se dodaju iza zapisnika.",
+                        "Poglavlje - 1 polje",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
