@@ -30416,7 +30416,8 @@ private fun DocumentationSprMobileWorkspace(
             buildTemplateBlockSections(template.fieldBlocks)
                 .filter { section ->
                     (isBasicTemplateSection(section) || !isSharedDocumentationTemplateSection(section)) &&
-                        !isDocumentationSignatureTemplateSection(section)
+                        !isDocumentationSignatureTemplateSection(section) &&
+                        !isDocumentationAttachmentTemplateSection(section)
                 }
                 .map { section -> template to section }
         }.mapIndexed { index, (template, section) ->
@@ -30588,6 +30589,20 @@ private fun DocumentationSprMobileWorkspace(
                 }
             }
         }
+
+        DocumentationSprStandaloneAttachmentsSection(
+            files = attachmentFiles,
+            loading = attachmentLoading,
+            message = attachmentMessage,
+            enabled = enabled,
+            onCamera = onAttachmentCamera,
+            onScan = onAttachmentScan,
+            onPhotos = onAttachmentPhotos,
+            onPdf = onAttachmentPdf,
+            onFile = onAttachmentFile,
+            onOpen = onOpenAttachment,
+            onRemove = onRemoveAttachment,
+        )
     }
 }
 
@@ -30597,6 +30612,71 @@ private data class DocumentationSprMenuEntry(
     val section: TemplateBlockSection,
     val index: Int,
 )
+
+@Composable
+private fun DocumentationSprStandaloneAttachmentsSection(
+    files: List<WorkOrderDocumentationAiFile>,
+    loading: Boolean,
+    message: String,
+    enabled: Boolean,
+    onCamera: () -> Unit,
+    onScan: () -> Unit,
+    onPhotos: () -> Unit,
+    onPdf: () -> Unit,
+    onFile: () -> Unit,
+    onOpen: (WorkOrderDocumentationAiFile) -> Unit,
+    onRemove: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)) {
+                    Icon(
+                        Icons.Rounded.AttachFile,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Dodaj dokumente", fontWeight = FontWeight.Black)
+                    Text(
+                        "Novo polje za priloge. Nema klika na cijeli blok, koriste se samo gumbi ispod.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+            DocumentationSprAttachmentsCard(
+                files = files,
+                loading = loading,
+                message = message,
+                enabled = enabled,
+                onCamera = onCamera,
+                onScan = onScan,
+                onPhotos = onPhotos,
+                onPdf = onPdf,
+                onFile = onFile,
+                onOpen = onOpen,
+                onRemove = onRemove,
+            )
+        }
+    }
+}
 
 @Composable
 private fun DocumentationSprTemplateSectionPanel(
