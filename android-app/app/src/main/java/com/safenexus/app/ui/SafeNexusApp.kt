@@ -25233,35 +25233,6 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
-    if (documentationAttachmentSourceDialogOpen) {
-        DocumentationAttachmentSourceDialog(
-            enabled = !formLoading &&
-                !documentationAttachmentLoading &&
-                documentationAttachmentFiles.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES,
-            onDismiss = { documentationAttachmentSourceDialogOpen = false },
-            onCamera = {
-                documentationAttachmentSourceDialogOpen = false
-                startDocumentationAttachmentCamera()
-            },
-            onScan = {
-                documentationAttachmentSourceDialogOpen = false
-                startDocumentationAttachmentScan()
-            },
-            onPhotos = {
-                documentationAttachmentSourceDialogOpen = false
-                documentationAttachmentPhotoPicker.launch("image/*")
-            },
-            onPdf = {
-                documentationAttachmentSourceDialogOpen = false
-                documentationAttachmentPdfPicker.launch(arrayOf("application/pdf"))
-            },
-            onFile = {
-                documentationAttachmentSourceDialogOpen = false
-                documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes)
-            },
-        )
-    }
-
     if (measurementPreviewOpen) {
         DocumentationMeasurementFullscreenDialog(
             workOrder = workOrder,
@@ -26124,6 +26095,35 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         },
     )
+    }
+
+    if (documentationAttachmentSourceDialogOpen) {
+        DocumentationAttachmentSourceDialog(
+            enabled = !formLoading &&
+                !documentationAttachmentLoading &&
+                documentationAttachmentFiles.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES,
+            onDismiss = { documentationAttachmentSourceDialogOpen = false },
+            onCamera = {
+                documentationAttachmentSourceDialogOpen = false
+                startDocumentationAttachmentCamera()
+            },
+            onScan = {
+                documentationAttachmentSourceDialogOpen = false
+                startDocumentationAttachmentScan()
+            },
+            onPhotos = {
+                documentationAttachmentSourceDialogOpen = false
+                documentationAttachmentPhotoPicker.launch("image/*")
+            },
+            onPdf = {
+                documentationAttachmentSourceDialogOpen = false
+                documentationAttachmentPdfPicker.launch(arrayOf("application/pdf"))
+            },
+            onFile = {
+                documentationAttachmentSourceDialogOpen = false
+                documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes)
+            },
+        )
     }
 
 }
