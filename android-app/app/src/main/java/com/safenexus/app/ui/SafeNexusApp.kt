@@ -25281,7 +25281,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 ) {
                     Column(modifier = Modifier.widthIn(min = 190.dp, max = 270.dp)) {
                         Text(
-                            "Izrada zapisnika",
+                            "Izrada zapisnika v${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black,
                             maxLines = 1,
@@ -25314,7 +25314,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 }
             } else {
                 Column {
-                    Text("Izrada zapisnika", fontWeight = FontWeight.Black)
+                    Text("Izrada zapisnika v${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Black)
                     Text(
                         text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
                         style = MaterialTheme.typography.labelMedium,

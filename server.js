@@ -113,7 +113,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.261.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.262.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -453,11 +453,11 @@ function buildAndroidDownloadPage() {
 
 function buildAndroidPlainDownloadPage(request) {
   const baseUrl = getRequestPublicBaseUrl(request).replace(/\/+$/, "");
-  const directApkUrl = `${baseUrl}/SafeNexus.apk`;
+  const assetApkUrl = `${baseUrl}/${MOBILE_ANDROID_APK_FILE_NAME}`;
+  const directApkUrl = `${assetApkUrl}?v=${encodeURIComponent(MOBILE_ANDROID_APK_VERSION_LABEL)}`;
   const octetApkUrl = `${baseUrl}/SafeNexus-download.apk`;
   const backupApkUrl = `${baseUrl}/download-apk`;
   const apiApkUrl = `${baseUrl}/api/mobile/android-apk`;
-  const assetApkUrl = `${baseUrl}/${MOBILE_ANDROID_APK_FILE_NAME}`;
   const chromeIntentUrl = `intent://${new URL(directApkUrl).host}${new URL(directApkUrl).pathname}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(directApkUrl)};end`;
   return `<!doctype html>
 <html lang="hr">
