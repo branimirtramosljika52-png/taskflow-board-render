@@ -30629,7 +30629,8 @@ private fun DocumentationSprTemplateSectionPanel(
     }
     val visibleBlocks = remember(entry.section, isResultsTextSection, isAssessmentSection) {
         entry.section.blocks.filterNot { block ->
-            block.type.equals("measurement_table", ignoreCase = true) && (isResultsTextSection || isAssessmentSection)
+            isDocumentationAttachmentUploadBlock(block) ||
+                (block.type.equals("measurement_table", ignoreCase = true) && (isResultsTextSection || isAssessmentSection))
         }
     }
     Surface(
@@ -30869,9 +30870,9 @@ private fun DocumentationSprAttachmentsCard(
                     )
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Prilozi uz zapisnik", fontWeight = FontWeight.Black)
+                    Text("Dodaj dokumente", fontWeight = FontWeight.Black)
                     Text(
-                        if (files.isEmpty()) "Dodaj sken, kameru, PDF, slike ili datoteku iza zapisnika." else "${files.size} prilog(a) nastavlja se u PDF-u.",
+                        if (files.isEmpty()) "Odaberi jednu od akcija ispod. Klik na poglavlje samo otvara ili zatvara prikaz." else "${files.size} prilog(a) nastavlja se u PDF-u.",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -33200,16 +33201,25 @@ private fun documentationSignatureBlockSelectionSummary(
 
 private fun isDocumentationAttachmentTemplateSection(section: TemplateBlockSection): Boolean {
     val lookup = section.lookupText()
-    return section.blocks.any { block ->
-        block.type.equals("sketch_upload", ignoreCase = true) ||
-            block.type.equals("image_upload", ignoreCase = true)
-    } ||
+    return section.blocks.any(::isDocumentationAttachmentUploadBlock) ||
         lookup.contains("dodaj dokument") ||
         lookup.contains("dokumenti") ||
         lookup.contains("prilog") ||
         lookup.contains("privit") ||
         lookup.contains("skic")
 }
+
+private fun isDocumentationAttachmentUploadBlock(block: WorkOrderDocumentationTemplateBlock): Boolean =
+    block.type.equals("sketch_upload", ignoreCase = true) ||
+        block.type.equals("image_upload", ignoreCase = true) ||
+        block.type.equals("attachment_upload", ignoreCase = true) ||
+        normalizeTemplateSectionLookup(
+            listOf(block.id, block.key, block.tokenKey, block.label, block.typeLabel, block.helpText)
+                .joinToString(" "),
+        ).let { lookup ->
+            (lookup.contains("dodaj dokument") || lookup.contains("prilog") || lookup.contains("privit")) &&
+                (lookup.contains("pdf") || lookup.contains("sken") || lookup.contains("slik") || lookup.contains("datotek"))
+        }
 
 private fun documentationFieldLookup(
     field: WorkOrderDocumentationField?,
