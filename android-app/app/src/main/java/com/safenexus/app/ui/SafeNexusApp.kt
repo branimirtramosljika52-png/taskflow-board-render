@@ -30660,7 +30660,14 @@ private fun DocumentationSprTemplateSectionPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable(enabled = enabled) { expanded = !expanded },
+                    .clickable(enabled = enabled) {
+                        if (isAttachmentSection) {
+                            expanded = true
+                            onAddAttachment()
+                        } else {
+                            expanded = !expanded
+                        }
+                    },
                 horizontalArrangement = Arrangement.spacedBy(9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -30699,8 +30706,8 @@ private fun DocumentationSprTemplateSectionPanel(
                     )
                 }
                 Icon(
-                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                    contentDescription = if (expanded) "Sakrij poglavlje" else "Prikaži poglavlje",
+                    if (isAttachmentSection) Icons.Rounded.Add else if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (isAttachmentSection) "Dodaj prilog" else if (expanded) "Sakrij poglavlje" else "Prikaži poglavlje",
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -33245,7 +33252,12 @@ private fun isDocumentationSatisfactoryTemplateField(
     block: WorkOrderDocumentationTemplateBlock,
 ): Boolean {
     val lookup = documentationFieldLookup(field, block)
-    if (lookup.contains("nedostat") || lookup.contains("nepravilnost")) {
+    if (lookup.contains("nedostat") ||
+        lookup.contains("nepravilnost") ||
+        lookup.contains("defect") ||
+        lookup.contains("deficien") ||
+        lookup.contains("omission")
+    ) {
         return false
     }
     return lookup.contains("zadovoljava") ||
@@ -33259,7 +33271,11 @@ private fun isDocumentationDefectsTemplateField(
     block: WorkOrderDocumentationTemplateBlock,
 ): Boolean =
     documentationFieldLookup(field, block).let { lookup ->
-        lookup.contains("nedostat") || lookup.contains("nepravilnost")
+        lookup.contains("nedostat") ||
+            lookup.contains("nepravilnost") ||
+            lookup.contains("defect") ||
+            lookup.contains("deficien") ||
+            lookup.contains("omission")
     }
 
 private fun isDocumentationRecommendationsTemplateField(
