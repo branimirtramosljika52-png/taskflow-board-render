@@ -23523,7 +23523,8 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze(
   })),
 );
 
-function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0) {
+function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0, scopedSnapshot = {}) {
+  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
   const serviceText = normalizeMobileSprLookupText([
     service?.serviceCode,
     service?.code,
@@ -23531,6 +23532,12 @@ function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex
     service?.name,
     service?.serviceName,
     service?.title,
+    catalogItem?.serviceCode,
+    catalogItem?.code,
+    catalogItem?.shortLabel,
+    catalogItem?.name,
+    catalogItem?.serviceName,
+    catalogItem?.title,
     `USLUGA-${serviceIndex + 1}`,
   ].filter(Boolean).join(" "));
   if (!serviceText) {
@@ -23607,8 +23614,8 @@ function buildMobileNativeDocumentationBlock(id, label, type = "text", {
 }
 
 function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, workOrder = {}, scopedSnapshot = {}) {
-  void scopedSnapshot;
-  const preset = getMobileNativeDocumentationPresetForService(service, serviceIndex);
+  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
+  const preset = getMobileNativeDocumentationPresetForService(service, serviceIndex, scopedSnapshot);
   if (!preset) {
     return null;
   }
@@ -23626,7 +23633,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     ...service,
     serviceCode: preset.serviceCode,
     code: preset.serviceCode,
-    name: normalizeInputValue(service?.name || service?.serviceName || service?.title || preset.serviceName) || preset.serviceName,
+    name: normalizeInputValue(
+      service?.name
+      || service?.serviceName
+      || service?.title
+      || catalogItem?.name
+      || catalogItem?.serviceName
+      || catalogItem?.title
+      || preset.serviceName,
+    ) || preset.serviceName,
   };
   const documentNumber = buildMobileDocumentTemplateDocumentNumber(serviceWithCode, workOrder, preset, serviceIndex);
   const inspectionTypeOptions = [
@@ -26058,11 +26073,15 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const seenPairs = new Set();
 
   const appendEntriesForService = (service, serviceIndex, generationWorkOrder = workOrder, options = {}) => {
-    getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
-      const template = templateById.get(String(templateId));
-      if (!isActiveMobileDocumentTemplate(template)) {
-        return;
-      }
+    const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
+      .map((templateId) => templateById.get(String(templateId)))
+      .filter(isActiveMobileDocumentTemplate);
+    const nativeTemplate = linkedTemplates.length === 0
+      ? buildMobileNativeDocumentationTemplate(service, serviceIndex, generationWorkOrder, scopedSnapshot)
+      : null;
+    const templatesForService = nativeTemplate ? [nativeTemplate] : linkedTemplates;
+
+    templatesForService.forEach((template) => {
       const objectId = getMobileWorkOrderLocationObjectId(generationWorkOrder);
       const objectSequence = Number.isFinite(Number(options.objectSequence)) ? Number(options.objectSequence) : 1;
       const pairKey = `${String(workOrder.id)}::${serviceIndex}::${String(template.id)}::${objectId || "no-object"}::${objectSequence}`;
