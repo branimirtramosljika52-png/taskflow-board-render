@@ -30859,6 +30859,7 @@ private fun DocumentationSprTemplateSectionPanel(
                                     standardValues = standardControls.standardValues,
                                     standardControls = standardControls,
                                     enabled = enabled,
+                                    onPickAttachments = onPickAttachments,
                                     onChange = { field, value -> onFieldChange(entry.template, field, value) },
                                 )
                             }
@@ -30910,6 +30911,40 @@ private fun DocumentationSprGridlineInlineCard(
                 shape = RoundedCornerShape(13.dp),
             ) {
                 Text("Otvori", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSprInlineAttachmentUploadBlock(
+    block: WorkOrderDocumentationTemplateBlock,
+    enabled: Boolean,
+    onPickFiles: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DocumentationSprAttachmentPlusButton(
+                enabled = enabled,
+                compact = true,
+                onPickFiles = onPickFiles,
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(block.label.ifBlank { "Dodaj dokumente" }, fontWeight = FontWeight.Black)
+                Text(
+                    "Kratki ili dugi pritisak otvara kameru, skener, slike, PDF ili datoteku.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
             }
         }
     }
@@ -33316,11 +33351,30 @@ private fun isDocumentationAttachmentUploadBlock(block: WorkOrderDocumentationTe
         block.type.equals("image_upload", ignoreCase = true) ||
         block.type.equals("attachment_upload", ignoreCase = true) ||
         normalizeTemplateSectionLookup(
-            listOf(block.id, block.key, block.tokenKey, block.label, block.typeLabel, block.helpText)
-                .joinToString(" "),
+            listOf(
+                block.id,
+                block.key,
+                block.tokenKey,
+                block.label,
+                block.type,
+                block.typeLabel,
+                block.group,
+                block.helpText,
+                block.summary,
+            ).joinToString(" "),
         ).let { lookup ->
-            (lookup.contains("dodaj dokument") || lookup.contains("prilog") || lookup.contains("privit")) &&
-                (lookup.contains("pdf") || lookup.contains("sken") || lookup.contains("slik") || lookup.contains("datotek"))
+            val hasAttachmentIntent = lookup.contains("dodaj dokument") ||
+                lookup.contains("dodaj prilog") ||
+                lookup.contains("attachment") ||
+                lookup.contains("prilog") ||
+                lookup.contains("privit")
+            val hasUploadMedia = lookup.contains("pdf") ||
+                lookup.contains("sken") ||
+                lookup.contains("kamer") ||
+                lookup.contains("slik") ||
+                lookup.contains("datotek") ||
+                lookup.contains("dokument")
+            hasAttachmentIntent && hasUploadMedia
         }
 
 private fun documentationFieldLookup(
@@ -33594,8 +33648,17 @@ private fun TemplateBlockDetailRow(
     standardValues: DocumentationStandardValues,
     standardControls: DocumentationTemplateStandardControls? = null,
     enabled: Boolean,
+    onPickAttachments: (() -> Unit)? = null,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
 ) {
+    if (isDocumentationAttachmentUploadBlock(block) && onPickAttachments != null) {
+        DocumentationSprInlineAttachmentUploadBlock(
+            block = block,
+            enabled = enabled,
+            onPickFiles = onPickAttachments,
+        )
+        return
+    }
     val signatureSummary = remember(block, standardValues) {
         documentationSignatureBlockSelectionSummary(block, standardValues)
     }
