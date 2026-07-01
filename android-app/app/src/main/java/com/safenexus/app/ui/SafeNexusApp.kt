@@ -30724,6 +30724,7 @@ private fun DocumentationSprTemplateSectionPanel(
     val visibleBlocks = remember(entry.section, isResultsTextSection, isAssessmentSection) {
         entry.section.blocks.filterNot { block ->
             isDocumentationAttachmentUploadBlock(block) ||
+                block.type.equals("equipment_list", ignoreCase = true) ||
                 (block.type.equals("measurement_table", ignoreCase = true) && (isResultsTextSection || isAssessmentSection))
         }
     }
@@ -30837,7 +30838,7 @@ private fun DocumentationSprTemplateSectionPanel(
                             return@forEach
                         }
                         when (block.type.lowercase(Locale.getDefault())) {
-                            "equipment_list" -> TemplateEquipmentControls(standardControls)
+                            "equipment_list" -> Unit
                             "legal_list" -> TemplateLegalControls(standardControls)
                             "measurement_table" -> {
                                 val blockTables = getMeasurementTablesForBlock(entry.template, block)
@@ -31581,7 +31582,7 @@ private fun TemplateBlockSectionCard(
 ) {
     var expanded by remember(template.id, section.id) { mutableStateOf(isBasicTemplateSection(section)) }
     val includeBasics = isBasicTemplateSection(section)
-    val includeEquipment = isEquipmentTemplateSection(section)
+    val includeEquipment = false
     val includeLegal = isLegalTemplateSection(section)
     val includeMeasurements = isMeasurementTemplateSection(section)
     val handledTypes = setOf("equipment_list", "legal_list", "measurement_table")
