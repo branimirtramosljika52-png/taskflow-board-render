@@ -869,6 +869,7 @@ class SafeNexusApi(
                 .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())
                 .put("fieldSheets", draft.fieldSheets.toMeasurementSheetJsonObject())
                 .put("templateFieldSheets", draft.templateFieldSheets.toNestedMeasurementSheetJsonObject())
+                .put("includedMeasurementTableKeys", JSONArray(draft.includedMeasurementTableKeys.map { it.trim() }.filter { it.isNotBlank() }))
                 .put("attachments", draft.attachments.toDocumentationAiFilesJsonArray())
                 .put("additionalRecords", additionalRecords)
                 .put("includeHandoverProtocol", draft.includeHandoverProtocol)
@@ -2828,6 +2829,7 @@ private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentati
         templateFieldValues = optJSONObject("templateFieldValues").toNestedStringMap(),
         fieldSheets = optJSONObject("fieldSheets").toWorkOrderMeasurementSheetMap(),
         templateFieldSheets = optJSONObject("templateFieldSheets").toNestedWorkOrderMeasurementSheetMap(),
+        includedMeasurementTableKeys = optJSONArray("includedMeasurementTableKeys").toStringList(),
         attachments = optJSONArray("attachments").toWorkOrderDocumentationAiFiles(),
     )
 }

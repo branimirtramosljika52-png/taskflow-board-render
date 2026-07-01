@@ -113,7 +113,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.255.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.256.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -19827,6 +19827,12 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
       })
       .filter(Boolean))
     : {};
+  const hasIncludedMeasurementTableKeys = Object.prototype.hasOwnProperty.call(source, "includedMeasurementTableKeys");
+  const includedMeasurementTableKeys = hasIncludedMeasurementTableKeys && Array.isArray(source.includedMeasurementTableKeys)
+    ? source.includedMeasurementTableKeys
+      .map((value) => normalizeInputValue(value))
+      .filter(Boolean)
+    : null;
   const attachments = normalizeMobileDocumentationAttachments(source.attachments || source.documentAttachments || []);
   return {
     objectId: normalizeInputValue(source.objectId || source.locationObjectId || source.selectedObjectId),
@@ -19898,6 +19904,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     templateFieldValues,
     fieldSheets,
     templateFieldSheets,
+    includedMeasurementTableKeys,
     attachments,
   };
 }
@@ -24905,6 +24912,53 @@ function getMobileDocumentationMeasurementSheetForTable(table = {}, index = 0, e
   };
 }
 
+function normalizeMobileMeasurementUsageKey(value = "") {
+  return normalizeInputValue(value).toLowerCase();
+}
+
+function getMobileMeasurementTableCandidateKeys(template = {}, table = {}, index = 0) {
+  const baseKeys = [
+    table.enabledFieldId,
+    table.key,
+    table.id,
+    table.tokenKey,
+    table.fieldKey,
+    table.label,
+    index === 0 ? "gridline-results" : "",
+    index === 0 ? "GRIDLINE_RESULTS" : "",
+  ].map(normalizeInputValue).filter(Boolean);
+  const templateKeys = [
+    template?.id,
+    template?.key,
+    template?.serviceCode,
+    template?.documentType,
+    template?.title,
+  ].map(normalizeInputValue).filter(Boolean);
+  const keys = [];
+  baseKeys.forEach((key) => {
+    keys.push(key);
+    keys.push(`use-${key}`);
+  });
+  templateKeys.forEach((templateKey) => {
+    baseKeys.forEach((baseKey) => {
+      keys.push(`${templateKey}::${baseKey}`);
+      keys.push(`${templateKey}::use-${baseKey}`);
+    });
+  });
+  return [...new Set(keys.map(normalizeMobileMeasurementUsageKey).filter(Boolean))];
+}
+
+function getMobileMeasurementTableExplicitEnabled(common = {}, template = {}, table = {}, index = 0) {
+  if (!Array.isArray(common.includedMeasurementTableKeys)) {
+    return null;
+  }
+  const included = new Set(common.includedMeasurementTableKeys.map(normalizeMobileMeasurementUsageKey).filter(Boolean));
+  if (included.size === 0) {
+    return false;
+  }
+  return getMobileMeasurementTableCandidateKeys(template, table, index).some((key) => included.has(key));
+}
+
 function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "SPR") {
   const baseTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
     ? template.measurementTables
@@ -24922,7 +24976,7 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
     return {
       ...table,
       pageOrientation,
-      enabled: getMobileDocumentationTemplateBooleanValue(
+      enabled: getMobileMeasurementTableExplicitEnabled(common, template, table, index) ?? getMobileDocumentationTemplateBooleanValue(
         common,
         template,
         [table.enabledFieldId, `use-${table.key}`, `use-${table.id}`],
@@ -25010,12 +25064,43 @@ function buildMobileDocumentationChecklists(template = {}, reportDefaults = {}, 
   });
 }
 
+function getMobileMeasurementAssessmentCandidateKeys(entry = {}, index = 0) {
+  const baseKeys = [
+    entry.enabledFieldId,
+    entry.key,
+    entry.id,
+    entry.tokenKey,
+    entry.label,
+    `assessment-${entry.key || entry.id || index + 1}`,
+  ].map(normalizeInputValue).filter(Boolean);
+  const strippedKeys = baseKeys
+    .map((key) => key.replace(/^use-/i, ""))
+    .filter(Boolean);
+  return [...new Set([...baseKeys, ...strippedKeys, ...strippedKeys.map((key) => `use-${key}`)]
+    .map(normalizeMobileMeasurementUsageKey)
+    .filter(Boolean))];
+}
+
+function getMobileMeasurementAssessmentExplicitEnabled(common = {}, entry = {}, index = 0) {
+  if (!Array.isArray(common.includedMeasurementTableKeys)) {
+    return null;
+  }
+  const included = new Set(common.includedMeasurementTableKeys.map(normalizeMobileMeasurementUsageKey).filter(Boolean));
+  if (included.size === 0) {
+    return false;
+  }
+  return getMobileMeasurementAssessmentCandidateKeys(entry, index).some((key) => included.has(key));
+}
+
 function buildMobileDocumentationMeasurementAssessments(template = {}, reportDefaults = {}, common = {}) {
   const assessments = Array.isArray(template.measurementAssessments) && template.measurementAssessments.length > 0
     ? template.measurementAssessments
     : (Array.isArray(reportDefaults.measurementAssessments) ? reportDefaults.measurementAssessments : []);
   return assessments
-    .filter((entry) => getMobileDocumentationTemplateBooleanValue(common, template, [entry.enabledFieldId], true))
+    .filter((entry, index) => (
+      getMobileMeasurementAssessmentExplicitEnabled(common, entry, index) ??
+      getMobileDocumentationTemplateBooleanValue(common, template, [entry.enabledFieldId], true)
+    ))
     .map((entry, index) => ({
       ...entry,
       value: getMobileDocumentationTemplateFieldValues(common, template, [

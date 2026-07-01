@@ -24665,6 +24665,26 @@ private fun WorkOrderDocumentationWizardDialog(
     ) {
         mutableStateOf(defaultMeasurementSheetValues(allMeasurementTemplates, defaults))
     }
+    var includedMeasurementTableKeys by remember(
+        workOrder.id,
+        selectedObjectId,
+        measurementDefaultsKey,
+        defaults.includedMeasurementTableKeys,
+    ) {
+        val available = defaultIncludedMeasurementTableKeys(allMeasurementTemplates)
+        val restored = allMeasurementTemplates
+            .flatMap { template ->
+                template.measurementTables.mapNotNull { table ->
+                    val payloadKeys = measurementTableUsagePayloadKeys(template, table).map { it.lowercase(Locale.getDefault()) }.toSet()
+                    val wasIncluded = defaults.includedMeasurementTableKeys
+                        .map { it.trim().lowercase(Locale.getDefault()) }
+                        .any { it in payloadKeys }
+                    if (wasIncluded) measurementTablePrimaryUsageKey(template, table) else null
+                }
+            }
+            .toSet()
+        mutableStateOf(restored.ifEmpty { available })
+    }
     val manualPhysicalFactorsForSubmit = remember(manualPhysicalFactors, physicalFactorsMeasurementTemplates, measurementSheets) {
         buildManualPhysicalFactorsForSubmit(
             value = manualPhysicalFactors,
@@ -24789,6 +24809,7 @@ private fun WorkOrderDocumentationWizardDialog(
     var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId, defaults.attachments.size) {
         mutableStateOf(if (defaults.attachments.isEmpty()) "" else "${defaults.attachments.size} prilog(a) iz prethodnog zapisnika.")
     }
+    var documentationAttachmentSourceDialogOpen by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     fun addDocumentationAttachments(
         uris: List<Uri>,
         mode: WorkOrderDocumentInputMode,
@@ -25212,14 +25233,51 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
+    if (documentationAttachmentSourceDialogOpen) {
+        DocumentationAttachmentSourceDialog(
+            enabled = !formLoading &&
+                !documentationAttachmentLoading &&
+                documentationAttachmentFiles.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES,
+            onDismiss = { documentationAttachmentSourceDialogOpen = false },
+            onCamera = {
+                documentationAttachmentSourceDialogOpen = false
+                startDocumentationAttachmentCamera()
+            },
+            onScan = {
+                documentationAttachmentSourceDialogOpen = false
+                startDocumentationAttachmentScan()
+            },
+            onPhotos = {
+                documentationAttachmentSourceDialogOpen = false
+                documentationAttachmentPhotoPicker.launch("image/*")
+            },
+            onPdf = {
+                documentationAttachmentSourceDialogOpen = false
+                documentationAttachmentPdfPicker.launch(arrayOf("application/pdf"))
+            },
+            onFile = {
+                documentationAttachmentSourceDialogOpen = false
+                documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes)
+            },
+        )
+    }
+
     if (measurementPreviewOpen) {
         DocumentationMeasurementFullscreenDialog(
             workOrder = workOrder,
             selectedLabel = selectedFlowTab?.label ?: selectedFlowItem?.serviceCode ?: "Mjerenja",
             measurementTemplates = measurementTemplates,
             measurementSheets = measurementSheets,
+            includedMeasurementTableKeys = includedMeasurementTableKeys,
             enabled = !formLoading,
             onSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
+            onTableIncludedChange = { key, included ->
+                includedMeasurementTableKeys = if (included) {
+                    includedMeasurementTableKeys + key
+                } else {
+                    includedMeasurementTableKeys - key
+                }
+            },
             onDismiss = { measurementPreviewOpen = false },
             onDone = { measurementPreviewOpen = false },
         )
@@ -25302,8 +25360,16 @@ private fun WorkOrderDocumentationWizardDialog(
                 DocumentationMeasurementPreviewContent(
                     measurementTemplates = measurementTemplates,
                     measurementSheets = measurementSheets,
+                    includedMeasurementTableKeys = includedMeasurementTableKeys,
                     enabled = !formLoading,
                     onSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
+                    onTableIncludedChange = { key, included ->
+                        includedMeasurementTableKeys = if (included) {
+                            includedMeasurementTableKeys + key
+                        } else {
+                            includedMeasurementTableKeys - key
+                        }
+                    },
                 )
             } else {
                 Column(
@@ -25335,7 +25401,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = if (isDocumentationLandscape) 720.dp else if (serviceFlowItems.isNotEmpty()) 540.dp else 660.dp)
+                        .heightIn(max = if (isDocumentationLandscape) 720.dp else if (serviceFlowItems.isNotEmpty()) 620.dp else 660.dp)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
@@ -25732,11 +25798,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         attachmentMessage = documentationAttachmentMessage,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
-                        onCaptureAttachmentPhoto = startDocumentationAttachmentCamera,
-                        onScanAttachment = startDocumentationAttachmentScan,
-                        onPickAttachmentPhotos = { documentationAttachmentPhotoPicker.launch("image/*") },
-                        onPickAttachmentPdf = { documentationAttachmentPdfPicker.launch(arrayOf("application/pdf")) },
-                        onPickAttachmentFile = { documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes) },
+                        onAddAttachment = { documentationAttachmentSourceDialogOpen = true },
                         onOpenAttachment = { file ->
                             runCatching {
                                 val document = file.toDownloadedDocument()
@@ -25927,6 +25989,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     },
                 )
                 }
+                Spacer(Modifier.height(if (isDocumentationLandscape) 18.dp else 96.dp))
                 }
             }
             }
@@ -25951,6 +26014,10 @@ private fun WorkOrderDocumentationWizardDialog(
                         requiredWarning = ""
                         val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
                         val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
+                        val includedMeasurementPayload = buildIncludedMeasurementTablePayloadKeys(
+                            allMeasurementTemplates,
+                            includedMeasurementTableKeys,
+                        )
                         val serviceValidityPayload = buildServiceValidityPayload(serviceFlowItems, serviceValidityMonths, validityMonths)
                         val primaryValidityMonths = serviceValidityPayload.values.firstOrNull { it.isNotBlank() }
                             ?: validityMonths.trim()
@@ -26005,6 +26072,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             templateFieldValues = templatePayload.second,
                             fieldSheets = sheetPayload.first,
                             templateFieldSheets = sheetPayload.second,
+                            includedMeasurementTableKeys = includedMeasurementPayload,
                             attachments = documentationAttachmentFiles,
                             additionalRecords = additionalRecords.map { record ->
                                 WorkOrderDocumentationAdditionalRecord(
@@ -26262,6 +26330,57 @@ private fun measurementSheetStateKey(
     template: WorkOrderDocumentationTemplate,
     table: WorkOrderMeasurementTable,
 ): String = "${template.id}::${table.key.ifBlank { table.id.ifBlank { table.tokenKey } }}"
+
+private fun measurementTablePrimaryUsageKey(
+    template: WorkOrderDocumentationTemplate,
+    table: WorkOrderMeasurementTable,
+): String = "${template.id}::${table.key.ifBlank { table.id.ifBlank { table.tokenKey.ifBlank { table.label } } }}"
+
+private fun measurementTableUsagePayloadKeys(
+    template: WorkOrderDocumentationTemplate,
+    table: WorkOrderMeasurementTable,
+): List<String> {
+    val baseKeys = listOf(table.key, table.id, table.tokenKey, table.label)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+    val templateKeys = listOf(template.id, template.serviceCode, template.documentType, template.title)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+    return buildList {
+        add(measurementTablePrimaryUsageKey(template, table))
+        templateKeys.forEach { templateKey ->
+            baseKeys.forEach { baseKey -> add("$templateKey::$baseKey") }
+        }
+        baseKeys.forEach { baseKey ->
+            add(baseKey)
+            add("use-$baseKey")
+        }
+    }.distinctBy { it.lowercase(Locale.getDefault()) }
+}
+
+private fun defaultIncludedMeasurementTableKeys(templates: List<WorkOrderDocumentationTemplate>): Set<String> =
+    templates
+        .flatMap { template -> template.measurementTables.map { table -> measurementTablePrimaryUsageKey(template, table) } }
+        .filter { it.isNotBlank() }
+        .toSet()
+
+private fun buildIncludedMeasurementTablePayloadKeys(
+    templates: List<WorkOrderDocumentationTemplate>,
+    includedPrimaryKeys: Set<String>,
+): List<String> =
+    templates
+        .flatMap { template ->
+            template.measurementTables.flatMap { table ->
+                if (measurementTablePrimaryUsageKey(template, table) in includedPrimaryKeys) {
+                    measurementTableUsagePayloadKeys(template, table)
+                } else {
+                    emptyList()
+                }
+            }
+        }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
 
 private fun measurementTableCandidateKeys(table: WorkOrderMeasurementTable): List<String> =
     listOf(table.key, table.id, table.tokenKey, table.label)
@@ -28410,16 +28529,10 @@ private fun DocumentationNumberPreview(
     documentNumber: String,
     serviceName: String,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
-    ) {
-        Row(
-            modifier = Modifier.padding(13.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    DocumentationMobileFieldShell(
+        label = "Broj zapisnika",
+        minHeight = 86.dp,
+        trailing = {
             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)) {
                 Text(
                     "#",
@@ -28428,25 +28541,23 @@ private fun DocumentationNumberPreview(
                     fontWeight = FontWeight.Black,
                 )
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Broj zapisnika", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
-                Text(
-                    documentNumber.ifBlank { "Automatski kod izrade" },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (serviceName.isNotBlank()) {
-                    Text(
-                        serviceName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+        },
+    ) {
+        Text(
+            documentNumber.ifBlank { "Automatski kod izrade" },
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (serviceName.isNotBlank()) {
+            Text(
+                serviceName,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -28800,8 +28911,10 @@ private fun DocumentationMeasurementFullscreenDialog(
     selectedLabel: String,
     measurementTemplates: List<WorkOrderDocumentationTemplate>,
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+    includedMeasurementTableKeys: Set<String>,
     enabled: Boolean,
     onSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
+    onTableIncludedChange: (String, Boolean) -> Unit,
     onDismiss: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -28864,9 +28977,11 @@ private fun DocumentationMeasurementFullscreenDialog(
                     DocumentationMeasurementPreviewContent(
                         measurementTemplates = measurementTemplates,
                         measurementSheets = measurementSheets,
+                        includedMeasurementTableKeys = includedMeasurementTableKeys,
                         enabled = enabled,
                         fullscreen = true,
                         onSheetChange = onSheetChange,
+                        onTableIncludedChange = onTableIncludedChange,
                     )
                 }
                 Column(
@@ -28948,18 +29063,12 @@ private fun DocumentationMeasurementLaunchCard(
 private fun DocumentationMeasurementPreviewContent(
     measurementTemplates: List<WorkOrderDocumentationTemplate>,
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+    includedMeasurementTableKeys: Set<String>,
     enabled: Boolean,
     fullscreen: Boolean = false,
     onSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
+    onTableIncludedChange: (String, Boolean) -> Unit,
 ) {
-    val context = LocalContext.current
-    DisposableEffect(Unit) {
-        val activity = context.findFragmentActivity()
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        onDispose {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-    }
     val tables = remember(measurementTemplates) {
         measurementTemplates.flatMap { template ->
             template.measurementTables.map { table -> template to table }
@@ -28977,14 +29086,17 @@ private fun DocumentationMeasurementPreviewContent(
             key = { (template, table) -> "${template.id}:${table.key}:${table.id}" },
         ) { (template, table) ->
             val stateKey = measurementSheetStateKey(template, table)
+            val usageKey = measurementTablePrimaryUsageKey(template, table)
             MeasurementTableEditor(
                 template = template,
                 table = table,
                 sheet = measurementSheets[stateKey] ?: table.sheet,
+                tableIncluded = usageKey in includedMeasurementTableKeys,
                 enabled = enabled,
                 expanded = true,
                 tableOnly = true,
                 onSheetChange = { nextSheet -> onSheetChange(stateKey, nextSheet) },
+                onTableIncludedChange = { included -> onTableIncludedChange(usageKey, included) },
             )
         }
     }
@@ -29234,12 +29346,14 @@ private fun MeasurementTableEditor(
     template: WorkOrderDocumentationTemplate,
     table: WorkOrderMeasurementTable,
     sheet: WorkOrderMeasurementSheet,
+    tableIncluded: Boolean = true,
     enabled: Boolean,
     spaceOptions: List<Pair<String, String>> = emptyList(),
     requireSpaceSelection: Boolean = false,
     expanded: Boolean = false,
     tableOnly: Boolean = false,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
+    onTableIncludedChange: (Boolean) -> Unit = {},
 ) {
     val historyLimit = 24
     val columnWindowSize = if (tableOnly || expanded) sheet.columns.size.coerceAtLeast(1) else 10
@@ -29431,6 +29545,46 @@ private fun MeasurementTableEditor(
                             table.helpText,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                        )
+                    }
+                }
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = enabled) { onTableIncludedChange(!tableIncluded) },
+                shape = RoundedCornerShape(12.dp),
+                color = if (tableIncluded) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
+                },
+                border = BorderStroke(
+                    1.dp,
+                    if (tableIncluded) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                    } else {
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                    },
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = tableIncluded,
+                        onCheckedChange = { checked -> onTableIncludedChange(checked) },
+                        enabled = enabled,
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text("Koristi se u zapisniku", fontWeight = FontWeight.Black)
+                        Text(
+                            if (tableIncluded) "Tablica ide u PDF zapisnik." else "Tablica ostaje u predlošku, ali se ne prikazuje u PDF-u.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         )
                     }
                 }
@@ -30273,11 +30427,7 @@ private fun DocumentationSprMobileWorkspace(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onCaptureAttachmentPhoto: () -> Unit,
-    onScanAttachment: () -> Unit,
-    onPickAttachmentPhotos: () -> Unit,
-    onPickAttachmentPdf: () -> Unit,
-    onPickAttachmentFile: () -> Unit,
+    onAddAttachment: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
@@ -30286,7 +30436,10 @@ private fun DocumentationSprMobileWorkspace(
     val menuEntries = remember(templates) {
         templates.flatMap { template ->
             buildTemplateBlockSections(template.fieldBlocks)
-                .filter { section -> isBasicTemplateSection(section) || !isSharedDocumentationTemplateSection(section) }
+                .filter { section ->
+                    (isBasicTemplateSection(section) || !isSharedDocumentationTemplateSection(section)) &&
+                        !isDocumentationSignatureTemplateSection(section)
+                }
                 .map { section -> template to section }
         }.mapIndexed { index, (template, section) ->
             DocumentationSprMenuEntry(
@@ -30425,17 +30578,13 @@ private fun DocumentationSprMobileWorkspace(
                                 rowCount = rowCount,
                                 attachmentFiles = attachmentFiles,
                                 attachmentLoading = attachmentLoading,
-                                attachmentMessage = attachmentMessage,
-                                enabled = enabled,
-                                onOpenMeasurements = onOpenMeasurements,
-                                onCaptureAttachmentPhoto = onCaptureAttachmentPhoto,
-                                onScanAttachment = onScanAttachment,
-                                onPickAttachmentPhotos = onPickAttachmentPhotos,
-                                onPickAttachmentPdf = onPickAttachmentPdf,
-                                onPickAttachmentFile = onPickAttachmentFile,
-                                onOpenAttachment = onOpenAttachment,
-                                onRemoveAttachment = onRemoveAttachment,
-                                onFieldChange = onFieldChange,
+                        attachmentMessage = attachmentMessage,
+                        enabled = enabled,
+                        onOpenMeasurements = onOpenMeasurements,
+                        onAddAttachment = onAddAttachment,
+                        onOpenAttachment = onOpenAttachment,
+                        onRemoveAttachment = onRemoveAttachment,
+                        onFieldChange = onFieldChange,
                             )
                         }
                     }
@@ -30479,11 +30628,7 @@ private fun DocumentationSprTemplateSectionPanel(
     attachmentMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
-    onCaptureAttachmentPhoto: () -> Unit,
-    onScanAttachment: () -> Unit,
-    onPickAttachmentPhotos: () -> Unit,
-    onPickAttachmentPdf: () -> Unit,
-    onPickAttachmentFile: () -> Unit,
+    onAddAttachment: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
@@ -30581,11 +30726,7 @@ private fun DocumentationSprTemplateSectionPanel(
                             loading = attachmentLoading,
                             message = attachmentMessage,
                             enabled = enabled,
-                            onCapturePhoto = onCaptureAttachmentPhoto,
-                            onScan = onScanAttachment,
-                            onPickPhotos = onPickAttachmentPhotos,
-                            onPickPdf = onPickAttachmentPdf,
-                            onPickFile = onPickAttachmentFile,
+                            onAdd = onAddAttachment,
                             onOpen = onOpenAttachment,
                             onRemove = onRemoveAttachment,
                         )
@@ -30701,17 +30842,16 @@ private fun DocumentationSprAttachmentsCard(
     loading: Boolean,
     message: String,
     enabled: Boolean,
-    onCapturePhoto: () -> Unit,
-    onScan: () -> Unit,
-    onPickPhotos: () -> Unit,
-    onPickPdf: () -> Unit,
-    onPickFile: () -> Unit,
+    onAdd: () -> Unit,
     onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
 ) {
     val canAdd = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = canAdd) { onAdd() },
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
@@ -30745,18 +30885,18 @@ private fun DocumentationSprAttachmentsCard(
                 }
                 if (loading) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    OutlinedButton(
+                        onClick = onAdd,
+                        enabled = canAdd,
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Dodaj", fontWeight = FontWeight.Bold)
+                    }
                 }
-            }
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                DocumentationSprAttachmentActionButton(Icons.Rounded.CameraAlt, "Kamera", canAdd, onCapturePhoto)
-                DocumentationSprAttachmentActionButton(WorkOrderDocumentInputMode.Scan.icon, "Sken", canAdd, onScan)
-                DocumentationSprAttachmentActionButton(Icons.Rounded.Image, "Slike", canAdd, onPickPhotos)
-                DocumentationSprAttachmentActionButton(Icons.Rounded.PictureAsPdf, "PDF", canAdd, onPickPdf)
-                DocumentationSprAttachmentActionButton(Icons.Rounded.Folder, "Datoteka", canAdd, onPickFile)
             }
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -31213,6 +31353,42 @@ private fun DocumentationAiUploadSourceDialog(
                 DocumentationAiUploadChoice(Icons.Rounded.Image, "Slike", "Dodaj jednu ili više slika.", enabled, onPhotos)
                 DocumentationAiUploadChoice(Icons.Rounded.PictureAsPdf, "PDF", "Odaberi postojeći PDF zapisnik.", enabled, onPdf)
                 DocumentationAiUploadChoice(Icons.Rounded.Folder, "Datoteka", "PDF, tekst, CSV, JSON ili druga datoteka.", enabled, onFile)
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Zatvori")
+            }
+        },
+    )
+}
+
+@Composable
+private fun DocumentationAttachmentSourceDialog(
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onCamera: () -> Unit,
+    onScan: () -> Unit,
+    onPhotos: () -> Unit,
+    onPdf: () -> Unit,
+    onFile: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Dodaj prilog", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Odaberi izvor priloga koji se dodaje iza zapisnika.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                )
+                DocumentationAiUploadChoice(Icons.Rounded.CameraAlt, "Kamera", "Fotografiraj prilog.", enabled, onCamera)
+                DocumentationAiUploadChoice(WorkOrderDocumentInputMode.Scan.icon, "Sken", "Skeniraj više stranica u PDF.", enabled, onScan)
+                DocumentationAiUploadChoice(Icons.Rounded.Image, "Slike", "Odaberi jednu ili više slika.", enabled, onPhotos)
+                DocumentationAiUploadChoice(Icons.Rounded.PictureAsPdf, "PDF", "Odaberi postojeći PDF.", enabled, onPdf)
+                DocumentationAiUploadChoice(Icons.Rounded.Folder, "Datoteka", "Odaberi datoteku iz uređaja.", enabled, onFile)
             }
         },
         confirmButton = {},
@@ -32814,39 +32990,24 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
 
 @Composable
 private fun DocumentationReadonlyFactGrid(items: List<Pair<String, String>>) {
-    FlowRow(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items
             .filter { it.second.isNotBlank() }
             .forEach { (label, value) ->
-                Surface(
-                    modifier = Modifier.widthIn(min = 128.dp, max = 260.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                DocumentationMobileFieldShell(
+                    label = label,
+                    minHeight = 70.dp,
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            value,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
     }
@@ -32932,6 +33093,17 @@ private fun isSharedDocumentationTemplateSection(section: TemplateBlockSection):
         sectionLookup.contains("primijenjeni propisi") ||
         (sectionLookup.contains("osobe") && sectionLookup.contains("ovlast")) ||
         blockTypes.any { it in sharedBlockTypes }
+}
+
+private fun isDocumentationSignatureTemplateSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    if (lookup.contains("osobe") && lookup.contains("ovlast")) return true
+    return section.blocks.isNotEmpty() &&
+        section.blocks.all { block ->
+            isDocumentationSignatureFieldType(block.type) ||
+                block.signatureRole.trim().isNotBlank() ||
+                block.signatureArea.trim().isNotBlank()
+        }
 }
 
 private fun isEquipmentTemplateSection(section: TemplateBlockSection): Boolean {
@@ -33073,6 +33245,9 @@ private fun isDocumentationSatisfactoryTemplateField(
     block: WorkOrderDocumentationTemplateBlock,
 ): Boolean {
     val lookup = documentationFieldLookup(field, block)
+    if (lookup.contains("nedostat") || lookup.contains("nepravilnost")) {
+        return false
+    }
     return lookup.contains("zadovoljava") ||
         (lookup.contains("zakljuc") && lookup.contains("ocjen")) ||
         lookup.contains("ocjena rezultata") ||
@@ -33313,9 +33488,9 @@ private fun TemplateBlockDetailRow(
     }
     val shouldFlattenEditableField = editableField != null &&
         signatureSummary == null &&
+        !isDocumentationDefectsTemplateField(editableField, block) &&
         !isDocumentationSatisfactoryTemplateField(editableField, block) &&
-        !isDocumentationRecommendationsTemplateField(editableField, block) &&
-        !isDocumentationDefectsTemplateField(editableField, block)
+        !isDocumentationRecommendationsTemplateField(editableField, block)
     if (shouldFlattenEditableField && editableField != null) {
         TemplateFieldInput(
             field = editableField,
@@ -33363,6 +33538,14 @@ private fun TemplateBlockDetailRow(
                 )
             } else if (editableField != null) {
                 when {
+                    isDocumentationDefectsTemplateField(editableField, block) -> DocumentationPremiumLongTextInput(
+                        field = editableField,
+                        value = value,
+                        enabled = enabled,
+                        onChange = { onChange(editableField, it) },
+                        icon = Icons.Rounded.ErrorOutline,
+                        accent = Color(0xFFDC2626),
+                    )
                     isDocumentationSatisfactoryTemplateField(editableField, block) -> DocumentationSatisfactoryTemplateInput(
                         field = editableField,
                         value = value,
@@ -33376,14 +33559,6 @@ private fun TemplateBlockDetailRow(
                         onChange = { onChange(editableField, it) },
                         icon = Icons.Rounded.CheckCircle,
                         accent = Color(0xFF2563EB),
-                    )
-                    isDocumentationDefectsTemplateField(editableField, block) -> DocumentationPremiumLongTextInput(
-                        field = editableField,
-                        value = value,
-                        enabled = enabled,
-                        onChange = { onChange(editableField, it) },
-                        icon = Icons.Rounded.ErrorOutline,
-                        accent = Color(0xFFDC2626),
                     )
                     else -> TemplateFieldInput(
                         field = editableField,
