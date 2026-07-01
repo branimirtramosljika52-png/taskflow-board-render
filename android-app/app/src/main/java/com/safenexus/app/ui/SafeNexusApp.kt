@@ -86,6 +86,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -180,6 +181,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -5298,6 +5300,230 @@ private fun WorkOrderTextField(
         enabled = enabled,
         shape = RoundedCornerShape(16.dp),
     )
+}
+
+@Composable
+private fun DocumentationMobileFieldShell(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    minHeight: Dp = 76.dp,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(17.dp)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .clip(shape)
+                        .clickable(enabled = enabled, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            ),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.32f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                content()
+            }
+            if (trailing != null) {
+                trailing()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationMobileTextField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else 6,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+) {
+    val valueStyle = if (singleLine) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium
+    DocumentationMobileFieldShell(
+        label = label,
+        modifier = modifier,
+        enabled = enabled,
+        minHeight = if (singleLine) 76.dp else 118.dp,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = if (singleLine) 26.dp else 78.dp),
+            enabled = enabled,
+            singleLine = singleLine,
+            minLines = minLines,
+            maxLines = maxLines,
+            keyboardOptions = keyboardOptions,
+            textStyle = valueStyle.copy(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (singleLine) FontWeight.SemiBold else FontWeight.Normal,
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text(
+                            "Upiši vrijednost",
+                            style = valueStyle,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.36f),
+                            maxLines = if (singleLine) 1 else maxLines,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun DocumentationMobileDatePickerField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var openPicker by remember { mutableStateOf(false) }
+    DocumentationMobileFieldShell(
+        label = label,
+        modifier = modifier,
+        enabled = enabled,
+        onClick = { openPicker = true },
+        trailing = {
+            Icon(
+                Icons.Rounded.CalendarMonth,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+    ) {
+        Text(
+            formatDatePickerLabel(value).ifBlank { "Odaberi datum" },
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    if (openPicker) {
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = isoDateToMillis(value))
+        DatePickerDialog(
+            onDismissRequest = { openPicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onChange(millisToIsoDate(pickerState.selectedDateMillis))
+                        openPicker = false
+                    },
+                ) {
+                    Text("Spremi")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { openPicker = false }) {
+                    Text("Odustani")
+                }
+            },
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
+}
+
+@Composable
+private fun DocumentationMobileSelectField(
+    label: String,
+    value: String,
+    valueLabel: String,
+    options: List<Pair<String, String>>,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier.fillMaxWidth()) {
+        DocumentationMobileFieldShell(
+            label = label,
+            enabled = enabled && options.isNotEmpty(),
+            onClick = { expanded = true },
+            trailing = {
+                Icon(
+                    Icons.Rounded.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            },
+        ) {
+            Text(
+                valueLabel.ifBlank { "Odaberi" },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Black,
+                color = if (value.isBlank()) {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f)
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.heightIn(max = 360.dp),
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            option.second,
+                            fontWeight = if (option.first == value) FontWeight.Black else FontWeight.Normal,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(option.first)
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -32505,12 +32731,12 @@ private fun DocumentationCoreBasicsContent(
     if (showDocumentNumber) {
         DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
     }
-    WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
-    WorkOrderDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
-    WorkOrderTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
+    DocumentationMobileDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
+    DocumentationMobileDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
+    DocumentationMobileTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
 
     Text("Mjerna oprema", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-    WorkOrderSelectField(
+    DocumentationMobileSelectField(
         label = "Grupa mjerne opreme",
         value = measurementEquipmentGroup,
         valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
@@ -32521,22 +32747,22 @@ private fun DocumentationCoreBasicsContent(
     if (environmentVisibility.any) {
         Text("Vanjski utjecaji", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
         if (environmentVisibility.outsideTemperature) {
-            WorkOrderTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
+            DocumentationMobileTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
         }
         if (environmentVisibility.relativeHumidity) {
-            WorkOrderTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
+            DocumentationMobileTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
         }
         if (environmentVisibility.airflowSpeed) {
-            WorkOrderTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
+            DocumentationMobileTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
         }
         if (environmentVisibility.weather) {
-            WorkOrderTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
+            DocumentationMobileTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
         }
         if (environmentVisibility.groundCondition) {
-            WorkOrderTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
+            DocumentationMobileTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
         }
         if (environmentVisibility.groundResistance) {
-            WorkOrderTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
+            DocumentationMobileTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
         }
     }
 }
@@ -32556,19 +32782,19 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
         documentNumber = controls.documentNumber,
         serviceName = controls.serviceName,
     )
-    WorkOrderDatePickerField(
+    DocumentationMobileDatePickerField(
         "Datum ispitivanja",
         controls.inspectionDate,
         controls.onInspectionDateChange,
         controls.enabled,
     )
-    WorkOrderDatePickerField(
+    DocumentationMobileDatePickerField(
         "Datum izdavanja",
         controls.issuedDate,
         controls.onIssuedDateChange,
         controls.enabled,
     )
-    WorkOrderSelectField(
+    DocumentationMobileSelectField(
         label = "Vrsta ispitivanja",
         value = controls.inspectionType,
         valueLabel = controls.inspectionType.ifBlank {
@@ -32578,7 +32804,7 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
         enabled = controls.enabled,
         onSelect = controls.onInspectionTypeChange,
     )
-    WorkOrderTextField(
+    DocumentationMobileTextField(
         "Mjesto ispitivanja",
         controls.testingLocation,
         controls.onTestingLocationChange,
@@ -33085,6 +33311,21 @@ private fun TemplateBlockDetailRow(
     val signatureSummary = remember(block, standardValues) {
         documentationSignatureBlockSelectionSummary(block, standardValues)
     }
+    val shouldFlattenEditableField = editableField != null &&
+        signatureSummary == null &&
+        !isDocumentationSatisfactoryTemplateField(editableField, block) &&
+        !isDocumentationRecommendationsTemplateField(editableField, block) &&
+        !isDocumentationDefectsTemplateField(editableField, block)
+    if (shouldFlattenEditableField && editableField != null) {
+        TemplateFieldInput(
+            field = editableField,
+            value = value,
+            enabled = enabled,
+            onChange = { onChange(editableField, it) },
+            showHelpText = false,
+        )
+        return
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -33395,7 +33636,7 @@ private fun TemplateFieldInput(
     val label = if (field.required) "${field.label} *" else field.label
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         when (field.type.lowercase(Locale.getDefault())) {
-            "dropdown", "select" -> WorkOrderSelectField(
+            "dropdown", "select" -> DocumentationMobileSelectField(
                 label = label,
                 value = value,
                 valueLabel = field.options.firstOrNull { it.value == value }?.label ?: value.ifBlank { "Odaberi" },
@@ -33428,28 +33669,24 @@ private fun TemplateFieldInput(
                     }
                 }
             }
-            "longtext", "textarea", "richtext" -> OutlinedTextField(
+            "longtext", "textarea", "richtext" -> DocumentationMobileTextField(
+                label = label,
                 value = value,
-                onValueChange = onChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(label) },
+                onChange = onChange,
+                enabled = enabled,
+                singleLine = false,
                 minLines = 3,
                 maxLines = 7,
-                enabled = enabled,
-                shape = RoundedCornerShape(16.dp),
             )
-            "number" -> OutlinedTextField(
+            "number" -> DocumentationMobileTextField(
+                label = label,
                 value = value,
-                onValueChange = onChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(label) },
-                singleLine = true,
+                onChange = onChange,
                 enabled = enabled,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                shape = RoundedCornerShape(16.dp),
             )
-            "date" -> WorkOrderDatePickerField(label, value, onChange, enabled)
-            else -> WorkOrderTextField(label, value, onChange, enabled)
+            "date" -> DocumentationMobileDatePickerField(label, value, onChange, enabled)
+            else -> DocumentationMobileTextField(label, value, onChange, enabled)
         }
         if (showHelpText && field.helpText.isNotBlank()) {
             Text(
