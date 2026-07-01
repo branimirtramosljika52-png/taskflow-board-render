@@ -25778,6 +25778,27 @@ private fun WorkOrderDocumentationWizardDialog(
                     },
                     enabled = !formLoading,
                 )
+                val openDocumentationAttachment: (WorkOrderDocumentationAiFile) -> Unit = { file ->
+                    runCatching {
+                        val document = file.toDownloadedDocument()
+                        val uri = cacheDownloadedDocument(androidContext.applicationContext, document)
+                        openCachedDocument(androidContext.applicationContext, uri, document.fileType)
+                    }
+                        .onSuccess { opened ->
+                            documentationAttachmentMessage = if (opened) {
+                                "Otvoren prilog: ${file.name}"
+                            } else {
+                                "Nema aplikacije za otvaranje priloga ${file.name}."
+                            }
+                        }
+                        .onFailure { error ->
+                            documentationAttachmentMessage = error.message ?: "Ne mogu otvoriti prilog."
+                        }
+                }
+                val removeDocumentationAttachment: (String) -> Unit = { fileId ->
+                    documentationAttachmentFiles = documentationAttachmentFiles.filterNot { it.id == fileId }
+                    documentationAttachmentMessage = if (documentationAttachmentFiles.isEmpty()) "" else "${documentationAttachmentFiles.size} prilog(a) u zapisniku."
+                }
 
                 if (sprBrowserFlowSelected) {
                     DocumentationSprMobileWorkspace(
@@ -25801,27 +25822,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
                         onPickAttachments = { documentationAttachmentUploadSourceDialogOpen = true },
-                        onOpenAttachment = { file ->
-                            runCatching {
-                                val document = file.toDownloadedDocument()
-                                val uri = cacheDownloadedDocument(androidContext.applicationContext, document)
-                                openCachedDocument(androidContext.applicationContext, uri, document.fileType)
-                            }
-                                .onSuccess { opened ->
-                                    documentationAttachmentMessage = if (opened) {
-                                        "Otvoren prilog: ${file.name}"
-                                    } else {
-                                        "Nema aplikacije za otvaranje priloga ${file.name}."
-                                    }
-                                }
-                                .onFailure { error ->
-                                    documentationAttachmentMessage = error.message ?: "Ne mogu otvoriti prilog."
-                                }
-                        },
-                        onRemoveAttachment = { fileId ->
-                            documentationAttachmentFiles = documentationAttachmentFiles.filterNot { it.id == fileId }
-                            documentationAttachmentMessage = if (documentationAttachmentFiles.isEmpty()) "" else "${documentationAttachmentFiles.size} prilog(a) u zapisniku."
-                        },
+                        onOpenAttachment = openDocumentationAttachment,
+                        onRemoveAttachment = removeDocumentationAttachment,
                         onFieldChange = { template, field, value ->
                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                         },
@@ -25945,6 +25947,18 @@ private fun WorkOrderDocumentationWizardDialog(
                             }
                         }
                     }
+                }
+
+                if (!summaryFlowSelected && !workEquipmentFlowSelected && !physicalFactorsFlowSelected) {
+                    DocumentationSprStandaloneAttachmentsSection(
+                        files = documentationAttachmentFiles,
+                        loading = documentationAttachmentLoading,
+                        message = documentationAttachmentMessage,
+                        enabled = !formLoading,
+                        onPickFiles = { documentationAttachmentUploadSourceDialogOpen = true },
+                        onOpen = openDocumentationAttachment,
+                        onRemove = removeDocumentationAttachment,
+                    )
                 }
 
                 }
@@ -30607,15 +30621,6 @@ private fun DocumentationSprMobileWorkspace(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
                 }
-                DocumentationSprStandaloneAttachmentsSection(
-                    files = attachmentFiles,
-                    loading = attachmentLoading,
-                    message = attachmentMessage,
-                    enabled = enabled,
-                    onPickFiles = onPickAttachments,
-                    onOpen = onOpenAttachment,
-                    onRemove = onRemoveAttachment,
-                )
             }
         }
     }
