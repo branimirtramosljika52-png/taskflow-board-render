@@ -5460,6 +5460,10 @@ private fun DocumentationSprVoiceField(
     value: String,
     onChange: (String) -> Unit,
     onVoiceApply: (String, Boolean) -> Unit = { nextValue, _ -> onChange(nextValue) },
+    onVoicePreview: (String) -> Unit = {},
+    voicePreviewRows: List<SprVoiceAiRow> = emptyList(),
+    voicePreviewLoading: Boolean = false,
+    voicePreviewMessage: String = "",
     enabled: Boolean,
 ) {
     var message by remember { mutableStateOf("") }
@@ -5471,9 +5475,9 @@ private fun DocumentationSprVoiceField(
         pendingSpoken = ""
         onVoiceApply(nextValue, replaceExisting)
         message = if (replaceExisting) {
-            "Unesen novi diktat: $spoken"
+            "Dodano novo iz diktata: $spoken"
         } else {
-            "Dodan diktat: $spoken"
+            "Dodano u postojeće iz diktata: $spoken"
         }
     }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -5485,6 +5489,7 @@ private fun DocumentationSprVoiceField(
             .orEmpty()
         if (spoken.isNotBlank()) {
             pendingSpoken = spoken
+            onVoicePreview(spoken)
         }
     }
     fun startSpeechInput() {
@@ -5503,17 +5508,115 @@ private fun DocumentationSprVoiceField(
     if (pendingSpoken.isNotBlank()) {
         AlertDialog(
             onDismissRequest = { pendingSpoken = "" },
-            title = { Text("Kako unijeti diktat?", fontWeight = FontWeight.Black) },
+            title = { Text("Provjeri diktat", fontWeight = FontWeight.Black) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Text(
                         pendingSpoken,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
+                    if (voicePreviewLoading) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(17.dp), strokeWidth = 2.dp)
+                            Text(
+                                "NexAI priprema pregled...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            )
+                        }
+                    } else if (voicePreviewRows.isNotEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        ) {
+                            Column(modifier = Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        "Mjesto ispitivanja",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Black,
+                                    )
+                                    Text(
+                                        "Količina",
+                                        modifier = Modifier.width(70.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Black,
+                                        textAlign = TextAlign.End,
+                                    )
+                                }
+                                voicePreviewRows.forEachIndexed { index, row ->
+                                    val isSection = row.kind.equals("section", ignoreCase = true) || row.lampCount.isBlank()
+                                    if (isSection) {
+                                        Text(
+                                            row.place,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(11.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                                .padding(horizontal = 9.dp, vertical = 8.dp),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Black,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    } else {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(11.dp))
+                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+                                                .padding(horizontal = 8.dp, vertical = 7.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                "${index + 1}. ${row.place}",
+                                                modifier = Modifier.weight(1f),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                            Text(
+                                                row.lampCount,
+                                                modifier = Modifier.width(70.dp),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Black,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                textAlign = TextAlign.End,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            "Nema prepoznatih redaka. Pokušaj diktirati kao: Prodajni prostor 7, skladište 6.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFB91C1C),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    if (voicePreviewMessage.isNotBlank()) {
+                        Text(
+                            voicePreviewMessage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        )
+                    }
                     Text(
-                        "Dodavanje nadopunjuje postojece retke. Novi unos brise raniji diktat i prvo cisti SPR tablicu.",
-                        style = MaterialTheme.typography.bodySmall,
+                        "Dodaj u postojeće nadopunjuje tablicu. Dodaj novo briše samo kolone mjesto ispitivanja i količina pa upisuje ovaj pregled od prvog reda.",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                     )
                 }
@@ -5521,18 +5624,18 @@ private fun DocumentationSprVoiceField(
             confirmButton = {
                 Button(
                     onClick = { applySpoken(replaceExisting = false) },
-                    enabled = enabled,
+                    enabled = enabled && !voicePreviewLoading && voicePreviewRows.isNotEmpty(),
                     shape = RoundedCornerShape(14.dp),
                 ) {
-                    Text("Dodaj nakon postojecih", fontWeight = FontWeight.Bold)
+                    Text("Dodaj u postojeće", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { applySpoken(replaceExisting = true) },
-                    enabled = enabled,
+                    enabled = enabled && !voicePreviewLoading && voicePreviewRows.isNotEmpty(),
                 ) {
-                    Text("Unesi novo")
+                    Text("Dodaj novo")
                 }
             },
         )
@@ -5574,11 +5677,6 @@ private fun DocumentationSprVoiceField(
                 },
             )
         }
-        Text(
-            "Puni samo mjesto ispitivanja i broj lampi. Postojeca mjesta azuriraju se bez diranja ostalih kolona.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-        )
         if (message.isNotBlank()) {
             Text(
                 message,
@@ -24890,6 +24988,7 @@ private fun WorkOrderDocumentationWizardDialog(
     var selectedAiTemplateId by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
     var sprVoiceAiLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     var sprVoiceAiMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    var sprVoicePreviewRows by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<SprVoiceAiRow>()) }
     val aiCapableTemplates = remember(activeTemplates) {
         activeTemplates.filter { template -> template.aiFields.isNotEmpty() || template.aiMeasurementColumns.isNotEmpty() }
     }
@@ -26026,6 +26125,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         attachmentMessage = documentationAttachmentMessage,
                         sprVoiceAiLoading = sprVoiceAiLoading,
                         sprVoiceAiMessage = sprVoiceAiMessage,
+                        sprVoicePreviewRows = sprVoicePreviewRows,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
                         onPickAttachments = { documentationAttachmentUploadSourceDialogOpen = true },
@@ -26034,30 +26134,47 @@ private fun WorkOrderDocumentationWizardDialog(
                         onFieldChange = { template, field, value, replaceExisting ->
                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
-                                sprVoiceAiLoading = true
-                                sprVoiceAiMessage = "NexAI strukturira diktat u retke tablice..."
-                                onRunSprVoiceAi(
-                                    template,
-                                    value,
-                                    { result ->
-                                        sprVoiceAiLoading = false
-                                        if (result.rows.isNotEmpty()) {
-                                            measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, result.rows, replaceExisting)
-                                            sprVoiceAiMessage = result.message.ifBlank {
-                                                "NexAI je strukturirao ${result.rows.size} redaka."
-                                            }
-                                        } else {
-                                            measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
-                                            sprVoiceAiMessage = "NexAI nije vratio retke, korišten je lokalni parser."
-                                        }
-                                    },
-                                    { message ->
-                                        sprVoiceAiLoading = false
-                                        measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
-                                        sprVoiceAiMessage = "$message Korišten je lokalni parser."
-                                    },
-                                )
+                                val rows = sprVoicePreviewRows.ifEmpty { parseSprVoiceTranscriptToAiRows(value) }
+                                if (rows.isNotEmpty()) {
+                                    measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, rows, replaceExisting)
+                                    sprVoiceAiMessage = if (replaceExisting) {
+                                        "Dodano novo: upisano ${rows.size} redaka iz pregleda."
+                                    } else {
+                                        "Dodano u postojeće: upisano ${rows.size} redaka iz pregleda."
+                                    }
+                                } else {
+                                    measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
+                                    sprVoiceAiMessage = "Nema prepoznatih redaka za upis."
+                                }
+                                sprVoicePreviewRows = emptyList()
                             }
+                        },
+                        onSprVoicePreview = { template, _, transcript ->
+                            sprVoiceAiLoading = true
+                            sprVoiceAiMessage = "NexAI priprema pregled diktata..."
+                            sprVoicePreviewRows = emptyList()
+                            onRunSprVoiceAi(
+                                template,
+                                transcript,
+                                { result ->
+                                    sprVoiceAiLoading = false
+                                    val rows = result.rows.ifEmpty { parseSprVoiceTranscriptToAiRows(transcript) }
+                                    sprVoicePreviewRows = rows
+                                    sprVoiceAiMessage = result.message.ifBlank {
+                                        if (rows.isNotEmpty()) "Pregled spreman: ${rows.size} redaka." else "Nema prepoznatih redaka."
+                                    }
+                                },
+                                { message ->
+                                    sprVoiceAiLoading = false
+                                    val rows = parseSprVoiceTranscriptToAiRows(transcript)
+                                    sprVoicePreviewRows = rows
+                                    sprVoiceAiMessage = if (rows.isNotEmpty()) {
+                                        "$message Korišten je lokalni pregled (${rows.size} redaka)."
+                                    } else {
+                                        "$message Nema prepoznatih redaka."
+                                    }
+                                },
+                            )
                         },
                     )
                 } else {
@@ -26589,6 +26706,7 @@ private data class SprVoiceMeasurementRow(
     val key: String,
     val place: String,
     val lampCount: String,
+    val kind: String = "",
 )
 
 private data class EditableSprMeasurementRow(
@@ -26648,9 +26766,16 @@ private fun cleanSprVoicePlace(value: String): String =
     value.trim()
         .replace(Regex("^(?:i|pa|te|onda|zatim)\\s+", RegexOption.IGNORE_CASE), "")
         .replace(Regex("\\b(?:dodaj|unesi|upisi|stavi)\\b", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("^(?:mjesto|lokacija)\\s+", RegexOption.IGNORE_CASE), "")
         .replace(Regex("\\b(?:mjesto|lokacija)\\s*[:\\-]\\s*", RegexOption.IGNORE_CASE), "")
         .replace(Regex("\\s+"), " ")
         .trim(' ', ',', '.', ';', ':', '-')
+
+private fun cleanSprVoiceFloor(value: String): String =
+    value.trim()
+        .replace(Regex("\\s+"), " ")
+        .trim(' ', ',', '.', ';', ':', '-')
+        .let { floor -> if (floor.startsWith("eta", ignoreCase = true)) floor else "Etaža $floor" }
 
 private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasurementRow> {
     val source = transcript.trim()
@@ -26658,7 +26783,12 @@ private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasu
     val numberPattern = "(?:\\d{1,4}|${sprVoiceNumberWords.keys.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) }})"
     val unitPattern = "(?:panik\\w*|lamp\\w*|svjetilj\\w*|kom\\w*)"
     val itemPattern = Regex("(.+?)\\s+($numberPattern)(?:\\s*$unitPattern)?(?=\\s+\\S|$)", setOf(RegexOption.IGNORE_CASE))
+    val floorPattern = Regex(
+        "\\beta[zž][aeu]?\\s+((?:-?\\d+\\.?\\s*)?(?:kat|katu)|prizemlje|podrum|suteren|galerija|(?:prvi|drugi|tre[cć]i|[cč]etvrti|peti|[sš]esti|sedmi|osmi|deveti|deseti)\\s+kat)",
+        RegexOption.IGNORE_CASE,
+    )
     val normalizedSource = source
+        .replace(floorPattern) { match -> "\n§FLOOR§${cleanSprVoiceFloor(match.groupValues[1])}\n" }
         .replace(Regex("\\b(?:i onda|pa onda|zatim|onda)\\b", RegexOption.IGNORE_CASE), "\n")
         .replace(";", "\n")
         .replace(",", "\n")
@@ -26669,6 +26799,15 @@ private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasu
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .forEach { segment ->
+            if (segment.startsWith("§FLOOR§")) {
+                val floor = segment.removePrefix("§FLOOR§").trim()
+                val key = normalizeSprVoiceLookup(floor)
+                if (floor.isNotBlank() && key.isNotBlank() && key !in seen) {
+                    seen += key
+                    rows += SprVoiceMeasurementRow(key = key, place = floor, lampCount = "", kind = "section")
+                }
+                return@forEach
+            }
             itemPattern.findAll(segment).forEach matchLoop@{ match ->
                 val place = cleanSprVoicePlace(match.groupValues[1])
                 val count = parseSprVoiceCount(match.groupValues[2])
@@ -26686,6 +26825,11 @@ private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasu
         }
     return rows
 }
+
+private fun parseSprVoiceTranscriptToAiRows(transcript: String): List<SprVoiceAiRow> =
+    parseSprVoiceMeasurementRows(transcript).map { row ->
+        SprVoiceAiRow(place = row.place, lampCount = row.lampCount, kind = row.kind)
+    }
 
 private fun findSprMeasurementColumn(
     sheet: WorkOrderMeasurementSheet,
@@ -26712,14 +26856,24 @@ private fun applySprVoiceRowsToSheet(
     val eiminColumn = findSprMeasurementColumn(sheet, listOf("eimin", "emin", "minimalno", "zahtijevano"), 4)
     val passColumn = findSprMeasurementColumn(sheet, listOf("zadovoljava", "ocjena", "ispravno", "pass"), 5)
     if (placeColumn == null || lampColumn == null) return sheet
-    val sourceRows = if (replaceExisting) emptyList() else sheet.rows
-    val rows = sourceRows.mapIndexed { index, row ->
+    val rows = sheet.rows.mapIndexed { index, row ->
         EditableSprMeasurementRow(
             id = row.id.ifBlank { "measurement-row-${index + 1}" },
             cells = row.cells.toMutableMap(),
             formats = row.formats,
         )
     }.toMutableList()
+    fun createRow(): EditableSprMeasurementRow =
+        EditableSprMeasurementRow(
+            id = "measurement-row-${rows.size + 1}",
+            cells = sheet.columns.associate { it.id to "" }.toMutableMap(),
+            formats = emptyMap(),
+        ).also { row ->
+            rows += row
+            eiColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = ">2" }
+            eiminColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = "1" }
+            passColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = "DA" }
+        }
     fun ensureNumber(row: EditableSprMeasurementRow, index: Int) {
         val id = numberColumn?.id.orEmpty()
         if (id.isNotBlank() && row.cells[id].orEmpty().isBlank()) {
@@ -26727,29 +26881,67 @@ private fun applySprVoiceRowsToSheet(
         }
     }
     rows.forEachIndexed { index, row -> ensureNumber(row, index) }
-    voiceRows.forEach { entry ->
-        var targetRow = rows.firstOrNull { normalizeSprVoiceLookup(it.cells[placeColumn.id].orEmpty()) == entry.key }
-        if (targetRow == null) {
-            targetRow = rows.firstOrNull {
-                it.cells[placeColumn.id].orEmpty().isBlank() && it.cells[lampColumn.id].orEmpty().isBlank()
-            }
+    if (replaceExisting) {
+        rows.forEach { row ->
+            row.cells[placeColumn.id] = ""
+            row.cells[lampColumn.id] = ""
         }
-        if (targetRow == null) {
-            targetRow = EditableSprMeasurementRow(
-                id = "measurement-row-${rows.size + 1}",
-                cells = sheet.columns.associate { it.id to "" }.toMutableMap(),
-                formats = emptyMap(),
+    }
+    val sectionMerges = mutableListOf<WorkOrderMeasurementMerge>()
+    fun applyEntryToRow(targetRow: EditableSprMeasurementRow, entry: SprVoiceMeasurementRow) {
+        if (entry.kind.equals("section", ignoreCase = true)) {
+            numberColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = "" }
+            targetRow.cells[placeColumn.id] = entry.place
+            targetRow.cells[lampColumn.id] = ""
+            val placeIndex = sheet.columns.indexOfFirst { it.id == placeColumn.id }.coerceAtLeast(0)
+            val colSpan = (sheet.columns.size - placeIndex).coerceAtLeast(1)
+            sectionMerges += WorkOrderMeasurementMerge(
+                rowId = targetRow.id,
+                columnId = placeColumn.id,
+                rowSpan = 1,
+                colSpan = colSpan,
             )
-            rows += targetRow
-            eiColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = ">2" }
-            eiminColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = "1" }
-            passColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = "DA" }
+            return
         }
         ensureNumber(targetRow, rows.indexOf(targetRow))
         if (targetRow.cells[placeColumn.id].orEmpty().isBlank()) {
             targetRow.cells[placeColumn.id] = entry.place
         }
         targetRow.cells[lampColumn.id] = entry.lampCount
+    }
+    if (replaceExisting) {
+        voiceRows.forEachIndexed { index, entry ->
+            val targetRow = rows.getOrNull(index) ?: createRow()
+            applyEntryToRow(targetRow, entry)
+        }
+        return sheet.copy(
+            rows = rows.map { row ->
+                WorkOrderMeasurementRow(
+                    id = row.id,
+                    cells = row.cells.toMap(),
+                    formats = row.formats,
+                )
+            },
+            merges = (sheet.merges.filterNot { merge ->
+                sectionMerges.any { it.rowId == merge.rowId && it.columnId == merge.columnId }
+            } + sectionMerges),
+        )
+    }
+    voiceRows.forEach { entry ->
+        var targetRow = if (entry.kind.equals("section", ignoreCase = true)) {
+            null
+        } else {
+            rows.firstOrNull { normalizeSprVoiceLookup(it.cells[placeColumn.id].orEmpty()) == entry.key }
+        }
+        if (targetRow == null) {
+            targetRow = rows.firstOrNull {
+                it.cells[placeColumn.id].orEmpty().isBlank() && it.cells[lampColumn.id].orEmpty().isBlank()
+            }
+        }
+        if (targetRow == null) {
+            targetRow = createRow()
+        }
+        applyEntryToRow(targetRow, entry)
     }
     return sheet.copy(
         rows = rows.map { row ->
@@ -26759,6 +26951,9 @@ private fun applySprVoiceRowsToSheet(
                 formats = row.formats,
             )
         },
+        merges = (sheet.merges.filterNot { merge ->
+            sectionMerges.any { it.rowId == merge.rowId && it.columnId == merge.columnId }
+        } + sectionMerges),
     )
 }
 
@@ -26787,10 +26982,11 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
     val voiceRows = rows
         .mapNotNull { row ->
             val place = row.place.trim()
-            val lampCount = parseSprVoiceCount(row.lampCount).ifBlank { row.lampCount.trim() }
+            val isSection = row.kind.equals("section", ignoreCase = true) || row.kind.equals("floor", ignoreCase = true)
+            val lampCount = if (isSection) "" else parseSprVoiceCount(row.lampCount).ifBlank { row.lampCount.trim() }
             val key = normalizeSprVoiceLookup(place)
-            if (place.isBlank() || lampCount.isBlank() || key.isBlank()) null else {
-                SprVoiceMeasurementRow(key = key, place = place, lampCount = lampCount)
+            if (place.isBlank() || (!isSection && lampCount.isBlank()) || key.isBlank()) null else {
+                SprVoiceMeasurementRow(key = key, place = place, lampCount = lampCount, kind = if (isSection) "section" else row.kind)
             }
         }
     if (voiceRows.isEmpty()) return sheets
@@ -30900,12 +31096,14 @@ private fun DocumentationSprMobileWorkspace(
     attachmentMessage: String,
     sprVoiceAiLoading: Boolean,
     sprVoiceAiMessage: String,
+    sprVoicePreviewRows: List<SprVoiceAiRow>,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
     onPickAttachments: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String, Boolean) -> Unit,
+    onSprVoicePreview: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
     val sourceLabel = remember(templates) { documentationSprMobileSourceLabel(templates) }
     val menuEntries = remember(templates) {
@@ -31082,12 +31280,16 @@ private fun DocumentationSprMobileWorkspace(
                                 attachmentFiles = attachmentFiles,
                                 attachmentLoading = attachmentLoading,
                                 attachmentMessage = attachmentMessage,
+                                sprVoicePreviewRows = sprVoicePreviewRows,
+                                sprVoicePreviewLoading = sprVoiceAiLoading,
+                                sprVoicePreviewMessage = sprVoiceAiMessage,
                                 enabled = enabled,
                                 onOpenMeasurements = onOpenMeasurements,
                                 onPickAttachments = onPickAttachments,
                                 onOpenAttachment = onOpenAttachment,
                                 onRemoveAttachment = onRemoveAttachment,
                                 onFieldChange = onFieldChange,
+                                onSprVoicePreview = onSprVoicePreview,
                             )
                         }
                     }
@@ -31192,12 +31394,16 @@ private fun DocumentationSprTemplateSectionPanel(
     attachmentFiles: List<WorkOrderDocumentationAiFile>,
     attachmentLoading: Boolean,
     attachmentMessage: String,
+    sprVoicePreviewRows: List<SprVoiceAiRow>,
+    sprVoicePreviewLoading: Boolean,
+    sprVoicePreviewMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
     onPickAttachments: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String, Boolean) -> Unit,
+    onSprVoicePreview: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
     var expanded by rememberSaveable(entry.key) { mutableStateOf(false) }
     val isBasicSection = remember(entry.section) { isBasicTemplateSection(entry.section) }
@@ -31355,6 +31561,12 @@ private fun DocumentationSprTemplateSectionPanel(
                                     onSprVoiceApply = { field, value, replaceExisting ->
                                         onFieldChange(entry.template, field, value, replaceExisting)
                                     },
+                                    onSprVoicePreview = { field, transcript ->
+                                        onSprVoicePreview(entry.template, field, transcript)
+                                    },
+                                    sprVoicePreviewRows = sprVoicePreviewRows,
+                                    sprVoicePreviewLoading = sprVoicePreviewLoading,
+                                    sprVoicePreviewMessage = sprVoicePreviewMessage,
                                 )
                             }
                         }
@@ -34145,6 +34357,10 @@ private fun TemplateBlockDetailRow(
     onPickAttachments: (() -> Unit)? = null,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
     onSprVoiceApply: ((WorkOrderDocumentationField, String, Boolean) -> Unit)? = null,
+    onSprVoicePreview: ((WorkOrderDocumentationField, String) -> Unit)? = null,
+    sprVoicePreviewRows: List<SprVoiceAiRow> = emptyList(),
+    sprVoicePreviewLoading: Boolean = false,
+    sprVoicePreviewMessage: String = "",
 ) {
     if (isDocumentationAttachmentUploadBlock(block) && onPickAttachments != null) {
         DocumentationSprInlineAttachmentUploadBlock(
@@ -34171,6 +34387,12 @@ private fun TemplateBlockDetailRow(
             onSprVoiceApply = onSprVoiceApply?.let { handler ->
                 { nextValue, replaceExisting -> handler(editableField, nextValue, replaceExisting) }
             },
+            onSprVoicePreview = onSprVoicePreview?.let { handler ->
+                { transcript -> handler(editableField, transcript) }
+            },
+            sprVoicePreviewRows = sprVoicePreviewRows,
+            sprVoicePreviewLoading = sprVoicePreviewLoading,
+            sprVoicePreviewMessage = sprVoicePreviewMessage,
             showHelpText = false,
         )
         return
@@ -34242,6 +34464,12 @@ private fun TemplateBlockDetailRow(
                         onSprVoiceApply = onSprVoiceApply?.let { handler ->
                             { nextValue, replaceExisting -> handler(editableField, nextValue, replaceExisting) }
                         },
+                        onSprVoicePreview = onSprVoicePreview?.let { handler ->
+                            { transcript -> handler(editableField, transcript) }
+                        },
+                        sprVoicePreviewRows = sprVoicePreviewRows,
+                        sprVoicePreviewLoading = sprVoicePreviewLoading,
+                        sprVoicePreviewMessage = sprVoicePreviewMessage,
                         showHelpText = false,
                     )
                 }
@@ -34484,6 +34712,10 @@ private fun TemplateFieldInput(
     enabled: Boolean,
     onChange: (String) -> Unit,
     onSprVoiceApply: ((String, Boolean) -> Unit)? = null,
+    onSprVoicePreview: ((String) -> Unit)? = null,
+    sprVoicePreviewRows: List<SprVoiceAiRow> = emptyList(),
+    sprVoicePreviewLoading: Boolean = false,
+    sprVoicePreviewMessage: String = "",
     showHelpText: Boolean = true,
 ) {
     val label = if (field.required) "${field.label} *" else field.label
@@ -34536,6 +34768,10 @@ private fun TemplateFieldInput(
                 value = value,
                 onChange = onChange,
                 onVoiceApply = onSprVoiceApply ?: { nextValue, _ -> onChange(nextValue) },
+                onVoicePreview = onSprVoicePreview ?: {},
+                voicePreviewRows = sprVoicePreviewRows,
+                voicePreviewLoading = sprVoicePreviewLoading,
+                voicePreviewMessage = sprVoicePreviewMessage,
                 enabled = enabled,
             )
             "number" -> DocumentationMobileTextField(

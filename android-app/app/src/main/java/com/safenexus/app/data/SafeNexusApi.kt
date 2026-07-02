@@ -2934,8 +2934,12 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
             val item = optJSONObject(index) ?: continue
             val place = item.firstClean("place", "mjesto", "location", "room", "name")
             val lampCount = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity")
-            if (place.isBlank() || lampCount.isBlank()) continue
-            add(SprVoiceAiRow(place = place, lampCount = lampCount))
+            val kind = item.firstClean("kind", "type", "rowType")
+            val isSection = kind.equals("section", ignoreCase = true) ||
+                kind.equals("floor", ignoreCase = true) ||
+                item.optBoolean("isSection", false)
+            if (place.isBlank() || (!isSection && lampCount.isBlank())) continue
+            add(SprVoiceAiRow(place = place, lampCount = if (isSection) "" else lampCount, kind = if (isSection) "section" else kind))
         }
     }
 }

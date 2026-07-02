@@ -821,6 +821,7 @@ data class WorkOrderMeasurementTable(
 data class SprVoiceAiRow(
     val place: String,
     val lampCount: String,
+    val kind: String = "",
 )
 
 data class SprVoiceAiResult(

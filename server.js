@@ -113,7 +113,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.273.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.274.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25173,10 +25173,22 @@ function cleanMobileSprVoicePlace(value = "") {
   return normalizeInputValue(value)
     .replace(/^(?:i|pa|te|onda|zatim)\s+/i, "")
     .replace(/\b(?:dodaj|unesi|upisi|upisi mi|stavi)\b/gi, "")
+    .replace(/^(?:mjesto|lokacija)\s+/i, "")
     .replace(/\b(?:mjesto|lokacija)\s*[:\-]\s*/gi, "")
     .replace(/\s+/g, " ")
     .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
     .trim();
+}
+
+function cleanMobileSprVoiceFloor(value = "") {
+  const floor = normalizeInputValue(value)
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .trim();
+  if (!floor) {
+    return "";
+  }
+  return floor.toLowerCase().startsWith("eta") ? floor : `Etaža ${floor}`;
 }
 
 function parseMobileSprVoiceRows(transcript = "") {
@@ -25193,9 +25205,11 @@ function parseMobileSprVoiceRows(transcript = "") {
   ].join("|");
   const unitPattern = "(?:panik\\w*|lamp\\w*|svjetilj\\w*|kom\\w*)";
   const itemPattern = new RegExp(`(.+?)\\s+(${numberPattern})(?:\\s*${unitPattern})?(?=\\s+\\S|$)`, "giu");
+  const floorPattern = /\beta\S*\s+((?:-?\d+\.?\s*)?(?:kat|katu)|prizemlje|podrum|suteren|galerija|(?:prvi|drugi|tre[cć]i|[cč]etvrti|peti|[sš]esti|sedmi|osmi|deveti|deseti)\s+kat)/giu;
   const rows = [];
   const seen = new Set();
   const normalizedSource = source
+    .replace(floorPattern, (_match, floor) => `\n§FLOOR§${cleanMobileSprVoiceFloor(floor)}\n`)
     .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
     .replace(/[;,]+/g, "\n");
 
@@ -25204,6 +25218,15 @@ function parseMobileSprVoiceRows(transcript = "") {
     .map((segment) => normalizeInputValue(segment))
     .filter(Boolean)
     .forEach((segment) => {
+      if (segment.startsWith("§FLOOR§")) {
+        const place = segment.replace(/^§FLOOR§/, "").trim();
+        const key = normalizeMobileSprLookupText(place);
+        if (place && key && !seen.has(key)) {
+          seen.add(key);
+          rows.push({ key, place, lampCount: "", kind: "section" });
+        }
+        return;
+      }
       Array.from(segment.matchAll(itemPattern)).forEach((match) => {
         const place = cleanMobileSprVoicePlace(match[1]);
         const lampCount = parseMobileSprVoiceCount(match[2]);
@@ -25219,7 +25242,7 @@ function parseMobileSprVoiceRows(transcript = "") {
           return;
         }
         seen.add(key);
-        rows.push({ key, place, lampCount });
+        rows.push({ key, place, lampCount, kind: "measurement" });
       });
     });
   return rows;
@@ -25229,7 +25252,8 @@ function normalizeMobileSprVoiceRows(rows = []) {
   const normalizedRows = [];
   const seen = new Set();
   (Array.isArray(rows) ? rows : []).forEach((row) => {
-    const place = cleanMobileSprVoicePlace(
+    const rawKind = normalizeInputValue(row?.kind || row?.type || row?.rowType || "").toLowerCase();
+    const rawPlace = normalizeInputValue(
       row?.place
       || row?.mjesto
       || row?.location
@@ -25237,6 +25261,12 @@ function normalizeMobileSprVoiceRows(rows = []) {
       || row?.name
       || "",
     );
+    const isSection = rawKind === "section"
+      || rawKind === "floor"
+      || rawKind === "etaza"
+      || rawKind.startsWith("eta")
+      || row?.isSection === true;
+    const place = isSection ? cleanMobileSprVoiceFloor(rawPlace) : cleanMobileSprVoicePlace(rawPlace);
     const lampCount = parseMobileSprVoiceCount(
       row?.lampCount
       || row?.brojLampi
@@ -25253,18 +25283,24 @@ function normalizeMobileSprVoiceRows(rows = []) {
       || "",
     );
     const key = normalizeMobileSprLookupText(place);
-    if (!place || !lampCount || !key) {
+    if (!place || (!isSection && !lampCount) || !key) {
       return;
     }
     if (seen.has(key)) {
       const existing = normalizedRows.find((entry) => entry.key === key);
       if (existing) {
-        existing.lampCount = lampCount;
+        existing.lampCount = isSection ? "" : lampCount;
+        existing.kind = isSection ? "section" : (rawKind || existing.kind || "measurement");
       }
       return;
     }
     seen.add(key);
-    normalizedRows.push({ key, place, lampCount });
+    normalizedRows.push({
+      key,
+      place,
+      lampCount: isSection ? "" : lampCount,
+      kind: isSection ? "section" : (rawKind || "measurement"),
+    });
   });
   return normalizedRows;
 }
@@ -25319,6 +25355,8 @@ async function buildMobileSprVoiceStructuredRows(body = {}, user = null) {
         language: "hr-HR",
         task: "Iz diktata izdvoji mjerna mjesta sigurnosne protupanične rasvjete i broj lampi/svjetiljki.",
         rules: [
+          "Ako korisnik kaze 'etaza 1. kat', vrati poseban red kind='section', place='Etaza 1. kat', lampCount=''.",
+          "Section/etaza red nema broj lampi i mora se prikazati kao puni red u tablici.",
           "Vrati jedan red za svako mjesto ispitivanja.",
           "Podrži diktat oblika 'prodajni prostor 6 skladište 7 hodnik 2', bez riječi komada.",
           "Ako se mjesto ponovi, zadnja izrečena brojčana vrijednost vrijedi.",
@@ -25331,6 +25369,7 @@ async function buildMobileSprVoiceStructuredRows(body = {}, user = null) {
           {
             place: "naziv mjesta ispitivanja, npr. Prodajni prostor",
             lampCount: "broj lampi kao string, npr. 7",
+            kind: "measurement | section",
             confidence: "high | medium | low",
           },
         ],
@@ -25398,14 +25437,31 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
     }
   };
   rows.forEach(ensureNumbering);
+  const sectionMerges = [];
+  const createRow = () => {
+    const targetRow = {
+      id: `measurement-row-${rows.length + 1}`,
+      cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+      formats: {},
+    };
+    rows.push(targetRow);
+    if (eiColumn?.id) targetRow.cells[eiColumn.id] = ">2";
+    if (eiminColumn?.id) targetRow.cells[eiminColumn.id] = "1";
+    if (passColumn?.id) targetRow.cells[passColumn.id] = "DA";
+    return targetRow;
+  };
 
   voiceRows.forEach((entry) => {
     const placeKey = normalizeMobileSprLookupText(entry?.place);
     const lampCount = normalizeInputValue(entry?.lampCount);
-    if (!placeKey || !lampCount) {
+    const kind = normalizeInputValue(entry?.kind).toLowerCase();
+    const isSection = kind === "section" || kind === "floor" || !lampCount;
+    if (!placeKey || (!isSection && !lampCount)) {
       return;
     }
-    let targetRow = rows.find((row) => normalizeMobileSprLookupText(row.cells?.[placeColumn.id]) === placeKey);
+    let targetRow = isSection
+      ? null
+      : rows.find((row) => normalizeMobileSprLookupText(row.cells?.[placeColumn.id]) === placeKey);
     if (!targetRow) {
       targetRow = rows.find((row) => (
         !normalizeInputValue(row.cells?.[placeColumn.id])
@@ -25413,15 +25469,20 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
       ));
     }
     if (!targetRow) {
-      targetRow = {
-        id: `measurement-row-${rows.length + 1}`,
-        cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
-        formats: {},
-      };
-      rows.push(targetRow);
-      if (eiColumn?.id) targetRow.cells[eiColumn.id] = ">2";
-      if (eiminColumn?.id) targetRow.cells[eiminColumn.id] = "1";
-      if (passColumn?.id) targetRow.cells[passColumn.id] = "DA";
+      targetRow = createRow();
+    }
+    if (isSection) {
+      if (numberColumn?.id) targetRow.cells[numberColumn.id] = "";
+      targetRow.cells[placeColumn.id] = entry.place;
+      targetRow.cells[lampColumn.id] = "";
+      const placeIndex = normalized.columns.findIndex((column) => column.id === placeColumn.id);
+      sectionMerges.push({
+        rowId: targetRow.id,
+        columnId: placeColumn.id,
+        rowSpan: 1,
+        colSpan: Math.max(1, normalized.columns.length - Math.max(0, placeIndex)),
+      });
+      return;
     }
     ensureNumbering(targetRow, rows.indexOf(targetRow));
     if (!normalizeInputValue(targetRow.cells[placeColumn.id])) {
@@ -25433,6 +25494,12 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
   return {
     ...normalized,
     rows,
+    merges: [
+      ...(Array.isArray(normalized.merges) ? normalized.merges.filter((merge) => (
+        !sectionMerges.some((sectionMerge) => sectionMerge.rowId === merge?.rowId && sectionMerge.columnId === merge?.columnId)
+      )) : []),
+      ...sectionMerges,
+    ],
   };
 }
 
