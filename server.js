@@ -113,7 +113,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.269.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.270.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -21625,6 +21625,7 @@ const MOBILE_DOCUMENT_TEMPLATE_PROMPT_FIELD_TYPES = new Set([
   "dropdown",
   "checkbox",
   "toggle",
+  "spr_voice",
 ]);
 
 function isMobileDocumentTemplatePromptField(field = {}) {
@@ -22421,6 +22422,7 @@ const MOBILE_DOCUMENT_TEMPLATE_FIELD_TYPE_LABELS = {
   number: "Broj",
   checkbox: "Checkbox",
   toggle: "Toggle",
+  spr_voice: "Glasovni unos",
   qualified_inspectors: "Ispitivaci",
   sketch_upload: "Dodaj dokumente",
   image_upload: "Slika",
@@ -23933,6 +23935,14 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       helpText: "Ocjena se prikazuje samo ako je pripadajući dio zapisnika uključen.",
     },
   ));
+  const sprVoiceFields = preset.serviceCode === "SPR"
+    ? [
+      buildMobileNativeDocumentationField("sprVoiceTranscript", "Diktat mjernih mjesta", "spr_voice", {
+        defaultValue: "",
+        helpText: "Primjer: Prodajni prostor 7 panika, skladiste 6. Puni samo mjesto ispitivanja i broj lampi.",
+      }),
+    ]
+    : [];
   const fields = [
     buildMobileNativeDocumentationField("inspectionDate", "Datum ispitivanja", "date", {
       required: true,
@@ -23977,6 +23987,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     ...checklistUseFields,
     ...checklistItemFields,
     ...measurementTableUseFields,
+    ...sprVoiceFields,
     ...assessmentFields,
     buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
       defaultValue: "Preporuke",
@@ -24013,7 +24024,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       || `gridline-results-${index + 1}`;
     const title = normalizeInputValue(table?.chapterTitle || table?.label || `Gridline tablica ${index + 1}`);
     const enabledFieldId = table.enabledFieldId || `use-${tableKey}`;
-    return [
+    const sectionBlocks = [
       buildMobileNativeDocumentationBlock(`chapter-${tableKey}`, title, "chapter", {
         typeLabel: "Poglavlje",
         summary: table.summary || "Gridline tablica rezultata ispitivanja.",
@@ -24025,6 +24036,16 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       }),
       measurementFieldBlocks[index],
     ];
+    if (preset.serviceCode === "SPR" && index === 0) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("sprVoiceTranscript", "Diktat mjernih mjesta", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Unesi samo mjesto i broj lampi, npr. Prodajni prostor 7 panika.",
+        helpText: "Ako mjesto vec postoji u tablici, mijenja se samo broj lampi. Ako ne postoji, dodaje se novi red.",
+      }));
+    }
+    return sectionBlocks;
   });
   const checklistSections = checklists.flatMap((checklist, index) => {
     const checklistKey = normalizeInputValue(checklist?.key || checklist?.id || `checklist-${index + 1}`)
@@ -25088,6 +25109,224 @@ function getMobileSprRowsFromSheet(sheet = null) {
     });
 }
 
+const MOBILE_SPR_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "sprVoiceTranscript",
+  "SPR_VOICE_TRANSCRIPT",
+  "spr voice transcript",
+  "Diktat mjernih mjesta",
+  "Diktat SPR mjernih mjesta",
+  "Diktat mjesta i broj lampi",
+  "Glasovni unos SPR",
+]);
+
+const MOBILE_SPR_VOICE_NUMBER_WORDS = Object.freeze({
+  jedan: 1,
+  jedna: 1,
+  jedno: 1,
+  dva: 2,
+  dvije: 2,
+  tri: 3,
+  cetiri: 4,
+  "četiri": 4,
+  pet: 5,
+  sest: 6,
+  "šest": 6,
+  sedam: 7,
+  osam: 8,
+  devet: 9,
+  deset: 10,
+  jedanaest: 11,
+  dvanaest: 12,
+  trinaest: 13,
+  cetrnaest: 14,
+  "četrnaest": 14,
+  petnaest: 15,
+  sesnaest: 16,
+  "šesnaest": 16,
+  sedamnaest: 17,
+  osamnaest: 18,
+  devetnaest: 19,
+  dvadeset: 20,
+  trideset: 30,
+  cetrdeset: 40,
+  "četrdeset": 40,
+  pedeset: 50,
+});
+
+function escapeMobileSprRegexValue(value = "") {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseMobileSprVoiceCount(value = "") {
+  const raw = normalizeInputValue(value);
+  if (/^\d{1,4}$/.test(raw)) {
+    return raw;
+  }
+  const lookup = normalizeMobileSprLookupText(raw);
+  if (Object.prototype.hasOwnProperty.call(MOBILE_SPR_VOICE_NUMBER_WORDS, lookup)) {
+    return String(MOBILE_SPR_VOICE_NUMBER_WORDS[lookup]);
+  }
+  return "";
+}
+
+function cleanMobileSprVoicePlace(value = "") {
+  return normalizeInputValue(value)
+    .replace(/^(?:i|pa|te|onda|zatim)\s+/i, "")
+    .replace(/\b(?:dodaj|unesi|upisi|upisi mi|stavi)\b/gi, "")
+    .replace(/\b(?:mjesto|lokacija)\s*[:\-]\s*/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .trim();
+}
+
+function parseMobileSprVoiceRows(transcript = "") {
+  const source = normalizeInputValue(transcript);
+  if (!source) {
+    return [];
+  }
+  const numberWords = Object.keys(MOBILE_SPR_VOICE_NUMBER_WORDS);
+  const numberPattern = [
+    "\\d{1,4}",
+    ...numberWords
+      .sort((left, right) => right.length - left.length)
+      .map(escapeMobileSprRegexValue),
+  ].join("|");
+  const unitPattern = "(?:panik\\w*|lamp\\w*|svjetilj\\w*|kom\\w*)";
+  const itemPattern = new RegExp(`^(.+?)\\s+(${numberPattern})(?:\\s*${unitPattern})?$`, "iu");
+  const rows = [];
+  const seen = new Set();
+  const normalizedSource = source
+    .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
+    .replace(new RegExp(`\\b(${numberPattern})\\s*${unitPattern}\\b\\s+`, "giu"), "$1\n")
+    .replace(/[;]+/g, "\n");
+
+  normalizedSource
+    .split(/\r?\n|,+/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean)
+    .forEach((segment) => {
+      const match = segment.match(itemPattern);
+      if (!match) {
+        return;
+      }
+      const place = cleanMobileSprVoicePlace(match[1]);
+      const lampCount = parseMobileSprVoiceCount(match[2]);
+      const key = normalizeMobileSprLookupText(place);
+      if (!place || !lampCount || !key) {
+        return;
+      }
+      if (seen.has(key)) {
+        const existing = rows.find((row) => row.key === key);
+        if (existing) {
+          existing.lampCount = lampCount;
+        }
+        return;
+      }
+      seen.add(key);
+      rows.push({ key, place, lampCount });
+    });
+  return rows;
+}
+
+function findMobileSprSheetColumn(sheet = {}, candidates = [], fallbackIndex = -1) {
+  const columns = (Array.isArray(sheet?.columns) ? sheet.columns : [])
+    .map((column, sourceIndex) => ({ ...column, sourceIndex }))
+    .filter((column) => column?.id && !column.computed);
+  const candidateKeys = candidates.map(normalizeMobileSprLookupText).filter(Boolean);
+  const matchingColumn = columns.find((column) => {
+    const key = normalizeMobileSprSheetColumnKey(column, column.sourceIndex);
+    return candidateKeys.some((candidate) => key === candidate || key.includes(candidate));
+  });
+  if (matchingColumn?.id) {
+    return matchingColumn;
+  }
+  return fallbackIndex >= 0 ? columns[fallbackIndex] : null;
+}
+
+function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalized?.columns?.length || !Array.isArray(voiceRows) || voiceRows.length === 0) {
+    return normalized || sheet;
+  }
+  const numberColumn = findMobileSprSheetColumn(normalized, ["r br", "redni broj", "broj", "rb"], 0);
+  const placeColumn = findMobileSprSheetColumn(normalized, ["mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"], 1);
+  const lampColumn = findMobileSprSheetColumn(normalized, ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"], 2);
+  const eiColumn = findMobileSprSheetColumn(normalized, ["ei", "izmjereno", "izmjerena vrijednost"], 3);
+  const eiminColumn = findMobileSprSheetColumn(normalized, ["eimin", "emin", "minimalno", "zahtijevano"], 4);
+  const passColumn = findMobileSprSheetColumn(normalized, ["zadovoljava", "ocjena", "ispravno", "pass"], 5);
+  if (!placeColumn?.id || !lampColumn?.id) {
+    return normalized;
+  }
+  const rows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
+    id: normalizeInputValue(row?.id) || `measurement-row-${index + 1}`,
+    cells: { ...(row?.cells || {}) },
+    formats: { ...(row?.formats || {}) },
+  }));
+  const ensureNumbering = (row, index) => {
+    if (numberColumn?.id && !normalizeInputValue(row.cells[numberColumn.id])) {
+      row.cells[numberColumn.id] = String(index + 1);
+    }
+  };
+  rows.forEach(ensureNumbering);
+
+  voiceRows.forEach((entry) => {
+    const placeKey = normalizeMobileSprLookupText(entry?.place);
+    const lampCount = normalizeInputValue(entry?.lampCount);
+    if (!placeKey || !lampCount) {
+      return;
+    }
+    let targetRow = rows.find((row) => normalizeMobileSprLookupText(row.cells?.[placeColumn.id]) === placeKey);
+    if (!targetRow) {
+      targetRow = rows.find((row) => (
+        !normalizeInputValue(row.cells?.[placeColumn.id])
+        && !normalizeInputValue(row.cells?.[lampColumn.id])
+      ));
+    }
+    if (!targetRow) {
+      targetRow = {
+        id: `measurement-row-${rows.length + 1}`,
+        cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+        formats: {},
+      };
+      rows.push(targetRow);
+      if (eiColumn?.id) targetRow.cells[eiColumn.id] = ">2";
+      if (eiminColumn?.id) targetRow.cells[eiminColumn.id] = "1";
+      if (passColumn?.id) targetRow.cells[passColumn.id] = "DA";
+    }
+    ensureNumbering(targetRow, rows.indexOf(targetRow));
+    if (!normalizeInputValue(targetRow.cells[placeColumn.id])) {
+      targetRow.cells[placeColumn.id] = entry.place;
+    }
+    targetRow.cells[lampColumn.id] = lampCount;
+  });
+
+  return {
+    ...normalized,
+    rows,
+  };
+}
+
+function applyMobileSprVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_SPR_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = parseMobileSprVoiceRows(transcript);
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (index !== 0) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileSprVoiceRowsToSheet(table.sheet, voiceRows),
+    };
+  });
+}
+
 function getMobileSprRows(entry = {}, template = {}, common = {}) {
   const fieldSheets = entry?.documentRecord?.fieldSheets && typeof entry.documentRecord.fieldSheets === "object"
     ? entry.documentRecord.fieldSheets
@@ -25205,7 +25444,7 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
   const baseTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
     ? template.measurementTables
     : createDocumentationMeasurementTablesForService(serviceCode);
-  return baseTables.map((table, index) => {
+  const tables = baseTables.map((table, index) => {
     const sheet = getMobileDocumentationMeasurementSheetForTable(table, index, entry, template, common);
     const pageOrientation = normalizeInputValue(
       sheet?.pageOrientation
@@ -25230,6 +25469,9 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
       },
     };
   });
+  return normalizeInputValue(serviceCode).toUpperCase() === "SPR"
+    ? applyMobileSprVoiceTranscriptToMeasurementTables(tables, common, template)
+    : tables;
 }
 
 function normalizeMobileTechnicalFieldToken(value = "") {

@@ -293,6 +293,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.text.NumberFormat
+import java.text.Normalizer
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -5409,6 +5410,97 @@ private fun DocumentationMobileTextField(
         )
     }
 }
+
+@Composable
+private fun DocumentationSprVoiceField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    var message by remember { mutableStateOf("") }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            ?.trim()
+            .orEmpty()
+        if (spoken.isNotBlank()) {
+            onChange(appendSprVoiceTranscript(value, spoken))
+            message = "Dodan diktat: $spoken"
+        }
+    }
+    fun startSpeechInput() {
+        message = ""
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hr-HR")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Npr. Prodajni prostor 7 panika, skladiste 6")
+        }
+        try {
+            launcher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            message = "Glasovni unos nije dostupan na ovom uredaju."
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        DocumentationMobileFieldShell(
+            label = label,
+            enabled = enabled,
+            minHeight = 148.dp,
+            trailing = {
+                IconButton(onClick = ::startSpeechInput, enabled = enabled) {
+                    Icon(Icons.Rounded.Mic, contentDescription = "Glasovni unos", tint = MaterialTheme.colorScheme.primary)
+                }
+            },
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 88.dp),
+                enabled = enabled,
+                singleLine = false,
+                minLines = 3,
+                maxLines = 8,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (value.isBlank()) {
+                            Text(
+                                "Prodajni prostor 7 panika, skladiste 6",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.36f),
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+        }
+        Text(
+            "Puni samo mjesto ispitivanja i broj lampi. Postojeca mjesta azuriraju se bez diranja ostalih kolona.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+        )
+        if (message.isNotBlank()) {
+            Text(
+                message,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+private fun appendSprVoiceTranscript(existing: String, spoken: String): String =
+    listOf(existing.trim(), spoken.trim())
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
 
 @Composable
 private fun DocumentationMobileDatePickerField(
@@ -25826,6 +25918,9 @@ private fun WorkOrderDocumentationWizardDialog(
                         onRemoveAttachment = removeDocumentationAttachment,
                         onFieldChange = { template, field, value ->
                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                            if (field.type.equals("spr_voice", ignoreCase = true)) {
+                                measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value)
+                            }
                         },
                     )
                 } else {
@@ -25853,6 +25948,9 @@ private fun WorkOrderDocumentationWizardDialog(
                                 standardControls = templateControls,
                                 onChange = { field, value ->
                                     templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                                    if (field.type.equals("spr_voice", ignoreCase = true)) {
+                                        measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value)
+                                    }
                                 },
                             )
                         }
@@ -25916,6 +26014,9 @@ private fun WorkOrderDocumentationWizardDialog(
                                         enabled = !formLoading,
                                         onChange = { field, value ->
                                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                                            if (field.type.equals("spr_voice", ignoreCase = true)) {
+                                                measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value)
+                                            }
                                         },
                                     )
                                 }
@@ -26346,6 +26447,194 @@ private fun measurementSheetStateKey(
     template: WorkOrderDocumentationTemplate,
     table: WorkOrderMeasurementTable,
 ): String = "${template.id}::${table.key.ifBlank { table.id.ifBlank { table.tokenKey } }}"
+
+private data class SprVoiceMeasurementRow(
+    val key: String,
+    val place: String,
+    val lampCount: String,
+)
+
+private data class EditableSprMeasurementRow(
+    val id: String,
+    val cells: MutableMap<String, String>,
+    val formats: Map<String, JSONObject>,
+)
+
+private val sprVoiceNumberWords = mapOf(
+    "jedan" to 1,
+    "jedna" to 1,
+    "jedno" to 1,
+    "dva" to 2,
+    "dvije" to 2,
+    "tri" to 3,
+    "cetiri" to 4,
+    "četiri" to 4,
+    "pet" to 5,
+    "sest" to 6,
+    "šest" to 6,
+    "sedam" to 7,
+    "osam" to 8,
+    "devet" to 9,
+    "deset" to 10,
+    "jedanaest" to 11,
+    "dvanaest" to 12,
+    "trinaest" to 13,
+    "cetrnaest" to 14,
+    "četrnaest" to 14,
+    "petnaest" to 15,
+    "sesnaest" to 16,
+    "šesnaest" to 16,
+    "sedamnaest" to 17,
+    "osamnaest" to 18,
+    "devetnaest" to 19,
+    "dvadeset" to 20,
+    "trideset" to 30,
+    "cetrdeset" to 40,
+    "četrdeset" to 40,
+    "pedeset" to 50,
+)
+
+private fun normalizeSprVoiceLookup(value: String): String =
+    Normalizer.normalize(value.trim().lowercase(Locale.getDefault()), Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun parseSprVoiceCount(value: String): String {
+    val raw = value.trim()
+    if (raw.matches(Regex("\\d{1,4}"))) return raw
+    return sprVoiceNumberWords[normalizeSprVoiceLookup(raw)]?.toString().orEmpty()
+}
+
+private fun cleanSprVoicePlace(value: String): String =
+    value.trim()
+        .replace(Regex("^(?:i|pa|te|onda|zatim)\\s+", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\b(?:dodaj|unesi|upisi|stavi)\\b", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\b(?:mjesto|lokacija)\\s*[:\\-]\\s*", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\s+"), " ")
+        .trim(' ', ',', '.', ';', ':', '-')
+
+private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasurementRow> {
+    val source = transcript.trim()
+    if (source.isBlank()) return emptyList()
+    val numberPattern = "(?:\\d{1,4}|${sprVoiceNumberWords.keys.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) }})"
+    val unitPattern = "(?:panik\\w*|lamp\\w*|svjetilj\\w*|kom\\w*)"
+    val itemPattern = Regex("^(.+?)\\s+($numberPattern)(?:\\s*$unitPattern)?$", setOf(RegexOption.IGNORE_CASE))
+    val normalizedSource = source
+        .replace(Regex("\\b(?:i onda|pa onda|zatim|onda)\\b", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("\\b($numberPattern)\\s*$unitPattern\\b\\s+", RegexOption.IGNORE_CASE), "\$1\n")
+        .replace(";", "\n")
+    val rows = mutableListOf<SprVoiceMeasurementRow>()
+    val seen = mutableSetOf<String>()
+    normalizedSource
+        .split(Regex("\\r?\\n|,+"))
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .forEach { segment ->
+            val match = itemPattern.find(segment) ?: return@forEach
+            val place = cleanSprVoicePlace(match.groupValues[1])
+            val count = parseSprVoiceCount(match.groupValues[2])
+            val key = normalizeSprVoiceLookup(place)
+            if (place.isBlank() || count.isBlank() || key.isBlank()) return@forEach
+            if (key in seen) {
+                rows.indexOfFirst { it.key == key }
+                    .takeIf { it >= 0 }
+                    ?.let { index -> rows[index] = rows[index].copy(lampCount = count) }
+            } else {
+                seen += key
+                rows += SprVoiceMeasurementRow(key = key, place = place, lampCount = count)
+            }
+        }
+    return rows
+}
+
+private fun findSprMeasurementColumn(
+    sheet: WorkOrderMeasurementSheet,
+    candidates: List<String>,
+    fallbackIndex: Int,
+): WorkOrderMeasurementColumn? {
+    val normalizedCandidates = candidates.map(::normalizeSprVoiceLookup).filter { it.isNotBlank() }
+    return sheet.columns.firstOrNull { column ->
+        val lookup = normalizeSprVoiceLookup(listOf(column.id, column.label, column.placeholder).joinToString(" "))
+        normalizedCandidates.any { lookup == it || lookup.contains(it) }
+    } ?: sheet.columns.getOrNull(fallbackIndex)
+}
+
+private fun applySprVoiceRowsToSheet(
+    sheet: WorkOrderMeasurementSheet,
+    voiceRows: List<SprVoiceMeasurementRow>,
+): WorkOrderMeasurementSheet {
+    if (voiceRows.isEmpty() || sheet.columns.isEmpty()) return sheet
+    val numberColumn = findSprMeasurementColumn(sheet, listOf("r br", "redni broj", "broj", "rb"), 0)
+    val placeColumn = findSprMeasurementColumn(sheet, listOf("mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"), 1)
+    val lampColumn = findSprMeasurementColumn(sheet, listOf("broj lampi", "lampi", "svjetiljki", "broj svjetiljki"), 2)
+    val eiColumn = findSprMeasurementColumn(sheet, listOf("ei", "izmjereno", "izmjerena vrijednost"), 3)
+    val eiminColumn = findSprMeasurementColumn(sheet, listOf("eimin", "emin", "minimalno", "zahtijevano"), 4)
+    val passColumn = findSprMeasurementColumn(sheet, listOf("zadovoljava", "ocjena", "ispravno", "pass"), 5)
+    if (placeColumn == null || lampColumn == null) return sheet
+    val rows = sheet.rows.mapIndexed { index, row ->
+        EditableSprMeasurementRow(
+            id = row.id.ifBlank { "measurement-row-${index + 1}" },
+            cells = row.cells.toMutableMap(),
+            formats = row.formats,
+        )
+    }.toMutableList()
+    fun ensureNumber(row: EditableSprMeasurementRow, index: Int) {
+        val id = numberColumn?.id.orEmpty()
+        if (id.isNotBlank() && row.cells[id].orEmpty().isBlank()) {
+            row.cells[id] = (index + 1).toString()
+        }
+    }
+    rows.forEachIndexed { index, row -> ensureNumber(row, index) }
+    voiceRows.forEach { entry ->
+        var targetRow = rows.firstOrNull { normalizeSprVoiceLookup(it.cells[placeColumn.id].orEmpty()) == entry.key }
+        if (targetRow == null) {
+            targetRow = rows.firstOrNull {
+                it.cells[placeColumn.id].orEmpty().isBlank() && it.cells[lampColumn.id].orEmpty().isBlank()
+            }
+        }
+        if (targetRow == null) {
+            targetRow = EditableSprMeasurementRow(
+                id = "measurement-row-${rows.size + 1}",
+                cells = sheet.columns.associate { it.id to "" }.toMutableMap(),
+                formats = emptyMap(),
+            )
+            rows += targetRow
+            eiColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = ">2" }
+            eiminColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = "1" }
+            passColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = "DA" }
+        }
+        ensureNumber(targetRow, rows.indexOf(targetRow))
+        if (targetRow.cells[placeColumn.id].orEmpty().isBlank()) {
+            targetRow.cells[placeColumn.id] = entry.place
+        }
+        targetRow.cells[lampColumn.id] = entry.lampCount
+    }
+    return sheet.copy(
+        rows = rows.map { row ->
+            WorkOrderMeasurementRow(
+                id = row.id,
+                cells = row.cells.toMap(),
+                formats = row.formats,
+            )
+        },
+    )
+}
+
+private fun applySprVoiceTranscriptToMeasurementSheets(
+    template: WorkOrderDocumentationTemplate,
+    sheets: Map<String, WorkOrderMeasurementSheet>,
+    transcript: String,
+): Map<String, WorkOrderMeasurementSheet> {
+    if (!template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
+    val voiceRows = parseSprVoiceMeasurementRows(transcript)
+    if (voiceRows.isEmpty()) return sheets
+    val table = template.measurementTables.firstOrNull() ?: return sheets
+    val key = measurementSheetStateKey(template, table)
+    val sheet = sheets[key] ?: table.sheet
+    return sheets + (key to applySprVoiceRowsToSheet(sheet, voiceRows))
+}
 
 private fun measurementTablePrimaryUsageKey(
     template: WorkOrderDocumentationTemplate,
@@ -34033,6 +34322,12 @@ private fun TemplateFieldInput(
                 singleLine = false,
                 minLines = 3,
                 maxLines = 7,
+            )
+            "spr_voice" -> DocumentationSprVoiceField(
+                label = label,
+                value = value,
+                onChange = onChange,
+                enabled = enabled,
             )
             "number" -> DocumentationMobileTextField(
                 label = label,
