@@ -26807,6 +26807,17 @@ private fun parseSprVoiceCount(value: String): String {
     return sprVoiceNumberWords[normalizeSprVoiceLookup(raw)]?.toString().orEmpty()
 }
 
+private fun capitalizeSprVoiceFirstLetter(value: String): String {
+    val trimmed = value.trim()
+    val firstLetterIndex = trimmed.indexOfFirst { it.isLetter() }
+    if (firstLetterIndex < 0) return trimmed
+    return buildString {
+        append(trimmed.substring(0, firstLetterIndex))
+        append(trimmed[firstLetterIndex].uppercaseChar())
+        append(trimmed.substring(firstLetterIndex + 1))
+    }
+}
+
 private fun cleanSprVoicePlace(value: String): String =
     value.trim()
         .replace(Regex("^(?:i|pa|te|onda|zatim)\\s+", RegexOption.IGNORE_CASE), "")
@@ -26815,6 +26826,7 @@ private fun cleanSprVoicePlace(value: String): String =
         .replace(Regex("\\b(?:mjesto|lokacija)\\s*[:\\-]\\s*", RegexOption.IGNORE_CASE), "")
         .replace(Regex("\\s+"), " ")
         .trim(' ', ',', '.', ';', ':', '-')
+        .let(::capitalizeSprVoiceFirstLetter)
 
 private fun cleanSprVoiceFloor(value: String): String =
     value.trim()
@@ -27069,7 +27081,7 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
     if (!template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
     val voiceRows = rows
         .mapNotNull { row ->
-            val place = row.place.trim()
+            val place = capitalizeSprVoiceFirstLetter(row.place)
             val isSection = row.kind.equals("section", ignoreCase = true) || row.kind.equals("floor", ignoreCase = true)
             val lampCount = if (isSection) "" else parseSprVoiceCount(row.lampCount).ifBlank { row.lampCount.trim() }
             val key = normalizeSprVoiceLookup(place)
