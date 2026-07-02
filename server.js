@@ -1109,6 +1109,40 @@ const DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS = Object.freeze({
   HMV: "12",
   HMUV: "12",
 });
+const DOCUMENTATION_NATIVE_SERVICE_GENERIC_NOTE = "Native zapisnik iz modula Izrada dokumentacije.";
+
+function summarizeDocumentationNativeServiceSeed(preset = {}) {
+  const technicalFields = Array.isArray(preset.technicalDataFields) ? preset.technicalDataFields : [];
+  const checklists = Array.isArray(preset.checklists) ? preset.checklists : [];
+  const assessments = Array.isArray(preset.measurementAssessments) ? preset.measurementAssessments : [];
+  const measurementTables = Array.isArray(preset.measurementTables) ? preset.measurementTables : [];
+  const lead = String(preset.reportTitle || preset.coverSubtitle || preset.serviceName || preset.title || "").trim();
+  const details = [];
+  const technicalLabels = technicalFields.map((field) => String(field?.label || "").trim()).filter(Boolean);
+  const tableLabels = measurementTables.map((table) => String(table?.title || table?.label || "").trim()).filter(Boolean);
+  const checklistLabels = checklists.map((checklist) => String(checklist?.label || "").trim()).filter(Boolean);
+  const assessmentLabels = assessments.map((assessment) => String(assessment?.label || assessment || "").trim()).filter(Boolean);
+
+  if (technicalLabels.length > 0) {
+    details.push(`polja: ${technicalLabels.slice(0, 4).join(", ")}${technicalLabels.length > 4 ? ` +${technicalLabels.length - 4}` : ""}`);
+  }
+  if (tableLabels.length > 0) {
+    details.push(`tablice: ${tableLabels.slice(0, 3).join("; ")}${tableLabels.length > 3 ? ` +${tableLabels.length - 3}` : ""}`);
+  }
+  if (checklistLabels.length > 0) {
+    const checklistItemsCount = checklists.reduce((sum, checklist) => sum + (Array.isArray(checklist?.items) ? checklist.items.length : 0), 0);
+    details.push(`checklist: ${checklistLabels.slice(0, 2).join("; ")}${checklistItemsCount ? ` (${checklistItemsCount} stavki)` : ""}`);
+  }
+  if (assessmentLabels.length > 0) {
+    details.push(`ocjene: ${assessmentLabels.slice(0, 4).join(", ")}${assessmentLabels.length > 4 ? ` +${assessmentLabels.length - 4}` : ""}`);
+  }
+
+  return [lead, details.join(" | ")]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(". ");
+}
+
 const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
   Object.freeze({
     name: "Osposobljavanje za rad na siguran način",
@@ -1242,7 +1276,8 @@ const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
     serviceCode: preset.serviceCode,
     serviceType: "inspection",
     validityMonths: DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS[preset.serviceCode] || "",
-    note: "Native zapisnik iz modula Izrada dokumentacije.",
+    note: summarizeDocumentationNativeServiceSeed(preset) || DOCUMENTATION_NATIVE_SERVICE_GENERIC_NOTE,
+    autoSyncStandardSeed: true,
   })),
 ]);
 const RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS = Math.max(
@@ -14771,6 +14806,12 @@ function normalizeStandardServiceCatalogName(value = "") {
     .trim();
 }
 
+function isGenericStandardServiceCatalogNote(value = "") {
+  const normalized = normalizeStandardServiceCatalogName(value);
+  return !normalized
+    || normalized === normalizeStandardServiceCatalogName(DOCUMENTATION_NATIVE_SERVICE_GENERIC_NOTE);
+}
+
 async function ensureStandardServiceCatalogItemsForRequest(user, request) {
   const { scopedSnapshot } = await getScopedState(user, request);
   if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "serviceCatalog.create")) {
@@ -14782,29 +14823,64 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
     return 0;
   }
 
+  const scopedServiceCatalog = (scopedSnapshot.serviceCatalog ?? [])
+    .filter((item) => !item.organizationId || String(item.organizationId) === organizationId);
   const existingCodes = new Set(
-    (scopedSnapshot.serviceCatalog ?? [])
-      .filter((item) => !item.organizationId || String(item.organizationId) === organizationId)
+    scopedServiceCatalog
       .map((item) => normalizeStandardServiceCatalogCode(item.serviceCode))
       .filter(Boolean),
   );
   const existingNames = new Set(
-    (scopedSnapshot.serviceCatalog ?? [])
-      .filter((item) => !item.organizationId || String(item.organizationId) === organizationId)
+    scopedServiceCatalog
       .map((item) => normalizeStandardServiceCatalogName(item.name))
       .filter(Boolean),
   );
+  const existingItemsByCode = new Map(
+    scopedServiceCatalog
+      .map((item) => [normalizeStandardServiceCatalogCode(item.serviceCode), item])
+      .filter(([code]) => Boolean(code)),
+  );
+  const existingItemsByName = new Map(
+    scopedServiceCatalog
+      .map((item) => [normalizeStandardServiceCatalogName(item.name), item])
+      .filter(([name]) => Boolean(name)),
+  );
   let createdCount = 0;
+  let updatedCount = 0;
 
   for (const seed of STANDARD_SERVICE_CATALOG_ITEMS) {
     const code = normalizeStandardServiceCatalogCode(seed.serviceCode);
     const name = normalizeStandardServiceCatalogName(seed.name);
-    if ((!code && !name) || existingCodes.has(code) || existingNames.has(name)) {
+    if (!code && !name) {
+      continue;
+    }
+
+    const existingItem = (code ? existingItemsByCode.get(code) : null)
+      || (name ? existingItemsByName.get(name) : null);
+    if (existingItem || existingCodes.has(code) || existingNames.has(name)) {
+      if (existingItem && seed.autoSyncStandardSeed) {
+        const patch = { organizationId };
+        const currentNote = String(existingItem.note || "").trim();
+        if (seed.note && currentNote !== seed.note && isGenericStandardServiceCatalogNote(currentNote)) {
+          patch.note = seed.note;
+        }
+        if (seed.validityMonths && !String(existingItem.validityMonths || "").trim()) {
+          patch.validityMonths = seed.validityMonths;
+        }
+        if (Object.keys(patch).length > 1) {
+          const updated = await domainRepository.updateServiceCatalogItem(existingItem.id, patch);
+          if (updated) {
+            existingItemsByCode.set(code, updated);
+            existingItemsByName.set(name, updated);
+            updatedCount += 1;
+          }
+        }
+      }
       continue;
     }
 
     try {
-      await domainRepository.createServiceCatalogItem({
+      const created = await domainRepository.createServiceCatalogItem({
         ...seed,
         organizationId,
         status: "active",
@@ -14816,6 +14892,8 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
       });
       existingCodes.add(code);
       existingNames.add(name);
+      existingItemsByCode.set(code, created);
+      existingItemsByName.set(name, created);
       createdCount += 1;
     } catch (error) {
       if (!/postoji|duplicate|uniq/i.test(String(error?.message || ""))) {
@@ -14826,11 +14904,11 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
     }
   }
 
-  if (createdCount > 0) {
+  if (createdCount > 0 || updatedCount > 0) {
     invalidateSnapshotCaches();
   }
 
-  return createdCount;
+  return createdCount + updatedCount;
 }
 
 const REPORT_SCHEDULE_TIME_ZONE = "Europe/Zagreb";
