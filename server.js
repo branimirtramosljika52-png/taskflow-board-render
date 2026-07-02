@@ -113,7 +113,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.272.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.273.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25225,6 +25225,139 @@ function parseMobileSprVoiceRows(transcript = "") {
   return rows;
 }
 
+function normalizeMobileSprVoiceRows(rows = []) {
+  const normalizedRows = [];
+  const seen = new Set();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const place = cleanMobileSprVoicePlace(
+      row?.place
+      || row?.mjesto
+      || row?.location
+      || row?.room
+      || row?.name
+      || "",
+    );
+    const lampCount = parseMobileSprVoiceCount(
+      row?.lampCount
+      || row?.brojLampi
+      || row?.count
+      || row?.quantity
+      || row?.value
+      || "",
+    ) || normalizeInputValue(
+      row?.lampCount
+      || row?.brojLampi
+      || row?.count
+      || row?.quantity
+      || row?.value
+      || "",
+    );
+    const key = normalizeMobileSprLookupText(place);
+    if (!place || !lampCount || !key) {
+      return;
+    }
+    if (seen.has(key)) {
+      const existing = normalizedRows.find((entry) => entry.key === key);
+      if (existing) {
+        existing.lampCount = lampCount;
+      }
+      return;
+    }
+    seen.add(key);
+    normalizedRows.push({ key, place, lampCount });
+  });
+  return normalizedRows;
+}
+
+function getMobileSprVoiceResultRows(result = {}) {
+  const directRows = Array.isArray(result?.rows) ? result.rows : [];
+  const measurementRows = Array.isArray(result?.measurementRows) ? result.measurementRows : [];
+  const items = Array.isArray(result?.items) ? result.items : [];
+  const nestedRows = Array.isArray(result?.result?.rows) ? result.result.rows : [];
+  const rows = directRows.length ? directRows : (measurementRows.length ? measurementRows : (items.length ? items : nestedRows));
+  return normalizeMobileSprVoiceRows(rows);
+}
+
+function buildMobileSprVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileSprVoiceRows(parseMobileSprVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Korišten je lokalni parser za ${rows.length} redaka.`,
+  };
+}
+
+async function buildMobileSprVoiceStructuredRows(body = {}, user = null) {
+  const transcript = normalizeInputValue(body?.transcript || body?.text || "");
+  if (!transcript) {
+    return { ok: true, provider: "local", rows: [], message: "Diktat je prazan." };
+  }
+
+  const config = getOpenAiRuntimeConfig();
+  const canCallOpenAi = canUseOpenAiIntegration(user) && config.liveCallsEnabled && !config.dryRun;
+  if (!canCallOpenAi) {
+    return buildMobileSprVoiceLocalPayload(body, "NexAI nije uključen na serveru, korišten je lokalni parser.");
+  }
+
+  try {
+    const plan = await buildOpenAiLivePlan({
+      purpose: "mobile_spr_voice_measurement_rows",
+      templateId: normalizeInputValue(body.templateId),
+      workOrderId: normalizeInputValue(body.workOrderId),
+      workOrderNumber: normalizeInputValue(body.workOrderNumber),
+      modelTier: normalizeInputValue(body.modelTier) || "fast",
+      dryRun: false,
+      context: {
+        transcript,
+        serviceCode: normalizeInputValue(body.serviceCode) || "SPR",
+        templateTitle: normalizeInputValue(body.templateTitle),
+        measurementTable: body.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {},
+        columns: Array.isArray(body.columns) ? body.columns : [],
+      },
+      settings: {
+        language: "hr-HR",
+        task: "Iz diktata izdvoji mjerna mjesta sigurnosne protupanične rasvjete i broj lampi/svjetiljki.",
+        rules: [
+          "Vrati jedan red za svako mjesto ispitivanja.",
+          "Podrži diktat oblika 'prodajni prostor 6 skladište 7 hodnik 2', bez riječi komada.",
+          "Ako se mjesto ponovi, zadnja izrečena brojčana vrijednost vrijedi.",
+          "Ne izmišljaj mjerna mjesta ni brojeve.",
+          "Ne vraćaj ostale kolone tablice.",
+        ],
+      },
+      expectedJsonShape: {
+        rows: [
+          {
+            place: "naziv mjesta ispitivanja, npr. Prodajni prostor",
+            lampCount: "broj lampi kao string, npr. 7",
+            confidence: "high | medium | low",
+          },
+        ],
+        warnings: ["kratke napomene ako diktat nije jasan"],
+        summary: "kratak sažetak",
+      },
+    }, user);
+    const rows = getMobileSprVoiceResultRows(plan?.result || {});
+    if (!rows.length) {
+      return buildMobileSprVoiceLocalPayload(body, "NexAI nije vratio jasne retke, korišten je lokalni parser.");
+    }
+    return {
+      ok: true,
+      provider: "openai",
+      rows,
+      message: `NexAI je strukturirao ${rows.length} redaka.`,
+      model: plan?.model || "",
+      warnings: Array.isArray(plan?.result?.warnings) ? plan.result.warnings : [],
+    };
+  } catch (error) {
+    return buildMobileSprVoiceLocalPayload(
+      body,
+      `${buildOpenAiSafeErrorMessage(error)} Korišten je lokalni parser.`,
+    );
+  }
+}
+
 function findMobileSprSheetColumn(sheet = {}, candidates = [], fallbackIndex = -1) {
   const columns = (Array.isArray(sheet?.columns) ? sheet.columns : [])
     .map((column, sourceIndex) => ({ ...column, sourceIndex }))
@@ -31621,6 +31754,17 @@ async function handleApiRequest(request, response, url) {
       } catch (error) {
         sendError(response, Number(error?.statusCode || 502), buildOpenAiSafeErrorMessage(error));
       }
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/mobile/documentation/spr-voice/structure") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati RN dokumentacijom.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      sendJson(response, 200, await buildMobileSprVoiceStructuredRows(body, user));
       return true;
     }
 

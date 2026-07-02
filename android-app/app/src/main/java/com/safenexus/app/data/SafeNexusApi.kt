@@ -1113,6 +1113,55 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun prepareSprVoiceMeasurementRows(
+        workOrderId: String,
+        workOrderNumber: String,
+        template: WorkOrderDocumentationTemplate,
+        transcript: String,
+        modelTier: String = "fast",
+    ): Result<SprVoiceAiResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val table = template.measurementTables.firstOrNull()
+            val payload = JSONObject()
+                .put("purpose", "mobile-spr-voice-measurement-rows")
+                .put("workOrderId", workOrderId)
+                .put("workOrderNumber", workOrderNumber)
+                .put("templateId", template.id)
+                .put("templateTitle", template.title)
+                .put("serviceCode", template.serviceCode)
+                .put("transcript", transcript.trim())
+                .put("modelTier", modelTier.ifBlank { "fast" })
+                .put(
+                    "measurementTable",
+                    JSONObject()
+                        .put("id", table?.id.orEmpty())
+                        .put("key", table?.key.orEmpty())
+                        .put("label", table?.label.orEmpty())
+                        .put("summary", table?.summary.orEmpty()),
+                )
+                .put(
+                    "columns",
+                    JSONArray((table?.sheet?.columns ?: emptyList()).mapIndexed { index, column ->
+                        JSONObject()
+                            .put("id", column.id)
+                            .put("label", column.label)
+                            .put("placeholder", column.placeholder)
+                            .put("index", index)
+                    }),
+                )
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/mobile/documentation/spr-voice/structure",
+                    method = "POST",
+                    body = payload,
+                    readTimeoutMs = OPENAI_PREPARE_READ_TIMEOUT_MS,
+                ),
+            )
+            json.toSprVoiceAiResult()
+        }
+    }
+
     suspend fun deleteWorkOrderDocument(workOrderId: String, documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request(
@@ -2860,6 +2909,35 @@ private fun JSONObject.toWorkOrderDocumentationAiResult(): WorkOrderDocumentatio
         measurementSuggestions = measurementSuggestions.toWorkOrderDocumentationAiMeasurementSuggestions(),
         warnings = warnings,
     )
+}
+
+private fun JSONObject.toSprVoiceAiResult(): SprVoiceAiResult {
+    val provider = firstClean("provider").ifBlank { "local" }
+    val rows = optJSONArray("rows").toSprVoiceAiRows()
+    return SprVoiceAiResult(
+        provider = provider,
+        rows = rows,
+        message = firstClean("message").ifBlank {
+            if (provider.equals("openai", ignoreCase = true)) {
+                "NexAI je strukturirao ${rows.size} redaka."
+            } else {
+                "Korišten je lokalni parser za ${rows.size} redaka."
+            }
+        },
+    )
+}
+
+private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val place = item.firstClean("place", "mjesto", "location", "room", "name")
+            val lampCount = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity")
+            if (place.isBlank() || lampCount.isBlank()) continue
+            add(SprVoiceAiRow(place = place, lampCount = lampCount))
+        }
+    }
 }
 
 private fun JSONArray?.toWorkOrderDocumentationAiFieldSuggestions(): List<WorkOrderDocumentationAiFieldSuggestion> {

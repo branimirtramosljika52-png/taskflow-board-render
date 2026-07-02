@@ -818,6 +818,17 @@ data class WorkOrderMeasurementTable(
     val sheet: WorkOrderMeasurementSheet,
 )
 
+data class SprVoiceAiRow(
+    val place: String,
+    val lampCount: String,
+)
+
+data class SprVoiceAiResult(
+    val provider: String = "local",
+    val rows: List<SprVoiceAiRow> = emptyList(),
+    val message: String = "",
+)
+
 data class WorkOrderMeasurementSheet(
     val columns: List<WorkOrderMeasurementColumn> = emptyList(),
     val rows: List<WorkOrderMeasurementRow> = emptyList(),

@@ -245,6 +245,8 @@ import com.safenexus.app.data.RiskAssessmentRiskRowDraft
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
+import com.safenexus.app.data.SprVoiceAiResult
+import com.safenexus.app.data.SprVoiceAiRow
 import com.safenexus.app.data.isClientPortalUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.WorkOrderCompanyOption
@@ -2381,6 +2383,36 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun prepareSprVoiceMeasurementRows(
+        workOrder: WorkOrder,
+        template: WorkOrderDocumentationTemplate,
+        transcript: String,
+        onSuccess: (SprVoiceAiResult) -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        if (transcript.isBlank()) {
+            onFailure("Diktat je prazan.")
+            return
+        }
+        if (workOrder.id.isBlank()) {
+            onFailure("RN nema ispravan ID za SPR diktat.")
+            return
+        }
+        viewModelScope.launch {
+            api.prepareSprVoiceMeasurementRows(
+                workOrderId = workOrder.id,
+                workOrderNumber = workOrder.displayNumber,
+                template = template,
+                transcript = transcript,
+                modelTier = "fast",
+            )
+                .onSuccess(onSuccess)
+                .onFailure { error ->
+                    onFailure(error.message ?: "NexAI trenutno nije dostupan za SPR diktat.")
+                }
+        }
+    }
+
     fun uploadWorkOrderDocuments(
         context: Context,
         workOrder: WorkOrder,
@@ -3498,6 +3530,15 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     template = template,
                     files = files,
                     modelTier = modelTier,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                )
+            },
+            onRunSprVoiceAi = { template, transcript, onSuccess, onFailure ->
+                viewModel.prepareSprVoiceMeasurementRows(
+                    workOrder = workOrder,
+                    template = template,
+                    transcript = transcript,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
@@ -24250,6 +24291,12 @@ private fun WorkOrderDocumentationWizardDialog(
         (WorkOrderDocumentationAiResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRunSprVoiceAi: (
+        WorkOrderDocumentationTemplate,
+        String,
+        (SprVoiceAiResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
@@ -24841,6 +24888,8 @@ private fun WorkOrderDocumentationWizardDialog(
     var aiMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
     var aiModelTier by remember(workOrder.id, selectedObjectId) { mutableStateOf("standard") }
     var selectedAiTemplateId by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    var sprVoiceAiLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    var sprVoiceAiMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
     val aiCapableTemplates = remember(activeTemplates) {
         activeTemplates.filter { template -> template.aiFields.isNotEmpty() || template.aiMeasurementColumns.isNotEmpty() }
     }
@@ -25975,6 +26024,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         attachmentFiles = documentationAttachmentFiles,
                         attachmentLoading = documentationAttachmentLoading,
                         attachmentMessage = documentationAttachmentMessage,
+                        sprVoiceAiLoading = sprVoiceAiLoading,
+                        sprVoiceAiMessage = sprVoiceAiMessage,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
                         onPickAttachments = { documentationAttachmentUploadSourceDialogOpen = true },
@@ -25983,7 +26034,29 @@ private fun WorkOrderDocumentationWizardDialog(
                         onFieldChange = { template, field, value, replaceExisting ->
                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
-                                measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
+                                sprVoiceAiLoading = true
+                                sprVoiceAiMessage = "NexAI strukturira diktat u retke tablice..."
+                                onRunSprVoiceAi(
+                                    template,
+                                    value,
+                                    { result ->
+                                        sprVoiceAiLoading = false
+                                        if (result.rows.isNotEmpty()) {
+                                            measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, result.rows, replaceExisting)
+                                            sprVoiceAiMessage = result.message.ifBlank {
+                                                "NexAI je strukturirao ${result.rows.size} redaka."
+                                            }
+                                        } else {
+                                            measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
+                                            sprVoiceAiMessage = "NexAI nije vratio retke, korišten je lokalni parser."
+                                        }
+                                    },
+                                    { message ->
+                                        sprVoiceAiLoading = false
+                                        measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
+                                        sprVoiceAiMessage = "$message Korišten je lokalni parser."
+                                    },
+                                )
                             }
                         },
                     )
@@ -26697,6 +26770,29 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
 ): Map<String, WorkOrderMeasurementSheet> {
     if (!template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
     val voiceRows = parseSprVoiceMeasurementRows(transcript)
+    if (voiceRows.isEmpty()) return sheets
+    val table = template.measurementTables.firstOrNull() ?: return sheets
+    val key = measurementSheetStateKey(template, table)
+    val sheet = sheets[key] ?: table.sheet
+    return sheets + (key to applySprVoiceRowsToSheet(sheet, voiceRows, replaceExisting))
+}
+
+private fun applySprVoiceAiRowsToMeasurementSheets(
+    template: WorkOrderDocumentationTemplate,
+    sheets: Map<String, WorkOrderMeasurementSheet>,
+    rows: List<SprVoiceAiRow>,
+    replaceExisting: Boolean = false,
+): Map<String, WorkOrderMeasurementSheet> {
+    if (!template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
+    val voiceRows = rows
+        .mapNotNull { row ->
+            val place = row.place.trim()
+            val lampCount = parseSprVoiceCount(row.lampCount).ifBlank { row.lampCount.trim() }
+            val key = normalizeSprVoiceLookup(place)
+            if (place.isBlank() || lampCount.isBlank() || key.isBlank()) null else {
+                SprVoiceMeasurementRow(key = key, place = place, lampCount = lampCount)
+            }
+        }
     if (voiceRows.isEmpty()) return sheets
     val table = template.measurementTables.firstOrNull() ?: return sheets
     val key = measurementSheetStateKey(template, table)
@@ -30802,6 +30898,8 @@ private fun DocumentationSprMobileWorkspace(
     attachmentFiles: List<WorkOrderDocumentationAiFile>,
     attachmentLoading: Boolean,
     attachmentMessage: String,
+    sprVoiceAiLoading: Boolean,
+    sprVoiceAiMessage: String,
     enabled: Boolean,
     onOpenMeasurements: () -> Unit,
     onPickAttachments: () -> Unit,
@@ -30919,6 +31017,33 @@ private fun DocumentationSprMobileWorkspace(
                 DocumentationSprStatusChip(Icons.Rounded.AttachFile, "Prilozi", attachmentFiles.size.toString())
             }
             DocumentationSprStatusChip(Icons.Rounded.ListAlt, "Gridline", "$tableCount / $rowCount")
+        }
+
+        AnimatedVisibility(visible = sprVoiceAiLoading || sprVoiceAiMessage.isNotBlank()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(11.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (sprVoiceAiLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(17.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    }
+                    Text(
+                        if (sprVoiceAiLoading) "NexAI strukturira diktat u retke..." else sprVoiceAiMessage,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                    )
+                }
+            }
         }
 
         Surface(
