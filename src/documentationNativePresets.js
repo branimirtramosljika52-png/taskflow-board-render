@@ -293,6 +293,205 @@ const VES_COLUMNS = [
   makeColumn("note", "Napomena", 220),
 ];
 
+const EMM_COLUMNS = [
+  makeColumn("number", "R.br.", 58),
+  makeColumn("testPoint1", "Ispitno mjesto 1", 190),
+  makeColumn("testPoint2", "Ispitno mjesto 2", 190),
+  makeColumn("testCurrent", "Iisp [A]", 96),
+  makeColumn("measuredResistance", "Rizm [ohm]", 110),
+  makeColumn("expectedResistance", "R [ohm]", 96),
+  makeColumn("pass", "Rizm ~ R", 110, "DA/NE"),
+];
+
+const VENTILATION_COLUMNS = [
+  makeColumn("space", "Prostor", 180),
+  makeColumn("effectiveVolume", "Efektivni volumen", 120),
+  makeColumn("openingType", "Vrsta otvora", 120),
+  makeColumn("openingArea", "Povrsina otvora", 120),
+  makeColumn("airSpeed", "Brzina strujanja", 120),
+  makeColumn("flow", "Protok", 100),
+  makeColumn("volumeFlow", "Volumni protok", 120),
+  makeColumn("requiredFlow", "Potrebni protok", 120),
+  makeColumn("airChanges", "Broj izmjena", 110),
+  makeColumn("requiredAirChanges", "Trazeni broj izmjena", 140),
+  makeColumn("pressure", "Podtlak/Nadtlak", 130),
+  makeColumn("pass", "Zadovoljava", 110, "DA/NE"),
+];
+
+const EXEI_IPK_COLUMNS = [
+  makeColumn("circuit", "Oznaka strujnog kruga / el. uredjaja", 180),
+  makeColumn("protectionDevice", "Zastitni uredjaj", 130),
+  makeColumn("protectionType", "Tip i karakteristika", 135),
+  makeColumn("ia", "Ia", 70),
+  makeColumn("td", "td [s]", 70),
+  makeColumn("zLpe", "Z(L-PE) [ohm]", 105),
+  makeColumn("izem", "Izem [A]", 86),
+  makeColumn("zLn", "Z(L-N) [ohm]", 105),
+  makeColumn("ik1min", "Ik1min [A]", 92),
+  makeColumn("zLl", "Z(L-L) [ohm]", 105),
+  makeColumn("ik2min", "Ik2min [A]", 92),
+  makeColumn("u0", "U0", 68),
+  makeColumn("ikCheck", "Ikmin >= 3/2xIa", 125, "DA/NE"),
+  makeColumn("pass", "Zadovoljava", 110, "DA/NE"),
+];
+
+const EXEI_PE_COLUMNS = [
+  makeColumn("number", "R.br.", 58),
+  makeColumn("section", "S [mm2]", 82),
+  makeColumn("testPoint1", "Ispitno mjesto 1", 160),
+  makeColumn("testPoint2", "Ispitno mjesto 2", 160),
+  makeColumn("testCurrent", "Iisp [A]", 90),
+  makeColumn("measuredResistance", "Rizm [ohm]", 110),
+  makeColumn("expectedResistance", "Rocek [ohm]", 110),
+  makeColumn("pass", "Rizm ~ Rocek", 120, "DA/NE"),
+];
+
+const EXEI_EQUIPMENT_COLUMNS = [
+  makeColumn("device", "Mjerni uredjaj / tv. broj agregata", 170),
+  makeColumn("manufacturerType", "Proizvodjac / tip", 150),
+  makeColumn("motorSerial", "Tvornicki broj motora", 135),
+  makeColumn("protectionCertificate", "Vrsta zastite / certifikat", 165),
+  makeColumn("inCurrent", "In", 70),
+  makeColumn("iL1", "I L1", 70),
+  makeColumn("iL2", "I L2", 70),
+  makeColumn("iL3", "I L3", 70),
+  makeColumn("r1", "R1", 70),
+  makeColumn("r2", "R2", 70),
+  makeColumn("r3", "R3", 70),
+  makeColumn("risoPe1", "Riso PE-1", 90),
+  makeColumn("risoPe2", "Riso PE-2", 90),
+  makeColumn("risoPe3", "Riso PE-3", 90),
+  makeColumn("pass", "Ocjena", 92, "DA/NE"),
+];
+
+const EXEI_BIMETAL_COLUMNS = [
+  makeColumn("number", "R.br.", 58),
+  makeColumn("circuit", "Broj strujnog kruga", 130),
+  makeColumn("protectionType", "Tip i radno podrucje zastitnog uredjaja", 190),
+  makeColumn("inCurrent", "In", 70),
+  makeColumn("ip", "Ip", 70),
+  makeColumn("iaIn", "IA/In", 70),
+  makeColumn("te", "tE", 70),
+  makeColumn("iis", "Iis [A]", 80),
+  makeColumn("tisk", "tisk", 80),
+  makeColumn("pass", "Zadovoljava", 110, "DA/NE"),
+];
+
+const EXSE_COLUMNS = [
+  makeColumn("number", "R.br.", 58),
+  makeColumn("place", "Mjerno mjesto", 190),
+  makeColumn("earthResistance", "Otpor uzemljenja [ohm]", 140),
+  makeColumn("pipeResistance", "Otpor cijevi [kohm]", 125),
+  makeColumn("electrostaticField", "Elektrostaticko polje [kV/m]", 165),
+  makeColumn("allowedResistance", "Dozvoljeni otpor", 125),
+  makeColumn("pass", "Ocjena ispravnosti", 135, "DA/NE"),
+  makeColumn("note", "Napomena", 170),
+];
+
+const TEXT_REVIEW_COLUMNS = [
+  makeColumn("item", "Stavka", 220),
+  makeColumn("description", "Opis / nalaz", 360),
+  makeColumn("pass", "Zadovoljava", 115, "DA/NE/NP"),
+  makeColumn("note", "Napomena", 220),
+];
+
+const HYDRANT_REVIEW_COLUMNS = [
+  makeColumn("number", "Redni broj", 76),
+  makeColumn("location", "Mjesto ugradnje", 190),
+  makeColumn("hydrantNumber", "Br. hidr.", 86),
+  makeColumn("marked", "Oznacenost", 110, "DA/NE"),
+  makeColumn("equipment", "Oprema", 110, "DA/NE"),
+  makeColumn("available", "Dostupnost", 110, "DA/NE"),
+  makeColumn("functional", "Funkcionalnost", 125, "DA/NE"),
+];
+
+const HYDRANT_MEASUREMENT_COLUMNS = [
+  makeColumn("network", "Hidrantska mreza", 160),
+  makeColumn("openNozzles", "Otvoreno mlaznica", 130),
+  makeColumn("staticPressure", "pstat [bar]", 100),
+  makeColumn("dynamicPressure", "pdin [bar]", 100),
+  makeColumn("nozzleDiameter", "Promjer mlaznice [mm]", 145),
+  makeColumn("nozzleFlow", "Qm [l/min]", 110),
+  makeColumn("totalFlow", "Quk [l/min]", 110),
+  makeColumn("requiredFlow", "Potreban protok [l/min]", 145),
+  makeColumn("pass", "Zadovoljava", 110, "DA/NE"),
+];
+
+const PPV_COLUMNS = [
+  makeColumn("number", "Broj", 70),
+  makeColumn("doorType", "Tip PP vrata", 150),
+  makeColumn("serialNumber", "Tv. br.", 110),
+  makeColumn("location", "Mjesto ugradnje", 220),
+  makeColumn("pass", "Zadovoljava", 115, "DA/NE"),
+];
+
+const PPZ_COLUMNS = [
+  makeColumn("number", "Broj", 70),
+  makeColumn("mark", "Oznaka", 110),
+  makeColumn("dimensions", "Dimenzije", 120),
+  makeColumn("serialNumber", "Serijski broj", 130),
+  makeColumn("location", "Mjesto ugradnje", 180),
+  makeColumn("driveType", "Tip/pogon", 120),
+  makeColumn("functional", "Funkcionalnost", 125, "DA/NE"),
+  makeColumn("alarmLink", "Veza sa sustavom dojave", 155, "DA/NE"),
+  makeColumn("pass", "Zadovoljava", 115, "DA/NE"),
+  makeColumn("note", "Napomena", 160),
+];
+
+const GAS_VOLUME_COLUMNS = [
+  makeColumn("dimension", "Dim", 90),
+  makeColumn("length", "L", 80),
+  makeColumn("factor", "k", 80),
+  makeColumn("volume", "Vol.", 90),
+  makeColumn("installationVolume", "Volumen instalacije [l]", 160),
+];
+
+const GAS_PRESSURE_COLUMNS = [
+  makeColumn("reading", "Ocitanje", 100),
+  makeColumn("time", "Vrijeme [hh:mm]", 130),
+  makeColumn("testPressure", "Ispitni tlak [mbar]", 150),
+  makeColumn("note", "Napomena", 180),
+];
+
+const WORK_EQUIPMENT_COLUMNS = [
+  makeColumn("number", "Redni broj", 78),
+  makeColumn("category", "Kategorija", 150),
+  makeColumn("item", "Stavka", 260),
+  makeColumn("finding", "Nalaz/opis", 260),
+  makeColumn("pass", "Zakljucak", 110, "DA/NE/NP"),
+  makeColumn("note", "Napomena", 170),
+  makeColumn("aiInstruction", "AI uputa", 220),
+  makeColumn("locked", "Zakljucano", 92, "DA/NE"),
+];
+
+const ROF_COLUMNS = [
+  makeColumn("space", "Prostor/prostorija", 170),
+  makeColumn("measurementPlace", "Mjerno mjesto", 150),
+  makeColumn("lightingMeasured", "Izmjereno osvjetljenje [lx]", 150),
+  makeColumn("lightingRequired", "Propisano osvjetljenje [lx]", 150),
+  makeColumn("noiseMeasured", "Buka [dB]", 95),
+  makeColumn("noiseAllowed", "Dopustena buka [dB]", 130),
+  makeColumn("temperatureMeasured", "Temperatura [C]", 115),
+  makeColumn("temperatureAllowed", "Dopustena temperatura [C]", 155),
+  makeColumn("airSpeedMeasured", "Brzina strujanja [m/s]", 150),
+  makeColumn("humidityMeasured", "Relativna vlaznost [%]", 150),
+  makeColumn("pass", "DA/NE", 90, "DA/NE"),
+];
+
+const ROK_COLUMNS = [
+  makeColumn("space", "Prostor/prostorija", 170),
+  makeColumn("measurementPlace", "Mjerno mjesto", 150),
+  makeColumn("measurementDescription", "Opis MM", 170),
+  makeColumn("hazard", "Stetnost", 140),
+  makeColumn("unit", "Mjerna jedinica", 120),
+  makeColumn("measured", "Izmjereno", 110),
+  makeColumn("calculated8h", "Izracunato u odnosu na 8 sati", 170),
+  makeColumn("gvi", "GVI", 90),
+  makeColumn("kgvi", "KGVI", 90),
+  makeColumn("note", "Napomena", 170),
+  makeColumn("pass", "DA/NE", 90, "DA/NE"),
+];
+
 const EIZ_VISUAL_ITEMS = [
   "Metoda zaštite od električnog udara",
   "Prisutnost protupožarnih pregrada i ostalih mjera opreza protiv širenja vatre te zaštite od toplinskih učinaka",
@@ -413,6 +612,121 @@ const EIZ_TECHNICAL_FIELDS = [
   technicalField("protectiveDevices", "Zaštitni uređaji", "Automatski osigurači, ZUDS"),
 ];
 
+const EX_TECHNICAL_FIELDS = [
+  technicalField("zone", "Ex zona", ""),
+  technicalField("equipmentGroup", "Grupa opreme", ""),
+  technicalField("protectionMark", "Oznaka protueksplozijske zastite", ""),
+  technicalField("documentation", "Projektna / Ex dokumentacija", ""),
+];
+
+const FIRE_SYSTEM_TECHNICAL_FIELDS = [
+  technicalField("protectedArea", "Predmet zastite / opis prostora", ""),
+  technicalField("centralUnit", "Centrala / upravljacki uredjaj", ""),
+  technicalField("detectors", "Detektori / elementi sustava", ""),
+  technicalField("linkedSystems", "Sustavi u sprezi", ""),
+  technicalField("elementCount", "Ukupan broj elemenata", ""),
+];
+
+const GAS_TECHNICAL_FIELDS = [
+  technicalField("meterManufacturer", "Proizvodjac plinomjera", ""),
+  technicalField("meterType", "Tip i velicina plinomjera", ""),
+  technicalField("meterSerial", "Tvornicki broj", ""),
+  technicalField("meterYear", "Godina proizvodnje", ""),
+  technicalField("meterState", "Stanje plinomjera [m3]", ""),
+  technicalField("pressureClass", "Tlacni razred instalacije", ""),
+  technicalField("gasAppliance", "Plinsko trosilo", ""),
+  technicalField("applianceRoom", "Prostor plinskog trosila", ""),
+];
+
+const WORK_EQUIPMENT_TECHNICAL_FIELDS = [
+  technicalField("equipmentName", "Naziv radne opreme", ""),
+  technicalField("manufacturer", "Proizvodjac", ""),
+  technicalField("model", "Tip/model", ""),
+  technicalField("serialNumber", "Serijski broj", ""),
+  technicalField("inventoryNumber", "Inventarni broj", ""),
+  technicalField("purpose", "Namjena radne opreme", ""),
+  technicalField("position", "Pozicija radne opreme", ""),
+  technicalField("documentation", "Dokumentacija", ""),
+];
+
+const WORK_ENVIRONMENT_TECHNICAL_FIELDS = [
+  technicalField("location", "Lokacija IS ZNR", ""),
+  technicalField("outsideTemperature", "Vanjska temperatura", ""),
+  technicalField("relativeHumidity", "Relativna vlaznost", ""),
+  technicalField("airSpeed", "Brzina strujanja", ""),
+  technicalField("weatherConditions", "Vrijeme / vanjski uvjeti", ""),
+  technicalField("measurementEquipment", "Mjerna oprema", ""),
+];
+
+const EVACUATION_PLAN_FIELDS = [
+  technicalField("object", "Objekt", ""),
+  technicalField("systems", "Sustavi koji postoje na lokaciji", ""),
+  technicalField("evacuationDirections", "Evakuacijski smjerovi", ""),
+  technicalField("assemblyPoint", "Zborno mjesto", ""),
+  technicalField("responsiblePersons", "Osobe zaduzene za evakuaciju", ""),
+];
+
+const NEGATIVE_FINDING_FIELDS = [
+  technicalField("inspectionPlace", "Mjesto ispitivanja", ""),
+  technicalField("inspectionName", "Naziv ispitivanja", ""),
+  technicalField("nonConformity", "Nesukladnost", ""),
+  technicalField("correctiveAction", "Sto treba otkloniti", ""),
+  technicalField("externalTicket", "Napomena / SAP Fiori prijava", ""),
+];
+
+const SZOMV_DETAILED_ITEMS = [
+  "Hvataljke - vrsta hvataljki",
+  "Hvataljke - stanje vodica",
+  "Hvataljke - stanje spojeva",
+  "Odvodi - stanje vodica odvoda",
+  "Odvodi - mehanicka ostecenja",
+  "Odvodi - spoj na uzemljenje",
+  "Mjerni spojevi - stanje",
+  "Mjerni spojevi - dostupnost",
+  "Mjerni spojevi - oznake",
+  "Uzemljenje - vidljivi spojevi",
+  "Uzemljenje - korozija",
+  "Uzemljenje - ostecenja",
+  "Prenaponska zastita - ostecen ili proradio",
+  "Prenaponska zastita - osigurac proradio",
+  "Izjednacenje potencijala - stanje spojeva",
+  "Izjednacenje potencijala - dostupnost",
+];
+
+const FIRE_REVIEW_ITEMS = [
+  "Projektna dokumentacija i izvedeno stanje",
+  "Vizualni pregled sustava",
+  "Funkcionalno ispitivanje sustava",
+  "Sustavi u sprezi",
+  "Signalizacija i alarmiranje",
+  "Mjerna i ispitna oprema",
+];
+
+const GAS_ASSESSMENT_ITEMS = [
+  "Vizualni pregled cjelokupne plinske instalacije",
+  "Provjera nepropusnosti spojeva oko glavnog zapora",
+  "Provjera nepropusnosti razvodnog cjevovoda",
+  "Provjera nepropusnosti spojeva oko plinomjera",
+  "Provjera nepropusnosti oko regulatora",
+  "Provjera nepropusnosti oko manometara",
+  "Provjera cjevovoda za plinska trosila",
+  "Provjera sigurnosnih, zastitnih i regulacijskih uredjaja",
+];
+
+const WORK_EQUIPMENT_ITEMS = [
+  "Zastita od pokretnih dijelova - pogonski mehanizam",
+  "Nacin postavljanja / osiguranje stabilnosti",
+  "Promjene nastale uporabom",
+  "Ostvarivanje gibanja i djelovanja stroja i uredjaja",
+  "Djelovanje signalnih uredjaja",
+  "Djelovanje uredjaja za upravljanje",
+  "Djelovanje uredjaja za ukljucivanje i iskljucivanje",
+  "Zastita od povrata napona",
+  "Zastita od pokretnih dijelova - prijenosnici snage i gibanja",
+  "Zastita od pokretnih dijelova - radni elementi",
+  "Otpor izolacije",
+];
+
 const YES_NO_VALUES = ["DA", "NE"];
 const YES_NO_NP_VALUES = ["DA", "NE", "NP"];
 const EIZ_RCD_DEVICE_ALIASES = [
@@ -446,6 +760,17 @@ const EIZ_RCD_RATING_ALIASES = [
   "30 mA",
   "300 mA",
 ];
+
+function makeDocumentationResultAiContext(subject = "predmetni zapisnik", terms = []) {
+  const baseTerms = Array.from(new Set([subject, ...terms].filter(Boolean)));
+  return Object.freeze({
+    subject,
+    resultLookFor: [...baseTerms, "zadovoljava", "ne zadovoljava", "ocjena", "DA", "NE"],
+    defectsLookFor: [...baseTerms, "nedostaci", "neispravno", "ne zadovoljava", "primjedba", "otkloniti"],
+    recommendationsLookFor: [...baseTerms, "preporuke", "napomena", "potrebno", "predlaze se", "sanacija"],
+    aiAvoid: `Ne koristi podatke iz drugih vrsta zapisnika. Za ${subject} koristi samo podatke koji su jasno vezani uz istu uslugu, lokaciju ili objekt.`,
+  });
+}
 
 const DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE = Object.freeze({
   SPR: Object.freeze({
@@ -490,6 +815,38 @@ const DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE = Object.freeze({
     recommendationsLookFor: ["preporuke", "napomena", "ponoviti vjezbu", "zborno mjesto", "plan evakuacije"],
     aiAvoid: "Ne koristi mjerenja elektrike, munje, rasvjete ili tipkala za VES zapisnik.",
   }),
+  EMM: makeDocumentationResultAiContext("povezanost metalnih masa", ["EMM", "metalne mase", "kontinuitet", "Rizm"]),
+  VS: makeDocumentationResultAiContext("sustav ventilacije", ["VS", "ventilacija", "protok", "broj izmjena"]),
+  PPCAFFE: makeDocumentationResultAiContext("ventilaciju caffe bara", ["PPCAFFE", "ventilacija", "caffe"]),
+  PZP: makeDocumentationResultAiContext("ventilaciju prostora za pusace", ["PZP", "ventilacija", "pusaci"]),
+  EXEI: makeDocumentationResultAiContext("elektricne instalacije u Ex prostoru", ["EXEI", "ExEi", "Ex", "impedancija", "ZUDS", "otpor izolacije"]),
+  EXSE: makeDocumentationResultAiContext("uzemljenje i staticki elektricitet u Ex prostoru", ["EXSE", "ExSe", "uzemljenje", "staticki elektricitet"]),
+  EXOV: makeDocumentationResultAiContext("odzracne ventile", ["EXOV", "ExOv", "odzracni ventili", "funkcionalno ispitivanje"]),
+  SVZ: makeDocumentationResultAiContext("stabilni sustav za dojavu pozara", ["SVZ", "dojava pozara", "centrala", "detektori"]),
+  SP: makeDocumentationResultAiContext("sustav detekcije zapaljivih plinova", ["SP", "detekcija plina", "plinodetekcija"]),
+  HM: makeDocumentationResultAiContext("hidrantsku mrezu", ["HM", "hidrantska mreza", "hidrant", "tlak", "protok"]),
+  HMU: makeDocumentationResultAiContext("unutarnju hidrantsku mrezu", ["HMU", "unutarnja hidrantska mreza", "hidrant"]),
+  HMV: makeDocumentationResultAiContext("vanjsku hidrantsku mrezu", ["HMV", "vanjska hidrantska mreza", "hidrant"]),
+  HMUV: makeDocumentationResultAiContext("unutarnju i vanjsku hidrantsku mrezu", ["HMUV", "hidrantska mreza", "hidrant"]),
+  SGP: makeDocumentationResultAiContext("sustav za gasenje pozara plinom", ["SGP", "gasenje plinom", "pozar"]),
+  SS: makeDocumentationResultAiContext("sprinkler sustav", ["SS", "sprinkler", "pozar"]),
+  PJENA: makeDocumentationResultAiContext("sustav za gasenje pozara pjenom", ["PJENA", "gasenje pjenom", "pozar"]),
+  SO: makeDocumentationResultAiContext("sustav za odvodjenje dima i topline", ["SO", "odvodjenje dima", "dim", "toplina"]),
+  PZ: makeDocumentationResultAiContext("vatrootporne zavjese", ["PZ", "vatrootporne zavjese"]),
+  PPV: makeDocumentationResultAiContext("protupozarna vrata", ["PPV", "protupozarna vrata"]),
+  PPZ: makeDocumentationResultAiContext("protupozarne zaklopke", ["PPZ", "protupozarne zaklopke"]),
+  DS: makeDocumentationResultAiContext("drencher sustav", ["DS", "drencher", "hladjenje spremnika", "voda"]),
+  PLINSKAKOTLOVNICA: makeDocumentationResultAiContext("plinsku kotlovnicu", ["plinska kotlovnica", "kotlovnica", "plin"]),
+  NPI: makeDocumentationResultAiContext("plinsku instalaciju", ["NPI", "plinska instalacija", "nepropusnost", "tlacna proba"]),
+  UNP: makeDocumentationResultAiContext("UNP instalaciju", ["UNP", "nepropusnost", "tlacna proba"]),
+  ROF: makeDocumentationResultAiContext("fizikalne cimbenike radnog okolisa", ["ROF", "RO-F", "fizikalni cimbenici", "osvjetljenje", "buka", "mikroklima"]),
+  ROK: makeDocumentationResultAiContext("kemijske cimbenike radnog okolisa", ["ROK", "RO-K", "kemijski cimbenici", "GVI", "KGVI"]),
+  STROJEVI: makeDocumentationResultAiContext("radnu opremu", ["STROJEVI", "radna oprema", "stroj", "zastita"]),
+  RADNAOPREMA: makeDocumentationResultAiContext("radnu opremu", ["radna oprema", "stroj", "zastita"]),
+  PE: makeDocumentationResultAiContext("plan evakuacije", ["PE", "plan evakuacije", "evakuacijski smjer", "zborno mjesto"]),
+  NNZD: makeDocumentationResultAiContext("negativni nalaz", ["NNZD", "nesukladnost", "negativni nalaz"]),
+  NNZDPETROL: makeDocumentationResultAiContext("Petrol negativni nalaz", ["NNZDPETROL", "Petrol", "nesukladnost", "SAP Fiori"]),
+  EOTP: makeDocumentationResultAiContext("evidenciju tehnickih podataka", ["EOTP", "tehnicki podaci", "evidencija"]),
 });
 
 const DOCUMENTATION_TECHNICAL_AI_BY_SERVICE = Object.freeze({
@@ -1273,9 +1630,39 @@ function getDocumentationColumnAiMapping(tableId = "", columnId = "") {
   return DOCUMENTATION_COLUMN_AI_BY_TABLE[tableId]?.[columnId] || null;
 }
 
+function getGenericDocumentationColumnAiMapping(tableId = "", column = {}) {
+  const columnId = String(column?.id || "").trim();
+  const label = String(column?.label || columnId || "").trim();
+  if (!columnId || !label || ["number", "separator"].includes(columnId)) {
+    return null;
+  }
+  const normalizedLabel = label.toLowerCase();
+  const isDecisionColumn = normalizedLabel.includes("zadovoljava")
+    || normalizedLabel.includes("da/ne")
+    || normalizedLabel.includes("ocjena")
+    || normalizedLabel.includes("ispravnost")
+    || normalizedLabel.includes("funkcionalnost")
+    || normalizedLabel.includes("zakljucak");
+  return makeColumnAi({
+    key: columnId,
+    label,
+    type: isDecisionColumn ? "enum" : "text",
+    aiDescription: `Prepiši ili predloži vrijednost za kolonu "${label}" u tablici ${tableId}. Koristi prethodni zapisnik iste usluge, stariji zapisnik ili uploadani izvor; ako podatak nije jasan, ostavi postojeću vrijednost ili prazno.`,
+    aiLookFor: [label, columnId],
+    allowedValues: isDecisionColumn ? YES_NO_NP_VALUES : [],
+    commonValues: isDecisionColumn ? ["DA", "ZADOVOLJAVA"] : [],
+    fallbackValue: isDecisionColumn ? "DA" : "",
+    validationRules: isDecisionColumn
+      ? "Vrati DA, NE ili NP samo ako je to jasno iz izvora ili mjernih vrijednosti."
+      : "Ne izmišljaj podatke i ne miješaj tablice drugih usluga.",
+    confidenceRequired: "medium",
+  });
+}
+
 function withDocumentationColumnAiMapping(tableId = "", column = {}) {
   const aiMapping = getDocumentationColumnAiMapping(tableId, column?.id);
-  return aiMapping ? { ...column, aiMapping: { ...aiMapping } } : { ...column };
+  const genericAiMapping = aiMapping || getGenericDocumentationColumnAiMapping(tableId, column);
+  return genericAiMapping ? { ...column, aiMapping: { ...genericAiMapping } } : { ...column };
 }
 
 function withDocumentationTechnicalFieldAi(serviceCode = "", field = {}) {
@@ -1283,7 +1670,21 @@ function withDocumentationTechnicalFieldAi(serviceCode = "", field = {}) {
   const ai = DOCUMENTATION_TECHNICAL_AI_BY_SERVICE[normalizedService]?.[field?.id]
     || DOCUMENTATION_TECHNICAL_AI_BY_SERVICE[normalizedService]?.[field?.key]
     || null;
-  return ai ? { ...field, ai: { ...ai } } : { ...field };
+  if (ai) {
+    return { ...field, ai: { ...ai } };
+  }
+  const label = String(field?.label || field?.id || field?.key || "Tehnicki podatak").trim();
+  return {
+    ...field,
+    ai: makeTechnicalAi({
+      key: `technical-${field?.id || field?.key || slugify(label)}`,
+      label,
+      defaultValue: field?.defaultValue || "",
+      aiDescription: `Pronadji podatak "${label}" za uslugu ${normalizedService}. Prvo koristi prethodni zapisnik iste usluge i iste lokacije/objekta, zatim stariji prethodni zapisnik, a tek onda template vrijednost.`,
+      aiLookFor: [label, normalizedService],
+      fallbackValue: field?.defaultValue || "",
+    }),
+  };
 }
 
 function getSpreadsheetColumnLabel(index = 0) {
@@ -1302,6 +1703,94 @@ function rowsFromItems(columns, items, pass = "DA") {
     item,
     pass: Array.isArray(pass) ? (pass[index] || "DA") : pass,
   }, index));
+}
+
+function makeAssessmentEntries(serviceCode = "", labels = []) {
+  const code = slugify(serviceCode || "service");
+  return labels.map((label, index) => ({
+    id: `${code}-assessment-${index + 1}`,
+    label,
+    enabledFieldId: "",
+  }));
+}
+
+function makeChecklistFromItems({
+  id,
+  label,
+  summary = "",
+  items = [],
+  options = YES_NO_NP_VALUES,
+  defaultValue = "DA",
+  assessmentLabel = "",
+} = {}) {
+  return Object.freeze({
+    id,
+    key: id,
+    tokenKey: normalizeCode(id).replace(/[^A-Z0-9]+/g, "_"),
+    label,
+    summary: summary || label,
+    enabledFieldId: `use-${id}`,
+    enabledByDefault: true,
+    assessmentLabel,
+    options: options.map((value) => ({ value, label: value })),
+    items: items.map((item, index) => ({
+      id: `${id}-${index + 1}`,
+      key: `${id}-${index + 1}`,
+      tokenKey: `${normalizeCode(id).replace(/[^A-Z0-9]+/g, "_")}_${index + 1}`,
+      label: item,
+      defaultValue,
+    })),
+  });
+}
+
+function createNativeReportPreset({
+  serviceCode,
+  serviceName,
+  title = "",
+  documentType = "",
+  reportTitle = "",
+  coverSubtitle = "",
+  measurementTableTitle = "",
+  resultsText = "",
+  notes = [],
+  assessmentLabel = "",
+  conclusionLead = "",
+  validitySentence = "Ponovno ispitivanje potrebno je obaviti do",
+  signatureAreas = ["elektro"],
+  technicalDataFields = [],
+  checklists = [],
+  measurementAssessments = [],
+  tables = [],
+  projectDocumentation = "",
+} = {}) {
+  const cleanCode = normalizeCode(serviceCode);
+  return Object.freeze({
+    serviceCode: cleanCode,
+    serviceName,
+    title: title || `${cleanCode} v1.0.0`,
+    documentType: documentType || serviceName,
+    reportTitle,
+    coverSubtitle,
+    measurementTableTitle,
+    resultsText,
+    notes,
+    assessmentLabel,
+    conclusionLead,
+    validitySentence,
+    signatureAreas,
+    technicalDataFields,
+    projectDocumentation,
+    checklists,
+    measurementAssessments,
+    tables,
+  });
+}
+
+function makeSimpleResultText(subject = "predmetni sustav", detail = "") {
+  return [
+    `Pregledom i ispitivanjem utvrdjuje se stanje za ${subject}.`,
+    detail || "Rezultati pregleda i ispitivanja prikazuju se u pripadajucim tablicama i ocjenama zapisnika.",
+  ].join("\n\n");
 }
 
 export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
@@ -1454,7 +1943,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         label: "Vizualni pregled sustava zastite od munje",
         summary: "Tablica 1. Vizualni pregled sustava zastite od djelovanja munje",
         columns: SZOMV_COLUMNS,
-        rows: rowsFromItems(SZOMV_COLUMNS, SZOMV_ITEMS, "DA"),
+        rows: rowsFromItems(SZOMV_COLUMNS, SZOMV_DETAILED_ITEMS, "DA"),
       }),
     ],
   }),
@@ -1592,6 +2081,569 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         blankRowCount: 1,
         blankSeed: {},
       }),
+    ],
+  }),
+  EMM: createNativeReportPreset({
+    serviceCode: "EMM",
+    serviceName: "Povezanost metalnih masa",
+    reportTitle: "ISPITIVANJE POVEZANOSTI METALNIH MASA",
+    coverSubtitle: "O ISPITIVANJU POVEZANOSTI METALNIH MASA",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja povezanosti metalnih masa",
+    resultsText: makeSimpleResultText("povezanost metalnih masa", "Mjerenjem se provjerava kontinuitet i otpor povezivanja izmedju metalnih masa i zastitnog vodiča."),
+    notes: ["Iisp - ispitna struja; Rizm - izmjereni otpor; R - dozvoljeni / ocekivani otpor."],
+    assessmentLabel: "Povezanost metalnih masa",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivana povezanost metalnih masa na dan predmetnog ispitivanja",
+    signatureAreas: ["elektro"],
+    measurementAssessments: makeAssessmentEntries("EMM", ["Povezanost metalnih masa"]),
+    tables: [
+      tableSpec({
+        id: "emm-metal-bonding",
+        label: "Povezanost metalnih masa",
+        summary: "Tablica 1. - povezanost metalnih masa",
+        columns: EMM_COLUMNS,
+        blankRowCount: 12,
+        blankSeed: { testCurrent: "0,2", measuredResistance: "<1", expectedResistance: "<1", pass: "DA" },
+      }),
+    ],
+  }),
+  VS: createNativeReportPreset({
+    serviceCode: "VS",
+    serviceName: "Sustav ventilacije",
+    reportTitle: "ISPITIVANJE SUSTAVA VENTILACIJE",
+    coverSubtitle: "O ISPITIVANJU SUSTAVA VENTILACIJE",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja ventilacije",
+    resultsText: makeSimpleResultText("sustav ventilacije", "Ispitivanje obuhvaca protok zraka, broj izmjena zraka, otvore, podtlak/nadtlak i usporedbu sa trazenim vrijednostima."),
+    assessmentLabel: "Sustav ventilacije",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivani sustav ventilacije na dan predmetnog ispitivanja",
+    signatureAreas: ["znr"],
+    measurementAssessments: makeAssessmentEntries("VS", ["Sustav ventilacije"]),
+    tables: [
+      tableSpec({
+        id: "vs-ventilation",
+        label: "Ventilacija prostora",
+        summary: "Tablica 1. - ispitivanje ventilacije",
+        columns: VENTILATION_COLUMNS,
+        blankRowCount: 8,
+        blankSeed: { pass: "DA" },
+        pageOrientation: "landscape",
+      }),
+    ],
+  }),
+  PPCAFFE: createNativeReportPreset({
+    serviceCode: "PPCAFFE",
+    serviceName: "Ventilacija caffe bara",
+    reportTitle: "ISPITIVANJE VENTILACIJE CAFFE BARA",
+    coverSubtitle: "O ISPITIVANJU VENTILACIJE CAFFE BARA",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja ventilacije caffe bara",
+    resultsText: makeSimpleResultText("ventilaciju caffe bara", "Ispitivanje obuhvaca izmjerene protoke, broj izmjena zraka i usporedbu s trazenim vrijednostima prostora."),
+    assessmentLabel: "Ventilacija caffe bara",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivana ventilacija caffe bara na dan predmetnog ispitivanja",
+    signatureAreas: ["znr"],
+    measurementAssessments: makeAssessmentEntries("PPCAFFE", ["Ventilacija caffe bara"]),
+    tables: [
+      tableSpec({
+        id: "ppcaffe-ventilation",
+        label: "Ventilacija caffe bara",
+        summary: "Tablica 1. - ventilacija caffe bara",
+        columns: VENTILATION_COLUMNS,
+        blankRowCount: 8,
+        blankSeed: { pass: "DA" },
+        pageOrientation: "landscape",
+      }),
+    ],
+  }),
+  PZP: createNativeReportPreset({
+    serviceCode: "PZP",
+    serviceName: "Ventilacija prostora za pusace",
+    reportTitle: "ISPITIVANJE VENTILACIJE PROSTORA ZA PUSACE",
+    coverSubtitle: "O ISPITIVANJU VENTILACIJE PROSTORA ZA PUSACE",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja ventilacije prostora za pusace",
+    resultsText: makeSimpleResultText("ventilaciju prostora za pusace", "Ispitivanje obuhvaca protok, broj izmjena zraka, tlakove i usporedbu s trazenim vrijednostima."),
+    assessmentLabel: "Ventilacija prostora za pusace",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivana ventilacija prostora za pusace na dan predmetnog ispitivanja",
+    signatureAreas: ["znr"],
+    measurementAssessments: makeAssessmentEntries("PZP", ["Ventilacija prostora za pusace"]),
+    tables: [
+      tableSpec({
+        id: "pzp-ventilation",
+        label: "Ventilacija prostora za pusace",
+        summary: "Tablica 1. - ventilacija prostora za pusace",
+        columns: VENTILATION_COLUMNS,
+        blankRowCount: 8,
+        blankSeed: { pass: "DA" },
+        pageOrientation: "landscape",
+      }),
+    ],
+  }),
+  EXEI: createNativeReportPreset({
+    serviceCode: "EXEI",
+    serviceName: "Elektricne instalacije u Ex prostoru",
+    reportTitle: "ISPITIVANJE ELEKTRICNIH INSTALACIJA U EX PROSTORU",
+    coverSubtitle: "O ISPITIVANJU ELEKTRICNIH INSTALACIJA U EX PROSTORU",
+    measurementTableTitle: "Tablica 1. - Ex ispitivanja",
+    resultsText: makeSimpleResultText("elektricne instalacije u Ex prostoru", "Ispitivanje obuhvaca impedanciju petlje kvara, otpor izolacije, ZUDS, kontinuitet PE vodica i Ex opremu."),
+    notes: ["ExEi koristi vise Gridline tablica jer CISTA sadrzi vise ispitnih listova."],
+    assessmentLabel: "Elektricne instalacije u Ex prostoru",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivane elektricne instalacije u Ex prostoru na dan predmetnog ispitivanja",
+    signatureAreas: ["elektro", "ex"],
+    technicalDataFields: EX_TECHNICAL_FIELDS,
+    measurementAssessments: makeAssessmentEntries("EXEI", ["Impedancija petlje kvara Ex", "Otpor izolacije Ex", "ZUDS Ex", "Kontinuitet dodatnog PE vodica", "Ex motori/oprema", "Bimetal e i d"]),
+    tables: [
+      tableSpec({ id: "exei-ipk", label: "Impedancija petlje kvara Ex", summary: "IL - ExEi.IPK", columns: EXEI_IPK_COLUMNS, blankRowCount: 12, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "exei-oi", label: "Otpor izolacije Ex", summary: "IL - ExEi.OI", columns: EIZ_OI_COLUMNS, blankRowCount: 12, blankSeed: { rd: ">1", pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "exei-zuds", label: "ZUDS Ex", summary: "IL - ExEi.ZUDS", columns: EIZ_ZUDS_COLUMNS, blankRowCount: 8, blankSeed: { separator: "/", pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "exei-pe", label: "Kontinuitet dodatnog PE vodica", summary: "IL - ExEi.PE", columns: EXEI_PE_COLUMNS, blankRowCount: 8, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "exei-equipment", label: "Ex motori i oprema", summary: "IL - ExEi.oprema", columns: EXEI_EQUIPMENT_COLUMNS, blankRowCount: 8, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "exei-bimetal", label: "Bimetal e i d", summary: "IL - ExEi.bimetal", columns: EXEI_BIMETAL_COLUMNS, blankRowCount: 8, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  EXSE: createNativeReportPreset({
+    serviceCode: "EXSE",
+    serviceName: "Uzemljenje i staticki elektricitet u Ex prostoru",
+    reportTitle: "ISPITIVANJE UZEMLJENJA I STATICKE ELEKTRICNOSTI U EX PROSTORU",
+    coverSubtitle: "O ISPITIVANJU UZEMLJENJA I STATICKE ELEKTRICNOSTI",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja Ex uzemljenja",
+    resultsText: makeSimpleResultText("uzemljenje i staticki elektricitet u Ex prostoru"),
+    assessmentLabel: "Uzemljenje i staticki elektricitet",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivano uzemljenje i mjere zastite od statickog elektriciteta na dan predmetnog ispitivanja",
+    signatureAreas: ["elektro", "ex"],
+    technicalDataFields: EX_TECHNICAL_FIELDS,
+    measurementAssessments: makeAssessmentEntries("EXSE", ["Uzemljenje", "Staticki elektricitet"]),
+    tables: [
+      tableSpec({ id: "exse-results", label: "Uzemljenje i staticki elektricitet", summary: "Tablica 1. - ExSe rezultati", columns: EXSE_COLUMNS, blankRowCount: 12, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  EXOV: createNativeReportPreset({
+    serviceCode: "EXOV",
+    serviceName: "Funkcionalno ispitivanje odzracnih ventila",
+    reportTitle: "FUNKCIONALNO ISPITIVANJE ODZRACNIH VENTILA",
+    coverSubtitle: "O FUNKCIONALNOM ISPITIVANJU ODZRACNIH VENTILA",
+    measurementTableTitle: "Pregled funkcionalnog ispitivanja odzracnih ventila",
+    resultsText: makeSimpleResultText("odzracne ventile", "Opisuje se gorivo/spremnici, mjerna metoda, funkcionalnost ventila, nedostaci i preporuke."),
+    assessmentLabel: "Odzracni ventili",
+    conclusionLead: "Temeljem provedenog funkcionalnog ispitivanja moze se zakljuciti da odzracni ventili na dan predmetnog ispitivanja",
+    signatureAreas: ["ex", "elektro"],
+    technicalDataFields: [
+      technicalField("fuelTanks", "Goriva / spremnici", ""),
+      technicalField("method", "Mjerna metoda", ""),
+      technicalField("functionalDescription", "Opis funkcionalnog ispitivanja", ""),
+    ],
+    measurementAssessments: makeAssessmentEntries("EXOV", ["Funkcionalnost odzracnih ventila"]),
+    tables: [
+      tableSpec({ id: "exov-review", label: "Funkcionalno ispitivanje odzracnih ventila", summary: "Pregled odzracnih ventila", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Goriva / spremnici", "Mjerna metoda", "Funkcionalnost odzracnih ventila"], "DA") }),
+    ],
+  }),
+  SVZ: createNativeReportPreset({
+    serviceCode: "SVZ",
+    serviceName: "Stabilni sustav za dojavu pozara",
+    reportTitle: "ISPITIVANJE STABILNOG SUSTAVA ZA DOJAVU POZARA",
+    coverSubtitle: "O ISPITIVANJU STABILNOG SUSTAVA ZA DOJAVU POZARA",
+    measurementTableTitle: "Pregled sustava za dojavu pozara",
+    resultsText: makeSimpleResultText("stabilni sustav za dojavu pozara", "Pregled obuhvaca centralu, detektore, sirene, sustave u sprezi i funkcionalno ispitivanje."),
+    assessmentLabel: "Stabilni sustav za dojavu pozara",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da stabilni sustav za dojavu pozara na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "svz-review", label: "Pregled sustava za dojavu pozara", items: FIRE_REVIEW_ITEMS, assessmentLabel: "Stabilni sustav za dojavu pozara" })],
+    measurementAssessments: makeAssessmentEntries("SVZ", ["Stabilni sustav za dojavu pozara"]),
+    tables: [
+      tableSpec({ id: "svz-elements", label: "Elementi sustava dojave pozara", summary: "Pregled centrale, detektora, sirena i sprega", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Centrala", "Detektori", "Sirene", "Sustavi u sprezi"], "DA") }),
+    ],
+  }),
+  SP: createNativeReportPreset({
+    serviceCode: "SP",
+    serviceName: "Sustav detekcije zapaljivih plinova",
+    reportTitle: "ISPITIVANJE SUSTAVA DETEKCIJE ZAPALJIVIH PLINOVA",
+    coverSubtitle: "O ISPITIVANJU SUSTAVA DETEKCIJE ZAPALJIVIH PLINOVA",
+    measurementTableTitle: "Pregled sustava detekcije plina",
+    resultsText: makeSimpleResultText("sustav detekcije zapaljivih plinova"),
+    assessmentLabel: "Sustav detekcije zapaljivih plinova",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da sustav detekcije zapaljivih plinova na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar", "plin"],
+    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "sp-review", label: "Pregled sustava detekcije plina", items: FIRE_REVIEW_ITEMS, assessmentLabel: "Sustav detekcije plina" })],
+    measurementAssessments: makeAssessmentEntries("SP", ["Sustav detekcije zapaljivih plinova"]),
+    tables: [
+      tableSpec({ id: "sp-elements", label: "Elementi sustava detekcije plina", summary: "Centralni uredjaj, detektori i elementi sustava", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Centralni uredjaj", "Detektori plina", "Sustavi u sprezi", "Funkcionalno ispitivanje"], "DA") }),
+    ],
+  }),
+  HM: createNativeReportPreset({
+    serviceCode: "HM",
+    serviceName: "Hidrantska mreza",
+    reportTitle: "ISPITIVANJE HIDRANTSKE MREZE",
+    coverSubtitle: "O ISPITIVANJU HIDRANTSKE MREZE",
+    measurementTableTitle: "Tablica 1. - pregled i mjerenje hidrantske mreze",
+    resultsText: makeSimpleResultText("hidrantsku mrezu", "Pregled obuhvaca oznacenost, opremu, dostupnost i funkcionalnost hidranata te mjerenje tlakova i protoka."),
+    assessmentLabel: "Hidrantska mreza",
+    conclusionLead: "Temeljem rezultata pregleda i mjerenja moze se zakljuciti da hidrantska mreza na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    measurementAssessments: makeAssessmentEntries("HM", ["Pregled hidranata", "Mjerenje protoka i tlaka"]),
+    tables: [
+      tableSpec({ id: "hm-review", label: "Pregled hidranata", summary: "Tablica 1. - pregled hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 8, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
+      tableSpec({ id: "hm-measurements", label: "Mjerenje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  HMU: createNativeReportPreset({
+    serviceCode: "HMU",
+    serviceName: "Unutarnja hidrantska mreza",
+    reportTitle: "ISPITIVANJE UNUTARNJE HIDRANTSKE MREZE",
+    coverSubtitle: "O ISPITIVANJU UNUTARNJE HIDRANTSKE MREZE",
+    measurementTableTitle: "Tablica 1. - unutarnja hidrantska mreza",
+    resultsText: makeSimpleResultText("unutarnju hidrantsku mrezu"),
+    assessmentLabel: "Unutarnja hidrantska mreza",
+    conclusionLead: "Temeljem rezultata pregleda i mjerenja moze se zakljuciti da unutarnja hidrantska mreza na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    measurementAssessments: makeAssessmentEntries("HMU", ["Pregled unutarnjih hidranata", "Mjerenje protoka i tlaka"]),
+    tables: [
+      tableSpec({ id: "hmu-review", label: "Pregled unutarnjih hidranata", summary: "Tablica 1. - pregled unutarnjih hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 8, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
+      tableSpec({ id: "hmu-measurements", label: "Mjerenje unutarnje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  HMV: createNativeReportPreset({
+    serviceCode: "HMV",
+    serviceName: "Vanjska hidrantska mreza",
+    reportTitle: "ISPITIVANJE VANJSKE HIDRANTSKE MREZE",
+    coverSubtitle: "O ISPITIVANJU VANJSKE HIDRANTSKE MREZE",
+    measurementTableTitle: "Tablica 1. - vanjska hidrantska mreza",
+    resultsText: makeSimpleResultText("vanjsku hidrantsku mrezu"),
+    assessmentLabel: "Vanjska hidrantska mreza",
+    conclusionLead: "Temeljem rezultata pregleda i mjerenja moze se zakljuciti da vanjska hidrantska mreza na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    measurementAssessments: makeAssessmentEntries("HMV", ["Pregled vanjskih hidranata", "Mjerenje protoka i tlaka"]),
+    tables: [
+      tableSpec({ id: "hmv-review", label: "Pregled vanjskih hidranata", summary: "Tablica 1. - pregled vanjskih hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 8, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
+      tableSpec({ id: "hmv-measurements", label: "Mjerenje vanjske hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  HMUV: createNativeReportPreset({
+    serviceCode: "HMUV",
+    serviceName: "Unutarnja i vanjska hidrantska mreza",
+    reportTitle: "ISPITIVANJE UNUTARNJE I VANJSKE HIDRANTSKE MREZE",
+    coverSubtitle: "O ISPITIVANJU HIDRANTSKE MREZE",
+    measurementTableTitle: "Tablica 1. - unutarnja i vanjska hidrantska mreza",
+    resultsText: makeSimpleResultText("unutarnju i vanjsku hidrantsku mrezu"),
+    assessmentLabel: "Unutarnja i vanjska hidrantska mreza",
+    conclusionLead: "Temeljem rezultata pregleda i mjerenja moze se zakljuciti da unutarnja i vanjska hidrantska mreza na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    measurementAssessments: makeAssessmentEntries("HMUV", ["Pregled hidranata", "Mjerenje protoka i tlaka"]),
+    tables: [
+      tableSpec({ id: "hmuv-review", label: "Pregled hidranata", summary: "Tablica 1. - pregled hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 10, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
+      tableSpec({ id: "hmuv-measurements", label: "Mjerenje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 6, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  SGP: createNativeReportPreset({
+    serviceCode: "SGP",
+    serviceName: "Sustav za gasenje pozara plinom",
+    reportTitle: "ISPITIVANJE SUSTAVA ZA GASENJE POZARA PLINOM",
+    coverSubtitle: "O ISPITIVANJU SUSTAVA ZA GASENJE POZARA PLINOM",
+    measurementTableTitle: "Pregled sustava za gasenje pozara plinom",
+    resultsText: makeSimpleResultText("sustav za gasenje pozara plinom"),
+    assessmentLabel: "Sustav za gasenje pozara plinom",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da sustav za gasenje pozara plinom na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "sgp-review", label: "Pregled sustava za gasenje plinom", items: FIRE_REVIEW_ITEMS })],
+    measurementAssessments: makeAssessmentEntries("SGP", ["Pregled izvedenog stanja prema dokumentaciji", "Funkcionalnost sustava"]),
+    tables: [tableSpec({ id: "sgp-review-table", label: "Pregled sustava za gasenje plinom", summary: "Pregled i funkcionalno ispitivanje", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, FIRE_REVIEW_ITEMS, "DA") })],
+  }),
+  SS: createNativeReportPreset({
+    serviceCode: "SS",
+    serviceName: "Sprinkler sustav",
+    reportTitle: "ISPITIVANJE SPRINKLER SUSTAVA",
+    coverSubtitle: "O ISPITIVANJU SPRINKLER SUSTAVA",
+    measurementTableTitle: "Pregled sprinkler sustava",
+    resultsText: makeSimpleResultText("sprinkler sustav"),
+    assessmentLabel: "Sprinkler sustav",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da sprinkler sustav na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "ss-review", label: "Pregled sprinkler sustava", items: FIRE_REVIEW_ITEMS })],
+    measurementAssessments: makeAssessmentEntries("SS", ["Pregled izvedenog stanja", "Funkcionalnost sprinkler sustava"]),
+    tables: [tableSpec({ id: "ss-review-table", label: "Pregled sprinkler sustava", summary: "Pregled i funkcionalno ispitivanje", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, FIRE_REVIEW_ITEMS, "DA") })],
+  }),
+  PJENA: createNativeReportPreset({
+    serviceCode: "PJENA",
+    serviceName: "Sustav za gasenje pozara pjenom",
+    reportTitle: "ISPITIVANJE SUSTAVA ZA GASENJE POZARA PJENOM",
+    coverSubtitle: "O ISPITIVANJU SUSTAVA ZA GASENJE POZARA PJENOM",
+    measurementTableTitle: "Pregled sustava za gasenje pjenom",
+    resultsText: makeSimpleResultText("sustav za gasenje pozara pjenom"),
+    assessmentLabel: "Sustav za gasenje pozara pjenom",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da sustav za gasenje pozara pjenom na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "pjena-review", label: "Pregled sustava za gasenje pjenom", items: FIRE_REVIEW_ITEMS })],
+    measurementAssessments: makeAssessmentEntries("PJENA", ["Pregled izvedenog stanja", "Funkcionalnost sustava za gasenje pjenom"]),
+    tables: [tableSpec({ id: "pjena-review-table", label: "Pregled sustava za gasenje pjenom", summary: "Pregled i funkcionalno ispitivanje", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, FIRE_REVIEW_ITEMS, "DA") })],
+  }),
+  SO: createNativeReportPreset({
+    serviceCode: "SO",
+    serviceName: "Sustav za odvodjenje dima i topline",
+    reportTitle: "ISPITIVANJE SUSTAVA ZA ODVODJENJE DIMA I TOPLINE",
+    coverSubtitle: "O ISPITIVANJU SUSTAVA ZA ODVODJENJE DIMA I TOPLINE",
+    measurementTableTitle: "Pregled sustava za odvodjenje dima i topline",
+    resultsText: makeSimpleResultText("sustav za odvodjenje dima i topline"),
+    assessmentLabel: "Sustav za odvodjenje dima i topline",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da sustav za odvodjenje dima i topline na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "so-review", label: "Pregled sustava za odvodjenje dima i topline", items: FIRE_REVIEW_ITEMS })],
+    measurementAssessments: makeAssessmentEntries("SO", ["Pregled izvedenog stanja", "Funkcionalnost sustava"]),
+    tables: [tableSpec({ id: "so-review-table", label: "Pregled sustava za odvodjenje dima i topline", summary: "Pregled i funkcionalno ispitivanje", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, FIRE_REVIEW_ITEMS, "DA") })],
+  }),
+  PZ: createNativeReportPreset({
+    serviceCode: "PZ",
+    serviceName: "Vatrootporne zavjese",
+    reportTitle: "ISPITIVANJE VATROOTPORNIH ZAVJESA",
+    coverSubtitle: "O ISPITIVANJU VATROOTPORNIH ZAVJESA",
+    measurementTableTitle: "Pregled vatrootpornih zavjesa",
+    resultsText: makeSimpleResultText("vatrootporne zavjese"),
+    assessmentLabel: "Vatrootporne zavjese",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da vatrootporne zavjese na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "pz-review", label: "Pregled vatrootpornih zavjesa", items: FIRE_REVIEW_ITEMS })],
+    measurementAssessments: makeAssessmentEntries("PZ", ["Pregled izvedenog stanja", "Funkcionalnost sustava"]),
+    tables: [tableSpec({ id: "pz-review-table", label: "Pregled vatrootpornih zavjesa", summary: "Pregled i funkcionalno ispitivanje", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, FIRE_REVIEW_ITEMS, "DA") })],
+  }),
+  PPV: createNativeReportPreset({
+    serviceCode: "PPV",
+    serviceName: "Protupozarna vrata",
+    reportTitle: "ISPITIVANJE PROTUPOZARNIH VRATA",
+    coverSubtitle: "O ISPITIVANJU PROTUPOZARNIH VRATA",
+    measurementTableTitle: "Tablica 1. - pregled protupozarnih vrata",
+    resultsText: makeSimpleResultText("protupozarna vrata"),
+    assessmentLabel: "Protupozarna vrata",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da protupozarna vrata na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    measurementAssessments: makeAssessmentEntries("PPV", ["Pregled izvedenog stanja prema dokumentaciji", "Funkcionalnost vrata", "Veza sa sustavom za dojavu pozara"]),
+    tables: [tableSpec({ id: "ppv-doors", label: "Protupozarna vrata", summary: "Tablica 1. - protupozarna vrata", columns: PPV_COLUMNS, blankRowCount: 8, blankSeed: { pass: "DA" } })],
+  }),
+  PPZ: createNativeReportPreset({
+    serviceCode: "PPZ",
+    serviceName: "Protupozarne zaklopke",
+    reportTitle: "ISPITIVANJE PROTUPOZARNIH ZAKLOPKI",
+    coverSubtitle: "O ISPITIVANJU PROTUPOZARNIH ZAKLOPKI",
+    measurementTableTitle: "Tablica 1. - pregled protupozarnih zaklopki",
+    resultsText: makeSimpleResultText("protupozarne zaklopke"),
+    assessmentLabel: "Protupozarne zaklopke",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da protupozarne zaklopke na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    measurementAssessments: makeAssessmentEntries("PPZ", ["Pregled izvedenog stanja", "Funkcionalnost zaklopki", "Veza sa sustavom dojave"]),
+    tables: [tableSpec({ id: "ppz-dampers", label: "Protupozarne zaklopke", summary: "Tablica 1. - protupozarne zaklopke", columns: PPZ_COLUMNS, blankRowCount: 8, blankSeed: { functional: "DA", alarmLink: "DA", pass: "DA" }, pageOrientation: "landscape" })],
+  }),
+  DS: createNativeReportPreset({
+    serviceCode: "DS",
+    serviceName: "Drencher sustav za hladjenje spremnika vodom",
+    reportTitle: "ISPITIVANJE DRENCHER SUSTAVA ZA HLADJENJE SPREMNIKA VODOM",
+    coverSubtitle: "O ISPITIVANJU DRENCHER SUSTAVA",
+    measurementTableTitle: "Tablica 1. - drencher sustav",
+    resultsText: makeSimpleResultText("drencher sustav za hladjenje spremnika vodom"),
+    assessmentLabel: "Drencher sustav",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da drencher sustav na dan predmetnog ispitivanja",
+    signatureAreas: ["pozar"],
+    measurementAssessments: makeAssessmentEntries("DS", ["Pregled izvedenog stanja prema dokumentaciji", "Funkcionalnost drencher sustava"]),
+    tables: [tableSpec({ id: "ds-measurements", label: "Drencher sustav", summary: "Tablica 1. - tlakovi i protoci drencher sustava", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" })],
+  }),
+  PLINSKAKOTLOVNICA: createNativeReportPreset({
+    serviceCode: "PLINSKAKOTLOVNICA",
+    serviceName: "Plinska kotlovnica",
+    reportTitle: "PREGLED PLINSKE KOTLOVNICE",
+    coverSubtitle: "O PREGLEDU PLINSKE KOTLOVNICE",
+    measurementTableTitle: "Checklist plinske kotlovnice",
+    resultsText: makeSimpleResultText("plinsku kotlovnicu"),
+    assessmentLabel: "Plinska kotlovnica",
+    conclusionLead: "Temeljem rezultata pregleda moze se zakljuciti da plinska kotlovnica na dan predmetnog pregleda",
+    signatureAreas: ["plin"],
+    technicalDataFields: GAS_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "plinska-kotlovnica-review", label: "Pregled plinske kotlovnice", items: ["Kotlovnica - gradjevinski objekt", "Tehnicke mjere zastite", "Plinska instalacija", "Kotlovsko postrojenje", "Uredjaji za upravljanje", "Radni i sigurnosni elementi", "Signalni i mjerni uredjaji", "Ventilacija prostora", "Oprema za pocetno gasenje pozara", "Elektricna instalacija kotlovnice"] })],
+    measurementAssessments: makeAssessmentEntries("PLINSKAKOTLOVNICA", ["Plinska kotlovnica"]),
+    tables: [tableSpec({ id: "plinskakotlovnica-review", label: "Pregled plinske kotlovnice", summary: "Checklist plinske kotlovnice", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Gradjevinski objekt", "Tehnicke mjere zastite", "Plinska instalacija", "Ventilacija", "Elektricna instalacija"], "DA") })],
+  }),
+  NPI: createNativeReportPreset({
+    serviceCode: "NPI",
+    serviceName: "Nepropusnost i ispravnost plinske instalacije",
+    reportTitle: "ISPITIVANJE NEPROPUSNOSTI I ISPRAVNOSTI PLINSKE INSTALACIJE",
+    coverSubtitle: "O ISPITIVANJU PLINSKE INSTALACIJE",
+    measurementTableTitle: "Tablice ispitivanja plinske instalacije",
+    resultsText: makeSimpleResultText("plinsku instalaciju", "Ispitivanje ukljucuje podatke plinomjera, volumen instalacije, tlacnu probu, trosila i ocjene plinske instalacije."),
+    assessmentLabel: "Plinska instalacija",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da plinska instalacija na dan predmetnog ispitivanja",
+    signatureAreas: ["plin"],
+    technicalDataFields: GAS_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "npi-assessment", label: "Ocjena plinske instalacije", items: GAS_ASSESSMENT_ITEMS })],
+    measurementAssessments: makeAssessmentEntries("NPI", GAS_ASSESSMENT_ITEMS),
+    tables: [
+      tableSpec({ id: "npi-volume", label: "Volumen instalacije", summary: "Tablica volumena instalacije", columns: GAS_VOLUME_COLUMNS, blankRowCount: 5 }),
+      tableSpec({ id: "npi-pressure", label: "Tlacna proba", summary: "Tablica tlacne probe", columns: GAS_PRESSURE_COLUMNS, blankRowCount: 5 }),
+    ],
+  }),
+  UNP: createNativeReportPreset({
+    serviceCode: "UNP",
+    serviceName: "Nepropusnost i ispravnost UNP instalacije",
+    reportTitle: "ISPITIVANJE NEPROPUSNOSTI I ISPRAVNOSTI UNP INSTALACIJE",
+    coverSubtitle: "O ISPITIVANJU UNP INSTALACIJE",
+    measurementTableTitle: "Tablice ispitivanja UNP instalacije",
+    resultsText: makeSimpleResultText("UNP instalaciju", "Ispitivanje koristi isti model kao NPI uz oznaku UNP instalacije."),
+    assessmentLabel: "UNP instalacija",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da UNP instalacija na dan predmetnog ispitivanja",
+    signatureAreas: ["plin"],
+    technicalDataFields: GAS_TECHNICAL_FIELDS,
+    checklists: [makeChecklistFromItems({ id: "unp-assessment", label: "Ocjena UNP instalacije", items: GAS_ASSESSMENT_ITEMS })],
+    measurementAssessments: makeAssessmentEntries("UNP", GAS_ASSESSMENT_ITEMS),
+    tables: [
+      tableSpec({ id: "unp-volume", label: "Volumen instalacije", summary: "Tablica volumena UNP instalacije", columns: GAS_VOLUME_COLUMNS, blankRowCount: 5 }),
+      tableSpec({ id: "unp-pressure", label: "Tlacna proba", summary: "Tablica tlacne probe UNP instalacije", columns: GAS_PRESSURE_COLUMNS, blankRowCount: 5 }),
+    ],
+  }),
+  ROF: createNativeReportPreset({
+    serviceCode: "ROF",
+    serviceName: "Radni okolis - fizikalni cimbenici",
+    reportTitle: "ISPITIVANJE FIZIKALNIH CIMBENIKA RADNOG OKOLISA",
+    coverSubtitle: "O ISPITIVANJU RADNOG OKOLISA - FIZIKALNI CIMBENICI",
+    measurementTableTitle: "Tablica 1. - mjerenja fizikalnih cimbenika",
+    resultsText: makeSimpleResultText("fizikalne cimbenike radnog okolisa", "Ispitivanje obuhvaca osvijetljenost, buku, temperaturu, brzinu strujanja zraka i relativnu vlaznost."),
+    assessmentLabel: "Fizikalni cimbenici radnog okolisa",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da fizikalni cimbenici radnog okolisa na dan predmetnog ispitivanja",
+    signatureAreas: ["znr"],
+    technicalDataFields: WORK_ENVIRONMENT_TECHNICAL_FIELDS,
+    measurementAssessments: makeAssessmentEntries("ROF", ["Osvijetljenost", "Buka", "Mikroklima"]),
+    tables: [
+      tableSpec({ id: "rof-measurements", label: "Fizikalni cimbenici", summary: "Tablica 1. - mjerenja fizikalnih cimbenika", columns: ROF_COLUMNS, blankRowCount: 8, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  ROK: createNativeReportPreset({
+    serviceCode: "ROK",
+    serviceName: "Radni okolis - kemijski cimbenici",
+    reportTitle: "ISPITIVANJE KEMIJSKIH CIMBENIKA RADNOG OKOLISA",
+    coverSubtitle: "O ISPITIVANJU RADNOG OKOLISA - KEMIJSKI CIMBENICI",
+    measurementTableTitle: "Tablica 1. - mjerenja kemijskih cimbenika",
+    resultsText: makeSimpleResultText("kemijske cimbenike radnog okolisa", "Ispitivanje obuhvaca stetnosti, izmjerene vrijednosti, izracun u odnosu na 8 sati i usporedbu s GVI/KGVI."),
+    assessmentLabel: "Kemijski cimbenici radnog okolisa",
+    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da kemijski cimbenici radnog okolisa na dan predmetnog ispitivanja",
+    signatureAreas: ["znr"],
+    technicalDataFields: WORK_ENVIRONMENT_TECHNICAL_FIELDS,
+    measurementAssessments: makeAssessmentEntries("ROK", ["Kemijske stetnosti", "GVI/KGVI"]),
+    tables: [
+      tableSpec({ id: "rok-measurements", label: "Kemijski cimbenici", summary: "Tablica 1. - mjerenja kemijskih cimbenika", columns: ROK_COLUMNS, blankRowCount: 8, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+    ],
+  }),
+  STROJEVI: createNativeReportPreset({
+    serviceCode: "STROJEVI",
+    serviceName: "Radna oprema / strojevi",
+    reportTitle: "ZAPISNIK O ISPITIVANJU RADNE OPREME",
+    coverSubtitle: "O ISPITIVANJU RADNE OPREME",
+    measurementTableTitle: "Checklist radne opreme",
+    resultsText: makeSimpleResultText("radnu opremu", "Model je pripremljen za jedan zapisnik po opremi i checklist stavke prema vrsti stroja/opreme."),
+    assessmentLabel: "Radna oprema",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da radna oprema na dan predmetnog ispitivanja",
+    signatureAreas: ["strojevi", "znr"],
+    technicalDataFields: WORK_EQUIPMENT_TECHNICAL_FIELDS,
+    measurementAssessments: makeAssessmentEntries("STROJEVI", ["Radna oprema / strojevi"]),
+    tables: [
+      tableSpec({
+        id: "strojevi-checklist",
+        label: "Checklist radne opreme",
+        summary: "Stavke pregleda radne opreme",
+        columns: WORK_EQUIPMENT_COLUMNS,
+        rows: WORK_EQUIPMENT_ITEMS.map((item, index) => makeRow(WORK_EQUIPMENT_COLUMNS, {
+          number: String(index + 1),
+          category: "Strojarski dio",
+          item,
+          pass: "DA",
+          locked: "NE",
+        }, index)),
+        pageOrientation: "landscape",
+      }),
+    ],
+  }),
+  RADNAOPREMA: createNativeReportPreset({
+    serviceCode: "RADNAOPREMA",
+    serviceName: "Radna oprema",
+    reportTitle: "ZAPISNIK O ISPITIVANJU RADNE OPREME",
+    coverSubtitle: "O ISPITIVANJU RADNE OPREME",
+    measurementTableTitle: "Checklist radne opreme",
+    resultsText: makeSimpleResultText("radnu opremu"),
+    assessmentLabel: "Radna oprema",
+    conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da radna oprema na dan predmetnog ispitivanja",
+    signatureAreas: ["strojevi", "znr"],
+    technicalDataFields: WORK_EQUIPMENT_TECHNICAL_FIELDS,
+    measurementAssessments: makeAssessmentEntries("RADNAOPREMA", ["Radna oprema"]),
+    tables: [
+      tableSpec({
+        id: "radnaoprema-checklist",
+        label: "Checklist radne opreme",
+        summary: "Stavke pregleda radne opreme",
+        columns: WORK_EQUIPMENT_COLUMNS,
+        rows: WORK_EQUIPMENT_ITEMS.map((item, index) => makeRow(WORK_EQUIPMENT_COLUMNS, {
+          number: String(index + 1),
+          category: "Radna oprema",
+          item,
+          pass: "DA",
+          locked: "NE",
+        }, index)),
+        pageOrientation: "landscape",
+      }),
+    ],
+  }),
+  PE: createNativeReportPreset({
+    serviceCode: "PE",
+    serviceName: "Plan evakuacije",
+    reportTitle: "PLAN EVAKUACIJE I SPASAVANJA",
+    coverSubtitle: "PLAN EVAKUACIJE",
+    measurementTableTitle: "Elementi plana evakuacije",
+    resultsText: makeSimpleResultText("plan evakuacije", "Plan sadrzi osnovne podatke objekta, evakuacijske smjerove, zborno mjesto, osobe zaduzene za evakuaciju i priloge/skice."),
+    assessmentLabel: "Plan evakuacije",
+    conclusionLead: "Temeljem izradjenog plana moze se zakljuciti da plan evakuacije",
+    validitySentence: "Plan evakuacije potrebno je pregledati do",
+    signatureAreas: ["znr"],
+    technicalDataFields: EVACUATION_PLAN_FIELDS,
+    tables: [
+      tableSpec({ id: "pe-plan", label: "Elementi plana evakuacije", summary: "Osnovni elementi plana evakuacije", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Objekt", "Evakuacijski smjerovi", "Zborno mjesto", "Osobe zaduzene za evakuaciju", "Prilozi/skice"], "DA") }),
+    ],
+  }),
+  NNZD: createNativeReportPreset({
+    serviceCode: "NNZD",
+    serviceName: "Negativni nalaz tehnickih ispitivanja",
+    reportTitle: "NEGATIVNI NALAZ TEHNICKIH ISPITIVANJA",
+    coverSubtitle: "NEGATIVNI NALAZ",
+    measurementTableTitle: "Pregled nesukladnosti",
+    resultsText: makeSimpleResultText("negativni nalaz", "U zapisnik se upisuju nesukladnosti, sto treba otkloniti i napomene za prijavu."),
+    assessmentLabel: "Negativni nalaz",
+    conclusionLead: "Temeljem provedenog pregleda utvrdjuje se da predmetni nalaz",
+    signatureAreas: ["znr"],
+    technicalDataFields: NEGATIVE_FINDING_FIELDS,
+    tables: [
+      tableSpec({ id: "nnzd-findings", label: "Pregled nesukladnosti", summary: "Nesukladnosti i mjere za otklanjanje", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Nesukladnost", "Sto treba otkloniti", "Napomena"], "NE") }),
+    ],
+  }),
+  NNZDPETROL: createNativeReportPreset({
+    serviceCode: "NNZDPETROL",
+    serviceName: "Petrol negativni nalaz",
+    reportTitle: "NEGATIVNI NALAZ - PETROL",
+    coverSubtitle: "PETROL NEGATIVNI NALAZ",
+    measurementTableTitle: "Pregled nesukladnosti",
+    resultsText: makeSimpleResultText("Petrol negativni nalaz", "Model ukljucuje nesukladnost, mjere otklanjanja i SAP Fiori / internu prijavu."),
+    assessmentLabel: "Petrol negativni nalaz",
+    conclusionLead: "Temeljem provedenog pregleda utvrdjuje se da predmetni nalaz",
+    signatureAreas: ["znr"],
+    technicalDataFields: NEGATIVE_FINDING_FIELDS,
+    tables: [
+      tableSpec({ id: "nnzdpetrol-findings", label: "Pregled nesukladnosti Petrol", summary: "Nesukladnosti i mjere za otklanjanje", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Nesukladnost", "Sto treba otkloniti", "SAP Fiori / napomena"], "NE") }),
+    ],
+  }),
+  EOTP: createNativeReportPreset({
+    serviceCode: "EOTP",
+    serviceName: "Evidencija ostalih tehnickih podataka",
+    reportTitle: "EVIDENCIJA OSTALIH TEHNICKIH PODATAKA",
+    coverSubtitle: "EVIDENCIJA TEHNICKIH PODATAKA",
+    measurementTableTitle: "Tehnicki podaci",
+    resultsText: makeSimpleResultText("ostale tehnicke podatke"),
+    assessmentLabel: "Tehnicki podaci",
+    conclusionLead: "Temeljem pregleda tehnickih podataka moze se zakljuciti da evidencija",
+    signatureAreas: ["znr"],
+    tables: [
+      tableSpec({ id: "eotp-data", label: "Tehnicki podaci", summary: "Pregled tehnickih podataka", columns: TEXT_REVIEW_COLUMNS, blankRowCount: 6, blankSeed: { pass: "DA" } }),
     ],
   }),
 });
@@ -1777,7 +2829,8 @@ export function createDocumentationNativeAiMeasurementColumnsForService(serviceC
   return preset.tables.flatMap((table) => (
     table.columns
       .map((column, columnIndex) => {
-        const aiMapping = getDocumentationColumnAiMapping(table.id, column.id);
+        const aiMapping = getDocumentationColumnAiMapping(table.id, column.id)
+          || getGenericDocumentationColumnAiMapping(table.id, column);
         if (!aiMapping) {
           return null;
         }

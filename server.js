@@ -22486,7 +22486,11 @@ function getMobileMeasurementSheetSummary(sheet = null) {
   ].join(" · ");
 }
 
-const MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES = new Set(["SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES"]);
+const MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES = new Set(
+  getDocumentationNativeTemplateSeedPresets()
+    .map((preset) => normalizeInputValue(preset?.serviceCode).toUpperCase())
+    .filter(Boolean),
+);
 
 function normalizeMobileNativeMeasurementServiceCode(value = "") {
   const code = normalizeInputValue(value).toUpperCase();
@@ -22503,14 +22507,9 @@ function mobileMeasurementTableLooksLikeOtherNativeService(table = {}, serviceCo
   if (!identity || !ownCode) {
     return false;
   }
-  const prefixesByCode = {
-    SPR: ["spr-"],
-    TZIN: ["tzin-"],
-    EIZ: ["eiz-"],
-    SZOM: ["szom-"],
-    SZOMV: ["szomv-"],
-    VES: ["ves-"],
-  };
+  const prefixesByCode = Object.fromEntries(
+    [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES].map((code) => [code, [`${code.toLowerCase()}-`]]),
+  );
   return Object.entries(prefixesByCode).some(([code, prefixes]) => (
     code !== ownCode && prefixes.some((prefix) => identity.startsWith(prefix))
   ));
@@ -23523,6 +23522,84 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze(
   })),
 );
 const MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS = Object.freeze([
+  {
+    code: "EXEI",
+    matches: (text) => text.includes("ex") && text.includes("elektricn"),
+  },
+  {
+    code: "EXSE",
+    matches: (text) => text.includes("ex") && (text.includes("statick") || text.includes("uzemljen")),
+  },
+  {
+    code: "EXOV",
+    matches: (text) => text.includes("odzrac") || text.includes("odzrač"),
+  },
+  {
+    code: "HMUV",
+    matches: (text) => text.includes("hidrants") && text.includes("unutarn") && text.includes("vanjsk"),
+  },
+  {
+    code: "HMU",
+    matches: (text) => text.includes("hidrants") && text.includes("unutarn"),
+  },
+  {
+    code: "HMV",
+    matches: (text) => text.includes("hidrants") && text.includes("vanjsk"),
+  },
+  {
+    code: "HM",
+    matches: (text) => text.includes("hidrants"),
+  },
+  {
+    code: "NPI",
+    matches: (text) => text.includes("plinsk") && (text.includes("nepropus") || text.includes("instalacij")),
+  },
+  {
+    code: "UNP",
+    matches: (text) => text.includes("unp"),
+  },
+  {
+    code: "PPV",
+    matches: (text) => text.includes("protupozarn") && text.includes("vrat"),
+  },
+  {
+    code: "PPZ",
+    matches: (text) => text.includes("protupozarn") && text.includes("zaklop"),
+  },
+  {
+    code: "SVZ",
+    matches: (text) => text.includes("dojav") && text.includes("pozar"),
+  },
+  {
+    code: "SP",
+    matches: (text) => text.includes("detekc") && text.includes("plin"),
+  },
+  {
+    code: "ROF",
+    matches: (text) => (
+      text.includes("ro f")
+      || text.includes("rof")
+      || text.includes("fizikalni cimben")
+      || (text.includes("radni okolis") && text.includes("fizikal"))
+    ),
+  },
+  {
+    code: "ROK",
+    matches: (text) => (
+      text.includes("ro k")
+      || text.includes("rok")
+      || text.includes("kemijski cimben")
+      || (text.includes("radni okolis") && text.includes("kemij"))
+    ),
+  },
+  {
+    code: "STROJEVI",
+    matches: (text) => text.includes("radna oprema") || text.includes("strojev"),
+  },
+  {
+    code: "VS",
+    matches: (text) => text.includes("ventilacij"),
+  },
   {
     code: "SZOMV",
     matches: (text) => (
