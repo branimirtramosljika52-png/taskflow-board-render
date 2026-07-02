@@ -73,6 +73,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -25175,6 +25177,16 @@ private fun WorkOrderDocumentationWizardDialog(
     val nextFlowKey = flowTabs.getOrNull(selectedFlowIndex + 1)?.key
     val screenConfiguration = LocalConfiguration.current
     val isDocumentationLandscape = screenConfiguration.screenWidthDp > screenConfiguration.screenHeightDp
+    val documentationDialogHeightFraction = if (isDocumentationLandscape) 0.96f else 0.94f
+    val documentationScrollMaxHeight = remember(screenConfiguration.screenHeightDp, isDocumentationLandscape, serviceFlowItems.isNotEmpty()) {
+        val reservedHeight = when {
+            isDocumentationLandscape -> 88.dp
+            serviceFlowItems.isNotEmpty() -> 178.dp
+            else -> 146.dp
+        }
+        (screenConfiguration.screenHeightDp.dp - reservedHeight).coerceAtLeast(430.dp)
+    }
+    val documentationScrollBottomSpace = if (isDocumentationLandscape) 72.dp else 220.dp
 
     if (newObjectDialogOpen) {
         AlertDialog(
@@ -25385,10 +25397,11 @@ private fun WorkOrderDocumentationWizardDialog(
             .fillMaxHeight(
                 when {
                     isDocumentationLandscape && measurementPreviewOpen -> 0.97f
-                    isDocumentationLandscape -> 0.9f
-                    else -> 0.88f
+                    else -> documentationDialogHeightFraction
                 },
-            ),
+            )
+            .navigationBarsPadding()
+            .imePadding(),
         properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
             if (measurementPreviewOpen) {
@@ -25495,8 +25508,9 @@ private fun WorkOrderDocumentationWizardDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = if (isDocumentationLandscape) 720.dp else if (serviceFlowItems.isNotEmpty()) 620.dp else 660.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .heightIn(max = documentationScrollMaxHeight)
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
 
@@ -26106,7 +26120,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     },
                 )
                 }
-                Spacer(Modifier.height(if (isDocumentationLandscape) 18.dp else 96.dp))
+                Spacer(Modifier.height(documentationScrollBottomSpace))
                 }
             }
             }
@@ -29240,7 +29254,9 @@ private fun DocumentationMeasurementFullscreenDialog(
         ),
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(),
             shape = RoundedCornerShape(0.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
@@ -29702,6 +29718,8 @@ private fun MeasurementTableEditor(
     val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex, tableOnly) {
         if (sheet.rows.isEmpty()) {
             0
+        } else if (tableOnly) {
+            sheet.rows.size
         } else if (lastMeaningfulRowIndex >= 0) {
             val initialRows = if (tableOnly) 24 else 12
             val maxRows = if (tableOnly) 24 else 32
