@@ -5506,6 +5506,9 @@ private fun DocumentationSprVoiceField(
         }
     }
     if (pendingSpoken.isNotBlank()) {
+        val localPreviewRows = remember(pendingSpoken) { parseSprVoiceTranscriptToAiRows(pendingSpoken) }
+        val dialogPreviewRows = voicePreviewRows.ifEmpty { localPreviewRows }
+        val dialogPreviewLoading = voicePreviewLoading && dialogPreviewRows.isEmpty()
         AlertDialog(
             onDismissRequest = { pendingSpoken = "" },
             title = { Text("Provjeri diktat", fontWeight = FontWeight.Black) },
@@ -5522,7 +5525,7 @@ private fun DocumentationSprVoiceField(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    if (voicePreviewLoading) {
+                    if (dialogPreviewLoading) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(17.dp), strokeWidth = 2.dp)
                             Text(
@@ -5531,7 +5534,7 @@ private fun DocumentationSprVoiceField(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             )
                         }
-                    } else if (voicePreviewRows.isNotEmpty()) {
+                    } else if (dialogPreviewRows.isNotEmpty()) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
@@ -5556,7 +5559,7 @@ private fun DocumentationSprVoiceField(
                                         textAlign = TextAlign.End,
                                     )
                                 }
-                                voicePreviewRows.forEachIndexed { index, row ->
+                                dialogPreviewRows.forEachIndexed { index, row ->
                                     val isSection = row.kind.equals("section", ignoreCase = true) || row.lampCount.isBlank()
                                     if (isSection) {
                                         Text(
@@ -5624,7 +5627,7 @@ private fun DocumentationSprVoiceField(
             confirmButton = {
                 Button(
                     onClick = { applySpoken(replaceExisting = false) },
-                    enabled = enabled && !voicePreviewLoading && voicePreviewRows.isNotEmpty(),
+                    enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
                     shape = RoundedCornerShape(14.dp),
                 ) {
                     Text("Dodaj u postojeće", fontWeight = FontWeight.Bold)
@@ -5633,7 +5636,7 @@ private fun DocumentationSprVoiceField(
             dismissButton = {
                 TextButton(
                     onClick = { applySpoken(replaceExisting = true) },
-                    enabled = enabled && !voicePreviewLoading && voicePreviewRows.isNotEmpty(),
+                    enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
                 ) {
                     Text("Dodaj novo")
                 }
