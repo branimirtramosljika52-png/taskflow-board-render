@@ -5472,7 +5472,7 @@ private fun DocumentationSprVoiceField(
         val spoken = pendingSpoken.trim()
         if (spoken.isBlank()) return
         pendingSpoken = ""
-        onVoiceApply(spoken, replaceExisting)
+        onVoiceApply(encodeSprVoiceAction(spoken, replaceExisting), replaceExisting)
         message = if (replaceExisting) {
             "Gridline tablica je zamijenjena diktatom: $spoken"
         } else {
@@ -5624,20 +5624,25 @@ private fun DocumentationSprVoiceField(
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = { applySpoken(replaceExisting = false) },
-                    enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
-                    shape = RoundedCornerShape(14.dp),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Dodaj u tablicu", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { applySpoken(replaceExisting = true) },
-                    enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
-                ) {
-                    Text("Zamijeni tablicu")
+                    OutlinedButton(
+                        onClick = { applySpoken(replaceExisting = false) },
+                        enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text("Dodaj", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = { applySpoken(replaceExisting = true) },
+                        enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    ) {
+                        Text("Zamijeni", fontWeight = FontWeight.Bold)
+                    }
                 }
             },
         )
@@ -26134,21 +26139,24 @@ private fun WorkOrderDocumentationWizardDialog(
                         onOpenAttachment = openDocumentationAttachment,
                         onRemoveAttachment = removeDocumentationAttachment,
                         onFieldChange = { template, field, value, replaceExisting ->
-                            templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
-                                val rows = parseSprVoiceTranscriptToAiRows(value).ifEmpty { sprVoicePreviewRows }
+                                val action = decodeSprVoiceAction(value, replaceExisting)
+                                templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to action.transcript)
+                                val rows = parseSprVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
                                 if (rows.isNotEmpty()) {
-                                    measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, rows, replaceExisting)
-                                    sprVoiceAiMessage = if (replaceExisting) {
+                                    measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, rows, action.replaceExisting)
+                                    sprVoiceAiMessage = if (action.replaceExisting) {
                                         "Zamijenjena Gridline tablica: upisano ${rows.size} redaka iz pregleda."
                                     } else {
                                         "Dodano ispod zadnjeg reda u Gridline tablici: upisano ${rows.size} redaka iz pregleda."
                                     }
                                 } else {
-                                    measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
+                                    measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, action.transcript, action.replaceExisting)
                                     sprVoiceAiMessage = "Nema prepoznatih redaka za upis."
                                 }
                                 sprVoicePreviewRows = emptyList()
+                            } else {
+                                templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             }
                         },
                         onSprVoicePreview = { template, _, transcript ->
@@ -26203,9 +26211,12 @@ private fun WorkOrderDocumentationWizardDialog(
                                 values = effectiveTemplateFieldValues,
                                 standardControls = templateControls,
                                 onChange = { field, value ->
-                                    templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                                     if (field.type.equals("spr_voice", ignoreCase = true)) {
-                                        measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value)
+                                        val action = decodeSprVoiceAction(value)
+                                        templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to action.transcript)
+                                        measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, action.transcript, action.replaceExisting)
+                                    } else {
+                                        templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                                     }
                                 },
                             )
@@ -26269,9 +26280,12 @@ private fun WorkOrderDocumentationWizardDialog(
                                         values = effectiveTemplateFieldValues,
                                         enabled = !formLoading,
                                         onChange = { field, value ->
-                                            templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                                             if (field.type.equals("spr_voice", ignoreCase = true)) {
-                                                measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value)
+                                                val action = decodeSprVoiceAction(value)
+                                                templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to action.transcript)
+                                                measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, action.transcript, action.replaceExisting)
+                                            } else {
+                                                templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                                             }
                                         },
                                     )
@@ -26711,6 +26725,35 @@ private data class SprVoiceMeasurementRow(
     val kind: String = "",
 )
 
+private const val SPR_VOICE_REPLACE_COMMAND_PREFIX = "__SAFE_NEXUS_SPR_REPLACE__\n"
+private const val SPR_VOICE_APPEND_COMMAND_PREFIX = "__SAFE_NEXUS_SPR_APPEND__\n"
+
+private data class SprVoiceAction(
+    val transcript: String,
+    val replaceExisting: Boolean,
+)
+
+private fun encodeSprVoiceAction(transcript: String, replaceExisting: Boolean): String =
+    (if (replaceExisting) SPR_VOICE_REPLACE_COMMAND_PREFIX else SPR_VOICE_APPEND_COMMAND_PREFIX) + transcript.trim()
+
+private fun decodeSprVoiceAction(value: String, fallbackReplaceExisting: Boolean = false): SprVoiceAction {
+    val trimmed = value.trim()
+    return when {
+        trimmed.startsWith(SPR_VOICE_REPLACE_COMMAND_PREFIX) -> SprVoiceAction(
+            transcript = trimmed.removePrefix(SPR_VOICE_REPLACE_COMMAND_PREFIX).trim(),
+            replaceExisting = true,
+        )
+        trimmed.startsWith(SPR_VOICE_APPEND_COMMAND_PREFIX) -> SprVoiceAction(
+            transcript = trimmed.removePrefix(SPR_VOICE_APPEND_COMMAND_PREFIX).trim(),
+            replaceExisting = false,
+        )
+        else -> SprVoiceAction(
+            transcript = trimmed,
+            replaceExisting = fallbackReplaceExisting,
+        )
+    }
+}
+
 private data class EditableSprMeasurementRow(
     val id: String,
     val cells: MutableMap<String, String>,
@@ -27008,12 +27051,13 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
     replaceExisting: Boolean = false,
 ): Map<String, WorkOrderMeasurementSheet> {
     if (!template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
-    val voiceRows = parseSprVoiceMeasurementRows(transcript)
+    val action = decodeSprVoiceAction(transcript, replaceExisting)
+    val voiceRows = parseSprVoiceMeasurementRows(action.transcript)
     if (voiceRows.isEmpty()) return sheets
     val table = template.measurementTables.firstOrNull() ?: return sheets
     val key = measurementSheetStateKey(template, table)
     val sheet = sheets[key] ?: table.sheet
-    return sheets + (key to applySprVoiceRowsToSheet(sheet, voiceRows, replaceExisting))
+    return sheets + (key to applySprVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting))
 }
 
 private fun applySprVoiceAiRowsToMeasurementSheets(
