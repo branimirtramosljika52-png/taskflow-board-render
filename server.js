@@ -1093,6 +1093,22 @@ const SIGNATURE_PDF_DOCUMENT_CATEGORIES = Object.freeze([
 const GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY = "Zapisnik DOCX";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY = "Automatsko uvjerenje";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE = "people-training-certificate";
+const DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS = Object.freeze({
+  SPR: "12",
+  SZOMV: "12",
+  TZIN: "12",
+  VES: "24",
+  EIZ: "12",
+  SZOM: "12",
+  VS: "36",
+  EXEI: "36",
+  EXSE: "6",
+  EXOV: "24",
+  HM: "12",
+  HMU: "12",
+  HMV: "12",
+  HMUV: "12",
+});
 const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
   Object.freeze({
     name: "Osposobljavanje za rad na siguran način",
@@ -1221,6 +1237,13 @@ const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
     serviceType: "other",
     note: "Standardna usluga za temeljnu dokumentaciju i rad s kemikalijama.",
   }),
+  ...getDocumentationNativeTemplateSeedPresets().map((preset) => Object.freeze({
+    name: preset.serviceName || preset.title || preset.serviceCode,
+    serviceCode: preset.serviceCode,
+    serviceType: "inspection",
+    validityMonths: DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS[preset.serviceCode] || "",
+    note: "Native zapisnik iz modula Izrada dokumentacije.",
+  })),
 ]);
 const RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS = Math.max(
   5000,
