@@ -5471,13 +5471,12 @@ private fun DocumentationSprVoiceField(
     fun applySpoken(replaceExisting: Boolean) {
         val spoken = pendingSpoken.trim()
         if (spoken.isBlank()) return
-        val nextValue = if (replaceExisting) spoken else appendSprVoiceTranscript(value, spoken)
         pendingSpoken = ""
-        onVoiceApply(nextValue, replaceExisting)
+        onVoiceApply(spoken, replaceExisting)
         message = if (replaceExisting) {
-            "Dodano novo iz diktata: $spoken"
+            "Gridline tablica je zamijenjena diktatom: $spoken"
         } else {
-            "Dodano u postojeće iz diktata: $spoken"
+            "Dodano u postojeću Gridline tablicu: $spoken"
         }
     }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -5618,7 +5617,7 @@ private fun DocumentationSprVoiceField(
                         )
                     }
                     Text(
-                        "Dodaj u postojeće nadopunjuje tablicu. Dodaj novo briše samo kolone mjesto ispitivanja i količina pa upisuje ovaj pregled od prvog reda.",
+                        "Ovaj izbor vrijedi za Gridline tablicu. Dodaj u postojeću tablicu nadopunjuje retke, a zamijeni tablicu briše samo kolone mjesto ispitivanja i količina pa upisuje ovaj pregled od prvog reda.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                     )
@@ -5630,7 +5629,7 @@ private fun DocumentationSprVoiceField(
                     enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
                     shape = RoundedCornerShape(14.dp),
                 ) {
-                    Text("Dodaj u postojeće", fontWeight = FontWeight.Bold)
+                    Text("Dodaj u tablicu", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -5638,7 +5637,7 @@ private fun DocumentationSprVoiceField(
                     onClick = { applySpoken(replaceExisting = true) },
                     enabled = enabled && !dialogPreviewLoading && dialogPreviewRows.isNotEmpty(),
                 ) {
-                    Text("Dodaj novo")
+                    Text("Zamijeni tablicu")
                 }
             },
         )
@@ -26137,13 +26136,13 @@ private fun WorkOrderDocumentationWizardDialog(
                         onFieldChange = { template, field, value, replaceExisting ->
                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
-                                val rows = sprVoicePreviewRows.ifEmpty { parseSprVoiceTranscriptToAiRows(value) }
+                                val rows = parseSprVoiceTranscriptToAiRows(value).ifEmpty { sprVoicePreviewRows }
                                 if (rows.isNotEmpty()) {
                                     measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, rows, replaceExisting)
                                     sprVoiceAiMessage = if (replaceExisting) {
-                                        "Dodano novo: upisano ${rows.size} redaka iz pregleda."
+                                        "Zamijenjena Gridline tablica: upisano ${rows.size} redaka iz pregleda."
                                     } else {
-                                        "Dodano u postojeće: upisano ${rows.size} redaka iz pregleda."
+                                        "Dodano u postojeću Gridline tablicu: upisano ${rows.size} redaka iz pregleda."
                                     }
                                 } else {
                                     measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
