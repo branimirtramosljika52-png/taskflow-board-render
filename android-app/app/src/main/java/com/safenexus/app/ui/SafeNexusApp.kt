@@ -5418,9 +5418,23 @@ private fun DocumentationSprVoiceField(
     label: String,
     value: String,
     onChange: (String) -> Unit,
+    onVoiceApply: (String, Boolean) -> Unit = { nextValue, _ -> onChange(nextValue) },
     enabled: Boolean,
 ) {
     var message by remember { mutableStateOf("") }
+    var pendingSpoken by remember { mutableStateOf("") }
+    fun applySpoken(replaceExisting: Boolean) {
+        val spoken = pendingSpoken.trim()
+        if (spoken.isBlank()) return
+        val nextValue = if (replaceExisting) spoken else appendSprVoiceTranscript(value, spoken)
+        pendingSpoken = ""
+        onVoiceApply(nextValue, replaceExisting)
+        message = if (replaceExisting) {
+            "Unesen novi diktat: $spoken"
+        } else {
+            "Dodan diktat: $spoken"
+        }
+    }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
         val spoken = result.data
@@ -5429,8 +5443,7 @@ private fun DocumentationSprVoiceField(
             ?.trim()
             .orEmpty()
         if (spoken.isNotBlank()) {
-            onChange(appendSprVoiceTranscript(value, spoken))
-            message = "Dodan diktat: $spoken"
+            pendingSpoken = spoken
         }
     }
     fun startSpeechInput() {
@@ -5445,6 +5458,43 @@ private fun DocumentationSprVoiceField(
         } catch (_: ActivityNotFoundException) {
             message = "Glasovni unos nije dostupan na ovom uredaju."
         }
+    }
+    if (pendingSpoken.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = { pendingSpoken = "" },
+            title = { Text("Kako unijeti diktat?", fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        pendingSpoken,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Dodavanje nadopunjuje postojece retke. Novi unos brise raniji diktat i prvo cisti SPR tablicu.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { applySpoken(replaceExisting = false) },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Dodaj nakon postojecih", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { applySpoken(replaceExisting = true) },
+                    enabled = enabled,
+                ) {
+                    Text("Unesi novo")
+                }
+            },
+        )
     }
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         DocumentationMobileFieldShell(
@@ -25930,10 +25980,10 @@ private fun WorkOrderDocumentationWizardDialog(
                         onPickAttachments = { documentationAttachmentUploadSourceDialogOpen = true },
                         onOpenAttachment = openDocumentationAttachment,
                         onRemoveAttachment = removeDocumentationAttachment,
-                        onFieldChange = { template, field, value ->
+                        onFieldChange = { template, field, value, replaceExisting ->
                             templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
-                                measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value)
+                                measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
                             }
                         },
                     )
@@ -26534,30 +26584,31 @@ private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasu
     if (source.isBlank()) return emptyList()
     val numberPattern = "(?:\\d{1,4}|${sprVoiceNumberWords.keys.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) }})"
     val unitPattern = "(?:panik\\w*|lamp\\w*|svjetilj\\w*|kom\\w*)"
-    val itemPattern = Regex("^(.+?)\\s+($numberPattern)(?:\\s*$unitPattern)?$", setOf(RegexOption.IGNORE_CASE))
+    val itemPattern = Regex("(.+?)\\s+($numberPattern)(?:\\s*$unitPattern)?(?=\\s+\\S|$)", setOf(RegexOption.IGNORE_CASE))
     val normalizedSource = source
         .replace(Regex("\\b(?:i onda|pa onda|zatim|onda)\\b", RegexOption.IGNORE_CASE), "\n")
-        .replace(Regex("\\b($numberPattern)\\s*$unitPattern\\b\\s+", RegexOption.IGNORE_CASE), "\$1\n")
         .replace(";", "\n")
+        .replace(",", "\n")
     val rows = mutableListOf<SprVoiceMeasurementRow>()
     val seen = mutableSetOf<String>()
     normalizedSource
-        .split(Regex("\\r?\\n|,+"))
+        .split(Regex("\\r?\\n"))
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .forEach { segment ->
-            val match = itemPattern.find(segment) ?: return@forEach
-            val place = cleanSprVoicePlace(match.groupValues[1])
-            val count = parseSprVoiceCount(match.groupValues[2])
-            val key = normalizeSprVoiceLookup(place)
-            if (place.isBlank() || count.isBlank() || key.isBlank()) return@forEach
-            if (key in seen) {
-                rows.indexOfFirst { it.key == key }
-                    .takeIf { it >= 0 }
-                    ?.let { index -> rows[index] = rows[index].copy(lampCount = count) }
-            } else {
-                seen += key
-                rows += SprVoiceMeasurementRow(key = key, place = place, lampCount = count)
+            itemPattern.findAll(segment).forEach matchLoop@{ match ->
+                val place = cleanSprVoicePlace(match.groupValues[1])
+                val count = parseSprVoiceCount(match.groupValues[2])
+                val key = normalizeSprVoiceLookup(place)
+                if (place.isBlank() || count.isBlank() || key.isBlank()) return@matchLoop
+                if (key in seen) {
+                    rows.indexOfFirst { it.key == key }
+                        .takeIf { it >= 0 }
+                        ?.let { index -> rows[index] = rows[index].copy(lampCount = count) }
+                } else {
+                    seen += key
+                    rows += SprVoiceMeasurementRow(key = key, place = place, lampCount = count)
+                }
             }
         }
     return rows
@@ -26578,6 +26629,7 @@ private fun findSprMeasurementColumn(
 private fun applySprVoiceRowsToSheet(
     sheet: WorkOrderMeasurementSheet,
     voiceRows: List<SprVoiceMeasurementRow>,
+    replaceExisting: Boolean = false,
 ): WorkOrderMeasurementSheet {
     if (voiceRows.isEmpty() || sheet.columns.isEmpty()) return sheet
     val numberColumn = findSprMeasurementColumn(sheet, listOf("r br", "redni broj", "broj", "rb"), 0)
@@ -26587,7 +26639,8 @@ private fun applySprVoiceRowsToSheet(
     val eiminColumn = findSprMeasurementColumn(sheet, listOf("eimin", "emin", "minimalno", "zahtijevano"), 4)
     val passColumn = findSprMeasurementColumn(sheet, listOf("zadovoljava", "ocjena", "ispravno", "pass"), 5)
     if (placeColumn == null || lampColumn == null) return sheet
-    val rows = sheet.rows.mapIndexed { index, row ->
+    val sourceRows = if (replaceExisting) emptyList() else sheet.rows
+    val rows = sourceRows.mapIndexed { index, row ->
         EditableSprMeasurementRow(
             id = row.id.ifBlank { "measurement-row-${index + 1}" },
             cells = row.cells.toMutableMap(),
@@ -26640,6 +26693,7 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
     template: WorkOrderDocumentationTemplate,
     sheets: Map<String, WorkOrderMeasurementSheet>,
     transcript: String,
+    replaceExisting: Boolean = false,
 ): Map<String, WorkOrderMeasurementSheet> {
     if (!template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
     val voiceRows = parseSprVoiceMeasurementRows(transcript)
@@ -26647,7 +26701,7 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
     val table = template.measurementTables.firstOrNull() ?: return sheets
     val key = measurementSheetStateKey(template, table)
     val sheet = sheets[key] ?: table.sheet
-    return sheets + (key to applySprVoiceRowsToSheet(sheet, voiceRows))
+    return sheets + (key to applySprVoiceRowsToSheet(sheet, voiceRows, replaceExisting))
 }
 
 private fun measurementTablePrimaryUsageKey(
@@ -30753,7 +30807,7 @@ private fun DocumentationSprMobileWorkspace(
     onPickAttachments: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
-    onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
+    onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String, Boolean) -> Unit,
 ) {
     val sourceLabel = remember(templates) { documentationSprMobileSourceLabel(templates) }
     val menuEntries = remember(templates) {
@@ -30918,7 +30972,7 @@ private fun DocumentationSprMobileWorkspace(
                             template = template,
                             values = values,
                             enabled = enabled,
-                            onChange = { field, value -> onFieldChange(template, field, value) },
+                            onChange = { field, value -> onFieldChange(template, field, value, false) },
                         )
                     }
                 } else {
@@ -31018,7 +31072,7 @@ private fun DocumentationSprTemplateSectionPanel(
     onPickAttachments: () -> Unit,
     onOpenAttachment: (WorkOrderDocumentationAiFile) -> Unit,
     onRemoveAttachment: (String) -> Unit,
-    onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
+    onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String, Boolean) -> Unit,
 ) {
     var expanded by rememberSaveable(entry.key) { mutableStateOf(false) }
     val isBasicSection = remember(entry.section) { isBasicTemplateSection(entry.section) }
@@ -31172,7 +31226,10 @@ private fun DocumentationSprTemplateSectionPanel(
                                     standardControls = standardControls,
                                     enabled = enabled,
                                     onPickAttachments = onPickAttachments,
-                                    onChange = { field, value -> onFieldChange(entry.template, field, value) },
+                                    onChange = { field, value -> onFieldChange(entry.template, field, value, false) },
+                                    onSprVoiceApply = { field, value, replaceExisting ->
+                                        onFieldChange(entry.template, field, value, replaceExisting)
+                                    },
                                 )
                             }
                         }
@@ -33962,6 +34019,7 @@ private fun TemplateBlockDetailRow(
     enabled: Boolean,
     onPickAttachments: (() -> Unit)? = null,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
+    onSprVoiceApply: ((WorkOrderDocumentationField, String, Boolean) -> Unit)? = null,
 ) {
     if (isDocumentationAttachmentUploadBlock(block) && onPickAttachments != null) {
         DocumentationSprInlineAttachmentUploadBlock(
@@ -33985,6 +34043,9 @@ private fun TemplateBlockDetailRow(
             value = value,
             enabled = enabled,
             onChange = { onChange(editableField, it) },
+            onSprVoiceApply = onSprVoiceApply?.let { handler ->
+                { nextValue, replaceExisting -> handler(editableField, nextValue, replaceExisting) }
+            },
             showHelpText = false,
         )
         return
@@ -34053,6 +34114,9 @@ private fun TemplateBlockDetailRow(
                         value = value,
                         enabled = enabled,
                         onChange = { onChange(editableField, it) },
+                        onSprVoiceApply = onSprVoiceApply?.let { handler ->
+                            { nextValue, replaceExisting -> handler(editableField, nextValue, replaceExisting) }
+                        },
                         showHelpText = false,
                     )
                 }
@@ -34294,6 +34358,7 @@ private fun TemplateFieldInput(
     value: String,
     enabled: Boolean,
     onChange: (String) -> Unit,
+    onSprVoiceApply: ((String, Boolean) -> Unit)? = null,
     showHelpText: Boolean = true,
 ) {
     val label = if (field.required) "${field.label} *" else field.label
@@ -34345,6 +34410,7 @@ private fun TemplateFieldInput(
                 label = label,
                 value = value,
                 onChange = onChange,
+                onVoiceApply = onSprVoiceApply ?: { nextValue, _ -> onChange(nextValue) },
                 enabled = enabled,
             )
             "number" -> DocumentationMobileTextField(

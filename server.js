@@ -113,7 +113,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.271.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.272.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25192,38 +25192,35 @@ function parseMobileSprVoiceRows(transcript = "") {
       .map(escapeMobileSprRegexValue),
   ].join("|");
   const unitPattern = "(?:panik\\w*|lamp\\w*|svjetilj\\w*|kom\\w*)";
-  const itemPattern = new RegExp(`^(.+?)\\s+(${numberPattern})(?:\\s*${unitPattern})?$`, "iu");
+  const itemPattern = new RegExp(`(.+?)\\s+(${numberPattern})(?:\\s*${unitPattern})?(?=\\s+\\S|$)`, "giu");
   const rows = [];
   const seen = new Set();
   const normalizedSource = source
     .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
-    .replace(new RegExp(`\\b(${numberPattern})\\s*${unitPattern}\\b\\s+`, "giu"), "$1\n")
-    .replace(/[;]+/g, "\n");
+    .replace(/[;,]+/g, "\n");
 
   normalizedSource
-    .split(/\r?\n|,+/g)
+    .split(/\r?\n/g)
     .map((segment) => normalizeInputValue(segment))
     .filter(Boolean)
     .forEach((segment) => {
-      const match = segment.match(itemPattern);
-      if (!match) {
-        return;
-      }
-      const place = cleanMobileSprVoicePlace(match[1]);
-      const lampCount = parseMobileSprVoiceCount(match[2]);
-      const key = normalizeMobileSprLookupText(place);
-      if (!place || !lampCount || !key) {
-        return;
-      }
-      if (seen.has(key)) {
-        const existing = rows.find((row) => row.key === key);
-        if (existing) {
-          existing.lampCount = lampCount;
+      Array.from(segment.matchAll(itemPattern)).forEach((match) => {
+        const place = cleanMobileSprVoicePlace(match[1]);
+        const lampCount = parseMobileSprVoiceCount(match[2]);
+        const key = normalizeMobileSprLookupText(place);
+        if (!place || !lampCount || !key) {
+          return;
         }
-        return;
-      }
-      seen.add(key);
-      rows.push({ key, place, lampCount });
+        if (seen.has(key)) {
+          const existing = rows.find((row) => row.key === key);
+          if (existing) {
+            existing.lampCount = lampCount;
+          }
+          return;
+        }
+        seen.add(key);
+        rows.push({ key, place, lampCount });
+      });
     });
   return rows;
 }
