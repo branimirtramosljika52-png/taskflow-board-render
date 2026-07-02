@@ -113,7 +113,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.274.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.275.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25191,6 +25191,59 @@ function cleanMobileSprVoiceFloor(value = "") {
   return floor.toLowerCase().startsWith("eta") ? floor : `Etaža ${floor}`;
 }
 
+function isMobileSprVoiceUnitToken(value = "") {
+  const lookup = normalizeMobileSprLookupText(value);
+  return lookup.startsWith("panik")
+    || lookup.startsWith("lamp")
+    || lookup.startsWith("svjetilj")
+    || lookup.startsWith("kom");
+}
+
+function parseMobileSprVoiceLooseRows(transcript = "") {
+  const tokens = normalizeInputValue(transcript)
+    .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, " ")
+    .replace(/[,;:]+/g, " ")
+    .split(/\s+/g)
+    .map((token) => normalizeInputValue(token).replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, ""))
+    .filter(Boolean);
+  if (!tokens.length) {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  const placeTokens = [];
+  let lastWasCount = false;
+  tokens.forEach((token) => {
+    if (lastWasCount && isMobileSprVoiceUnitToken(token)) {
+      return;
+    }
+    const lampCount = parseMobileSprVoiceCount(token);
+    if (lampCount) {
+      const place = cleanMobileSprVoicePlace(placeTokens.join(" "));
+      const key = normalizeMobileSprLookupText(place);
+      if (place && key) {
+        if (seen.has(key)) {
+          const existing = rows.find((row) => row.key === key);
+          if (existing) {
+            existing.lampCount = lampCount;
+          }
+        } else {
+          seen.add(key);
+          rows.push({ key, place, lampCount, kind: "measurement" });
+        }
+      }
+      placeTokens.length = 0;
+      lastWasCount = true;
+      return;
+    }
+    if (!isMobileSprVoiceUnitToken(token)) {
+      placeTokens.push(token);
+      lastWasCount = false;
+    }
+  });
+  return rows;
+}
+
 function parseMobileSprVoiceRows(transcript = "") {
   const source = normalizeInputValue(transcript);
   if (!source) {
@@ -25245,7 +25298,7 @@ function parseMobileSprVoiceRows(transcript = "") {
         rows.push({ key, place, lampCount, kind: "measurement" });
       });
     });
-  return rows;
+  return rows.length ? rows : parseMobileSprVoiceLooseRows(source);
 }
 
 function normalizeMobileSprVoiceRows(rows = []) {

@@ -26777,6 +26777,56 @@ private fun cleanSprVoiceFloor(value: String): String =
         .trim(' ', ',', '.', ';', ':', '-')
         .let { floor -> if (floor.startsWith("eta", ignoreCase = true)) floor else "Etaža $floor" }
 
+private fun isSprVoiceUnitToken(value: String): Boolean =
+    normalizeSprVoiceLookup(value).let { lookup ->
+        lookup.startsWith("panik") ||
+            lookup.startsWith("lamp") ||
+            lookup.startsWith("svjetilj") ||
+            lookup.startsWith("kom")
+    }
+
+private fun parseSprVoiceLooseMeasurementRows(transcript: String): List<SprVoiceMeasurementRow> {
+    val tokens = transcript
+        .replace(Regex("\\b(?:i onda|pa onda|zatim|onda)\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("[,;:]+"), " ")
+        .split(Regex("\\s+"))
+        .map { it.trim(' ', ',', '.', ';', ':', '-') }
+        .filter { it.isNotBlank() }
+    if (tokens.isEmpty()) return emptyList()
+    val rows = mutableListOf<SprVoiceMeasurementRow>()
+    val seen = mutableSetOf<String>()
+    val placeTokens = mutableListOf<String>()
+    var lastWasCount = false
+    tokens.forEach { token ->
+        if (lastWasCount && isSprVoiceUnitToken(token)) {
+            return@forEach
+        }
+        val count = parseSprVoiceCount(token)
+        if (count.isNotBlank()) {
+            val place = cleanSprVoicePlace(placeTokens.joinToString(" "))
+            val key = normalizeSprVoiceLookup(place)
+            if (place.isNotBlank() && key.isNotBlank()) {
+                if (key in seen) {
+                    rows.indexOfFirst { it.key == key }
+                        .takeIf { it >= 0 }
+                        ?.let { index -> rows[index] = rows[index].copy(lampCount = count) }
+                } else {
+                    seen += key
+                    rows += SprVoiceMeasurementRow(key = key, place = place, lampCount = count)
+                }
+            }
+            placeTokens.clear()
+            lastWasCount = true
+        } else {
+            if (!isSprVoiceUnitToken(token)) {
+                placeTokens += token
+                lastWasCount = false
+            }
+        }
+    }
+    return rows
+}
+
 private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasurementRow> {
     val source = transcript.trim()
     if (source.isBlank()) return emptyList()
@@ -26823,7 +26873,7 @@ private fun parseSprVoiceMeasurementRows(transcript: String): List<SprVoiceMeasu
                 }
             }
         }
-    return rows
+    return rows.ifEmpty { parseSprVoiceLooseMeasurementRows(source) }
 }
 
 private fun parseSprVoiceTranscriptToAiRows(transcript: String): List<SprVoiceAiRow> =
