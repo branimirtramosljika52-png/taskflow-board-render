@@ -26757,7 +26757,7 @@ private fun decodeSprVoiceAction(value: String, fallbackReplaceExisting: Boolean
 private data class EditableSprMeasurementRow(
     val id: String,
     val cells: MutableMap<String, String>,
-    val formats: Map<String, JSONObject>,
+    val formats: MutableMap<String, JSONObject>,
 )
 
 private val sprVoiceNumberWords = mapOf(
@@ -26967,14 +26967,14 @@ private fun applySprVoiceRowsToSheet(
         EditableSprMeasurementRow(
             id = row.id.ifBlank { "measurement-row-${index + 1}" },
             cells = row.cells.toMutableMap(),
-            formats = row.formats,
+            formats = row.formats.toMutableMap(),
         )
     }.toMutableList()
     fun createRow(): EditableSprMeasurementRow =
         EditableSprMeasurementRow(
             id = "measurement-row-${rows.size + 1}",
             cells = sheet.columns.associate { it.id to "" }.toMutableMap(),
-            formats = emptyMap(),
+            formats = mutableMapOf(),
         ).also { row ->
             rows += row
             eiColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = ">2" }
@@ -26988,27 +26988,64 @@ private fun applySprVoiceRowsToSheet(
         }
     }
     rows.forEachIndexed { index, row -> ensureNumber(row, index) }
+    val sectionAnchorColumn = sheet.columns.firstOrNull()
+    val previousSectionRowIds = if (replaceExisting) {
+        val sectionColumnIds = listOfNotNull(sectionAnchorColumn?.id, placeColumn.id)
+            .filter { it.isNotBlank() }
+            .toSet()
+        sheet.merges
+            .filter { merge ->
+                merge.rowSpan == 1 &&
+                    merge.colSpan > 1 &&
+                    merge.columnId in sectionColumnIds
+            }
+            .map { it.rowId }
+            .toSet()
+    } else {
+        emptySet()
+    }
     if (replaceExisting) {
+        val clearColumnIds = listOfNotNull(
+            sheet.columns.firstOrNull()?.id,
+            numberColumn?.id,
+            placeColumn.id,
+            lampColumn.id,
+        )
+            .filter { it.isNotBlank() }
+            .distinct()
         rows.forEach { row ->
-            row.cells[placeColumn.id] = ""
-            row.cells[lampColumn.id] = ""
+            if (row.id in previousSectionRowIds) {
+                sheet.columns.forEach { column ->
+                    row.cells[column.id] = ""
+                    row.formats.remove(column.id)
+                }
+            } else {
+                clearColumnIds.forEach { columnId -> row.cells[columnId] = "" }
+            }
         }
     }
     val sectionMerges = mutableListOf<WorkOrderMeasurementMerge>()
     fun rowHasDictatedValues(row: EditableSprMeasurementRow): Boolean =
-        row.cells[placeColumn.id].orEmpty().isNotBlank() || row.cells[lampColumn.id].orEmpty().isNotBlank()
+        row.id in sheet.headerRows ||
+            sheet.isMergedMeasurementSectionRow(row.id) ||
+            row.cells[placeColumn.id].orEmpty().isNotBlank() ||
+            row.cells[lampColumn.id].orEmpty().isNotBlank() ||
+            sectionAnchorColumn?.id?.let { row.cells[it].orEmpty().isNotBlank() } == true
     fun applyEntryToRow(targetRow: EditableSprMeasurementRow, entry: SprVoiceMeasurementRow) {
         if (entry.kind.equals("section", ignoreCase = true)) {
-            numberColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = "" }
-            targetRow.cells[placeColumn.id] = entry.place
-            targetRow.cells[lampColumn.id] = ""
-            val placeIndex = sheet.columns.indexOfFirst { it.id == placeColumn.id }.coerceAtLeast(0)
-            val colSpan = (sheet.columns.size - placeIndex).coerceAtLeast(1)
+            val anchorColumn = sectionAnchorColumn ?: return
+            sheet.columns.forEach { column -> targetRow.cells[column.id] = "" }
+            targetRow.cells[anchorColumn.id] = entry.place
+            targetRow.formats[anchorColumn.id] = JSONObject()
+                .put("bold", true)
+                .put("fillColor", "#eef7ff")
+                .put("align", "left")
+                .put("verticalAlign", "middle")
             sectionMerges += WorkOrderMeasurementMerge(
                 rowId = targetRow.id,
-                columnId = placeColumn.id,
+                columnId = anchorColumn.id,
                 rowSpan = 1,
-                colSpan = colSpan,
+                colSpan = sheet.columns.size.coerceAtLeast(1),
             )
             return
         }
@@ -27018,23 +27055,30 @@ private fun applySprVoiceRowsToSheet(
         }
         targetRow.cells[lampColumn.id] = entry.lampCount
     }
-    if (replaceExisting) {
-        voiceRows.forEachIndexed { index, entry ->
-            val targetRow = rows.getOrNull(index) ?: createRow()
-            applyEntryToRow(targetRow, entry)
-        }
+    fun finalizedSheet(): WorkOrderMeasurementSheet {
+        val sectionRowIds = sectionMerges.map { it.rowId }.toSet()
         return sheet.copy(
             rows = rows.map { row ->
                 WorkOrderMeasurementRow(
                     id = row.id,
                     cells = row.cells.toMap(),
-                    formats = row.formats,
+                    formats = row.formats.toMap(),
                 )
             },
-            merges = (sheet.merges.filterNot { merge ->
-                sectionMerges.any { it.rowId == merge.rowId && it.columnId == merge.columnId }
-            } + sectionMerges),
+            merges = sheet.merges
+                .filterNot { merge ->
+                    merge.rowId in sectionRowIds ||
+                        (replaceExisting && merge.rowId in previousSectionRowIds)
+                } + sectionMerges,
+            headerRows = sheet.headerRows.filterNot { it in previousSectionRowIds },
         )
+    }
+    if (replaceExisting) {
+        voiceRows.forEachIndexed { index, entry ->
+            val targetRow = rows.getOrNull(index) ?: createRow()
+            applyEntryToRow(targetRow, entry)
+        }
+        return finalizedSheet()
     }
     var appendIndex = rows.indexOfLast(::rowHasDictatedValues) + 1
     voiceRows.forEach { entry ->
@@ -27042,18 +27086,7 @@ private fun applySprVoiceRowsToSheet(
         appendIndex += 1
         applyEntryToRow(targetRow, entry)
     }
-    return sheet.copy(
-        rows = rows.map { row ->
-            WorkOrderMeasurementRow(
-                id = row.id,
-                cells = row.cells.toMap(),
-                formats = row.formats,
-            )
-        },
-        merges = (sheet.merges.filterNot { merge ->
-            sectionMerges.any { it.rowId == merge.rowId && it.columnId == merge.columnId }
-        } + sectionMerges),
-    )
+    return finalizedSheet()
 }
 
 private fun applySprVoiceTranscriptToMeasurementSheets(
@@ -28168,8 +28201,22 @@ private fun WorkOrderMeasurementRow.isMeasurementRowMeaningful(columns: List<Wor
                 formats[column.id].isMeasurementFormatCustomizedMobile()
         }
 
+private fun WorkOrderMeasurementSheet.isMergedMeasurementSectionRow(rowId: String): Boolean {
+    val firstColumnId = columns.firstOrNull()?.id ?: return false
+    return merges.any { merge ->
+        merge.rowId == rowId &&
+            merge.columnId == firstColumnId &&
+            merge.rowSpan == 1 &&
+            merge.colSpan >= columns.size.coerceAtLeast(1)
+    }
+}
+
 private fun WorkOrderMeasurementSheet.lastMeaningfulMeasurementRowIndex(): Int =
-    rows.indexOfLast { row -> row.isMeasurementRowMeaningful(columns) || headerRows.contains(row.id) }
+    rows.indexOfLast { row ->
+        row.isMeasurementRowMeaningful(columns) ||
+            headerRows.contains(row.id) ||
+            isMergedMeasurementSectionRow(row.id)
+    }
 
 private fun WorkOrderMeasurementSheet.nextMeasurementInsertionIndex(): Int =
     (lastMeaningfulMeasurementRowIndex() + 1).coerceIn(0, rows.size)
@@ -28223,7 +28270,11 @@ private fun appendBlankMeasurementRows(
 private fun duplicateLastMeasurementRow(sheet: WorkOrderMeasurementSheet): WorkOrderMeasurementSheet {
     val source = sheet.rows
         .take(sheet.nextMeasurementInsertionIndex())
-        .lastOrNull { row -> row.id !in sheet.headerRows && row.isMeasurementRowMeaningful(sheet.columns) }
+        .lastOrNull { row ->
+            row.id !in sheet.headerRows &&
+                !sheet.isMergedMeasurementSectionRow(row.id) &&
+                row.isMeasurementRowMeaningful(sheet.columns)
+        }
         ?: return appendBlankMeasurementRows(sheet, 1)
     val nextId = measurementRowIdFactory(sheet.rows)
     val nextRows = sheet.rows.toMutableList()
@@ -28270,7 +28321,12 @@ private fun fillMeasurementCellDown(
         .coerceAtMost(sheet.rows.lastIndex)
     if (lastTargetIndex <= selection.rowIndex) return sheet
     val nextRows = sheet.rows.mapIndexed { rowIndex, row ->
-        if (rowIndex <= selection.rowIndex || rowIndex > lastTargetIndex || row.id in sheet.headerRows) {
+        if (
+            rowIndex <= selection.rowIndex ||
+            rowIndex > lastTargetIndex ||
+            row.id in sheet.headerRows ||
+            sheet.isMergedMeasurementSectionRow(row.id)
+        ) {
             row
         } else {
             val nextValue = shiftMeasurementFormulaReferencesMobile(sourceValue, rowIndex - selection.rowIndex)
@@ -28364,11 +28420,8 @@ private fun applyMeasurementQuickFill(
 
     val nextId = measurementRowIdFactory(sheet.rows)
     val rowsToInsert = mutableListOf<WorkOrderMeasurementRow>()
-    val headerRowsToAdd = mutableListOf<String>()
     val mergesToAdd = mutableListOf<WorkOrderMeasurementMerge>()
-    val firstEditable = editableColumns.first()
-    val firstEditableIndex = sheet.columns.indexOfFirst { it.id == firstEditable.id }
-    val lastEditableIndex = sheet.columns.indexOfLast { it.isEditableMeasurementColumn() }
+    val headerAnchorColumn = sheet.columns.firstOrNull() ?: return sheet
 
     fun addHeader(label: String, fillColor: String) {
         val rowId = nextId()
@@ -28376,23 +28429,22 @@ private fun applyMeasurementQuickFill(
             createBlankMeasurementRow(
                 sheet = sheet,
                 id = rowId,
-                cells = mapOf(firstEditable.id to label),
+                cells = mapOf(headerAnchorColumn.id to label),
                 formats = mapOf(
-                    firstEditable.id to JSONObject()
+                    headerAnchorColumn.id to JSONObject()
                         .put("bold", true)
                         .put("fillColor", fillColor)
                         .put("align", "left"),
                 ),
             ),
         )
-        headerRowsToAdd.add(rowId)
-        if (firstEditableIndex >= 0 && lastEditableIndex > firstEditableIndex) {
+        if (sheet.columns.size > 1) {
             mergesToAdd.add(
                 WorkOrderMeasurementMerge(
                     rowId = rowId,
-                    columnId = firstEditable.id,
+                    columnId = headerAnchorColumn.id,
                     rowSpan = 1,
-                    colSpan = lastEditableIndex - firstEditableIndex + 1,
+                    colSpan = sheet.columns.size,
                 ),
             )
         }
@@ -28424,7 +28476,6 @@ private fun applyMeasurementQuickFill(
     return sheet.copy(
         rows = nextRows,
         merges = sheet.merges + mergesToAdd,
-        headerRows = (sheet.headerRows + headerRowsToAdd).distinct(),
     )
 }
 
@@ -28438,7 +28489,7 @@ private fun fillMeasurementRowNumbers(sheet: WorkOrderMeasurementSheet): WorkOrd
     var counter = 1
     val nextRows = sheet.rows.mapIndexed { index, row ->
         val inTargetRange = if (lastMeaningfulIndex >= 0) index <= lastMeaningfulIndex else index < 10
-        if (!inTargetRange || row.id in sheet.headerRows) {
+        if (!inTargetRange || row.id in sheet.headerRows || sheet.isMergedMeasurementSectionRow(row.id)) {
             row
         } else {
             val hasContent = row.isMeasurementRowMeaningful(sheet.columns)
