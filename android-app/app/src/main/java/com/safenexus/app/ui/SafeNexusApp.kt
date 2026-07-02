@@ -5476,7 +5476,7 @@ private fun DocumentationSprVoiceField(
         message = if (replaceExisting) {
             "Gridline tablica je zamijenjena diktatom: $spoken"
         } else {
-            "Dodano u postojeću Gridline tablicu: $spoken"
+            "Dodano ispod zadnjeg reda u Gridline tablici: $spoken"
         }
     }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -5617,7 +5617,7 @@ private fun DocumentationSprVoiceField(
                         )
                     }
                     Text(
-                        "Ovaj izbor vrijedi za Gridline tablicu. Dodaj u postojeću tablicu nadopunjuje retke, a zamijeni tablicu briše samo kolone mjesto ispitivanja i količina pa upisuje ovaj pregled od prvog reda.",
+                        "Ovaj izbor vrijedi za Gridline tablicu. Dodaj u tablicu uvijek dodaje ispod zadnjeg popunjenog reda i ne mijenja postojeće nazive. Zamijeni tablicu briše samo kolone mjesto ispitivanja i količina pa upisuje ovaj pregled od prvog reda.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                     )
@@ -26142,7 +26142,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                     sprVoiceAiMessage = if (replaceExisting) {
                                         "Zamijenjena Gridline tablica: upisano ${rows.size} redaka iz pregleda."
                                     } else {
-                                        "Dodano u postojeću Gridline tablicu: upisano ${rows.size} redaka iz pregleda."
+                                        "Dodano ispod zadnjeg reda u Gridline tablici: upisano ${rows.size} redaka iz pregleda."
                                     }
                                 } else {
                                     measurementSheets = applySprVoiceTranscriptToMeasurementSheets(template, measurementSheets, value, replaceExisting)
@@ -26940,6 +26940,8 @@ private fun applySprVoiceRowsToSheet(
         }
     }
     val sectionMerges = mutableListOf<WorkOrderMeasurementMerge>()
+    fun rowHasDictatedValues(row: EditableSprMeasurementRow): Boolean =
+        row.cells[placeColumn.id].orEmpty().isNotBlank() || row.cells[lampColumn.id].orEmpty().isNotBlank()
     fun applyEntryToRow(targetRow: EditableSprMeasurementRow, entry: SprVoiceMeasurementRow) {
         if (entry.kind.equals("section", ignoreCase = true)) {
             numberColumn?.id?.takeIf { it.isNotBlank() }?.let { targetRow.cells[it] = "" }
@@ -26979,20 +26981,10 @@ private fun applySprVoiceRowsToSheet(
             } + sectionMerges),
         )
     }
+    var appendIndex = rows.indexOfLast(::rowHasDictatedValues) + 1
     voiceRows.forEach { entry ->
-        var targetRow = if (entry.kind.equals("section", ignoreCase = true)) {
-            null
-        } else {
-            rows.firstOrNull { normalizeSprVoiceLookup(it.cells[placeColumn.id].orEmpty()) == entry.key }
-        }
-        if (targetRow == null) {
-            targetRow = rows.firstOrNull {
-                it.cells[placeColumn.id].orEmpty().isBlank() && it.cells[lampColumn.id].orEmpty().isBlank()
-            }
-        }
-        if (targetRow == null) {
-            targetRow = createRow()
-        }
+        val targetRow = rows.getOrNull(appendIndex) ?: createRow()
+        appendIndex += 1
         applyEntryToRow(targetRow, entry)
     }
     return sheet.copy(
