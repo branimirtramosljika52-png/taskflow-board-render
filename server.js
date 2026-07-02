@@ -23522,6 +23522,54 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze(
     documentType: preset.serviceName,
   })),
 );
+const MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS = Object.freeze([
+  {
+    code: "SZOMV",
+    matches: (text) => (
+      (text.includes("vizual") || text.includes("pregled"))
+      && (text.includes("munj") || text.includes("gromobr") || text.includes("zastitu od djelovanja munje") || text.includes("zastite od djelovanja munje"))
+    ),
+  },
+  {
+    code: "TZIN",
+    matches: (text) => text.includes("tipkalo") || text.includes("isklop"),
+  },
+  {
+    code: "EIZ",
+    matches: (text) => text.includes("elektricn") || text.includes("elektroinstal"),
+  },
+  {
+    code: "SZOM",
+    matches: (text) => (
+      text.includes("zastitu od djelovanja munje")
+      || text.includes("zastite od djelovanja munje")
+      || text.includes("sustav zastite od munje")
+      || text.includes("gromobr")
+      || text.includes("munj")
+    ),
+  },
+  {
+    code: "SPR",
+    matches: (text) => (
+      text.includes("panik rasvjet")
+      || text.includes("sigurnosna rasvjet")
+      || text.includes("panic lighting")
+      || text.includes("emergency lighting")
+    ),
+  },
+  {
+    code: "VES",
+    matches: (text) => text.includes("evakuacij"),
+  },
+]);
+
+function getMobileNativeDocumentationPresetByCode(serviceCode = "") {
+  const normalizedCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
+  if (!normalizedCode) {
+    return null;
+  }
+  return MOBILE_NATIVE_DOCUMENTATION_PRESETS.find((preset) => preset.serviceCode === normalizedCode) || null;
+}
 
 function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0, scopedSnapshot = {}) {
   const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
@@ -23543,19 +23591,28 @@ function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex
   if (!serviceText) {
     return null;
   }
-  return MOBILE_NATIVE_DOCUMENTATION_PRESETS.find((preset) => {
-    const code = normalizeMobileSprLookupText(preset.serviceCode);
-    const name = normalizeMobileSprLookupText(preset.serviceName);
-    return serviceText === code
-      || serviceText.includes(code)
-      || (name && serviceText.includes(name))
-      || (code === "SPR" && (serviceText.includes("panik rasvjet") || serviceText.includes("sigurnosna rasvjet")))
-      || (code === "TZIN" && (serviceText.includes("tipkalo") || serviceText.includes("isklop")))
-      || (code === "EIZ" && serviceText.includes("elektricn"))
-      || (code === "VES" && serviceText.includes("evakuacij"))
-      || (code === "SZOM" && serviceText.includes("zastitu od djelovanja munje"))
-      || (code === "SZOMV" && serviceText.includes("vizual"));
-  }) || null;
+  const serviceTokens = new Set(serviceText.split(/\s+/u).filter(Boolean));
+  const codePreset = [...MOBILE_NATIVE_DOCUMENTATION_PRESETS]
+    .sort((left, right) => String(right.serviceCode || "").length - String(left.serviceCode || "").length)
+    .find((preset) => serviceTokens.has(normalizeMobileSprLookupText(preset.serviceCode)));
+  if (codePreset) {
+    return codePreset;
+  }
+
+  const namePreset = [...MOBILE_NATIVE_DOCUMENTATION_PRESETS]
+    .sort((left, right) => (
+      normalizeMobileSprLookupText(right.serviceName).length - normalizeMobileSprLookupText(left.serviceName).length
+    ))
+    .find((preset) => {
+      const name = normalizeMobileSprLookupText(preset.serviceName);
+      return name && serviceText.includes(name);
+    });
+  if (namePreset) {
+    return namePreset;
+  }
+
+  const semanticMatch = MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS.find((matcher) => matcher.matches(serviceText));
+  return getMobileNativeDocumentationPresetByCode(semanticMatch?.code) || null;
 }
 
 function buildMobileNativeDocumentationField(id, label, type = "text", {
