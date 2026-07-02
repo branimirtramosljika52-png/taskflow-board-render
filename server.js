@@ -7855,6 +7855,389 @@ function parseOpenAiJsonObject(text = "") {
   }
 }
 
+function hasOpenAiMeasurementSuggestionRows(result = {}) {
+  return (Array.isArray(result?.measurementSuggestions) ? result.measurementSuggestions : [])
+    .some((suggestion) => Array.isArray(suggestion?.rows) && suggestion.rows.length > 0);
+}
+
+function collectOpenAiStringParts(value, parts = []) {
+  if (value == null) {
+    return parts;
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    const text = String(value).trim();
+    if (text) {
+      parts.push(text);
+    }
+    return parts;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectOpenAiStringParts(item, parts));
+    return parts;
+  }
+  if (typeof value === "object") {
+    Object.values(value).forEach((item) => collectOpenAiStringParts(item, parts));
+  }
+  return parts;
+}
+
+function buildOpenAiResultSearchText(result = {}, outputText = "") {
+  const parts = [];
+  collectOpenAiStringParts(outputText, parts);
+  collectOpenAiStringParts(result?.summary, parts);
+  collectOpenAiStringParts(result?.message, parts);
+  collectOpenAiStringParts(result?.warnings, parts);
+  collectOpenAiStringParts(result?.fieldSuggestions, parts);
+  return parts.join("\n");
+}
+
+function getOpenAiColumnLookupParts(column = {}) {
+  const mapping = column?.aiMapping && typeof column.aiMapping === "object" ? column.aiMapping : {};
+  const parts = [
+    column?.columnId,
+    column?.key,
+    column?.label,
+    column?.columnLetter,
+    column?.type,
+    column?.placeholder,
+    column?.helpText,
+    mapping.key,
+    mapping.label,
+    mapping.type,
+    mapping.format,
+    mapping.unit,
+    mapping.aiDescription,
+    mapping.validationRules,
+    mapping.placeholder,
+    mapping.helpText,
+    mapping.fallbackValue,
+    mapping.aiLookFor,
+    mapping.examples,
+    mapping.allowedValues,
+    mapping.commonValues,
+  ];
+  const collected = [];
+  parts.forEach((part) => collectOpenAiStringParts(part, collected));
+  return Array.from(new Set(collected.map(normalizeOpenAiPolicyKey).filter(Boolean)));
+}
+
+function openAiColumnMatches(column = {}, candidates = [], excludedColumns = []) {
+  if (!column || excludedColumns.includes(column)) {
+    return false;
+  }
+  const lookupParts = getOpenAiColumnLookupParts(column);
+  const joined = lookupParts.join(" ");
+  return candidates
+    .map(normalizeOpenAiPolicyKey)
+    .filter(Boolean)
+    .some((candidate) => (
+      lookupParts.some((part) => part === candidate)
+      || joined.includes(candidate)
+    ));
+}
+
+function findOpenAiMeasurementColumn(columns = [], candidates = [], excludedColumns = []) {
+  return (Array.isArray(columns) ? columns : [])
+    .find((column) => openAiColumnMatches(column, candidates, excludedColumns)) || null;
+}
+
+function buildOpenAiMeasurementColumnGroups(columns = []) {
+  const groups = new Map();
+  (Array.isArray(columns) ? columns : []).forEach((column, index) => {
+    const fieldId = normalizeInputValue(column?.fieldId || column?.fieldKey || column?.fieldLabel || `measurement-${index + 1}`);
+    if (!fieldId) {
+      return;
+    }
+    if (!groups.has(fieldId)) {
+      groups.set(fieldId, {
+        fieldId,
+        fieldKey: normalizeInputValue(column?.fieldKey),
+        fieldLabel: normalizeInputValue(column?.fieldLabel),
+        fieldDescription: normalizeInputValue(column?.fieldDescription),
+        columns: [],
+      });
+    }
+    const group = groups.get(fieldId);
+    if (!group.fieldKey) group.fieldKey = normalizeInputValue(column?.fieldKey);
+    if (!group.fieldLabel) group.fieldLabel = normalizeInputValue(column?.fieldLabel);
+    if (!group.fieldDescription) group.fieldDescription = normalizeInputValue(column?.fieldDescription);
+    group.columns.push(column);
+  });
+  return Array.from(groups.values());
+}
+
+function getOpenAiMeasurementGroupLookup(group = {}) {
+  const parts = [
+    group.fieldId,
+    group.fieldKey,
+    group.fieldLabel,
+    group.fieldDescription,
+  ];
+  (Array.isArray(group.columns) ? group.columns : []).forEach((column) => {
+    parts.push(column?.columnId, column?.key, column?.label, column?.helpText, column?.aiMapping);
+  });
+  const collected = [];
+  parts.forEach((part) => collectOpenAiStringParts(part, collected));
+  return normalizeOpenAiPolicyKey(collected.join(" "));
+}
+
+function scoreOpenAiSprMeasurementGroup(group = {}, searchLookup = "") {
+  const groupLookup = getOpenAiMeasurementGroupLookup(group);
+  let score = 0;
+  if (groupLookup.includes("spr")) score += 8;
+  if (groupLookup.includes("sigurnosnarasvjet")) score += 8;
+  if (groupLookup.includes("protupanic")) score += 8;
+  if (groupLookup.includes("panikrasvjet")) score += 7;
+  if (searchLookup.includes("sigurnosnarasvjet") || searchLookup.includes("protupanic") || searchLookup.includes("spr")) {
+    score += 3;
+  }
+  return score;
+}
+
+function getOpenAiSprMeasurementTarget(columns = [], searchText = "") {
+  const groups = buildOpenAiMeasurementColumnGroups(columns);
+  if (!groups.length) {
+    return null;
+  }
+  const searchLookup = normalizeOpenAiPolicyKey(searchText);
+  const candidates = groups
+    .map((group) => {
+      const placeColumn = findOpenAiMeasurementColumn(group.columns, [
+        "place",
+        "mjestoispitivanja",
+        "mjernomjesto",
+        "mjernamjesta",
+        "lokacija",
+        "prostor",
+      ]);
+      const lampColumn = findOpenAiMeasurementColumn(group.columns, [
+        "lampcount",
+        "brojlampi",
+        "brojsvjetiljki",
+        "svjetiljki",
+        "kolicina",
+        "quantity",
+      ]);
+      const eiminColumn = findOpenAiMeasurementColumn(group.columns, [
+        "eimin",
+        "emin",
+        "minimalnoosvjetljenje",
+        "zahtijevanominimalnoosvjetljenje",
+        "zahtijevanoosvjetljenje",
+      ]);
+      const eiColumn = findOpenAiMeasurementColumn(group.columns, [
+        "ei",
+        "izmjerenoosvjetljenje",
+        "izmjereno",
+        "lux",
+      ], [eiminColumn].filter(Boolean));
+      const passColumn = findOpenAiMeasurementColumn(group.columns, [
+        "pass",
+        "zadovoljava",
+        "ocjena",
+        "ocjenaispravnosti",
+        "dane",
+      ]);
+      return {
+        group,
+        placeColumn,
+        lampColumn,
+        eiColumn,
+        eiminColumn,
+        passColumn,
+        score: scoreOpenAiSprMeasurementGroup(group, searchLookup),
+      };
+    })
+    .filter((candidate) => candidate.placeColumn && (candidate.eiColumn || candidate.eiminColumn || candidate.passColumn || candidate.lampColumn));
+
+  return candidates
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+function capitalizeOpenAiMeasurementPlace(value = "") {
+  const text = normalizeInputValue(value);
+  if (!text) {
+    return "";
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function parseOpenAiSprPlaceEntry(value = "") {
+  let text = normalizeInputValue(value)
+    .replace(/[–—]/g, "-")
+    .replace(/^(?:i|te|pa|zatim)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .trim();
+  if (!text) {
+    return null;
+  }
+
+  let lampCount = "";
+  const countMatch = text.match(/^(.*?)(?:\s*[-:]\s*|\s+)(\d{1,4})\s*(?:kom(?:ada)?|lamp\w*|svjetilj\w*)?$/iu);
+  if (countMatch && normalizeInputValue(countMatch[1])) {
+    text = normalizeInputValue(countMatch[1]);
+    lampCount = countMatch[2];
+  }
+
+  const place = capitalizeOpenAiMeasurementPlace(text);
+  return place ? { place, lampCount } : null;
+}
+
+function splitOpenAiSprPlaceList(value = "") {
+  const rawParts = normalizeInputValue(value)
+    .replace(/[()]/g, "")
+    .split(/[;,]/g)
+    .flatMap((part) => {
+      const cleanPart = normalizeInputValue(part);
+      if (!cleanPart) {
+        return [];
+      }
+      if (!/[\/-]/.test(cleanPart) && /\s+i\s+/i.test(cleanPart)) {
+        return cleanPart.split(/\s+i\s+/i);
+      }
+      return [cleanPart];
+    });
+
+  const seen = new Set();
+  return rawParts
+    .map(parseOpenAiSprPlaceEntry)
+    .filter(Boolean)
+    .filter((entry) => {
+      const key = normalizeOpenAiPolicyKey(entry.place);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function extractOpenAiSprPlacesFromText(searchText = "") {
+  const source = String(searchText || "");
+  const matches = [];
+  const patterns = [
+    /(?:mjerna|mjernih)\s+mjesta?[^()]{0,180}\(([^)]+)\)/giu,
+    /tablici\s*1[^()]{0,220}\(([^)]+)\)/giu,
+    /evidentiran\w*\s+su[^()]{0,180}\(([^)]+)\)/giu,
+  ];
+  patterns.forEach((pattern) => {
+    Array.from(source.matchAll(pattern)).forEach((match) => {
+      matches.push(...splitOpenAiSprPlaceList(match[1]));
+    });
+  });
+
+  const seen = new Set();
+  return matches.filter((entry) => {
+    const key = normalizeOpenAiPolicyKey(entry.place);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function cleanOpenAiSprMeasurementValue(value = "") {
+  return normalizeInputValue(value)
+    .replace(/[≥]/g, ">=")
+    .replace(/[≤]/g, "<=")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function extractOpenAiSprGlobalValues(searchText = "") {
+  const text = String(searchText || "").replace(/\s+/g, " ");
+  const eiMatch = text.match(/\bEi\b\s*(?:=|:)?\s*([<>≤≥]?\s*\d+(?:[,.]\d+)?)/iu);
+  const eiminMatch = text.match(/\bEimin\b\s*(?:=|:)?\s*([<>≤≥]?\s*\d+(?:[,.]\d+)?)/iu);
+  let pass = "";
+  if (/\bne\s+zadovoljava\b|\bnije\s+zadovoljav|\bne\s+zadovoljavaju\b/iu.test(text)) {
+    pass = "NE";
+  } else if (/\bzadovoljava\b|\(da\)|\bocjenom\s+da\b/iu.test(text)) {
+    pass = "DA";
+  }
+  return {
+    ei: eiMatch ? cleanOpenAiSprMeasurementValue(eiMatch[1]) : "",
+    eimin: eiminMatch ? cleanOpenAiSprMeasurementValue(eiminMatch[1]) : "",
+    pass,
+  };
+}
+
+function augmentOpenAiDocumentMeasurementSuggestions(result = null, body = {}, outputText = "") {
+  const baseResult = result && typeof result === "object" && !Array.isArray(result)
+    ? { ...result }
+    : { summary: truncateOpenAiText(outputText, 1000) };
+  if (hasOpenAiMeasurementSuggestionRows(baseResult)) {
+    return baseResult;
+  }
+
+  const columns = Array.isArray(body.columns) ? body.columns : [];
+  const searchText = buildOpenAiResultSearchText(baseResult, outputText);
+  if (!columns.length) {
+    return baseResult;
+  }
+
+  const target = getOpenAiSprMeasurementTarget(columns, searchText);
+  const places = extractOpenAiSprPlacesFromText(searchText);
+  if (!target || !places.length) {
+    return baseResult;
+  }
+
+  const globalValues = extractOpenAiSprGlobalValues(searchText);
+  const sourceFile = (Array.isArray(body.files) ? body.files : [])
+    .map((file) => normalizeInputValue(file?.name))
+    .filter(Boolean)
+    .join(", ")
+    .slice(0, 240);
+  const rows = places.map((entry) => {
+    const values = {};
+    values[target.placeColumn.columnId || target.placeColumn.key] = entry.place;
+    if (target.lampColumn && entry.lampCount) {
+      values[target.lampColumn.columnId || target.lampColumn.key] = entry.lampCount;
+    }
+    if (target.eiColumn && globalValues.ei) {
+      values[target.eiColumn.columnId || target.eiColumn.key] = globalValues.ei;
+    }
+    if (target.eiminColumn && globalValues.eimin) {
+      values[target.eiminColumn.columnId || target.eiminColumn.key] = globalValues.eimin;
+    }
+    if (target.passColumn && globalValues.pass) {
+      values[target.passColumn.columnId || target.passColumn.key] = globalValues.pass;
+    }
+    return {
+      values,
+      confidence: "medium",
+      sourceFile,
+    };
+  }).filter((row) => Object.keys(row.values).length > 0);
+
+  if (!rows.length) {
+    return baseResult;
+  }
+
+  const measurementSuggestion = {
+    fieldId: target.group.fieldId,
+    fieldKey: target.group.fieldKey,
+    fieldLabel: target.group.fieldLabel,
+    rows,
+    confidence: "medium",
+    sourceFile,
+  };
+  baseResult.measurementSuggestions = [
+    ...(Array.isArray(baseResult.measurementSuggestions) ? baseResult.measurementSuggestions : []),
+    measurementSuggestion,
+  ];
+  baseResult.warnings = Array.from(new Set([
+    ...(Array.isArray(baseResult.warnings) ? baseResult.warnings : []),
+    `NexAI je iz sazetka prepoznao ${rows.length} SPR redaka za tablicu; provjeri prijenos iz starog PDF-a.`,
+  ].map(normalizeInputValue).filter(Boolean)));
+  if (!normalizeInputValue(baseResult.summary)) {
+    baseResult.summary = `NexAI je prepoznao ${rows.length} SPR redaka za Gridline tablicu.`;
+  }
+  return baseResult;
+}
+
 function buildOpenAiSafeErrorMessage(error) {
   const message = String(error?.message || "OpenAI poziv nije uspio.").replace(/sk-[A-Za-z0-9_\-]+/g, "[redacted]");
   return message.slice(0, 600);
@@ -7895,6 +8278,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Za obicna text polja fieldSuggestions[].value uvijek mora biti plain text string. Za longtext polja fieldSuggestions[].value mora biti jedan string: plain text ili, ako ai.format izricito trazi rich text/HTML, siguran HTML fragment s oznakama p, h2, h3, strong, em, ul, ol, li, table, tr, th, td i br. Nemoj vracati blocks, rows, markdown JSON ni objekt za longtext polja.",
       "Za polje fields[].type === system_description value u fieldSuggestions mora biti objekt oblika { blocks: [{ title, sectionSubtitle, rows: [{ subtitle, description, lineCount }] }] }. Razdvoji vece cjeline u vise blocks s jasnim naslovima. Koristi redove iz fields[].systemRows kada odgovaraju, npr. Proizvodac, Tip, Teh. podaci i opisni red, ali izostavi prazne/neprimjenjive redove. Opci blok smije imati samo opisni red. Nemoj vracati cijeli Opis sustava kao obican string ako su dostupni blokovi.",
       "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Popunjavaj samo kolone navedene u measurementColumns; sve druge kolone, formule i rucni unos ignoriraj. Nemoj vracati genericki kljuc columnKey.",
+      "Ako u starom SPR zapisniku vidis tablicu mjernih mjesta sigurnosne/protupanicne rasvjete, obavezno vrati retke u measurementSuggestions; sazetak bez measurementSuggestions nije dovoljan.",
       ...sourcePolicy.instructions,
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
     ].join(" "),
@@ -7934,7 +8318,10 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
   }
 
   const outputText = extractOpenAiResponseText(payload);
-  const result = parseOpenAiJsonObject(outputText);
+  const parsedResult = parseOpenAiJsonObject(outputText);
+  const result = parsedResult
+    ? augmentOpenAiDocumentMeasurementSuggestions(parsedResult, body, outputText)
+    : null;
   const parsedAt = Date.now();
   const fields = Array.isArray(body.fields) ? body.fields : [];
   const columns = Array.isArray(body.columns) ? body.columns : [];
