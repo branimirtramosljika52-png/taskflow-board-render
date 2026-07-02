@@ -155,6 +155,8 @@ function tableSpec({
   summary,
   columns,
   rows = null,
+  headerRows = [],
+  merges = [],
   blankRowCount = DEFAULT_ROW_COUNT,
   blankSeed = {},
   enabledByDefault = true,
@@ -162,6 +164,7 @@ function tableSpec({
   assessmentLabel = "",
   chapterTitle = "",
   pageOrientation = "portrait",
+  sourceSheet = "",
 }) {
   const key = id;
   return {
@@ -175,8 +178,11 @@ function tableSpec({
     assessmentLabel,
     chapterTitle,
     pageOrientation: pageOrientation === "landscape" ? "landscape" : "portrait",
+    sourceSheet,
     columns,
     rows: rows || blankRows(columns, blankRowCount, blankSeed),
+    headerRows,
+    merges,
   };
 }
 
@@ -1714,6 +1720,802 @@ function makeAssessmentEntries(serviceCode = "", labels = []) {
   }));
 }
 
+function getCistaColumnWidth(label = "", index = 0, count = 1) {
+  const text = String(label || "");
+  const base = Math.max(74, Math.min(260, (text.length * 7) + 28));
+  if (index === 0 && /^(r\.?\s*br|redni|broj)$/i.test(text.trim())) {
+    return 66;
+  }
+  if (count >= 10) {
+    return Math.max(70, Math.min(base, 148));
+  }
+  if (count >= 7) {
+    return Math.max(82, Math.min(base, 190));
+  }
+  return base;
+}
+
+function makeCistaColumns(labels = []) {
+  const safeLabels = labels.map((label) => String(label || "").trim()).filter(Boolean);
+  return safeLabels.map((label, index) => makeColumn(
+    `c${index + 1}`,
+    label,
+    getCistaColumnWidth(label, index, safeLabels.length),
+    "",
+  ));
+}
+
+function isCistaDecisionColumn(label = "") {
+  const normalized = String(label || "").toLowerCase();
+  return normalized.includes("da/ne")
+    || normalized.includes("zadovoljava")
+    || normalized.includes("ocjena")
+    || normalized.includes("ispravnost")
+    || normalized.includes("funkcionalnost")
+    || normalized.includes("zaključak")
+    || normalized.includes("zakljucak");
+}
+
+function makeCistaSeedRows(columns = [], count = DEFAULT_ROW_COUNT) {
+  const shouldNumberFirstColumn = columns[0] && /^(r\.?\s*br|redni|broj)/i.test(columns[0].label || "");
+  return Array.from({ length: count }, (_, index) => {
+    const values = {};
+    columns.forEach((column, columnIndex) => {
+      if (columnIndex === 0 && shouldNumberFirstColumn) {
+        values[column.id] = String(index + 1);
+      } else if (isCistaDecisionColumn(column.label)) {
+        values[column.id] = "DA";
+      }
+    });
+    return makeRow(columns, values, index);
+  });
+}
+
+function makeCistaRows(columns = [], rows = []) {
+  return rows.map((row, index) => {
+    if (typeof row === "string") {
+      const values = {
+        [columns[0]?.id || "c1"]: row,
+      };
+      columns.forEach((column, columnIndex) => {
+        if (columnIndex > 0 && isCistaDecisionColumn(column.label)) {
+          values[column.id] = "DA";
+        }
+      });
+      return makeRow(columns, values, index);
+    }
+    const cells = Array.isArray(row) ? row : [];
+    return makeRow(columns, Object.fromEntries(columns.map((column, columnIndex) => [
+      column.id,
+      cells[columnIndex] ?? "",
+    ])), index);
+  });
+}
+
+function cistaTableSpec({
+  id,
+  label,
+  summary = "",
+  columns = [],
+  rows = null,
+  rowCount = DEFAULT_ROW_COUNT,
+  pageOrientation = "",
+  assessmentLabel = "",
+  chapterTitle = "",
+  sourceSheet = "",
+} = {}) {
+  const cistaColumns = makeCistaColumns(columns);
+  return tableSpec({
+    id,
+    label,
+    summary: summary || label,
+    columns: cistaColumns,
+    rows: Array.isArray(rows) ? makeCistaRows(cistaColumns, rows) : makeCistaSeedRows(cistaColumns, rowCount),
+    assessmentLabel,
+    chapterTitle,
+    pageOrientation: pageOrientation || (cistaColumns.length >= 8 ? "landscape" : "portrait"),
+    sourceSheet,
+  });
+}
+
+const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
+  SPR: [
+    {
+      id: "spr-cista-results",
+      label: "Mjerna mjesta sigurnosne protupanicne rasvjete",
+      summary: "Tablica 1. - mjerna mjesta sigurnosne protupanicne rasvjete",
+      sourceSheet: "SPR1.2",
+      columns: ["R. br.", "Mjesto ispitivanja", "Broj lampi", "Ei [lux]", "Eimin [lux]", "ZADOVOLJAVA DA/NE"],
+      rows: [
+        ["1", "Prodajni prostor", "5", ">2", "1", "DA"],
+        ["2", "Prostor za pusace", "1", ">2", "1", "DA"],
+        ["3", "Sanitarni prostor M", "1", ">2", "1", "DA"],
+        ["4", "Sanitarni prostor Z", "1", ">2", "1", "DA"],
+        ["5", "Predprostor WC", "1", ">2", "1", "DA"],
+        ["6", "Hodnik", "2", ">2", "1", "DA"],
+      ],
+    },
+  ],
+  TZIN: [
+    {
+      id: "tzin-cista-buttons",
+      label: "Mjerna mjesta tipkala za isklop",
+      summary: "Tablica 1. - mjerna mjesta tipkala za iskljucenje elektricne energije u slucaju nuzde",
+      sourceSheet: "TZIN1.2",
+      columns: ["R. br.", "Mjesto ispitivanja", "Broj tipkala", "Tip tipkala", "ZADOVOLJAVA DA/NE"],
+      rows: [
+        ["1", "Rasvjetni stup UNP", "1", "-", "DA"],
+        ["2", "Rasvjetni stup ulaz", "1", "-", "DA"],
+        ["3", "Ulaz za zaposlenike", "1", "-", "DA"],
+        ["4", "Rasvjetni stup izlaz", "1", "-", "DA"],
+      ],
+    },
+  ],
+  VES: [
+    {
+      id: "ves-cista-exercise",
+      label: "Podaci o vjezbi evakuacije",
+      summary: "Zborno mjesto, broj osoba, vrijeme napustanja objekta i opis tijeka vjezbe",
+      sourceSheet: "VES1.1",
+      columns: ["Zborno mjesto", "Broj osoba", "Vrijeme napustanja objekta [sek]", "Opis tijeka vjezbe", "Napomena"],
+      rows: [["", "", "", "Prakticna vjezba evakuacije provedena je prema planu evakuacije i spasavanja.", ""]],
+    },
+  ],
+  SZOM: [
+    {
+      id: "szom-cista-measurements",
+      label: "Mjerenje sustava zastite od djelovanja munje",
+      summary: "Tablica 1. - rezultati mjerenja sustava zastite od djelovanja munje",
+      sourceSheet: "SZOM1.2",
+      columns: ["R.br.", "Mjerno mjesto", "Riz", "Rdop", "Skriveni spojevi", "Riz2", "Rdop2", "Elektricna povezanost metalnih masa", "Riz3", "Rdop3", "ZADOVOLJAVA"],
+      rowCount: 24,
+      pageOrientation: "landscape",
+    },
+  ],
+  SZOMV: [
+    {
+      id: "szomv-cista-visual",
+      label: "Vizualni pregled sustava zastite od munje",
+      summary: "Vizualni pregled hvataljki, odvoda, mjernih spojeva, uzemljenja i prenaponske zastite",
+      sourceSheet: "SZOMV1.1",
+      columns: ["Stavka pregleda", "Odabir / stanje", "Napomena", "ZADOVOLJAVA DA/NE"],
+      rows: SZOMV_DETAILED_ITEMS.map((item) => [item, "zadovoljava", "", "DA"]),
+    },
+  ],
+  EMM: [
+    {
+      id: "emm-cista-metal-bonding",
+      label: "Mjerenje kontinuiteta PE vodica i metalnih masa",
+      summary: "IL - EMM",
+      sourceSheet: "EMM1.2",
+      columns: ["R.br.", "Ispitno mjesto 1", "Ispitno mjesto 2", "Iisp [A]", "Rizm [ohm]", "R [ohm]", "Rizm ~ R DA/NE"],
+      rowCount: 12,
+      pageOrientation: "landscape",
+    },
+  ],
+  VS: [
+    {
+      id: "vs-cista-ventilation",
+      label: "Ventilacija prostora",
+      summary: "Tablica 1. - rezultati ispitivanja ventilacije",
+      sourceSheet: "VS1.2",
+      columns: ["Prostor", "Efektivni volumen", "Vrsta otvora", "Povrsina otvora", "Brzina strujanja", "Protok", "Volumni protok", "Potrebni protok", "Broj izmjena", "Trazeni broj izmjena", "Podtlak / Nadtlak", "Zadovoljava"],
+      rowCount: 8,
+      pageOrientation: "landscape",
+    },
+  ],
+  PPCAFFE: [
+    {
+      id: "ppcaffe-cista-criteria",
+      label: "Uvjeti prostora za pusace - caffe bar",
+      summary: "Checklist uvjeta prostora za pusace",
+      sourceSheet: "PPCAFFE1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE"],
+      rows: [
+        ["Ventilacijski sustav omogucuje dovoljan broj izmjena zraka na sat", "DA"],
+        ["Opremljenost prostora sredstvima promidzbe spoznaje o stetnosti uporabe duhanskih proizvoda", "DA"],
+        ["Ukupna povrsina objekta ne prelazi 50,00 m2", "DA"],
+      ],
+    },
+    {
+      id: "ppcaffe-cista-ventilation",
+      label: "Ventilacija caffe bara",
+      summary: "Tablica 1. - ventilacija caffe bara",
+      sourceSheet: "PPCAFFE1.2",
+      columns: ["Prostor", "Efektivni volumen", "Vrsta otvora", "Povrsina otvora", "Brzina strujanja", "Protok", "Volumni protok", "Potrebni protok", "Broj izmjena", "Trazeni broj izmjena", "Podtlak / Nadtlak", "Zadovoljava"],
+      rowCount: 8,
+      pageOrientation: "landscape",
+    },
+  ],
+  PZP: [
+    {
+      id: "pzp-cista-criteria",
+      label: "Uvjeti prostora za pusace",
+      summary: "Checklist prostora za pusace",
+      sourceSheet: "PZP1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE"],
+      rows: [
+        ["Povrsina prostora nije manja od 10 m2", "DA"],
+        ["Moguc protok zraka oneciscenog duhanskim dimom u drugi prostor", "DA"],
+        ["Prostor ne zauzima vise od 20% ukupne povrsine javnog prostora", "DA"],
+        ["Osiguran podtlak od najmanje 5 Pa i uredaj za mjerenje podtlaka", "DA"],
+        ["Osigurana dodatna kolicina zraka od 30 l/s po osobi", "DA"],
+      ],
+    },
+    {
+      id: "pzp-cista-ventilation",
+      label: "Ventilacija prostora za pusace",
+      summary: "Tablica 1. - ventilacija prostora za pusace",
+      sourceSheet: "PZP1.2",
+      columns: ["Prostor", "Efektivni volumen", "Vrsta otvora", "Povrsina otvora", "Brzina strujanja", "Protok", "Volumni protok", "Potrebni protok", "Broj izmjena", "Trazeni broj izmjena", "Podtlak / Nadtlak", "Zadovoljava"],
+      rowCount: 8,
+      pageOrientation: "landscape",
+    },
+  ],
+  EXEI: [
+    {
+      id: "exei-cista-ipk",
+      label: "Mjerenje impedancije petlje kvara",
+      summary: "ZOI-10-01",
+      sourceSheet: "ExEi1.2",
+      columns: ["Oznaka strujnog kruga / el. uredaja", "Zastitni uredaj", "Tip i karakteristika", "Ia", "td", "Z(L-PE)", "Izem", "Z(L-N)", "Ik1min", "Z(L-L)", "Ik2min", "U0", "Ikmin >= 3/2xIa", "Zadovoljava DA/NE"],
+      rowCount: 12,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-oi",
+      label: "Mjerenje otpora izolacije vodova",
+      summary: "ZOI-10-02",
+      sourceSheet: "ExEi1.3",
+      columns: ["R.br.", "Oznaka strujnog kruga", "Riso L1-L2-L3 [Mohm]", "Riso L1-L2-L3-N [Mohm]", "Riso L1-L2-L3-PE [Mohm]", "Riso N-PE [Mohm]", "Min. doz. otpor izolacije Rd [Mohm]", "Riso > Rd DA/NE"],
+      rowCount: 10,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-zuds",
+      label: "Provjera zastitnih uredaja diferencijalne struje",
+      summary: "ZOI-10-03",
+      sourceSheet: "ExEi1.4",
+      columns: ["Redni broj", "Razdjelnik", "Strujni krug", "In [A]", "/", "IΔn [mA]", "Iisk [mA]", "tisk [ms]", "U0 [V]", "Iisk < IΔn / tisk < tdoz DA/NE"],
+      rowCount: 8,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-pe-ipk",
+      label: "Kontinuitet dodatnog vanjskog PE vodica - IPK",
+      summary: "ZOI-10-06",
+      sourceSheet: "ExEi1.5",
+      columns: ["Red. broj", "Mjerno mjesto / oznaka", "SPE / SPEd", "Z(L-PE)", "Z(L-PE1)", "Z(L-PE2)", "Z(L-PE1) ~ Z(L-PE)", "Z(L-PE2) ~ Z(L-PE)", "Ocjena DA/NE"],
+      rowCount: 8,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-pe-direct",
+      label: "Kontinuitet PE vodica i metalnih masa - izravno mjerenje",
+      summary: "ZOI-10-05",
+      sourceSheet: "ExEi1.6",
+      columns: ["Redni broj", "S [mm2]", "Ispitno mjesto 1", "Ispitno mjesto 2", "Iisp [A]", "Rizm [ohm]", "Rocek [ohm]", "Rizm ~ Rocek DA/NE"],
+      rowCount: 10,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-motors",
+      label: "Mjerenje elektromotora",
+      summary: "ZOI-10-14",
+      sourceSheet: "ExEi1.7",
+      columns: ["Mjerni uredaj / tvornicki broj agregata", "Proizvodac / tip", "Tvornicki broj motora", "Vrsta zastite / certifikat", "In [A]", "I L1", "I L2", "I L3", "R1", "R2", "R3", "Riso PE-1", "Riso PE-2", "Riso PE-3", "Ocjena DA/NE"],
+      rowCount: 6,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-overload-e",
+      label: "Zastita od preopterecenja motora Ex e",
+      summary: "ZOI-10-10",
+      sourceSheet: "ExEi1.8",
+      columns: ["R.br.", "Broj strujnog kruga", "Tip i radno podrucje zastitnog uredaja", "In [A]", "Ip [A]", "IA/In", "tE [s]", "Iis 1,2xIp [A]", "tisk 1,2xIp [s]", "Iis 1,5xIp [A]", "tisk 1,5xIp [s]", "Iis 3xIp [A]", "tisk 3xIp [s]", "IA/InxIp [A]", "tisk < tdoz / tisk < tE DA/NE"],
+      rowCount: 6,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-overload-d",
+      label: "Zastita od preopterecenja motora Ex d",
+      summary: "ZOI-10-10",
+      sourceSheet: "ExEi1.9",
+      columns: ["R.br.", "Broj strujnog kruga", "Tip i radno podrucje zastitnog uredaja", "In [A]", "Ip [A]", "Iis 1,2xIp [A]", "tisk 1,2xIp [s]", "Iis 1,5xIp [A]", "tisk 1,5xIp [s]", "Iis 7xIp [A]", "tisk 7xIp [s]", "tisk < tdoz / tisk < tE DA/NE"],
+      rowCount: 6,
+      pageOrientation: "landscape",
+    },
+  ],
+  EXSE: [
+    {
+      id: "exse-cista-earthing",
+      label: "Mjerenje otpora uzemljenja",
+      summary: "ZOI-10-06",
+      sourceSheet: "ExSe1.2",
+      columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor", "Ocjena ispravnosti DA/NE", "Napomena"],
+      rowCount: 12,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exse-cista-static",
+      label: "Mjerenje otpora savitljivih cijevi i statickog elektriciteta",
+      summary: "ZOI-10-06",
+      sourceSheet: "ExSe1.3",
+      columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor [Mohm]", "Ocjena ispravnosti DA/NE", "Napomena"],
+      rowCount: 12,
+      pageOrientation: "landscape",
+    },
+  ],
+  EXOV: [
+    {
+      id: "exov-cista-function",
+      label: "Funkcionalnost odzracnih ventila",
+      summary: "Ocjena funkcionalnosti odzracnih ventila",
+      sourceSheet: "ExOv1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [["Funkcionalnost odzracnih ventila", "DA", ""]],
+    },
+  ],
+  HM: [
+    {
+      id: "hm-cista-layout",
+      label: "Raspored hidrantske mreze",
+      summary: "Pregled hidranata i opreme prema CISTA HMU/HMV predloscima",
+      sourceSheet: "HMU1.1 / HMV1.1",
+      columns: ["Redni broj", "Mjesto ugradnje", "Br. hidr.", "Oznacenost", "Oprema", "Dostupnost", "Funkcionalnost"],
+      rowCount: 6,
+    },
+    {
+      id: "hm-cista-measurements",
+      label: "Proracun hidrantske mreze",
+      summary: "Mjerenje tlaka i protoka hidrantske mreze",
+      sourceSheet: "HMU1.1 / HMV1.1",
+      columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]", "Potreban protok [l/min]", "ZADOVOLJAVA"],
+      rowCount: 4,
+      pageOrientation: "landscape",
+    },
+  ],
+  ROF: [
+    {
+      id: "rof-cista-measurements",
+      label: "Fizikalni cimbenici radnog okolisa",
+      summary: "Mjerenja osvijetljenosti, buke i mikroklime",
+      sourceSheet: "RO-F.3",
+      columns: ["Prostor / prostorija", "Mjerno mjesto", "Izmjereno opce osvjetljenje [lx]", "Propisano osvjetljenje [lx]", "Ekvivalentna razina buke [dB]", "Dopustena razina buke [dB]", "Izmjerena temperatura zraka [C]", "Dopustena temperatura zraka [C]", "Izmjerena brzina strujanja zraka [m/s]", "Dopustena brzina strujanja zraka [m/s]", "Izmjerena relativna vlaznost [%]", "Preporucena relativna vlaznost [%]", "DA/NE"],
+      rowCount: 10,
+      pageOrientation: "landscape",
+    },
+  ],
+  ROK: [
+    {
+      id: "rok-cista-measurements",
+      label: "Kemijski cimbenici radnog okolisa",
+      summary: "Mjerenja kemijskih stetnosti radnog okolisa",
+      sourceSheet: "RO-K.3",
+      columns: ["Prostor / prostorija", "Mjerno mjesto", "Opis MM", "Stetnost", "Mjerna jedinica", "Izmjereno", "Izracunato u odnosu na 8 sati", "GVI", "KGVI", "Napomena", "DA/NE"],
+      rowCount: 10,
+      pageOrientation: "landscape",
+    },
+  ],
+  HMU: [
+    {
+      id: "hmu-cista-layout",
+      label: "Raspored unutarnje hidrantske mreze",
+      summary: "Pregled hidrantskih ormara i opreme",
+      sourceSheet: "HMU1.1",
+      columns: ["Redni broj", "Mjesto ugradnje", "Br. hidr.", "Oznacenost", "Oprema", "Dostupnost", "Funkcionalnost"],
+      rowCount: 4,
+    },
+    {
+      id: "hmu-cista-measurements",
+      label: "Proracun unutarnje hidrantske mreze",
+      summary: "Mjerenje tlaka i protoka unutarnje hidrantske mreze",
+      sourceSheet: "HMU1.1",
+      columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
+      rowCount: 3,
+      pageOrientation: "landscape",
+    },
+  ],
+  HMV: [
+    {
+      id: "hmv-cista-layout",
+      label: "Raspored vanjske hidrantske mreze",
+      summary: "Pregled vanjskih hidranata i opreme",
+      sourceSheet: "HMV1.1",
+      columns: ["Redni broj", "Mjesto ugradnje", "Br. hidr.", "Oznacenost", "Oprema", "Dostupnost", "Funkcionalnost"],
+      rowCount: 4,
+    },
+    {
+      id: "hmv-cista-measurements",
+      label: "Proracun vanjske hidrantske mreze",
+      summary: "Mjerenje tlaka i protoka vanjske hidrantske mreze",
+      sourceSheet: "HMV1.1",
+      columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
+      rowCount: 3,
+      pageOrientation: "landscape",
+    },
+  ],
+  HMUV: [
+    {
+      id: "hmuv-cista-inside-layout",
+      label: "Raspored unutarnje hidrantske mreze",
+      summary: "Pregled unutarnjih hidranata",
+      sourceSheet: "HMUV1.1",
+      columns: ["Redni broj", "Mjesto ugradnje", "Br. hidr.", "Oznacenost", "Oprema", "Dostupnost", "Funkcionalnost"],
+      rowCount: 4,
+    },
+    {
+      id: "hmuv-cista-inside-measurements",
+      label: "Proracun unutarnje hidrantske mreze",
+      summary: "Mjerenje unutarnje hidrantske mreze",
+      sourceSheet: "HMUV1.1",
+      columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
+      rowCount: 3,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "hmuv-cista-outside-layout",
+      label: "Raspored vanjske hidrantske mreze",
+      summary: "Pregled vanjskih hidranata",
+      sourceSheet: "HMUV1.1",
+      columns: ["Redni broj", "Mjesto ugradnje", "Br. hidr.", "Oznacenost", "Oprema", "Dostupnost", "Funkcionalnost"],
+      rowCount: 4,
+    },
+    {
+      id: "hmuv-cista-outside-measurements",
+      label: "Proracun vanjske hidrantske mreze",
+      summary: "Mjerenje vanjske hidrantske mreze",
+      sourceSheet: "HMUV1.1",
+      columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
+      rowCount: 3,
+      pageOrientation: "landscape",
+    },
+  ],
+  PPV: [
+    {
+      id: "ppv-cista-doors",
+      label: "Protupozarna vrata",
+      summary: "Popis protupozarnih vrata",
+      sourceSheet: "PPV1.1",
+      columns: ["Broj", "Tip PP vrata", "Tv. br.", "Mjesto ugradnje", "ZADOVOLJAVA"],
+      rowCount: 8,
+    },
+  ],
+  PPZ: [
+    {
+      id: "ppz-cista-dampers",
+      label: "Protupozarne zaklopke",
+      summary: "Popis protupozarnih zaklopki",
+      sourceSheet: "PPZ1.1",
+      columns: ["Broj", "Oznaka", "Dimenzije", "Serijski broj", "ZADOVOLJAVA"],
+      rowCount: 12,
+    },
+  ],
+  DS: [
+    {
+      id: "ds-cista-measurements",
+      label: "Sustav za gasenje i hladenje vodom",
+      summary: "Tlakovi i protoci drencher/deluge sustava",
+      sourceSheet: "DS1.1",
+      columns: ["Sustav za gasenje i hladenje vodom", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]", "Potreban protok [l/min]", "ZADOVOLJAVA"],
+      rowCount: 5,
+      pageOrientation: "landscape",
+    },
+  ],
+  STROJEVI: [
+    {
+      id: "strojevi-cista-checklist",
+      label: "Stavke pregleda radne opreme",
+      summary: "Strojarski i elektro dio prema CISTA sheetu",
+      sourceSheet: "STROJEVI.2",
+      columns: ["STAVKA", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Zastita od pokretnih dijelova - pogonski mehanizam", "DA", ""],
+        ["Nacin postavljanja / osiguranje stabilnosti", "DA", ""],
+        ["Promjene nastale uporabom", "DA", ""],
+        ["Ostvarivanje gibanja i djelovanja stroja i uredaja prema oznakama vrsta i smjerova kretanja", "DA", ""],
+        ["Djelovanje signalnih uredaja", "DA", ""],
+        ["Djelovanje uredaja za upravljanje", "DA", ""],
+        ["Djelovanje uredaja za ukljucivanje i iskljucivanje", "DA", ""],
+        ["Zastita od povrata napona", "DA", ""],
+        ["Zastita od pokretnih dijelova - prijenosnici snage i gibanja", "DA", ""],
+        ["Zastita od pokretnih dijelova - radni elementi", "DA", ""],
+        ["Otpor izolacije", "DA", ""],
+        ["Zastita od izravnog dodira dijelova pod naponom", "DA", ""],
+        ["Nacin prikljucka na elektricnu mrezu, nazivni napon", "DA", ""],
+        ["Vrsta kabela, presjek vodica, stanje izolacije", "DA", ""],
+        ["Smjestaj i osiguranje slobodnog prostora za kretanje i rad", "DA", ""],
+      ],
+    },
+  ],
+  RADNAOPREMA: [
+    {
+      id: "radnaoprema-cista-checklist",
+      label: "Stavke pregleda radne opreme",
+      summary: "Strojarski i sigurnosni dio iz CISTA predloska",
+      sourceSheet: "RadnaOprema",
+      columns: ["STAVKA", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: WORK_EQUIPMENT_ITEMS.map((item) => [item, "DA", ""]),
+    },
+  ],
+  PLINSKAKOTLOVNICA: [
+    {
+      id: "plinskakotlovnica-cista-review",
+      label: "Pregled plinske kotlovnice",
+      summary: "Strojarski dio, tehnicke mjere zastite i plinska instalacija",
+      sourceSheet: "PlinskaKotlovnica.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Kotlovnica - gradevinski objekt", "DA", ""],
+        ["Tehnicke mjere zastite", "DA", ""],
+        ["Plinska instalacija", "DA", ""],
+        ["Kotlovsko postrojenje", "DA", ""],
+        ["Uredaji za ukljucivanje i iskljucivanje, upravljanje", "DA", ""],
+        ["Signalni i mjerni uredaji", "DA", ""],
+        ["Ventilacija prostora kotlovnice", "DA", ""],
+      ],
+    },
+  ],
+  NPI: [
+    {
+      id: "npi-cista-volume",
+      label: "Volumen instalacije",
+      summary: "Tablica volumena plinske instalacije",
+      sourceSheet: "NPI1.1",
+      columns: ["Dim 1", "L 1", "k 1", "Vol. 1", "Dim 2", "L 2", "k 2", "Vol. 2", "Volumen instalacije [l]"],
+      rowCount: 6,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "npi-cista-pressure",
+      label: "Tlacna proba",
+      summary: "Ocitanja tlaka plinske instalacije",
+      sourceSheet: "NPI1.1",
+      columns: ["Vrijeme 1 [hh:mm]", "Vrijeme 2 [hh:mm]", "Vrijeme 3 [hh:mm]", "Ispitni tlak [mbar]", "Napomena"],
+      rowCount: 3,
+    },
+  ],
+  UNP: [
+    {
+      id: "unp-cista-volume",
+      label: "Volumen instalacije",
+      summary: "Tablica volumena UNP instalacije",
+      sourceSheet: "UNP1.1",
+      columns: ["Dim 1", "L 1", "k 1", "Vol. 1", "Dim 2", "L 2", "k 2", "Vol. 2", "Volumen instalacije [l]"],
+      rowCount: 6,
+      pageOrientation: "landscape",
+    },
+    {
+      id: "unp-cista-pressure",
+      label: "Tlacna proba",
+      summary: "Ocitanja tlaka UNP instalacije",
+      sourceSheet: "UNP1.1",
+      columns: ["Vrijeme 1 [hh:mm]", "Vrijeme 2 [hh:mm]", "Vrijeme 3 [hh:mm]", "Ispitni tlak [mbar]", "Napomena"],
+      rowCount: 3,
+    },
+  ],
+  PE: [
+    {
+      id: "pe-cista-location-data",
+      label: "Osnovni podaci o lokaciji",
+      summary: "Tablica 3.1 - osnovni podaci o lokaciji i zaposlenim osobama",
+      sourceSheet: "PE1.1",
+      columns: ["Podatak", "Vrijednost", "Napomena"],
+      rows: [
+        ["Naziv tvrtke", "", ""],
+        ["Djelatnost po NKD2007", "", ""],
+        ["Lokacija", "", ""],
+        ["Opis objekta", "", ""],
+        ["Ukupni broj zaposlenih", "", ""],
+        ["Najveci ukupni broj osoba na lokaciji", "", ""],
+      ],
+    },
+    {
+      id: "pe-cista-installations",
+      label: "Instalacije i zastitni sustavi na objektu",
+      summary: "Pregled instalacija i sustava zastite od pozara iz plana evakuacije",
+      sourceSheet: "PE1.1",
+      columns: ["Stavka", "Prisutan DA/NE", "Napomena"],
+      rows: [
+        ["Elektricne instalacije", "DA", ""],
+        ["Plinske instalacije", "DA", ""],
+        ["Voda", "DA", ""],
+        ["Ventilacijski sustav", "DA", ""],
+        ["Sustav za zastitu od djelovanja munje", "DA", ""],
+        ["El. instalacije u Ex izvedbi", "DA", ""],
+        ["Aparati za pocetno gasenje pozara", "DA", ""],
+        ["Sigurnosna protupanicna rasvjeta", "DA", ""],
+        ["Tipkalo za iskljucenje el. energije", "DA", ""],
+        ["Unutarnja hidrantska mreza", "DA", ""],
+        ["Vanjska hidrantska mreza", "DA", ""],
+        ["Sprinkler sustav", "DA", ""],
+        ["Sustav odimljavanja", "DA", ""],
+        ["Protupozarne zaklopke", "DA", ""],
+        ["Protupozarna vrata", "DA", ""],
+        ["Drencher sustav", "DA", ""],
+        ["Sustav plinodojave", "DA", ""],
+        ["Sustav gasenja plinom", "DA", ""],
+        ["Sustav vatrootpornih zavjesa", "DA", ""],
+      ],
+    },
+    {
+      id: "pe-cista-events",
+      label: "Dogadjaji koji mogu ugroziti radnike",
+      summary: "Opasni dogadjaji iz plana evakuacije",
+      sourceSheet: "PE1.1",
+      columns: ["Dogadjaj", "Opis / opasnosti", "Postupak / napomena"],
+      rows: [
+        ["Pozar", "", ""],
+        ["Potres vece snage", "", ""],
+        ["Teroristicki cin", "", ""],
+        ["Drugi iznenadni dogadjaji", "", ""],
+      ],
+    },
+  ],
+  NNZD: [
+    {
+      id: "nnzd-cista-findings",
+      label: "Utvrdjene nesukladnosti",
+      summary: "Negativni nalaz tehnickih ispitivanja",
+      sourceSheet: "NNZD1.1",
+      columns: ["Naziv ispitivanja", "Nesukladnost", "Mjera / napomena"],
+      rowCount: 8,
+    },
+  ],
+  NNZDPETROL: [
+    {
+      id: "nnzdpetrol-cista-findings",
+      label: "Nesukladnosti na benzinskoj postaji",
+      summary: "Pregled nesukladnosti po podrucjima Petrol obrasca",
+      sourceSheet: "NNZDPETROL1.1",
+      columns: ["Podrucje", "Status / nalaz", "Vrsta instalacije", "Preporuka / napomena"],
+      rows: [
+        ["Radna oprema", "", "", ""],
+        ["Elektricne instalacije", "", "", ""],
+        ["Sigurnosna panik rasvjeta", "", "", ""],
+        ["Sustav za zastitu od djelovanja munje", "", "", ""],
+        ["Tipkalo za isklop napona u slucaju nuzde", "", "", ""],
+        ["Sustav ventilacije", "", "", ""],
+        ["Radni okolis", "", "", ""],
+        ["Sustav za dojavu pozara", "", "", ""],
+        ["Hidrantska mreza", "", "", ""],
+        ["Ex ispitivanja", "", "", ""],
+        ["Nepropusnost plinske instalacije", "", "", ""],
+        ["Vizualno stanje", "", "", ""],
+      ],
+    },
+  ],
+  EOTP: [
+    {
+      id: "eotp-cista-marking",
+      label: "Odabrani nacin oznacavanja",
+      summary: "Elaborat o oznacavanju transportnih putova",
+      sourceSheet: "EOTP1.1",
+      columns: ["Stavka", "Odabrano rjesenje", "Napomena"],
+      rows: [
+        ["Transportni putovi", "Obiljeziti linijom postojane zute boje.", ""],
+        ["Pjesacke staze", "Obiljeziti linijom postojane svijetlo-plave boje.", ""],
+        ["Prostor za uskladistenje / slaganje", "Oznaciti prema namjeni prostora.", ""],
+        ["Primjer oznacavanja", "Nacrt se nalazi u prilogu dokumenta.", ""],
+      ],
+    },
+    {
+      id: "eotp-cista-documentation",
+      label: "Koristena dokumentacija i strucno misljenje",
+      summary: "Projektni zadatak, metodologija i strucno misljenje",
+      sourceSheet: "EOTP1.1",
+      columns: ["Poglavlje", "Tekst", "Napomena"],
+      rows: [
+        ["Koristena tehnicko-projektna dokumentacija", "Tlocrt radnog prostora", ""],
+        ["Projektni zadatak", "", ""],
+        ["Metodologija", "", ""],
+        ["Strucno misljenje", "", ""],
+      ],
+    },
+  ],
+  SVZ: [
+    {
+      id: "svz-cista-assessment",
+      label: "Stabilni sustav za dojavu pozara",
+      summary: "Ocjena sustava za dojavu pozara",
+      sourceSheet: "SVZ1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Stabilni sustav za dojavu pozara", "DA", ""],
+        ["Centralni uredaj", "DA", ""],
+        ["Detektori pozara", "DA", ""],
+        ["Alarmne sirene", "DA", ""],
+        ["Sustavi u sprezi", "DA", ""],
+      ],
+    },
+  ],
+  SP: [
+    {
+      id: "sp-cista-assessment",
+      label: "Sustav za detekciju zapaljivih plinova",
+      summary: "Ocjena sustava detekcije plina",
+      sourceSheet: "SP1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Sustav za detekciju zapaljivih plinova", "DA", ""],
+        ["Centralni uredaj", "DA", ""],
+        ["Detektori plina", "DA", ""],
+        ["Alarmne sirene", "DA", ""],
+      ],
+    },
+  ],
+  SGP: [
+    {
+      id: "sgp-cista-assessment",
+      label: "Stabilni sustav za gasenje pozara plinom",
+      summary: "Ocjena sustava za gasenje plinom",
+      sourceSheet: "SGP1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [["Stabilni sustav za gasenje pozara plinom", "DA", ""]],
+    },
+  ],
+  SS: [
+    {
+      id: "ss-cista-assessment",
+      label: "Sprinkler sustav",
+      summary: "Ocjena sprinkler sustava",
+      sourceSheet: "SS1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Pregled izvedenog stanja prema projektnoj dokumentaciji", "DA", ""],
+        ["Sprinkler sustav", "DA", ""],
+      ],
+    },
+  ],
+  PJENA: [
+    {
+      id: "pjena-cista-assessment",
+      label: "Sustav za gasenje pozara pjenom",
+      summary: "Ocjena sustava za gasenje pjenom",
+      sourceSheet: "PJENA1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Pregled izvedenog stanja prema projektnoj dokumentaciji", "DA", ""],
+        ["Sustav za gasenje pozara pjenom", "DA", ""],
+      ],
+    },
+  ],
+  SO: [
+    {
+      id: "so-cista-assessment",
+      label: "Sustav za odvodjenje dima i topline",
+      summary: "Ocjena sustava za odvodjenje dima i topline",
+      sourceSheet: "SO1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Pregled izvedenog stanja prema projektnoj dokumentaciji", "DA", ""],
+        ["Svi dijelovi sustava ispravno funkcioniraju", "DA", ""],
+      ],
+    },
+  ],
+  PZ: [
+    {
+      id: "pz-cista-assessment",
+      label: "Sustav vatrootpornih zavjesa",
+      summary: "Ocjena vatrootpornih zavjesa",
+      sourceSheet: "PZ1.1",
+      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
+      rows: [
+        ["Pregled izvedenog stanja prema projektnoj dokumentaciji", "DA", ""],
+        ["Veza sustava vatrootpornih zavjesa sa sustavom za dojavu pozara", "DA", ""],
+        ["Svi dijelovi sustava ispravno funkcioniraju", "DA", ""],
+      ],
+    },
+  ],
+});
+
+function getCistaNativeTableSpecsForService(serviceCode = "") {
+  const blueprints = CISTA_NATIVE_TABLE_BLUEPRINTS[normalizeCode(serviceCode)];
+  return Array.isArray(blueprints) && blueprints.length
+    ? blueprints.map((blueprint) => cistaTableSpec(blueprint))
+    : null;
+}
+
 function makeChecklistFromItems({
   id,
   label,
@@ -1976,6 +2778,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         id: "eiz-zuds",
         label: "ISPITIVANJE ZAŠTITNOG UREĐAJA DIFERENCIJALNE STRUJE - ZUDS",
         summary: "IL - EIZ.ZUDS",
+        sourceSheet: "EIZ1.3",
         chapterTitle: "Mjerenja zaštitnog uređaja diferencijalne struje",
         assessmentLabel: "Ispitivanje ZUDS nazivnom i rastućom strujom kvara",
         columns: EIZ_ZUDS_COLUMNS,
@@ -1995,6 +2798,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         id: "eiz-ipk",
         label: "ISPITIVANJE IMPEDANCIJE PETLJE KVARA",
         summary: "IL - EIZ.IPK",
+        sourceSheet: "EIZ1.4",
         chapterTitle: "Impedancija petlje kvara",
         assessmentLabel: "Zaštita od indirektnog dodira",
         pageOrientation: "landscape",
@@ -2017,6 +2821,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         id: "eiz-oi",
         label: "ISPITIVANJE OTPORA IZOLACIJE",
         summary: "IL - EIZ.OI",
+        sourceSheet: "EIZ1.5",
         chapterTitle: "Otpor izolacije",
         assessmentLabel: "Otpor izolacije vodova",
         columns: EIZ_OI_COLUMNS,
@@ -2033,6 +2838,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         id: "eiz-k",
         label: "ISPITIVANJE KONTINUITETA ZAŠTITNOG VODIČA I VODIČA ZA IZJEDNAČAVANJE POTENCIJALA",
         summary: "IL - EIZ.K",
+        sourceSheet: "EIZ1.6",
         chapterTitle: "Kontinuitet zaštitnog vodiča",
         assessmentLabel: "Kontinuitet zaštitnog vodiča",
         columns: EIZ_K_COLUMNS,
@@ -2654,7 +3460,8 @@ export function getDocumentationNativeReportPreset(serviceCode = "") {
 
 export function createDocumentationMeasurementTablesForService(serviceCode = "") {
   const preset = getDocumentationNativeReportPreset(serviceCode);
-  return preset.tables.map((table) => ({
+  const nativeTables = getCistaNativeTableSpecsForService(preset.serviceCode) || preset.tables;
+  return nativeTables.map((table) => ({
     id: table.id,
     key: table.key,
     tokenKey: table.tokenKey,
@@ -2666,6 +3473,7 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
     assessmentLabel: table.assessmentLabel || "",
     chapterTitle: table.chapterTitle || "",
     pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
+    sourceSheet: table.sourceSheet || "",
     sheet: {
       columns: table.columns.map((column) => withDocumentationColumnAiMapping(table.id, column)),
       rows: table.rows.map((row, index) => ({
@@ -2673,8 +3481,8 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
         cells: { ...(row.cells || {}) },
         formats: { ...(row.formats || {}) },
       })),
-      merges: [],
-      headerRows: [],
+      merges: Array.isArray(table.merges) ? table.merges.map((merge) => ({ ...merge })) : [],
+      headerRows: Array.isArray(table.headerRows) ? [...table.headerRows] : [],
     },
   }));
 }
