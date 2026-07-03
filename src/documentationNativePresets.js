@@ -1633,7 +1633,8 @@ function getDocumentationColumnAiMapping(tableId = "", columnId = "") {
   if (isDocumentationFormulaResultAiColumn(tableId, columnId)) {
     return null;
   }
-  return DOCUMENTATION_COLUMN_AI_BY_TABLE[tableId]?.[columnId] || null;
+  const normalizedTableId = String(tableId || "") === "spr-cista-results" ? "spr-results" : tableId;
+  return DOCUMENTATION_COLUMN_AI_BY_TABLE[normalizedTableId]?.[columnId] || null;
 }
 
 function getGenericDocumentationColumnAiMapping(tableId = "", column = {}) {
@@ -1821,7 +1822,7 @@ function cistaTableSpec({
 const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
   SPR: [
     {
-      id: "spr-cista-results",
+      id: "spr-results",
       label: "Mjerna mjesta sigurnosne protupanicne rasvjete",
       summary: "Tablica 1. - mjerna mjesta sigurnosne protupanicne rasvjete",
       sourceSheet: "SPR1.2",
@@ -2612,6 +2613,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
       "Ei - izmjereno osvjetljenje sigurnosne rasvjete duz evakuacijskih puteva i kod izlaza iz prostorija [lux].",
       "Eimin - zahtijevano minimalno osvjetljenje sigurnosne rasvjete [lux].",
     ],
+    projectDocumentation: "Zapisnik od prethodnog ispitivanja od strane Abeceda zastite d.o.o.",
     assessmentLabel: "Funkcionalnost sigurnosne protupanicne rasvjete",
     conclusionLead: "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivana panik (sigurnosna) rasvjeta na dan predmetnog ispitivanja",
     validitySentence: "Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do",
@@ -3602,7 +3604,7 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
       }),
     },
   ];
-  const projectDocumentationFields = preset.serviceCode === "EIZ"
+  const projectDocumentationFields = preset.serviceCode === "EIZ" || String(preset.projectDocumentation || "").trim()
     ? [{
         id: "KORISTENA_DOKUMENTACIJA",
         key: "KORISTENA_DOKUMENTACIJA",

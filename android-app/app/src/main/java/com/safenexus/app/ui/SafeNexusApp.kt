@@ -31048,6 +31048,7 @@ private fun MeasurementQuickFillDialog(
     var customValues by remember(columnSignature) {
         mutableStateOf(initialDraft?.customValues.orEmpty().filterKeys { it in editableColumnIds })
     }
+    val visibleEditableColumns = remember(columnSignature) { editableColumns.take(10) }
     val modeOptions = listOf(
         "itemIndex" to "Redni broj",
         "floor" to "Etaža",
@@ -31143,27 +31144,61 @@ private fun MeasurementQuickFillDialog(
                     shape = RoundedCornerShape(12.dp),
                 )
                 Text("Vrijednosti po kolonama", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-                editableColumns.take(10).forEach { column ->
-                    val mode = columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
-                    WorkOrderSelectField(
-                        label = column.label.ifBlank { column.id },
-                        value = mode,
-                        valueLabel = modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
-                        options = modeOptions,
-                        enabled = enabled,
-                        onSelect = { value -> columnModes = columnModes + (column.id to value) },
-                        compact = true,
-                    )
-                    if (mode == "custom" || mode == "formula") {
-                        OutlinedTextField(
-                            value = customValues[column.id].orEmpty(),
-                            onValueChange = { value -> customValues = customValues + (column.id to value) },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(if (mode == "formula") "Formula" else "Vrijednost") },
-                            singleLine = true,
-                            enabled = enabled,
-                            shape = RoundedCornerShape(12.dp),
-                        )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        visibleEditableColumns.forEach { column ->
+                            val mode = columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
+                            Column(
+                                modifier = Modifier.width(184.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp),
+                            ) {
+                                Text(
+                                    column.label.ifBlank { column.id },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                WorkOrderSelectField(
+                                    label = "Izvor",
+                                    value = mode,
+                                    valueLabel = modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
+                                    options = modeOptions,
+                                    enabled = enabled,
+                                    onSelect = { value -> columnModes = columnModes + (column.id to value) },
+                                    compact = true,
+                                )
+                                if (mode == "custom" || mode == "formula") {
+                                    OutlinedTextField(
+                                        value = customValues[column.id].orEmpty(),
+                                        onValueChange = { value -> customValues = customValues + (column.id to value) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text(if (mode == "formula") "Formula" else "Vrijednost") },
+                                        singleLine = true,
+                                        enabled = enabled,
+                                        shape = RoundedCornerShape(12.dp),
+                                    )
+                                } else {
+                                    Text(
+                                        modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 if (editableColumns.size > 10) {

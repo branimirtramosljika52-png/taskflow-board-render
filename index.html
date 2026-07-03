@@ -3216,6 +3216,7 @@
               <button id="measurement-context-delete-row" type="button" class="ghost-button">Izbriši red</button>
               <button id="measurement-context-add-column-left" type="button" class="ghost-button">Dodaj kolonu lijevo</button>
               <button id="measurement-context-add-column-right" type="button" class="ghost-button">Dodaj kolonu desno</button>
+              <button id="measurement-context-add-ai-column" type="button" class="ghost-button">Dodaj AI kolonu</button>
               <button id="measurement-context-delete-column" type="button" class="ghost-button">Izbriši kolonu</button>
             </div>
           </section>
@@ -7646,7 +7647,22 @@
                   </div>
                   <button id="settings-document-template-ai-save" type="button" class="ghost-button">Spremi dokumentacijski NexAI</button>
                 </div>
-                <p class="helper-copy module-copy">Ove postavke su centralni default za sva AI polja u dokumentacijskim predlošcima i za sve gridline kolone. Ručno podešavanje na pojedinom polju ili koloni ostaje jači override.</p>
+                <p class="helper-copy module-copy">Ove postavke su centralni default za sva AI polja u dokumentacijskim predlošcima i za sve gridline kolone. Ručno podešavanje na pojedinom polju ili koloni ostaje jači override. Kolonu označiš u predlošku desnim klikom na zaglavlje kolone i izborom “Dodaj AI kolonu”.</p>
+                <div class="settings-ai-business-blocks" aria-label="Dokumentacijski AI blokovi">
+                  <article>
+                    <strong>Zapisnici</strong>
+                    <span>SPR, EIZ, SZOM, SZOMV, TZIN i ostali predlošci koriste ista globalna pravila izvora.</span>
+                  </article>
+                  <article>
+                    <strong>SPR · Excel kolone</strong>
+                    <span>Mjesto ispitivanja, broj lampi, Ei, Eimin i ocjena dobivaju vlastite AI upute kada ih označiš u Gridlineu.</span>
+                  </article>
+                  <article>
+                    <strong>Runtime zaštita</strong>
+                    <span>Zaključana AI kolona radi parser/NexAI upis, ali je korisnik u zapisniku ne mijenja ručno.</span>
+                  </article>
+                </div>
+                <div id="settings-document-template-ai-columns" class="settings-ai-business-blocks settings-document-template-ai-columns" aria-label="Označene AI Excel kolone"></div>
                 <div class="settings-notification-group">
                   <strong>Izvori i sigurnost</strong>
                   <div class="settings-notification-inline">

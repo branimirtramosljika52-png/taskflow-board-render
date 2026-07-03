@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.284.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.285.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -24735,7 +24735,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
   const measurementAssessments = Array.isArray(reportDefaults.measurementAssessments)
     ? reportDefaults.measurementAssessments
     : [];
-  const includeProjectDocumentation = preset.serviceCode === "EIZ";
+  const includeProjectDocumentation = preset.serviceCode === "EIZ" || normalizeInputValue(reportDefaults.projectDocumentation).length > 0;
   const serviceWithCode = {
     ...service,
     serviceCode: preset.serviceCode,

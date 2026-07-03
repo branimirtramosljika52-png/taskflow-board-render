@@ -4097,6 +4097,7 @@ const settingsDocumentTemplateAiDefaultAvoidInput = document.querySelector("#set
 const settingsDocumentTemplateAiFieldInstructionInput = document.querySelector("#settings-document-template-ai-field-instruction");
 const settingsDocumentTemplateAiColumnInstructionInput = document.querySelector("#settings-document-template-ai-column-instruction");
 const settingsDocumentTemplateAiConfidenceInput = document.querySelector("#settings-document-template-ai-confidence");
+const settingsDocumentTemplateAiColumns = document.querySelector("#settings-document-template-ai-columns");
 const settingsWorkEquipmentAiSaveButton = document.querySelector("#settings-work-equipment-ai-save");
 const settingsWorkEquipmentAiRefreshButton = document.querySelector("#settings-work-equipment-ai-refresh");
 const settingsWorkEquipmentAiFeedback = document.querySelector("#settings-work-equipment-ai-feedback");
@@ -6179,6 +6180,7 @@ const measurementContextAddRowBelowButton = document.querySelector("#measurement
 const measurementContextDeleteRowButton = document.querySelector("#measurement-context-delete-row");
 const measurementContextAddColumnLeftButton = document.querySelector("#measurement-context-add-column-left");
 const measurementContextAddColumnRightButton = document.querySelector("#measurement-context-add-column-right");
+const measurementContextAddAiColumnButton = document.querySelector("#measurement-context-add-ai-column");
 const measurementContextDeleteColumnButton = document.querySelector("#measurement-context-delete-column");
 const workOrdersBody = document.querySelector("#work-orders-body");
 const workOrdersEmpty = document.querySelector("#work-orders-empty");
@@ -35901,6 +35903,154 @@ function renderSettingsDocumentTemplateAi(settings = getDocumentTemplateAiSettin
     settingsDocumentTemplateAiSaveButton.hidden = !canManage;
     settingsDocumentTemplateAiSaveButton.disabled = !canManage;
   }
+  renderSettingsDocumentTemplateAiColumns();
+}
+
+function getSettingsDocumentTemplateAiFields(template = {}) {
+  if (Array.isArray(template?.fields)) {
+    return template.fields;
+  }
+  if (Array.isArray(template?.model?.fields)) {
+    return template.model.fields;
+  }
+  if (Array.isArray(template?.builder?.fields)) {
+    return template.builder.fields;
+  }
+  if (Array.isArray(template?.template?.fields)) {
+    return template.template.fields;
+  }
+  return [];
+}
+
+function getSettingsDocumentTemplateAiSheet(field = {}) {
+  return normalizeWorkOrderMeasurementSheet(
+    field?.sheet
+    ?? field?.measurementSheet
+    ?? field?.measurement_sheet
+    ?? field?.measurement?.sheet
+    ?? field?.metadata?.measurementSheet
+    ?? null,
+  );
+}
+
+function getSettingsDocumentTemplateServiceLabel(source = {}) {
+  return String(
+    source?.serviceCode
+    || source?.service
+    || source?.serviceTitle
+    || source?.serviceCatalogTitle
+    || source?.templateServiceCode
+    || source?.kind
+    || "Zapisnik",
+  ).trim() || "Zapisnik";
+}
+
+function collectSettingsDocumentTemplateAiColumnEntries() {
+  const sources = [];
+  const activeTemplateId = String(documentTemplateIdInput?.value || "").trim();
+
+  if (state.documentTemplateEditorOpen && Array.isArray(documentTemplateFieldDrafts)) {
+    sources.push({
+      id: activeTemplateId,
+      title: documentTemplateTitleInput?.value?.trim() || "Otvoreni predlozak",
+      service: documentTemplateTypeInput?.value || "Zapisnik",
+      fields: documentTemplateFieldDrafts,
+      draft: true,
+    });
+  }
+
+  (Array.isArray(state.documentTemplates) ? state.documentTemplates : []).forEach((template) => {
+    const templateId = String(template?.id || "").trim();
+    if (templateId && activeTemplateId && templateId === activeTemplateId) {
+      return;
+    }
+    sources.push({
+      id: templateId,
+      title: String(template?.title || template?.name || template?.templateName || "Predlozak").trim(),
+      service: getSettingsDocumentTemplateServiceLabel(template),
+      fields: getSettingsDocumentTemplateAiFields(template),
+      draft: false,
+    });
+  });
+
+  const entries = [];
+  sources.forEach((source) => {
+    (Array.isArray(source.fields) ? source.fields : []).forEach((field, fieldIndex) => {
+      const sheet = getSettingsDocumentTemplateAiSheet(field);
+      if (!sheet?.columns?.length) {
+        return;
+      }
+      const fieldLabel = String(field?.label || field?.wordLabel || field?.key || `Excel tablica ${fieldIndex + 1}`).trim();
+      sheet.columns.forEach((column, columnIndex) => {
+        const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+        if (!hasMeasurementColumnAiMapping(aiMapping)) {
+          return;
+        }
+        entries.push({
+          templateTitle: source.title,
+          service: source.service,
+          draft: source.draft,
+          fieldLabel,
+          columnLabel: String(column?.label || column?.id || `Kolona ${columnIndex + 1}`).trim(),
+          columnIndex,
+          aiMapping,
+        });
+      });
+    });
+  });
+
+  return entries.sort((left, right) => (
+    `${left.service} ${left.templateTitle} ${left.fieldLabel} ${left.columnIndex}`
+      .localeCompare(`${right.service} ${right.templateTitle} ${right.fieldLabel} ${right.columnIndex}`, "hr")
+  ));
+}
+
+function renderSettingsDocumentTemplateAiColumns() {
+  if (!settingsDocumentTemplateAiColumns) {
+    return;
+  }
+
+  const entries = collectSettingsDocumentTemplateAiColumnEntries();
+  if (!entries.length) {
+    const empty = document.createElement("article");
+    const title = document.createElement("strong");
+    title.textContent = "Zapisnici · Excel kolone";
+    const copy = document.createElement("span");
+    copy.textContent = "Još nema označenih AI kolona. U predlošku otvori Gridline, desni klik na zaglavlje kolone i odaberi Dodaj AI kolonu.";
+    empty.append(title, copy);
+    settingsDocumentTemplateAiColumns.replaceChildren(empty);
+    return;
+  }
+
+  const visibleEntries = entries.slice(0, 24);
+  const cards = visibleEntries.map((entry) => {
+    const card = document.createElement("article");
+    const title = document.createElement("strong");
+    title.textContent = `${entry.service} · ${entry.columnLabel}`;
+    const copy = document.createElement("span");
+    copy.textContent = [
+      entry.templateTitle,
+      entry.fieldLabel,
+      entry.aiMapping.key ? `key: ${entry.aiMapping.key}` : "",
+      entry.aiMapping.locked ? "zakljucano" : "",
+      entry.aiMapping.required ? "obavezno" : "",
+      entry.draft ? "otvoreni predlozak" : "",
+    ].filter(Boolean).join(" · ");
+    card.append(title, copy);
+    return card;
+  });
+
+  if (entries.length > visibleEntries.length) {
+    const more = document.createElement("article");
+    const title = document.createElement("strong");
+    title.textContent = `+${entries.length - visibleEntries.length} kolona`;
+    const copy = document.createElement("span");
+    copy.textContent = "Prikazujem prvih 24 označenih AI Excel kolona.";
+    more.append(title, copy);
+    cards.push(more);
+  }
+
+  settingsDocumentTemplateAiColumns.replaceChildren(...cards);
 }
 
 function collectSettingsDocumentTemplateAiSettings() {
@@ -50137,6 +50287,15 @@ function renderMeasurementContextMenu() {
   measurementContextDeleteRowButton.hidden = !hasRowActions;
   measurementContextAddColumnLeftButton.hidden = !hasColumnActions;
   measurementContextAddColumnRightButton.hidden = !hasColumnActions;
+  if (measurementContextAddAiColumnButton) {
+    measurementContextAddAiColumnButton.hidden = !hasColumnActions;
+    if (hasColumnActions) {
+      const column = state.measurementSheet.columns[contextMenuState.columnIndex];
+      measurementContextAddAiColumnButton.textContent = hasMeasurementColumnAiMapping(column?.aiMapping)
+        ? "Otvori AI kolonu"
+        : "Dodaj AI kolonu";
+    }
+  }
   measurementContextDeleteColumnButton.hidden = !hasColumnActions;
   if (measurementContextDeleteRowButton) {
     measurementContextDeleteRowButton.disabled = state.measurementSheet.rows.length <= 1;
@@ -50159,8 +50318,9 @@ function renderMeasurementContextMenu() {
     measurementContextDeleteRowButton,
     measurementContextAddColumnLeftButton,
     measurementContextAddColumnRightButton,
+    measurementContextAddAiColumnButton,
     measurementContextDeleteColumnButton,
-  ].filter((button) => !button.hidden).length;
+  ].filter((button) => button && !button.hidden).length;
   const estimatedWidth = 220;
   const estimatedHeight = visibleItems * 42 + 16;
   const left = Math.min(
@@ -50204,6 +50364,37 @@ function openMeasurementContextMenu({ pointerX, pointerY, rowIndex = null, colum
     columnIndex: hasColumnActions ? columnIndex : null,
   };
   renderMeasurementContextMenu();
+}
+
+function openMeasurementAiForContextColumn() {
+  const contextMenuState = state.measurementSheet.contextMenu;
+  const columnIndex = Number.isInteger(contextMenuState?.columnIndex)
+    ? contextMenuState.columnIndex
+    : -1;
+  const column = state.measurementSheet.columns[columnIndex];
+
+  if (!column || column.computed) {
+    closeMeasurementContextMenu();
+    return;
+  }
+
+  selectMeasurementColumn(columnIndex);
+  if (!hasMeasurementColumnAiMapping(column.aiMapping)) {
+    const field = getMeasurementSheetOwnerFieldDraft() || {
+      label: state.measurementSheet.ownerKind === "template_field"
+        ? "Gridline tablica predloska"
+        : "Aktivna Gridline tablica",
+    };
+    applyMeasurementAiMappingToColumn(buildMeasurementColumnDefaultAiMappingInput(column, columnIndex, field));
+  }
+
+  state.measurementSheet.aiPopoverOpen = true;
+  state.measurementSheet.validationPopoverOpen = false;
+  state.measurementSheet.conditionalPopoverOpen = false;
+  state.measurementSheet.quickFillPopoverOpen = false;
+  closeMeasurementContextMenu();
+  syncMeasurementToolbar();
+  void loadOpenAiIntegrationStatus();
 }
 
 function setMeasurementSelection(rowId, columnId, options = {}) {
@@ -147123,6 +147314,9 @@ measurementContextAddColumnLeftButton?.addEventListener("click", () => {
 });
 measurementContextAddColumnRightButton?.addEventListener("click", () => {
   insertMeasurementContextColumn("right");
+});
+measurementContextAddAiColumnButton?.addEventListener("click", () => {
+  openMeasurementAiForContextColumn();
 });
 measurementContextDeleteColumnButton?.addEventListener("click", () => {
   deleteMeasurementContextColumn();
