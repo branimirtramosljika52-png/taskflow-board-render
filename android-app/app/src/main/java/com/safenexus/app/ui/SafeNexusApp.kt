@@ -9120,6 +9120,32 @@ private fun WorkOrderDocumentationOption.matchesWorkEquipmentFilter(
     }
 }
 
+private fun WorkOrderDocumentationOption.matchesWorkEquipmentSearch(query: String): Boolean {
+    val tokens = normalizeSprVoiceLookup(query)
+        .split(" ")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    if (tokens.isEmpty()) return true
+    val haystack = normalizeSprVoiceLookup(
+        listOf(
+            label,
+            subtitle,
+            status,
+            meta["equipmentName"].orEmpty(),
+            meta["manufacturer"].orEmpty(),
+            meta["model"].orEmpty(),
+            meta["serialNumber"].orEmpty(),
+            meta["inventoryNumber"].orEmpty(),
+            meta["location"].orEmpty(),
+            meta["locationName"].orEmpty(),
+            meta["testingLocation"].orEmpty(),
+            meta["deadlineForNextExamination"].orEmpty(),
+            meta["equipmentsTechnicalData"].orEmpty(),
+        ).joinToString(" "),
+    )
+    return tokens.all { token -> haystack.contains(token) }
+}
+
 private fun workEquipmentFilterCount(
     options: List<WorkOrderDocumentationOption>,
     filter: DocumentationWorkEquipmentFilter,
@@ -10223,6 +10249,7 @@ private fun DocumentationWorkEquipmentOptionList(
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
+    var workEquipmentQuery by rememberSaveable(options) { mutableStateOf("") }
     var selectedScope by remember(options, locationName) {
         mutableStateOf(if (locationName.isNotBlank()) DocumentationWorkEquipmentScope.Location else DocumentationWorkEquipmentScope.Employer)
     }
@@ -10236,6 +10263,9 @@ private fun DocumentationWorkEquipmentOptionList(
                     option.workEquipmentDeadline() ?: LocalDate.MAX
                 }.thenBy { option -> option.label.lowercase(Locale.getDefault()) },
             )
+    }
+    val searchedOptions = remember(filteredOptions, workEquipmentQuery) {
+        filteredOptions.filter { option -> option.matchesWorkEquipmentSearch(workEquipmentQuery) }
     }
     val locationGroups = remember(options, locationName) {
         buildDocumentationWorkEquipmentLocationGroups(options, locationName)
@@ -10254,12 +10284,7 @@ private fun DocumentationWorkEquipmentOptionList(
     val locationOptions = remember(filteredOptions, selectedLocationKey) {
         filteredOptions.filter { option -> option.matchesWorkEquipmentLocationKey(selectedLocationKey) }
     }
-    val visibleOptions = remember(filteredOptions, locationOptions, selectedScope) {
-        when (selectedScope) {
-            DocumentationWorkEquipmentScope.Employer -> filteredOptions
-            DocumentationWorkEquipmentScope.Location -> locationOptions
-        }
-    }
+    val visibleOptions = remember(searchedOptions) { searchedOptions }
     val overdueCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Overdue, today) }
     val upcomingCount = remember(options, today) { workEquipmentFilterCount(options, DocumentationWorkEquipmentFilter.Upcoming, today) }
     val postDraftMissingLabels = postDraftStatus["postDraftMissingLabels"].orEmpty()
@@ -10303,7 +10328,7 @@ private fun DocumentationWorkEquipmentOptionList(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Pregled radne opreme", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "${options.size} IS ZNR stavki · $overdueCount isteklo · $upcomingCount uskoro",
+                    "${options.size} stavki · $overdueCount isteklo · $upcomingCount uskoro",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
@@ -10327,6 +10352,25 @@ private fun DocumentationWorkEquipmentOptionList(
         if (options.isEmpty()) {
             Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
         }
+        OutlinedTextField(
+            value = workEquipmentQuery,
+            onValueChange = { workEquipmentQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Traži radnu opremu") },
+            placeholder = { Text("Naziv, proizvođač, model, lokacija, serijski...") },
+            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+            trailingIcon = {
+                if (workEquipmentQuery.isNotBlank()) {
+                    IconButton(onClick = { workEquipmentQuery = "" }) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Očisti pretragu")
+                    }
+                }
+            },
+            singleLine = true,
+            enabled = enabled,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            shape = RoundedCornerShape(18.dp),
+        )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             DocumentationWorkEquipmentFilter.entries.forEach { filter ->
                 val count = workEquipmentFilterCount(options, filter, today)
@@ -10338,89 +10382,12 @@ private fun DocumentationWorkEquipmentOptionList(
                 )
             }
         }
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("IS ZNR popis radne opreme", fontWeight = FontWeight.Bold)
-                        Text(
-                            if (selectedScope == DocumentationWorkEquipmentScope.Location) {
-                                "${selectedLocationGroup?.label ?: locationName.ifBlank { "Lokacija" }} · ${visibleOptions.size} stavki"
-                            } else {
-                                "${companyName.ifBlank { "Poslodavac" }} · ${visibleOptions.size} stavki"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Icon(
-                        if (selectedScope == DocumentationWorkEquipmentScope.Location) Icons.Rounded.LocationOn else Icons.Rounded.Business,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = selectedScope == DocumentationWorkEquipmentScope.Employer,
-                        onClick = { selectedScope = DocumentationWorkEquipmentScope.Employer },
-                        label = { Text("Poslodavac (${filteredOptions.size})") },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.Business, contentDescription = null, modifier = Modifier.size(16.dp))
-                        },
-                    )
-                    FilterChip(
-                        selected = selectedScope == DocumentationWorkEquipmentScope.Location,
-                        onClick = {
-                            selectedScope = DocumentationWorkEquipmentScope.Location
-                            if (selectedLocationKey.isBlank()) {
-                                selectedLocationKey = defaultDocumentationWorkEquipmentLocationKey(locationGroups)
-                            }
-                        },
-                        label = { Text("Po lokacijama (${locationGroups.size})") },
-                        enabled = locationGroups.isNotEmpty(),
-                        leadingIcon = {
-                            Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
-                        },
-                    )
-                }
-                if (selectedScope == DocumentationWorkEquipmentScope.Location && locationGroups.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        locationGroups.forEach { group ->
-                            FilterChip(
-                                selected = selectedLocationKey == group.key,
-                                onClick = { selectedLocationKey = group.key },
-                                label = {
-                                    Text(
-                                        "${group.label}${if (group.rnLocation) " · RN" else ""} (${group.count})",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
-                if (selectedScope == DocumentationWorkEquipmentScope.Location && locationOptions.isEmpty()) {
-                    Text(
-                        "Za odabranu lokaciju nema pronađene radne opreme u IS ZNR popisu. Prebaci na Poslodavac ili odaberi drugu lokaciju ako trebaš preuzeti opremu.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                }
-            }
+        if (workEquipmentQuery.isNotBlank()) {
+            Text(
+                "Pronađeno ${visibleOptions.size} od ${filteredOptions.size} stavki za ovu pretragu.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
         }
         WorkEquipmentBatchNexAiUploadCard(
             enabled = enabled,
@@ -10815,6 +10782,240 @@ private fun WorkEquipmentImageRecognitionResult.toManualWorkEquipmentFromBatch(
     )
 }
 
+private const val WORK_EQUIPMENT_REPORT_TEMPLATE_PREFS = "safe_nexus_ro_report_templates"
+private const val WORK_EQUIPMENT_REPORT_TEMPLATE_ITEMS_KEY = "items"
+
+private data class WorkEquipmentReportTemplate(
+    val id: String,
+    val title: String,
+    val equipment: IsznrManualWorkEquipment,
+)
+
+private fun IsznrManualWorkEquipment.asReportTemplateEquipment(): IsznrManualWorkEquipment =
+    copy(
+        serialNumber = "",
+        inventoryNumber = "",
+        attachments = emptyList(),
+    )
+
+private fun IsznrManualWorkEquipment.applyReportTemplate(template: IsznrManualWorkEquipment): IsznrManualWorkEquipment =
+    copy(
+        name = template.name.ifBlank { name },
+        manufacturer = template.manufacturer.ifBlank { manufacturer },
+        model = template.model.ifBlank { model },
+        note = template.note,
+        technicalData = template.technicalData,
+        purposeDescription = template.purposeDescription,
+        workspacePosition = template.workspacePosition,
+        workingSubstancesAndRawMaterials = template.workingSubstancesAndRawMaterials,
+        useAndMaintenance = template.useAndMaintenance,
+        methodsProceduresAndNorms = template.methodsProceduresAndNorms,
+        deficiencies = template.deficiencies,
+        measuresToEliminateDeficiencies = template.measuresToEliminateDeficiencies,
+        finalGrade = template.finalGrade.ifBlank { finalGrade },
+        mechanicalItems = template.mechanicalItems,
+        electricalItems = template.electricalItems,
+        hazardRegisterIris = template.hazardRegisterIris,
+        harmfulnessRegisterIris = template.harmfulnessRegisterIris,
+        strainRegisterIris = template.strainRegisterIris,
+    )
+
+private fun Context.loadWorkEquipmentReportTemplates(): List<WorkEquipmentReportTemplate> =
+    runCatching {
+        val raw = getSharedPreferences(WORK_EQUIPMENT_REPORT_TEMPLATE_PREFS, Context.MODE_PRIVATE)
+            .getString(WORK_EQUIPMENT_REPORT_TEMPLATE_ITEMS_KEY, "[]")
+            .orEmpty()
+        val array = JSONArray(raw.ifBlank { "[]" })
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("id").trim().ifBlank { "ro-template-$index" }
+                val title = item.optString("title").trim().ifBlank { "RO predložak ${index + 1}" }
+                val equipment = item.optJSONObject("equipment").toWorkEquipmentReportTemplateEquipment()
+                add(WorkEquipmentReportTemplate(id = id, title = title, equipment = equipment.asReportTemplateEquipment()))
+            }
+        }
+    }.getOrDefault(emptyList())
+
+private fun Context.saveWorkEquipmentReportTemplates(templates: List<WorkEquipmentReportTemplate>) {
+    val array = JSONArray()
+    templates.forEach { template ->
+        array.put(
+            JSONObject()
+                .put("id", template.id)
+                .put("title", template.title)
+                .put("equipment", template.equipment.asReportTemplateEquipment().toWorkEquipmentReportTemplateJson()),
+        )
+    }
+    getSharedPreferences(WORK_EQUIPMENT_REPORT_TEMPLATE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString(WORK_EQUIPMENT_REPORT_TEMPLATE_ITEMS_KEY, array.toString())
+        .apply()
+}
+
+private fun IsznrManualWorkEquipment.toWorkEquipmentReportTemplateJson(): JSONObject =
+    JSONObject()
+        .put("name", name)
+        .put("manufacturer", manufacturer)
+        .put("model", model)
+        .put("note", note)
+        .put("technicalData", technicalData)
+        .put("purposeDescription", purposeDescription)
+        .put("workspacePosition", workspacePosition)
+        .put("workingSubstancesAndRawMaterials", workingSubstancesAndRawMaterials)
+        .put("useAndMaintenance", useAndMaintenance)
+        .put("methodsProceduresAndNorms", methodsProceduresAndNorms)
+        .put("deficiencies", deficiencies)
+        .put("measuresToEliminateDeficiencies", measuresToEliminateDeficiencies)
+        .put("finalGrade", finalGrade)
+        .put("mechanicalItems", mechanicalItems.toRoAssessmentJsonArray())
+        .put("electricalItems", electricalItems.toRoAssessmentJsonArray())
+        .put("hazardRegisterIris", hazardRegisterIris.toJsonArray())
+        .put("harmfulnessRegisterIris", harmfulnessRegisterIris.toJsonArray())
+        .put("strainRegisterIris", strainRegisterIris.toJsonArray())
+
+private fun JSONObject?.toWorkEquipmentReportTemplateEquipment(): IsznrManualWorkEquipment {
+    val item = this ?: JSONObject()
+    return IsznrManualWorkEquipment(
+        name = item.optString("name").trim(),
+        manufacturer = item.optString("manufacturer").trim(),
+        model = item.optString("model").trim(),
+        note = item.optString("note").trim(),
+        technicalData = item.optString("technicalData").trim(),
+        purposeDescription = item.optString("purposeDescription").trim(),
+        workspacePosition = item.optString("workspacePosition").trim(),
+        workingSubstancesAndRawMaterials = item.optString("workingSubstancesAndRawMaterials").trim(),
+        useAndMaintenance = item.optString("useAndMaintenance").trim(),
+        methodsProceduresAndNorms = item.optString("methodsProceduresAndNorms").trim(),
+        deficiencies = item.optString("deficiencies").trim(),
+        measuresToEliminateDeficiencies = item.optString("measuresToEliminateDeficiencies").trim(),
+        finalGrade = item.optString("finalGrade").trim().ifBlank { "1" },
+        mechanicalItems = item.optJSONArray("mechanicalItems").toRoAssessmentItemList(),
+        electricalItems = item.optJSONArray("electricalItems").toRoAssessmentItemList(),
+        hazardRegisterIris = item.optJSONArray("hazardRegisterIris").toPlainStringList(),
+        harmfulnessRegisterIris = item.optJSONArray("harmfulnessRegisterIris").toPlainStringList(),
+        strainRegisterIris = item.optJSONArray("strainRegisterIris").toPlainStringList(),
+    )
+}
+
+private fun List<IsznrRoAssessmentItem>.toRoAssessmentJsonArray(): JSONArray =
+    JSONArray().also { array ->
+        forEach { item ->
+            array.put(
+                JSONObject()
+                    .put("registerIri", item.registerIri)
+                    .put("label", item.label)
+                    .put("customContent", item.customContent)
+                    .put("measuredValue", item.measuredValue)
+                    .put("meetsConditions", item.meetsConditions),
+            )
+        }
+    }
+
+private fun JSONArray?.toRoAssessmentItemList(): List<IsznrRoAssessmentItem> {
+    val array = this ?: return emptyList()
+    return buildList {
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            add(
+                IsznrRoAssessmentItem(
+                    registerIri = item.optString("registerIri").trim(),
+                    label = item.optString("label").trim(),
+                    customContent = item.optString("customContent").trim(),
+                    measuredValue = item.optString("measuredValue").trim(),
+                    meetsConditions = item.optBoolean("meetsConditions", true),
+                ),
+            )
+        }
+    }
+}
+
+private fun List<String>.toJsonArray(): JSONArray =
+    JSONArray().also { array ->
+        map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { array.put(it) }
+    }
+
+private fun JSONArray?.toPlainStringList(): List<String> {
+    val array = this ?: return emptyList()
+    return buildList {
+        for (index in 0 until array.length()) {
+            val value = array.optString(index).trim()
+            if (value.isNotBlank()) add(value)
+        }
+    }.distinct()
+}
+
+@Composable
+private fun WorkEquipmentAiStatusPanel(
+    title: String,
+    subtitle: String,
+    details: String,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.Transparent,
+        tonalElevation = 0.dp,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(Color(0xFFEEF2FF), Color(0xFFE0F2FE), Color(0xFFECFDF5)),
+                    ),
+                )
+                .border(1.dp, Color(0xFFBFDBFE), RoundedCornerShape(18.dp))
+                .padding(12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.82f), modifier = Modifier.size(38.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(title, fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                        Text(subtitle, style = MaterialTheme.typography.labelSmall, color = Color(0xFF475569))
+                    }
+                }
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(7.dp)
+                        .clip(RoundedCornerShape(999.dp)),
+                    color = Color(0xFF2563EB),
+                    trackColor = Color.White.copy(alpha = 0.72f),
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Slike", "Pločice", "Baza", "RO kolone").forEach { label ->
+                        Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.82f)) {
+                            Text(
+                                label,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF1D4ED8),
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+                if (details.isNotBlank()) {
+                    Text(details, style = MaterialTheme.typography.labelSmall, color = Color(0xFF334155))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun WorkEquipmentBatchNexAiUploadCard(
     enabled: Boolean,
@@ -11056,6 +11257,13 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Prepoznaj")
                 }
+            }
+            if (recognizing) {
+                WorkEquipmentAiStatusPanel(
+                    title = "NexAI analizira obilazak",
+                    subtitle = "Prepoznajem strojeve i razdvajam slike po RO kolonama.",
+                    details = "Gledam redoslijed slika, pločice, proizvođača, tip/model i moguće podatke iz baze.",
+                )
             }
             Text(
                 "${files.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
@@ -11417,6 +11625,19 @@ private fun ManualWorkEquipmentInlineEditor(
     var recognitionLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var recognitionMessage by remember(equipment.attachments) { mutableStateOf("") }
     var recognitionPreview by remember(equipment.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    var reportTemplates by remember { mutableStateOf(context.loadWorkEquipmentReportTemplates()) }
+    var templateMenuOpen by remember { mutableStateOf(false) }
+    var saveTemplateDialogOpen by remember { mutableStateOf(false) }
+    var templateMessage by remember { mutableStateOf("") }
+    var templateTitle by remember(equipment.name, equipment.manufacturer, equipment.model) {
+        mutableStateOf(
+            listOf(equipment.name, equipment.manufacturer, equipment.model)
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .joinToString(" - ")
+                .ifBlank { "RO predložak" },
+        )
+    }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         coroutineScope.launch {
@@ -11443,6 +11664,59 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             attachmentsLoading = false
         }
+    }
+
+    if (saveTemplateDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { saveTemplateDialogOpen = false },
+            title = { Text("Spremi RO predložak") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Predložak sprema sve osim serijskog broja, inventarnog broja i slika.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                    )
+                    OutlinedTextField(
+                        value = templateTitle,
+                        onValueChange = { templateTitle = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Naziv predloška") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val title = templateTitle.trim().ifBlank { "RO predložak" }
+                        val nextTemplates = reportTemplates
+                            .filterNot { it.title.equals(title, ignoreCase = true) }
+                            .plus(
+                                WorkEquipmentReportTemplate(
+                                    id = "ro-template-${System.currentTimeMillis()}",
+                                    title = title,
+                                    equipment = equipment.asReportTemplateEquipment(),
+                                ),
+                            )
+                        context.saveWorkEquipmentReportTemplates(nextTemplates)
+                        reportTemplates = nextTemplates
+                        templateMessage = "Predložak \"$title\" je spremljen bez serijskog, inventarnog broja i slika."
+                        saveTemplateDialogOpen = false
+                    },
+                    enabled = templateTitle.trim().isNotBlank(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Spremi")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveTemplateDialogOpen = false }) {
+                    Text("Odustani")
+                }
+            },
+        )
     }
 
     fun applyRecognition(result: WorkEquipmentImageRecognitionResult) {
@@ -11610,6 +11884,99 @@ private fun ManualWorkEquipmentInlineEditor(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
+                color = Color(0xFFF8FAFC),
+                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                tonalElevation = 0.dp,
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Surface(shape = CircleShape, color = Color(0xFFE0F2FE), modifier = Modifier.size(40.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Description, contentDescription = null, tint = Color(0xFF0369A1), modifier = Modifier.size(21.dp))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Predlošci zapisnika", fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                            Text(
+                                "Primijeni isti sadržaj zapisnika bez serijskog, inventarnog broja i slika.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF475569),
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = { templateMenuOpen = true },
+                                enabled = enabled && reportTemplates.isNotEmpty(),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                            ) {
+                                Icon(Icons.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (reportTemplates.isEmpty()) "Nema predložaka" else "Odaberi predložak")
+                            }
+                            DropdownMenu(
+                                expanded = templateMenuOpen,
+                                onDismissRequest = { templateMenuOpen = false },
+                            ) {
+                                reportTemplates.forEach { template ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                                Text(template.title, fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    template.equipment.subtitle().ifBlank { "Sadržaj RO zapisnika" },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            onEquipmentChange(equipment.applyReportTemplate(template.equipment))
+                                            templateMenuOpen = false
+                                            templateMessage = "Primijenjen predložak \"${template.title}\". Serijski, inventarni broj i slike su ostali iz trenutne kolone."
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { saveTemplateDialogOpen = true },
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Spremi")
+                        }
+                    }
+                    if (templateMessage.isNotBlank()) {
+                        Text(
+                            templateMessage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF0F766E),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
                 color = Color(0xFFEFF6FF),
                 border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
                 tonalElevation = 0.dp,
@@ -11690,6 +12057,13 @@ private fun ManualWorkEquipmentInlineEditor(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Prepoznaj")
                         }
+                    }
+                    if (recognitionLoading) {
+                        WorkEquipmentAiStatusPanel(
+                            title = "NexAI čita otvorenu kolonu",
+                            subtitle = "Prepoznajem stroj i pločicu samo za ovu RO kolonu.",
+                            details = "Serijski i inventarni broj mogu ostati ručno prilagodljivi nakon pregleda.",
+                        )
                     }
                     Text(
                         "${equipment.attachments.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
