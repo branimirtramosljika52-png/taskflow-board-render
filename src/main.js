@@ -148163,6 +148163,16 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     return;
   }
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  const nativeTargets = getWorkOrderDocumentWizardNativeServiceTargets(selectedWorkOrders);
+  if (nativeTargets.length > 0) {
+    setWorkOrderDocumentWizardStep("templates");
+    if (workOrderDocumentWizardError) {
+      workOrderDocumentWizardError.textContent = "";
+    }
+    const firstNativeTarget = nativeTargets[0];
+    openDocumentTemplateRuntimeNativeServiceOnly(selectedWorkOrders, firstNativeTarget.kind, firstNativeTarget.workOrder);
+    return;
+  }
   const browserEntries = getDocumentationSprBatchEntriesForWorkOrders(selectedWorkOrders);
   if (browserEntries.length > 0) {
     void openDocumentationSprWorkbenchFromBatchEntriesWithSources(browserEntries);
@@ -148170,16 +148180,7 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   }
   const sequence = buildWorkOrderDocumentWizardSequence(selectedWorkOrders);
   if (sequence.length === 0) {
-    const nativeTargets = getWorkOrderDocumentWizardNativeServiceTargets(selectedWorkOrders);
     setWorkOrderDocumentWizardStep("templates");
-    if (nativeTargets.length > 0) {
-      if (workOrderDocumentWizardError) {
-        workOrderDocumentWizardError.textContent = "";
-      }
-      const firstNativeTarget = nativeTargets[0];
-      openDocumentTemplateRuntimeNativeServiceOnly(selectedWorkOrders, firstNativeTarget.kind, firstNativeTarget.workOrder);
-      return;
-    }
     if (workOrderDocumentWizardError) {
       workOrderDocumentWizardError.textContent = "Za odabrane RN-ove nema povezanog zapisnika. Poveži template na usluzi pa pokušaj ponovno.";
     }
