@@ -1113,6 +1113,102 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun recognizeWorkEquipmentFromImages(
+        workOrder: WorkOrder,
+        equipment: IsznrManualWorkEquipment,
+        files: List<IsznrRoAttachmentFile>,
+        modelTier: String = "fast",
+    ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payloadFiles = JSONArray()
+            files.filter { it.contentDataUrl.isNotBlank() }.take(8).forEachIndexed { index, file ->
+                payloadFiles.put(
+                    JSONObject()
+                        .put("id", file.id.ifBlank { "ro-image-${index + 1}" })
+                        .put("name", file.fileName.ifBlank { "RO slika ${index + 1}" })
+                        .put("fileName", file.fileName.ifBlank { "RO slika ${index + 1}" })
+                        .put("type", file.fileType.ifBlank { "image/jpeg" })
+                        .put("fileType", file.fileType.ifBlank { "image/jpeg" })
+                        .put("size", file.fileSize)
+                        .put("fileSize", file.fileSize)
+                        .put("dataUrl", file.contentDataUrl)
+                        .put("contentDataUrl", file.contentDataUrl)
+                        .put("imageOrder", index + 1),
+                )
+            }
+            val fields = JSONArray(
+                listOf(
+                    JSONObject().put("id", "name").put("key", "name").put("label", "Naziv radne opreme")
+                        .put("instructions", "Prepoznaj naziv vrste stroja samo ako je vidljiv ili jasno proizlazi iz pločice/dokumenta."),
+                    JSONObject().put("id", "manufacturer").put("key", "manufacturer").put("label", "Proizvođač")
+                        .put("instructions", "Prednost ima natpisna pločica. Ne pogađaj proizvođača ako nije vidljiv."),
+                    JSONObject().put("id", "model").put("key", "model").put("label", "Tip / model")
+                        .put("instructions", "Prepiši tip ili model točno kako piše na pločici."),
+                    JSONObject().put("id", "serialNumber").put("key", "serialNumber").put("label", "Serijski broj")
+                        .put("instructions", "Prepiši serijski broj; ne miješaj s inventarskim brojem."),
+                    JSONObject().put("id", "inventoryNumber").put("key", "inventoryNumber").put("label", "Inventarski broj")
+                        .put("instructions", "Vrati samo ako je posebno označen kao inventarski broj ili inv. oznaka."),
+                    JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnički podaci")
+                        .put("instructions", "Sažmi nosivost, snagu, napon, tlak, godinu ili druge ključne podatke s pločice."),
+                ),
+            )
+            val body = JSONObject()
+                .put("purpose", "mobile-work-equipment-image-recognition")
+                .put("dryRun", false)
+                .put("modelTier", modelTier.ifBlank { "fast" })
+                .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "fast" }))
+                .put("workOrderId", workOrder.id)
+                .put("workOrderNumber", workOrder.displayNumber)
+                .put("files", payloadFiles)
+                .put("fields", fields)
+                .put(
+                    "context",
+                    JSONObject()
+                        .put("mode", "single-work-equipment")
+                        .put("companyName", workOrder.companyName)
+                        .put("locationName", workOrder.locationName)
+                        .put("currentEquipment", equipment.toJsonObject())
+                        .put(
+                            "imageRule",
+                            "Redoslijed slika je: 1) cijeli stroj izdaleka, 2) natpisna pločica, 3) detalji/nedostaci. Ako se isti obrazac ponovi, to je novi stroj; u Androidu ipak vrati samo prvu/prepoznatu opremu za trenutno otvoreni stupac.",
+                        )
+                        .put(
+                            "databaseRule",
+                            "Ako prepoznati proizvođač, model ili serijski broj odgovara postojećoj bazi ili lokalnoj povijesti u kontekstu, vrati matchedSource i popuni podatke iz najpouzdanijeg izvora.",
+                        ),
+                )
+                .put(
+                    "expectedJsonShape",
+                    JSONObject()
+                        .put(
+                            "workEquipments",
+                            JSONArray().put(
+                                JSONObject()
+                                    .put("name", "naziv opreme")
+                                    .put("manufacturer", "proizvođač")
+                                    .put("model", "tip/model")
+                                    .put("serialNumber", "serijski broj")
+                                    .put("inventoryNumber", "inventarski broj")
+                                    .put("technicalData", "ključni tehnički podaci")
+                                    .put("matchedSource", "izvor/baza ako je pronađeno")
+                                    .put("confidence", "high/medium/low"),
+                            ),
+                        )
+                        .put("summary", "kratak sažetak prepoznavanja"),
+                )
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/ai/openai/prepare",
+                    method = "POST",
+                    body = body,
+                    readTimeoutMs = OPENAI_PREPARE_READ_TIMEOUT_MS,
+                ),
+            )
+            json.toWorkEquipmentImageRecognitionResult()
+        }
+    }
+
     suspend fun prepareSprVoiceMeasurementRows(
         workOrderId: String,
         workOrderNumber: String,
@@ -2908,6 +3004,47 @@ private fun JSONObject.toWorkOrderDocumentationAiResult(): WorkOrderDocumentatio
         fieldSuggestions = fieldSuggestions.toWorkOrderDocumentationAiFieldSuggestions(),
         measurementSuggestions = measurementSuggestions.toWorkOrderDocumentationAiMeasurementSuggestions(),
         warnings = warnings,
+    )
+}
+
+private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentImageRecognitionResult {
+    val result = optJSONObject("result") ?: parseJsonObject(firstClean("outputText")) ?: JSONObject()
+    val equipment = result.optJSONArray("workEquipments")?.optJSONObject(0)
+        ?: result.optJSONArray("equipments")?.optJSONObject(0)
+        ?: result.optJSONObject("workEquipment")
+        ?: result.optJSONObject("equipment")
+        ?: result
+    val fieldValues = mutableMapOf<String, String>()
+    val suggestions = result.optJSONArray("fieldSuggestions") ?: result.optJSONArray("field_suggestions")
+    if (suggestions != null) {
+        for (index in 0 until suggestions.length()) {
+            val item = suggestions.optJSONObject(index) ?: continue
+            val key = item.firstClean("fieldKey", "field_key", "key", "id").trim()
+            val value = (item.opt("value") ?: item.opt("text") ?: item.opt("content") ?: "").toAiDisplayText()
+            if (key.isNotBlank() && value.isNotBlank()) {
+                fieldValues[key] = value
+            }
+        }
+    }
+    fun readField(vararg keys: String): String {
+        keys.forEach { key ->
+            val direct = equipment.firstClean(key)
+            if (direct.isNotBlank()) return direct
+            val suggestion = fieldValues[key]
+            if (!suggestion.isNullOrBlank()) return suggestion
+        }
+        return ""
+    }
+    return WorkEquipmentImageRecognitionResult(
+        name = readField("name", "equipmentName", "naziv"),
+        manufacturer = readField("manufacturer", "producer", "maker", "proizvodac", "proizvođač"),
+        model = readField("model", "type", "tip", "typeModel"),
+        serialNumber = readField("serialNumber", "serial", "serialNo", "serijskiBroj"),
+        inventoryNumber = readField("inventoryNumber", "inventory", "inv", "inventarskiBroj"),
+        technicalData = readField("technicalData", "technical", "tehnickiPodaci", "tehničkiPodaci"),
+        matchedSource = readField("matchedSource", "source", "databaseMatch"),
+        confidence = readField("confidence", "confidenceLevel"),
+        message = result.firstClean("summary", "message").ifBlank { firstClean("nextStep", "message") },
     )
 }
 

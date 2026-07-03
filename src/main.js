@@ -132165,9 +132165,10 @@ async function learnWorkEquipmentAiProfileVariantsFromResult(result = {}) {
 
 function getWorkEquipmentAiRegisterPromptGroups(entry = {}) {
   const groups = [];
-  const sourceGroups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) && settingsWorkEquipmentAiRegisterGroups.length
+  const rawGroups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) && settingsWorkEquipmentAiRegisterGroups.length
     ? settingsWorkEquipmentAiRegisterGroups
     : (Array.isArray(entry?.registers) ? entry.registers : []);
+  const sourceGroups = mergeWorkEquipmentAiRegisterGroupsWithStatic(rawGroups);
   (Array.isArray(sourceGroups) ? sourceGroups : []).forEach((group) => {
     const items = (Array.isArray(group.items) ? group.items : [])
       .slice(0, 120)
@@ -132656,7 +132657,7 @@ function findWorkOrderDocumentRoRegisterItem(registerIri = "", bucketKey = "mech
     return null;
   }
   const path = getWorkOrderDocumentRoRegisterPathForBucket(bucketKey);
-  const groups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [];
+  const groups = mergeWorkEquipmentAiRegisterGroupsWithStatic(settingsWorkEquipmentAiRegisterGroups);
   for (const group of groups) {
     if (String(group?.path || "").trim() !== path) {
       continue;
@@ -164563,7 +164564,7 @@ function getWorkEquipmentAiRegisterGroupLabel(group = {}) {
 
 function getSettingsWorkEquipmentAiRegisterDefinition(key = "") {
   const normalizedKey = String(key || "").trim();
-  for (const group of Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : []) {
+  for (const group of mergeWorkEquipmentAiRegisterGroupsWithStatic(settingsWorkEquipmentAiRegisterGroups)) {
     for (const item of Array.isArray(group.items) ? group.items : []) {
       if (getWorkEquipmentAiRegisterKey(item, group) === normalizedKey) {
         return {
@@ -164731,6 +164732,69 @@ function renderSettingsWorkEquipmentAiFields() {
   }));
 }
 
+function getWorkEquipmentAiStaticRegisterPath(item = {}) {
+  const iri = String(item.iri || item["@id"] || "").trim();
+  const match = iri.match(/\/api\/v\d+\/([^/]+)\//i) || iri.match(/^\/?([^/]+)\//);
+  return String(match?.[1] || item.path || "").trim();
+}
+
+function buildWorkEquipmentAiStaticRegisterGroups() {
+  const groups = new Map();
+  const addItem = (path = "", groupLabel = "", label = "", item = {}) => {
+    const normalizedPath = String(path || getWorkEquipmentAiStaticRegisterPath(item)).trim();
+    if (!normalizedPath) {
+      return;
+    }
+    if (!groups.has(normalizedPath)) {
+      groups.set(normalizedPath, {
+        path: normalizedPath,
+        group: "RO zapisnik",
+        label: groupLabel,
+        count: 0,
+        fetchedAt: "",
+        items: [],
+      });
+    }
+    const target = groups.get(normalizedPath);
+    const iri = String(item.iri || item["@id"] || "").trim();
+    const id = String(item.id || iri.split("/").filter(Boolean).pop() || "").trim();
+    target.items.push({
+      id,
+      iri,
+      label: String(item.label || label || "").trim(),
+      name: String(item.label || label || "").trim(),
+      description: String(item.label || label || "").trim(),
+    });
+    target.count = target.items.length;
+  };
+
+  WORK_ORDER_DOCUMENT_RO_MECHANICAL_ITEMS.forEach((item) => {
+    addItem("ro_mechanical_engineering_registers", "Strojarski dio", item.label, item);
+  });
+  WORK_ORDER_DOCUMENT_RO_ELECTRICAL_ITEMS.forEach((item) => {
+    addItem("ro_electrical_registers", "Elektro dio", item.label, item);
+  });
+  WORK_ORDER_DOCUMENT_RO_RISK_ITEMS.forEach((item) => {
+    const path = getWorkEquipmentAiStaticRegisterPath(item);
+    const label = item.bucket === "hazardRegisterIris"
+      ? "Opasnosti"
+      : item.bucket === "harmfulnessRegisterIris"
+        ? "Štetnosti"
+        : "Napori";
+    addItem(path, label, item.label, item);
+  });
+
+  return Array.from(groups.values()).filter((group) => group.items.length > 0);
+}
+
+function mergeWorkEquipmentAiRegisterGroupsWithStatic(groups = []) {
+  const normalizedGroups = normalizeWorkEquipmentAiRegisterGroupsCache(groups);
+  const existingPaths = new Set(normalizedGroups.map((group) => String(group.path || "").trim()).filter(Boolean));
+  const staticGroups = buildWorkEquipmentAiStaticRegisterGroups()
+    .filter((group) => !existingPaths.has(String(group.path || "").trim()));
+  return [...normalizedGroups, ...staticGroups];
+}
+
 function getSettingsWorkEquipmentAiProfileSummary(profile = {}) {
   const normalized = normalizeWorkEquipmentAiProfile(profile);
   const registerCount = Object.values(normalized.registerDefaults).reduce((sum, list) => sum + list.length, 0);
@@ -164752,7 +164816,7 @@ function renderSettingsWorkEquipmentAiOverview(settings = getWorkEquipmentAiSett
   const configuredFields = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS
     .filter((field) => hasWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiFieldDrafts[field.key] ?? {})).length;
   const totalFields = WORK_EQUIPMENT_AI_FIELD_DEFINITIONS.length;
-  const registerCount = (Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [])
+  const registerCount = mergeWorkEquipmentAiRegisterGroupsWithStatic(settingsWorkEquipmentAiRegisterGroups)
     .reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
   const modeLabels = {
     suggest: "Prijedlog",
@@ -164813,12 +164877,12 @@ function renderSettingsWorkEquipmentAiRegisters() {
     return;
   }
   hydrateSettingsWorkEquipmentAiDrafts();
-  const groups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [];
+  const groups = mergeWorkEquipmentAiRegisterGroupsWithStatic(settingsWorkEquipmentAiRegisterGroups);
   const loadedCount = groups.reduce((sum, group) => sum + (Array.isArray(group.items) ? group.items.length : 0), 0);
   if (settingsWorkEquipmentAiRegisterSummary) {
     settingsWorkEquipmentAiRegisterSummary.textContent = settingsWorkEquipmentAiRegisterGroupsLoaded
       ? `${loadedCount} stavki${settingsWorkEquipmentAiRegisterGroupsFromCache ? " · spremljeno" : ""}`
-      : "Nije učitano";
+      : `${loadedCount} stavki · RO fallback`;
   }
   if (!groups.length) {
     const empty = document.createElement("p");
@@ -165115,7 +165179,7 @@ function collectSettingsWorkEquipmentAiSettings() {
 
 function renderSettingsWorkEquipmentAiProfileRegisterPicker(profile = {}, canManage = false) {
   const normalized = normalizeWorkEquipmentAiProfile(profile);
-  const groups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) ? settingsWorkEquipmentAiRegisterGroups : [];
+  const groups = mergeWorkEquipmentAiRegisterGroupsWithStatic(settingsWorkEquipmentAiRegisterGroups);
   const html = WORK_EQUIPMENT_AI_PROFILE_REGISTER_BUCKETS.map((bucket) => {
     const items = groups
       .filter((group) => bucket.paths.includes(String(group.path || "").trim()))

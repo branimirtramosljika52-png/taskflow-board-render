@@ -576,6 +576,18 @@ data class IsznrRoAttachmentFile(
     val contentDataUrl: String = "",
 )
 
+data class WorkEquipmentImageRecognitionResult(
+    val name: String = "",
+    val manufacturer: String = "",
+    val model: String = "",
+    val serialNumber: String = "",
+    val inventoryNumber: String = "",
+    val technicalData: String = "",
+    val matchedSource: String = "",
+    val confidence: String = "",
+    val message: String = "",
+)
+
 data class IsznrManualWorkEquipment(
     val name: String = "",
     val manufacturer: String = "",

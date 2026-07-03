@@ -250,6 +250,7 @@ import com.safenexus.app.data.SprVoiceAiRow
 import com.safenexus.app.data.isClientPortalUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.WorkOrderCompanyOption
+import com.safenexus.app.data.WorkEquipmentImageRecognitionResult
 import com.safenexus.app.data.WorkOrderCreateDraft
 import com.safenexus.app.data.WorkOrderDocumentationContext
 import com.safenexus.app.data.WorkOrderDocumentationAdditionalRecord
@@ -2384,6 +2385,37 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun recognizeWorkEquipmentFromImages(
+        workOrder: WorkOrder,
+        equipment: IsznrManualWorkEquipment,
+        files: List<IsznrRoAttachmentFile>,
+        onSuccess: (WorkEquipmentImageRecognitionResult) -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        if (workOrder.id.isBlank()) {
+            onFailure("RN nema ispravan ID za RO prepoznavanje.")
+            return
+        }
+        val readableFiles = files.filter { it.contentDataUrl.isNotBlank() }
+        if (readableFiles.isEmpty()) {
+            onFailure("Dodaj sliku cijelog stroja i sliku natpisne pločice.")
+            return
+        }
+        viewModelScope.launch {
+            api.recognizeWorkEquipmentFromImages(
+                workOrder = workOrder,
+                equipment = equipment,
+                files = readableFiles,
+                modelTier = "fast",
+            )
+                .onSuccess(onSuccess)
+                .onFailure { error ->
+                    val message = error.message ?: "NexAI trenutno ne može prepoznati slike radne opreme."
+                    onFailure(message)
+                }
+        }
+    }
+
     fun prepareSprVoiceMeasurementRows(
         workOrder: WorkOrder,
         template: WorkOrderDocumentationTemplate,
@@ -3540,6 +3572,15 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     workOrder = workOrder,
                     template = template,
                     transcript = transcript,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                )
+            },
+            onRecognizeWorkEquipmentImages = { equipment, files, onSuccess, onFailure ->
+                viewModel.recognizeWorkEquipmentFromImages(
+                    workOrder = workOrder,
+                    equipment = equipment,
+                    files = files,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
@@ -10127,6 +10168,12 @@ private fun DocumentationWorkEquipmentOptionList(
     enabled: Boolean = true,
     onSelectedItemIdsChange: (Set<String>) -> Unit,
     onManualEquipmentsChange: (List<IsznrManualWorkEquipment>) -> Unit,
+    onRecognizeWorkEquipmentImages: (
+        IsznrManualWorkEquipment,
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
@@ -10443,6 +10490,9 @@ private fun DocumentationWorkEquipmentOptionList(
                     onRemove = {
                         onManualEquipmentsChange(manualEquipments.filterIndexed { index, _ -> index != safeIndex })
                         activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0)
+                    },
+                    onRecognizeImages = { files, onSuccess, onFailure ->
+                        onRecognizeWorkEquipmentImages(activeEquipment, files, onSuccess, onFailure)
                     },
                     onEquipmentChange = { updatedEquipment ->
                         onManualEquipmentsChange(
@@ -10943,17 +10993,26 @@ private fun ManualWorkEquipmentInlineEditor(
     onNext: () -> Unit,
     onAddColumn: () -> Unit,
     onRemove: () -> Unit,
+    onRecognizeImages: (
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onEquipmentChange: (IsznrManualWorkEquipment) -> Unit,
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var attachmentMessage by remember(equipment.attachments) { mutableStateOf("") }
     var attachmentsLoading by remember(equipment.attachments) { mutableStateOf(false) }
+    var recognitionLoading by remember(equipment.attachments) { mutableStateOf(false) }
+    var recognitionMessage by remember(equipment.attachments) { mutableStateOf("") }
+    var recognitionPreview by remember(equipment.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         coroutineScope.launch {
             attachmentsLoading = true
             attachmentMessage = ""
+            recognitionMessage = ""
             runCatching {
                 buildIsznrRoAttachmentFiles(
                     context = context.applicationContext,
@@ -10974,6 +11033,75 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             attachmentsLoading = false
         }
+    }
+
+    fun applyRecognition(result: WorkEquipmentImageRecognitionResult) {
+        onEquipmentChange(
+            equipment.copy(
+                name = result.name.ifBlank { equipment.name },
+                manufacturer = result.manufacturer.ifBlank { equipment.manufacturer },
+                model = result.model.ifBlank { equipment.model },
+                serialNumber = result.serialNumber.ifBlank { equipment.serialNumber },
+                inventoryNumber = result.inventoryNumber.ifBlank { equipment.inventoryNumber },
+                technicalData = result.technicalData.ifBlank { equipment.technicalData },
+            ),
+        )
+        recognitionPreview = null
+        recognitionMessage = listOf(
+            result.message.ifBlank { "Prepoznati podaci su primijenjeni." },
+            result.matchedSource.takeIf { it.isNotBlank() }?.let { "Baza: $it" }.orEmpty(),
+        ).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    recognitionPreview?.let { result ->
+        AlertDialog(
+            onDismissRequest = { recognitionPreview = null },
+            title = { Text("Provjeri prepoznavanje") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        result.message.ifBlank { "NexAI je pročitao slike stroja i pločice." },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    )
+                    listOf(
+                        "Naziv" to result.name,
+                        "Proizvođač" to result.manufacturer,
+                        "Model / tip" to result.model,
+                        "Serijski broj" to result.serialNumber,
+                        "Inventarski broj" to result.inventoryNumber,
+                        "Tehnički podaci" to result.technicalData,
+                        "Izvor / baza" to result.matchedSource,
+                    ).filter { it.second.isNotBlank() }.forEach { (label, value) ->
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
+                            Text(value, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (listOf(result.name, result.manufacturer, result.model, result.serialNumber, result.inventoryNumber, result.technicalData).all { it.isBlank() }) {
+                        Text(
+                            "Nema sigurnih polja za upis. Dodaj jasniju sliku pločice ili stroja izdaleka.",
+                            color = Color(0xFFB45309),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { applyRecognition(result) },
+                    enabled = listOf(result.name, result.manufacturer, result.model, result.serialNumber, result.inventoryNumber, result.technicalData).any { it.isNotBlank() },
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Primijeni")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { recognitionPreview = null }) {
+                    Text("Zatvori")
+                }
+            },
+        )
     }
 
     Surface(
@@ -11069,6 +11197,146 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             }
 
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFFEFF6FF),
+                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                tonalElevation = 0.dp,
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Surface(shape = CircleShape, color = Color(0xFFDBEAFE), modifier = Modifier.size(42.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(22.dp))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Slike stroja i pločice", fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                            Text(
+                                "Redoslijed: cijeli stroj izdaleka, natpisna pločica, detalji. Za novi stroj ponovi isti redoslijed u novoj koloni.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF475569),
+                            )
+                        }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("1. Stroj izdaleka") },
+                        )
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("2. Pločica") },
+                        )
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("3. Detalji") },
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(
+                            onClick = { imagePicker.launch("image/*") },
+                            enabled = enabled && !attachmentsLoading && equipment.attachments.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (attachmentsLoading) "Učitavam..." else "Dodaj slike")
+                        }
+                        Button(
+                            onClick = {
+                                recognitionLoading = true
+                                recognitionMessage = "Čitam slike stroja i pločice..."
+                                onRecognizeImages(
+                                    equipment.attachments,
+                                    { result ->
+                                        recognitionLoading = false
+                                        recognitionPreview = result
+                                        recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
+                                    },
+                                    { message ->
+                                        recognitionLoading = false
+                                        recognitionMessage = message
+                                    },
+                                )
+                            },
+                            enabled = enabled && !recognitionLoading && equipment.attachments.any { it.contentDataUrl.isNotBlank() },
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            if (recognitionLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            } else {
+                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Prepoznaj")
+                        }
+                    }
+                    Text(
+                        "${equipment.attachments.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF475569),
+                    )
+                    listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
+                        )
+                    }
+                    equipment.attachments.take(4).forEachIndexed { index, file ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.72f))
+                                .padding(horizontal = 8.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                            Text(
+                                file.fileName.ifBlank { "Slika ${index + 1}" },
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            IconButton(
+                                onClick = {
+                                    onEquipmentChange(equipment.copy(attachments = equipment.attachments.filterIndexed { itemIndex, _ -> itemIndex != index }))
+                                },
+                                enabled = enabled,
+                                modifier = Modifier.size(30.dp),
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(17.dp))
+                            }
+                        }
+                    }
+                    if (equipment.attachments.size > 4) {
+                        Text(
+                            "+${equipment.attachments.size - 4} dodatnih slika spremljeno je uz ovu opremu.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF475569),
+                        )
+                    }
+                }
+            }
+
             ManualWorkEquipmentSectionTitle("Osnovni podaci")
             OutlinedTextField(equipment.name, { onEquipmentChange(equipment.copy(name = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.manufacturer, { onEquipmentChange(equipment.copy(manufacturer = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
@@ -11117,60 +11385,6 @@ private fun ManualWorkEquipmentInlineEditor(
                 selectedIris = equipment.strainRegisterIris,
                 onSelectedIrisChange = { onEquipmentChange(equipment.copy(strainRegisterIris = it)) },
             )
-
-            ManualWorkEquipmentSectionTitle("Slike radne opreme")
-            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
-                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { imagePicker.launch("image/*") },
-                        enabled = enabled && !attachmentsLoading && equipment.attachments.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (attachmentsLoading) "Učitavam..." else "Dodaj slike")
-                    }
-                    Text(
-                        "${equipment.attachments.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                    if (attachmentMessage.isNotBlank()) {
-                        Text(
-                            attachmentMessage,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        )
-                    }
-                    equipment.attachments.forEachIndexed { index, file ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(18.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(file.fileName.ifBlank { "Slika ${index + 1}" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(
-                                    listOf(file.fileType, formatFileSizeLabel(file.fileSize)).filter { it.isNotBlank() }.joinToString(" · "),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    onEquipmentChange(equipment.copy(attachments = equipment.attachments.filterIndexed { itemIndex, _ -> itemIndex != index }))
-                                },
-                                enabled = enabled,
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-                }
-            }
 
             ManualWorkEquipmentSectionTitle("Zaključak")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -24918,6 +25132,12 @@ private fun WorkOrderDocumentationWizardDialog(
         (SprVoiceAiResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeWorkEquipmentImages: (
+        IsznrManualWorkEquipment,
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
@@ -26421,6 +26641,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             enabled = !formLoading,
                             onSelectedItemIdsChange = { selectedWorkEquipmentItemIds = it },
                             onManualEquipmentsChange = { manualWorkEquipments = it },
+                            onRecognizeWorkEquipmentImages = onRecognizeWorkEquipmentImages,
                         )
                     }
                 } else if (physicalFactorsFlowSelected) {
