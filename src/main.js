@@ -6133,6 +6133,19 @@ const measurementQuickAddFloorButton = document.querySelector("#measurement-quic
 const measurementQuickAddRoomButton = document.querySelector("#measurement-quick-add-room");
 const measurementQuickStructure = document.querySelector("#measurement-quick-structure");
 const measurementQuickGenerateButton = document.querySelector("#measurement-quick-generate");
+
+function mountMeasurementFixedPopover(element = null) {
+  if (!(element instanceof HTMLElement) || !(document.body instanceof HTMLElement)) {
+    return;
+  }
+  if (element.parentElement !== document.body) {
+    document.body.append(element);
+  }
+}
+
+mountMeasurementFixedPopover(measurementAiPopover);
+mountMeasurementFixedPopover(measurementQuickFillPopover);
+
 const measurementFormatFontFamilyInput = document.querySelector("#measurement-format-font-family");
 const measurementFormatFontSizeInput = document.querySelector("#measurement-format-font-size");
 const measurementFormatFillColorInput = document.querySelector("#measurement-format-fill-color");
@@ -44754,6 +44767,38 @@ function scheduleMeasurementVirtualViewportRender() {
   measurementSheetViewport.scheduleVirtualViewportRender();
 }
 
+function captureMeasurementSheetScrollSnapshot() {
+  const scrollingElement = document.scrollingElement || document.documentElement;
+  return {
+    gridTop: measurementSheetGridWrap?.scrollTop ?? 0,
+    gridLeft: measurementSheetGridWrap?.scrollLeft ?? 0,
+    pageTop: scrollingElement?.scrollTop ?? window.scrollY ?? 0,
+    pageLeft: scrollingElement?.scrollLeft ?? window.scrollX ?? 0,
+  };
+}
+
+function restoreMeasurementSheetScrollSnapshot(snapshot = null) {
+  if (!snapshot) {
+    return;
+  }
+  if (measurementSheetGridWrap instanceof HTMLElement) {
+    measurementSheetGridWrap.scrollTop = snapshot.gridTop;
+    measurementSheetGridWrap.scrollLeft = snapshot.gridLeft;
+  }
+  const scrollingElement = document.scrollingElement || document.documentElement;
+  if (scrollingElement) {
+    scrollingElement.scrollTop = snapshot.pageTop;
+    scrollingElement.scrollLeft = snapshot.pageLeft;
+  } else {
+    window.scrollTo(snapshot.pageLeft, snapshot.pageTop);
+  }
+}
+
+function restoreMeasurementSheetScrollSnapshotSoon(snapshot = null) {
+  restoreMeasurementSheetScrollSnapshot(snapshot);
+  requestAnimationFrame(() => restoreMeasurementSheetScrollSnapshot(snapshot));
+}
+
 function isPhysicalFactorsRoF3MeasurementSheet(sheet = null) {
   const normalized = normalizeWorkOrderMeasurementSheet(sheet);
   if (!normalized?.columns?.length) {
@@ -50903,6 +50948,7 @@ function openMeasurementAiForContextColumn() {
     return;
   }
 
+  const scrollSnapshot = captureMeasurementSheetScrollSnapshot();
   selectMeasurementColumn(columnIndex);
   const field = getMeasurementSheetOwnerFieldDraft() || {
     label: state.measurementSheet.ownerKind === "template_field"
@@ -50922,6 +50968,7 @@ function openMeasurementAiForContextColumn() {
   state.measurementSheet.quickFillPopoverOpen = false;
   closeMeasurementContextMenu();
   syncMeasurementToolbar();
+  restoreMeasurementSheetScrollSnapshotSoon(scrollSnapshot);
   void loadOpenAiIntegrationStatus();
 }
 
@@ -148159,11 +148206,13 @@ measurementAiButton?.addEventListener("click", (event) => {
   if (measurementAiButton.disabled) {
     return;
   }
+  const scrollSnapshot = captureMeasurementSheetScrollSnapshot();
   state.measurementSheet.aiPopoverOpen = !state.measurementSheet.aiPopoverOpen;
   state.measurementSheet.validationPopoverOpen = false;
   state.measurementSheet.conditionalPopoverOpen = false;
   state.measurementSheet.quickFillPopoverOpen = false;
   syncMeasurementToolbar();
+  restoreMeasurementSheetScrollSnapshotSoon(scrollSnapshot);
   if (state.measurementSheet.aiPopoverOpen) {
     void loadOpenAiIntegrationStatus();
   }
@@ -148344,6 +148393,7 @@ measurementQuickFillButton?.addEventListener("click", (event) => {
   if (measurementQuickFillButton.disabled) {
     return;
   }
+  const scrollSnapshot = captureMeasurementSheetScrollSnapshot();
   state.measurementSheet.quickFillPopoverOpen = !state.measurementSheet.quickFillPopoverOpen;
   state.measurementSheet.aiPopoverOpen = false;
   state.measurementSheet.validationPopoverOpen = false;
@@ -148358,6 +148408,7 @@ measurementQuickFillButton?.addEventListener("click", (event) => {
     renderMeasurementQuickFillStructure(state.measurementSheet.quickFillStructure);
   }
   syncMeasurementToolbar();
+  restoreMeasurementSheetScrollSnapshotSoon(scrollSnapshot);
 });
 measurementQuickFillPopover?.addEventListener("pointerdown", (event) => {
   event.stopPropagation();
