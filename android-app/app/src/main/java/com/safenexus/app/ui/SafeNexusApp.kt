@@ -10724,7 +10724,22 @@ private fun IsznrManualWorkEquipment.subtitle(): String =
         .joinToString(" · ")
 
 private fun WorkEquipmentImageRecognitionResult.hasRecognizedWorkEquipmentData(): Boolean =
-    listOf(name, manufacturer, model, serialNumber, inventoryNumber, technicalData).any { it.isNotBlank() }
+    listOf(
+        name,
+        manufacturer,
+        model,
+        serialNumber,
+        inventoryNumber,
+        technicalData,
+        purposeDescription,
+        workspacePosition,
+        deficiencies,
+    ).any { it.isNotBlank() } ||
+        mechanicalItems.isNotEmpty() ||
+        electricalItems.isNotEmpty() ||
+        hazardRegisterIris.isNotEmpty() ||
+        harmfulnessRegisterIris.isNotEmpty() ||
+        strainRegisterIris.isNotEmpty()
 
 private fun WorkEquipmentImageRecognitionResult.recognizedWorkEquipmentItems(): List<WorkEquipmentImageRecognitionResult> =
     workEquipments.ifEmpty { listOf(this) }.filter { it.hasRecognizedWorkEquipmentData() }
@@ -10738,7 +10753,7 @@ private fun batchFilesForRecognitionItem(
     val byIndex = item.imageIndexes
         .mapNotNull { imageIndex -> files.getOrNull(imageIndex - 1) }
         .distinctBy { it.id.ifBlank { it.fileName } }
-    if (byIndex.isNotEmpty()) return byIndex
+    if (byIndex.isNotEmpty()) return byIndex.take(2)
 
     val nameSet = item.sourceImageNames.map { it.trim().lowercase(Locale.getDefault()) }.filter { it.isNotBlank() }.toSet()
     val byName = if (nameSet.isEmpty()) {
@@ -10746,11 +10761,11 @@ private fun batchFilesForRecognitionItem(
     } else {
         files.filter { file -> nameSet.contains(file.fileName.trim().lowercase(Locale.getDefault())) }
     }
-    if (byName.isNotEmpty()) return byName
+    if (byName.isNotEmpty()) return byName.take(2)
 
-    if (total <= 1) return files
+    if (total <= 1) return files.take(2)
     val chunkSize = ((files.size + total - 1) / total).coerceAtLeast(1)
-    return files.drop(index * chunkSize).take(chunkSize)
+    return files.drop(index * chunkSize).take(chunkSize).take(2)
 }
 
 private fun WorkEquipmentImageRecognitionResult.toManualWorkEquipmentFromBatch(
@@ -10772,6 +10787,19 @@ private fun WorkEquipmentImageRecognitionResult.toManualWorkEquipmentFromBatch(
         serialNumber = serialNumber,
         inventoryNumber = inventoryNumber,
         technicalData = technicalData,
+        purposeDescription = purposeDescription,
+        workspacePosition = workspacePosition,
+        workingSubstancesAndRawMaterials = workingSubstancesAndRawMaterials,
+        useAndMaintenance = useAndMaintenance,
+        methodsProceduresAndNorms = methodsProceduresAndNorms,
+        deficiencies = deficiencies,
+        measuresToEliminateDeficiencies = measuresToEliminateDeficiencies,
+        finalGrade = finalGrade.ifBlank { "1" },
+        mechanicalItems = mechanicalItems,
+        electricalItems = electricalItems,
+        hazardRegisterIris = hazardRegisterIris,
+        harmfulnessRegisterIris = harmfulnessRegisterIris,
+        strainRegisterIris = strainRegisterIris,
         note = matchedSource.takeIf { it.isNotBlank() }?.let { "NexAI izvor: $it" }.orEmpty(),
         attachments = batchFilesForRecognitionItem(files, this, index, total),
     )
@@ -10915,6 +10943,25 @@ private fun mergeWorkEquipmentAttachmentFiles(
             .lowercase(Locale.getDefault())
     }
 
+private fun mergeRoAssessmentItems(
+    existing: List<IsznrRoAssessmentItem>,
+    recognized: List<IsznrRoAssessmentItem>,
+): List<IsznrRoAssessmentItem> =
+    (recognized + existing).distinctBy { item ->
+        listOf(item.registerIri, item.label, item.customContent, item.measuredValue)
+            .joinToString("|")
+            .lowercase(Locale.getDefault())
+    }
+
+private fun mergeStringValues(
+    existing: List<String>,
+    recognized: List<String>,
+): List<String> =
+    (recognized + existing)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+
 private fun mergeRecognizedWorkEquipment(
     existing: IsznrManualWorkEquipment,
     recognized: IsznrManualWorkEquipment,
@@ -10926,6 +10973,19 @@ private fun mergeRecognizedWorkEquipment(
         serialNumber = recognized.serialNumber.ifBlank { existing.serialNumber },
         inventoryNumber = recognized.inventoryNumber.ifBlank { existing.inventoryNumber },
         technicalData = recognized.technicalData.ifBlank { existing.technicalData },
+        purposeDescription = recognized.purposeDescription.ifBlank { existing.purposeDescription },
+        workspacePosition = recognized.workspacePosition.ifBlank { existing.workspacePosition },
+        workingSubstancesAndRawMaterials = recognized.workingSubstancesAndRawMaterials.ifBlank { existing.workingSubstancesAndRawMaterials },
+        useAndMaintenance = recognized.useAndMaintenance.ifBlank { existing.useAndMaintenance },
+        methodsProceduresAndNorms = recognized.methodsProceduresAndNorms.ifBlank { existing.methodsProceduresAndNorms },
+        deficiencies = recognized.deficiencies.ifBlank { existing.deficiencies },
+        measuresToEliminateDeficiencies = recognized.measuresToEliminateDeficiencies.ifBlank { existing.measuresToEliminateDeficiencies },
+        finalGrade = recognized.finalGrade.ifBlank { existing.finalGrade }.ifBlank { "1" },
+        mechanicalItems = mergeRoAssessmentItems(existing.mechanicalItems, recognized.mechanicalItems),
+        electricalItems = mergeRoAssessmentItems(existing.electricalItems, recognized.electricalItems),
+        hazardRegisterIris = mergeStringValues(existing.hazardRegisterIris, recognized.hazardRegisterIris),
+        harmfulnessRegisterIris = mergeStringValues(existing.harmfulnessRegisterIris, recognized.harmfulnessRegisterIris),
+        strainRegisterIris = mergeStringValues(existing.strainRegisterIris, recognized.strainRegisterIris),
         note = listOf(existing.note, recognized.note)
             .map { it.trim() }
             .filter { it.isNotBlank() }
@@ -11361,6 +11421,13 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                     "Serijski broj" to item.serialNumber,
                                     "Inventarski broj" to item.inventoryNumber,
                                     "Tehnički podaci" to item.technicalData,
+                                    "Strojarski dio" to item.mechanicalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
+                                    "Elektro dio" to item.electricalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
+                                    "Opasnosti/štetnosti/napori" to listOf(
+                                        item.hazardRegisterIris.size,
+                                        item.harmfulnessRegisterIris.size,
+                                        item.strainRegisterIris.size,
+                                    ).sum().takeIf { it > 0 }?.let { "$it oznaka" }.orEmpty(),
                                     "Izvor / baza" to item.matchedSource,
                                 ).filter { it.second.isNotBlank() }.forEach { (label, value) ->
                                     Text(

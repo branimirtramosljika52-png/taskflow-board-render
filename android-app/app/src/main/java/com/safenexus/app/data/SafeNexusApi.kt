@@ -1150,6 +1150,12 @@ class SafeNexusApi(
                         .put("instructions", "Vrati samo ako je posebno oznacen kao inventarski broj, inv. broj ili naljepnica inventara."),
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
+                    JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
+                        .put("instructions", "Vrati samo relevantne strojarske stavke za ovaj stroj. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i customContent/napomenu-vrijednost."),
+                    JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
+                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za stroj ili plocicu. Svaka stavka mora imati napomenu/vrijednost."),
+                    JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
+                        .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
             )
             val body = JSONObject()
@@ -1179,6 +1185,10 @@ class SafeNexusApi(
                         .put(
                             "dedupeRule",
                             "U currentEquipments su trenutne RO kolone. Ako prepoznas isti stroj, svejedno vrati zaseban workEquipments zapis sa serijskim/inventarskim/model podacima; Android ce prije upisa prikazati popis i spojiti s postojecim kolonama bez duplikata.",
+                        )
+                        .put(
+                            "assessmentRule",
+                            "Za RO zapisnik popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Uz svaku mehanicku/elektro stavku obavezno vrati customContent ili measuredValue kao napomenu/vrijednost. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja.",
                         ),
                 )
                 .put(
@@ -1194,8 +1204,31 @@ class SafeNexusApi(
                                     .put("serialNumber", "serijski broj")
                                     .put("inventoryNumber", "inventarski broj")
                                     .put("technicalData", "kljucni tehnicki podaci")
+                                    .put("purposeDescription", "namjena opreme")
+                                    .put("workspacePosition", "mjesto rada / polozaj")
+                                    .put("workingSubstancesAndRawMaterials", "radne tvari ili sirovine")
+                                    .put("useAndMaintenance", "koristenje i odrzavanje")
+                                    .put("methodsProceduresAndNorms", "metode, postupci i norme")
+                                    .put("deficiencies", "nedostaci ili bez vidljivih nedostataka")
+                                    .put("measuresToEliminateDeficiencies", "mjere za uklanjanje nedostataka")
+                                    .put("finalGrade", "1 ili 0")
                                     .put("matchedSource", "izvor/baza ako je pronadeno")
-                                    .put("confidence", "high/medium/low"),
+                                    .put("confidence", "high/medium/low")
+                                    .put(
+                                        "mechanicalItems",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put("registerIri", "IRI ako je siguran ili prazno")
+                                                .put("label", "naziv relevantne strojarske stavke")
+                                                .put("meetsConditions", true)
+                                                .put("customContent", "napomena/vrijednost za zapisnik")
+                                                .put("measuredValue", "izmjerena vrijednost ako postoji"),
+                                        ),
+                                    )
+                                    .put("electricalItems", JSONArray())
+                                    .put("hazardRegisterIris", JSONArray().put("IRI opasnosti ako je siguran"))
+                                    .put("harmfulnessRegisterIris", JSONArray().put("IRI stetnosti ako je siguran"))
+                                    .put("strainRegisterIris", JSONArray().put("IRI napora ako je siguran")),
                             ),
                         )
                         .put("summary", "kratak sazetak prepoznavanja"),
@@ -1250,6 +1283,12 @@ class SafeNexusApi(
                         .put("instructions", "Vrati samo ako je posebno oznacen kao inventarski broj, inv. broj ili naljepnica inventara."),
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
+                    JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
+                        .put("instructions", "Za svaku prepoznatu opremu vrati samo relevantne strojarske stavke. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i customContent/napomenu-vrijednost."),
+                    JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
+                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za pojedinu opremu ili natpisnu plocicu. Svaka stavka mora imati napomenu/vrijednost."),
+                    JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
+                        .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
             )
             val body = JSONObject()
@@ -1275,6 +1314,10 @@ class SafeNexusApi(
                         .put(
                             "databaseRule",
                             "Ako prepoznati proizvodac, model ili serijski broj odgovara postojecoj bazi ili lokalnoj povijesti u kontekstu, vrati matchedSource i popuni podatke iz najpouzdanijeg izvora.",
+                        )
+                        .put(
+                            "assessmentRule",
+                            "Za svaku RO opremu popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Uz svaku mehanicku/elektro stavku obavezno vrati customContent ili measuredValue kao napomenu/vrijednost. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
                         ),
                 )
                 .put(
@@ -1290,10 +1333,33 @@ class SafeNexusApi(
                                     .put("serialNumber", "serijski broj")
                                     .put("inventoryNumber", "inventarski broj")
                                     .put("technicalData", "kljucni tehnicki podaci")
+                                    .put("purposeDescription", "namjena opreme")
+                                    .put("workspacePosition", "mjesto rada / polozaj")
+                                    .put("workingSubstancesAndRawMaterials", "radne tvari ili sirovine")
+                                    .put("useAndMaintenance", "koristenje i odrzavanje")
+                                    .put("methodsProceduresAndNorms", "metode, postupci i norme")
+                                    .put("deficiencies", "nedostaci ili bez vidljivih nedostataka")
+                                    .put("measuresToEliminateDeficiencies", "mjere za uklanjanje nedostataka")
+                                    .put("finalGrade", "1 ili 0")
                                     .put("matchedSource", "izvor/baza ako je pronadeno")
                                     .put("confidence", "high/medium/low")
                                     .put("imageIndexes", JSONArray().put(1).put(2))
-                                    .put("sourceImageNames", JSONArray().put("naziv slike")),
+                                    .put("sourceImageNames", JSONArray().put("naziv slike"))
+                                    .put(
+                                        "mechanicalItems",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put("registerIri", "IRI ako je siguran ili prazno")
+                                                .put("label", "naziv relevantne strojarske stavke")
+                                                .put("meetsConditions", true)
+                                                .put("customContent", "napomena/vrijednost za zapisnik")
+                                                .put("measuredValue", "izmjerena vrijednost ako postoji"),
+                                        ),
+                                    )
+                                    .put("electricalItems", JSONArray())
+                                    .put("hazardRegisterIris", JSONArray().put("IRI opasnosti ako je siguran"))
+                                    .put("harmfulnessRegisterIris", JSONArray().put("IRI stetnosti ako je siguran"))
+                                    .put("strainRegisterIris", JSONArray().put("IRI napora ako je siguran")),
                             ),
                         )
                         .put("summary", "kratak sazetak batch prepoznavanja"),
@@ -2051,6 +2117,75 @@ private fun JSONArray?.toIntList(): List<Int> {
         }
     }
 }
+
+private fun JSONObject.firstJSONArray(vararg keys: String): JSONArray? {
+    for (key in keys) {
+        val value = opt(key)
+        if (value is JSONArray) return value
+    }
+    return null
+}
+
+private fun JSONArray?.toRoAssessmentItems(): List<IsznrRoAssessmentItem> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            when (val entry = opt(index)) {
+                is JSONObject -> {
+                    val status = entry.firstClean("status", "grade", "result").lowercase(Locale.getDefault())
+                    val label = entry.firstClean("label", "name", "title", "item", "stavka", "description")
+                    val registerIri = entry.firstClean("registerIri", "iri", "@id", "register", "id", "isznrId")
+                    val customContent = entry.firstClean(
+                        "customContent",
+                        "note",
+                        "napomena",
+                        "value",
+                        "vrijednost",
+                        "comment",
+                        "reason",
+                        "observedCondition",
+                        "finding",
+                    )
+                    val measuredValue = entry.firstClean("measuredValue", "measurement", "measured", "izmjerenaVrijednost")
+                    val meetsConditions = entry.firstNullableBoolean("meetsConditions", "satisfactory", "zadovoljava", "isOk")
+                        ?: !status.contains("ne zadovoljava")
+                    val item = IsznrRoAssessmentItem(
+                        registerIri = registerIri,
+                        label = label,
+                        customContent = customContent,
+                        measuredValue = measuredValue,
+                        meetsConditions = meetsConditions,
+                    )
+                    if (listOf(item.registerIri, item.label, item.customContent, item.measuredValue).any { it.isNotBlank() }) {
+                        add(item)
+                    }
+                }
+                else -> {
+                    val text = entry?.toString()?.trim().orEmpty()
+                    if (text.isNotBlank()) {
+                        add(IsznrRoAssessmentItem(label = text, customContent = text))
+                    }
+                }
+            }
+        }
+    }
+        .distinctBy { item ->
+            listOf(item.registerIri, item.label, item.customContent)
+                .joinToString("|")
+                .lowercase(Locale.getDefault())
+        }
+        .take(120)
+}
+
+private fun JSONObject.roAssessmentItems(vararg keys: String): List<IsznrRoAssessmentItem> =
+    firstJSONArray(*keys).toRoAssessmentItems()
+
+private fun JSONObject.roIriList(vararg keys: String): List<String> =
+    keys.flatMap { key -> optJSONArray(key).toStringList("registerIri", "iri", "@id", "id", "value", "label", "name") }
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .take(120)
 
 private fun JSONObject?.toDashboardStats(): DashboardStats {
     if (this == null) return DashboardStats()
@@ -3156,6 +3291,19 @@ private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentIma
         serialNumber = readField("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj"),
         inventoryNumber = readField("inventoryNumber", "inventory", "inv", "inventarskiBroj"),
         technicalData = readField("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci", "tehničkiPodaci"),
+        purposeDescription = readField("purposeDescription", "purpose", "namjena"),
+        workspacePosition = readField("workspacePosition", "position", "location", "polozaj", "mjestoRada"),
+        workingSubstancesAndRawMaterials = readField("workingSubstancesAndRawMaterials", "workingSubstances", "rawMaterials", "radneTvari"),
+        useAndMaintenance = readField("useAndMaintenance", "maintenance", "koristenjeOdrzavanje"),
+        methodsProceduresAndNorms = readField("methodsProceduresAndNorms", "norms", "standards", "metodePostupciNorme"),
+        deficiencies = readField("deficiencies", "defects", "nedostaci"),
+        measuresToEliminateDeficiencies = readField("measuresToEliminateDeficiencies", "measures", "mjere"),
+        finalGrade = readField("finalGrade", "grade", "satisfactory").ifBlank { "1" },
+        mechanicalItems = equipment.roAssessmentItems("mechanicalItems", "roMechanicalItems", "mechanical", "strojarskiDio"),
+        electricalItems = equipment.roAssessmentItems("electricalItems", "roElectricalItems", "electrical", "elektroDio"),
+        hazardRegisterIris = equipment.roIriList("hazardRegisterIris", "hazards", "opasnosti"),
+        harmfulnessRegisterIris = equipment.roIriList("harmfulnessRegisterIris", "harmfulnesses", "stetnosti"),
+        strainRegisterIris = equipment.roIriList("strainRegisterIris", "strains", "napori"),
         matchedSource = readField("matchedSource", "source", "databaseMatch"),
         confidence = readField("confidence", "confidenceLevel"),
         message = result.firstClean("summary", "message")
@@ -3207,6 +3355,19 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
             serialNumber = item.field("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj"),
             inventoryNumber = item.field("inventoryNumber", "inventory", "inv", "inventarskiBroj"),
             technicalData = item.field("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci"),
+            purposeDescription = item.field("purposeDescription", "purpose", "namjena"),
+            workspacePosition = item.field("workspacePosition", "position", "location", "polozaj", "mjestoRada"),
+            workingSubstancesAndRawMaterials = item.field("workingSubstancesAndRawMaterials", "workingSubstances", "rawMaterials", "radneTvari"),
+            useAndMaintenance = item.field("useAndMaintenance", "maintenance", "koristenjeOdrzavanje"),
+            methodsProceduresAndNorms = item.field("methodsProceduresAndNorms", "norms", "standards", "metodePostupciNorme"),
+            deficiencies = item.field("deficiencies", "defects", "nedostaci"),
+            measuresToEliminateDeficiencies = item.field("measuresToEliminateDeficiencies", "measures", "mjere"),
+            finalGrade = item.field("finalGrade", "grade", "satisfactory").ifBlank { "1" },
+            mechanicalItems = item.roAssessmentItems("mechanicalItems", "roMechanicalItems", "mechanical", "strojarskiDio"),
+            electricalItems = item.roAssessmentItems("electricalItems", "roElectricalItems", "electrical", "elektroDio"),
+            hazardRegisterIris = item.roIriList("hazardRegisterIris", "hazards", "opasnosti"),
+            harmfulnessRegisterIris = item.roIriList("harmfulnessRegisterIris", "harmfulnesses", "stetnosti"),
+            strainRegisterIris = item.roIriList("strainRegisterIris", "strains", "napori"),
             matchedSource = item.field("matchedSource", "source", "databaseMatch"),
             confidence = item.field("confidence", "confidenceLevel"),
             message = item.field("summary", "message"),
@@ -3222,7 +3383,22 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
             }
         }
     }.filter { item ->
-        listOf(item.name, item.manufacturer, item.model, item.serialNumber, item.inventoryNumber, item.technicalData).any { it.isNotBlank() }
+        listOf(
+            item.name,
+            item.manufacturer,
+            item.model,
+            item.serialNumber,
+            item.inventoryNumber,
+            item.technicalData,
+            item.purposeDescription,
+            item.workspacePosition,
+            item.deficiencies,
+        ).any { it.isNotBlank() } ||
+            item.mechanicalItems.isNotEmpty() ||
+            item.electricalItems.isNotEmpty() ||
+            item.hazardRegisterIris.isNotEmpty() ||
+            item.harmfulnessRegisterIris.isNotEmpty() ||
+            item.strainRegisterIris.isNotEmpty()
     }
     val fallback = parseItem(
         result.optJSONObject("workEquipment")
@@ -3235,7 +3411,24 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
         .ifBlank { root.firstClean("nextStep", "message") }
         .ifBlank { outputObject?.firstClean("summary", "message").orEmpty() }
     val recognized = items.ifEmpty {
-        if (listOf(fallback.name, fallback.manufacturer, fallback.model, fallback.serialNumber, fallback.inventoryNumber, fallback.technicalData).any { it.isNotBlank() }) {
+        if (
+            listOf(
+                fallback.name,
+                fallback.manufacturer,
+                fallback.model,
+                fallback.serialNumber,
+                fallback.inventoryNumber,
+                fallback.technicalData,
+                fallback.purposeDescription,
+                fallback.workspacePosition,
+                fallback.deficiencies,
+            ).any { it.isNotBlank() } ||
+            fallback.mechanicalItems.isNotEmpty() ||
+            fallback.electricalItems.isNotEmpty() ||
+            fallback.hazardRegisterIris.isNotEmpty() ||
+            fallback.harmfulnessRegisterIris.isNotEmpty() ||
+            fallback.strainRegisterIris.isNotEmpty()
+        ) {
             listOf(fallback)
         } else {
             emptyList()

@@ -131888,13 +131888,29 @@ function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
       const source = item && typeof item === "object" ? item : { label: item };
       const registerIri = String(source.registerIri || source.iri || source["@id"] || source.register || "").trim();
       const label = String(source.label || source.name || source.title || source.customContent || "").trim();
-      const customContent = String(source.customContent || (!registerIri ? label : "") || "").trim();
+      const customContent = String(
+        source.customContent
+        || source.note
+        || source.napomena
+        || source.comment
+        || source.reason
+        || source.finding
+        || source.observedCondition
+        || source.value
+        || source.vrijednost
+        || (!registerIri ? label : "")
+        || "",
+      ).trim();
       return {
         registerIri,
         label,
         customContent,
-        meetsConditions: Number(source.meetsConditions) === 0 || String(source.meetsConditions).toLowerCase() === "false" ? 0 : 1,
-        measuredValue: String(source.measuredValue || source.value || "").trim(),
+        meetsConditions: Number(source.meetsConditions) === 0
+          || String(source.meetsConditions || source.status || source.grade || "").toLowerCase().includes("ne zadovoljava")
+          || String(source.meetsConditions).toLowerCase() === "false"
+          ? 0
+          : 1,
+        measuredValue: String(source.measuredValue || source.measurement || source.measured || source.izmjerenaVrijednost || "").trim(),
       };
     })
     .filter((item) => item.registerIri || item.label || item.customContent || item.measuredValue)
@@ -132026,10 +132042,11 @@ function getWorkOrderDocumentRoAiFilesForAttachments(entry = {}, equipmentIndex 
   }
 
   if (!selectedFiles.length) {
-    selectedFiles = imageFiles.slice(equipmentIndex * 4, equipmentIndex * 4 + 4);
+    selectedFiles = imageFiles.slice(equipmentIndex * 4, equipmentIndex * 4 + 2);
   }
 
   return selectedFiles
+    .slice(0, 2)
     .map((file) => ({
       fileName: String(file.name || "slika-radne-opreme").trim(),
       fileType: String(file.type || "image/jpeg").trim(),
@@ -132225,8 +132242,21 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         groupStartIndex: 1,
         groupEndIndex: 3,
         groupingReason: "zašto te slike pripadaju istoj opremi",
-        mechanicalItems: [{ registerIri: "IRI iz šifrarnika ili prazno", label: "naziv stavke", meetsConditions: 1, customContent: "" }],
-        electricalItems: [{ registerIri: "IRI iz šifrarnika ili prazno", label: "naziv stavke", meetsConditions: 1, customContent: "" }],
+        assessmentRule: "Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Uz svaku stavku obavezno ide customContent ili measuredValue kao napomena/vrijednost.",
+        mechanicalItems: [{
+          registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
+          label: "naziv relevantne strojarske stavke",
+          meetsConditions: 1,
+          customContent: "napomena/vrijednost za zapisnik, npr. stanje, zaštita, vidljiv nedostatak ili zašto zadovoljava",
+          measuredValue: "izmjerena vrijednost ako postoji",
+        }],
+        electricalItems: [{
+          registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
+          label: "naziv relevantne elektro stavke",
+          meetsConditions: 1,
+          customContent: "napomena/vrijednost za zapisnik",
+          measuredValue: "izmjerena vrijednost ako postoji",
+        }],
         hazardRegisterIris: ["IRI opasnosti iz hazard_registers"],
         harmfulnessRegisterIris: ["IRI štetnosti iz harmfulness_registers"],
         strainRegisterIris: ["IRI napora iz strain_registers"],
@@ -132267,6 +132297,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
+    assessmentInstruction: "RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati napomenu/vrijednost u customContent ili measuredValue. Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.",
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
       id: String(item.id || ""),
       recordNumber: String(item.recordNumber || ""),
@@ -132502,6 +132533,28 @@ function mergeWorkOrderDocumentRoAttachmentFiles(first = [], second = []) {
   return [...map.values()].slice(0, 12);
 }
 
+function mergeWorkOrderDocumentRoAssessmentItems(first = [], second = []) {
+  const map = new Map();
+  [...(Array.isArray(second) ? second : []), ...(Array.isArray(first) ? first : [])].forEach((item) => {
+    const normalized = normalizeWorkOrderDocumentRoManualAssessmentItems([item])[0];
+    if (!normalized) return;
+    const key = [
+      normalized.registerIri,
+      normalized.label,
+      normalized.customContent,
+      normalized.measuredValue,
+    ].join("|").toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, normalized);
+    }
+  });
+  return [...map.values()].slice(0, 120);
+}
+
+function mergeWorkOrderDocumentRoIriLists(first = [], second = []) {
+  return normalizeWorkOrderDocumentRoIriList([...(Array.isArray(second) ? second : []), ...(Array.isArray(first) ? first : [])]);
+}
+
 function mergeWorkOrderDocumentRoManualEquipment(existing = {}, incoming = {}) {
   const normalizedExisting = normalizeWorkOrderDocumentRoManualEquipment(existing);
   const normalizedIncoming = normalizeWorkOrderDocumentRoManualEquipment(incoming);
@@ -132521,11 +132574,11 @@ function mergeWorkOrderDocumentRoManualEquipment(existing = {}, incoming = {}) {
     deficiencies: normalizedIncoming.deficiencies || normalizedExisting.deficiencies,
     measuresToEliminateDeficiencies: normalizedIncoming.measuresToEliminateDeficiencies || normalizedExisting.measuresToEliminateDeficiencies,
     finalGrade: normalizedIncoming.finalGrade ?? normalizedExisting.finalGrade,
-    mechanicalItems: normalizedIncoming.mechanicalItems?.length ? normalizedIncoming.mechanicalItems : normalizedExisting.mechanicalItems,
-    electricalItems: normalizedIncoming.electricalItems?.length ? normalizedIncoming.electricalItems : normalizedExisting.electricalItems,
-    hazardRegisterIris: normalizedIncoming.hazardRegisterIris?.length ? normalizedIncoming.hazardRegisterIris : normalizedExisting.hazardRegisterIris,
-    harmfulnessRegisterIris: normalizedIncoming.harmfulnessRegisterIris?.length ? normalizedIncoming.harmfulnessRegisterIris : normalizedExisting.harmfulnessRegisterIris,
-    strainRegisterIris: normalizedIncoming.strainRegisterIris?.length ? normalizedIncoming.strainRegisterIris : normalizedExisting.strainRegisterIris,
+    mechanicalItems: mergeWorkOrderDocumentRoAssessmentItems(normalizedExisting.mechanicalItems, normalizedIncoming.mechanicalItems),
+    electricalItems: mergeWorkOrderDocumentRoAssessmentItems(normalizedExisting.electricalItems, normalizedIncoming.electricalItems),
+    hazardRegisterIris: mergeWorkOrderDocumentRoIriLists(normalizedExisting.hazardRegisterIris, normalizedIncoming.hazardRegisterIris),
+    harmfulnessRegisterIris: mergeWorkOrderDocumentRoIriLists(normalizedExisting.harmfulnessRegisterIris, normalizedIncoming.harmfulnessRegisterIris),
+    strainRegisterIris: mergeWorkOrderDocumentRoIriLists(normalizedExisting.strainRegisterIris, normalizedIncoming.strainRegisterIris),
     note: [normalizedExisting.note, normalizedIncoming.note].filter(Boolean).join("\n"),
     attachments: mergeWorkOrderDocumentRoAttachmentFiles(normalizedExisting.attachments, normalizedIncoming.attachments),
   });
@@ -134530,6 +134583,11 @@ function appendWorkOrderDocumentRoAiImportPreview(panel, workOrder = {}, stateEn
       row.manual?.serialNumber ? `Ser. ${row.manual.serialNumber}` : "",
       row.manual?.inventoryNumber ? `Inv. ${row.manual.inventoryNumber}` : "",
       row.manual?.attachments?.length ? `${row.manual.attachments.length} slika` : "",
+      row.manual?.mechanicalItems?.length ? `${row.manual.mechanicalItems.length} strojarskih` : "",
+      row.manual?.electricalItems?.length ? `${row.manual.electricalItems.length} elektro` : "",
+      row.manual?.hazardRegisterIris?.length || row.manual?.harmfulnessRegisterIris?.length || row.manual?.strainRegisterIris?.length
+        ? `${(row.manual.hazardRegisterIris?.length || 0) + (row.manual.harmfulnessRegisterIris?.length || 0) + (row.manual.strainRegisterIris?.length || 0)} rizika`
+        : "",
     ].filter(Boolean).join(" · ") || "AI prijedlog";
     rowCopy.append(name, meta);
 
