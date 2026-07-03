@@ -1170,7 +1170,7 @@ class SafeNexusApi(
                         .put("currentEquipment", equipment.toJsonObject())
                         .put(
                             "imageRule",
-                            "Redoslijed slika je: 1) cijeli stroj izdaleka, 2) natpisna plocica, 3) detalji/nedostaci. Ako se isti obrazac ponovi, to je novi stroj; u Androidu ipak vrati samo prvu/prepoznatu opremu za trenutno otvoreni stupac.",
+                            "Ovaj poziv popunjava samo trenutno otvorenu RO kolonu. Slike tretiraj kao jednu radnu opremu; ako ih ima vise, koristi najpouzdanije slike za taj jedan stroj.",
                         )
                         .put(
                             "databaseRule",
@@ -1206,6 +1206,104 @@ class SafeNexusApi(
                 ),
             )
             json.toWorkEquipmentImageRecognitionResult()
+        }
+    }
+
+    suspend fun recognizeWorkEquipmentBatchFromImages(
+        workOrder: WorkOrder,
+        currentEquipments: List<IsznrManualWorkEquipment>,
+        files: List<IsznrRoAttachmentFile>,
+        modelTier: String = "strong",
+    ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payloadFiles = JSONArray()
+            files.filter { it.contentDataUrl.isNotBlank() }.take(12).forEachIndexed { index, file ->
+                payloadFiles.put(
+                    JSONObject()
+                        .put("id", file.id.ifBlank { "ro-batch-image-${index + 1}" })
+                        .put("name", file.fileName.ifBlank { "RO batch slika ${index + 1}" })
+                        .put("fileName", file.fileName.ifBlank { "RO batch slika ${index + 1}" })
+                        .put("type", file.fileType.ifBlank { "image/jpeg" })
+                        .put("fileType", file.fileType.ifBlank { "image/jpeg" })
+                        .put("size", file.fileSize)
+                        .put("fileSize", file.fileSize)
+                        .put("dataUrl", file.contentDataUrl)
+                        .put("contentDataUrl", file.contentDataUrl)
+                        .put("imageOrder", index + 1),
+                )
+            }
+            val fields = JSONArray(
+                listOf(
+                    JSONObject().put("id", "name").put("key", "name").put("label", "Naziv radne opreme")
+                        .put("instructions", "Za svaki prepoznati stroj vrati stvarni naziv/vrstu opreme iz slike cijelog stroja i plocice."),
+                    JSONObject().put("id", "manufacturer").put("key", "manufacturer").put("label", "Proizvodac")
+                        .put("instructions", "Prednost ima natpisna plocica i logotip. BOSCH ili Robert Bosch GmbH vrati kao BOSCH."),
+                    JSONObject().put("id", "model").put("key", "model").put("label", "Tip / model")
+                        .put("instructions", "Prepisuj oznake uz Type, Typ, Model ili istaknuti model s uredaja. Primjeri: BEA750, BEA 750, L16."),
+                    JSONObject().put("id", "serialNumber").put("key", "serialNumber").put("label", "Serijski broj")
+                        .put("instructions", "Prepisuj oznaku uz Serial number, S/N, Ser. No. ili serial. Ne mijesaj s part number."),
+                    JSONObject().put("id", "inventoryNumber").put("key", "inventoryNumber").put("label", "Inventarski broj")
+                        .put("instructions", "Vrati samo ako je posebno oznacen kao inventarski broj, inv. broj ili naljepnica inventara."),
+                    JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
+                        .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
+                ),
+            )
+            val body = JSONObject()
+                .put("purpose", "mobile-work-equipment-image-recognition")
+                .put("dryRun", false)
+                .put("modelTier", modelTier.ifBlank { "strong" })
+                .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "strong" }))
+                .put("workOrderId", workOrder.id)
+                .put("workOrderNumber", workOrder.displayNumber)
+                .put("files", payloadFiles)
+                .put("fields", fields)
+                .put(
+                    "context",
+                    JSONObject()
+                        .put("mode", "batch-work-equipment")
+                        .put("companyName", workOrder.companyName)
+                        .put("locationName", workOrder.locationName)
+                        .put("currentEquipments", JSONArray(currentEquipments.map { it.toJsonObject() }))
+                        .put(
+                            "imageRule",
+                            "Ovo je batch upload iznad popisa RO opreme. U slikama moze biti vise strojeva. Grupiraj kronoloski: cijeli stroj, natpisna plocica i detalji pripadaju istoj opremi dok se ne pojavi ocito novi stroj. Vrati zaseban workEquipments zapis za svaki prepoznati stroj.",
+                        )
+                        .put(
+                            "databaseRule",
+                            "Ako prepoznati proizvodac, model ili serijski broj odgovara postojecoj bazi ili lokalnoj povijesti u kontekstu, vrati matchedSource i popuni podatke iz najpouzdanijeg izvora.",
+                        ),
+                )
+                .put(
+                    "expectedJsonShape",
+                    JSONObject()
+                        .put(
+                            "workEquipments",
+                            JSONArray().put(
+                                JSONObject()
+                                    .put("name", "naziv opreme")
+                                    .put("manufacturer", "proizvodac")
+                                    .put("model", "tip/model")
+                                    .put("serialNumber", "serijski broj")
+                                    .put("inventoryNumber", "inventarski broj")
+                                    .put("technicalData", "kljucni tehnicki podaci")
+                                    .put("matchedSource", "izvor/baza ako je pronadeno")
+                                    .put("confidence", "high/medium/low")
+                                    .put("imageIndexes", JSONArray().put(1).put(2))
+                                    .put("sourceImageNames", JSONArray().put("naziv slike")),
+                            ),
+                        )
+                        .put("summary", "kratak sazetak batch prepoznavanja"),
+                )
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/ai/openai/prepare",
+                    method = "POST",
+                    body = body,
+                    readTimeoutMs = OPENAI_PREPARE_READ_TIMEOUT_MS,
+                ),
+            )
+            json.toWorkEquipmentImageRecognitionBatchResult()
         }
     }
 
@@ -3059,6 +3157,92 @@ private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentIma
         message = result.firstClean("summary", "message")
             .ifBlank { root.firstClean("nextStep", "message") }
             .ifBlank { outputObject?.firstClean("summary", "message").orEmpty() },
+    )
+}
+
+private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipmentImageRecognitionResult {
+    val root = this
+    val outputObject = parseJsonObject(root.firstClean("outputText"))
+    val result = root.optJSONObject("result")
+        ?: outputObject?.optJSONObject("result")
+        ?: outputObject
+        ?: root
+    val equipmentArray = result.optJSONArray("workEquipments")
+        ?: result.optJSONArray("equipments")
+        ?: root.optJSONArray("workEquipments")
+        ?: root.optJSONArray("equipments")
+        ?: outputObject?.optJSONArray("workEquipments")
+        ?: outputObject?.optJSONArray("equipments")
+
+    fun JSONObject.field(vararg keys: String): String {
+        keys.forEach { key ->
+            val value = firstClean(key)
+            if (value.isNotBlank()) return value
+        }
+        return ""
+    }
+
+    fun JSONObject.imageIndexes(): List<Int> {
+        val arrayValues = optJSONArray("imageIndexes").toIntList()
+            .ifEmpty { optJSONArray("sourceImageIndexes").toIntList() }
+            .ifEmpty { optJSONArray("images").toIntList() }
+        val single = firstInt(0, "imageIndex", "sourceImageIndex", "imageOrder")
+        return (arrayValues + listOfNotNull(single.takeIf { it > 0 })).distinct()
+    }
+
+    fun JSONObject.sourceImageNames(): List<String> =
+        optJSONArray("sourceImageNames").toStringList("name", "fileName", "label")
+            .ifEmpty { optJSONArray("imageNames").toStringList("name", "fileName", "label") }
+            .ifEmpty { optJSONArray("sourceFiles").toStringList("name", "fileName", "label") }
+
+    fun parseItem(item: JSONObject): WorkEquipmentImageRecognitionResult =
+        WorkEquipmentImageRecognitionResult(
+            name = item.field("name", "equipmentName", "title", "naziv"),
+            manufacturer = item.field("manufacturer", "producer", "maker", "brand", "proizvodac"),
+            model = item.field("model", "type", "tip", "typeModel", "modelType"),
+            serialNumber = item.field("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj"),
+            inventoryNumber = item.field("inventoryNumber", "inventory", "inv", "inventarskiBroj"),
+            technicalData = item.field("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci"),
+            matchedSource = item.field("matchedSource", "source", "databaseMatch"),
+            confidence = item.field("confidence", "confidenceLevel"),
+            message = item.field("summary", "message"),
+            imageIndexes = item.imageIndexes(),
+            sourceImageNames = item.sourceImageNames(),
+        )
+
+    val items = buildList {
+        if (equipmentArray != null) {
+            for (index in 0 until equipmentArray.length()) {
+                val item = equipmentArray.optJSONObject(index) ?: continue
+                add(parseItem(item))
+            }
+        }
+    }.filter { item ->
+        listOf(item.name, item.manufacturer, item.model, item.serialNumber, item.inventoryNumber, item.technicalData).any { it.isNotBlank() }
+    }
+    val fallback = parseItem(
+        result.optJSONObject("workEquipment")
+            ?: result.optJSONObject("equipment")
+            ?: root.optJSONObject("workEquipment")
+            ?: root.optJSONObject("equipment")
+            ?: result,
+    )
+    val message = result.firstClean("summary", "message")
+        .ifBlank { root.firstClean("nextStep", "message") }
+        .ifBlank { outputObject?.firstClean("summary", "message").orEmpty() }
+    val recognized = items.ifEmpty {
+        if (listOf(fallback.name, fallback.manufacturer, fallback.model, fallback.serialNumber, fallback.inventoryNumber, fallback.technicalData).any { it.isNotBlank() }) {
+            listOf(fallback)
+        } else {
+            emptyList()
+        }
+    }.map { item ->
+        item.copy(message = item.message.ifBlank { message }, workEquipments = emptyList())
+    }
+    val primary = recognized.firstOrNull() ?: fallback
+    return primary.copy(
+        message = message,
+        workEquipments = recognized,
     )
 }
 

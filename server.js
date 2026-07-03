@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.294.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.295.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -7841,14 +7841,21 @@ function buildOpenAiPurposeInstructions(body = {}) {
   if (purpose !== "mobile-work-equipment-image-recognition") {
     return [];
   }
+  const mode = String(body?.context?.mode || body?.mode || "").trim();
+  const batchMode = mode === "batch-work-equipment";
 
   return [
     "Za mobile-work-equipment-image-recognition radi kao OCR i tehnicki asistent za radnu opremu.",
     "Uvijek prvo procitaj natpisnu plocicu, naljepnice i logotipe. Ne vracaj samo opis slike ako su vidljivi proizvodac, tip ili serijski broj.",
-    "Vrati JSON u expectedJsonShape obliku s workEquipments[0]. Popuni manufacturer, model, serialNumber, inventoryNumber, technicalData, confidence i summary.",
+    batchMode
+      ? "Vrati JSON u expectedJsonShape obliku s workEquipments[]. Za svaki prepoznati stroj vrati zaseban zapis i obavezno dodaj imageIndexes kao 1-based redne brojeve slika koje pripadaju tom stroju."
+      : "Vrati JSON u expectedJsonShape obliku s workEquipments[0]. Popuni samo jednu trenutno otvorenu RO kolonu; ako je u slikama vise strojeva, odaberi najpouzdaniji za tu kolonu.",
     "Ako je vidljiv BOSCH ili Robert Bosch GmbH, manufacturer mora biti BOSCH. Ako je vidljiv Type/Typ/Model, to prepisuj u model. Ako je vidljiv Serial number/SN/Ser. No., to prepisuj u serialNumber.",
     "Part number, MD/godinu, U[V], F[Hz], P[W], tlak, mjerni raspon, klasu i oznake poput CE stavi u technicalData, sazetu u jednu citljivu recenicu.",
     "Fotografija cijelog stroja sluzi za naziv/vrstu opreme. Fotografija plocice ima prioritet za proizvodaca, model i serijski broj.",
+    batchMode
+      ? "Za batch upload grupiraj slike kronoloski: stroj izdaleka, plocica i detalji pripadaju istoj opremi dok se ne pojavi ocito drugi stroj. Ne spajaj razlicite strojeve u jednu kolonu."
+      : "Za single upload nemoj otvarati dodatne strojeve; sve pouzdane podatke upisi u jedan workEquipments[0].",
   ];
 }
 

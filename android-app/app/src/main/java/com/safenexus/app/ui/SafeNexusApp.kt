@@ -2416,6 +2416,37 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun recognizeWorkEquipmentBatchFromImages(
+        workOrder: WorkOrder,
+        currentEquipments: List<IsznrManualWorkEquipment>,
+        files: List<IsznrRoAttachmentFile>,
+        onSuccess: (WorkEquipmentImageRecognitionResult) -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        if (workOrder.id.isBlank()) {
+            onFailure("RN nema ispravan ID za RO batch prepoznavanje.")
+            return
+        }
+        val readableFiles = files.filter { it.contentDataUrl.isNotBlank() }
+        if (readableFiles.isEmpty()) {
+            onFailure("Dodaj slike strojeva i pločica prije batch prepoznavanja.")
+            return
+        }
+        viewModelScope.launch {
+            api.recognizeWorkEquipmentBatchFromImages(
+                workOrder = workOrder,
+                currentEquipments = currentEquipments,
+                files = readableFiles,
+                modelTier = "strong",
+            )
+                .onSuccess(onSuccess)
+                .onFailure { error ->
+                    val message = error.message ?: "NexAI trenutno ne može prepoznati batch slike radne opreme."
+                    onFailure(message)
+                }
+        }
+    }
+
     fun prepareSprVoiceMeasurementRows(
         workOrder: WorkOrder,
         template: WorkOrderDocumentationTemplate,
@@ -3580,6 +3611,15 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                 viewModel.recognizeWorkEquipmentFromImages(
                     workOrder = workOrder,
                     equipment = equipment,
+                    files = files,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                )
+            },
+            onRecognizeWorkEquipmentBatchImages = { currentEquipments, files, onSuccess, onFailure ->
+                viewModel.recognizeWorkEquipmentBatchFromImages(
+                    workOrder = workOrder,
+                    currentEquipments = currentEquipments,
                     files = files,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
@@ -10174,6 +10214,12 @@ private fun DocumentationWorkEquipmentOptionList(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeWorkEquipmentBatchImages: (
+        List<IsznrManualWorkEquipment>,
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
@@ -10376,6 +10422,20 @@ private fun DocumentationWorkEquipmentOptionList(
                 }
             }
         }
+        WorkEquipmentBatchNexAiUploadCard(
+            enabled = enabled,
+            manualEquipments = manualEquipments,
+            onRecognizeBatchImages = onRecognizeWorkEquipmentBatchImages,
+            onApply = { recognizedEquipments, replaceExisting ->
+                val nextEquipments = if (replaceExisting) {
+                    recognizedEquipments
+                } else {
+                    manualEquipments + recognizedEquipments
+                }
+                onManualEquipmentsChange(nextEquipments)
+                activeManualEquipmentIndex = if (replaceExisting) 0 else manualEquipments.size.coerceAtLeast(0)
+            },
+        )
         if (manualEquipments.isNotEmpty()) {
             val safeIndex = activeManualEquipmentIndex.coerceIn(0, manualEquipments.lastIndex)
             ManualWorkEquipmentRowList(
@@ -10700,6 +10760,356 @@ private fun IsznrManualWorkEquipment.subtitle(): String =
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .joinToString(" · ")
+
+private fun WorkEquipmentImageRecognitionResult.hasRecognizedWorkEquipmentData(): Boolean =
+    listOf(name, manufacturer, model, serialNumber, inventoryNumber, technicalData).any { it.isNotBlank() }
+
+private fun WorkEquipmentImageRecognitionResult.recognizedWorkEquipmentItems(): List<WorkEquipmentImageRecognitionResult> =
+    workEquipments.ifEmpty { listOf(this) }.filter { it.hasRecognizedWorkEquipmentData() }
+
+private fun batchFilesForRecognitionItem(
+    files: List<IsznrRoAttachmentFile>,
+    item: WorkEquipmentImageRecognitionResult,
+    index: Int,
+    total: Int,
+): List<IsznrRoAttachmentFile> {
+    val byIndex = item.imageIndexes
+        .mapNotNull { imageIndex -> files.getOrNull(imageIndex - 1) }
+        .distinctBy { it.id.ifBlank { it.fileName } }
+    if (byIndex.isNotEmpty()) return byIndex
+
+    val nameSet = item.sourceImageNames.map { it.trim().lowercase(Locale.getDefault()) }.filter { it.isNotBlank() }.toSet()
+    val byName = if (nameSet.isEmpty()) {
+        emptyList()
+    } else {
+        files.filter { file -> nameSet.contains(file.fileName.trim().lowercase(Locale.getDefault())) }
+    }
+    if (byName.isNotEmpty()) return byName
+
+    if (total <= 1) return files
+    val chunkSize = ((files.size + total - 1) / total).coerceAtLeast(1)
+    return files.drop(index * chunkSize).take(chunkSize)
+}
+
+private fun WorkEquipmentImageRecognitionResult.toManualWorkEquipmentFromBatch(
+    files: List<IsznrRoAttachmentFile>,
+    index: Int,
+    total: Int,
+): IsznrManualWorkEquipment {
+    val resolvedName = name.ifBlank {
+        listOf(manufacturer, model)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "Radna oprema ${index + 1}" }
+    }
+    return IsznrManualWorkEquipment(
+        name = resolvedName,
+        manufacturer = manufacturer,
+        model = model,
+        serialNumber = serialNumber,
+        inventoryNumber = inventoryNumber,
+        technicalData = technicalData,
+        note = matchedSource.takeIf { it.isNotBlank() }?.let { "NexAI izvor: $it" }.orEmpty(),
+        attachments = batchFilesForRecognitionItem(files, this, index, total),
+    )
+}
+
+@Composable
+private fun WorkEquipmentBatchNexAiUploadCard(
+    enabled: Boolean,
+    manualEquipments: List<IsznrManualWorkEquipment>,
+    onRecognizeBatchImages: (
+        List<IsznrManualWorkEquipment>,
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
+    onApply: (List<IsznrManualWorkEquipment>, Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var files by remember { mutableStateOf(emptyList<IsznrRoAttachmentFile>()) }
+    var loadingFiles by remember { mutableStateOf(false) }
+    var recognizing by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    var preview by remember(files) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            loadingFiles = true
+            message = ""
+            runCatching {
+                buildIsznrRoAttachmentFiles(
+                    context = context.applicationContext,
+                    uris = uris,
+                    existingCount = files.size,
+                )
+            }
+                .onSuccess { addedFiles ->
+                    files = files + addedFiles
+                    message = if (addedFiles.isEmpty()) {
+                        "Nije dodana nijedna slika."
+                    } else {
+                        "${addedFiles.size} slika dodano za NexAI raspored po kolonama."
+                    }
+                }
+                .onFailure { error ->
+                    message = error.message ?: "Ne mogu učitati slike."
+                }
+            loadingFiles = false
+        }
+    }
+
+    fun applyPreview(result: WorkEquipmentImageRecognitionResult, replaceExisting: Boolean) {
+        val items = result.recognizedWorkEquipmentItems()
+        if (items.isEmpty()) {
+            message = "NexAI nije vratio sigurne RO kolone."
+            return
+        }
+        val nextEquipments = items.mapIndexed { index, item ->
+            item.toManualWorkEquipmentFromBatch(files, index, items.size)
+        }
+        onApply(nextEquipments, replaceExisting)
+        preview = null
+        files = emptyList()
+        message = if (replaceExisting) {
+            "RO kolone su zamijenjene s ${nextEquipments.size} prepoznatih strojeva."
+        } else {
+            "${nextEquipments.size} prepoznatih strojeva dodano je u RO kolone."
+        }
+    }
+
+    preview?.let { result ->
+        val items = result.recognizedWorkEquipmentItems()
+        AlertDialog(
+            onDismissRequest = { preview = null },
+            title = { Text("Provjeri NexAI kolone") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 440.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        result.message.ifBlank { "NexAI je pripremio ${items.size} RO kolona iz slika." },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    )
+                    if (items.isEmpty()) {
+                        Text(
+                            "Nema sigurnih strojeva za upis. Dodaj jasnije slike cijelog stroja i pločice.",
+                            color = Color(0xFFB45309),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    items.forEachIndexed { index, item ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text(
+                                    "${index + 1}. ${item.name.ifBlank { "Radna oprema" }}",
+                                    fontWeight = FontWeight.Black,
+                                )
+                                listOf(
+                                    "Proizvođač" to item.manufacturer,
+                                    "Model / tip" to item.model,
+                                    "Serijski broj" to item.serialNumber,
+                                    "Inventarski broj" to item.inventoryNumber,
+                                    "Tehnički podaci" to item.technicalData,
+                                    "Izvor / baza" to item.matchedSource,
+                                ).filter { it.second.isNotBlank() }.forEach { (label, value) ->
+                                    Text(
+                                        "$label: $value",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                                    )
+                                }
+                                val assignedFiles = batchFilesForRecognitionItem(files, item, index, items.size)
+                                if (assignedFiles.isNotEmpty()) {
+                                    Text(
+                                        "Slike: ${assignedFiles.joinToString(", ") { it.fileName.ifBlank { "slika" } }}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { applyPreview(result, false) },
+                    enabled = items.isNotEmpty(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Dodaj kolone")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { preview = null }) {
+                        Text("Zatvori")
+                    }
+                    TextButton(
+                        onClick = { applyPreview(result, true) },
+                        enabled = items.isNotEmpty(),
+                    ) {
+                        Text(if (manualEquipments.isEmpty()) "Postavi kolone" else "Zamijeni")
+                    }
+                }
+            },
+        )
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFFEFF6FF),
+        border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(shape = CircleShape, color = Color(0xFFDBEAFE), modifier = Modifier.size(42.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(22.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("NexAI upload opreme", fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                    Text(
+                        "Dodaj više slika iz obilaska. NexAI prepoznaje strojeve, pločice i raspoređuje ih u RO kolone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF475569),
+                    )
+                }
+            }
+            Text(
+                "Redoslijed za batch: stroj izdaleka, pločica, detalji; zatim sljedeći stroj.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF1D4ED8),
+                fontWeight = FontWeight.Bold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = { imagePicker.launch("image/*") },
+                    enabled = enabled && !loadingFiles && files.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (loadingFiles) "Učitavam..." else "Dodaj slike")
+                }
+                Button(
+                    onClick = {
+                        recognizing = true
+                        message = "NexAI prepoznaje i priprema RO kolone..."
+                        onRecognizeBatchImages(
+                            manualEquipments,
+                            files,
+                            { result ->
+                                recognizing = false
+                                preview = result
+                                val count = result.recognizedWorkEquipmentItems().size
+                                message = if (count > 0) "Pronađeno $count RO kolona. Provjeri prije upisa." else result.message
+                            },
+                            { errorMessage ->
+                                recognizing = false
+                                message = errorMessage
+                            },
+                        )
+                    },
+                    enabled = enabled && !recognizing && files.any { it.contentDataUrl.isNotBlank() },
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    if (recognizing) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    } else {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Prepoznaj")
+                }
+            }
+            Text(
+                "${files.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF475569),
+            )
+            if (message.isNotBlank()) {
+                val warningMessage = listOf("greška", "nema", "nije", "ne mogu", "ne može").any { marker ->
+                    message.contains(marker, ignoreCase = true)
+                }
+                Text(
+                    message,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (warningMessage) Color(0xFFB45309) else Color(0xFF0F766E),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            files.take(4).forEachIndexed { index, file ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.78f))
+                        .padding(horizontal = 8.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                    Text(
+                        file.fileName.ifBlank { "Slika ${index + 1}" },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    IconButton(
+                        onClick = { files = files.filterIndexed { itemIndex, _ -> itemIndex != index } },
+                        enabled = enabled,
+                        modifier = Modifier.size(30.dp),
+                    ) {
+                        Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(17.dp))
+                    }
+                }
+            }
+            if (files.size > 4) {
+                Text(
+                    "+${files.size - 4} dodatnih slika spremno je za NexAI.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF475569),
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun DocumentationWorkEquipmentBasicsCard(
@@ -11218,7 +11628,7 @@ private fun ManualWorkEquipmentInlineEditor(
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Slike stroja i pločice", fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
                             Text(
-                                "Redoslijed: cijeli stroj izdaleka, natpisna pločica, detalji. Za novi stroj ponovi isti redoslijed u novoj koloni.",
+                                "Dodaj slike koje pripadaju samo trenutno otvorenoj RO koloni. Za više strojeva koristi NexAI upload iznad popisa opreme.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF475569),
                             )
@@ -11228,17 +11638,12 @@ private fun ManualWorkEquipmentInlineEditor(
                         AssistChip(
                             onClick = {},
                             enabled = false,
-                            label = { Text("1. Stroj izdaleka") },
+                            label = { Text("Otvorena kolona") },
                         )
                         AssistChip(
                             onClick = {},
                             enabled = false,
-                            label = { Text("2. Pločica") },
-                        )
-                        AssistChip(
-                            onClick = {},
-                            enabled = false,
-                            label = { Text("3. Detalji") },
+                            label = { Text("Stroj / pločica / detalj") },
                         )
                     }
                     Row(
@@ -25138,6 +25543,12 @@ private fun WorkOrderDocumentationWizardDialog(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeWorkEquipmentBatchImages: (
+        List<IsznrManualWorkEquipment>,
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
@@ -26642,6 +27053,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             onSelectedItemIdsChange = { selectedWorkEquipmentItemIds = it },
                             onManualEquipmentsChange = { manualWorkEquipments = it },
                             onRecognizeWorkEquipmentImages = onRecognizeWorkEquipmentImages,
+                            onRecognizeWorkEquipmentBatchImages = onRecognizeWorkEquipmentBatchImages,
                         )
                     }
                 } else if (physicalFactorsFlowSelected) {

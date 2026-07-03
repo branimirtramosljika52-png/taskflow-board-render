@@ -586,6 +586,9 @@ data class WorkEquipmentImageRecognitionResult(
     val matchedSource: String = "",
     val confidence: String = "",
     val message: String = "",
+    val imageIndexes: List<Int> = emptyList(),
+    val sourceImageNames: List<String> = emptyList(),
+    val workEquipments: List<WorkEquipmentImageRecognitionResult> = emptyList(),
 )
 
 data class IsznrManualWorkEquipment(
