@@ -6064,6 +6064,22 @@ body.is-settings-work-equipment-ai-modal-open {
   line-height: 1.38;
 }
 
+.settings-document-template-ai-card {
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.settings-document-template-ai-card:hover,
+.settings-document-template-ai-card:focus-visible {
+  border-color: rgba(37, 99, 235, 0.62);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.14);
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .settings-job-ai-rulebook {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

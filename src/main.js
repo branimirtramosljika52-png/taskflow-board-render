@@ -35907,6 +35907,9 @@ function renderSettingsDocumentTemplateAi(settings = getDocumentTemplateAiSettin
 }
 
 function getSettingsDocumentTemplateAiFields(template = {}) {
+  if (Array.isArray(template?.customFields)) {
+    return template.customFields;
+  }
   if (Array.isArray(template?.fields)) {
     return template.fields;
   }
@@ -35939,20 +35942,40 @@ function getSettingsDocumentTemplateServiceLabel(source = {}) {
     || source?.service
     || source?.serviceTitle
     || source?.serviceCatalogTitle
+    || source?.serviceName
     || source?.templateServiceCode
     || source?.kind
     || "Zapisnik",
   ).trim() || "Zapisnik";
 }
 
-function collectSettingsDocumentTemplateAiColumnEntries() {
+function getSettingsDocumentTemplateAiEntryKey(entry = {}) {
+  return [
+    entry.kind || "field",
+    entry.draft ? "draft" : "saved",
+    entry.templateId || "",
+    entry.fieldId || entry.fieldIndex || 0,
+    entry.kind === "column" ? entry.columnIndex : "",
+  ].map((value) => String(value ?? "").replaceAll("|", "_")).join("|");
+}
+
+function getSettingsDocumentTemplateAiFieldIdentity(field = {}, fieldIndex = 0) {
+  return String(field?.id || field?.key || field?.wordLabel || field?.label || `field-${fieldIndex + 1}`).trim();
+}
+
+function isSettingsDocumentTemplateAiFieldVisible(field = {}, fieldIndex = 0) {
+  const explicit = hasDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
+  return explicit || shouldDocumentTemplateFieldUseDefaultAi(field) || Boolean(getDocumentTemplateFieldAiConfigForTemplate(field, fieldIndex).enabled);
+}
+
+function collectSettingsDocumentTemplateAiEntries() {
   const sources = [];
   const activeTemplateId = String(documentTemplateIdInput?.value || "").trim();
 
   if (state.documentTemplateEditorOpen && Array.isArray(documentTemplateFieldDrafts)) {
     sources.push({
-      id: activeTemplateId,
-      title: documentTemplateTitleInput?.value?.trim() || "Otvoreni predlozak",
+      id: activeTemplateId || "draft",
+      title: documentTemplateTitleInput?.value?.trim() || "Otvoreni predložak",
       service: documentTemplateTypeInput?.value || "Zapisnik",
       fields: documentTemplateFieldDrafts,
       draft: true,
@@ -35966,7 +35989,7 @@ function collectSettingsDocumentTemplateAiColumnEntries() {
     }
     sources.push({
       id: templateId,
-      title: String(template?.title || template?.name || template?.templateName || "Predlozak").trim(),
+      title: String(template?.title || template?.name || template?.templateName || "Predložak").trim(),
       service: getSettingsDocumentTemplateServiceLabel(template),
       fields: getSettingsDocumentTemplateAiFields(template),
       draft: false,
@@ -35976,33 +35999,60 @@ function collectSettingsDocumentTemplateAiColumnEntries() {
   const entries = [];
   sources.forEach((source) => {
     (Array.isArray(source.fields) ? source.fields : []).forEach((field, fieldIndex) => {
+      const fieldLabel = String(field?.label || field?.wordLabel || field?.key || `Polje ${fieldIndex + 1}`).trim();
+      const fieldId = getSettingsDocumentTemplateAiFieldIdentity(field, fieldIndex);
+      if (isSettingsDocumentTemplateAiFieldVisible(field, fieldIndex)) {
+        const aiConfig = getDocumentTemplateFieldAiConfigForTemplate(field, fieldIndex);
+        entries.push({
+          kind: "field",
+          templateId: source.id,
+          templateTitle: source.title,
+          service: source.service,
+          draft: source.draft,
+          fieldId,
+          fieldIndex,
+          fieldLabel,
+          aiConfig,
+          field,
+        });
+      }
+
       const sheet = getSettingsDocumentTemplateAiSheet(field);
       if (!sheet?.columns?.length) {
         return;
       }
-      const fieldLabel = String(field?.label || field?.wordLabel || field?.key || `Excel tablica ${fieldIndex + 1}`).trim();
       sheet.columns.forEach((column, columnIndex) => {
         const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
         if (!hasMeasurementColumnAiMapping(aiMapping)) {
           return;
         }
         entries.push({
+          kind: "column",
+          templateId: source.id,
           templateTitle: source.title,
           service: source.service,
           draft: source.draft,
+          fieldId,
+          fieldIndex,
           fieldLabel,
           columnLabel: String(column?.label || column?.id || `Kolona ${columnIndex + 1}`).trim(),
           columnIndex,
           aiMapping,
+          field,
+          column,
         });
       });
     });
   });
 
   return entries.sort((left, right) => (
-    `${left.service} ${left.templateTitle} ${left.fieldLabel} ${left.columnIndex}`
-      .localeCompare(`${right.service} ${right.templateTitle} ${right.fieldLabel} ${right.columnIndex}`, "hr")
+    `${left.service} ${left.templateTitle} ${left.kind} ${left.fieldLabel} ${left.columnIndex ?? ""}`
+      .localeCompare(`${right.service} ${right.templateTitle} ${right.kind} ${right.fieldLabel} ${right.columnIndex ?? ""}`, "hr")
   ));
+}
+
+function collectSettingsDocumentTemplateAiColumnEntries() {
+  return collectSettingsDocumentTemplateAiEntries().filter((entry) => entry.kind === "column");
 }
 
 function renderSettingsDocumentTemplateAiColumns() {
@@ -36010,47 +36060,284 @@ function renderSettingsDocumentTemplateAiColumns() {
     return;
   }
 
-  const entries = collectSettingsDocumentTemplateAiColumnEntries();
+  const entries = collectSettingsDocumentTemplateAiEntries();
   if (!entries.length) {
     const empty = document.createElement("article");
     const title = document.createElement("strong");
-    title.textContent = "Zapisnici · Excel kolone";
+    title.textContent = "Zapisnici · NexAI polja";
     const copy = document.createElement("span");
-    copy.textContent = "Još nema označenih AI kolona. U predlošku otvori Gridline, desni klik na zaglavlje kolone i odaberi Dodaj AI kolonu.";
+    copy.textContent = "Još nema AI polja. U predlošku desni klik na polje ili Gridline kolonu i odaberi NexAI.";
     empty.append(title, copy);
     settingsDocumentTemplateAiColumns.replaceChildren(empty);
     return;
   }
 
-  const visibleEntries = entries.slice(0, 24);
-  const cards = visibleEntries.map((entry) => {
+  const cards = entries.map((entry) => {
     const card = document.createElement("article");
+    card.className = "settings-document-template-ai-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("data-settings-document-template-ai-entry", getSettingsDocumentTemplateAiEntryKey(entry));
+    card.setAttribute("aria-label", `Otvori NexAI postavke za ${entry.kind === "column" ? entry.columnLabel : entry.fieldLabel}`);
     const title = document.createElement("strong");
-    title.textContent = `${entry.service} · ${entry.columnLabel}`;
+    title.textContent = entry.kind === "column"
+      ? `${entry.service} · ${entry.columnLabel}`
+      : `${entry.service} · ${entry.fieldLabel}`;
     const copy = document.createElement("span");
     copy.textContent = [
       entry.templateTitle,
-      entry.fieldLabel,
-      entry.aiMapping.key ? `key: ${entry.aiMapping.key}` : "",
-      entry.aiMapping.locked ? "zakljucano" : "",
-      entry.aiMapping.required ? "obavezno" : "",
-      entry.draft ? "otvoreni predlozak" : "",
+      entry.kind === "column" ? entry.fieldLabel : "Polje zapisnika",
+      (entry.aiMapping?.key || entry.aiConfig?.key) ? `key: ${entry.aiMapping?.key || entry.aiConfig?.key}` : "",
+      (entry.aiMapping?.locked || entry.aiConfig?.locked) ? "zaključano" : "",
+      (entry.aiMapping?.required || entry.aiConfig?.required) ? "obavezno" : "",
+      entry.draft ? "otvoreni predložak" : "",
     ].filter(Boolean).join(" · ");
     card.append(title, copy);
     return card;
   });
 
-  if (entries.length > visibleEntries.length) {
-    const more = document.createElement("article");
-    const title = document.createElement("strong");
-    title.textContent = `+${entries.length - visibleEntries.length} kolona`;
-    const copy = document.createElement("span");
-    copy.textContent = "Prikazujem prvih 24 označenih AI Excel kolona.";
-    more.append(title, copy);
-    cards.push(more);
+  settingsDocumentTemplateAiColumns.replaceChildren(...cards);
+}
+
+function findSettingsDocumentTemplateAiEntry(entryKey = "") {
+  const normalizedKey = String(entryKey || "").trim();
+  if (!normalizedKey) {
+    return null;
+  }
+  return collectSettingsDocumentTemplateAiEntries().find((entry) => (
+    getSettingsDocumentTemplateAiEntryKey(entry) === normalizedKey
+  )) || null;
+}
+
+function getSettingsDocumentTemplateAiEntryFieldIndex(fields = [], entry = {}) {
+  const fieldId = String(entry.fieldId || "").trim();
+  if (fieldId) {
+    const byId = fields.findIndex((field, index) => getSettingsDocumentTemplateAiFieldIdentity(field, index) === fieldId);
+    if (byId >= 0) {
+      return byId;
+    }
+  }
+  const index = Number(entry.fieldIndex);
+  return Number.isInteger(index) && index >= 0 && index < fields.length ? index : -1;
+}
+
+function assignSettingsDocumentTemplateAiSheetToField(field = {}, sheet = null) {
+  const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
+  const nextField = {
+    ...field,
+    sheet: normalizedSheet,
+  };
+  if (Object.prototype.hasOwnProperty.call(field, "measurementSheet")) {
+    nextField.measurementSheet = normalizedSheet;
+  }
+  if (Object.prototype.hasOwnProperty.call(field, "measurement_sheet")) {
+    nextField.measurement_sheet = normalizedSheet;
+  }
+  return nextField;
+}
+
+async function persistSettingsDocumentTemplateAiEntry(entry = {}, config = {}, { clear = false } = {}) {
+  const isColumn = entry.kind === "column";
+  const templateId = String(entry.templateId || "").trim();
+  const template = !entry.draft
+    ? (state.documentTemplates ?? []).find((item) => String(item.id) === templateId) ?? null
+    : null;
+  const sourceFields = entry.draft
+    ? documentTemplateFieldDrafts
+    : getSettingsDocumentTemplateAiFields(template);
+  const fields = cloneDocumentTemplatePlainValue(Array.isArray(sourceFields) ? sourceFields : []);
+  const fieldIndex = getSettingsDocumentTemplateAiEntryFieldIndex(fields, entry);
+  if (fieldIndex < 0) {
+    setInlineMessage(settingsDocumentTemplateAiFeedback, "Ne mogu pronaći polje za spremanje NexAI postavki.");
+    return false;
   }
 
-  settingsDocumentTemplateAiColumns.replaceChildren(...cards);
+  const currentField = fields[fieldIndex] || {};
+  if (isColumn) {
+    const sheet = getSettingsDocumentTemplateAiSheet(currentField);
+    if (!sheet?.columns?.length || entry.columnIndex < 0 || entry.columnIndex >= sheet.columns.length) {
+      setInlineMessage(settingsDocumentTemplateAiFeedback, "Ne mogu pronaći Gridline kolonu za spremanje NexAI postavki.");
+      return false;
+    }
+    const columns = sheet.columns.map((column, columnIndex) => {
+      if (columnIndex !== entry.columnIndex) {
+        return column;
+      }
+      return {
+        ...column,
+        aiMapping: clear
+          ? normalizeMeasurementSheetColumnAiMappingSnapshotLocal({})
+          : normalizeMeasurementSheetColumnAiMappingSnapshotLocal({
+            ...(column.aiMapping ?? column.ai ?? {}),
+            ...config,
+            label: config.label || column.label || column.id || `Kolona ${columnIndex + 1}`,
+            format: config.format || config.type,
+            synonyms: config.aiLookFor || config.synonyms,
+          }),
+      };
+    });
+    fields[fieldIndex] = assignSettingsDocumentTemplateAiSheetToField(currentField, {
+      ...sheet,
+      columns,
+    });
+  } else {
+    fields[fieldIndex] = {
+      ...currentField,
+      ai: clear
+        ? normalizeDocumentTemplateFieldAiConfig({}, currentField)
+        : normalizeDocumentTemplateFieldAiConfig(config, currentField),
+    };
+  }
+
+  if (entry.draft) {
+    documentTemplateFieldDrafts = fields;
+    invalidateDocumentTemplateDraftCache();
+    renderDocumentTemplateFieldRows({ renderSupport: false });
+    if (templateId && templateId !== "draft") {
+      const draft = buildDocumentTemplateDraft();
+      const success = await runMutation(() => apiRequest(`/document-templates/${encodeURIComponent(templateId)}`, {
+        method: "PATCH",
+        body: { customFields: draft.customFields },
+      }), settingsDocumentTemplateAiFeedback);
+      if (success) {
+        renderDocumentTemplateModule();
+        setInlineMessage(settingsDocumentTemplateAiFeedback, "NexAI postavke su spremljene u otvoreni predložak.", "success");
+      }
+      renderSettingsDocumentTemplateAiColumns();
+      return success;
+    }
+    const success = await persistDocumentTemplateDraft({
+      successMessage: "NexAI postavke su spremljene u otvoreni predložak.",
+      scrollToTop: false,
+    });
+    renderSettingsDocumentTemplateAiColumns();
+    return success;
+  }
+
+  if (!template?.id) {
+    setInlineMessage(settingsDocumentTemplateAiFeedback, "Ne mogu pronaći spremljeni predložak.");
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/document-templates/${encodeURIComponent(template.id)}`, {
+    method: "PATCH",
+    body: { customFields: fields },
+  }), settingsDocumentTemplateAiFeedback);
+  if (success) {
+    state.documentTemplates = (state.documentTemplates ?? []).map((item) => (
+      String(item.id) === String(template.id)
+        ? { ...item, customFields: fields }
+        : item
+    ));
+    renderSettingsDocumentTemplateAiColumns();
+    renderDocumentTemplateModule();
+    setInlineMessage(settingsDocumentTemplateAiFeedback, "NexAI postavke su spremljene u predložak.", "success");
+  }
+  return success;
+}
+
+function openSettingsDocumentTemplateAiEntryEditor(entry = null) {
+  if (!entry) {
+    return;
+  }
+
+  document.querySelector(".document-template-ai-wizard-backdrop")?.remove();
+  const field = entry.field || {};
+  const isColumn = entry.kind === "column";
+  const config = isColumn
+    ? normalizeDocumentTemplateFieldAiConfig({
+      ...getMeasurementColumnAiMappingForTemplate(entry.column || {}, entry.columnIndex || 0, field),
+      ...(entry.aiMapping || {}),
+      label: entry.columnLabel,
+    }, {
+      ...field,
+      type: "measurement_table",
+      label: entry.columnLabel,
+    })
+    : getDocumentTemplateFieldAiConfigForTemplate(field, entry.fieldIndex || 0);
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "document-template-ai-wizard-backdrop";
+  backdrop.addEventListener("pointerdown", (event) => {
+    if (event.target === backdrop) {
+      backdrop.remove();
+    }
+  });
+
+  const panel = document.createElement("section");
+  panel.className = "document-template-ai-wizard";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-labelledby", "settings-document-template-ai-entry-title");
+  panel.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+  const head = document.createElement("div");
+  head.className = "document-template-ai-wizard-head";
+  const copy = document.createElement("div");
+  const eyebrow = document.createElement("span");
+  eyebrow.className = "document-template-ai-wizard-eyebrow";
+  eyebrow.textContent = isColumn ? "NexAI Gridline kolona" : "NexAI polje zapisnika";
+  const title = document.createElement("strong");
+  title.id = "settings-document-template-ai-entry-title";
+  title.textContent = isColumn ? entry.columnLabel : entry.fieldLabel;
+  const subtitle = document.createElement("p");
+  subtitle.textContent = `${entry.service} · ${entry.templateTitle} · ${isColumn ? entry.fieldLabel : "polje zapisnika"}`;
+  copy.append(eyebrow, title, subtitle);
+  const closeButton = createActionButton("Zatvori", "ghost-button", () => backdrop.remove());
+  head.append(copy, closeButton);
+
+  const form = document.createElement("form");
+  form.className = "document-template-ai-wizard-form";
+  const enabledLabel = document.createElement("label");
+  enabledLabel.className = "document-template-ai-wizard-toggle";
+  const enabledInput = document.createElement("input");
+  enabledInput.type = "checkbox";
+  enabledInput.name = "enabled";
+  enabledInput.checked = Boolean(config.enabled);
+  const enabledText = document.createElement("span");
+  enabledText.textContent = isColumn ? "NexAI smije popuniti ovu Gridline kolonu" : "NexAI smije popuniti ovo polje";
+  enabledLabel.append(enabledInput, enabledText);
+  form.append(enabledLabel);
+
+  const grid = document.createElement("div");
+  grid.className = "document-template-ai-wizard-grid";
+  getDocumentTemplateAiWizardDefinitions().forEach((definition) => {
+    grid.append(createDocumentTemplateAiWizardField(config, definition));
+  });
+  form.append(grid);
+
+  const checks = createDocumentTemplateAiWizardChecks(config);
+  form.append(checks);
+
+  const actions = document.createElement("div");
+  actions.className = "document-template-ai-wizard-actions";
+  const clearButton = createActionButton("Makni NexAI", "ghost-button", () => {
+    void persistSettingsDocumentTemplateAiEntry(entry, {}, { clear: true }).then((success) => {
+      if (success) {
+        backdrop.remove();
+      }
+    });
+  });
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = "Spremi postavke";
+  actions.append(clearButton, saveButton);
+  form.append(actions);
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const nextAiConfig = collectDocumentTemplateAiWizardConfig(form, isColumn ? { ...field, type: "measurement_table" } : field);
+    void persistSettingsDocumentTemplateAiEntry(entry, nextAiConfig).then((success) => {
+      if (success) {
+        backdrop.remove();
+      }
+    });
+  });
+
+  panel.append(head, form);
+  backdrop.append(panel);
+  document.body.append(backdrop);
 }
 
 function collectSettingsDocumentTemplateAiSettings() {
@@ -58439,11 +58726,23 @@ function normalizeDocumentationSprFieldSettings(value = {}) {
         if (!normalizedKey) {
           return null;
         }
+        const aiConfig = normalizeDocumentTemplateFieldAiConfig({
+          ...entry,
+          key: entry.key || normalizedKey,
+          label: entry.label || DOCUMENTATION_SPR_FIELD_LABELS[normalizedKey] || normalizedKey,
+          enabled: entry.enabled ?? entry.aiEnabled ?? entry.nexAiEnabled,
+          aiDescription: entry.aiDescription ?? entry.ai_description ?? entry.prompt ?? entry.aiPrompt,
+          aiAvoid: entry.aiAvoid ?? entry.ai_avoid ?? entry.guardrails ?? entry.aiGuardrails,
+        }, {
+          key: normalizedKey,
+          label: DOCUMENTATION_SPR_FIELD_LABELS[normalizedKey] || normalizedKey,
+          type: entry.fieldType || entry.type || "text",
+        });
         return [normalizedKey, {
-          aiEnabled: Boolean(entry.aiEnabled || entry.nexAiEnabled),
-          required: Boolean(entry.required),
-          prompt: String(entry.prompt || entry.aiPrompt || "").trim(),
-          guardrails: String(entry.guardrails || entry.aiGuardrails || "").trim(),
+          ...aiConfig,
+          aiEnabled: Boolean(aiConfig.enabled),
+          prompt: String(aiConfig.aiDescription || "").trim(),
+          guardrails: String(aiConfig.aiAvoid || "").trim(),
         }];
       })
       .filter(Boolean),
@@ -62226,22 +62525,32 @@ function positionDocumentationSprFloatingPanel(panel, clientX = 0, clientY = 0) 
 
 function openDocumentationSprFieldSettingsPanel(fieldKey = "", label = "") {
   const setting = getDocumentationSprFieldSetting(fieldKey);
+  const fieldLabel = label || getDocumentationSprFieldLabel(fieldKey);
+  const config = normalizeDocumentTemplateFieldAiConfig({
+    ...setting,
+    key: setting.key || fieldKey,
+    label: setting.label || fieldLabel,
+    enabled: setting.enabled ?? setting.aiEnabled,
+    aiDescription: setting.aiDescription || setting.prompt,
+    aiAvoid: setting.aiAvoid || setting.guardrails,
+  }, {
+    key: fieldKey,
+    label: fieldLabel,
+    type: setting.type || "text",
+  });
   const backdrop = document.createElement("div");
   const panel = document.createElement("section");
   const head = document.createElement("div");
+  const copy = document.createElement("div");
   const kicker = document.createElement("span");
   const title = document.createElement("strong");
+  const subtitle = document.createElement("p");
   const closeButton = document.createElement("button");
   const aiToggleLabel = document.createElement("label");
   const aiToggle = document.createElement("input");
-  const requiredLabel = document.createElement("label");
-  const requiredToggle = document.createElement("input");
-  const promptLabel = document.createElement("label");
-  const promptLabelText = document.createElement("span");
-  const promptInput = document.createElement("textarea");
-  const guardrailsLabel = document.createElement("label");
-  const guardrailsLabelText = document.createElement("span");
-  const guardrailsInput = document.createElement("textarea");
+  const aiToggleText = document.createElement("span");
+  const form = document.createElement("form");
+  const grid = document.createElement("div");
   const actions = document.createElement("div");
   const removeAiButton = document.createElement("button");
   const saveButton = document.createElement("button");
@@ -62249,38 +62558,37 @@ function openDocumentationSprFieldSettingsPanel(fieldKey = "", label = "") {
   closeDocumentationSprFieldContextMenu();
   closeDocumentationSprFieldSettingsPanel();
 
-  backdrop.className = "documentation-spr-field-panel-backdrop";
-  panel.className = "documentation-spr-field-panel";
-  head.className = "documentation-spr-field-panel-head";
+  backdrop.className = "document-template-ai-wizard-backdrop documentation-spr-field-panel-backdrop";
+  panel.className = "document-template-ai-wizard documentation-spr-field-panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-labelledby", "documentation-spr-field-settings-title");
+  panel.addEventListener("pointerdown", (event) => event.stopPropagation());
+  head.className = "document-template-ai-wizard-head documentation-spr-field-panel-head";
   kicker.textContent = "NexAI polje";
-  title.textContent = label || getDocumentationSprFieldLabel(fieldKey);
+  kicker.className = "document-template-ai-wizard-eyebrow";
+  title.id = "documentation-spr-field-settings-title";
+  title.textContent = fieldLabel;
+  subtitle.textContent = "Ovdje definiraš kako zapisnik smije preuzeti vrijednost iz starog zapisnika, projekta, slike ili PDF-a.";
   closeButton.type = "button";
   closeButton.className = "ghost-button";
   closeButton.textContent = "Zatvori";
 
-  aiToggleLabel.className = "documentation-spr-checkbox-line";
+  form.className = "document-template-ai-wizard-form";
+  aiToggleLabel.className = "document-template-ai-wizard-toggle";
   aiToggle.type = "checkbox";
-  aiToggle.checked = Boolean(setting.aiEnabled);
-  aiToggleLabel.append(aiToggle, document.createTextNode(" NexAI smije popuniti ovo polje"));
+  aiToggle.name = "enabled";
+  aiToggle.checked = Boolean(config.enabled);
+  aiToggleText.textContent = "NexAI smije popuniti ovo polje";
+  aiToggleLabel.append(aiToggle, aiToggleText);
+  form.append(aiToggleLabel);
 
-  promptLabel.className = "field documentation-spr-field";
-  promptLabelText.textContent = "Kako se popunjava";
-  promptInput.rows = 4;
-  promptInput.placeholder = "Što NexAI treba tražiti u projektu, starom zapisniku, slici ili PDF-u.";
-  promptInput.value = setting.prompt || "";
-  promptLabel.append(promptLabelText, promptInput);
-
-  guardrailsLabel.className = "field documentation-spr-field";
-  guardrailsLabelText.textContent = "NexAI ne smije";
-  guardrailsInput.rows = 3;
-  guardrailsInput.placeholder = "Npr. ne zaključuj ako nije vidljivo, ne izmišljaj vrijednosti.";
-  guardrailsInput.value = setting.guardrails || "";
-  guardrailsLabel.append(guardrailsLabelText, guardrailsInput);
-
-  requiredLabel.className = "documentation-spr-checkbox-line";
-  requiredToggle.type = "checkbox";
-  requiredToggle.checked = Boolean(setting.required);
-  requiredLabel.append(requiredToggle, document.createTextNode(" Polje je obavezno"));
+  grid.className = "document-template-ai-wizard-grid";
+  getDocumentTemplateAiWizardDefinitions().forEach((definition) => {
+    grid.append(createDocumentTemplateAiWizardField(config, definition));
+  });
+  form.append(grid);
+  form.append(createDocumentTemplateAiWizardChecks(config));
 
   removeAiButton.type = "button";
   removeAiButton.className = "ghost-button";
@@ -62298,26 +62606,34 @@ function openDocumentationSprFieldSettingsPanel(fieldKey = "", label = "") {
   removeAiButton.addEventListener("click", () => {
     updateDocumentationSprFieldSetting(fieldKey, {
       aiEnabled: false,
+      enabled: false,
       prompt: "",
-      guardrails: guardrailsInput.value,
-      required: requiredToggle.checked,
+      aiDescription: "",
     });
     closeDocumentationSprFieldSettingsPanel();
   });
-  saveButton.addEventListener("click", () => {
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const nextAiConfig = collectDocumentTemplateAiWizardConfig(form, {
+      key: fieldKey,
+      label: fieldLabel,
+      type: setting.type || "text",
+    });
     updateDocumentationSprFieldSetting(fieldKey, {
-      aiEnabled: aiToggle.checked,
-      prompt: promptInput.value,
-      guardrails: guardrailsInput.value,
-      required: requiredToggle.checked,
+      ...nextAiConfig,
+      aiEnabled: nextAiConfig.enabled,
+      prompt: nextAiConfig.aiDescription,
+      guardrails: nextAiConfig.aiAvoid,
     });
     closeDocumentationSprFieldSettingsPanel();
   });
 
-  head.append(kicker, title, closeButton);
-  actions.className = "documentation-spr-field-panel-actions";
+  copy.append(kicker, title, subtitle);
+  head.append(copy, closeButton);
+  actions.className = "document-template-ai-wizard-actions documentation-spr-field-panel-actions";
   actions.append(removeAiButton, saveButton);
-  panel.append(head, aiToggleLabel, promptLabel, guardrailsLabel, requiredLabel, actions);
+  form.append(actions);
+  panel.append(head, form);
   backdrop.appendChild(panel);
   document.body.appendChild(backdrop);
   documentationSprFieldSettingsPanel = backdrop;
@@ -72128,6 +72444,87 @@ function createDocumentTemplateAiWizardField(config, definition) {
   return label;
 }
 
+function getDocumentTemplateAiWizardDefinitions() {
+  return [
+    { name: "key", label: "Key", placeholder: "koristena_dokumentacija" },
+    { name: "label", label: "Naziv", placeholder: "Korištena dokumentacija" },
+    {
+      name: "type",
+      label: "Tip podatka",
+      kind: "select",
+      options: [
+        { value: "text", label: "Tekst" },
+        { value: "number", label: "Broj" },
+        { value: "enum", label: "Lista / izbor" },
+        { value: "date", label: "Datum" },
+        { value: "list", label: "Popis" },
+        { value: "boolean", label: "Da / ne" },
+        { value: "measurement", label: "Mjerna vrijednost" },
+      ],
+    },
+    { name: "unit", label: "Jedinica", placeholder: "lux, Ω, A, ms" },
+    { name: "description", label: "Opis polja", kind: "textarea", rows: 3, full: true, placeholder: "Što ovo polje znači u zapisniku." },
+    { name: "instructions", label: "Opća AI uputa", kind: "textarea", rows: 4, full: true, placeholder: "Kako NexAI treba razmišljati za ovo polje ili kolonu." },
+    { name: "aiDescription", label: "Kako se popunjava", kind: "textarea", rows: 4, full: true, placeholder: "Što NexAI treba tražiti u projektu, starom zapisniku, slici ili PDF-u." },
+    { name: "aiLookFor", label: "NexAI neka traži", full: true, placeholder: "prethodni zapisnik, Tablica 1, mjerno mjesto, broj lampi" },
+    { name: "aiAvoid", label: "NexAI ne smije", full: true, placeholder: "Ne zaključuj ako nije vidljivo. Ne izmišljaj vrijednosti." },
+    { name: "allowedValues", label: "Dopuštene vrijednosti", placeholder: "DA, NE, NP, ZADOVOLJAVA" },
+    { name: "commonValues", label: "Česte vrijednosti", placeholder: "DA, >2, 1" },
+    { name: "examples", label: "Primjeri", full: true, placeholder: "Prodajni prostor | 7 | >2 | 1 | DA" },
+    { name: "format", label: "Format odgovora", placeholder: "kratka stručna rečenica, tablični red, broj s decimalnim zarezom" },
+    { name: "placeholder", label: "Placeholder", placeholder: "Unesite vrijednost..." },
+    { name: "helpText", label: "Pomoć korisniku", full: true, placeholder: "Kratka uputa za ručni unos." },
+    { name: "defaultValue", label: "Default vrijednost" },
+    { name: "fallbackValue", label: "Fallback ako nema izvora", placeholder: "Ostavi prazno / Nije moguće utvrditi." },
+    {
+      name: "confidenceRequired",
+      label: "Minimalna sigurnost",
+      kind: "select",
+      options: [
+        { value: "high", label: "Visoka" },
+        { value: "medium", label: "Srednja" },
+        { value: "low", label: "Niska" },
+      ],
+    },
+    {
+      name: "noSourceBehavior",
+      label: "Ako nema izvora",
+      kind: "select",
+      options: [
+        { value: "leave_empty", label: "Ostavi prazno" },
+        { value: "ask_user", label: "Pitaj korisnika" },
+        { value: "use_template", label: "Koristi template" },
+      ],
+    },
+    { name: "sourcePriority", label: "Prioritet izvora", kind: "textarea", rows: 3, full: true, placeholder: "previous_report\nolder_previous_report\nuploaded_file\ntemplate" },
+    { name: "displayOrder", label: "Redoslijed", kind: "number" },
+    { name: "group", label: "Blok / grupa", placeholder: "SPR · Tehnička dokumentacija" },
+    { name: "validationRules", label: "Pravila provjere", kind: "textarea", rows: 3, full: true, placeholder: "Ako nije vidljivo u izvoru, ne smije biti označeno kao sigurno." },
+  ];
+}
+
+function createDocumentTemplateAiWizardChecks(config = {}) {
+  const checks = document.createElement("div");
+  checks.className = "document-template-ai-wizard-checks";
+  [
+    { name: "required", label: "Polje je obavezno", checked: config.required },
+    { name: "locked", label: "Zaključaj ručno uređivanje u zapisniku", checked: config.locked },
+    { name: "sourceTracking", label: "Spremi izvor podatka", checked: config.sourceTracking },
+    { name: "inheritSettings", label: "Naslijedi globalna pravila izvora", checked: config.inheritSettings },
+  ].forEach((definition) => {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = definition.name;
+    input.checked = Boolean(definition.checked);
+    const span = document.createElement("span");
+    span.textContent = definition.label;
+    label.append(input, span);
+    checks.append(label);
+  });
+  return checks;
+}
+
 function collectDocumentTemplateAiWizardConfig(form, field) {
   const read = (name) => String(form.elements[name]?.value || "").trim();
   const readList = (name) => normalizeAiConfigListLocal(read(name), 160);
@@ -72155,6 +72552,11 @@ function collectDocumentTemplateAiWizardConfig(form, field) {
     validationRules: read("validationRules"),
     displayOrder: read("displayOrder"),
     group: read("group"),
+    instructions: read("instructions"),
+    locked: Boolean(form.elements.locked?.checked),
+    inheritSettings: Boolean(form.elements.inheritSettings?.checked),
+    sourcePriority: readList("sourcePriority"),
+    noSourceBehavior: read("noSourceBehavior"),
   }, field);
 }
 
@@ -72223,70 +72625,12 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
 
   const grid = document.createElement("div");
   grid.className = "document-template-ai-wizard-grid";
-  [
-    { name: "key", label: "Key", placeholder: "machine_placement" },
-    { name: "label", label: "Label", placeholder: "Smještaj stroja" },
-    {
-      name: "type",
-      label: "Tip podatka",
-      kind: "select",
-      options: [
-        { value: "text", label: "Text" },
-        { value: "number", label: "Number" },
-        { value: "enum", label: "Enum" },
-        { value: "date", label: "Date" },
-        { value: "list", label: "List" },
-        { value: "boolean", label: "Boolean" },
-        { value: "measurement", label: "Measurement" },
-      ],
-    },
-    { name: "unit", label: "Jedinica", placeholder: "mm2, A, ohm, lux" },
-    { name: "description", label: "Opis polja", kind: "textarea", rows: 3, full: true, placeholder: "Što ovo polje znači u zapisniku." },
-    { name: "aiDescription", label: "NexAI opis", kind: "textarea", rows: 3, full: true, placeholder: "Što NexAI treba tražiti u dokumentu ili slici." },
-    { name: "aiLookFor", label: "NexAI neka gleda", full: true, placeholder: "prepreke, pristup, stabilnost, prostor oko stroja" },
-    { name: "aiAvoid", label: "NexAI ne smije", full: true, placeholder: "Ne zaključuj ako nije vidljivo." },
-    { name: "allowedValues", label: "Dopuštene vrijednosti", placeholder: "uredno, neuredno, nije vidljivo" },
-    { name: "commonValues", label: "Česte vrijednosti", placeholder: "uredno" },
-    { name: "examples", label: "Primjeri", full: true, placeholder: "Smještaj stroja je uredan..." },
-    { name: "format", label: "Format", placeholder: "kratka stručna rečenica" },
-    { name: "placeholder", label: "Placeholder", placeholder: "Unesite smještaj stroja..." },
-    { name: "helpText", label: "Help text", full: true, placeholder: "Opišite pristup, stabilnost i prepreke." },
-    { name: "defaultValue", label: "Default value" },
-    { name: "fallbackValue", label: "Fallback value", placeholder: "Nije moguće procijeniti." },
-    {
-      name: "confidenceRequired",
-      label: "Minimalna sigurnost",
-      kind: "select",
-      options: [
-        { value: "high", label: "High" },
-        { value: "medium", label: "Medium" },
-        { value: "low", label: "Low" },
-      ],
-    },
-    { name: "displayOrder", label: "Redoslijed", kind: "number" },
-    { name: "group", label: "Grupa", placeholder: "Opći pregled" },
-    { name: "validationRules", label: "Validation rules", kind: "textarea", rows: 3, full: true, placeholder: "Ako nije vidljivo, ne smije biti ispravno." },
-  ].forEach((definition) => {
+  getDocumentTemplateAiWizardDefinitions().forEach((definition) => {
     grid.append(createDocumentTemplateAiWizardField(config, definition));
   });
   form.append(grid);
 
-  const checks = document.createElement("div");
-  checks.className = "document-template-ai-wizard-checks";
-  [
-    { name: "required", label: "Polje je obavezno", checked: config.required },
-    { name: "sourceTracking", label: "Spremi izvor podatka", checked: config.sourceTracking },
-  ].forEach((definition) => {
-    const label = document.createElement("label");
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.name = definition.name;
-    input.checked = Boolean(definition.checked);
-    const span = document.createElement("span");
-    span.textContent = definition.label;
-    label.append(input, span);
-    checks.append(label);
-  });
+  const checks = createDocumentTemplateAiWizardChecks(config);
   form.append(checks);
 
   const actions = document.createElement("div");
@@ -154314,6 +154658,31 @@ settingsJobAiSaveButton?.addEventListener("click", () => {
 
 settingsDocumentTemplateAiSaveButton?.addEventListener("click", () => {
   void saveSettingsDocumentTemplateAiSettings();
+});
+
+settingsDocumentTemplateAiColumns?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const card = target?.closest("[data-settings-document-template-ai-entry]");
+  if (!(card instanceof HTMLElement)) {
+    return;
+  }
+  event.preventDefault();
+  const entry = findSettingsDocumentTemplateAiEntry(card.dataset.settingsDocumentTemplateAiEntry || "");
+  openSettingsDocumentTemplateAiEntryEditor(entry);
+});
+
+settingsDocumentTemplateAiColumns?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+  const target = event.target instanceof Element ? event.target : null;
+  const card = target?.closest("[data-settings-document-template-ai-entry]");
+  if (!(card instanceof HTMLElement)) {
+    return;
+  }
+  event.preventDefault();
+  const entry = findSettingsDocumentTemplateAiEntry(card.dataset.settingsDocumentTemplateAiEntry || "");
+  openSettingsDocumentTemplateAiEntryEditor(entry);
 });
 
 settingsJobAiFields?.addEventListener("click", (event) => {
