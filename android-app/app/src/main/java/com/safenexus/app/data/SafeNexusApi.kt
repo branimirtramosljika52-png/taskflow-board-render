@@ -1175,6 +1175,10 @@ class SafeNexusApi(
                         .put(
                             "databaseRule",
                             "Ako prepoznati proizvodac, model ili serijski broj odgovara postojecoj bazi ili lokalnoj povijesti u kontekstu, vrati matchedSource i popuni podatke iz najpouzdanijeg izvora.",
+                        )
+                        .put(
+                            "dedupeRule",
+                            "U currentEquipments su trenutne RO kolone. Ako prepoznas isti stroj, svejedno vrati zaseban workEquipments zapis sa serijskim/inventarskim/model podacima; Android ce prije upisa prikazati popis i spojiti s postojecim kolonama bez duplikata.",
                         ),
                 )
                 .put(

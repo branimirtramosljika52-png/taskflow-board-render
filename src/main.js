@@ -131853,6 +131853,7 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
       aiMessage: "",
       aiError: "",
       aiResult: null,
+      aiImportPreview: null,
       aiModelTier: "standard",
       aiBatchMode: "batch",
       submitting: false,
@@ -132282,6 +132283,16 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       finalGrade: String(item.finalGrade?.label || item.finalGrade || ""),
       sourceLabel: String(item.sourceLabel || ""),
     })),
+    manualEquipments: getReadyWorkOrderDocumentRoManualEquipments(entry).slice(0, 80).map((equipment) => ({
+      id: String(equipment.id || ""),
+      name: String(equipment.name || ""),
+      manufacturer: String(equipment.manufacturer || ""),
+      model: String(equipment.model || ""),
+      serialNumber: String(equipment.serialNumber || ""),
+      inventoryNumber: String(equipment.inventoryNumber || ""),
+      technicalData: String(equipment.technicalData || ""),
+    })),
+    dedupeInstruction: "Ako prepoznas opremu koja odgovara existingEquipment ili manualEquipments, svejedno vrati prepoznatu stavku s jasnim serijskim/inventarskim/model podacima. Aplikacija ce prije upisa prikazati preview i deterministicki spojiti postojece, azurirati rucne kolone ili dodati novu opremu.",
     localHistory: getWorkOrderDocumentRoLocalHistory(workOrder),
     expectedJsonShape: buildWorkOrderDocumentRoAiExpectedJsonShape(),
   };
@@ -132310,6 +132321,7 @@ async function addWorkOrderDocumentRoAiFiles(files, workOrder = {}) {
       fileMap.set(String(file.id || file.name), file);
     });
     entry.aiFiles = Array.from(fileMap.values()).slice(0, WORK_ORDER_DOCUMENT_RO_AI_MAX_FILES);
+    entry.aiImportPreview = null;
     const inlineCount = entry.aiFiles.filter((file) => file.inlineReady || file.contentDataUrl).length;
     const mode = normalizeWorkOrderDocumentRoAiBatchMode(entry.aiBatchMode || "batch");
     entry.aiMessage = mode === "batch"
@@ -132327,7 +132339,308 @@ function removeWorkOrderDocumentRoAiFile(workOrder = {}, fileId = "") {
   const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
   entry.aiFiles = (Array.isArray(entry.aiFiles) ? entry.aiFiles : [])
     .filter((file) => String(file.id || file.name) !== String(fileId));
+  entry.aiImportPreview = null;
   entry.aiMessage = entry.aiFiles.length ? `${entry.aiFiles.length} datoteka ostaje za NexAI.` : "";
+  renderWorkOrderDocumentWizard();
+}
+
+const WORK_ORDER_DOCUMENT_RO_AI_IMPORT_ACTION_LABELS = Object.freeze({
+  select: "Označi postojeću",
+  update: "Ažuriraj kolonu",
+  add: "Dodaj novo",
+  skip: "Preskoči",
+});
+
+function normalizeWorkOrderDocumentRoMatchText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLocaleLowerCase("hr")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function normalizeWorkOrderDocumentRoIdentifier(value = "") {
+  return normalizeWorkOrderDocumentRoMatchText(value).replace(/\s+/g, "");
+}
+
+function getWorkOrderDocumentRoMatchTokens(...values) {
+  const stopWords = new Set(["rad", "oprema", "uredaj", "stroj"]);
+  return new Set(values
+    .flatMap((value) => normalizeWorkOrderDocumentRoMatchText(value).split(/\s+/g))
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 3 && !stopWords.has(value)));
+}
+
+function scoreWorkOrderDocumentRoEquipmentMatch(recognized = {}, existing = {}) {
+  const recognizedSerial = normalizeWorkOrderDocumentRoIdentifier(recognized.serialNumber);
+  const existingSerial = normalizeWorkOrderDocumentRoIdentifier(existing.serialNumber);
+  if (recognizedSerial.length >= 4 && recognizedSerial === existingSerial) {
+    return { score: 100, reason: "Serijski broj" };
+  }
+
+  const recognizedInventory = normalizeWorkOrderDocumentRoIdentifier(recognized.inventoryNumber);
+  const existingInventory = normalizeWorkOrderDocumentRoIdentifier(existing.inventoryNumber);
+  if (recognizedInventory.length >= 3 && recognizedInventory === existingInventory) {
+    return { score: 96, reason: "Inventarski broj" };
+  }
+
+  const recognizedManufacturer = normalizeWorkOrderDocumentRoMatchText(recognized.manufacturer);
+  const existingManufacturer = normalizeWorkOrderDocumentRoMatchText(existing.manufacturer);
+  const recognizedModel = normalizeWorkOrderDocumentRoIdentifier(recognized.model);
+  const existingModel = normalizeWorkOrderDocumentRoIdentifier(existing.model);
+  if (
+    recognizedManufacturer
+    && existingManufacturer
+    && recognizedModel.length >= 3
+    && recognizedModel === existingModel
+    && (
+      recognizedManufacturer === existingManufacturer
+      || recognizedManufacturer.includes(existingManufacturer)
+      || existingManufacturer.includes(recognizedManufacturer)
+    )
+  ) {
+    return { score: 90, reason: "Proizvođač + model" };
+  }
+  if (recognizedModel.length >= 4 && recognizedModel === existingModel) {
+    return { score: 82, reason: "Model / tip" };
+  }
+
+  const recognizedTokens = getWorkOrderDocumentRoMatchTokens(
+    recognized.name,
+    recognized.manufacturer,
+    recognized.model,
+    recognized.technicalData,
+  );
+  const existingTokens = getWorkOrderDocumentRoMatchTokens(
+    existing.name,
+    existing.manufacturer,
+    existing.model,
+    existing.technicalData,
+  );
+  if (!recognizedTokens.size || !existingTokens.size) {
+    return { score: 0, reason: "" };
+  }
+  const overlap = [...recognizedTokens].filter((token) => existingTokens.has(token)).length;
+  if (!overlap) {
+    return { score: 0, reason: "" };
+  }
+  const denominator = Math.max(1, Math.min(recognizedTokens.size, existingTokens.size));
+  return {
+    score: Math.min(80, 55 + Math.floor((35 * overlap) / denominator)),
+    reason: `Naziv / tip (${overlap} poklapanja)`,
+  };
+}
+
+function getWorkOrderDocumentRoExistingMatchCandidates(entry = {}) {
+  const manualEquipments = getReadyWorkOrderDocumentRoManualEquipments(entry);
+  const manualCandidates = manualEquipments.map((equipment, index) => ({
+    kind: "manual",
+    index,
+    id: String(equipment.id || ""),
+    label: [equipment.name || "Ručna RO kolona", equipment.manufacturer, equipment.model].filter(Boolean).join(" - "),
+    meta: [
+      equipment.serialNumber ? `Ser. ${equipment.serialNumber}` : "",
+      equipment.inventoryNumber ? `Inv. ${equipment.inventoryNumber}` : "",
+      "ručno dodana kolona",
+    ].filter(Boolean).join(" · "),
+    name: equipment.name,
+    manufacturer: equipment.manufacturer,
+    model: equipment.model,
+    serialNumber: equipment.serialNumber,
+    inventoryNumber: equipment.inventoryNumber,
+    technicalData: equipment.technicalData,
+  }));
+
+  const existingItems = (Array.isArray(entry.items) ? entry.items : []).map((item, index) => {
+    const equipment = item?.equipment && typeof item.equipment === "object" ? item.equipment : {};
+    return {
+      kind: "isznr",
+      index,
+      id: String(item?.id || ""),
+      label: [
+        item?.equipmentType || equipment.name || item?.name || "IS ZNR oprema",
+        equipment.manufacturer || item?.manufacturer || "",
+        equipment.model || item?.model || "",
+      ].filter(Boolean).join(" - "),
+      meta: [
+        equipment.serialNumber || item?.serialNumber ? `Ser. ${equipment.serialNumber || item.serialNumber}` : "",
+        equipment.inventoryNumber || item?.inventoryNumber ? `Inv. ${equipment.inventoryNumber || item.inventoryNumber}` : "",
+        item?.deadlineForNextExamination ? `Rok ${item.deadlineForNextExamination}` : "",
+        "IS ZNR popis",
+      ].filter(Boolean).join(" · "),
+      name: equipment.name || item?.equipmentType || item?.name || "",
+      manufacturer: equipment.manufacturer || item?.manufacturer || "",
+      model: equipment.model || item?.model || "",
+      serialNumber: equipment.serialNumber || item?.serialNumber || "",
+      inventoryNumber: equipment.inventoryNumber || item?.inventoryNumber || "",
+      technicalData: equipment.technicalData || item?.technicalData || "",
+    };
+  });
+
+  return [...manualCandidates, ...existingItems].filter((candidate) => (
+    candidate.id || candidate.name || candidate.manufacturer || candidate.model || candidate.serialNumber || candidate.inventoryNumber
+  ));
+}
+
+function mergeWorkOrderDocumentRoAttachmentFiles(first = [], second = []) {
+  const map = new Map();
+  [...(Array.isArray(first) ? first : []), ...(Array.isArray(second) ? second : [])].forEach((file) => {
+    const normalized = {
+      fileName: String(file?.fileName || file?.name || "").trim(),
+      fileType: String(file?.fileType || file?.type || file?.mimeType || "").trim(),
+      fileSize: Number(file?.fileSize || file?.size || 0) || 0,
+      dataUrl: String(file?.dataUrl || file?.contentDataUrl || "").trim(),
+      description: String(file?.description || "").trim(),
+    };
+    const key = [normalized.fileName, normalized.fileSize, normalized.dataUrl.slice(0, 80)].join("|").toLowerCase();
+    if (normalized.fileName && normalized.dataUrl && !map.has(key)) {
+      map.set(key, normalized);
+    }
+  });
+  return [...map.values()].slice(0, 12);
+}
+
+function mergeWorkOrderDocumentRoManualEquipment(existing = {}, incoming = {}) {
+  const normalizedExisting = normalizeWorkOrderDocumentRoManualEquipment(existing);
+  const normalizedIncoming = normalizeWorkOrderDocumentRoManualEquipment(incoming);
+  return normalizeWorkOrderDocumentRoManualEquipment({
+    ...normalizedExisting,
+    name: normalizedIncoming.name || normalizedExisting.name,
+    manufacturer: normalizedIncoming.manufacturer || normalizedExisting.manufacturer,
+    model: normalizedIncoming.model || normalizedExisting.model,
+    serialNumber: normalizedIncoming.serialNumber || normalizedExisting.serialNumber,
+    inventoryNumber: normalizedIncoming.inventoryNumber || normalizedExisting.inventoryNumber,
+    technicalData: normalizedIncoming.technicalData || normalizedExisting.technicalData,
+    purposeDescription: normalizedIncoming.purposeDescription || normalizedExisting.purposeDescription,
+    workspacePosition: normalizedIncoming.workspacePosition || normalizedExisting.workspacePosition,
+    workingSubstancesAndRawMaterials: normalizedIncoming.workingSubstancesAndRawMaterials || normalizedExisting.workingSubstancesAndRawMaterials,
+    useAndMaintenance: normalizedIncoming.useAndMaintenance || normalizedExisting.useAndMaintenance,
+    methodsProceduresAndNorms: normalizedIncoming.methodsProceduresAndNorms || normalizedExisting.methodsProceduresAndNorms,
+    deficiencies: normalizedIncoming.deficiencies || normalizedExisting.deficiencies,
+    measuresToEliminateDeficiencies: normalizedIncoming.measuresToEliminateDeficiencies || normalizedExisting.measuresToEliminateDeficiencies,
+    finalGrade: normalizedIncoming.finalGrade ?? normalizedExisting.finalGrade,
+    mechanicalItems: normalizedIncoming.mechanicalItems?.length ? normalizedIncoming.mechanicalItems : normalizedExisting.mechanicalItems,
+    electricalItems: normalizedIncoming.electricalItems?.length ? normalizedIncoming.electricalItems : normalizedExisting.electricalItems,
+    hazardRegisterIris: normalizedIncoming.hazardRegisterIris?.length ? normalizedIncoming.hazardRegisterIris : normalizedExisting.hazardRegisterIris,
+    harmfulnessRegisterIris: normalizedIncoming.harmfulnessRegisterIris?.length ? normalizedIncoming.harmfulnessRegisterIris : normalizedExisting.harmfulnessRegisterIris,
+    strainRegisterIris: normalizedIncoming.strainRegisterIris?.length ? normalizedIncoming.strainRegisterIris : normalizedExisting.strainRegisterIris,
+    note: [normalizedExisting.note, normalizedIncoming.note].filter(Boolean).join("\n"),
+    attachments: mergeWorkOrderDocumentRoAttachmentFiles(normalizedExisting.attachments, normalizedIncoming.attachments),
+  });
+}
+
+function buildWorkOrderDocumentRoAiImportPreview(entry = {}, result = {}) {
+  const suggestions = Array.isArray(result?.workEquipments)
+    ? result.workEquipments
+    : (Array.isArray(result?.equipments) ? result.equipments : []);
+  const candidates = getWorkOrderDocumentRoExistingMatchCandidates(entry);
+  const usedMatches = new Set();
+  const rows = suggestions.map((suggestion, index) => {
+    const manual = normalizeWorkOrderDocumentRoManualEquipment({
+      ...suggestion,
+      source: "ai",
+      attachments: suggestion.attachments?.length
+        ? suggestion.attachments
+        : getWorkOrderDocumentRoAiFilesForAttachments(entry, index, suggestion),
+    }, index);
+    const best = candidates
+      .map((candidate) => ({
+        candidate,
+        ...scoreWorkOrderDocumentRoEquipmentMatch(manual, candidate),
+      }))
+      .filter((match) => match.score >= 55)
+      .sort((left, right) => right.score - left.score)[0] || null;
+    const matchKey = best ? `${best.candidate.kind}:${best.candidate.id || best.candidate.index}` : "";
+    const repeatedMatch = matchKey && usedMatches.has(matchKey);
+    if (matchKey && !repeatedMatch) {
+      usedMatches.add(matchKey);
+    }
+    const defaultAction = repeatedMatch
+      ? "skip"
+      : best?.candidate?.kind === "isznr"
+      ? "select"
+      : best?.candidate?.kind === "manual"
+      ? "update"
+      : "add";
+    const allowedActions = best?.candidate?.kind === "isznr"
+      ? ["select", "add", "skip"]
+      : best?.candidate?.kind === "manual"
+      ? ["update", "add", "skip"]
+      : ["add", "skip"];
+    return {
+      id: createClientSideId(`ro-ai-import-${index + 1}`),
+      index,
+      action: defaultAction,
+      allowedActions,
+      manual,
+      suggestion,
+      matchKind: best?.candidate?.kind || "",
+      matchIndex: Number.isFinite(best?.candidate?.index) ? best.candidate.index : -1,
+      matchItemId: best?.candidate?.id || "",
+      matchLabel: best?.candidate?.label || "",
+      matchMeta: best?.candidate?.meta || "",
+      score: best?.score || 0,
+      reason: repeatedMatch ? "Već povezano s drugom prepoznatom stavkom" : (best?.reason || ""),
+    };
+  });
+  return {
+    rows,
+    summary: String(result?.summary || result?.message || "").trim(),
+    warnings: Array.isArray(result?.warnings) ? result.warnings.filter(Boolean) : [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function applyWorkOrderDocumentRoAiImportPreview(workOrder = {}) {
+  const entry = getWorkOrderDocumentIsznrWorkEquipmentState(workOrder?.id);
+  const preview = entry.aiImportPreview;
+  const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+  if (!rows.length) {
+    entry.aiMessage = "Nema pripremljenog popisa za upis.";
+    renderWorkOrderDocumentWizard();
+    return;
+  }
+  const selectedIds = new Set((Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean));
+  const manualEquipments = getReadyWorkOrderDocumentRoManualEquipments(entry);
+  let updated = 0;
+  let added = 0;
+  let selected = 0;
+  let skipped = 0;
+
+  rows.forEach((row) => {
+    const action = WORK_ORDER_DOCUMENT_RO_AI_IMPORT_ACTION_LABELS[row.action] ? row.action : "skip";
+    if (action === "select" && row.matchKind === "isznr" && row.matchItemId) {
+      selectedIds.add(row.matchItemId);
+      selected += 1;
+      return;
+    }
+    if (action === "update" && row.matchKind === "manual" && row.matchIndex >= 0 && manualEquipments[row.matchIndex]) {
+      manualEquipments[row.matchIndex] = mergeWorkOrderDocumentRoManualEquipment(manualEquipments[row.matchIndex], row.manual);
+      updated += 1;
+      return;
+    }
+    if (action === "add") {
+      manualEquipments.push(normalizeWorkOrderDocumentRoManualEquipment(row.manual, manualEquipments.length));
+      added += 1;
+      return;
+    }
+    skipped += 1;
+  });
+
+  entry.selectedItemIds = [...selectedIds];
+  entry.manualEquipments = manualEquipments;
+  entry.aiImportPreview = null;
+  entry.aiMessage = [
+    selected ? `${selected} postojeće označeno` : "",
+    updated ? `${updated} kolona ažurirano` : "",
+    added ? `${added} novo dodano` : "",
+    skipped ? `${skipped} preskočeno` : "",
+  ].filter(Boolean).join(" · ") || "RO popis je provjeren bez promjena.";
+  void learnWorkEquipmentAiProfileVariantsFromResult(entry.aiResult || {});
   renderWorkOrderDocumentWizard();
 }
 
@@ -132339,44 +132652,16 @@ function applyWorkOrderDocumentRoAiResult(workOrder = {}, entry = {}, result = {
     entry.aiMessage = result?.summary || "NexAI nije pronašao radnu opremu za automatsko popunjavanje.";
     return 0;
   }
-  const existing = new Map(getReadyWorkOrderDocumentRoManualEquipments(entry).map((equipment) => [
-    [
-      equipment.serialNumber,
-      equipment.inventoryNumber,
-      equipment.name,
-      equipment.manufacturer,
-      equipment.model,
-    ].join("|").toLowerCase(),
-    equipment,
-  ]));
-  suggestions.forEach((suggestion, index) => {
-    const manual = normalizeWorkOrderDocumentRoManualEquipment({
-      ...suggestion,
-      source: "ai",
-      attachments: suggestion.attachments?.length
-        ? suggestion.attachments
-        : getWorkOrderDocumentRoAiFilesForAttachments(entry, index, suggestion),
-    }, index);
-    const key = [
-      manual.serialNumber,
-      manual.inventoryNumber,
-      manual.name,
-      manual.manufacturer,
-      manual.model,
-    ].join("|").toLowerCase();
-    if (key.replace(/\|/g, "").trim()) {
-      existing.set(key, manual);
-    }
-  });
-  entry.manualEquipments = Array.from(existing.values());
+  const preview = buildWorkOrderDocumentRoAiImportPreview(entry, result);
   const warnings = Array.isArray(result?.warnings) ? result.warnings.filter(Boolean) : [];
   entry.aiResult = result;
+  entry.aiImportPreview = preview;
   entry.aiMessage = [
-    result?.summary || `NexAI je pripremio ${suggestions.length} stavki radne opreme.`,
-    warnings.length ? `Provjeri: ${warnings.slice(0, 3).join("; ")}` : "",
+    result?.summary || `NexAI je pripremio ${preview.rows.length} stavki radne opreme.`,
+    "Provjeri popis prije upisa da ne nastanu duplikati.",
+    warnings.length ? `Napomena: ${warnings.slice(0, 3).join("; ")}` : "",
   ].filter(Boolean).join(" ");
-  void learnWorkEquipmentAiProfileVariantsFromResult(result);
-  return suggestions.length;
+  return preview.rows.length;
 }
 
 async function runWorkOrderDocumentRoAi(workOrder = {}) {
@@ -134174,6 +134459,111 @@ function renderWorkOrderDocumentWizardCommonRoSection(workOrders = getAllSelecte
   });
 }
 
+function appendWorkOrderDocumentRoAiImportPreview(panel, workOrder = {}, stateEntry = {}) {
+  const preview = stateEntry.aiImportPreview;
+  const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+  if (!rows.length) {
+    return;
+  }
+
+  const wrap = document.createElement("section");
+  wrap.className = "work-order-document-ro-ai-import-preview";
+
+  const head = document.createElement("div");
+  head.className = "work-order-document-ro-ai-import-preview-head";
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = "Prepoznati popis opreme";
+  const subtitle = document.createElement("span");
+  const selectCount = rows.filter((row) => row.action === "select").length;
+  const updateCount = rows.filter((row) => row.action === "update").length;
+  const addCount = rows.filter((row) => row.action === "add").length;
+  const skipCount = rows.filter((row) => row.action === "skip").length;
+  subtitle.textContent = [
+    selectCount ? `${selectCount} postojeće` : "",
+    updateCount ? `${updateCount} ažuriranje` : "",
+    addCount ? `${addCount} novo` : "",
+    skipCount ? `${skipCount} preskoči` : "",
+  ].filter(Boolean).join(" · ") || "Odaberi akciju za svaki red.";
+  copy.append(title, subtitle);
+
+  const actions = document.createElement("div");
+  actions.className = "work-order-document-ro-ai-import-preview-actions";
+  const discardButton = document.createElement("button");
+  discardButton.type = "button";
+  discardButton.className = "ghost-button";
+  discardButton.textContent = "Odbaci";
+  discardButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    stateEntry.aiImportPreview = null;
+    stateEntry.aiMessage = "Prepoznati RO popis je odbačen.";
+    renderWorkOrderDocumentWizard();
+  });
+  const applyButton = document.createElement("button");
+  applyButton.type = "button";
+  applyButton.className = "primary-action-button";
+  applyButton.textContent = "Primijeni popis";
+  applyButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    applyWorkOrderDocumentRoAiImportPreview(workOrder);
+  });
+  actions.append(discardButton, applyButton);
+  head.append(copy, actions);
+  wrap.append(head);
+
+  const list = document.createElement("div");
+  list.className = "work-order-document-ro-ai-import-list";
+  rows.forEach((row) => {
+    const card = document.createElement("article");
+    card.className = `work-order-document-ro-ai-import-row is-${row.action || "add"}`;
+
+    const rowCopy = document.createElement("div");
+    rowCopy.className = "work-order-document-ro-ai-import-row-copy";
+    const name = document.createElement("strong");
+    name.textContent = [
+      row.manual?.name || "Radna oprema",
+      row.manual?.manufacturer || "",
+      row.manual?.model || "",
+    ].filter(Boolean).join(" - ");
+    const meta = document.createElement("span");
+    meta.textContent = [
+      row.manual?.serialNumber ? `Ser. ${row.manual.serialNumber}` : "",
+      row.manual?.inventoryNumber ? `Inv. ${row.manual.inventoryNumber}` : "",
+      row.manual?.attachments?.length ? `${row.manual.attachments.length} slika` : "",
+    ].filter(Boolean).join(" · ") || "AI prijedlog";
+    rowCopy.append(name, meta);
+
+    const match = document.createElement("small");
+    match.textContent = row.matchLabel
+      ? [
+        `Poklapanje: ${row.matchLabel}`,
+        row.reason ? `${row.reason} ${row.score}%` : "",
+        row.matchMeta,
+      ].filter(Boolean).join(" · ")
+      : "Nema sigurnog poklapanja u postojećem popisu.";
+    rowCopy.append(match);
+
+    const actionSelect = document.createElement("select");
+    actionSelect.className = "work-order-document-ro-ai-import-action";
+    (Array.isArray(row.allowedActions) && row.allowedActions.length ? row.allowedActions : ["add", "skip"]).forEach((action) => {
+      const option = document.createElement("option");
+      option.value = action;
+      option.textContent = WORK_ORDER_DOCUMENT_RO_AI_IMPORT_ACTION_LABELS[action] || action;
+      option.selected = action === row.action;
+      actionSelect.append(option);
+    });
+    actionSelect.addEventListener("change", (event) => {
+      event.stopPropagation();
+      row.action = actionSelect.value;
+      renderWorkOrderDocumentWizard();
+    });
+    card.append(rowCopy, actionSelect);
+    list.append(card);
+  });
+  wrap.append(list);
+  panel.append(wrap);
+}
+
 function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry = {}) {
   const panel = document.createElement("section");
   panel.className = "work-order-document-ro-ai-panel";
@@ -134303,6 +134693,8 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
     });
     panel.append(fileList);
   }
+
+  appendWorkOrderDocumentRoAiImportPreview(panel, workOrder, stateEntry);
 
   const manualEquipments = getReadyWorkOrderDocumentRoManualEquipments(stateEntry);
   if (manualEquipments.length) {

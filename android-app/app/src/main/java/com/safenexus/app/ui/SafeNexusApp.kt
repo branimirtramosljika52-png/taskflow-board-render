@@ -10393,14 +10393,9 @@ private fun DocumentationWorkEquipmentOptionList(
             enabled = enabled,
             manualEquipments = manualEquipments,
             onRecognizeBatchImages = onRecognizeWorkEquipmentBatchImages,
-            onApply = { recognizedEquipments, replaceExisting ->
-                val nextEquipments = if (replaceExisting) {
-                    recognizedEquipments
-                } else {
-                    manualEquipments + recognizedEquipments
-                }
+            onApply = { nextEquipments, focusIndex ->
                 onManualEquipmentsChange(nextEquipments)
-                activeManualEquipmentIndex = if (replaceExisting) 0 else manualEquipments.size.coerceAtLeast(0)
+                activeManualEquipmentIndex = focusIndex.coerceIn(0, nextEquipments.lastIndex.coerceAtLeast(0))
             },
         )
         if (manualEquipments.isNotEmpty()) {
@@ -10782,6 +10777,192 @@ private fun WorkEquipmentImageRecognitionResult.toManualWorkEquipmentFromBatch(
     )
 }
 
+private enum class WorkEquipmentImportAction(val label: String) {
+    Update("Ažuriraj"),
+    Add("Novo"),
+    Skip("Preskoči"),
+}
+
+private data class WorkEquipmentImportMatch(
+    val recognizedIndex: Int,
+    val recognized: WorkEquipmentImageRecognitionResult,
+    val manual: IsznrManualWorkEquipment,
+    val existingIndex: Int?,
+    val score: Int,
+    val reason: String,
+    val defaultAction: WorkEquipmentImportAction,
+)
+
+private fun normalizeWorkEquipmentMatchText(value: String): String =
+    Normalizer.normalize(value.trim().lowercase(Locale.getDefault()), Normalizer.Form.NFD)
+        .replace("[\\u0300-\\u036f]".toRegex(), "")
+        .replace("đ", "d")
+        .replace("[^a-z0-9]+".toRegex(), " ")
+        .trim()
+
+private fun normalizeWorkEquipmentIdentifier(value: String): String =
+    normalizeWorkEquipmentMatchText(value).replace(" ", "")
+
+private fun workEquipmentMatchTokens(vararg values: String): Set<String> =
+    values
+        .flatMap { normalizeWorkEquipmentMatchText(it).split(" ") }
+        .map { it.trim() }
+        .filter { it.length >= 3 && it !in setOf("rad", "oprema", "uredaj", "stroj") }
+        .toSet()
+
+private fun scoreWorkEquipmentMatch(
+    recognized: WorkEquipmentImageRecognitionResult,
+    existing: IsznrManualWorkEquipment,
+): Pair<Int, String> {
+    val recognizedSerial = normalizeWorkEquipmentIdentifier(recognized.serialNumber)
+    val existingSerial = normalizeWorkEquipmentIdentifier(existing.serialNumber)
+    if (recognizedSerial.length >= 4 && recognizedSerial == existingSerial) {
+        return 100 to "Serijski broj"
+    }
+
+    val recognizedInventory = normalizeWorkEquipmentIdentifier(recognized.inventoryNumber)
+    val existingInventory = normalizeWorkEquipmentIdentifier(existing.inventoryNumber)
+    if (recognizedInventory.length >= 3 && recognizedInventory == existingInventory) {
+        return 96 to "Inventarski broj"
+    }
+
+    val recognizedManufacturer = normalizeWorkEquipmentMatchText(recognized.manufacturer)
+    val existingManufacturer = normalizeWorkEquipmentMatchText(existing.manufacturer)
+    val recognizedModel = normalizeWorkEquipmentIdentifier(recognized.model)
+    val existingModel = normalizeWorkEquipmentIdentifier(existing.model)
+    if (
+        recognizedManufacturer.isNotBlank()
+        && existingManufacturer.isNotBlank()
+        && recognizedModel.length >= 3
+        && recognizedModel == existingModel
+        && (recognizedManufacturer == existingManufacturer
+            || recognizedManufacturer.contains(existingManufacturer)
+            || existingManufacturer.contains(recognizedManufacturer))
+    ) {
+        return 90 to "Proizvođač + model"
+    }
+    if (recognizedModel.length >= 4 && recognizedModel == existingModel) {
+        return 82 to "Model / tip"
+    }
+
+    val recognizedTokens = workEquipmentMatchTokens(
+        recognized.name,
+        recognized.manufacturer,
+        recognized.model,
+        recognized.technicalData,
+    )
+    val existingTokens = workEquipmentMatchTokens(
+        existing.name,
+        existing.manufacturer,
+        existing.model,
+        existing.technicalData,
+    )
+    if (recognizedTokens.isEmpty() || existingTokens.isEmpty()) {
+        return 0 to ""
+    }
+    val overlap = recognizedTokens.intersect(existingTokens).size
+    if (overlap == 0) {
+        return 0 to ""
+    }
+    val denominator = minOf(recognizedTokens.size, existingTokens.size).coerceAtLeast(1)
+    val score = (55 + (35 * overlap / denominator)).coerceAtMost(80)
+    return score to "Naziv / tip (${overlap} poklapanja)"
+}
+
+private fun buildWorkEquipmentImportMatches(
+    existingEquipments: List<IsznrManualWorkEquipment>,
+    recognizedItems: List<WorkEquipmentImageRecognitionResult>,
+    files: List<IsznrRoAttachmentFile>,
+): List<WorkEquipmentImportMatch> {
+    val usedExisting = mutableSetOf<Int>()
+    return recognizedItems.mapIndexed { recognizedIndex, item ->
+        val manual = item.toManualWorkEquipmentFromBatch(files, recognizedIndex, recognizedItems.size)
+        val best = existingEquipments
+            .mapIndexed { existingIndex, existing ->
+                val (score, reason) = scoreWorkEquipmentMatch(item, existing)
+                Triple(existingIndex, score, reason)
+            }
+            .filter { it.second >= 55 }
+            .maxByOrNull { it.second }
+        val existingIndex = best?.first
+        val defaultAction = when {
+            existingIndex != null && existingIndex !in usedExisting && best.second >= 55 -> {
+                usedExisting += existingIndex
+                WorkEquipmentImportAction.Update
+            }
+            existingIndex != null && existingIndex in usedExisting -> WorkEquipmentImportAction.Skip
+            else -> WorkEquipmentImportAction.Add
+        }
+        WorkEquipmentImportMatch(
+            recognizedIndex = recognizedIndex,
+            recognized = item,
+            manual = manual,
+            existingIndex = existingIndex,
+            score = best?.second ?: 0,
+            reason = best?.third.orEmpty(),
+            defaultAction = defaultAction,
+        )
+    }
+}
+
+private fun mergeWorkEquipmentAttachmentFiles(
+    first: List<IsznrRoAttachmentFile>,
+    second: List<IsznrRoAttachmentFile>,
+): List<IsznrRoAttachmentFile> =
+    (first + second).distinctBy { file ->
+        listOf(file.id, file.fileName, file.fileSize.toString())
+            .joinToString("|")
+            .lowercase(Locale.getDefault())
+    }
+
+private fun mergeRecognizedWorkEquipment(
+    existing: IsznrManualWorkEquipment,
+    recognized: IsznrManualWorkEquipment,
+): IsznrManualWorkEquipment =
+    existing.copy(
+        name = recognized.name.takeIf { it.isNotBlank() && !it.startsWith("Radna oprema ") } ?: existing.name,
+        manufacturer = recognized.manufacturer.ifBlank { existing.manufacturer },
+        model = recognized.model.ifBlank { existing.model },
+        serialNumber = recognized.serialNumber.ifBlank { existing.serialNumber },
+        inventoryNumber = recognized.inventoryNumber.ifBlank { existing.inventoryNumber },
+        technicalData = recognized.technicalData.ifBlank { existing.technicalData },
+        note = listOf(existing.note, recognized.note)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("\n"),
+        attachments = mergeWorkEquipmentAttachmentFiles(existing.attachments, recognized.attachments),
+    )
+
+private fun applyWorkEquipmentImportMatches(
+    existingEquipments: List<IsznrManualWorkEquipment>,
+    matches: List<WorkEquipmentImportMatch>,
+    actions: Map<Int, WorkEquipmentImportAction>,
+): Pair<List<IsznrManualWorkEquipment>, Int> {
+    val next = existingEquipments.toMutableList()
+    var focusIndex = next.lastIndex.coerceAtLeast(0)
+    matches.forEach { match ->
+        when (actions[match.recognizedIndex] ?: match.defaultAction) {
+            WorkEquipmentImportAction.Update -> {
+                val targetIndex = match.existingIndex
+                if (targetIndex != null && targetIndex in next.indices) {
+                    next[targetIndex] = mergeRecognizedWorkEquipment(next[targetIndex], match.manual)
+                    focusIndex = targetIndex
+                } else {
+                    next += match.manual
+                    focusIndex = next.lastIndex
+                }
+            }
+            WorkEquipmentImportAction.Add -> {
+                next += match.manual
+                focusIndex = next.lastIndex
+            }
+            WorkEquipmentImportAction.Skip -> Unit
+        }
+    }
+    return next to focusIndex
+}
+
 private const val WORK_EQUIPMENT_REPORT_TEMPLATE_PREFS = "safe_nexus_ro_report_templates"
 private const val WORK_EQUIPMENT_REPORT_TEMPLATE_ITEMS_KEY = "items"
 
@@ -11026,7 +11207,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
-    onApply: (List<IsznrManualWorkEquipment>, Boolean) -> Unit,
+    onApply: (List<IsznrManualWorkEquipment>, Int) -> Unit,
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -11062,30 +11243,50 @@ private fun WorkEquipmentBatchNexAiUploadCard(
         }
     }
 
-    fun applyPreview(result: WorkEquipmentImageRecognitionResult, replaceExisting: Boolean) {
+    fun applyPreview(
+        result: WorkEquipmentImageRecognitionResult,
+        actions: Map<Int, WorkEquipmentImportAction>,
+        matches: List<WorkEquipmentImportMatch>,
+        replaceAll: Boolean = false,
+    ) {
         val items = result.recognizedWorkEquipmentItems()
         if (items.isEmpty()) {
             message = "NexAI nije vratio sigurne RO kolone."
             return
         }
-        val nextEquipments = items.mapIndexed { index, item ->
-            item.toManualWorkEquipmentFromBatch(files, index, items.size)
+        val (nextEquipments, focusIndex) = if (replaceAll) {
+            items.mapIndexed { index, item -> item.toManualWorkEquipmentFromBatch(files, index, items.size) } to 0
+        } else {
+            applyWorkEquipmentImportMatches(manualEquipments, matches, actions)
         }
-        onApply(nextEquipments, replaceExisting)
+        onApply(nextEquipments, focusIndex)
         preview = null
         files = emptyList()
-        message = if (replaceExisting) {
-            "RO kolone su zamijenjene s ${nextEquipments.size} prepoznatih strojeva."
+        message = if (replaceAll) {
+            "RO kolone su zamijenjene s ${items.size} prepoznatih strojeva."
         } else {
-            "${nextEquipments.size} prepoznatih strojeva dodano je u RO kolone."
+            val updated = matches.count { actions[it.recognizedIndex] == WorkEquipmentImportAction.Update }
+            val added = matches.count { actions[it.recognizedIndex] == WorkEquipmentImportAction.Add }
+            val skipped = matches.count { actions[it.recognizedIndex] == WorkEquipmentImportAction.Skip }
+            listOf(
+                updated.takeIf { it > 0 }?.let { "$it ažurirano" },
+                added.takeIf { it > 0 }?.let { "$it novo" },
+                skipped.takeIf { it > 0 }?.let { "$it preskočeno" },
+            ).filterNotNull().joinToString(" · ").ifBlank { "RO popis je provjeren bez promjena." }
         }
     }
 
     preview?.let { result ->
         val items = result.recognizedWorkEquipmentItems()
+        val matches = remember(result, manualEquipments, files) {
+            buildWorkEquipmentImportMatches(manualEquipments, items, files)
+        }
+        var actionOverrides by remember(result, manualEquipments, files) {
+            mutableStateOf(matches.associate { it.recognizedIndex to it.defaultAction })
+        }
         AlertDialog(
             onDismissRequest = { preview = null },
-            title = { Text("Provjeri NexAI kolone") },
+            title = { Text("Provjeri RO popis") },
             text = {
                 Column(
                     modifier = Modifier
@@ -11094,10 +11295,21 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        result.message.ifBlank { "NexAI je pripremio ${items.size} RO kolona iz slika." },
+                        result.message.ifBlank { "NexAI je pripremio ${items.size} RO stavki. Provjeri da nema duplikata prije upisa." },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
+                    if (matches.isNotEmpty()) {
+                        val updateCount = matches.count { (actionOverrides[it.recognizedIndex] ?: it.defaultAction) == WorkEquipmentImportAction.Update }
+                        val addCount = matches.count { (actionOverrides[it.recognizedIndex] ?: it.defaultAction) == WorkEquipmentImportAction.Add }
+                        val skipCount = matches.count { (actionOverrides[it.recognizedIndex] ?: it.defaultAction) == WorkEquipmentImportAction.Skip }
+                        Text(
+                            "Plan: $updateCount ažuriraj · $addCount novo · $skipCount preskoči",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF1D4ED8),
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
                     if (items.isEmpty()) {
                         Text(
                             "Nema sigurnih strojeva za upis. Dodaj jasnije slike cijelog stroja i pločice.",
@@ -11105,11 +11317,19 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                             fontWeight = FontWeight.Bold,
                         )
                     }
-                    items.forEachIndexed { index, item ->
+                    matches.forEach { match ->
+                        val index = match.recognizedIndex
+                        val item = match.recognized
+                        val selectedAction = actionOverrides[index] ?: match.defaultAction
+                        val existing = match.existingIndex?.let { manualEquipments.getOrNull(it) }
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                            color = when (selectedAction) {
+                                WorkEquipmentImportAction.Update -> Color(0xFFEFF6FF)
+                                WorkEquipmentImportAction.Add -> Color(0xFFF0FDF4)
+                                WorkEquipmentImportAction.Skip -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f)
+                            },
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
                         ) {
                             Column(
@@ -11120,6 +11340,21 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                     "${index + 1}. ${item.name.ifBlank { "Radna oprema" }}",
                                     fontWeight = FontWeight.Black,
                                 )
+                                if (existing != null) {
+                                    Text(
+                                        "Nađeno u postojećem popisu: ${existing.name.ifBlank { "Radna oprema" }}${match.reason.takeIf { it.isNotBlank() }?.let { " · $it ${match.score}%" }.orEmpty()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF1D4ED8),
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                } else {
+                                    Text(
+                                        "Nema poklapanja u trenutnom popisu - ide kao nova oprema.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF15803D),
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
                                 listOf(
                                     "Proizvođač" to item.manufacturer,
                                     "Model / tip" to item.model,
@@ -11144,6 +11379,21 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    WorkEquipmentImportAction.values().forEach { action ->
+                                        FilterChip(
+                                            selected = selectedAction == action,
+                                            onClick = {
+                                                actionOverrides = actionOverrides + (index to action)
+                                            },
+                                            label = { Text(action.label) },
+                                            enabled = action != WorkEquipmentImportAction.Update || existing != null,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -11151,11 +11401,11 @@ private fun WorkEquipmentBatchNexAiUploadCard(
             },
             confirmButton = {
                 Button(
-                    onClick = { applyPreview(result, false) },
+                    onClick = { applyPreview(result, actionOverrides, matches) },
                     enabled = items.isNotEmpty(),
                     shape = RoundedCornerShape(14.dp),
                 ) {
-                    Text("Dodaj kolone")
+                    Text("Primijeni popis")
                 }
             },
             dismissButton = {
@@ -11164,10 +11414,10 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                         Text("Zatvori")
                     }
                     TextButton(
-                        onClick = { applyPreview(result, true) },
+                        onClick = { applyPreview(result, actionOverrides, matches, replaceAll = true) },
                         enabled = items.isNotEmpty(),
                     ) {
-                        Text(if (manualEquipments.isEmpty()) "Postavi kolone" else "Zamijeni")
+                        Text(if (manualEquipments.isEmpty()) "Postavi" else "Zamijeni sve")
                     }
                 }
             },

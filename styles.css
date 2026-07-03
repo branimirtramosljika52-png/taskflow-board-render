@@ -24946,6 +24946,111 @@ body.is-document-template-editor-open .chat-dock {
   white-space: nowrap;
 }
 
+.work-order-document-ro-ai-import-preview {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(96, 165, 250, 0.42);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.work-order-document-ro-ai-import-preview-head,
+.work-order-document-ro-ai-import-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.work-order-document-ro-ai-import-preview-head > div,
+.work-order-document-ro-ai-import-row-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.work-order-document-ro-ai-import-preview-head strong,
+.work-order-document-ro-ai-import-row-copy strong {
+  color: #0f172a;
+  font-size: 0.84rem;
+  font-weight: 950;
+}
+
+.work-order-document-ro-ai-import-preview-head span,
+.work-order-document-ro-ai-import-row-copy span,
+.work-order-document-ro-ai-import-row-copy small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.work-order-document-ro-ai-import-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.work-order-document-ro-ai-import-list {
+  display: grid;
+  gap: 8px;
+}
+
+.work-order-document-ro-ai-import-row {
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.work-order-document-ro-ai-import-row.is-select {
+  border-color: rgba(37, 99, 235, 0.34);
+  background: rgba(239, 246, 255, 0.92);
+}
+
+.work-order-document-ro-ai-import-row.is-update {
+  border-color: rgba(14, 165, 233, 0.36);
+  background: rgba(240, 249, 255, 0.94);
+}
+
+.work-order-document-ro-ai-import-row.is-add {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: rgba(240, 253, 244, 0.94);
+}
+
+.work-order-document-ro-ai-import-row.is-skip {
+  opacity: 0.72;
+}
+
+.work-order-document-ro-ai-import-action {
+  flex: 0 0 auto;
+  width: min(190px, 38vw);
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.72);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+@media (max-width: 760px) {
+  .work-order-document-ro-ai-import-preview-head,
+  .work-order-document-ro-ai-import-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .work-order-document-ro-ai-import-preview-actions,
+  .work-order-document-ro-ai-import-action {
+    width: 100%;
+  }
+}
+
 .work-order-document-ro-manual-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
