@@ -35963,9 +35963,146 @@ function getSettingsDocumentTemplateAiFieldIdentity(field = {}, fieldIndex = 0) 
   return String(field?.id || field?.key || field?.wordLabel || field?.label || `field-${fieldIndex + 1}`).trim();
 }
 
+function hasSettingsDocumentTemplateAiMarker(source = {}) {
+  if (!source || typeof source !== "object") {
+    return false;
+  }
+  return Boolean(
+    source.configured
+    || source.userConfigured
+    || source.user_configured
+    || source.manualConfigured
+    || source.manual_configured
+    || source.manual
+    || source.settingsVisible
+    || source.settings_visible
+    || source.aiSettingsVisible
+    || source.ai_settings_visible
+    || source.showInSettings
+    || source.show_in_settings
+  );
+}
+
+function valuesEqualForSettingsAi(left, right) {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    const leftList = Array.isArray(left) ? left.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    const rightList = Array.isArray(right) ? right.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    return leftList.length === rightList.length && leftList.every((value, index) => value === rightList[index]);
+  }
+  return String(left ?? "") === String(right ?? "");
+}
+
+function hasSettingsDocumentTemplateAiDifference(config = {}, defaults = {}, keys = []) {
+  return keys.some((key) => !valuesEqualForSettingsAi(config?.[key], defaults?.[key]));
+}
+
 function isSettingsDocumentTemplateAiFieldVisible(field = {}, fieldIndex = 0) {
-  const explicit = hasDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
-  return explicit || shouldDocumentTemplateFieldUseDefaultAi(field) || Boolean(getDocumentTemplateFieldAiConfigForTemplate(field, fieldIndex).enabled);
+  const source = (field?.ai ?? field?.aiConfig) && typeof (field.ai ?? field.aiConfig) === "object"
+    ? (field.ai ?? field.aiConfig)
+    : null;
+  if (!source || Object.keys(source).length === 0) {
+    return false;
+  }
+  if (hasSettingsDocumentTemplateAiMarker(source)) {
+    return true;
+  }
+  if (!hasDocumentTemplateFieldAiConfig(source, field)) {
+    return false;
+  }
+  if (!shouldDocumentTemplateFieldUseDefaultAi(field)) {
+    return true;
+  }
+  const config = getDocumentTemplateFieldAiConfigForTemplate(field, fieldIndex);
+  const defaults = normalizeDocumentTemplateFieldAiConfig(buildDocumentTemplateDefaultAiFieldInput(field, fieldIndex), field);
+  return hasSettingsDocumentTemplateAiDifference(config, defaults, [
+    "description",
+    "placeholder",
+    "helpText",
+    "aiDescription",
+    "aiLookFor",
+    "aiAvoid",
+    "allowedValues",
+    "commonValues",
+    "examples",
+    "format",
+    "unit",
+    "defaultValue",
+    "fallbackValue",
+    "validationRules",
+    "displayOrder",
+    "group",
+    "instructions",
+    "locked",
+  ]);
+}
+
+function isSettingsDocumentTemplateAiColumnVisible(column = {}, columnIndex = 0, field = {}) {
+  const source = (column?.aiMapping ?? column?.ai) && typeof (column.aiMapping ?? column.ai) === "object"
+    ? (column.aiMapping ?? column.ai)
+    : null;
+  if (!source || Object.keys(source).length === 0) {
+    return false;
+  }
+  if (hasSettingsDocumentTemplateAiMarker(source)) {
+    return true;
+  }
+  const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(source);
+  if (!hasMeasurementColumnAiMapping(aiMapping)) {
+    return false;
+  }
+  const config = getMeasurementColumnAiMappingForTemplate(column, columnIndex, field);
+  const defaults = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(
+    buildMeasurementColumnDefaultAiMappingInput(column, columnIndex, field),
+  );
+  return hasSettingsDocumentTemplateAiDifference(config, defaults, [
+    "description",
+    "instructions",
+    "type",
+    "required",
+    "locked",
+    "placeholder",
+    "helpText",
+    "aiDescription",
+    "aiLookFor",
+    "aiAvoid",
+    "synonyms",
+    "allowedValues",
+    "commonValues",
+    "examples",
+    "format",
+    "unit",
+    "defaultValue",
+    "fallbackValue",
+    "validationRules",
+    "displayOrder",
+    "group",
+  ]);
+}
+
+function getSettingsDocumentTemplateAiEntryBlockLabel(entry = {}) {
+  const source = entry.aiMapping || entry.aiConfig || {};
+  const explicitGroup = String(source.group || "").trim();
+  if (explicitGroup) {
+    return explicitGroup;
+  }
+  const fieldLabel = String(entry.fieldLabel || "").trim();
+  const service = String(entry.service || "").trim().toUpperCase();
+  const identity = `${fieldLabel} ${entry.templateTitle || ""} ${entry.columnLabel || ""}`.toLowerCase();
+  if (service.includes("SPR") && /(sigurnosn|protupani|panic|panik|rasvjet)/i.test(identity)) {
+    return "Panik rasvjeta";
+  }
+  if (entry.kind === "column" && fieldLabel) {
+    return fieldLabel;
+  }
+  return fieldLabel || "Polja zapisnika";
+}
+
+function getSettingsDocumentTemplateAiEntryBlockKey(entry = {}) {
+  return [
+    entry.service || "Zapisnik",
+    entry.templateId || entry.templateTitle || "",
+    getSettingsDocumentTemplateAiEntryBlockLabel(entry),
+  ].map((value) => String(value ?? "").replaceAll("|", "_")).join("|");
 }
 
 function collectSettingsDocumentTemplateAiEntries() {
@@ -36023,7 +36160,7 @@ function collectSettingsDocumentTemplateAiEntries() {
       }
       sheet.columns.forEach((column, columnIndex) => {
         const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
-        if (!hasMeasurementColumnAiMapping(aiMapping)) {
+        if (!isSettingsDocumentTemplateAiColumnVisible(column, columnIndex, field)) {
           return;
         }
         entries.push({
@@ -36063,40 +36200,96 @@ function renderSettingsDocumentTemplateAiColumns() {
   const entries = collectSettingsDocumentTemplateAiEntries();
   if (!entries.length) {
     const empty = document.createElement("article");
+    empty.className = "settings-document-template-ai-empty";
     const title = document.createElement("strong");
     title.textContent = "Zapisnici · NexAI polja";
     const copy = document.createElement("span");
-    copy.textContent = "Još nema AI polja. U predlošku desni klik na polje ili Gridline kolonu i odaberi NexAI.";
+    copy.textContent = "Još nema ručno označenih NexAI polja. U predlošku desni klik na polje ili Gridline kolonu i odaberi NexAI.";
     empty.append(title, copy);
     settingsDocumentTemplateAiColumns.replaceChildren(empty);
     return;
   }
 
-  const cards = entries.map((entry) => {
-    const card = document.createElement("article");
-    card.className = "settings-document-template-ai-card";
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
-    card.setAttribute("data-settings-document-template-ai-entry", getSettingsDocumentTemplateAiEntryKey(entry));
-    card.setAttribute("aria-label", `Otvori NexAI postavke za ${entry.kind === "column" ? entry.columnLabel : entry.fieldLabel}`);
-    const title = document.createElement("strong");
-    title.textContent = entry.kind === "column"
-      ? `${entry.service} · ${entry.columnLabel}`
-      : `${entry.service} · ${entry.fieldLabel}`;
-    const copy = document.createElement("span");
-    copy.textContent = [
-      entry.templateTitle,
-      entry.kind === "column" ? entry.fieldLabel : "Polje zapisnika",
-      (entry.aiMapping?.key || entry.aiConfig?.key) ? `key: ${entry.aiMapping?.key || entry.aiConfig?.key}` : "",
-      (entry.aiMapping?.locked || entry.aiConfig?.locked) ? "zaključano" : "",
-      (entry.aiMapping?.required || entry.aiConfig?.required) ? "obavezno" : "",
-      entry.draft ? "otvoreni predložak" : "",
-    ].filter(Boolean).join(" · ");
-    card.append(title, copy);
-    return card;
+  const groupedEntries = new Map();
+  entries.forEach((entry) => {
+    const blockKey = getSettingsDocumentTemplateAiEntryBlockKey(entry);
+    const blockLabel = getSettingsDocumentTemplateAiEntryBlockLabel(entry);
+    if (!groupedEntries.has(blockKey)) {
+      groupedEntries.set(blockKey, {
+        key: blockKey,
+        label: blockLabel,
+        service: entry.service,
+        templateTitle: entry.templateTitle,
+        draft: entry.draft,
+        entries: [],
+      });
+    }
+    groupedEntries.get(blockKey).entries.push(entry);
   });
 
-  settingsDocumentTemplateAiColumns.replaceChildren(...cards);
+  const blocks = Array.from(groupedEntries.values()).sort((left, right) => (
+    `${left.service} ${left.label}`.localeCompare(`${right.service} ${right.label}`, "hr")
+  )).map((group) => {
+    const block = document.createElement("section");
+    block.className = "settings-document-template-ai-block";
+
+    const head = document.createElement("div");
+    head.className = "settings-document-template-ai-block-head";
+    const titleWrap = document.createElement("div");
+    const kicker = document.createElement("span");
+    kicker.className = "settings-document-template-ai-block-kicker";
+    kicker.textContent = [
+      group.service || "Zapisnik",
+      group.templateTitle,
+      group.draft ? "otvoreni predložak" : "",
+    ].filter(Boolean).join(" · ");
+    const title = document.createElement("strong");
+    title.textContent = group.label;
+    titleWrap.append(kicker, title);
+
+    const count = document.createElement("span");
+    count.className = "settings-document-template-ai-block-count";
+    count.textContent = `${group.entries.length} AI ${group.entries.length === 1 ? "polje" : "polja"}`;
+    head.append(titleWrap, count);
+
+    const list = document.createElement("div");
+    list.className = "settings-document-template-ai-block-list";
+    group.entries
+      .sort((left, right) => (left.columnIndex ?? left.fieldIndex ?? 0) - (right.columnIndex ?? right.fieldIndex ?? 0))
+      .forEach((entry) => {
+        const row = document.createElement("article");
+        row.className = "settings-document-template-ai-card";
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+        row.setAttribute("data-settings-document-template-ai-entry", getSettingsDocumentTemplateAiEntryKey(entry));
+        row.setAttribute("aria-label", `Otvori NexAI postavke za ${entry.kind === "column" ? entry.columnLabel : entry.fieldLabel}`);
+
+        const rowTitle = document.createElement("strong");
+        rowTitle.textContent = entry.kind === "column"
+          ? entry.columnLabel
+          : entry.fieldLabel;
+
+        const copy = document.createElement("span");
+        copy.textContent = [
+          entry.kind === "column" ? "Gridline kolona" : "Polje zapisnika",
+          entry.kind === "column" ? entry.fieldLabel : "",
+          (entry.aiMapping?.key || entry.aiConfig?.key) ? `key: ${entry.aiMapping?.key || entry.aiConfig?.key}` : "",
+          (entry.aiMapping?.locked || entry.aiConfig?.locked) ? "zaključano" : "",
+          (entry.aiMapping?.required || entry.aiConfig?.required) ? "obavezno" : "",
+        ].filter(Boolean).join(" · ");
+
+        const chevron = document.createElement("span");
+        chevron.className = "settings-document-template-ai-card-action";
+        chevron.textContent = "Uredi";
+        row.append(rowTitle, copy, chevron);
+        list.append(row);
+      });
+
+    block.append(head, list);
+    return block;
+  });
+
+  settingsDocumentTemplateAiColumns.replaceChildren(...blocks);
 }
 
 function findSettingsDocumentTemplateAiEntry(entryKey = "") {
@@ -36170,6 +36363,9 @@ async function persistSettingsDocumentTemplateAiEntry(entry = {}, config = {}, {
           : normalizeMeasurementSheetColumnAiMappingSnapshotLocal({
             ...(column.aiMapping ?? column.ai ?? {}),
             ...config,
+            configured: true,
+            userConfigured: true,
+            settingsVisible: true,
             label: config.label || column.label || column.id || `Kolona ${columnIndex + 1}`,
             format: config.format || config.type,
             synonyms: config.aiLookFor || config.synonyms,
@@ -36185,7 +36381,12 @@ async function persistSettingsDocumentTemplateAiEntry(entry = {}, config = {}, {
       ...currentField,
       ai: clear
         ? normalizeDocumentTemplateFieldAiConfig({}, currentField)
-        : normalizeDocumentTemplateFieldAiConfig(config, currentField),
+        : normalizeDocumentTemplateFieldAiConfig({
+          ...config,
+          configured: true,
+          userConfigured: true,
+          settingsVisible: true,
+        }, currentField),
     };
   }
 
@@ -44290,6 +44491,9 @@ function normalizeMeasurementSheetColumnAiMappingSnapshotLocal(input = {}) {
   const aiAvoid = String(source?.aiAvoid ?? source?.ai_avoid ?? source?.avoid ?? "").trim().slice(0, 1000);
 
   return {
+    configured: hasSettingsDocumentTemplateAiMarker(source),
+    userConfigured: Boolean(source?.userConfigured ?? source?.user_configured ?? source?.manualConfigured ?? source?.manual_configured ?? source?.manual),
+    settingsVisible: hasSettingsDocumentTemplateAiMarker(source),
     key: String(source?.key || "").trim().slice(0, 120),
     label: String(source?.label || "").trim().slice(0, 160),
     description,
@@ -44353,6 +44557,8 @@ function hasMeasurementColumnAiMapping(aiMapping = {}) {
     || normalized.validationRules
     || normalized.displayOrder
     || normalized.group
+    || normalized.configured
+    || normalized.settingsVisible
   );
 }
 
@@ -46736,6 +46942,9 @@ function applyMeasurementAiMappingToColumn(mappingPatch = {}) {
   targetColumn.aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal({
     ...(targetColumn.aiMapping ?? {}),
     ...mappingPatch,
+    configured: mappingPatch.configured ?? true,
+    userConfigured: mappingPatch.userConfigured ?? true,
+    settingsVisible: mappingPatch.settingsVisible ?? true,
   });
 
   renderMeasurementSheet();
@@ -50666,13 +50875,16 @@ function openMeasurementAiForContextColumn() {
   }
 
   selectMeasurementColumn(columnIndex);
-  if (!hasMeasurementColumnAiMapping(column.aiMapping)) {
-    const field = getMeasurementSheetOwnerFieldDraft() || {
-      label: state.measurementSheet.ownerKind === "template_field"
-        ? "Gridline tablica predloska"
-        : "Aktivna Gridline tablica",
-    };
+  const field = getMeasurementSheetOwnerFieldDraft() || {
+    label: state.measurementSheet.ownerKind === "template_field"
+      ? "Gridline tablica predloska"
+      : "Aktivna Gridline tablica",
+  };
+  const currentMapping = column.aiMapping ?? column.ai ?? {};
+  if (!hasMeasurementColumnAiMapping(currentMapping)) {
     applyMeasurementAiMappingToColumn(buildMeasurementColumnDefaultAiMappingInput(column, columnIndex, field));
+  } else if (!hasSettingsDocumentTemplateAiMarker(currentMapping)) {
+    applyMeasurementAiMappingToColumn(currentMapping);
   }
 
   state.measurementSheet.aiPopoverOpen = true;
@@ -70384,6 +70596,9 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
   const aiAvoid = String(source?.aiAvoid ?? source?.ai_avoid ?? "").trim().slice(0, 1000);
 
   return {
+    configured: hasSettingsDocumentTemplateAiMarker(source),
+    userConfigured: Boolean(source?.userConfigured ?? source?.user_configured ?? source?.manualConfigured ?? source?.manual_configured ?? source?.manual),
+    settingsVisible: hasSettingsDocumentTemplateAiMarker(source),
     key,
     label,
     description: String(source?.description ?? field?.helpText ?? "").trim().slice(0, 2000),
@@ -70614,6 +70829,8 @@ function hasDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     || config.group
     || config.instructions
     || config.locked
+    || config.configured
+    || config.settingsVisible
   );
 }
 
@@ -72529,6 +72746,9 @@ function collectDocumentTemplateAiWizardConfig(form, field) {
   const read = (name) => String(form.elements[name]?.value || "").trim();
   const readList = (name) => normalizeAiConfigListLocal(read(name), 160);
   return normalizeDocumentTemplateFieldAiConfig({
+    configured: true,
+    userConfigured: true,
+    settingsVisible: true,
     key: read("key"),
     label: read("label"),
     description: read("description"),
