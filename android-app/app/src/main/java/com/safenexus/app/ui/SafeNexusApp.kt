@@ -2406,7 +2406,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 workOrder = workOrder,
                 equipment = equipment,
                 files = readableFiles,
-                modelTier = "fast",
+                modelTier = "strong",
             )
                 .onSuccess(onSuccess)
                 .onFailure { error ->

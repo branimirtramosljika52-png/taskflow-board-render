@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.293.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.294.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -7826,6 +7826,22 @@ function buildOpenAiResponseInputContent(body = {}, user = null, selectedModel =
   return content;
 }
 
+function buildOpenAiPurposeInstructions(body = {}) {
+  const purpose = String(body?.purpose || "").trim();
+  if (purpose !== "mobile-work-equipment-image-recognition") {
+    return [];
+  }
+
+  return [
+    "Za mobile-work-equipment-image-recognition radi kao OCR i tehnicki asistent za radnu opremu.",
+    "Uvijek prvo procitaj natpisnu plocicu, naljepnice i logotipe. Ne vracaj samo opis slike ako su vidljivi proizvodac, tip ili serijski broj.",
+    "Vrati JSON u expectedJsonShape obliku s workEquipments[0]. Popuni manufacturer, model, serialNumber, inventoryNumber, technicalData, confidence i summary.",
+    "Ako je vidljiv BOSCH ili Robert Bosch GmbH, manufacturer mora biti BOSCH. Ako je vidljiv Type/Typ/Model, to prepisuj u model. Ako je vidljiv Serial number/SN/Ser. No., to prepisuj u serialNumber.",
+    "Part number, MD/godinu, U[V], F[Hz], P[W], tlak, mjerni raspon, klasu i oznake poput CE stavi u technicalData, sazetu u jednu citljivu recenicu.",
+    "Fotografija cijelog stroja sluzi za naziv/vrstu opreme. Fotografija plocice ima prioritet za proizvodaca, model i serijski broj.",
+  ];
+}
+
 function extractOpenAiResponseText(payload = {}) {
   if (typeof payload.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text.trim();
@@ -8585,6 +8601,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Popunjavaj samo kolone navedene u measurementColumns; sve druge kolone, formule i rucni unos ignoriraj. Nemoj vracati genericki kljuc columnKey.",
       "Ako u starom SPR zapisniku vidis tablicu mjernih mjesta sigurnosne/protupanicne rasvjete, obavezno vrati retke u measurementSuggestions; sazetak bez measurementSuggestions nije dovoljan.",
       ...sourcePolicy.instructions,
+      ...buildOpenAiPurposeInstructions(body),
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
     ].join(" "),
     input: [

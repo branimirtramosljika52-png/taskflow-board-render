@@ -1117,7 +1117,7 @@ class SafeNexusApi(
         workOrder: WorkOrder,
         equipment: IsznrManualWorkEquipment,
         files: List<IsznrRoAttachmentFile>,
-        modelTier: String = "fast",
+        modelTier: String = "strong",
     ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
         runCatching {
             val payloadFiles = JSONArray()
@@ -1139,24 +1139,24 @@ class SafeNexusApi(
             val fields = JSONArray(
                 listOf(
                     JSONObject().put("id", "name").put("key", "name").put("label", "Naziv radne opreme")
-                        .put("instructions", "Prepoznaj naziv vrste stroja samo ako je vidljiv ili jasno proizlazi iz pločice/dokumenta."),
-                    JSONObject().put("id", "manufacturer").put("key", "manufacturer").put("label", "Proizvođač")
-                        .put("instructions", "Prednost ima natpisna pločica. Ne pogađaj proizvođača ako nije vidljiv."),
+                        .put("instructions", "Prepoznaj vrstu/naziv stroja iz fotografije cijelog stroja i natpisne plocice. Ako se vidi Bosch BEA, naziv moze biti analizator ispusnih plinova."),
+                    JSONObject().put("id", "manufacturer").put("key", "manufacturer").put("label", "Proizvodac")
+                        .put("instructions", "Prednost ima natpisna plocica i logotip. BOSCH ili Robert Bosch GmbH vrati kao BOSCH."),
                     JSONObject().put("id", "model").put("key", "model").put("label", "Tip / model")
-                        .put("instructions", "Prepiši tip ili model točno kako piše na pločici."),
+                        .put("instructions", "Prepisuj oznake uz Type, Typ, Model ili istaknuti model s uredaja. Primjeri: BEA750, BEA 750, L16."),
                     JSONObject().put("id", "serialNumber").put("key", "serialNumber").put("label", "Serijski broj")
-                        .put("instructions", "Prepiši serijski broj; ne miješaj s inventarskim brojem."),
+                        .put("instructions", "Prepisuj oznaku uz Serial number, S/N, Ser. No. ili serial. Ne mijesaj s part number."),
                     JSONObject().put("id", "inventoryNumber").put("key", "inventoryNumber").put("label", "Inventarski broj")
-                        .put("instructions", "Vrati samo ako je posebno označen kao inventarski broj ili inv. oznaka."),
-                    JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnički podaci")
-                        .put("instructions", "Sažmi nosivost, snagu, napon, tlak, godinu ili druge ključne podatke s pločice."),
+                        .put("instructions", "Vrati samo ako je posebno oznacen kao inventarski broj, inv. broj ili naljepnica inventara."),
+                    JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
+                        .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
                 ),
             )
             val body = JSONObject()
                 .put("purpose", "mobile-work-equipment-image-recognition")
                 .put("dryRun", false)
-                .put("modelTier", modelTier.ifBlank { "fast" })
-                .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "fast" }))
+                .put("modelTier", modelTier.ifBlank { "strong" })
+                .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "strong" }))
                 .put("workOrderId", workOrder.id)
                 .put("workOrderNumber", workOrder.displayNumber)
                 .put("files", payloadFiles)
@@ -1170,11 +1170,11 @@ class SafeNexusApi(
                         .put("currentEquipment", equipment.toJsonObject())
                         .put(
                             "imageRule",
-                            "Redoslijed slika je: 1) cijeli stroj izdaleka, 2) natpisna pločica, 3) detalji/nedostaci. Ako se isti obrazac ponovi, to je novi stroj; u Androidu ipak vrati samo prvu/prepoznatu opremu za trenutno otvoreni stupac.",
+                            "Redoslijed slika je: 1) cijeli stroj izdaleka, 2) natpisna plocica, 3) detalji/nedostaci. Ako se isti obrazac ponovi, to je novi stroj; u Androidu ipak vrati samo prvu/prepoznatu opremu za trenutno otvoreni stupac.",
                         )
                         .put(
                             "databaseRule",
-                            "Ako prepoznati proizvođač, model ili serijski broj odgovara postojećoj bazi ili lokalnoj povijesti u kontekstu, vrati matchedSource i popuni podatke iz najpouzdanijeg izvora.",
+                            "Ako prepoznati proizvodac, model ili serijski broj odgovara postojecoj bazi ili lokalnoj povijesti u kontekstu, vrati matchedSource i popuni podatke iz najpouzdanijeg izvora.",
                         ),
                 )
                 .put(
@@ -1185,16 +1185,16 @@ class SafeNexusApi(
                             JSONArray().put(
                                 JSONObject()
                                     .put("name", "naziv opreme")
-                                    .put("manufacturer", "proizvođač")
+                                    .put("manufacturer", "proizvodac")
                                     .put("model", "tip/model")
                                     .put("serialNumber", "serijski broj")
                                     .put("inventoryNumber", "inventarski broj")
-                                    .put("technicalData", "ključni tehnički podaci")
-                                    .put("matchedSource", "izvor/baza ako je pronađeno")
+                                    .put("technicalData", "kljucni tehnicki podaci")
+                                    .put("matchedSource", "izvor/baza ako je pronadeno")
                                     .put("confidence", "high/medium/low"),
                             ),
                         )
-                        .put("summary", "kratak sažetak prepoznavanja"),
+                        .put("summary", "kratak sazetak prepoznavanja"),
                 )
                 .toString()
             val json = JSONObject(
@@ -3008,15 +3008,27 @@ private fun JSONObject.toWorkOrderDocumentationAiResult(): WorkOrderDocumentatio
 }
 
 private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentImageRecognitionResult {
-    val result = optJSONObject("result") ?: parseJsonObject(firstClean("outputText")) ?: JSONObject()
+    val root = this
+    val outputObject = parseJsonObject(root.firstClean("outputText"))
+    val result = root.optJSONObject("result")
+        ?: outputObject?.optJSONObject("result")
+        ?: outputObject
+        ?: root
     val equipment = result.optJSONArray("workEquipments")?.optJSONObject(0)
         ?: result.optJSONArray("equipments")?.optJSONObject(0)
         ?: result.optJSONObject("workEquipment")
         ?: result.optJSONObject("equipment")
         ?: result
     val fieldValues = mutableMapOf<String, String>()
-    val suggestions = result.optJSONArray("fieldSuggestions") ?: result.optJSONArray("field_suggestions")
-    if (suggestions != null) {
+    val suggestionArrays = listOfNotNull(
+        result.optJSONArray("fieldSuggestions"),
+        result.optJSONArray("field_suggestions"),
+        root.optJSONArray("fieldSuggestions"),
+        root.optJSONArray("field_suggestions"),
+        outputObject?.optJSONArray("fieldSuggestions"),
+        outputObject?.optJSONArray("field_suggestions"),
+    )
+    suggestionArrays.forEach { suggestions ->
         for (index in 0 until suggestions.length()) {
             val item = suggestions.optJSONObject(index) ?: continue
             val key = item.firstClean("fieldKey", "field_key", "key", "id").trim()
@@ -3037,14 +3049,16 @@ private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentIma
     }
     return WorkEquipmentImageRecognitionResult(
         name = readField("name", "equipmentName", "naziv"),
-        manufacturer = readField("manufacturer", "producer", "maker", "proizvodac", "proizvođač"),
-        model = readField("model", "type", "tip", "typeModel"),
-        serialNumber = readField("serialNumber", "serial", "serialNo", "serijskiBroj"),
+        manufacturer = readField("manufacturer", "producer", "maker", "brand", "proizvodac", "proizvođač"),
+        model = readField("model", "type", "tip", "typeModel", "modelType"),
+        serialNumber = readField("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj"),
         inventoryNumber = readField("inventoryNumber", "inventory", "inv", "inventarskiBroj"),
-        technicalData = readField("technicalData", "technical", "tehnickiPodaci", "tehničkiPodaci"),
+        technicalData = readField("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci", "tehničkiPodaci"),
         matchedSource = readField("matchedSource", "source", "databaseMatch"),
         confidence = readField("confidence", "confidenceLevel"),
-        message = result.firstClean("summary", "message").ifBlank { firstClean("nextStep", "message") },
+        message = result.firstClean("summary", "message")
+            .ifBlank { root.firstClean("nextStep", "message") }
+            .ifBlank { outputObject?.firstClean("summary", "message").orEmpty() },
     )
 }
 
