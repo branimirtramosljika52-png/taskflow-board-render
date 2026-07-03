@@ -10977,29 +10977,7 @@ private fun ManualWorkEquipmentInlineEditor(
     }
 
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .pointerInput(enabled, columnIndex, columnCount) {
-                var totalHorizontalDrag = 0f
-                detectDragGestures(
-                    onDragStart = { totalHorizontalDrag = 0f },
-                    onDragCancel = { totalHorizontalDrag = 0f },
-                    onDragEnd = {
-                        if (enabled && columnCount > 1) {
-                            when {
-                                totalHorizontalDrag > 92f && columnIndex > 0 -> onPrevious()
-                                totalHorizontalDrag < -92f && columnIndex < columnCount - 1 -> onNext()
-                            }
-                        }
-                        totalHorizontalDrag = 0f
-                    },
-                ) { change, dragAmount ->
-                    if (enabled && columnCount > 1 && abs(dragAmount.x) > abs(dragAmount.y) * 1.25f) {
-                        totalHorizontalDrag += dragAmount.x
-                        change.consume()
-                    }
-                }
-            },
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
@@ -11010,7 +10988,32 @@ private fun ManualWorkEquipmentInlineEditor(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f))
+                    .pointerInput(enabled, columnIndex, columnCount) {
+                        var totalHorizontalDrag = 0f
+                        detectDragGestures(
+                            onDragStart = { totalHorizontalDrag = 0f },
+                            onDragCancel = { totalHorizontalDrag = 0f },
+                            onDragEnd = {
+                                if (enabled && columnCount > 1) {
+                                    when {
+                                        totalHorizontalDrag > 76f && columnIndex > 0 -> onPrevious()
+                                        totalHorizontalDrag < -76f && columnIndex < columnCount - 1 -> onNext()
+                                    }
+                                }
+                                totalHorizontalDrag = 0f
+                            },
+                        ) { change, dragAmount ->
+                            if (enabled && columnCount > 1 && abs(dragAmount.x) > abs(dragAmount.y) * 1.6f) {
+                                totalHorizontalDrag += dragAmount.x
+                                change.consume()
+                            }
+                        }
+                    }
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -11602,6 +11605,9 @@ private fun ManualWorkEquipmentAssessmentRow(
     onRemove: () -> Unit,
 ) {
     val active = item != null
+    var noteEditorOpen by remember(option.id, option.label, active) {
+        mutableStateOf(item?.measuredValue?.isNotBlank() == true)
+    }
     val rowColor = when {
         item?.meetsConditions == true -> Color(0xFFECFDF5)
         item?.meetsConditions == false -> Color(0xFFFFF1F2)
@@ -11699,23 +11705,43 @@ private fun ManualWorkEquipmentAssessmentRow(
                     }
                 }
             }
-            OutlinedTextField(
-                value = item?.measuredValue.orEmpty(),
-                onValueChange = { value ->
-                    onUpsert(
-                        roAssessmentItemFromOption(
-                            option = option,
-                            measuredValue = value,
-                            meetsConditions = item?.meetsConditions ?: true,
-                        ),
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Napomena / vrijednost") },
-                minLines = 1,
-                maxLines = 3,
-                shape = RoundedCornerShape(12.dp),
-            )
+            if (active || noteEditorOpen) {
+                OutlinedTextField(
+                    value = item?.measuredValue.orEmpty(),
+                    onValueChange = { value ->
+                        onUpsert(
+                            roAssessmentItemFromOption(
+                                option = option,
+                                measuredValue = value,
+                                meetsConditions = item?.meetsConditions ?: true,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Napomena / vrijednost") },
+                    minLines = 1,
+                    maxLines = 3,
+                    shape = RoundedCornerShape(12.dp),
+                )
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        noteEditorOpen = true
+                        onUpsert(
+                            roAssessmentItemFromOption(
+                                option = option,
+                                measuredValue = "",
+                                meetsConditions = true,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                ) {
+                    Text("Napomena / vrijednost")
+                }
+            }
         }
     }
 }
