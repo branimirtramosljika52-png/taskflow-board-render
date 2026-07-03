@@ -1290,8 +1290,13 @@ const OPENAI_RESPONSES_PATH = "/responses";
 const OPENAI_DEFAULT_MODEL_BY_TIER = Object.freeze({
   fast: "gpt-4.1-nano",
   standard: "gpt-4.1-mini",
-  strong: "gpt-5.1-mini",
-  max: "gpt-5.1",
+  strong: "gpt-5.5",
+  max: "gpt-5.5",
+});
+const OPENAI_MODEL_SLUG_REPLACEMENTS = Object.freeze({
+  "gpt-5.1": "gpt-5.5",
+  "gpt-5.1-mini": "gpt-5.5",
+  "gpt-5.1-nano": "gpt-5.5",
 });
 const OPENAI_MODEL_TIERS = Object.freeze([
   { value: "fast", label: "Brzi", strength: "Slabiji / jeftiniji", env: "OPENAI_MODEL_FAST" },
@@ -1527,9 +1532,14 @@ function getOpenAiModelTierOption(value = "") {
   return OPENAI_MODEL_TIERS.find((option) => option.value === normalized) || OPENAI_MODEL_TIERS[1];
 }
 
+function normalizeOpenAiModelSlug(value = "") {
+  const normalized = String(value || "").trim();
+  return OPENAI_MODEL_SLUG_REPLACEMENTS[normalized] || normalized;
+}
+
 function getOpenAiModelForTier(tier = "standard", config = getOpenAiRuntimeConfig()) {
   const option = getOpenAiModelTierOption(tier);
-  return String(process.env[option.env] || config.model || OPENAI_DEFAULT_MODEL_BY_TIER[option.value] || "").trim();
+  return normalizeOpenAiModelSlug(process.env[option.env] || config.model || OPENAI_DEFAULT_MODEL_BY_TIER[option.value] || "");
 }
 
 function buildOpenAiModelTierPayload(config = getOpenAiRuntimeConfig()) {
@@ -1550,7 +1560,7 @@ function buildOpenAiStatusPayload() {
     dryRun: config.dryRun,
     liveCallsEnabled: config.liveCallsEnabled,
     endpointReady: config.keyConfigured && (config.dryRun || config.liveCallsEnabled),
-    model: config.model || OPENAI_DEFAULT_MODEL_BY_TIER.standard,
+    model: normalizeOpenAiModelSlug(config.model || OPENAI_DEFAULT_MODEL_BY_TIER.standard),
     modelTiers: buildOpenAiModelTierPayload(config),
     endpoint: config.endpoint,
     tokenSpend: config.liveCallsEnabled ? "enabled" : "disabled",
@@ -7452,7 +7462,7 @@ function buildOpenAiDryRunPlan(body = {}, user = null) {
   const columns = Array.isArray(body.columns) ? body.columns : [];
   const modelTier = normalizeOpenAiModelTier(body.modelTier || body.modelPreference?.tier);
   const modelTierOption = getOpenAiModelTierOption(modelTier);
-  const selectedModel = String(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config)).trim();
+  const selectedModel = normalizeOpenAiModelSlug(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config));
 
   return {
     ok: true,
@@ -8580,7 +8590,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
 
   const modelTier = normalizeOpenAiModelTier(body.modelTier || body.modelPreference?.tier);
   const modelTierOption = getOpenAiModelTierOption(modelTier);
-  const selectedModel = String(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config)).trim();
+  const selectedModel = normalizeOpenAiModelSlug(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config));
   const sourcePolicy = buildOpenAiSourcePolicy(Array.isArray(body.files) ? body.files : []);
   if (!selectedModel) {
     const error = new Error("OpenAI model nije konfiguriran.");
