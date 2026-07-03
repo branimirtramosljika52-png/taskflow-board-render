@@ -11518,9 +11518,8 @@ private fun ManualWorkEquipmentAssessmentEditor(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             }
-            options.forEachIndexed { index, option ->
+            options.forEach { option ->
                 ManualWorkEquipmentAssessmentRow(
-                    number = index + 1,
                     option = option,
                     item = items.firstOrNull { roAssessmentItemMatchesOption(it, option) },
                     onUpsert = { nextItem -> onItemsChange(upsertRoAssessmentItem(items, nextItem)) },
@@ -11598,7 +11597,6 @@ private fun ManualWorkEquipmentAssessmentEditor(
 
 @Composable
 private fun ManualWorkEquipmentAssessmentRow(
-    number: Int,
     option: WorkOrderDocumentationOption,
     item: IsznrRoAssessmentItem?,
     onUpsert: (IsznrRoAssessmentItem) -> Unit,
@@ -11630,116 +11628,89 @@ private fun ManualWorkEquipmentAssessmentRow(
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Top,
             ) {
-                Surface(
-                    shape = RoundedCornerShape(9.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.09f),
-                ) {
-                    Text(
-                        number.toString(),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         option.label,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    Text(
-                        if (active) {
-                            if (item?.meetsConditions == true) "Upisano: zadovoljava" else "Upisano: ne zadovoljava"
-                        } else {
-                            "Još nije upisano za ovu opremu"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = statusColor,
-                    )
-                }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = item?.meetsConditions == true,
-                    onClick = {
-                        onUpsert(
-                            roAssessmentItemFromOption(
-                                option = option,
-                                measuredValue = item?.measuredValue.orEmpty(),
-                                meetsConditions = true,
-                            ),
+                    if (active || noteEditorOpen) {
+                        OutlinedTextField(
+                            value = item?.measuredValue.orEmpty(),
+                            onValueChange = { value ->
+                                onUpsert(
+                                    roAssessmentItemFromOption(
+                                        option = option,
+                                        measuredValue = value,
+                                        meetsConditions = item?.meetsConditions ?: true,
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Napomena / vrijednost") },
+                            minLines = 1,
+                            maxLines = 3,
+                            shape = RoundedCornerShape(12.dp),
                         )
-                    },
-                    label = { Text("Zadovoljava") },
-                )
-                FilterChip(
-                    selected = item?.meetsConditions == false,
-                    onClick = {
-                        onUpsert(
-                            roAssessmentItemFromOption(
-                                option = option,
-                                measuredValue = item?.measuredValue.orEmpty(),
-                                meetsConditions = false,
-                            ),
-                        )
-                    },
-                    label = { Text("Ne zadovoljava") },
-                )
-                if (active) {
-                    OutlinedButton(
-                        onClick = onRemove,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    ) {
-                        Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFDC2626))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Prazno")
+                    } else {
+                        OutlinedButton(
+                            onClick = { noteEditorOpen = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        ) {
+                            Text("Napomena / vrijednost")
+                        }
                     }
                 }
-            }
-            if (active || noteEditorOpen) {
-                OutlinedTextField(
-                    value = item?.measuredValue.orEmpty(),
-                    onValueChange = { value ->
-                        onUpsert(
-                            roAssessmentItemFromOption(
-                                option = option,
-                                measuredValue = value,
-                                meetsConditions = item?.meetsConditions ?: true,
-                            ),
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Napomena / vrijednost") },
-                    minLines = 1,
-                    maxLines = 3,
-                    shape = RoundedCornerShape(12.dp),
-                )
-            } else {
-                OutlinedButton(
+                IconButton(
                     onClick = {
+                        val nextMeetsConditions = item?.meetsConditions != true
                         noteEditorOpen = true
                         onUpsert(
                             roAssessmentItemFromOption(
                                 option = option,
-                                measuredValue = "",
-                                meetsConditions = true,
+                                measuredValue = item?.measuredValue.orEmpty(),
+                                meetsConditions = nextMeetsConditions,
                             ),
                         )
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(statusColor.copy(alpha = if (active) 0.14f else 0.08f)),
                 ) {
-                    Text("Napomena / vrijednost")
+                    Icon(
+                        imageVector = when {
+                            item?.meetsConditions == true -> Icons.Rounded.CheckCircle
+                            item?.meetsConditions == false -> Icons.Rounded.ErrorOutline
+                            else -> Icons.Rounded.Info
+                        },
+                        contentDescription = when {
+                            item?.meetsConditions == true -> "Zadovoljava"
+                            item?.meetsConditions == false -> "Ne zadovoljava"
+                            else -> "Postavi status"
+                        },
+                        tint = statusColor,
+                    )
+                }
+            }
+            if (active) {
+                TextButton(
+                    onClick = {
+                        noteEditorOpen = false
+                        onRemove()
+                    },
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                ) {
+                    Text("Očisti stavku", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
