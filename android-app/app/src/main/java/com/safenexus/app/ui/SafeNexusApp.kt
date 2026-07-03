@@ -10328,6 +10328,15 @@ private fun DocumentationWorkEquipmentOptionList(
                 }
             }
         }
+        if (manualEquipments.isNotEmpty()) {
+            val safeIndex = activeManualEquipmentIndex.coerceIn(0, manualEquipments.lastIndex)
+            ManualWorkEquipmentRowList(
+                equipments = manualEquipments,
+                activeIndex = safeIndex,
+                enabled = enabled,
+                onSelect = { index -> activeManualEquipmentIndex = index },
+            )
+        }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -10442,6 +10451,113 @@ private fun DocumentationWorkEquipmentOptionList(
                         )
                     },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualWorkEquipmentRowList(
+    equipments: List<IsznrManualWorkEquipment>,
+    activeIndex: Int,
+    enabled: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text("Popis opreme", fontWeight = FontWeight.Black)
+                    Text(
+                        "Jedan red = jedan stupac RO zapisnika.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                AssistChip(onClick = {}, label = { Text("${equipments.size}") })
+            }
+            equipments.forEachIndexed { index, equipment ->
+                val selected = index == activeIndex
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = enabled) { onSelect(index) },
+                    shape = RoundedCornerShape(15.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f) else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.42f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+                    ),
+                    tonalElevation = 0.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(30.dp),
+                            shape = CircleShape,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "${index + 1}",
+                                    color = if (selected) Color.White else MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Black,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                equipment.name.ifBlank { "Radna oprema ${index + 1}" },
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                equipment.subtitle().ifBlank { "Stupac ${index + 1} · dopuni podatke" },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = when {
+                                selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                equipment.isReadyForIsznrPost() -> Color(0xFFDCFCE7)
+                                else -> Color(0xFFFFF7ED)
+                            },
+                        ) {
+                            Text(
+                                if (selected) "Otvoreno" else if (equipment.isReadyForIsznrPost()) "Spremno" else "Dopuni",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = when {
+                                    selected -> MaterialTheme.colorScheme.primary
+                                    equipment.isReadyForIsznrPost() -> Color(0xFF047857)
+                                    else -> Color(0xFFB45309)
+                                },
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
