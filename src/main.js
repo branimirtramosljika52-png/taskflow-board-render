@@ -19108,8 +19108,22 @@ function getWorkOrderSelectionServiceType(items = []) {
 function getWorkOrderDocumentSelectionState(workOrders = []) {
   const serviceTypes = Array.from(new Set(
     (Array.isArray(workOrders) ? workOrders : [])
-      .flatMap((workOrder) => getWorkOrderServiceItems(workOrder))
-      .map((item) => getWorkOrderServiceType(item))
+      .flatMap((workOrder) => {
+        const serviceItems = getWorkOrderDocumentWizardResolvedServiceItems(workOrder);
+        const explicitTypes = serviceItems
+          .map((item) => getWorkOrderServiceType(item))
+          .filter(Boolean);
+        if (explicitTypes.length > 0) {
+          return explicitTypes;
+        }
+        return (
+          shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder, serviceItems)
+          || shouldShowWorkOrderDocumentPhysicalFactorsSection(workOrder, serviceItems)
+          || shouldShowWorkOrderDocumentChemicalFactorsSection(workOrder, serviceItems)
+        )
+          ? ["inspection"]
+          : [];
+      })
       .filter(Boolean),
   ));
   return {

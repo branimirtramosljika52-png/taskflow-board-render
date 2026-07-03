@@ -11,26 +11,91 @@ export function normalizeWorkOrderDocumentWorkEquipmentText(value = "") {
 
 export function isWorkOrderDocumentWorkEquipmentText(value = "") {
   const normalized = normalizeWorkOrderDocumentWorkEquipmentText(value);
-  if (/^ro\s+[fk]\b/.test(normalized) || normalized === "rof" || normalized.startsWith("rof ")) {
+  const compact = normalized.replace(/\s+/g, "");
+  if (
+    /^ro\s+[fk]\b/.test(normalized)
+    || normalized === "rof"
+    || normalized.startsWith("rof ")
+    || normalized === "rok"
+    || normalized.startsWith("rok ")
+  ) {
     return false;
   }
   return normalized.includes("radna oprema")
     || normalized.includes("radne opreme")
+    || compact.includes("radnaoprema")
+    || compact.includes("radneopreme")
+    || normalized.includes("oprema za rad")
+    || normalized.includes("opreme za rad")
     || normalized === "ro"
-    || normalized.startsWith("ro ");
+    || normalized.startsWith("ro ")
+    || /^ro\d+\b/.test(normalized);
+}
+
+function getNativeServiceTextValues(source = {}) {
+  if (!source || typeof source !== "object") {
+    return [];
+  }
+  return [
+    source?.name,
+    source?.serviceName,
+    source?.title,
+    source?.label,
+    source?.shortLabel,
+    source?.serviceCode,
+    source?.code,
+    source?.shortCode,
+    source?.serviceLine,
+    source?.displayService,
+    source?.serviceSummary,
+    source?.serviceGroup,
+    source?.group,
+    source?.groupName,
+    source?.category,
+    source?.type,
+    source?.kind,
+    source?.templateTitle,
+    source?.templateName,
+    source?.documentTitle,
+    source?.description,
+    ...(Array.isArray(source?.linkedTemplateTitles) ? source.linkedTemplateTitles : []),
+    ...(Array.isArray(source?.templateTitles) ? source.templateTitles : []),
+  ];
+}
+
+function getWorkOrderNativeServiceCandidates(workOrder = {}, serviceItems = []) {
+  const candidates = [];
+  if (workOrder && typeof workOrder === "object") {
+    candidates.push(workOrder);
+    [
+      workOrder?.service,
+      workOrder?.primaryService,
+      workOrder?.selectedService,
+      workOrder?.template,
+      ...(Array.isArray(workOrder?.serviceItems) ? workOrder.serviceItems : []),
+      ...(Array.isArray(workOrder?.services) ? workOrder.services : []),
+      ...(Array.isArray(workOrder?.selectedServices) ? workOrder.selectedServices : []),
+      ...(Array.isArray(workOrder?.serviceCatalogItems) ? workOrder.serviceCatalogItems : []),
+      ...(Array.isArray(workOrder?.linkedTemplates) ? workOrder.linkedTemplates : []),
+      ...(Array.isArray(workOrder?.documentTemplates) ? workOrder.documentTemplates : []),
+    ].forEach((candidate) => {
+      if (candidate && typeof candidate === "object") {
+        candidates.push(candidate);
+      }
+    });
+  }
+  if (Array.isArray(serviceItems)) {
+    serviceItems.forEach((candidate) => {
+      if (candidate && typeof candidate === "object") {
+        candidates.push(candidate);
+      }
+    });
+  }
+  return candidates;
 }
 
 export function isWorkOrderDocumentWorkEquipmentService(service = {}) {
-  return [
-    service?.name,
-    service?.serviceName,
-    service?.title,
-    service?.serviceCode,
-    service?.code,
-    service?.shortCode,
-    service?.serviceGroup,
-    ...(Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
-  ].some((value) => isWorkOrderDocumentWorkEquipmentText(value));
+  return getNativeServiceTextValues(service).some((value) => isWorkOrderDocumentWorkEquipmentText(value));
 }
 
 export function isWorkOrderDocumentPhysicalFactorsText(value = "") {
@@ -50,16 +115,7 @@ export function isWorkOrderDocumentPhysicalFactorsText(value = "") {
 }
 
 export function isWorkOrderDocumentPhysicalFactorsService(service = {}) {
-  return [
-    service?.name,
-    service?.serviceName,
-    service?.title,
-    service?.serviceCode,
-    service?.code,
-    service?.shortCode,
-    service?.serviceGroup,
-    ...(Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
-  ].some((value) => isWorkOrderDocumentPhysicalFactorsText(value));
+  return getNativeServiceTextValues(service).some((value) => isWorkOrderDocumentPhysicalFactorsText(value));
 }
 
 export function isWorkOrderDocumentChemicalFactorsText(value = "") {
@@ -77,16 +133,7 @@ export function isWorkOrderDocumentChemicalFactorsText(value = "") {
 }
 
 export function isWorkOrderDocumentChemicalFactorsService(service = {}) {
-  return [
-    service?.name,
-    service?.serviceName,
-    service?.title,
-    service?.serviceCode,
-    service?.code,
-    service?.shortCode,
-    service?.serviceGroup,
-    ...(Array.isArray(service?.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
-  ].some((value) => isWorkOrderDocumentChemicalFactorsText(value));
+  return getNativeServiceTextValues(service).some((value) => isWorkOrderDocumentChemicalFactorsText(value));
 }
 
 export function isWorkOrderDocumentIsznrNativeService(service = {}) {
@@ -96,27 +143,18 @@ export function isWorkOrderDocumentIsznrNativeService(service = {}) {
 }
 
 export function shouldShowWorkOrderDocumentIsznrWorkEquipmentSection(workOrder = {}, serviceItems = []) {
-  return Boolean(
-    isWorkOrderDocumentWorkEquipmentText(workOrder?.serviceLine)
-    || isWorkOrderDocumentWorkEquipmentText(workOrder?.displayService)
-    || (Array.isArray(serviceItems) && serviceItems.some((service) => isWorkOrderDocumentWorkEquipmentService(service)))
-  );
+  return getWorkOrderNativeServiceCandidates(workOrder, serviceItems)
+    .some((candidate) => isWorkOrderDocumentWorkEquipmentService(candidate));
 }
 
 export function shouldShowWorkOrderDocumentPhysicalFactorsSection(workOrder = {}, serviceItems = []) {
-  return Boolean(
-    isWorkOrderDocumentPhysicalFactorsText(workOrder?.serviceLine)
-    || isWorkOrderDocumentPhysicalFactorsText(workOrder?.displayService)
-    || (Array.isArray(serviceItems) && serviceItems.some((service) => isWorkOrderDocumentPhysicalFactorsService(service)))
-  );
+  return getWorkOrderNativeServiceCandidates(workOrder, serviceItems)
+    .some((candidate) => isWorkOrderDocumentPhysicalFactorsService(candidate));
 }
 
 export function shouldShowWorkOrderDocumentChemicalFactorsSection(workOrder = {}, serviceItems = []) {
-  return Boolean(
-    isWorkOrderDocumentChemicalFactorsText(workOrder?.serviceLine)
-    || isWorkOrderDocumentChemicalFactorsText(workOrder?.displayService)
-    || (Array.isArray(serviceItems) && serviceItems.some((service) => isWorkOrderDocumentChemicalFactorsService(service)))
-  );
+  return getWorkOrderNativeServiceCandidates(workOrder, serviceItems)
+    .some((candidate) => isWorkOrderDocumentChemicalFactorsService(candidate));
 }
 
 export function normalizeDocumentTemplateRuntimeNativeServiceKind(value = "") {
