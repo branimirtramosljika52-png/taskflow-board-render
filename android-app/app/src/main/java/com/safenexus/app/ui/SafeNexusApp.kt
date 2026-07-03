@@ -10132,9 +10132,8 @@ private fun DocumentationWorkEquipmentOptionList(
     var selectedScope by remember(options, locationName) {
         mutableStateOf(if (locationName.isNotBlank()) DocumentationWorkEquipmentScope.Location else DocumentationWorkEquipmentScope.Employer)
     }
-    var showManualEquipmentDialog by remember(options) { mutableStateOf(false) }
-    var manualEquipmentDialogSeed by remember(options) { mutableStateOf(IsznrManualWorkEquipment()) }
-    var manualEquipmentDialogTitle by remember(options) { mutableStateOf("Nova radna oprema") }
+    var hasSeededWorkEquipmentColumns by remember(options, locationName) { mutableStateOf(false) }
+    var activeManualEquipmentIndex by remember(options, locationName) { mutableStateOf(0) }
     val filteredOptions = remember(options, selectedFilter, today) {
         options
             .filter { option -> option.matchesWorkEquipmentFilter(selectedFilter, today) }
@@ -10179,21 +10178,26 @@ private fun DocumentationWorkEquipmentOptionList(
         .filter { it.isNotBlank() && it != "equipments" }
     val readyManualEquipments = manualEquipments.filter { it.isReadyForIsznrPost() }
     val selectedTotal = selectedItemIds.size + readyManualEquipments.size
-    if (showManualEquipmentDialog) {
-        ManualWorkEquipmentDialog(
-            title = manualEquipmentDialogTitle,
-            initialEquipment = manualEquipmentDialogSeed,
-            mechanicalOptions = mechanicalOptions,
-            electricalOptions = electricalOptions,
-            hazardOptions = hazardOptions,
-            harmfulnessOptions = harmfulnessOptions,
-            strainOptions = strainOptions,
-            onDismiss = { showManualEquipmentDialog = false },
-            onAdd = { equipment ->
-                onManualEquipmentsChange(manualEquipments + equipment)
-                showManualEquipmentDialog = false
-            },
-        )
+    val seedOptions = remember(selectedItemIds, visibleOptions) {
+        val selectedOptions = visibleOptions.filter { option -> option.id.isNotBlank() && selectedItemIds.contains(option.id) }
+        selectedOptions.ifEmpty { visibleOptions }
+    }
+    LaunchedEffect(seedOptions, manualEquipments.size, hasSeededWorkEquipmentColumns) {
+        if (!hasSeededWorkEquipmentColumns && manualEquipments.isEmpty() && seedOptions.isNotEmpty()) {
+            val seededIds = seedOptions.map { it.id }.filter { it.isNotBlank() }.toSet()
+            hasSeededWorkEquipmentColumns = true
+            activeManualEquipmentIndex = 0
+            onSelectedItemIdsChange(selectedItemIds - seededIds)
+            onManualEquipmentsChange(seedOptions.map { it.toManualWorkEquipment() })
+        }
+    }
+    LaunchedEffect(manualEquipments.size) {
+        activeManualEquipmentIndex = when {
+            manualEquipments.isEmpty() -> 0
+            activeManualEquipmentIndex < 0 -> 0
+            activeManualEquipmentIndex > manualEquipments.lastIndex -> manualEquipments.lastIndex
+            else -> activeManualEquipmentIndex
+        }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -10370,9 +10374,8 @@ private fun DocumentationWorkEquipmentOptionList(
                         }
                         OutlinedButton(
                             onClick = {
-                                manualEquipmentDialogSeed = IsznrManualWorkEquipment()
-                                manualEquipmentDialogTitle = "Nova radna oprema - stupac"
-                                showManualEquipmentDialog = true
+                                onManualEquipmentsChange(manualEquipments + IsznrManualWorkEquipment())
+                                activeManualEquipmentIndex = manualEquipments.size
                             },
                             enabled = enabled,
                             shape = RoundedCornerShape(14.dp),
@@ -10399,152 +10402,46 @@ private fun DocumentationWorkEquipmentOptionList(
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Kolone radne opreme", fontWeight = FontWeight.Bold)
+            if (manualEquipments.isEmpty()) {
                 Text(
-                    "Svaka kartica je jedan stupac u RO zapisniku.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                )
-            }
-            if (manualEquipments.isNotEmpty()) {
-                manualEquipments.forEachIndexed { index, equipment ->
-                    ManualWorkEquipmentCard(
-                        equipment = equipment,
-                        onRemove = {
-                            onManualEquipmentsChange(manualEquipments.filterIndexed { itemIndex, _ -> itemIndex != index })
-                        },
-                    )
-                }
-            }
-            if (visibleOptions.isEmpty()) {
-                Text(
-                    "Nema stupaca za ovaj filter ili tab.",
+                    if (visibleOptions.isEmpty()) {
+                        "Nema radne opreme za ovaj filter ili tab."
+                    } else {
+                        "Pripremam stupce radne opreme..."
+                    },
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             } else {
-                visibleOptions.forEach { option ->
-                    val deadline = option.workEquipmentDeadline()
-                    val isOverdue = deadline?.isBefore(today) == true
-                    val isUpcoming = deadline != null && !deadline.isBefore(today) && !deadline.isAfter(today.plusDays(30))
-                    val grade = option.workEquipmentFinalGradeText()
-                    val selected = selectedItemIds.contains(option.id)
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        color = when {
-                            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-                            isOverdue -> Color(0xFFFFE4E6)
-                            isUpcoming -> Color(0xFFFFF7ED)
-                            grade.contains("ne zadovoljava", ignoreCase = true) -> Color(0xFFFFE4E6)
-                            grade.contains("zadovoljava", ignoreCase = true) -> Color(0xFFECFDF5)
-                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
-                        },
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.Top,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Work,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = when {
-                                        selected -> MaterialTheme.colorScheme.primary
-                                        isOverdue -> Color(0xFFDC2626)
-                                        isUpcoming -> Color(0xFFB45309)
-                                        else -> MaterialTheme.colorScheme.primary
-                                    },
-                                )
-                                Text(
-                                    option.label,
-                                    modifier = Modifier.weight(1f),
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Checkbox(
-                                    checked = selected,
-                                    onCheckedChange = { checked ->
-                                        onSelectedItemIdsChange(if (checked) {
-                                            selectedItemIds + option.id
-                                        } else {
-                                            selectedItemIds - option.id
-                                        })
-                                    },
-                                    enabled = enabled && option.id.isNotBlank(),
-                                )
-                            }
-                            val subtitle = listOf(
-                                option.subtitle,
-                                option.meta["recordNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Zapisnik $it" }.orEmpty(),
-                                option.meta["serialNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Ser. $it" }.orEmpty(),
-                                option.meta["inventoryNumber"].orEmpty().takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
-                            )
-                                .map { it.trim() }
-                                .filter { it.isNotBlank() }
-                                .distinct()
-                                .joinToString(" · ")
-                            if (subtitle.isNotBlank()) {
-                                Text(
-                                    subtitle,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        manualEquipmentDialogSeed = option.toManualWorkEquipment()
-                                        manualEquipmentDialogTitle = "Postojeća radna oprema"
-                                        onSelectedItemIdsChange(selectedItemIds - option.id)
-                                        showManualEquipmentDialog = true
-                                    },
-                                    enabled = enabled,
-                                    shape = RoundedCornerShape(12.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                ) {
-                                    Text("Otvori")
-                                }
-                                Text(
-                                    "Učitaj podatke i prođi korake",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
-                                )
-                            }
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                if (deadline != null) {
-                                    AssistChip(
-                                        onClick = {},
-                                        label = {
-                                            Text(
-                                                if (isOverdue) {
-                                                    "Isteklo ${formatDatePickerLabel(deadline.toString())}"
-                                                } else {
-                                                    "Rok ${formatDatePickerLabel(deadline.toString())}"
-                                                },
-                                            )
-                                        },
-                                    )
-                                }
-                                if (grade.isNotBlank()) {
-                                    AssistChip(onClick = {}, label = { Text(grade, maxLines = 1, overflow = TextOverflow.Ellipsis) })
-                                }
-                            }
-                        }
-                    }
-                }
+                val safeIndex = activeManualEquipmentIndex.coerceIn(0, manualEquipments.lastIndex)
+                val activeEquipment = manualEquipments[safeIndex]
+                ManualWorkEquipmentInlineEditor(
+                    equipment = activeEquipment,
+                    columnIndex = safeIndex,
+                    columnCount = manualEquipments.size,
+                    enabled = enabled,
+                    mechanicalOptions = mechanicalOptions,
+                    electricalOptions = electricalOptions,
+                    hazardOptions = hazardOptions,
+                    harmfulnessOptions = harmfulnessOptions,
+                    strainOptions = strainOptions,
+                    onPrevious = { activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0) },
+                    onNext = { activeManualEquipmentIndex = (safeIndex + 1).coerceAtMost(manualEquipments.lastIndex) },
+                    onAddColumn = {
+                        onManualEquipmentsChange(manualEquipments + IsznrManualWorkEquipment())
+                        activeManualEquipmentIndex = manualEquipments.size
+                    },
+                    onRemove = {
+                        onManualEquipmentsChange(manualEquipments.filterIndexed { index, _ -> index != safeIndex })
+                        activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0)
+                    },
+                    onEquipmentChange = { updatedEquipment ->
+                        onManualEquipmentsChange(
+                            manualEquipments.mapIndexed { index, item ->
+                                if (index == safeIndex) updatedEquipment else item
+                            },
+                        )
+                    },
+                )
             }
         }
     }
@@ -10915,6 +10812,236 @@ private fun ManualWorkEquipmentColumnCell(
 }
 
 @Composable
+private fun ManualWorkEquipmentInlineEditor(
+    equipment: IsznrManualWorkEquipment,
+    columnIndex: Int,
+    columnCount: Int,
+    enabled: Boolean,
+    mechanicalOptions: List<WorkOrderDocumentationOption>,
+    electricalOptions: List<WorkOrderDocumentationOption>,
+    hazardOptions: List<WorkOrderDocumentationOption>,
+    harmfulnessOptions: List<WorkOrderDocumentationOption>,
+    strainOptions: List<WorkOrderDocumentationOption>,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onAddColumn: () -> Unit,
+    onRemove: () -> Unit,
+    onEquipmentChange: (IsznrManualWorkEquipment) -> Unit,
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var attachmentMessage by remember(equipment.attachments) { mutableStateOf("") }
+    var attachmentsLoading by remember(equipment.attachments) { mutableStateOf(false) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            attachmentsLoading = true
+            attachmentMessage = ""
+            runCatching {
+                buildIsznrRoAttachmentFiles(
+                    context = context.applicationContext,
+                    uris = uris,
+                    existingCount = equipment.attachments.size,
+                )
+            }
+                .onSuccess { files ->
+                    onEquipmentChange(equipment.copy(attachments = equipment.attachments + files))
+                    attachmentMessage = if (files.isEmpty()) {
+                        "Nije dodana nijedna slika."
+                    } else {
+                        "${files.size} slika dodano za RO privitke."
+                    }
+                }
+                .onFailure { error ->
+                    attachmentMessage = error.message ?: "Ne mogu učitati slike."
+                }
+            attachmentsLoading = false
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(
+                    onClick = onPrevious,
+                    enabled = enabled && columnIndex > 0,
+                    modifier = Modifier.size(42.dp),
+                ) {
+                    Icon(Icons.Rounded.ArrowBack, contentDescription = "Prethodna oprema")
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        equipment.name.ifBlank { "Radna oprema ${columnIndex + 1}" },
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "Stupac ${columnIndex + 1}/$columnCount · sve vrijednosti su otvorene ispod",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                IconButton(
+                    onClick = onNext,
+                    enabled = enabled && columnIndex < columnCount - 1,
+                    modifier = Modifier.size(42.dp),
+                ) {
+                    Icon(Icons.Rounded.ArrowForward, contentDescription = "Sljedeća oprema")
+                }
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onAddColumn,
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Nova kolona")
+                }
+                OutlinedButton(
+                    onClick = onRemove,
+                    enabled = enabled && columnCount > 1,
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFDC2626))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Ukloni")
+                }
+            }
+
+            ManualWorkEquipmentSectionTitle("Osnovni podaci")
+            OutlinedTextField(equipment.name, { onEquipmentChange(equipment.copy(name = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.manufacturer, { onEquipmentChange(equipment.copy(manufacturer = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.model, { onEquipmentChange(equipment.copy(model = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.serialNumber, { onEquipmentChange(equipment.copy(serialNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.inventoryNumber, { onEquipmentChange(equipment.copy(inventoryNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.note, { onEquipmentChange(equipment.copy(note = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, enabled = enabled, shape = RoundedCornerShape(14.dp))
+
+            ManualWorkEquipmentSectionTitle("Opisna RO polja")
+            OutlinedTextField(equipment.technicalData, { onEquipmentChange(equipment.copy(technicalData = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.purposeDescription, { onEquipmentChange(equipment.copy(purposeDescription = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Namjena radne opreme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.workspacePosition, { onEquipmentChange(equipment.copy(workspacePosition = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Položaj u radnom prostoru") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.workingSubstancesAndRawMaterials, { onEquipmentChange(equipment.copy(workingSubstancesAndRawMaterials = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Radne tvari i sirovine") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.useAndMaintenance, { onEquipmentChange(equipment.copy(useAndMaintenance = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Uporaba i održavanje") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.methodsProceduresAndNorms, { onEquipmentChange(equipment.copy(methodsProceduresAndNorms = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Metode, postupci i norme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+
+            ManualWorkEquipmentAssessmentEditor(
+                title = "Strojarski dio",
+                options = mechanicalOptions,
+                items = equipment.mechanicalItems,
+                onItemsChange = { onEquipmentChange(equipment.copy(mechanicalItems = it)) },
+            )
+            ManualWorkEquipmentAssessmentEditor(
+                title = "Elektro dio",
+                options = electricalOptions,
+                items = equipment.electricalItems,
+                onItemsChange = { onEquipmentChange(equipment.copy(electricalItems = it)) },
+            )
+
+            ManualWorkEquipmentSectionTitle("Opasnosti, štetnosti i napori")
+            ManualWorkEquipmentRegisterChips(
+                title = "Opasnosti",
+                options = hazardOptions,
+                selectedIris = equipment.hazardRegisterIris,
+                onSelectedIrisChange = { onEquipmentChange(equipment.copy(hazardRegisterIris = it)) },
+            )
+            ManualWorkEquipmentRegisterChips(
+                title = "Štetnosti",
+                options = harmfulnessOptions,
+                selectedIris = equipment.harmfulnessRegisterIris,
+                onSelectedIrisChange = { onEquipmentChange(equipment.copy(harmfulnessRegisterIris = it)) },
+            )
+            ManualWorkEquipmentRegisterChips(
+                title = "Napori",
+                options = strainOptions,
+                selectedIris = equipment.strainRegisterIris,
+                onSelectedIrisChange = { onEquipmentChange(equipment.copy(strainRegisterIris = it)) },
+            )
+
+            ManualWorkEquipmentSectionTitle("Slike radne opreme")
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
+                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { imagePicker.launch("image/*") },
+                        enabled = enabled && !attachmentsLoading && equipment.attachments.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (attachmentsLoading) "Učitavam..." else "Dodaj slike")
+                    }
+                    Text(
+                        "${equipment.attachments.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                    if (attachmentMessage.isNotBlank()) {
+                        Text(
+                            attachmentMessage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                    equipment.attachments.forEachIndexed { index, file ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(18.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(file.fileName.ifBlank { "Slika ${index + 1}" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOf(file.fileType, formatFileSizeLabel(file.fileSize)).filter { it.isNotBlank() }.joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    onEquipmentChange(equipment.copy(attachments = equipment.attachments.filterIndexed { itemIndex, _ -> itemIndex != index }))
+                                },
+                                enabled = enabled,
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            ManualWorkEquipmentSectionTitle("Zaključak")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = equipment.finalGrade != "0", onClick = { onEquipmentChange(equipment.copy(finalGrade = "1")) }, enabled = enabled, label = { Text("Zadovoljava") })
+                FilterChip(selected = equipment.finalGrade == "0", onClick = { onEquipmentChange(equipment.copy(finalGrade = "0")) }, enabled = enabled, label = { Text("Ne zadovoljava") })
+            }
+            OutlinedTextField(equipment.deficiencies, { onEquipmentChange(equipment.copy(deficiencies = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Nedostaci") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.measuresToEliminateDeficiencies, { onEquipmentChange(equipment.copy(measuresToEliminateDeficiencies = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Mjere za otklanjanje nedostataka") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+        }
+    }
+}
+
+@Composable
 private fun ManualWorkEquipmentDialog(
     title: String,
     initialEquipment: IsznrManualWorkEquipment,
@@ -11064,11 +11191,19 @@ private fun ManualWorkEquipmentDialog(
                             title = "Strojarski dio",
                             options = mechanicalOptions,
                             items = mechanicalItems,
+                            onItemsChange = { nextItems ->
+                                mechanicalItems.clear()
+                                mechanicalItems.addAll(nextItems)
+                            },
                         )
                         ManualWorkEquipmentAssessmentEditor(
                             title = "Elektro dio",
                             options = electricalOptions,
                             items = electricalItems,
+                            onItemsChange = { nextItems ->
+                                electricalItems.clear()
+                                electricalItems.addAll(nextItems)
+                            },
                         )
                     }
                     3 -> {
@@ -11214,7 +11349,8 @@ private fun ManualWorkEquipmentSectionTitle(title: String) {
 private fun ManualWorkEquipmentAssessmentEditor(
     title: String,
     options: List<WorkOrderDocumentationOption>,
-    items: MutableList<IsznrRoAssessmentItem>,
+    items: List<IsznrRoAssessmentItem>,
+    onItemsChange: (List<IsznrRoAssessmentItem>) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var selectedOption by remember(options) { mutableStateOf<WorkOrderDocumentationOption?>(null) }
@@ -11276,8 +11412,8 @@ private fun ManualWorkEquipmentAssessmentEditor(
             Button(
                 onClick = {
                     val option = selectedOption
-                    items.add(
-                        IsznrRoAssessmentItem(
+                    onItemsChange(
+                        items + IsznrRoAssessmentItem(
                             registerIri = option?.id.orEmpty(),
                             label = option?.label.orEmpty(),
                             customContent = customContent.trim(),
@@ -11298,7 +11434,10 @@ private fun ManualWorkEquipmentAssessmentEditor(
                 Text("Dodaj stavku")
             }
             items.forEachIndexed { index, item ->
-                ManualWorkEquipmentAssessmentChip(item = item, onRemove = { items.removeAt(index) })
+                ManualWorkEquipmentAssessmentChip(
+                    item = item,
+                    onRemove = { onItemsChange(items.filterIndexed { itemIndex, _ -> itemIndex != index }) },
+                )
             }
         }
     }
