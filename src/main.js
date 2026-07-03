@@ -31311,13 +31311,48 @@ function renderWorkOrderServicePicker() {
   workOrderServicePicker.replaceChildren(wrapper);
 }
 
+function resolveWorkOrderDocumentWizardServiceItem(rawService = {}) {
+  const normalizedService = getWorkOrderServiceItems({ serviceItems: [rawService] })[0] ?? null;
+  const serviceCatalogItem = getServiceCatalogItemForWorkOrderService(normalizedService || rawService);
+  if (serviceCatalogItem) {
+    return buildWorkOrderServiceItemSnapshot(serviceCatalogItem, normalizedService || rawService);
+  }
+  return normalizedService;
+}
+
+function getWorkOrderDocumentWizardRawServiceItems(workOrder = {}) {
+  const rawItems = Array.isArray(workOrder?.serviceItems) ? workOrder.serviceItems : [];
+  if (rawItems.length > 0) {
+    return rawItems;
+  }
+  const directService = {
+    serviceId: workOrder?.serviceId || workOrder?.serviceCatalogId || "",
+    serviceCode: workOrder?.serviceCode || workOrder?.code || "",
+    name: workOrder?.serviceName || workOrder?.name || "",
+    serviceType: workOrder?.serviceType || "",
+    validityMonths: workOrder?.validityMonths || "",
+    linkedTemplateIds: workOrder?.linkedTemplateIds || [],
+    linkedTemplateTitles: workOrder?.linkedTemplateTitles || [],
+  };
+  return directService.serviceId || directService.serviceCode || directService.name
+    ? [directService]
+    : [];
+}
+
 function getWorkOrderDocumentWizardResolvedServiceItems(workOrder = {}) {
   const normalizedId = String(workOrder?.id || "").trim();
   const override = normalizedId ? getWorkOrderDocumentWizardOverride(normalizedId) : null;
+  const rawItems = override && Object.prototype.hasOwnProperty.call(override, "serviceItems")
+    ? override.serviceItems
+    : getWorkOrderDocumentWizardRawServiceItems(workOrder);
   if (override && Object.prototype.hasOwnProperty.call(override, "serviceItems")) {
-    return getWorkOrderServiceItems({ serviceItems: override.serviceItems });
+    return (Array.isArray(rawItems) ? rawItems : [])
+      .map((service) => resolveWorkOrderDocumentWizardServiceItem(service))
+      .filter(Boolean);
   }
-  return getWorkOrderServiceItems(workOrder);
+  return rawItems
+    .map((service) => resolveWorkOrderDocumentWizardServiceItem(service))
+    .filter(Boolean);
 }
 
 function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
@@ -31709,7 +31744,7 @@ function getDocumentTemplateById(templateId) {
 }
 
 function getServiceCatalogItemForWorkOrderService(service = {}) {
-  const normalizedServiceId = String(service?.serviceId ?? service?.id ?? "").trim();
+  const normalizedServiceId = String(service?.serviceId ?? service?.serviceCatalogId ?? service?.id ?? "").trim();
   if (normalizedServiceId) {
     const byId = state.serviceCatalog.find((item) => String(item.id) === normalizedServiceId);
     if (byId) {
@@ -31717,8 +31752,8 @@ function getServiceCatalogItemForWorkOrderService(service = {}) {
     }
   }
 
-  const normalizedCode = normalizeLooseName(service?.serviceCode ?? "");
-  const normalizedName = normalizeLooseName(service?.name ?? "");
+  const normalizedCode = normalizeLooseName(service?.serviceCode ?? service?.code ?? service?.shortCode ?? "");
+  const normalizedName = normalizeLooseName(service?.name ?? service?.serviceName ?? service?.title ?? service?.label ?? "");
 
   if (!normalizedCode && !normalizedName) {
     return null;
