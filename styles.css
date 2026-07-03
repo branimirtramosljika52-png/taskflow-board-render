@@ -6175,6 +6175,40 @@ body.is-settings-work-equipment-ai-modal-open {
   display: grid;
 }
 
+.settings-document-template-ai-subblock {
+  display: grid;
+}
+
+.settings-document-template-ai-subblock + .settings-document-template-ai-subblock {
+  border-top: 1px solid rgba(213, 224, 244, 0.78);
+}
+
+.settings-document-template-ai-subblock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 16px;
+  background: rgba(248, 251, 255, 0.72);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.settings-document-template-ai-subblock-head strong {
+  min-width: 0;
+  color: #12213f;
+  font-size: 0.8rem;
+  font-weight: 940;
+  line-height: 1.25;
+}
+
+.settings-document-template-ai-subblock-head span {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 840;
+}
+
 .settings-document-template-ai-list .settings-document-template-ai-card {
   display: grid;
   grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.2fr) auto;

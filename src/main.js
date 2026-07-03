@@ -36105,6 +36105,14 @@ function getSettingsDocumentTemplateAiEntryBlockKey(entry = {}) {
   ].map((value) => String(value ?? "").replaceAll("|", "_")).join("|");
 }
 
+function getSettingsDocumentTemplateAiReportKey(entry = {}) {
+  return [
+    entry.draft ? "draft" : "saved",
+    entry.templateId || entry.templateTitle || "",
+    entry.service || "Zapisnik",
+  ].map((value) => String(value ?? "").replaceAll("|", "_")).join("|");
+}
+
 function collectSettingsDocumentTemplateAiEntries() {
   const sources = [];
   const activeTemplateId = String(documentTemplateIdInput?.value || "").trim();
@@ -36212,23 +36220,22 @@ function renderSettingsDocumentTemplateAiColumns() {
 
   const groupedEntries = new Map();
   entries.forEach((entry) => {
-    const blockKey = getSettingsDocumentTemplateAiEntryBlockKey(entry);
-    const blockLabel = getSettingsDocumentTemplateAiEntryBlockLabel(entry);
-    if (!groupedEntries.has(blockKey)) {
-      groupedEntries.set(blockKey, {
-        key: blockKey,
-        label: blockLabel,
+    const reportKey = getSettingsDocumentTemplateAiReportKey(entry);
+    if (!groupedEntries.has(reportKey)) {
+      groupedEntries.set(reportKey, {
+        key: reportKey,
+        label: entry.templateTitle || entry.service || "Zapisnik",
         service: entry.service,
         templateTitle: entry.templateTitle,
         draft: entry.draft,
         entries: [],
       });
     }
-    groupedEntries.get(blockKey).entries.push(entry);
+    groupedEntries.get(reportKey).entries.push(entry);
   });
 
   const blocks = Array.from(groupedEntries.values()).sort((left, right) => (
-    `${left.service} ${left.label}`.localeCompare(`${right.service} ${right.label}`, "hr")
+    `${left.service} ${left.templateTitle}`.localeCompare(`${right.service} ${right.templateTitle}`, "hr")
   )).map((group) => {
     const block = document.createElement("section");
     block.className = "settings-document-template-ai-block";
@@ -36240,7 +36247,6 @@ function renderSettingsDocumentTemplateAiColumns() {
     kicker.className = "settings-document-template-ai-block-kicker";
     kicker.textContent = [
       group.service || "Zapisnik",
-      group.templateTitle,
       group.draft ? "otvoreni predložak" : "",
     ].filter(Boolean).join(" · ");
     const title = document.createElement("strong");
@@ -36254,9 +36260,30 @@ function renderSettingsDocumentTemplateAiColumns() {
 
     const list = document.createElement("div");
     list.className = "settings-document-template-ai-block-list";
-    group.entries
-      .sort((left, right) => (left.columnIndex ?? left.fieldIndex ?? 0) - (right.columnIndex ?? right.fieldIndex ?? 0))
-      .forEach((entry) => {
+    const subblocks = new Map();
+    group.entries.forEach((entry) => {
+      const subblockLabel = getSettingsDocumentTemplateAiEntryBlockLabel(entry);
+      if (!subblocks.has(subblockLabel)) {
+        subblocks.set(subblockLabel, []);
+      }
+      subblocks.get(subblockLabel).push(entry);
+    });
+
+    Array.from(subblocks.entries()).forEach(([subblockLabel, subblockEntries]) => {
+      const subblock = document.createElement("section");
+      subblock.className = "settings-document-template-ai-subblock";
+      const subhead = document.createElement("div");
+      subhead.className = "settings-document-template-ai-subblock-head";
+      const subheadTitle = document.createElement("strong");
+      subheadTitle.textContent = subblockLabel;
+      const subheadMeta = document.createElement("span");
+      subheadMeta.textContent = `${subblockEntries.length} AI ${subblockEntries.length === 1 ? "polje" : "polja"}`;
+      subhead.append(subheadTitle, subheadMeta);
+      subblock.append(subhead);
+
+      subblockEntries
+        .sort((left, right) => (left.columnIndex ?? left.fieldIndex ?? 0) - (right.columnIndex ?? right.fieldIndex ?? 0))
+        .forEach((entry) => {
         const row = document.createElement("article");
         row.className = "settings-document-template-ai-card";
         row.tabIndex = 0;
@@ -36282,8 +36309,10 @@ function renderSettingsDocumentTemplateAiColumns() {
         chevron.className = "settings-document-template-ai-card-action";
         chevron.textContent = "Uredi";
         row.append(rowTitle, copy, chevron);
-        list.append(row);
+        subblock.append(row);
       });
+      list.append(subblock);
+    });
 
     block.append(head, list);
     return block;
