@@ -27994,6 +27994,37 @@ private fun WorkOrderMeasurementTable.matchesAiMeasurementSuggestion(suggestion:
     }
 }
 
+private fun WorkOrderMeasurementTable.looksLikeSprMeasurementTable(): Boolean {
+    if (sheet.columns.isEmpty()) return false
+    val hasPlaceColumn = findSprMeasurementColumn(
+        sheet = sheet,
+        candidates = listOf("mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"),
+        fallbackIndex = 1,
+    ) != null
+    val hasQuantityColumn = findSprMeasurementColumn(
+        sheet = sheet,
+        candidates = listOf("broj lampi", "lampi", "svjetiljki", "broj svjetiljki", "kolicina", "quantity"),
+        fallbackIndex = 2,
+    ) != null
+    val tableLookup = normalizeTemplateFieldLookup(
+        listOf(key, id, tokenKey, label, summary, sheet.columns.joinToString(" ") { it.label }).joinToString(" "),
+    )
+    val looksSpr = tableLookup.contains("spr") ||
+        tableLookup.contains("sigurnosnarasvjet") ||
+        tableLookup.contains("protupanic")
+    return hasPlaceColumn && hasQuantityColumn && looksSpr
+}
+
+private fun WorkOrderDocumentationTemplate.resolveAiMeasurementTable(
+    suggestion: WorkOrderDocumentationAiMeasurementSuggestion,
+): WorkOrderMeasurementTable? {
+    measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) }?.let { return it }
+    if (serviceCode.equals("SPR", ignoreCase = true)) {
+        measurementTables.firstOrNull { it.looksLikeSprMeasurementTable() }?.let { return it }
+    }
+    return measurementTables.singleOrNull()
+}
+
 private fun WorkOrderDocumentationAiMeasurementColumn.matchesField(table: WorkOrderMeasurementTable): Boolean {
     val lookup = measurementTableCandidateKeys(table)
         .flatMap { listOf(it, normalizeTemplateFieldLookup(it)) }
@@ -28068,11 +28099,10 @@ private fun buildDocumentationAiGridlinePreviewRows(
 ): List<DocumentationGridlinePreviewRow> =
     buildList {
         result.measurementSuggestions.forEach { suggestion ->
-            val table = template.measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) } ?: return@forEach
+            val table = template.resolveAiMeasurementTable(suggestion) ?: return@forEach
             val stateKey = measurementSheetStateKey(template, table)
             val sheet = sheets[stateKey] ?: table.sheet
             val aiColumns = template.aiMeasurementColumns.filter { it.matchesField(table) }
-            if (aiColumns.isEmpty()) return@forEach
             val placeColumn = findSprMeasurementColumn(
                 sheet = sheet,
                 candidates = listOf("mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"),
@@ -28234,11 +28264,10 @@ private fun applyDocumentationAiMeasurementSuggestions(
     var tableCount = 0
 
     result.measurementSuggestions.forEach { suggestion ->
-        val table = template.measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) } ?: return@forEach
+        val table = template.resolveAiMeasurementTable(suggestion) ?: return@forEach
         val stateKey = measurementSheetStateKey(template, table)
         val sheet = nextSheets[stateKey] ?: table.sheet
         val aiColumns = template.aiMeasurementColumns.filter { it.matchesField(table) }
-        if (aiColumns.isEmpty()) return@forEach
         val aiRows = suggestion.rows
             .map { row -> buildDocumentationAiMeasurementCells(sheet, aiColumns, row) }
             .filter { it.isNotEmpty() }
