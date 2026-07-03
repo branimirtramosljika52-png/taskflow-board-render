@@ -305,6 +305,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Locale
+import kotlin.math.abs
 
 enum class WorkOrderFilter(val label: String) {
     All("SVE"),
@@ -10976,7 +10977,29 @@ private fun ManualWorkEquipmentInlineEditor(
     }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(enabled, columnIndex, columnCount) {
+                var totalHorizontalDrag = 0f
+                detectDragGestures(
+                    onDragStart = { totalHorizontalDrag = 0f },
+                    onDragCancel = { totalHorizontalDrag = 0f },
+                    onDragEnd = {
+                        if (enabled && columnCount > 1) {
+                            when {
+                                totalHorizontalDrag > 92f && columnIndex > 0 -> onPrevious()
+                                totalHorizontalDrag < -92f && columnIndex < columnCount - 1 -> onNext()
+                            }
+                        }
+                        totalHorizontalDrag = 0f
+                    },
+                ) { change, dragAmount ->
+                    if (enabled && columnCount > 1 && abs(dragAmount.x) > abs(dragAmount.y) * 1.25f) {
+                        totalHorizontalDrag += dragAmount.x
+                        change.consume()
+                    }
+                }
+            },
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
@@ -11468,95 +11491,278 @@ private fun ManualWorkEquipmentAssessmentEditor(
     items: List<IsznrRoAssessmentItem>,
     onItemsChange: (List<IsznrRoAssessmentItem>) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var selectedOption by remember(options) { mutableStateOf<WorkOrderDocumentationOption?>(null) }
     var customContent by remember { mutableStateOf("") }
-    var measuredValue by remember { mutableStateOf("") }
-    var meetsConditions by remember { mutableStateOf(true) }
+    var customMeasuredValue by remember { mutableStateOf("") }
+    var customMeetsConditions by remember { mutableStateOf(true) }
+    val customItems = items.filter { item -> options.none { option -> roAssessmentItemMatchesOption(item, option) } }
 
     ManualWorkEquipmentSectionTitle(title)
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = { expanded = true },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Text(selectedOption?.label ?: "Odaberi IS ZNR stavku")
+            Text(
+                "Sve stavke su otvorene. Označi status i po potrebi upiši napomenu ili izmjerenu vrijednost.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+            if (options.isEmpty()) {
+                Text(
+                    "Nema dohvaćenih IS ZNR stavki za ovaj dio.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.take(80).forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        onClick = {
-                            selectedOption = option
-                            customContent = ""
-                            expanded = false
-                        },
-                    )
-                }
-                if (options.isEmpty()) {
-                    DropdownMenuItem(text = { Text("Nema IS ZNR stavki") }, onClick = { expanded = false })
-                }
+            options.forEachIndexed { index, option ->
+                ManualWorkEquipmentAssessmentRow(
+                    number = index + 1,
+                    option = option,
+                    item = items.firstOrNull { roAssessmentItemMatchesOption(it, option) },
+                    onUpsert = { nextItem -> onItemsChange(upsertRoAssessmentItem(items, nextItem)) },
+                    onRemove = { onItemsChange(items.filterNot { roAssessmentItemMatchesOption(it, option) }) },
+                )
             }
+            ManualWorkEquipmentSectionTitle("Dodatna stavka")
             OutlinedTextField(
                 value = customContent,
-                onValueChange = {
-                    customContent = it
-                    if (it.isNotBlank()) selectedOption = null
-                },
+                onValueChange = { customContent = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Vlastiti sadržaj") },
-                minLines = 2,
-                maxLines = 4,
+                label = { Text("Naziv dodatne stavke") },
+                singleLine = true,
                 shape = RoundedCornerShape(14.dp),
             )
             OutlinedTextField(
-                value = measuredValue,
-                onValueChange = { measuredValue = it },
+                value = customMeasuredValue,
+                onValueChange = { customMeasuredValue = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Napomena / izmjerene vrijednosti") },
-                minLines = 2,
-                maxLines = 4,
+                minLines = 1,
+                maxLines = 3,
                 shape = RoundedCornerShape(14.dp),
             )
-            FilterChip(
-                selected = meetsConditions,
-                onClick = { meetsConditions = !meetsConditions },
-                label = { Text(if (meetsConditions) "Zadovoljava" else "Ne zadovoljava") },
-            )
-            Button(
-                onClick = {
-                    val option = selectedOption
-                    onItemsChange(
-                        items + IsznrRoAssessmentItem(
-                            registerIri = option?.id.orEmpty(),
-                            label = option?.label.orEmpty(),
-                            customContent = customContent.trim(),
-                            measuredValue = measuredValue.trim(),
-                            meetsConditions = meetsConditions,
-                        ),
-                    )
-                    selectedOption = null
-                    customContent = ""
-                    measuredValue = ""
-                    meetsConditions = true
-                },
-                enabled = selectedOption != null || customContent.isNotBlank() || measuredValue.isNotBlank(),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Dodaj stavku")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = customMeetsConditions,
+                    onClick = { customMeetsConditions = true },
+                    label = { Text("Zadovoljava") },
+                )
+                FilterChip(
+                    selected = !customMeetsConditions,
+                    onClick = { customMeetsConditions = false },
+                    label = { Text("Ne zadovoljava") },
+                )
+                Button(
+                    onClick = {
+                        onItemsChange(
+                            items + IsznrRoAssessmentItem(
+                                customContent = customContent.trim(),
+                                measuredValue = customMeasuredValue.trim(),
+                                meetsConditions = customMeetsConditions,
+                            ),
+                        )
+                        customContent = ""
+                        customMeasuredValue = ""
+                        customMeetsConditions = true
+                    },
+                    enabled = customContent.isNotBlank() || customMeasuredValue.isNotBlank(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Dodaj vlastitu")
+                }
             }
-            items.forEachIndexed { index, item ->
+            customItems.forEachIndexed { index, item ->
                 ManualWorkEquipmentAssessmentChip(
                     item = item,
-                    onRemove = { onItemsChange(items.filterIndexed { itemIndex, _ -> itemIndex != index }) },
+                    onRemove = {
+                        var seenCustomIndex = -1
+                        onItemsChange(
+                            items.filter { candidate ->
+                                val isCustom = options.none { option -> roAssessmentItemMatchesOption(candidate, option) }
+                                if (isCustom) seenCustomIndex += 1
+                                !isCustom || seenCustomIndex != index
+                            },
+                        )
+                    },
                 )
             }
         }
     }
+}
+
+@Composable
+private fun ManualWorkEquipmentAssessmentRow(
+    number: Int,
+    option: WorkOrderDocumentationOption,
+    item: IsznrRoAssessmentItem?,
+    onUpsert: (IsznrRoAssessmentItem) -> Unit,
+    onRemove: () -> Unit,
+) {
+    val active = item != null
+    val rowColor = when {
+        item?.meetsConditions == true -> Color(0xFFECFDF5)
+        item?.meetsConditions == false -> Color(0xFFFFF1F2)
+        else -> MaterialTheme.colorScheme.surface
+    }
+    val statusColor = when {
+        item?.meetsConditions == true -> Color(0xFF059669)
+        item?.meetsConditions == false -> Color(0xFFDC2626)
+        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = rowColor,
+        border = BorderStroke(
+            1.dp,
+            if (active) statusColor.copy(alpha = 0.28f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(9.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.09f),
+                ) {
+                    Text(
+                        number.toString(),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        option.label,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        if (active) {
+                            if (item?.meetsConditions == true) "Upisano: zadovoljava" else "Upisano: ne zadovoljava"
+                        } else {
+                            "Još nije upisano za ovu opremu"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusColor,
+                    )
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = item?.meetsConditions == true,
+                    onClick = {
+                        onUpsert(
+                            roAssessmentItemFromOption(
+                                option = option,
+                                measuredValue = item?.measuredValue.orEmpty(),
+                                meetsConditions = true,
+                            ),
+                        )
+                    },
+                    label = { Text("Zadovoljava") },
+                )
+                FilterChip(
+                    selected = item?.meetsConditions == false,
+                    onClick = {
+                        onUpsert(
+                            roAssessmentItemFromOption(
+                                option = option,
+                                measuredValue = item?.measuredValue.orEmpty(),
+                                meetsConditions = false,
+                            ),
+                        )
+                    },
+                    label = { Text("Ne zadovoljava") },
+                )
+                if (active) {
+                    OutlinedButton(
+                        onClick = onRemove,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFDC2626))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Prazno")
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = item?.measuredValue.orEmpty(),
+                onValueChange = { value ->
+                    onUpsert(
+                        roAssessmentItemFromOption(
+                            option = option,
+                            measuredValue = value,
+                            meetsConditions = item?.meetsConditions ?: true,
+                        ),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Napomena / vrijednost") },
+                minLines = 1,
+                maxLines = 3,
+                shape = RoundedCornerShape(12.dp),
+            )
+        }
+    }
+}
+
+private fun roAssessmentItemFromOption(
+    option: WorkOrderDocumentationOption,
+    measuredValue: String,
+    meetsConditions: Boolean,
+): IsznrRoAssessmentItem =
+    IsznrRoAssessmentItem(
+        registerIri = option.id,
+        label = option.label,
+        measuredValue = measuredValue.trim(),
+        meetsConditions = meetsConditions,
+    )
+
+private fun roAssessmentItemMatchesOption(
+    item: IsznrRoAssessmentItem,
+    option: WorkOrderDocumentationOption,
+): Boolean {
+    val optionId = option.id.trim()
+    return if (optionId.isNotBlank()) {
+        item.registerIri == optionId
+    } else {
+        item.registerIri.isBlank() && item.label.equals(option.label, ignoreCase = true)
+    }
+}
+
+private fun upsertRoAssessmentItem(
+    items: List<IsznrRoAssessmentItem>,
+    nextItem: IsznrRoAssessmentItem,
+): List<IsznrRoAssessmentItem> {
+    var replaced = false
+    val updated = items.map { current ->
+        val sameItem = if (nextItem.registerIri.isNotBlank()) {
+            current.registerIri == nextItem.registerIri
+        } else {
+            current.registerIri.isBlank() && current.label.equals(nextItem.label, ignoreCase = true)
+        }
+        if (sameItem) {
+            replaced = true
+            nextItem
+        } else {
+            current
+        }
+    }
+    return if (replaced) updated else items + nextItem
 }
 
 @Composable
