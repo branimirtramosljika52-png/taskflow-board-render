@@ -8,6 +8,7 @@ import { extname, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
 import { PDFDocument, PDFName, PDFString, rgb } from "pdf-lib";
+import { getDocument as getPdfJsDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import * as XLSX from "xlsx";
 
 import {
@@ -113,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.282.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.283.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -7661,6 +7662,16 @@ function getOpenAiDataUrlMeta(dataUrl = "") {
   };
 }
 
+function readOpenAiDataUrlBuffer(dataUrl = "") {
+  const meta = getOpenAiDataUrlMeta(dataUrl);
+  if (!meta) {
+    return Buffer.alloc(0);
+  }
+  return meta.isBase64
+    ? Buffer.from(meta.payload, "base64")
+    : Buffer.from(decodeURIComponent(meta.payload), "utf8");
+}
+
 function readOpenAiTextFileContent(file = {}) {
   const meta = getOpenAiDataUrlMeta(file.contentDataUrl);
   if (!meta) {
@@ -8161,6 +8172,300 @@ function extractOpenAiSprGlobalValues(searchText = "") {
     ei: eiMatch ? cleanOpenAiSprMeasurementValue(eiMatch[1]) : "",
     eimin: eiminMatch ? cleanOpenAiSprMeasurementValue(eiminMatch[1]) : "",
     pass,
+  };
+}
+
+function isOpenAiPdfFile(file = {}) {
+  const name = String(file?.name || file?.fileName || "").toLowerCase();
+  const type = String(file?.type || file?.fileType || "").toLowerCase();
+  return Boolean(file?.contentDataUrl || file?.dataUrl) && (
+    type.includes("pdf") ||
+    name.endsWith(".pdf")
+  );
+}
+
+function normalizeOpenAiPdfText(value = "") {
+  return normalizeInputValue(value)
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/\u2212/g, "-")
+    .replace(/\u2264/g, "<=")
+    .replace(/\u2265/g, ">=")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function extractOpenAiPdfTextRows(file = {}) {
+  const dataUrl = file.contentDataUrl || file.dataUrl || "";
+  const buffer = readOpenAiDataUrlBuffer(dataUrl);
+  if (!buffer.length) {
+    return [];
+  }
+
+  let pdf = null;
+  try {
+    pdf = await getPdfJsDocument({
+      data: new Uint8Array(buffer),
+      disableFontFace: true,
+      useSystemFonts: true,
+    }).promise;
+
+    const rows = [];
+    for (let pageIndex = 1; pageIndex <= pdf.numPages; pageIndex += 1) {
+      const page = await pdf.getPage(pageIndex);
+      const content = await page.getTextContent({ normalizeWhitespace: true });
+      const items = (Array.isArray(content?.items) ? content.items : [])
+        .map((item) => ({
+          text: normalizeOpenAiPdfText(item?.str || ""),
+          x: Number(item?.transform?.[4] || 0),
+          y: Number(item?.transform?.[5] || 0),
+        }))
+        .filter((item) => item.text);
+
+      items
+        .sort((left, right) => Math.abs(right.y - left.y) > 2.2 ? right.y - left.y : left.x - right.x)
+        .forEach((item) => {
+          const existing = rows.find((row) => row.page === pageIndex && Math.abs(row.y - item.y) <= 2.2);
+          if (existing) {
+            existing.tokens.push(item);
+            existing.y = (existing.y + item.y) / 2;
+          } else {
+            rows.push({ page: pageIndex, y: item.y, tokens: [item], text: "" });
+          }
+        });
+    }
+
+    return rows
+      .map((row) => {
+        const tokens = row.tokens
+          .slice()
+          .sort((left, right) => left.x - right.x)
+          .map((token) => ({ ...token, text: normalizeOpenAiPdfText(token.text) }))
+          .filter((token) => token.text);
+        return {
+          page: row.page,
+          y: row.y,
+          tokens,
+          text: normalizeOpenAiPdfText(tokens.map((token) => token.text).join(" ")),
+        };
+      })
+      .filter((row) => row.text)
+      .sort((left, right) => left.page - right.page || right.y - left.y);
+  } catch (error) {
+    console.warn("SPR PDF parser skipped file:", file?.name || file?.fileName || "pdf", error?.message || error);
+    return [];
+  } finally {
+    if (pdf?.destroy) {
+      await pdf.destroy().catch(() => {});
+    }
+  }
+}
+
+function isOpenAiSprParserTableContext(text = "") {
+  const lookup = normalizeOpenAiPolicyKey(text);
+  return lookup.includes("sigurnosnerasvjete") ||
+    lookup.includes("sigurnosnarasvjet") ||
+    lookup.includes("protupanicnerasvjete") ||
+    lookup.includes("protupanicnarasvjet") ||
+    lookup.includes("mjernamjestasigurnosne") ||
+    lookup.includes("tablica1mjernamjesta");
+}
+
+function isOpenAiSprMeasurementValue(value = "") {
+  const text = String(value || "").trim();
+  return /^[<>]=?\s*\d+(?:[,.]\d+)?$/i.test(text) ||
+    /^\d+(?:[,.]\d+)?$/i.test(text);
+}
+
+function cleanOpenAiSprPassValue(value = "") {
+  const text = normalizeOpenAiPdfText(value).replace(/\s+/g, "").toUpperCase();
+  if (text === "DA" || text === "D") return "DA";
+  if (text === "NE" || text === "N") return "NE";
+  if (text === "NP" || text === "N/A") return text;
+  return "";
+}
+
+function parseOpenAiSprMeasurementRowText(row = {}) {
+  const text = normalizeOpenAiPdfText(row.text);
+  if (!/^\d{1,4}\b/.test(text) || /\bR\.?\s*br\b/i.test(text) || /\bMjesto\s+ispitivanja\b/i.test(text)) {
+    return null;
+  }
+
+  const valuePattern = "([<>]=?\\s*\\d+(?:[,.]\\d+)?|\\d+(?:[,.]\\d+)?)";
+  const rowPattern = new RegExp(`^\\s*(\\d{1,4})\\s+(.+?)\\s+(\\d{1,4})\\s+${valuePattern}\\s+${valuePattern}\\s+(DA|NE|NP|N/A)\\b`, "iu");
+  const match = text.match(rowPattern);
+  if (match) {
+    return {
+      rowNumber: match[1],
+      place: capitalizeOpenAiMeasurementPlace(match[2]),
+      lampCount: match[3],
+      ei: cleanOpenAiSprMeasurementValue(match[4]),
+      eimin: cleanOpenAiSprMeasurementValue(match[5]),
+      pass: cleanOpenAiSprPassValue(match[6]),
+    };
+  }
+
+  const tokens = (Array.isArray(row.tokens) ? row.tokens : [])
+    .map((token) => normalizeOpenAiPdfText(token.text))
+    .filter(Boolean);
+  if (tokens.length < 6 || !/^\d{1,4}$/.test(tokens[0])) {
+    return null;
+  }
+
+  const passIndex = tokens.findLastIndex((token) => cleanOpenAiSprPassValue(token));
+  if (passIndex < 5) {
+    return null;
+  }
+  const beforePass = tokens.slice(1, passIndex);
+  const measurementIndexes = beforePass
+    .map((token, index) => ({ token, index }))
+    .filter((item) => isOpenAiSprMeasurementValue(item.token));
+  if (measurementIndexes.length < 3) {
+    return null;
+  }
+
+  const [lampItem, eiItem, eiminItem] = measurementIndexes.slice(-3);
+  const place = capitalizeOpenAiMeasurementPlace(beforePass.slice(0, lampItem.index).join(" "));
+  if (!place || !/^\d{1,4}$/.test(lampItem.token)) {
+    return null;
+  }
+
+  return {
+    rowNumber: tokens[0],
+    place,
+    lampCount: lampItem.token,
+    ei: cleanOpenAiSprMeasurementValue(eiItem.token),
+    eimin: cleanOpenAiSprMeasurementValue(eiminItem.token),
+    pass: cleanOpenAiSprPassValue(tokens[passIndex]),
+  };
+}
+
+function parseOpenAiSprMeasurementRowsFromPdfRows(rows = []) {
+  const allText = rows.map((row) => row.text).join("\n");
+  if (!isOpenAiSprParserTableContext(allText)) {
+    return [];
+  }
+
+  const seen = new Set();
+  return rows
+    .map(parseOpenAiSprMeasurementRowText)
+    .filter(Boolean)
+    .filter((row) => {
+      const key = normalizeOpenAiPolicyKey(`${row.rowNumber} ${row.place} ${row.lampCount} ${row.ei} ${row.eimin} ${row.pass}`);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildOpenAiParserMeasurementRows(target = {}, parsedRows = [], sourceFile = "") {
+  return parsedRows
+    .map((row) => {
+      const values = {};
+      if (target.placeColumn) {
+        values[target.placeColumn.columnId || target.placeColumn.key] = row.place;
+      }
+      if (target.lampColumn) {
+        values[target.lampColumn.columnId || target.lampColumn.key] = row.lampCount;
+      }
+      if (target.eiColumn && row.ei) {
+        values[target.eiColumn.columnId || target.eiColumn.key] = row.ei;
+      }
+      if (target.eiminColumn && row.eimin) {
+        values[target.eiminColumn.columnId || target.eiminColumn.key] = row.eimin;
+      }
+      if (target.passColumn && row.pass) {
+        values[target.passColumn.columnId || target.passColumn.key] = row.pass;
+      }
+      return {
+        values,
+        orderedValues: [],
+        confidence: "high",
+        sourceFile,
+      };
+    })
+    .filter((row) => Object.keys(row.values).length > 0);
+}
+
+async function buildOpenAiParserPlan(body = {}, user = null) {
+  const columns = Array.isArray(body.columns) ? body.columns : [];
+  const files = (Array.isArray(body.files) ? body.files : []).filter(isOpenAiPdfFile);
+  if (!columns.length || !files.length) {
+    return null;
+  }
+
+  const parsedByFile = [];
+  for (const file of files.slice(0, OPENAI_MAX_INLINE_FILE_COUNT)) {
+    const rows = await extractOpenAiPdfTextRows(file);
+    const parsedRows = parseOpenAiSprMeasurementRowsFromPdfRows(rows);
+    if (parsedRows.length) {
+      parsedByFile.push({
+        fileName: normalizeInputValue(file?.name || file?.fileName || "zapisnik.pdf"),
+        parsedRows,
+        searchText: rows.map((row) => row.text).join("\n"),
+      });
+    }
+  }
+
+  if (!parsedByFile.length) {
+    return null;
+  }
+
+  const searchText = parsedByFile.map((item) => item.searchText).join("\n");
+  const target = getOpenAiSprMeasurementTarget(columns, searchText);
+  if (!target) {
+    return null;
+  }
+
+  const sourceFile = parsedByFile.map((item) => item.fileName).filter(Boolean).join(", ").slice(0, 240);
+  const parsedRows = parsedByFile.flatMap((item) => item.parsedRows);
+  const rows = buildOpenAiParserMeasurementRows(target, parsedRows, sourceFile);
+  if (!rows.length) {
+    return null;
+  }
+
+  const result = {
+    fieldSuggestions: [],
+    measurementSuggestions: [
+      {
+        fieldId: target.group.fieldId,
+        fieldKey: target.group.fieldKey,
+        fieldLabel: target.group.fieldLabel,
+        rows,
+        confidence: "high",
+        sourceFile,
+      },
+    ],
+    warnings: [
+      `PDF parser je pronasao ${rows.length} SPR redaka. Provjeri preview prije upisa u Gridline.`,
+    ],
+    summary: `Parser je pripremio ${rows.length} redaka iz stare SPR PDF tablice.`,
+  };
+
+  return {
+    ok: true,
+    dryRun: false,
+    tokenSpend: "none",
+    provider: "parser",
+    endpoint: "local-pdf-parser",
+    model: "pdfjs-table-parser",
+    modelTier: "parser",
+    modelLabel: "PDF parser",
+    preparedAt: new Date().toISOString(),
+    actorId: user?.id ?? null,
+    organizationId: String(body.organizationId || ""),
+    summary: {
+      files: files.length,
+      parsedFiles: parsedByFile.length,
+      fields: Array.isArray(body.fields) ? body.fields.length : 0,
+      columns: columns.length,
+      workOrderId: String(body.workOrderId || ""),
+      purpose: String(body.purpose || "document-field-prefill").slice(0, 120),
+    },
+    result,
+    outputText: JSON.stringify(result),
+    nextStep: "Parser je nasao SPR tablicu. Prikazi preview i potvrdi upis u Gridline.",
   };
 }
 
@@ -32423,6 +32728,12 @@ async function handleApiRequest(request, response, url) {
       }
 
       const body = await readJsonBody(request);
+      const parserPlan = await buildOpenAiParserPlan(body, user);
+      if (parserPlan) {
+        sendJson(response, 200, parserPlan);
+        return true;
+      }
+
       const config = getOpenAiRuntimeConfig();
       const wantsLiveCall = body?.dryRun === false;
       if (!wantsLiveCall || config.dryRun || !config.liveCallsEnabled) {

@@ -24996,6 +24996,7 @@ private fun WorkOrderDocumentationWizardDialog(
     var sprVoiceAiLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     var sprVoiceAiMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
     var sprVoicePreviewRows by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<SprVoiceAiRow>()) }
+    var gridlineParserPreview by remember(workOrder.id, selectedObjectId) { mutableStateOf<DocumentationGridlinePreviewState?>(null) }
     val aiCapableTemplates = remember(activeTemplates) {
         activeTemplates.filter { template -> template.aiFields.isNotEmpty() || template.aiMeasurementColumns.isNotEmpty() }
     }
@@ -25573,6 +25574,32 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
+    gridlineParserPreview?.let { preview ->
+        val previewTemplate = activeTemplates.firstOrNull { it.id == preview.templateId }
+        DocumentationGridlineParserPreviewDialog(
+            preview = preview,
+            enabled = !formLoading && previewTemplate != null,
+            onDismiss = { gridlineParserPreview = null },
+            onApply = { replaceExisting ->
+                if (previewTemplate != null) {
+                    val sheetApply = applyDocumentationAiMeasurementSuggestions(
+                        template = previewTemplate,
+                        result = preview.result,
+                        sheets = measurementSheets,
+                        replaceExisting = replaceExisting,
+                    )
+                    measurementSheets = sheetApply.sheets
+                    aiMessage = if (replaceExisting) {
+                        "Zamijenjena Gridline tablica: upisano ${sheetApply.rowCount} redaka iz PDF parsera."
+                    } else {
+                        "Dodano u Gridline tablicu: upisano ${sheetApply.rowCount} redaka iz PDF parsera."
+                    }
+                }
+                gridlineParserPreview = null
+            },
+        )
+    }
+
     if (measurementPreviewOpen) {
         DocumentationMeasurementFullscreenDialog(
             workOrder = workOrder,
@@ -25971,20 +25998,40 @@ private fun WorkOrderDocumentationWizardDialog(
                                         aiFiles,
                                         aiModelTier,
                                         { result ->
-                                            val fieldApply = applyDocumentationAiFieldSuggestions(
-                                                template = template,
-                                                result = result,
-                                                values = templateFieldValues,
-                                            )
-                                            val sheetApply = applyDocumentationAiMeasurementSuggestions(
+                                            aiLoading = false
+                                            val parserRows = buildDocumentationAiGridlinePreviewRows(
                                                 template = template,
                                                 result = result,
                                                 sheets = measurementSheets,
                                             )
-                                            templateFieldValues = fieldApply.values
-                                            measurementSheets = sheetApply.sheets
-                                            aiLoading = false
-                                            aiMessage = buildDocumentationAiResultMessage(result, fieldApply.count, sheetApply.rowCount)
+                                            if (
+                                                parserRows.isNotEmpty() &&
+                                                result.modelLabel.equals("PDF parser", ignoreCase = true)
+                                            ) {
+                                                gridlineParserPreview = DocumentationGridlinePreviewState(
+                                                    templateId = template.id,
+                                                    result = result,
+                                                    rows = parserRows,
+                                                    message = result.message.ifBlank {
+                                                        "Parser je pripremio ${parserRows.size} redaka za Gridline."
+                                                    },
+                                                )
+                                                aiMessage = "PDF parser je pripremio ${parserRows.size} redaka. Provjeri preview prije upisa."
+                                            } else {
+                                                val fieldApply = applyDocumentationAiFieldSuggestions(
+                                                    template = template,
+                                                    result = result,
+                                                    values = templateFieldValues,
+                                                )
+                                                val sheetApply = applyDocumentationAiMeasurementSuggestions(
+                                                    template = template,
+                                                    result = result,
+                                                    sheets = measurementSheets,
+                                                )
+                                                templateFieldValues = fieldApply.values
+                                                measurementSheets = sheetApply.sheets
+                                                aiMessage = buildDocumentationAiResultMessage(result, fieldApply.count, sheetApply.rowCount)
+                                            }
                                         },
                                         { message ->
                                             aiLoading = false
@@ -26723,6 +26770,19 @@ private data class SprVoiceMeasurementRow(
     val place: String,
     val lampCount: String,
     val kind: String = "",
+)
+
+private data class DocumentationGridlinePreviewRow(
+    val place: String,
+    val quantity: String,
+    val details: List<Pair<String, String>> = emptyList(),
+)
+
+private data class DocumentationGridlinePreviewState(
+    val templateId: String,
+    val result: WorkOrderDocumentationAiResult,
+    val rows: List<DocumentationGridlinePreviewRow>,
+    val message: String,
 )
 
 private const val SPR_VOICE_REPLACE_COMMAND_PREFIX = "__SAFE_NEXUS_SPR_REPLACE__\n"
@@ -28001,6 +28061,64 @@ private fun buildDocumentationAiMeasurementCells(
     return cells.toMap()
 }
 
+private fun buildDocumentationAiGridlinePreviewRows(
+    template: WorkOrderDocumentationTemplate,
+    result: WorkOrderDocumentationAiResult,
+    sheets: Map<String, WorkOrderMeasurementSheet>,
+): List<DocumentationGridlinePreviewRow> =
+    buildList {
+        result.measurementSuggestions.forEach { suggestion ->
+            val table = template.measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) } ?: return@forEach
+            val stateKey = measurementSheetStateKey(template, table)
+            val sheet = sheets[stateKey] ?: table.sheet
+            val aiColumns = template.aiMeasurementColumns.filter { it.matchesField(table) }
+            if (aiColumns.isEmpty()) return@forEach
+            val placeColumn = findSprMeasurementColumn(
+                sheet = sheet,
+                candidates = listOf("mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"),
+                fallbackIndex = 1,
+            )
+            val quantityColumn = findSprMeasurementColumn(
+                sheet = sheet,
+                candidates = listOf("broj lampi", "lampi", "svjetiljki", "broj svjetiljki", "kolicina", "quantity"),
+                fallbackIndex = 2,
+            )
+            suggestion.rows.forEach { row ->
+                val cells = buildDocumentationAiMeasurementCells(sheet, aiColumns, row)
+                if (cells.isEmpty()) return@forEach
+                val place = placeColumn?.id?.let { cells[it] }.orEmpty()
+                    .ifBlank {
+                        cells.entries.firstOrNull { (columnId, value) ->
+                            value.isNotBlank() &&
+                                sheet.columns.firstOrNull { it.id == columnId }?.documentationAiRowAnchorScore()?.let { score -> score > 0 } == true
+                        }?.value.orEmpty()
+                    }
+                val quantity = quantityColumn?.id?.let { cells[it] }.orEmpty()
+                val primaryIds = setOfNotNull(placeColumn?.id, quantityColumn?.id)
+                val details = cells
+                    .filterKeys { it !in primaryIds }
+                    .mapNotNull { (columnId, value) ->
+                        val trimmed = value.trim()
+                        if (trimmed.isBlank()) {
+                            null
+                        } else {
+                            val label = sheet.columns.firstOrNull { it.id == columnId }?.label?.ifBlank { columnId } ?: columnId
+                            label to trimmed
+                        }
+                    }
+                if (place.isNotBlank() || quantity.isNotBlank() || details.isNotEmpty()) {
+                    add(
+                        DocumentationGridlinePreviewRow(
+                            place = place.ifBlank { "Red ${size + 1}" },
+                            quantity = quantity,
+                            details = details,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
 private fun WorkOrderMeasurementColumn.documentationAiRowAnchorScore(): Int {
     val lookup = normalizeTemplateFieldLookup("$id $label $placeholder")
     return when {
@@ -28080,10 +28198,36 @@ private fun mergeDocumentationAiRowsIntoSheet(
     return sheet.copy(rows = nextRows)
 }
 
+private fun clearDocumentationAiColumnsInSheet(
+    sheet: WorkOrderMeasurementSheet,
+    aiRows: List<Map<String, String>>,
+): WorkOrderMeasurementSheet {
+    val columnIds = aiRows
+        .flatMap { it.keys }
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .toSet()
+    if (columnIds.isEmpty()) return sheet
+    return sheet.copy(
+        rows = sheet.rows.map { row ->
+            if (row.id in sheet.headerRows || sheet.isMergedMeasurementSectionRow(row.id)) {
+                row
+            } else {
+                row.copy(
+                    cells = row.cells.mapValues { (columnId, value) ->
+                        if (columnId in columnIds) "" else value
+                    },
+                )
+            }
+        },
+    )
+}
+
 private fun applyDocumentationAiMeasurementSuggestions(
     template: WorkOrderDocumentationTemplate,
     result: WorkOrderDocumentationAiResult,
     sheets: Map<String, WorkOrderMeasurementSheet>,
+    replaceExisting: Boolean = false,
 ): DocumentationAiMeasurementApplyResult {
     val nextSheets = sheets.toMutableMap()
     var rowCount = 0
@@ -28099,7 +28243,8 @@ private fun applyDocumentationAiMeasurementSuggestions(
             .map { row -> buildDocumentationAiMeasurementCells(sheet, aiColumns, row) }
             .filter { it.isNotEmpty() }
         if (aiRows.isEmpty()) return@forEach
-        nextSheets[stateKey] = mergeDocumentationAiRowsIntoSheet(sheet, aiRows)
+        val targetSheet = if (replaceExisting) clearDocumentationAiColumnsInSheet(sheet, aiRows) else sheet
+        nextSheets[stateKey] = mergeDocumentationAiRowsIntoSheet(targetSheet, aiRows)
         rowCount += aiRows.size
         tableCount += 1
     }
@@ -32360,6 +32505,128 @@ private fun DocumentationAiAssistantSection(
             }
         }
     }
+}
+
+@Composable
+private fun DocumentationGridlineParserPreviewDialog(
+    preview: DocumentationGridlinePreviewState,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (Boolean) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Provjeri tablicu iz PDF-a", fontWeight = FontWeight.Black) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 430.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    preview.message.ifBlank { "Parser je pripremio ${preview.rows.size} redaka za Gridline." },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(15.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                ) {
+                    Column(modifier = Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "Mjesto ispitivanja",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
+                            )
+                            Text(
+                                "Kolicina",
+                                modifier = Modifier.width(72.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Black,
+                                textAlign = TextAlign.End,
+                            )
+                        }
+                        preview.rows.forEachIndexed { index, row ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.86f))
+                                    .padding(horizontal = 8.dp, vertical = 7.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "${index + 1}. ${row.place}",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        row.quantity,
+                                        modifier = Modifier.width(72.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        textAlign = TextAlign.End,
+                                    )
+                                }
+                                if (row.details.isNotEmpty()) {
+                                    Text(
+                                        row.details.joinToString(" · ") { (label, value) -> "$label: $value" },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "Dodaj upisuje ispod zadnjeg popunjenog reda. Zamijeni brise samo kolone koje su u ovom pregledu i upisuje ih od prvog reda Gridline tablice.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = { onApply(false) },
+                    enabled = enabled && preview.rows.isNotEmpty(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Dodaj", fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = { onApply(true) },
+                    enabled = enabled && preview.rows.isNotEmpty(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                ) {
+                    Text("Zamijeni", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
 }
 
 @Composable
