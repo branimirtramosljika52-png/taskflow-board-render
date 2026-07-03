@@ -28001,6 +28001,48 @@ private fun buildDocumentationAiMeasurementCells(
     return cells.toMap()
 }
 
+private fun WorkOrderMeasurementColumn.documentationAiRowAnchorScore(): Int {
+    val lookup = normalizeTemplateFieldLookup("$id $label $placeholder")
+    return when {
+        lookup.contains("mjestoispitivanja") -> 100
+        lookup.contains("mjernomjesto") -> 96
+        lookup.contains("mjernamjesta") -> 94
+        lookup.contains("place") -> 92
+        lookup.contains("lokacija") -> 88
+        lookup.contains("prostorija") -> 84
+        lookup.contains("prostor") -> 80
+        lookup.contains("pozicija") -> 72
+        lookup.contains("opis") -> 44
+        lookup.contains("napomena") -> 16
+        else -> 0
+    }
+}
+
+private fun documentationAiRowAnchorColumnIds(
+    sheet: WorkOrderMeasurementSheet,
+    aiRows: List<Map<String, String>>,
+): List<String> {
+    val aiColumnIds = aiRows
+        .flatMap { it.keys }
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+    val sheetColumnsById = sheet.columns.associateBy { it.id }
+    val preferred = aiColumnIds
+        .mapNotNull { sheetColumnsById[it] }
+        .filter { column -> column.isEditableMeasurementColumn() }
+        .map { column -> column to column.documentationAiRowAnchorScore() }
+        .filter { (_, score) -> score > 0 }
+        .sortedByDescending { (_, score) -> score }
+        .map { (column, _) -> column.id }
+    if (preferred.isNotEmpty()) return preferred.take(1)
+
+    return aiColumnIds
+        .firstOrNull { columnId -> sheetColumnsById[columnId]?.isEditableMeasurementColumn() == true }
+        ?.let { listOf(it) }
+        .orEmpty()
+}
+
 private fun mergeDocumentationAiRowsIntoSheet(
     sheet: WorkOrderMeasurementSheet,
     aiRows: List<Map<String, String>>,
@@ -28008,11 +28050,18 @@ private fun mergeDocumentationAiRowsIntoSheet(
     if (aiRows.isEmpty()) return sheet
     val writableColumns = sheet.columns.filter { !it.readonly && it.computed.isBlank() }
     val nextRows = sheet.rows.toMutableList()
+    val anchorColumnIds = documentationAiRowAnchorColumnIds(sheet, aiRows)
+
+    fun rowAcceptsAiCells(row: WorkOrderMeasurementRow): Boolean {
+        if (row.id in sheet.headerRows || sheet.isMergedMeasurementSectionRow(row.id)) return false
+        if (anchorColumnIds.isNotEmpty()) {
+            return anchorColumnIds.all { columnId -> row.cells[columnId].orEmpty().trim().isBlank() }
+        }
+        return writableColumns.all { column -> row.cells[column.id].orEmpty().trim().isBlank() }
+    }
 
     aiRows.forEach { aiCells ->
-        val rowIndex = nextRows.indexOfFirst { row ->
-            writableColumns.all { column -> row.cells[column.id].orEmpty().trim().isBlank() }
-        }
+        val rowIndex = nextRows.indexOfFirst(::rowAcceptsAiCells)
         if (rowIndex >= 0) {
             val current = nextRows[rowIndex]
             nextRows[rowIndex] = current.copy(cells = current.cells + aiCells)
