@@ -133323,6 +133323,171 @@ function appendWorkOrderDocumentRoActionStrip(bodyNode, workOrder = {}, stateEnt
   bodyNode.append(strip);
 }
 
+function getWorkOrderDocumentRoPanelInitials(value = "") {
+  const words = String(value || "")
+    .trim()
+    .split(/[\s./_-]+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  const initials = words.length > 1
+    ? words.slice(0, 2).map((word) => word.charAt(0)).join("")
+    : String(words[0] || "RO").slice(0, 2);
+  return initials.toUpperCase() || "RO";
+}
+
+function getWorkOrderDocumentRoPanelItemTone(item = {}, selected = false, today = getWorkOrderDocumentWorkEquipmentToday()) {
+  const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
+  if (kind.isOverdue || kind.isUnsatisfactory) return "alert";
+  if (kind.isUpcoming) return "warning";
+  if (kind.isSatisfactory) return "ok";
+  if (selected) return "selected";
+  return "neutral";
+}
+
+function getWorkOrderDocumentRoPanelItemStatus(item = {}, selected = false, today = getWorkOrderDocumentWorkEquipmentToday()) {
+  const kind = getWorkOrderDocumentWorkEquipmentFilterKind(item, today);
+  const grade = getWorkOrderDocumentWorkEquipmentGrade(item);
+  if (kind.isUnsatisfactory) return "Ne zadovoljava";
+  if (kind.isOverdue) return "Isteklo";
+  if (kind.isUpcoming) return "Uskoro";
+  if (grade) return grade;
+  return selected ? "Odabrano" : "Nije ispitano";
+}
+
+function getWorkOrderDocumentRoPanelCellTone(cellData = {}) {
+  if (cellData.alert) return "alert";
+  if (cellData.warning) return "warning";
+  if (cellData.ok) return "ok";
+  return "neutral";
+}
+
+function getWorkOrderDocumentRoPanelSectionIcon(key = "") {
+  switch (key) {
+    case "basic":
+      return "ID";
+    case "equipment":
+      return "RO";
+    case "inspection":
+      return "IN";
+    case "obligationRegulations":
+    case "requirementRegulations":
+      return "PR";
+    case "mechanical":
+      return "ST";
+    case "electrical":
+      return "EL";
+    case "risks":
+      return "OP";
+    case "attachments":
+      return "DO";
+    default:
+      return "RO";
+  }
+}
+
+function buildWorkOrderDocumentRoReactModel({
+  workOrder = {},
+  items = [],
+  selectedIds = new Set(),
+  stateEntry = {},
+  today = getWorkOrderDocumentWorkEquipmentToday(),
+} = {}) {
+  const allMatrixItems = (Array.isArray(items) ? items : []).filter(Boolean);
+  const pageSize = 3;
+  const maxPage = Math.max(0, Math.ceil(allMatrixItems.length / pageSize) - 1);
+  const requestedPage = Math.max(0, Number.parseInt(stateEntry.matrixPage, 10) || 0);
+  const page = Math.min(requestedPage, maxPage);
+  stateEntry.matrixPage = page;
+  const matrixItems = allMatrixItems.slice(page * pageSize, page * pageSize + pageSize);
+  const normalizedSelectedIds = selectedIds instanceof Set ? selectedIds : new Set();
+  const from = matrixItems.length ? (page * pageSize) + 1 : 0;
+  const to = matrixItems.length ? Math.min((page + 1) * pageSize, allMatrixItems.length) : 0;
+  const expandedRows = stateEntry.expandedMatrixRows && typeof stateEntry.expandedMatrixRows === "object"
+    ? stateEntry.expandedMatrixRows
+    : {};
+  const showAllMap = stateEntry.expandedMatrixDetailRows && typeof stateEntry.expandedMatrixDetailRows === "object"
+    ? stateEntry.expandedMatrixDetailRows
+    : {};
+
+  const columns = matrixItems.map((item, index) => {
+    const equipment = item.equipment || {};
+    const itemId = String(item?.id || "").trim();
+    const selected = Boolean(itemId && normalizedSelectedIds.has(itemId));
+    const title = getWorkOrderDocumentRoEquipmentValue(item, "name", "Radna oprema");
+    const subtitle = [
+      getWorkOrderDocumentRoEquipmentValue(item, "manufacturer", ""),
+      getWorkOrderDocumentRoEquipmentValue(item, "model", ""),
+    ].filter((value) => value && value !== "-").join(" - ");
+    const meta = [
+      equipment.inventoryNumber ? `Inv. ${equipment.inventoryNumber}` : "",
+      equipment.serialNumber ? `Ser. ${equipment.serialNumber}` : "",
+      getWorkOrderDocumentWorkEquipmentLocationLabel(item),
+    ].filter(Boolean).join(" · ");
+    return {
+      id: itemId,
+      index: page * pageSize + index + 1,
+      title,
+      subtitle: subtitle || item.recordNumber || "Radna oprema",
+      meta,
+      selected,
+      tone: getWorkOrderDocumentRoPanelItemTone(item, selected, today),
+      status: getWorkOrderDocumentRoPanelItemStatus(item, selected, today),
+      initials: getWorkOrderDocumentRoPanelInitials(title),
+    };
+  });
+
+  const sections = WORK_ORDER_DOCUMENT_RO_MATRIX_SECTIONS.map((row) => {
+    const hasExplicitExpandedState = Object.prototype.hasOwnProperty.call(expandedRows, row.key);
+    const expanded = hasExplicitExpandedState ? expandedRows[row.key] !== false : row.key === "mechanical";
+    const detailRows = getWorkOrderDocumentRoDetailRowsForSection(row.key);
+    const showAll = Boolean(showAllMap[row.key]);
+    const visibleLimit = row.key === "mechanical" || row.key === "electrical" ? 6 : 8;
+    const visibleRows = showAll ? detailRows : detailRows.slice(0, visibleLimit);
+
+    return {
+      key: row.key,
+      title: row.title,
+      subtitle: row.subtitle,
+      icon: getWorkOrderDocumentRoPanelSectionIcon(row.key),
+      expanded,
+      detailHeader: row.key === "mechanical" || row.key === "electrical" ? `Stavka (${detailRows.length})` : "Polje",
+      columnTitles: matrixItems.map((item) => getWorkOrderDocumentRoEquipmentValue(item, "name", "Radna oprema")),
+      summaryCells: matrixItems.map((item) => {
+        const itemId = String(item?.id || "").trim();
+        const matrixRows = getWorkOrderDocumentRoMatrixRows(item, today);
+        const cellData = matrixRows.find((entry) => entry.key === row.key) || {};
+        return {
+          itemId,
+          selected: Boolean(itemId && normalizedSelectedIds.has(itemId)),
+          tone: getWorkOrderDocumentRoPanelCellTone(cellData),
+          value: cellData.value || "-",
+          detail: cellData.detail || "",
+        };
+      }),
+      detailRows: visibleRows.map((detail, index) => ({
+        id: detail.iri || detail.key || `${row.key}-${index}`,
+        label: `${index + 1}. ${detail.label || detail.key || "Polje"}`,
+        values: matrixItems.map((item) => getWorkOrderDocumentRoSectionDetailValue(item, row.key, detail, workOrder, stateEntry)),
+      })),
+      hasMore: detailRows.length > visibleRows.length,
+      showAll,
+      totalDetailRows: detailRows.length,
+    };
+  });
+
+  return {
+    page,
+    maxPage,
+    from,
+    to,
+    total: allMatrixItems.length,
+    canPrevious: page > 0,
+    canNext: page < maxPage,
+    columns,
+    sections,
+  };
+}
+
 function appendWorkOrderDocumentRoMatrix(bodyNode, {
   workOrder = {},
   items = [],
@@ -133338,6 +133503,80 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
   stateEntry.matrixPage = page;
   const matrixItems = allMatrixItems.slice(page * pageSize, page * pageSize + pageSize);
   if (!matrixItems.length) {
+    return;
+  }
+  const reactPanel = typeof window !== "undefined" ? window.SafeNexusWorkEquipmentRoPanel : null;
+  if (reactPanel && typeof reactPanel.mount === "function") {
+    if (typeof stateEntry.reactRoPanelUnmount === "function") {
+      try {
+        stateEntry.reactRoPanelUnmount();
+      } catch (error) {
+        console.warn("RO React panel unmount failed", error);
+      }
+      stateEntry.reactRoPanelUnmount = null;
+    }
+
+    const host = document.createElement("div");
+    host.className = "work-order-document-ro-react-host";
+    const model = buildWorkOrderDocumentRoReactModel({
+      workOrder,
+      items: allMatrixItems,
+      selectedIds,
+      stateEntry,
+      today,
+    });
+    const toggleItem = (itemId = "") => {
+      const normalizedId = String(itemId || "").trim();
+      if (!normalizedId || stateEntry.submitting) return;
+      const next = new Set(selectedIds);
+      if (next.has(normalizedId)) {
+        next.delete(normalizedId);
+      } else {
+        next.add(normalizedId);
+      }
+      stateEntry.selectedItemIds = [...next];
+      renderWorkOrderDocumentWizard();
+    };
+    stateEntry.reactRoPanelUnmount = reactPanel.mount(host, {
+      model,
+      onToggleItem: toggleItem,
+      onToggleSection: (key = "") => {
+        const rowKey = String(key || "").trim();
+        if (!rowKey) return;
+        const currentExpandedRows = stateEntry.expandedMatrixRows && typeof stateEntry.expandedMatrixRows === "object"
+          ? stateEntry.expandedMatrixRows
+          : {};
+        const current = Object.prototype.hasOwnProperty.call(currentExpandedRows, rowKey)
+          ? currentExpandedRows[rowKey] !== false
+          : rowKey === "mechanical";
+        stateEntry.expandedMatrixRows = {
+          ...currentExpandedRows,
+          [rowKey]: !current,
+        };
+        renderWorkOrderDocumentWizard();
+      },
+      onToggleDetailRows: (key = "") => {
+        const rowKey = String(key || "").trim();
+        if (!rowKey) return;
+        const currentExpandedDetailRows = stateEntry.expandedMatrixDetailRows && typeof stateEntry.expandedMatrixDetailRows === "object"
+          ? stateEntry.expandedMatrixDetailRows
+          : {};
+        stateEntry.expandedMatrixDetailRows = {
+          ...currentExpandedDetailRows,
+          [rowKey]: !currentExpandedDetailRows[rowKey],
+        };
+        renderWorkOrderDocumentWizard();
+      },
+      onPreviousPage: () => {
+        stateEntry.matrixPage = Math.max(0, model.page - 1);
+        renderWorkOrderDocumentWizard();
+      },
+      onNextPage: () => {
+        stateEntry.matrixPage = Math.min(model.maxPage, model.page + 1);
+        renderWorkOrderDocumentWizard();
+      },
+    });
+    bodyNode.append(host);
     return;
   }
   const rows = WORK_ORDER_DOCUMENT_RO_MATRIX_SECTIONS;

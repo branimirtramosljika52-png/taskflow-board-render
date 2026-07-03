@@ -156,6 +156,22 @@ async function buildOzoPanelBundle() {
   });
 }
 
+async function buildWorkEquipmentRoPanelBundle() {
+  await esbuild.build({
+    entryPoints: [resolve(rootDir, "src", "features", "workOrderDocuments", "WorkEquipmentRoPanel.jsx")],
+    outfile: resolve(distDir, "assets", "work-equipment-ro-panel.js"),
+    bundle: true,
+    format: "esm",
+    target: "es2020",
+    minify: true,
+    sourcemap: false,
+    jsx: "automatic",
+    define: {
+      "process.env.NODE_ENV": "\"production\"",
+    },
+  });
+}
+
 async function buildDocumentationSprPdfBundle() {
   await esbuild.build({
     entryPoints: [resolve(rootDir, "src", "documentationSprPdf.js")],
@@ -252,6 +268,7 @@ for (const entryModulePath of browserEntryModules) {
 }
 
 await buildOzoPanelBundle();
+await buildWorkEquipmentRoPanelBundle();
 await buildDocumentationSprPdfBundle();
 await buildOzoTailwindCss();
 await compressDistAssets();

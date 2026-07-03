@@ -25583,6 +25583,384 @@ body.is-document-template-editor-open .chat-dock {
   justify-content: center;
 }
 
+.work-order-document-ro-react-host {
+  min-width: 0;
+}
+
+.ro-react-panel {
+  overflow-x: auto;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.075);
+}
+
+.ro-react-panel.is-empty {
+  padding: 18px;
+}
+
+.ro-react-empty {
+  display: grid;
+  gap: 4px;
+  color: #64748b;
+  font-weight: 760;
+}
+
+.ro-react-empty strong {
+  color: #0f172a;
+  font-weight: 940;
+}
+
+.ro-react-toolbar {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: max-content;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.94);
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.ro-react-toolbar > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.ro-react-toolbar strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.ro-react-toolbar span {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 780;
+}
+
+.ro-react-nav {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.ro-react-nav .ghost-button {
+  width: 36px;
+  min-width: 36px;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.ro-react-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.82fr) repeat(var(--ro-react-columns, 3), minmax(270px, 1fr));
+  min-width: max-content;
+}
+
+.ro-react-section,
+.ro-react-equipment,
+.ro-react-summary-cell {
+  min-height: 82px;
+  border: 0;
+  border-right: 1px solid rgba(226, 232, 240, 0.94);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.94);
+  background: #ffffff;
+  color: #0f172a;
+  text-align: left;
+}
+
+.ro-react-section {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.ro-react-section.is-header {
+  z-index: 4;
+  min-height: 102px;
+  cursor: default;
+  background: linear-gradient(180deg, #ffffff, #f6f9fd);
+}
+
+.ro-react-section.is-collapsed {
+  background: #f8fafc;
+}
+
+.ro-react-section-icon,
+.ro-react-equipment-visual {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(191, 219, 254, 0.92);
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.ro-react-section strong,
+.ro-react-equipment strong,
+.ro-react-summary-cell strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.84rem;
+  font-weight: 950;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+
+.ro-react-section small,
+.ro-react-equipment small,
+.ro-react-summary-cell span,
+.ro-react-equipment em {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 760;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+}
+
+.ro-react-section span:not(.ro-react-section-icon),
+.ro-react-equipment-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ro-react-section em {
+  padding: 5px 8px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ro-react-equipment {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 102px;
+  padding: 12px 14px;
+  border-top: 3px solid transparent;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  cursor: pointer;
+}
+
+.ro-react-equipment:hover,
+.ro-react-summary-cell:hover {
+  background: #f6f9ff;
+}
+
+.ro-react-equipment.is-selected,
+.ro-react-summary-cell.is-selected {
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.26);
+  background: #eff6ff;
+}
+
+.ro-react-equipment.is-selected {
+  border-top-color: #2563eb;
+}
+
+.ro-react-equipment.is-alert,
+.ro-react-summary-cell.is-alert {
+  background: #fff5f5;
+}
+
+.ro-react-equipment.is-warning,
+.ro-react-summary-cell.is-warning {
+  background: #fff8ed;
+}
+
+.ro-react-equipment.is-ok,
+.ro-react-summary-cell.is-ok {
+  background: #f2fdf7;
+}
+
+.ro-react-equipment-visual {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #eff6ff, #dbeafe);
+  font-size: 0.78rem;
+}
+
+.ro-react-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+  max-width: 130px;
+  padding: 6px 9px;
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.68rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.ro-react-pill > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.ro-react-pill.is-ok {
+  border-color: rgba(22, 163, 74, 0.24);
+  background: #f0fdf4;
+  color: #047857;
+}
+
+.ro-react-pill.is-warning {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.ro-react-pill.is-alert {
+  border-color: rgba(239, 68, 68, 0.26);
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.ro-react-pill.is-selected {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ro-react-summary-cell {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.ro-react-detail {
+  grid-column: 1 / -1;
+  overflow-x: auto;
+  padding: 12px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.94);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96), rgba(255, 255, 255, 0.99));
+}
+
+.ro-react-detail-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.82fr) repeat(var(--ro-react-columns, 3), minmax(240px, 1fr));
+  min-width: max-content;
+  border-right: 1px solid rgba(226, 232, 240, 0.9);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.ro-react-detail-row.is-head {
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+}
+
+.ro-react-detail-row > strong,
+.ro-react-detail-row > span,
+.ro-react-detail-label,
+.ro-react-detail-value {
+  min-width: 0;
+  padding: 10px 12px;
+  border-left: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.ro-react-detail-row.is-head > strong,
+.ro-react-detail-row.is-head > span {
+  background: #f1f5f9;
+  color: #172554;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.ro-react-detail-label {
+  color: #172554;
+  font-size: 0.74rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.ro-react-detail-value {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  color: #0f172a;
+  font-size: 0.74rem;
+  line-height: 1.32;
+}
+
+.ro-react-detail-value strong {
+  color: inherit;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.ro-react-detail-value small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.ro-react-detail-value.is-ok {
+  background: #f0fdf4;
+  color: #047857;
+}
+
+.ro-react-detail-value.is-alert {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.ro-react-detail-value.is-filled {
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.ro-react-detail-value.is-muted {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.ro-react-detail-more {
+  display: flex;
+  justify-content: center;
+  padding-top: 12px;
+}
+
+.ro-react-detail-more .ghost-button {
+  min-width: 180px;
+  justify-content: center;
+}
+
 @media (max-width: 1180px) {
   .work-order-document-work-equipment-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
