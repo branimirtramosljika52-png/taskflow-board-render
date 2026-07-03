@@ -23423,10 +23423,14 @@ private fun normalizeDocumentationWorkEquipmentText(value: String): String =
 
 private fun isDocumentationWorkEquipmentText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
+    val compact = normalized.replace(" ", "")
     return normalized.contains("radna oprema") ||
         normalized.contains("radne opreme") ||
+        normalized.contains("ispitivanje radne opreme") ||
+        normalized.contains("pregled radne opreme") ||
         normalized == "ro" ||
-        normalized.startsWith("ro ")
+        normalized.startsWith("ro ") ||
+        compact == "ro"
 }
 
 private fun isDocumentationWorkEquipmentService(item: DocumentationServiceFlowItem): Boolean =
@@ -23985,10 +23989,14 @@ private fun WorkOrderServiceItem.toDocumentationServiceFlowItem(
     services: List<WorkOrderServiceOption>,
 ): DocumentationServiceFlowItem {
     val catalogMatch = catalogMatch(services)
-    val serviceName = name.ifBlank { serviceCode.ifBlank { serviceId.ifBlank { "Usluga" } } }
-    val shortCode = documentationServiceShortCode(serviceCode, serviceName, serviceIndex)
+    val serviceName = catalogMatch?.name
+        ?.ifBlank { name }
+        ?.ifBlank { serviceCode.ifBlank { serviceId.ifBlank { "Usluga" } } }
+        ?: name.ifBlank { serviceCode.ifBlank { serviceId.ifBlank { "Usluga" } } }
+    val canonicalServiceCode = catalogMatch?.serviceCode?.ifBlank { serviceCode } ?: serviceCode
+    val shortCode = documentationServiceShortCode(canonicalServiceCode, serviceName, serviceIndex)
     val serviceKey = serviceId
-        .ifBlank { serviceCode }
+        .ifBlank { canonicalServiceCode }
         .ifBlank { serviceName }
         .let { source -> "work-order-service-$serviceIndex-${normalizeDocumentationWorkEquipmentText(source).ifBlank { "service" }}" }
     return DocumentationServiceFlowItem(
@@ -24001,6 +24009,30 @@ private fun WorkOrderServiceItem.toDocumentationServiceFlowItem(
         documentNames = emptyList(),
         templateCount = 0,
     )
+}
+
+private fun DocumentationServiceFlowItem.matchesDocumentationServiceFlowCandidate(candidate: DocumentationServiceFlowItem): Boolean {
+    val itemLookup = listOf(serviceCode, serviceName, serviceKey)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    val candidateLookup = listOf(candidate.serviceCode, candidate.serviceName, candidate.serviceKey)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    val itemNativeCode = documentationNativeServiceCodeForText(itemLookup)
+    val candidateNativeCode = documentationNativeServiceCodeForText(candidateLookup)
+    if (itemNativeCode.isNotBlank() && candidateNativeCode.isNotBlank()) {
+        return itemNativeCode == candidateNativeCode
+    }
+
+    val itemCode = normalizeDocumentationWorkEquipmentText(serviceCode)
+    val candidateCode = normalizeDocumentationWorkEquipmentText(candidate.serviceCode)
+    if (itemCode.isNotBlank() && candidateCode.isNotBlank() && itemCode == candidateCode) return true
+
+    val itemName = normalizeDocumentationWorkEquipmentText(serviceName)
+    val candidateName = normalizeDocumentationWorkEquipmentText(candidate.serviceName)
+    return itemName.isNotBlank() &&
+        candidateName.isNotBlank() &&
+        (itemName == candidateName || itemName.contains(candidateName) || candidateName.contains(itemName))
 }
 
 private fun DocumentationServiceFlowItem.matchesWorkOrderService(service: WorkOrderServiceItem): Boolean {
@@ -24018,8 +24050,28 @@ private fun buildDocumentationServiceFlowItems(
     workOrder: WorkOrder,
     services: List<WorkOrderServiceOption>,
 ): List<DocumentationServiceFlowItem> {
-    val workOrderServiceItems = workOrder.serviceDetails
+    val explicitServiceDetails = workOrder.serviceDetails
         .filter { service -> service.name.isNotBlank() || service.serviceCode.isNotBlank() || service.serviceId.isNotBlank() }
+    val fallbackServiceDetails = if (explicitServiceDetails.isEmpty()) {
+        val fallbackService = workOrder.displayService.takeIf { it != "Bez upisane usluge" }.orEmpty()
+        if (fallbackService.isBlank()) {
+            emptyList()
+        } else {
+            listOf(
+                WorkOrderServiceItem(
+                    serviceId = "",
+                    name = fallbackService,
+                    serviceCode = "",
+                    serviceStatus = "",
+                    quantity = "1",
+                ),
+            )
+        }
+    } else {
+        emptyList()
+    }
+    val workOrderSourceServices = explicitServiceDetails.ifEmpty { fallbackServiceDetails }
+    val workOrderServiceItems = workOrderSourceServices
         .mapIndexed { index, service -> service.toDocumentationServiceFlowItem(index, services) }
 
     if (templates.isEmpty()) {
@@ -24065,7 +24117,7 @@ private fun buildDocumentationServiceFlowItems(
             )
         }
         .map { item ->
-            val matchedValidity = workOrder.serviceDetails.firstNotNullOfOrNull { service ->
+            val matchedValidity = workOrderSourceServices.firstNotNullOfOrNull { service ->
                 if (item.matchesWorkOrderService(service)) service.catalogMatch(services)?.validityMonths?.takeIf { it.isNotBlank() } else null
             }.orEmpty()
             if (item.validityMonths.isBlank() && matchedValidity.isNotBlank()) {
@@ -24074,11 +24126,17 @@ private fun buildDocumentationServiceFlowItems(
                 item
             }
         }
-    val missingWorkOrderServices = workOrder.serviceDetails
-        .filter { service -> service.name.isNotBlank() || service.serviceCode.isNotBlank() || service.serviceId.isNotBlank() }
-        .filter { service -> templateItems.none { item -> item.matchesWorkOrderService(service) } }
-        .mapIndexed { index, service -> service.toDocumentationServiceFlowItem(index, services) }
-    return (templateItems + missingWorkOrderServices)
+    val relevantTemplateItems = if (workOrderServiceItems.isNotEmpty()) {
+        templateItems.filter { templateItem ->
+            workOrderServiceItems.any { serviceItem -> templateItem.matchesDocumentationServiceFlowCandidate(serviceItem) }
+        }
+    } else {
+        templateItems
+    }
+    val missingWorkOrderServices = workOrderServiceItems
+        .filter { service -> relevantTemplateItems.none { item -> item.matchesDocumentationServiceFlowCandidate(service) } }
+    return (relevantTemplateItems + missingWorkOrderServices)
+        .ifEmpty { workOrderServiceItems.ifEmpty { templateItems } }
         .distinctBy { item ->
             listOf(item.serviceCode, item.serviceName, item.serviceKey)
                 .firstOrNull { it.isNotBlank() }
