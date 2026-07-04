@@ -574,6 +574,9 @@ data class IsznrRoAttachmentFile(
     val fileType: String = "",
     val fileSize: Long = 0,
     val contentDataUrl: String = "",
+    val role: String = "image",
+    val includeInReport: Boolean = true,
+    val note: String = "",
 )
 
 data class WorkEquipmentImageRecognitionResult(

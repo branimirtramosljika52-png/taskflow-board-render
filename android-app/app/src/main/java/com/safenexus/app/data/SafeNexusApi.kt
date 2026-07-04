@@ -2117,6 +2117,9 @@ private fun IsznrRoAttachmentFile.toJsonObject(): JSONObject =
         .put("fileType", fileType.trim())
         .put("fileSize", fileSize)
         .put("contentDataUrl", contentDataUrl.trim())
+        .put("role", role.trim().ifBlank { if (fileType.startsWith("application/pdf", ignoreCase = true)) "document" else "image" })
+        .put("includeInReport", includeInReport)
+        .put("note", note.trim())
 
 private fun WorkOrderDocumentationOption.toJsonObject(): JSONObject =
     JSONObject()
@@ -2148,7 +2151,7 @@ private fun IsznrManualWorkEquipment.toJsonObject(): JSONObject =
         .put("hazardRegisterIris", JSONArray(hazardRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
         .put("harmfulnessRegisterIris", JSONArray(harmfulnessRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
         .put("strainRegisterIris", JSONArray(strainRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
-        .put("attachments", JSONArray(attachments.map { file -> file.toJsonObject() }))
+        .put("attachments", JSONArray(attachments.filter { file -> file.includeInReport }.map { file -> file.toJsonObject() }))
         .put("hasParts", hasParts || parts.isNotEmpty())
         .put("parts", JSONArray(parts.map { part -> part.copy(parts = emptyList()).toJsonObject() }))
 

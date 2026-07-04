@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.310.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.311.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1377,7 +1377,7 @@ const ISZNR_RO_ATTACHMENT_MAX_BYTES = Math.max(
 );
 const ISZNR_RO_ATTACHMENT_MAX_FILES = Math.max(
   1,
-  Number(process.env.ISZNR_RO_ATTACHMENT_MAX_FILES || 12) || 12,
+  Number(process.env.ISZNR_RO_ATTACHMENT_MAX_FILES || 80) || 80,
 );
 const ISZNR_RECORD_PDF_IMPORT_TIMEOUT_MS = Math.max(
   3000,
@@ -5311,6 +5311,50 @@ async function submitIsznrRoAttachments({
   };
 }
 
+async function saveIsznrRoDocumentFilesForWorkOrder({
+  user = null,
+  workOrder = {},
+  documentFiles = [],
+} = {}) {
+  const workOrderId = normalizeInputValue(workOrder?.id);
+  const files = (Array.isArray(documentFiles) ? documentFiles : []).slice(0, ISZNR_RO_ATTACHMENT_MAX_FILES);
+  if (!workOrderId || files.length === 0) {
+    return { ok: true, saved: 0, failed: 0, warnings: [], documents: [] };
+  }
+
+  const saved = [];
+  const failed = [];
+
+  for (const file of files) {
+    try {
+      const payload = {
+        fileName: normalizeInputValue(file.fileName || file.name || "RO-prilog.pdf") || "RO-prilog.pdf",
+        fileType: "application/pdf",
+        fileSize: Math.max(0, Number(file.fileSize || file.size) || 0),
+        documentCategory: normalizeInputValue(file.documentCategory || "RO PDF prilog") || "RO PDF prilog",
+        description: normalizeInputValue(file.description || "RO PDF prilog uz zapisnik radne opreme."),
+        dataUrl: normalizeInputValue(file.dataUrl || file.contentDataUrl),
+      };
+      const items = await domainRepository.addWorkOrderDocuments(workOrderId, [payload], user, { sourceType: "editor" });
+      const document = items[0] ?? null;
+      saved.push(document ? stripStoredDocumentPayloadForResponse(document) : { fileName: payload.fileName });
+    } catch (error) {
+      failed.push({
+        fileName: normalizeInputValue(file?.fileName || file?.name),
+        message: error?.message || "RO PDF prilog nije spremljen u Dokumente.",
+      });
+    }
+  }
+
+  return {
+    ok: failed.length === 0,
+    saved: saved.length,
+    failed: failed.length,
+    warnings: failed.map((item) => [item.fileName, item.message].filter(Boolean).join(": ")),
+    documents: saved,
+  };
+}
+
 async function submitIsznrWorkEquipmentForWorkOrder({
   user = null,
   request = null,
@@ -5368,6 +5412,11 @@ async function submitIsznrWorkEquipmentForWorkOrder({
     roRecordId: submitResult.isznrId,
     attachmentFiles: draft.attachmentFiles,
   });
+  const documentResult = await saveIsznrRoDocumentFilesForWorkOrder({
+    user,
+    workOrder,
+    documentFiles: draft.documentFiles,
+  });
   const pdfUrl = buildIsznrRoRecordPdfUrl(isznrBaseUrl, submitResult.isznrId);
   const pdfBridgeUrl = buildIsznrRoRecordPdfBridgeUrl(isznrBaseUrl, submitResult.isznrId);
   const pdfLoginUrl = pdfUrl ? buildIsznrLoginUrlFromRoPdfUrl(pdfUrl) : "";
@@ -5396,6 +5445,8 @@ async function submitIsznrWorkEquipmentForWorkOrder({
         followUpResult.failed ? `Upozorenja: ${followUpResult.failed}.` : "",
         attachmentResult.submitted ? `Privici: ${attachmentResult.submitted}.` : "",
         attachmentResult.failed ? `Privici upozorenja: ${attachmentResult.failed}.` : "",
+        documentResult.saved ? `RO PDF prilozi: ${documentResult.saved} spremljeno u Dokumente.` : "",
+        documentResult.failed ? `RO PDF prilozi upozorenja: ${documentResult.failed}.` : "",
         pdfUrl ? `PDF zapisnik: ${pdfUrl}.` : "",
         pdfBridgeUrl ? `Safe Nexus preuzimanje: ${pdfBridgeUrl}.` : "",
         importedPdf.ok
@@ -5425,6 +5476,7 @@ async function submitIsznrWorkEquipmentForWorkOrder({
     signatureFieldCount: importedPdf.signatureFieldCount || 0,
     followUp: followUpResult,
     attachments: attachmentResult,
+    documents: documentResult,
     legacyMessage: followUpResult.failed
       ? `${submitResult.message} Dodatni RO elementi: ${followUpResult.submitted} poslano, ${followUpResult.failed} nije prošlo.`
       : followUpResult.submitted
@@ -6258,20 +6310,34 @@ function normalizeIsznrRoAssessmentItemsFromRecord(record = {}, keys = [], resou
   return normalizeIsznrRoAssessmentItems(items, resourcePath);
 }
 
-function normalizeIsznrRoAttachmentFilesForEquipment(equipment = {}) {
-  const sourceFiles = [
+function getIsznrRoEquipmentAttachmentSources(equipment = {}) {
+  return [
     ...((Array.isArray(equipment.attachments) ? equipment.attachments : [])),
     ...((Array.isArray(equipment.images) ? equipment.images : [])),
     ...((Array.isArray(equipment.photos) ? equipment.photos : [])),
+    ...((Array.isArray(equipment.documents) ? equipment.documents : [])),
+    ...((Array.isArray(equipment.documentFiles) ? equipment.documentFiles : [])),
+    ...((Array.isArray(equipment.pdfs) ? equipment.pdfs : [])),
   ];
-  const equipmentLabel = normalizeInputValue(
+}
+
+function getIsznrRoEquipmentAttachmentLabel(equipment = {}) {
+  return normalizeInputValue(
     equipment.name
     || equipment.model
     || equipment.serialNumber
     || equipment.inventoryNumber,
   );
+}
+
+function normalizeIsznrRoAttachmentFilesForEquipment(equipment = {}) {
+  const sourceFiles = getIsznrRoEquipmentAttachmentSources(equipment);
+  const equipmentLabel = getIsznrRoEquipmentAttachmentLabel(equipment);
   return sourceFiles
     .map((file, index) => {
+      if (file?.includeInReport === false) {
+        return null;
+      }
       const contentDataUrl = String(file?.contentDataUrl || file?.dataUrl || file?.fileDataUrl || "").trim();
       const meta = getOpenAiDataUrlMeta(contentDataUrl);
       const mimeType = normalizeInputValue(file?.fileType || file?.type || meta?.mimeType || "").toLowerCase();
@@ -6284,6 +6350,8 @@ function normalizeIsznrRoAttachmentFilesForEquipment(equipment = {}) {
         fileType: mimeType,
         fileSize: Math.max(0, Number(file?.fileSize || file?.size) || 0),
         contentDataUrl,
+        role: normalizeInputValue(file?.role || "image"),
+        note: normalizeInputValue(file?.note),
         equipmentLabel,
       };
     })
@@ -6297,6 +6365,60 @@ function normalizeIsznrRoAttachmentFiles(manualEquipments = []) {
       ...normalizeIsznrRoAttachmentFilesForEquipment(equipment),
       ...normalizeIsznrRoManualEquipmentParts(equipment)
         .flatMap((part) => normalizeIsznrRoAttachmentFilesForEquipment(part)),
+    ])
+    .filter((file) => {
+      const key = [
+        file.id,
+        file.fileName,
+        file.fileSize,
+        file.contentDataUrl.slice(0, 80),
+      ].join("|");
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, ISZNR_RO_ATTACHMENT_MAX_FILES);
+}
+
+function normalizeIsznrRoDocumentFilesForEquipment(equipment = {}) {
+  const sourceFiles = getIsznrRoEquipmentAttachmentSources(equipment);
+  const equipmentLabel = getIsznrRoEquipmentAttachmentLabel(equipment);
+  return sourceFiles
+    .map((file, index) => {
+      if (file?.includeInReport === false) {
+        return null;
+      }
+      const contentDataUrl = String(file?.contentDataUrl || file?.dataUrl || file?.fileDataUrl || "").trim();
+      const meta = getOpenAiDataUrlMeta(contentDataUrl);
+      const mimeType = normalizeInputValue(file?.fileType || file?.type || meta?.mimeType || "").toLowerCase();
+      if (!contentDataUrl || mimeType !== "application/pdf") {
+        return null;
+      }
+      const safeLabel = equipmentLabel || "radna-oprema";
+      return {
+        id: normalizeInputValue(file?.id),
+        fileName: normalizeInputValue(file?.fileName || file?.name || `${safeLabel}-${index + 1}.pdf`).slice(0, 180),
+        fileType: "application/pdf",
+        fileSize: Math.max(0, Number(file?.fileSize || file?.size) || 0),
+        dataUrl: contentDataUrl,
+        contentDataUrl,
+        documentCategory: normalizeInputValue(file?.documentCategory || "RO PDF prilog").slice(0, 96),
+        description: normalizeInputValue(file?.description || (equipmentLabel ? `RO PDF prilog - ${equipmentLabel}` : "RO PDF prilog")),
+        equipmentLabel,
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeIsznrRoDocumentFiles(manualEquipments = []) {
+  const seen = new Set();
+  return (Array.isArray(manualEquipments) ? manualEquipments : [])
+    .flatMap((equipment) => [
+      ...normalizeIsznrRoDocumentFilesForEquipment(equipment),
+      ...getIsznrRoEquipmentPartSources(equipment)
+        .flatMap((part) => normalizeIsznrRoDocumentFilesForEquipment(part)),
     ])
     .filter((file) => {
       const key = [
@@ -7079,6 +7201,7 @@ function buildIsznrWorkEquipmentPostDraft({
     manualEquipmentRecords.flatMap((equipment) => buildIsznrRoEquipmentPayloadsFromManualRecord(equipment)),
   );
   const attachmentFiles = normalizeIsznrRoAttachmentFiles(manualEquipmentRecords);
+  const documentFiles = normalizeIsznrRoDocumentFiles(manualEquipments);
   const selectedEquipmentPayload = dedupeIsznrRoEquipmentPayloads(
     selectedEquipmentCandidates
       .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
@@ -7163,6 +7286,8 @@ function buildIsznrWorkEquipmentPostDraft({
     manualEquipmentCount: manualEquipmentPayload.length,
     attachmentCount: attachmentFiles.length,
     attachmentFiles,
+    documentCount: documentFiles.length,
+    documentFiles,
     followUpDrafts,
     people: {
       experts: expertPeople,
@@ -7175,6 +7300,7 @@ function buildIsznrWorkEquipmentPostDraft({
       electrical: "POST /ro_electricals nakon roRecord.id",
       risks: "POST /ro_risk_indications nakon roRecord.id",
       attachments: "POST /ro_attachments multipart nakon roRecord.id",
+      documents: "RO PDF prilozi spremaju se u SafeNexus Dokumente RN-a",
     },
   };
 }

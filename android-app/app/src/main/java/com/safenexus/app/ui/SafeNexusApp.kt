@@ -81,6 +81,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -10723,12 +10724,363 @@ private fun IsznrManualWorkEquipment.subtitle(): String =
         inventoryNumber.takeIf { it.isNotBlank() }?.let { "Inv. $it" }.orEmpty(),
         (mechanicalItems.size + electricalItems.size).takeIf { it > 0 }?.let { "$it stručnih stavki" }.orEmpty(),
         (hazardRegisterIris.size + harmfulnessRegisterIris.size + strainRegisterIris.size).takeIf { it > 0 }?.let { "$it rizika" }.orEmpty(),
-        attachments.size.takeIf { it > 0 }?.let { "$it slika" }.orEmpty(),
+        attachments.count { it.isRoImageAttachment() }.takeIf { it > 0 }?.let { "$it slika" }.orEmpty(),
+        attachments.count { it.isRoPdfAttachment() }.takeIf { it > 0 }?.let { "$it PDF" }.orEmpty(),
         parts.size.takeIf { it > 0 }?.let { "$it dijelova" }.orEmpty(),
     )
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .joinToString(" · ")
+
+private fun IsznrRoAttachmentFile.isRoImageAttachment(): Boolean =
+    fileType.startsWith("image/", ignoreCase = true) || contentDataUrl.startsWith("data:image/", ignoreCase = true)
+
+private fun IsznrRoAttachmentFile.isRoPdfAttachment(): Boolean =
+    fileType.equals("application/pdf", ignoreCase = true) || contentDataUrl.startsWith("data:application/pdf", ignoreCase = true)
+
+private fun roAttachmentRoleLabel(role: String): String =
+    when (role.trim().lowercase(Locale.getDefault())) {
+        "machine" -> "Cijeli stroj"
+        "plate" -> "Pločica"
+        "detail" -> "Detalj"
+        "document" -> "PDF prilog"
+        else -> "Slika"
+    }
+
+private fun roAttachmentRoleColor(role: String): Color =
+    when (role.trim().lowercase(Locale.getDefault())) {
+        "machine" -> Color(0xFFDCFCE7)
+        "plate" -> Color(0xFFE0F2FE)
+        "detail" -> Color(0xFFFEF3C7)
+        "document" -> Color(0xFFFEE2E2)
+        else -> Color(0xFFF1F5F9)
+    }
+
+private fun withDefaultRoImageRoles(
+    existing: List<IsznrRoAttachmentFile>,
+    added: List<IsznrRoAttachmentFile>,
+): List<IsznrRoAttachmentFile> {
+    val existingImages = existing.count { it.isRoImageAttachment() }
+    return added.mapIndexed { index, file ->
+        if (!file.isRoImageAttachment()) {
+            file.copy(role = "document")
+        } else {
+            val imageIndex = existingImages + index
+            file.copy(
+                role = when (imageIndex) {
+                    0 -> "machine"
+                    1 -> "plate"
+                    else -> "detail"
+                },
+                includeInReport = true,
+            )
+        }
+    }
+}
+
+private fun tagRoAttachmentRolesForEquipment(files: List<IsznrRoAttachmentFile>): List<IsznrRoAttachmentFile> =
+    files.mapIndexed { index, file ->
+        if (!file.isRoImageAttachment()) {
+            file.copy(role = "document")
+        } else {
+            file.copy(
+                role = when (index) {
+                    0 -> "machine"
+                    1 -> "plate"
+                    else -> "detail"
+                },
+                includeInReport = true,
+            )
+        }
+    }
+
+private fun distributeRoImagesAcrossEquipmentParts(
+    equipment: IsznrManualWorkEquipment,
+    addedFiles: List<IsznrRoAttachmentFile>,
+): IsznrManualWorkEquipment {
+    val addedImages = addedFiles.filter { it.isRoImageAttachment() }
+    val addedDocuments = addedFiles.filterNot { it.isRoImageAttachment() }
+    val hasPartsMode = equipment.hasParts || equipment.parts.isNotEmpty()
+    if (!hasPartsMode || addedImages.size <= 1) {
+        return equipment.copy(
+            attachments = equipment.attachments + withDefaultRoImageRoles(equipment.attachments, addedFiles),
+        )
+    }
+
+    val mainAlreadyHasMachineImage = equipment.attachments.any {
+        it.isRoImageAttachment() && it.role.equals("machine", ignoreCase = true)
+    }
+    val mainImageCount = if (mainAlreadyHasMachineImage) 0 else 1
+    val mainImages = addedImages.take(mainImageCount).map { it.copy(role = "machine", includeInReport = true) }
+    val partImages = addedImages.drop(mainImageCount)
+    val requiredPartCount = ((partImages.size + 1) / 2).coerceAtLeast(1)
+    val currentParts = equipment.parts.ifEmpty { emptyList() }
+    val nextParts = currentParts.toMutableList()
+    while (nextParts.size < requiredPartCount) {
+        nextParts += defaultWorkEquipmentPart(nextParts.size + 1)
+    }
+
+    partImages.chunked(2).forEachIndexed { partIndex, chunk ->
+        val existingPart = nextParts[partIndex]
+        val taggedChunk = chunk.mapIndexed { imageIndex, file ->
+            file.copy(
+                role = if (imageIndex == 0) "machine" else "plate",
+                includeInReport = true,
+            )
+        }
+        nextParts[partIndex] = existingPart.copy(
+            attachments = existingPart.attachments + taggedChunk,
+        )
+    }
+
+    return equipment.copy(
+        attachments = equipment.attachments + mainImages + addedDocuments.map { it.copy(role = "document", includeInReport = true) },
+        hasParts = true,
+        parts = nextParts,
+    )
+}
+
+private fun decodeRoAttachmentBitmap(file: IsznrRoAttachmentFile): Bitmap? =
+    runCatching {
+        val raw = file.contentDataUrl.substringAfter("base64,", "")
+        if (raw.isBlank()) return@runCatching null
+        val bytes = Base64.getDecoder().decode(raw)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }.getOrNull()
+
+private fun sameRoAttachment(first: IsznrRoAttachmentFile, second: IsznrRoAttachmentFile): Boolean =
+    first.id.ifBlank { first.fileName } == second.id.ifBlank { second.fileName } &&
+        first.fileSize == second.fileSize
+
+@Composable
+private fun WorkEquipmentAttachmentGallery(
+    title: String,
+    subtitle: String,
+    attachments: List<IsznrRoAttachmentFile>,
+    enabled: Boolean,
+    loadingImages: Boolean,
+    loadingDocuments: Boolean,
+    onAddImages: () -> Unit,
+    onAddDocuments: () -> Unit,
+    onAttachmentsChange: (List<IsznrRoAttachmentFile>) -> Unit,
+) {
+    val images = attachments.filter { it.isRoImageAttachment() }
+    val documents = attachments.filter { it.isRoPdfAttachment() }
+
+    fun replaceAttachment(target: IsznrRoAttachmentFile, next: IsznrRoAttachmentFile) {
+        onAttachmentsChange(attachments.map { file -> if (sameRoAttachment(file, target)) next else file })
+    }
+
+    fun removeAttachment(target: IsznrRoAttachmentFile) {
+        onAttachmentsChange(attachments.filterNot { file -> sameRoAttachment(file, target) })
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, Color(0xFFD7E3F7)),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(shape = CircleShape, color = Color(0xFFE0F2FE), modifier = Modifier.size(40.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(21.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xFF475569))
+                }
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onAddImages,
+                    enabled = enabled && !loadingImages && attachments.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (loadingImages) "Učitavam..." else "Dodaj slike")
+                }
+                OutlinedButton(
+                    onClick = onAddDocuments,
+                    enabled = enabled && !loadingDocuments && attachments.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
+                ) {
+                    Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (loadingDocuments) "Učitavam..." else "Dodaj PDF")
+                }
+            }
+
+            Text(
+                "${attachments.count { it.includeInReport }}/${attachments.size} označeno za zapisnik · ${images.size} slika · ${documents.size} PDF",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF475569),
+                fontWeight = FontWeight.Bold,
+            )
+
+            if (images.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White.copy(alpha = 0.76f),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                ) {
+                    Text(
+                        "Još nema slika. Dodaj barem sliku cijelog stroja i sliku pločice.",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF64748B),
+                    )
+                }
+            } else {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(images.size) { index ->
+                        val file = images[index]
+                        val bitmap = remember(file.contentDataUrl) { decodeRoAttachmentBitmap(file) }
+                        Surface(
+                            modifier = Modifier.width(178.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (file.includeInReport) Color.White else Color(0xFFF1F5F9),
+                            border = BorderStroke(
+                                1.dp,
+                                if (file.includeInReport) Color(0xFFBFDBFE) else Color(0xFFCBD5E1),
+                            ),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(9.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(112.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFFE2E8F0)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (bitmap != null) {
+                                        ComposeImage(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = file.fileName,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                    } else {
+                                        Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(30.dp))
+                                    }
+                                    Surface(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(6.dp),
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = roAttachmentRoleColor(file.role),
+                                    ) {
+                                        Text(
+                                            roAttachmentRoleLabel(file.role),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF0F172A),
+                                        )
+                                    }
+                                }
+                                Text(
+                                    file.fileName.ifBlank { "Slika ${index + 1}" },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    listOf("machine", "plate", "detail").forEach { role ->
+                                        FilterChip(
+                                            selected = file.role.equals(role, ignoreCase = true),
+                                            onClick = { replaceAttachment(file, file.copy(role = role, includeInReport = true)) },
+                                            enabled = enabled,
+                                            label = { Text(roAttachmentRoleLabel(role)) },
+                                        )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    FilterChip(
+                                        selected = file.includeInReport,
+                                        onClick = { replaceAttachment(file, file.copy(includeInReport = !file.includeInReport)) },
+                                        enabled = enabled,
+                                        label = { Text(if (file.includeInReport) "Šalji" else "Ne šalji") },
+                                    )
+                                    IconButton(
+                                        onClick = { removeAttachment(file) },
+                                        enabled = enabled,
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (documents.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("PDF prilozi", fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                    documents.forEachIndexed { index, file ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.White.copy(alpha = 0.82f))
+                                .padding(horizontal = 9.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(20.dp))
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(file.fileName.ifBlank { "PDF prilog ${index + 1}" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(formatFileSizeLabel(file.fileSize), style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                            }
+                            FilterChip(
+                                selected = file.includeInReport,
+                                onClick = { replaceAttachment(file, file.copy(role = "document", includeInReport = !file.includeInReport)) },
+                                enabled = enabled,
+                                label = { Text(if (file.includeInReport) "Šalji" else "Ne šalji") },
+                            )
+                            IconButton(
+                                onClick = { removeAttachment(file) },
+                                enabled = enabled,
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni PDF", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 private fun WorkEquipmentImageRecognitionResult.hasRecognizedWorkEquipmentData(): Boolean =
     listOf(
@@ -10760,7 +11112,7 @@ private fun batchFilesForRecognitionItem(
     val byIndex = item.imageIndexes
         .mapNotNull { imageIndex -> files.getOrNull(imageIndex - 1) }
         .distinctBy { it.id.ifBlank { it.fileName } }
-    if (byIndex.isNotEmpty()) return byIndex.take(2)
+    if (byIndex.isNotEmpty()) return tagRoAttachmentRolesForEquipment(byIndex.take(5))
 
     val nameSet = item.sourceImageNames.map { it.trim().lowercase(Locale.getDefault()) }.filter { it.isNotBlank() }.toSet()
     val byName = if (nameSet.isEmpty()) {
@@ -10768,11 +11120,11 @@ private fun batchFilesForRecognitionItem(
     } else {
         files.filter { file -> nameSet.contains(file.fileName.trim().lowercase(Locale.getDefault())) }
     }
-    if (byName.isNotEmpty()) return byName.take(2)
+    if (byName.isNotEmpty()) return tagRoAttachmentRolesForEquipment(byName.take(5))
 
-    if (total <= 1) return files.take(2)
+    if (total <= 1) return tagRoAttachmentRolesForEquipment(files.take(5))
     val chunkSize = ((files.size + total - 1) / total).coerceAtLeast(1)
-    return files.drop(index * chunkSize).take(chunkSize).take(2)
+    return tagRoAttachmentRolesForEquipment(files.drop(index * chunkSize).take(chunkSize).take(5))
 }
 
 private fun WorkEquipmentImageRecognitionResult.toManualWorkEquipmentFromBatch(
@@ -11781,39 +12133,80 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                     fontWeight = FontWeight.Bold,
                 )
             }
-            files.take(8).forEachIndexed { index, file ->
-                Row(
+            if (files.isNotEmpty()) {
+                LazyRow(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.78f))
-                        .padding(horizontal = 8.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
-                    Text(
-                        file.fileName.ifBlank { "Slika ${index + 1}" },
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    IconButton(
-                        onClick = { files = files.filterIndexed { itemIndex, _ -> itemIndex != index } },
-                        enabled = enabled,
-                        modifier = Modifier.size(30.dp),
-                    ) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(17.dp))
+                    items(files.size) { index ->
+                        val file = files[index]
+                        val bitmap = remember(file.contentDataUrl) { decodeRoAttachmentBitmap(file) }
+                        Surface(
+                            modifier = Modifier.width(154.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color.White.copy(alpha = 0.82f),
+                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(7.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(96.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Color(0xFFE2E8F0)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (bitmap != null) {
+                                        ComposeImage(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = file.fileName,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                    } else {
+                                        Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(28.dp))
+                                    }
+                                    Surface(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(6.dp),
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = Color(0xFFDBEAFE),
+                                    ) {
+                                        Text(
+                                            "${index + 1}",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF1D4ED8),
+                                        )
+                                    }
+                                }
+                                Text(
+                                    file.fileName.ifBlank { "Slika ${index + 1}" },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                OutlinedButton(
+                                    onClick = { files = files.filterIndexed { itemIndex, _ -> itemIndex != index } },
+                                    enabled = enabled,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                ) {
+                                    Icon(Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text("Ukloni")
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            if (files.size > 8) {
-                Text(
-                    "+${files.size - 8} dodatnih slika spremno je za NexAI.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF475569),
-                )
             }
         }
     }
@@ -12126,6 +12519,7 @@ private fun ManualWorkEquipmentInlineEditor(
     var recognitionLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var recognitionMessage by remember(equipment.attachments) { mutableStateOf("") }
     var recognitionPreview by remember(equipment.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    var documentsLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var reportTemplates by remember { mutableStateOf(context.loadWorkEquipmentReportTemplates()) }
     var templateMenuOpen by remember { mutableStateOf(false) }
     var saveTemplateDialogOpen by remember { mutableStateOf(false) }
@@ -12153,9 +12547,12 @@ private fun ManualWorkEquipmentInlineEditor(
                 )
             }
                 .onSuccess { files ->
-                    onEquipmentChange(equipment.copy(attachments = equipment.attachments + files))
+                    val distributedEquipment = distributeRoImagesAcrossEquipmentParts(equipment, files)
+                    onEquipmentChange(distributedEquipment)
                     attachmentMessage = if (files.isEmpty()) {
                         "Nije dodana nijedna slika."
+                    } else if ((equipment.hasParts || equipment.parts.isNotEmpty()) && files.count { it.isRoImageAttachment() } > 1) {
+                        "${files.size} slika raspoređeno: prva kao glavna, ostale po dijelovima u parovima."
                     } else {
                         "${files.size} slika dodano za RO privitke."
                     }
@@ -12164,6 +12561,36 @@ private fun ManualWorkEquipmentInlineEditor(
                     attachmentMessage = error.message ?: "Ne mogu učitati slike."
                 }
             attachmentsLoading = false
+        }
+    }
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            documentsLoading = true
+            attachmentMessage = ""
+            recognitionMessage = ""
+            runCatching {
+                buildIsznrRoAttachmentFiles(
+                    context = context.applicationContext,
+                    uris = uris,
+                    existingCount = equipment.attachments.size,
+                    mode = WorkOrderDocumentInputMode.Pdf,
+                    role = "document",
+                    allowPdf = true,
+                )
+            }
+                .onSuccess { files ->
+                    onEquipmentChange(equipment.copy(attachments = equipment.attachments + files.map { it.copy(role = "document") }))
+                    attachmentMessage = if (files.isEmpty()) {
+                        "Nije dodan nijedan PDF prilog."
+                    } else {
+                        "${files.size} PDF prilog(a) dodano za RO zapisnik."
+                    }
+                }
+                .onFailure { error ->
+                    attachmentMessage = error.message ?: "Ne mogu učitati PDF priloge."
+                }
+            documentsLoading = false
         }
     }
 
@@ -12498,147 +12925,69 @@ private fun ManualWorkEquipmentInlineEditor(
                 onEquipmentChange = onEquipmentChange,
             )
 
-            Surface(
+            WorkEquipmentAttachmentGallery(
+                title = "Slike i PDF prilozi",
+                subtitle = "Prve slike označi kao cijeli stroj i pločicu. PDF prilozi idu odvojeno na kraj zapisnika.",
+                attachments = equipment.attachments,
+                enabled = enabled,
+                loadingImages = attachmentsLoading,
+                loadingDocuments = documentsLoading,
+                onAddImages = { imagePicker.launch("image/*") },
+                onAddDocuments = { pdfPicker.launch("application/pdf") },
+                onAttachmentsChange = { nextAttachments -> onEquipmentChange(equipment.copy(attachments = nextAttachments)) },
+            )
+
+            val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = Color(0xFFEFF6FF),
-                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                tonalElevation = 0.dp,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Surface(shape = CircleShape, color = Color(0xFFDBEAFE), modifier = Modifier.size(42.dp)) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(22.dp))
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Slike stroja i pločice", fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
-                            Text(
-                                "Dodaj slike koje pripadaju samo trenutno otvorenoj RO koloni. Za više strojeva koristi NexAI upload iznad popisa opreme.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF475569),
-                            )
-                        }
-                    }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AssistChip(
-                            onClick = {},
-                            enabled = false,
-                            label = { Text("Otvorena kolona") },
-                        )
-                        AssistChip(
-                            onClick = {},
-                            enabled = false,
-                            label = { Text("Stroj / pločica / detalj") },
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedButton(
-                            onClick = { imagePicker.launch("image/*") },
-                            enabled = enabled && !attachmentsLoading && equipment.attachments.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                        ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (attachmentsLoading) "Učitavam..." else "Dodaj slike")
-                        }
-                        Button(
-                            onClick = {
-                                recognitionLoading = true
-                                recognitionMessage = "Čitam slike stroja i pločice..."
-                                onRecognizeImages(
-                                    equipment,
-                                    equipment.attachments,
-                                    { result ->
-                                        recognitionLoading = false
-                                        recognitionPreview = result
-                                        recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
-                                    },
-                                    { message ->
-                                        recognitionLoading = false
-                                        recognitionMessage = message
-                                    },
-                                )
+                Button(
+                    onClick = {
+                        recognitionLoading = true
+                        recognitionMessage = "Čitam slike stroja i pločice..."
+                        onRecognizeImages(
+                            equipment,
+                            recognitionImages,
+                            { result ->
+                                recognitionLoading = false
+                                recognitionPreview = result
+                                recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
                             },
-                            enabled = enabled && !recognitionLoading && equipment.attachments.any { it.contentDataUrl.isNotBlank() },
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                        ) {
-                            if (recognitionLoading) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                            } else {
-                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Prepoznaj")
-                        }
-                    }
+                            { message ->
+                                recognitionLoading = false
+                                recognitionMessage = message
+                            },
+                        )
+                    },
+                    enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                ) {
                     if (recognitionLoading) {
-                        WorkEquipmentAiStatusPanel(
-                            title = "NexAI čita otvorenu kolonu",
-                            subtitle = "Prepoznajem stroj i pločicu samo za ovu RO kolonu.",
-                            details = "Serijski i inventarni broj mogu ostati ručno prilagodljivi nakon pregleda.",
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    } else {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                     }
-                    Text(
-                        "${equipment.attachments.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF475569),
-                    )
-                    listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
-                        Text(
-                            message,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
-                        )
-                    }
-                    equipment.attachments.take(4).forEachIndexed { index, file ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.72f))
-                                .padding(horizontal = 8.dp, vertical = 7.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
-                            Text(
-                                file.fileName.ifBlank { "Slika ${index + 1}" },
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            IconButton(
-                                onClick = {
-                                    onEquipmentChange(equipment.copy(attachments = equipment.attachments.filterIndexed { itemIndex, _ -> itemIndex != index }))
-                                },
-                                enabled = enabled,
-                                modifier = Modifier.size(30.dp),
-                            ) {
-                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku", tint = Color(0xFFDC2626), modifier = Modifier.size(17.dp))
-                            }
-                        }
-                    }
-                    if (equipment.attachments.size > 4) {
-                        Text(
-                            "+${equipment.attachments.size - 4} dodatnih slika spremljeno je uz ovu opremu.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF475569),
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Prepoznaj iz označenih slika")
                 }
+            }
+            if (recognitionLoading) {
+                WorkEquipmentAiStatusPanel(
+                    title = "NexAI čita otvorenu kolonu",
+                    subtitle = "Prepoznajem stroj i pločicu samo iz slika koje šalješ u zapisnik.",
+                    details = "PDF prilozi se ne koriste za vizualno prepoznavanje stroja.",
+                )
+            }
+            listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
+                Text(
+                    message,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
+                )
             }
 
             Row(
@@ -12993,6 +13342,7 @@ private fun WorkEquipmentPartCard(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var loadingFiles by remember(part.attachments) { mutableStateOf(false) }
+    var loadingDocuments by remember(part.attachments) { mutableStateOf(false) }
     var recognizing by remember(part.attachments) { mutableStateOf(false) }
     var message by remember(part.attachments) { mutableStateOf("") }
     var preview by remember(part.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
@@ -13009,13 +13359,39 @@ private fun WorkEquipmentPartCard(
                 )
             }
                 .onSuccess { files ->
-                    onPartChange(part.copy(attachments = part.attachments + files))
+                    val taggedFiles = withDefaultRoImageRoles(part.attachments, files)
+                    onPartChange(part.copy(attachments = part.attachments + taggedFiles))
                     message = if (files.isEmpty()) "Nije dodana nijedna slika." else "${files.size} slika dodano za dio opreme."
                 }
                 .onFailure { error ->
                     message = error.message ?: "Ne mogu učitati slike dijela."
                 }
             loadingFiles = false
+        }
+    }
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            loadingDocuments = true
+            message = ""
+            runCatching {
+                buildIsznrRoAttachmentFiles(
+                    context = context.applicationContext,
+                    uris = uris,
+                    existingCount = part.attachments.size,
+                    mode = WorkOrderDocumentInputMode.Pdf,
+                    role = "document",
+                    allowPdf = true,
+                )
+            }
+                .onSuccess { files ->
+                    onPartChange(part.copy(attachments = part.attachments + files.map { it.copy(role = "document") }))
+                    message = if (files.isEmpty()) "Nije dodan nijedan PDF prilog." else "${files.size} PDF prilog(a) dodano za dio opreme."
+                }
+                .onFailure { error ->
+                    message = error.message ?: "Ne mogu učitati PDF priloge dijela."
+                }
+            loadingDocuments = false
         }
     }
 
@@ -13136,95 +13512,55 @@ private fun WorkEquipmentPartCard(
             OutlinedTextField(part.inventoryNumber, { onPartChange(part.copy(inventoryNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(part.note, { onPartChange(part.copy(note = it.take(255))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena / procjena") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
 
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { picker.launch("image/*") },
-                    enabled = enabled && !loadingFiles && part.attachments.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
-                ) {
-                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (loadingFiles) "Učitavam..." else "Dodaj slike")
-                }
-                Button(
-                    onClick = {
-                        recognizing = true
-                        message = "NexAI čita dio opreme..."
-                        onRecognizeImages(
-                            part,
-                            part.attachments,
-                            { result ->
-                                recognizing = false
-                                preview = result
-                                message = result.message.ifBlank { "Provjeri podatke dijela prije primjene." }
-                            },
-                            { errorMessage ->
-                                recognizing = false
-                                message = errorMessage
-                            },
-                        )
-                    },
-                    enabled = enabled && !recognizing && part.attachments.any { it.contentDataUrl.isNotBlank() },
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
-                ) {
-                    if (recognizing) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    } else {
-                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Prepoznaj")
-                }
-            }
-            Text(
-                "${part.attachments.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika za dio",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            WorkEquipmentAttachmentGallery(
+                title = "Slike i PDF prilog dijela",
+                subtitle = "Dodaj sliku dijela, pločicu ako postoji i PDF prilog ako ga treba nastaviti iza zapisnika.",
+                attachments = part.attachments,
+                enabled = enabled,
+                loadingImages = loadingFiles,
+                loadingDocuments = loadingDocuments,
+                onAddImages = { picker.launch("image/*") },
+                onAddDocuments = { pdfPicker.launch("application/pdf") },
+                onAttachmentsChange = { nextAttachments -> onPartChange(part.copy(attachments = nextAttachments)) },
             )
+            val recognitionImages = part.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+            Button(
+                onClick = {
+                    recognizing = true
+                    message = "NexAI čita dio opreme..."
+                    onRecognizeImages(
+                        part,
+                        recognitionImages,
+                        { result ->
+                            recognizing = false
+                            preview = result
+                            message = result.message.ifBlank { "Provjeri podatke dijela prije primjene." }
+                        },
+                        { errorMessage ->
+                            recognizing = false
+                            message = errorMessage
+                        },
+                    )
+                },
+                enabled = enabled && !recognizing && recognitionImages.any { it.contentDataUrl.isNotBlank() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
+            ) {
+                if (recognizing) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Prepoznaj iz označenih slika")
+            }
             if (message.isNotBlank()) {
                 Text(
                     message,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
                     fontWeight = FontWeight.Bold,
-                )
-            }
-            part.attachments.take(3).forEachIndexed { fileIndex, file ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFF8FAFC))
-                        .padding(horizontal = 8.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Rounded.Image, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
-                    Text(
-                        file.fileName.ifBlank { "Slika dijela ${fileIndex + 1}" },
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    IconButton(
-                        onClick = {
-                            onPartChange(part.copy(attachments = part.attachments.filterIndexed { itemIndex, _ -> itemIndex != fileIndex }))
-                        },
-                        enabled = enabled,
-                        modifier = Modifier.size(30.dp),
-                    ) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sliku dijela", tint = Color(0xFFDC2626), modifier = Modifier.size(17.dp))
-                    }
-                }
-            }
-            if (part.attachments.size > 3) {
-                Text(
-                    "+${part.attachments.size - 3} dodatnih slika spremljeno je uz ovaj dio.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             }
         }
@@ -38607,27 +38943,37 @@ private suspend fun buildIsznrRoAttachmentFiles(
     uris: List<Uri>,
     existingCount: Int,
     maxFiles: Int = ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+    mode: WorkOrderDocumentInputMode = WorkOrderDocumentInputMode.Photos,
+    role: String = "image",
+    allowPdf: Boolean = false,
 ): List<IsznrRoAttachmentFile> = withContext(Dispatchers.IO) {
     val availableSlots = (maxFiles - existingCount).coerceAtLeast(0)
     if (availableSlots <= 0) {
-        error("Možeš dodati najviše $maxFiles slika za RO zapisnik.")
+        error("Možeš dodati najviše $maxFiles privitaka za RO zapisnik.")
     }
     uris.take(availableSlots).mapIndexed { index, uri ->
         val bytes = readUriBytes(context, uri)
-        val name = resolveUriDisplayName(context, uri, existingCount + index, WorkOrderDocumentInputMode.Photos)
+        val name = resolveUriDisplayName(context, uri, existingCount + index, mode)
         if (bytes.size.toLong() > ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES) {
-            error("Slika $name mora biti manja od 8 MB.")
+            error("Privitak $name mora biti manji od 8 MB.")
         }
-        val mimeType = resolveUriMimeType(context, uri, name).ifBlank { "image/jpeg" }
-        if (!mimeType.startsWith("image/", ignoreCase = true)) {
-            error("Možeš dodati samo slike za RO privitke.")
+        val mimeType = resolveUriMimeType(context, uri, name).ifBlank {
+            if (mode == WorkOrderDocumentInputMode.Pdf) "application/pdf" else "image/jpeg"
         }
+        val isImage = mimeType.startsWith("image/", ignoreCase = true)
+        val isPdf = mimeType.equals("application/pdf", ignoreCase = true)
+        if (!isImage && !(allowPdf && isPdf)) {
+            error(if (allowPdf) "Možeš dodati samo slike ili PDF za RO privitke." else "Možeš dodati samo slike za RO privitke.")
+        }
+        val resolvedRole = role.ifBlank { if (isPdf) "document" else "image" }
         IsznrRoAttachmentFile(
             id = "${System.currentTimeMillis()}-${existingCount + index}-${name.hashCode()}",
             fileName = name.withFallbackExtension(mimeType),
             fileType = mimeType,
             fileSize = bytes.size.toLong(),
             contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
+            role = resolvedRole,
+            includeInReport = true,
         )
     }
 }
