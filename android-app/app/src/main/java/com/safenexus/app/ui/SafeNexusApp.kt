@@ -12974,10 +12974,12 @@ private fun ManualWorkEquipmentAssessmentEditor(
             OutlinedTextField(
                 value = customMeasuredValue,
                 onValueChange = { customMeasuredValue = limitRoAssessmentNoteInput(it) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 104.dp),
                 label = { Text("Obavezna napomena / vrijednost") },
-                minLines = 1,
-                maxLines = 3,
+                minLines = 3,
+                maxLines = 6,
                 shape = RoundedCornerShape(14.dp),
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -13093,10 +13095,12 @@ private fun ManualWorkEquipmentAssessmentRow(
                                     ),
                                 )
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 118.dp),
                             label = { Text("Obavezna napomena / vrijednost") },
-                            minLines = 1,
-                            maxLines = 3,
+                            minLines = 3,
+                            maxLines = 6,
                             shape = RoundedCornerShape(12.dp),
                         )
                         Text(
@@ -13115,7 +13119,9 @@ private fun ManualWorkEquipmentAssessmentRow(
                     } else {
                         OutlinedButton(
                             onClick = { noteEditorOpen = true },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp),
                             shape = RoundedCornerShape(12.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
                         ) {

@@ -24,6 +24,19 @@ private val RO_ASSESSMENT_UNVERIFIED_NOTE_REGEX = Regex(
     "(treba|potrebno je|potrebno|mora se|nuzno je|nužno je|nije moguce|nije moguće|ne moze se|ne može se|za rucnu|za ručnu|za dodatnu|dodatno)\\s+(provjeriti|potvrditi|utvrditi|pregledati|ispitati|provjeru|potvrdu|provjera|potvrda)|za provjeru|za potvrdu|rucna provjera|ručna provjera|rucna potvrda|ručna potvrda|nije sigurno|nema sigurnog dokaza",
     RegexOption.IGNORE_CASE,
 )
+private val RO_ASSESSMENT_PHOTO_FINDING_CLEANUPS: List<Pair<Regex, String>> = listOf(
+    Regex("\\b(?:na\\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)\\s+se\\s+vidi\\s+da\\s+(?:je|su)\\s*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\bvidi\\s+se\\s+da\\s+(?:je|su)\\s*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\b(?:na\\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)\\s+se\\s+vidi\\s+da\\s*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\bvidi\\s+se\\s+da\\s*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\bvidljivo\\s+je\\s+da\\s*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\b(?:na\\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)\\s+(?:je|su)\\s+vidljiv(?:a|e|i|o)?\\s*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\bprema\\s+(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)[,\\s]*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\b(?:na\\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)[,\\s]*", RegexOption.IGNORE_CASE) to "",
+    Regex("\\s+vidljiv(?:a|e|i|o)?\\s+je\\.?$", RegexOption.IGNORE_CASE) to ".",
+    Regex("\\s+(?:je\\s+)?vidljiv(?:a|e|i|o)?\\.?$", RegexOption.IGNORE_CASE) to ".",
+    Regex("\\s+se\\s+vidi\\.?$", RegexOption.IGNORE_CASE) to ".",
+)
 
 private fun isRoAssessmentUnverifiedNote(value: String): Boolean =
     RO_ASSESSMENT_UNVERIFIED_NOTE_REGEX.containsMatchIn(value.trim())
@@ -121,7 +134,7 @@ class SafeNexusApi(
             .put("name", name)
             .put("aliases", JSONArray(aliases))
             .put("generalInstruction", instruction)
-            .put("noteRule", "Za svaku odabranu strojarsku ili elektro stavku customContent je obavezan, konkretan i do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. U customContent ne pisati 'treba provjeriti/potvrditi'; to ide u verificationQuestions.")
+            .put("noteRule", "Za svaku odabranu strojarsku ili elektro stavku customContent je obavezan, konkretan i do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. U customContent ne pisati 'treba provjeriti/potvrditi' niti 'vidi se na fotografiji/slici'; to ide u verificationQuestions ili se pise kao direktan nalaz.")
             .put("noteExamples", JSONArray(noteExamples))
             .put("verificationQuestions", JSONArray(verificationQuestions))
 
@@ -185,8 +198,8 @@ class SafeNexusApi(
         }
 
         return JSONObject()
-            .put("instruction", "$details customContent je obavezan i ne smije biti prazan; upisi jednu konkretnu napomenu/vrijednost do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. measuredValue koristi samo za stvarno mjerenje, ali customContent svejedno mora objasniti nalaz. U customContent ne pisati 'treba provjeriti/potvrditi/utvrditi'; to vrati kao verificationQuestions.")
-            .put("mustInclude", "konkretan vidljivi dokaz, stanje, zakljucak zadovoljava/ne zadovoljava i customContent do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova")
+            .put("instruction", "$details customContent je obavezan i ne smije biti prazan; upisi jednu konkretnu napomenu/vrijednost do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. measuredValue koristi samo za stvarno mjerenje, ali customContent svejedno mora objasniti nalaz. U customContent ne pisati 'treba provjeriti/potvrditi/utvrditi' niti 'vidi se na fotografiji/slici'; nesigurno vrati kao verificationQuestions, a sigurno napisi kao direktan nalaz.")
+            .put("mustInclude", "konkretan nalaz, stanje, zakljucak zadovoljava/ne zadovoljava i customContent do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova")
             .put("avoid", "Ne popunjavati automatski bez jasnog izvora i ne dodavati stavku samo zato sto postoji u sifrarniku.")
             .put("verificationRule", "Ako je potrebna funkcionalna provjera ili odgovor korisnika, nemoj vratiti stavku kao gotov nalaz nego dodaj pitanje u verificationQuestions.")
             .put("textLength", "customContent: 1 kratka konkretna recenica do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova")
@@ -1378,9 +1391,9 @@ class SafeNexusApi(
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
-                        .put("instructions", "Vrati samo relevantne strojarske stavke za ovaj stroj. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
+                        .put("instructions", "Vrati samo relevantne strojarske stavke za ovaj stroj. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
-                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za stroj ili plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
+                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za stroj ili plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
                         .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
@@ -1417,7 +1430,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za RO zapisnik biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi' ni slicno. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja.",
+                            "Za RO zapisnik biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja.",
                         ),
                 )
                 .put(
@@ -1514,9 +1527,9 @@ class SafeNexusApi(
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
-                        .put("instructions", "Za svaku prepoznatu opremu vrati samo relevantne strojarske stavke. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
+                        .put("instructions", "Za svaku prepoznatu opremu vrati samo relevantne strojarske stavke. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
-                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za pojedinu opremu ili natpisnu plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
+                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za pojedinu opremu ili natpisnu plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
                         .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
@@ -1549,7 +1562,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za svaku RO opremu biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi' ni slicno. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
+                            "Za svaku RO opremu biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
                         ),
                 )
                 .put(
@@ -2359,9 +2372,22 @@ private fun JSONObject.firstJSONArray(vararg keys: String): JSONArray? {
     return null
 }
 
+private fun String.toDirectRoAssessmentFinding(): String {
+    var text = trim().replace(Regex("\\s+"), " ")
+    RO_ASSESSMENT_PHOTO_FINDING_CLEANUPS.forEach { (regex, replacement) ->
+        text = text.replace(regex, replacement)
+    }
+    return text
+        .replace(Regex("\\s+([,.])"), "$1")
+        .replace(Regex("\\.{2,}"), ".")
+        .trim(' ', ',', ';', ':')
+        .replaceFirstChar { char ->
+            if (char.isLowerCase()) char.titlecase(Locale.getDefault()) else char.toString()
+        }
+}
+
 private fun String.toRoAssessmentNote(): String =
-    trim()
-        .replace(Regex("\\s+"), " ")
+    toDirectRoAssessmentFinding()
         .take(RO_ASSESSMENT_NOTE_MAX_LENGTH)
 
 private fun JSONArray?.toRoAssessmentItems(): List<IsznrRoAssessmentItem> {

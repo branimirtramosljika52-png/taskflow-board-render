@@ -132317,8 +132317,8 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         groupStartIndex: 1,
         groupEndIndex: 3,
         groupingReason: "zašto te slike pripadaju istoj opremi",
-        assessmentRule: `Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Uz svaku stavku obavezno ide customContent kao konkretna napomena/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo za stvarno mjerenje.`,
-        verificationRule: "Ako bi u customContent napisao da nešto treba provjeriti/potvrditi/utvrditi, nemoj vratiti tu stavku kao nalaz. Umjesto toga dodaj pitanje u verificationQuestions.",
+        assessmentRule: `Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Uz svaku stavku obavezno ide customContent kao konkretna napomena/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo za stvarno mjerenje. Ne piši "vidi se na fotografiji/slici", nego direktan nalaz.`,
+        verificationRule: "Ako bi u customContent napisao da nešto treba provjeriti/potvrditi/utvrditi, nemoj vratiti tu stavku kao nalaz. Umjesto toga dodaj pitanje u verificationQuestions. Ako je nalaz siguran, napiši ga kao činjenicu bez pozivanja na fotografiju.",
         verificationQuestions: ["pitanje za korisnika kada nalaz treba funkcionalnu provjeru ili ručnu potvrdu"],
         mechanicalItems: [{
           registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
@@ -132375,7 +132375,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
-    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka vraćena strojarska/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo ako postoji stvarno mjerenje. Ne vraćaj stavku bez napomene. U customContent ne smiješ pisati "treba provjeriti", "treba potvrditi", "potrebno je utvrditi", "za ručnu provjeru" ni slične nesigurne formulacije. Kada je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj tu stavku vratiti kao gotov nalaz. Primjeri gotovog nalaza: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
+    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka vraćena strojarska/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo ako postoji stvarno mjerenje. Ne vraćaj stavku bez napomene. U customContent ne smiješ pisati "treba provjeriti", "treba potvrditi", "potrebno je utvrditi", "za ručnu provjeru", "vidi se na fotografiji", "na slici se vidi" ni slične nesigurne ili izvorne formulacije. Kada je nalaz siguran, napiši ga direktno kao činjenicu. Kada je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj tu stavku vratiti kao gotov nalaz. Primjeri gotovog nalaza: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo kada postoje električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
       id: String(item.id || ""),
       recordNumber: String(item.recordNumber || ""),
@@ -163470,10 +163470,33 @@ const WORK_EQUIPMENT_AI_CONFIDENCE_LABELS = Object.freeze({
 const WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH = 255;
 const WORK_EQUIPMENT_RO_UNVERIFIED_NOTE_PATTERN = /(^|\b)(treba|potrebno je|potrebno|mora se|nužno je|nije moguće|ne može se|ne moze se|nije moguce|za ručnu|za rucnu|za dodatnu|dodatno)\s+(provjeriti|potvrditi|utvrditi|pregledati|ispitati|provjeru|potvrdu|provjera|potvrda)\b|\b(za provjeru|za potvrdu|ručna provjera|rucna provjera|ručna potvrda|rucna potvrda|nije sigurno|nema sigurnog dokaza)\b/i;
 
-function normalizeWorkEquipmentRoAssessmentNote(value = "") {
-  return String(value || "")
-    .replace(/\s+/g, " ")
+function toDirectWorkEquipmentRoFindingNote(value = "") {
+  let text = String(value || "").replace(/\s+/g, " ").trim();
+  [
+    [/\b(?:na\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)\s+se\s+vidi\s+da\s+(?:je|su)\s*/gi, ""],
+    [/\bvidi\s+se\s+da\s+(?:je|su)\s*/gi, ""],
+    [/\b(?:na\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)\s+se\s+vidi\s+da\s*/gi, ""],
+    [/\bvidi\s+se\s+da\s*/gi, ""],
+    [/\bvidljivo\s+je\s+da\s*/gi, ""],
+    [/\b(?:na\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)\s+(?:je|su)\s+vidljiv(?:a|e|i|o)?\s*/gi, ""],
+    [/\bprema\s+(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)[,\s]*/gi, ""],
+    [/\b(?:na\s+)?(?:fotografiji|fotografijama|slici|slikama|fotki|fotkama)[,\s]*/gi, ""],
+    [/\s+vidljiv(?:a|e|i|o)?\s+je\.?$/gi, "."],
+    [/\s+(?:je\s+)?vidljiv(?:a|e|i|o)?\.?$/gi, "."],
+    [/\s+se\s+vidi\.?$/gi, "."],
+  ].forEach(([pattern, replacement]) => {
+    text = text.replace(pattern, replacement);
+  });
+  text = text
+    .replace(/\s+([,.])/g, "$1")
+    .replace(/\.{2,}/g, ".")
     .trim()
+    .replace(/^[,;:\s]+|[,;:\s]+$/g, "");
+  return text ? text.charAt(0).toLocaleUpperCase("hr") + text.slice(1) : "";
+}
+
+function normalizeWorkEquipmentRoAssessmentNote(value = "") {
+  return toDirectWorkEquipmentRoFindingNote(value)
     .slice(0, WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH);
 }
 
@@ -163665,9 +163688,9 @@ function getWorkEquipmentAiRegisterDefaultRule(kind = "mechanical", label = "") 
     instruction: kind === "electrical"
       ? "Predloži ovu elektro stavku samo kada fotografija, pločica, mjerenje ili dokument jasno pokazuju da je relevantna za pregledanu radnu opremu."
       : "Predloži ovu strojarsku stavku samo kada fotografija, pločica, dokument ili vidljivo stanje opreme jasno pokazuju da je relevantna.",
-    mustInclude: "konkretan vidljivi dokaz, stanje, zaključak zadovoljava/ne zadovoljava",
+    mustInclude: "konkretan nalaz, stanje, zaključak zadovoljava/ne zadovoljava",
     avoid: "Ne popunjavati automatski bez jasnog izvora; ne dodavati samo zato što stavka postoji u šifrarniku.",
-    examples: "Stavka je provjerena vizualnim pregledom i nema vidljivih nedostataka. / Potrebna je dodatna provjera zbog nedovoljno vidljivih podataka.",
+    examples: "Upravljanje je dostupno rukovatelju. / Zastitni pokrov je postavljen na radnom elementu.",
   };
 }
 
@@ -163679,8 +163702,8 @@ function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", ite
       `Stavka: ${label}.`,
       rule.instruction,
       "NexAI ju smije predložiti samo ako postoji veza s vrstom opreme, fotografijom, natpisnom pločicom, starim zapisnikom ili dokumentom.",
-      `customContent je obavezan i ne smije biti prazan; napiši jednu konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova, npr. kako je izvedeno uključivanje, upravljanje, zaštita, oznaka ili vidljivo stanje.`,
-      "U customContent ne smiješ pisati 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi' niti slične nesigurne formulacije. Ako nešto treba korisnik potvrditi, ne vraćaj tu stavku kao nalaz nego dodaj pitanje u verificationQuestions.",
+      `customContent je obavezan i ne smije biti prazan; napiši jednu konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova, npr. kako je izvedeno uključivanje, upravljanje, zaštita, oznaka ili stanje opreme.`,
+      "U customContent ne smiješ pisati 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' niti slične nesigurne ili izvorne formulacije. Ako nešto treba korisnik potvrditi, ne vraćaj tu stavku kao nalaz nego dodaj pitanje u verificationQuestions.",
       "Ako postoji stvarno mjerenje, upiši ga u measuredValue, ali customContent svejedno mora objasniti nalaz.",
       "Ako je stavka relevantna i nema vidljivih nedostataka, meetsConditions je true; ako je vidljiv nedostatak, meetsConditions je false i napiši razlog.",
     ].filter(Boolean).join(" "),
