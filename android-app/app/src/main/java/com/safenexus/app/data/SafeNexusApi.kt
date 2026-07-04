@@ -1220,30 +1220,7 @@ class SafeNexusApi(
                     "manualEquipments",
                     JSONArray(
                         manualEquipments
-                            .map {
-                                JSONObject()
-                                    .put("name", it.name.trim())
-                                    .put("manufacturer", it.manufacturer.trim())
-                                    .put("model", it.model.trim())
-                                    .put("serialNumber", it.serialNumber.trim())
-                                    .put("inventoryNumber", it.inventoryNumber.trim())
-                                    .put("note", it.note.trim())
-                                    .put("technicalData", it.technicalData.trim())
-                                    .put("purposeDescription", it.purposeDescription.trim())
-                                    .put("workspacePosition", it.workspacePosition.trim())
-                                    .put("workingSubstancesAndRawMaterials", it.workingSubstancesAndRawMaterials.trim())
-                                    .put("useAndMaintenance", it.useAndMaintenance.trim())
-                                    .put("methodsProceduresAndNorms", it.methodsProceduresAndNorms.trim())
-                                    .put("deficiencies", it.deficiencies.trim())
-                                    .put("measuresToEliminateDeficiencies", it.measuresToEliminateDeficiencies.trim())
-                                    .put("finalGrade", it.finalGrade.trim().ifBlank { "1" })
-                                    .put("mechanicalItems", JSONArray(it.mechanicalItems.map { item -> item.toJsonObject() }))
-                                    .put("electricalItems", JSONArray(it.electricalItems.map { item -> item.toJsonObject() }))
-                                    .put("hazardRegisterIris", JSONArray(it.hazardRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
-                                    .put("harmfulnessRegisterIris", JSONArray(it.harmfulnessRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
-                                    .put("strainRegisterIris", JSONArray(it.strainRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
-                                    .put("attachments", JSONArray(it.attachments.map { file -> file.toJsonObject() }))
-                            },
+                            .map { it.toJsonObject() },
                     ),
                 )
                 .toString()
@@ -1362,7 +1339,7 @@ class SafeNexusApi(
     ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
         runCatching {
             val payloadFiles = JSONArray()
-            files.filter { it.contentDataUrl.isNotBlank() }.take(8).forEachIndexed { index, file ->
+            files.filter { it.contentDataUrl.isNotBlank() }.take(16).forEachIndexed { index, file ->
                 payloadFiles.put(
                     JSONObject()
                         .put("id", file.id.ifBlank { "ro-image-${index + 1}" })
@@ -1380,7 +1357,7 @@ class SafeNexusApi(
             val fields = JSONArray(
                 listOf(
                     JSONObject().put("id", "name").put("key", "name").put("label", "Naziv radne opreme")
-                        .put("instructions", "Prepoznaj vrstu/naziv stroja iz fotografije cijelog stroja i natpisne plocice. Ako se vidi Bosch BEA, naziv moze biti analizator ispusnih plinova."),
+                        .put("instructions", "Prepoznaj vrstu/naziv stroja ili dijela radne opreme iz fotografije cijelog stroja/dijela i natpisne plocice. Ako plocica ne postoji ili nije citljiva, procijeni o kojem je dijelu opreme rijec prema vidljivom obliku i funkciji. Ako se vidi Bosch BEA, naziv moze biti analizator ispusnih plinova."),
                     JSONObject().put("id", "manufacturer").put("key", "manufacturer").put("label", "Proizvodac")
                         .put("instructions", "Prednost ima natpisna plocica i logotip. BOSCH ili Robert Bosch GmbH vrati kao BOSCH."),
                     JSONObject().put("id", "model").put("key", "model").put("label", "Tip / model")
@@ -1419,7 +1396,7 @@ class SafeNexusApi(
                         .put("registers", workEquipmentRoRegisterGroupsJson())
                         .put(
                             "imageRule",
-                            "Ovaj poziv popunjava samo trenutno otvorenu RO kolonu. Slike tretiraj kao jednu radnu opremu; ako ih ima vise, koristi najpouzdanije slike za taj jedan stroj.",
+                            "Ovaj poziv popunjava samo trenutno otvorenu RO kolonu ili njezin dio. Slike tretiraj kao jednu radnu opremu ili jedan dio radne opreme; ako ih ima vise, koristi najpouzdanije slike za taj jedan stroj/dio. Pravilo snimanja je: prvo slika stroja ili dijela izdaleka, zatim plocica ako postoji. Ako plocice nema, procijeni naziv i funkciju iz fotografije.",
                         )
                         .put(
                             "databaseRule",
@@ -2172,6 +2149,8 @@ private fun IsznrManualWorkEquipment.toJsonObject(): JSONObject =
         .put("harmfulnessRegisterIris", JSONArray(harmfulnessRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
         .put("strainRegisterIris", JSONArray(strainRegisterIris.map { iri -> iri.trim() }.filter { iri -> iri.isNotBlank() }))
         .put("attachments", JSONArray(attachments.map { file -> file.toJsonObject() }))
+        .put("hasParts", hasParts || parts.isNotEmpty())
+        .put("parts", JSONArray(parts.map { part -> part.copy(parts = emptyList()).toJsonObject() }))
 
 private fun IsznrManualPhysicalFactors.toJsonObject(): JSONObject =
     JSONObject()

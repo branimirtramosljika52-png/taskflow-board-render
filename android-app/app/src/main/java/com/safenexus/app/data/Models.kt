@@ -627,6 +627,8 @@ data class IsznrManualWorkEquipment(
     val harmfulnessRegisterIris: List<String> = emptyList(),
     val strainRegisterIris: List<String> = emptyList(),
     val attachments: List<IsznrRoAttachmentFile> = emptyList(),
+    val hasParts: Boolean = false,
+    val parts: List<IsznrManualWorkEquipment> = emptyList(),
 )
 
 data class IsznrManualPhysicalFactors(

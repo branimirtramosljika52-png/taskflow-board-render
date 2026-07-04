@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.306.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.307.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -6058,6 +6058,96 @@ function normalizeIsznrRoEquipmentPayload(equipment = {}) {
   };
 }
 
+function hasIsznrRoEquipmentPayloadData(equipment = {}) {
+  return Boolean(
+    equipment.serialNumber
+    || equipment.name
+    || equipment.manufacturer
+    || equipment.model
+    || equipment.inventoryNumber
+    || equipment.note
+  );
+}
+
+function hasIsznrRoEquipmentPayloadDetails(equipment = {}) {
+  return Boolean(
+    equipment.serialNumber
+    || equipment.manufacturer
+    || equipment.model
+    || equipment.inventoryNumber
+    || equipment.note
+  );
+}
+
+function getIsznrRoEquipmentPartSources(equipment = {}) {
+  return [
+    ...((Array.isArray(equipment.parts) ? equipment.parts : [])),
+    ...((Array.isArray(equipment.equipmentParts) ? equipment.equipmentParts : [])),
+    ...((Array.isArray(equipment.components) ? equipment.components : [])),
+  ].filter((part) => part && typeof part === "object");
+}
+
+function normalizeIsznrRoManualEquipmentPartDetails(part = {}) {
+  return {
+    ...normalizeIsznrRoEquipmentPayload(part),
+    attachments: normalizeIsznrRoAttachmentFilesForEquipment(part),
+  };
+}
+
+function normalizeIsznrRoManualEquipmentParts(equipment = {}) {
+  return getIsznrRoEquipmentPartSources(equipment)
+    .map((part) => normalizeIsznrRoManualEquipmentPartDetails(part))
+    .filter(hasIsznrRoEquipmentPayloadData)
+    .filter((part, index, array) => {
+      const key = [
+        part.serialNumber,
+        part.inventoryNumber,
+        part.name,
+        part.manufacturer,
+        part.model,
+      ].join("|").toLowerCase();
+      return array.findIndex((entry) => [
+        entry.serialNumber,
+        entry.inventoryNumber,
+        entry.name,
+        entry.manufacturer,
+        entry.model,
+      ].join("|").toLowerCase() === key) === index;
+    });
+}
+
+function buildIsznrRoEquipmentPayloadsFromManualRecord(equipment = {}) {
+  const base = normalizeIsznrRoEquipmentPayload(equipment);
+  const partPayloads = (Array.isArray(equipment.parts) ? equipment.parts : [])
+    .map((part) => normalizeIsznrRoEquipmentPayload(part))
+    .filter((part) => part.name && hasIsznrRoEquipmentPayloadDetails(part));
+  return [
+    ...(base.name && hasIsznrRoEquipmentPayloadDetails(base) ? [base] : []),
+    ...partPayloads,
+  ];
+}
+
+function dedupeIsznrRoEquipmentPayloads(payloads = []) {
+  return (Array.isArray(payloads) ? payloads : [])
+    .filter(hasIsznrRoEquipmentPayloadData)
+    .filter((equipment, index, array) => {
+      const key = [
+        equipment.serialNumber,
+        equipment.inventoryNumber,
+        equipment.name,
+        equipment.manufacturer,
+        equipment.model,
+      ].join("|").toLowerCase();
+      return array.findIndex((entry) => [
+        entry.serialNumber,
+        entry.inventoryNumber,
+        entry.name,
+        entry.manufacturer,
+        entry.model,
+      ].join("|").toLowerCase() === key) === index;
+    });
+}
+
 function normalizeIsznrApiIriValue(value = "", resourcePath = "") {
   const normalized = normalizeInputValue(value);
   if (!normalized) {
@@ -6203,7 +6293,11 @@ function normalizeIsznrRoAttachmentFilesForEquipment(equipment = {}) {
 function normalizeIsznrRoAttachmentFiles(manualEquipments = []) {
   const seen = new Set();
   return (Array.isArray(manualEquipments) ? manualEquipments : [])
-    .flatMap((equipment) => normalizeIsznrRoAttachmentFilesForEquipment(equipment))
+    .flatMap((equipment) => [
+      ...normalizeIsznrRoAttachmentFilesForEquipment(equipment),
+      ...normalizeIsznrRoManualEquipmentParts(equipment)
+        .flatMap((part) => normalizeIsznrRoAttachmentFilesForEquipment(part)),
+    ])
     .filter((file) => {
       const key = [
         file.id,
@@ -6224,6 +6318,7 @@ function normalizeIsznrRoManualEquipmentDetails(equipment = {}) {
   const base = normalizeIsznrRoEquipmentPayload(equipment);
   return {
     ...base,
+    parts: normalizeIsznrRoManualEquipmentParts(equipment),
     technicalData: normalizeInputValue(equipment.technicalData || equipment.equipmentsTechnicalData),
     purposeDescription: normalizeInputValue(equipment.purposeDescription || equipment.equipmentsPurposeDescription),
     workspacePosition: normalizeInputValue(equipment.workspacePosition || equipment.equipmentsWorkspacePosition),
@@ -6245,7 +6340,7 @@ function normalizeIsznrRoManualEquipmentDetails(equipment = {}) {
 function normalizeIsznrRoManualEquipmentPayloads(equipments = []) {
   return (Array.isArray(equipments) ? equipments : [])
     .map((equipment) => normalizeIsznrRoManualEquipmentDetails(equipment))
-    .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber)
+    .filter((equipment) => hasIsznrRoEquipmentPayloadData(equipment) || equipment.parts.length > 0)
     .filter((equipment, index, array) => {
       const key = [
         equipment.serialNumber,
@@ -6339,7 +6434,16 @@ function buildIsznrRoFollowUpDrafts(manualEquipments = []) {
 }
 
 function isIsznrRoEquipmentPayloadReady(equipment = {}) {
-  return Boolean(equipment.serialNumber && equipment.name && equipment.manufacturer && equipment.model);
+  return Boolean(
+    equipment.name
+    && (
+      equipment.serialNumber
+      || equipment.inventoryNumber
+      || equipment.manufacturer
+      || equipment.model
+      || equipment.note
+    )
+  );
 }
 
 function buildIsznrWorkEquipmentCandidates(items = []) {
@@ -6971,12 +7075,15 @@ function buildIsznrWorkEquipmentPostDraft({
   const equipmentCandidates = buildIsznrWorkEquipmentCandidates(items);
   const selectedEquipmentCandidates = buildIsznrWorkEquipmentCandidates(selectedItems);
   const manualEquipmentRecords = normalizeIsznrRoManualEquipmentPayloads(manualEquipments);
-  const manualEquipmentPayload = manualEquipmentRecords.map((equipment) => normalizeIsznrRoEquipmentPayload(equipment));
+  const manualEquipmentPayload = dedupeIsznrRoEquipmentPayloads(
+    manualEquipmentRecords.flatMap((equipment) => buildIsznrRoEquipmentPayloadsFromManualRecord(equipment)),
+  );
   const attachmentFiles = normalizeIsznrRoAttachmentFiles(manualEquipmentRecords);
-  const selectedEquipmentPayload = selectedEquipmentCandidates
-    .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
-    .filter((equipment) => equipment.serialNumber || equipment.name || equipment.manufacturer || equipment.model || equipment.inventoryNumber)
-    .concat(manualEquipmentPayload);
+  const selectedEquipmentPayload = dedupeIsznrRoEquipmentPayloads(
+    selectedEquipmentCandidates
+      .map((equipment) => normalizeIsznrRoEquipmentPayload(equipment))
+      .concat(manualEquipmentPayload),
+  );
   const location = normalizeInputValue(latestRecord.location) || resolveIsznrWorkOrderLocation(workOrder);
   const equipmentSummary = selectedEquipmentPayload
     .map((equipment) => [
@@ -27418,6 +27525,23 @@ function formatMobileHandoverWorkEquipmentNote(equipment = {}) {
   ].map(normalizeInputValue).filter(Boolean).join("; ");
 }
 
+function flattenMobileHandoverManualWorkEquipmentRecords(records = []) {
+  return (Array.isArray(records) ? records : []).flatMap((record) => {
+    if (!record || typeof record !== "object") {
+      return [];
+    }
+    const parts = Array.isArray(record.parts) ? record.parts : [];
+    return [
+      record,
+      ...parts.map((part, index) => ({
+        ...part,
+        id: normalizeInputValue(part.id) || `${normalizeInputValue(record.id) || "manual-ro"}-part-${index + 1}`,
+        recordNumber: normalizeInputValue(part.recordNumber || record.recordNumber),
+      })),
+    ];
+  });
+}
+
 function buildMobileHandoverWorkEquipmentRows(workOrder = {}, common = {}) {
   const submittedRecordNumber = normalizeInputValue(
     common.workEquipmentSubmitResult?.recordNumber
@@ -27432,7 +27556,7 @@ function buildMobileHandoverWorkEquipmentRows(workOrder = {}, common = {}) {
     : [];
   const rows = [
     ...selectedRecords.map(normalizeMobileHandoverWorkEquipmentRecord),
-    ...manualRecords.map(normalizeMobileHandoverWorkEquipmentRecord),
+    ...flattenMobileHandoverManualWorkEquipmentRecords(manualRecords).map(normalizeMobileHandoverWorkEquipmentRecord),
   ].filter((equipment) => equipment.equipmentName || equipment.manufacturer || equipment.model || equipment.serialNumber || equipment.inventoryNumber);
   const seen = new Set();
   return rows.filter((equipment) => {
