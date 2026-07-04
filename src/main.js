@@ -131863,8 +131863,8 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
   return state.workOrderDocumentWizard.isznrWorkEquipment[normalizedId];
 }
 
-const WORK_ORDER_DOCUMENT_RO_AI_MAX_FILES = 32;
-const WORK_ORDER_DOCUMENT_RO_AI_MAX_BATCH_INLINE_FILES = 10;
+const WORK_ORDER_DOCUMENT_RO_AI_MAX_FILES = 80;
+const WORK_ORDER_DOCUMENT_RO_AI_MAX_BATCH_INLINE_FILES = 80;
 const WORK_ORDER_DOCUMENT_RO_AI_BATCH_MODES = [
   {
     key: "batch",
@@ -134789,7 +134789,7 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
   const readyManual = getReadyWorkOrderDocumentRoManualEquipments(stateEntry);
   subtitle.textContent = readyManual.length
     ? `${readyManual.length} nova oprema spremna za zapisnik`
-    : "Dodaj slike, natpisne pločice ili PDF. NexAI uspoređuje s IS ZNR i lokalnom povijesti.";
+    : `Dodaj do ${WORK_ORDER_DOCUMENT_RO_AI_MAX_FILES} slika/PDF-ova. NexAI uspoređuje s IS ZNR i lokalnom povijesti.`;
   copy.append(title, subtitle);
   const badge = createBadge(`${(stateEntry.aiFiles || []).length} dat.`, "document-template-meta-badge");
   header.append(copy, badge);
@@ -134870,7 +134870,7 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
   if (batchMode === "batch") {
     const batchHint = document.createElement("p");
     batchHint.className = "helper-copy module-copy work-order-document-ro-ai-batch-hint";
-    batchHint.textContent = "Za više opreme na webu ubaci slike kronološki: cijeli stroj izdaleka, pločica, detalji; zatim sljedeći cijeli stroj, pločica, detalji. NexAI će vratiti zasebne RO stavke.";
+    batchHint.textContent = `Za više opreme ubaci do ${WORK_ORDER_DOCUMENT_RO_AI_MAX_FILES} datoteka kronološki: cijeli stroj izdaleka, pločica, detalji; zatim sljedeći cijeli stroj, pločica, detalji. NexAI će vratiti zasebne RO stavke.`;
     panel.append(batchHint);
   }
 

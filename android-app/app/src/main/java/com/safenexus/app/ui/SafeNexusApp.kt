@@ -439,6 +439,7 @@ private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 
 private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILES = 8
 private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
 private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES = 12
+private const val ISZNR_RO_BATCH_ATTACHMENT_MAX_INLINE_FILES = 80
 
 private val workOrderDocumentAllowedMimeTypes = arrayOf(
     "application/pdf",
@@ -11288,6 +11289,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                     context = context.applicationContext,
                     uris = uris,
                     existingCount = files.size,
+                    maxFiles = ISZNR_RO_BATCH_ATTACHMENT_MAX_INLINE_FILES,
                 )
             }
                 .onSuccess { addedFiles ->
@@ -11594,7 +11596,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
             ) {
                 OutlinedButton(
                     onClick = { imagePicker.launch("image/*") },
-                    enabled = enabled && !loadingFiles && files.size < ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
+                    enabled = enabled && !loadingFiles && files.size < ISZNR_RO_BATCH_ATTACHMENT_MAX_INLINE_FILES,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(14.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
@@ -11643,7 +11645,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                 )
             }
             Text(
-                "${files.size}/$ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici",
+                "${files.size}/$ISZNR_RO_BATCH_ATTACHMENT_MAX_INLINE_FILES slika · max 8 MB po slici · ciljaj oko 5 slika po opremi",
                 style = MaterialTheme.typography.labelSmall,
                 color = Color(0xFF475569),
             )
@@ -11658,7 +11660,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                     fontWeight = FontWeight.Bold,
                 )
             }
-            files.take(4).forEachIndexed { index, file ->
+            files.take(8).forEachIndexed { index, file ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -11685,9 +11687,9 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                     }
                 }
             }
-            if (files.size > 4) {
+            if (files.size > 8) {
                 Text(
-                    "+${files.size - 4} dodatnih slika spremno je za NexAI.",
+                    "+${files.size - 8} dodatnih slika spremno je za NexAI.",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFF475569),
                 )
@@ -37984,10 +37986,11 @@ private suspend fun buildIsznrRoAttachmentFiles(
     context: Context,
     uris: List<Uri>,
     existingCount: Int,
+    maxFiles: Int = ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES,
 ): List<IsznrRoAttachmentFile> = withContext(Dispatchers.IO) {
-    val availableSlots = (ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
+    val availableSlots = (maxFiles - existingCount).coerceAtLeast(0)
     if (availableSlots <= 0) {
-        error("Možeš dodati najviše $ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES slika za RO zapisnik.")
+        error("Možeš dodati najviše $maxFiles slika za RO zapisnik.")
     }
     uris.take(availableSlots).mapIndexed { index, uri ->
         val bytes = readUriBytes(context, uri)

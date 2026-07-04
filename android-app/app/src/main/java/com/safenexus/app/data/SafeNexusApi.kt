@@ -20,6 +20,7 @@ import java.util.Locale
 import java.util.zip.GZIPInputStream
 
 private const val RO_ASSESSMENT_NOTE_MAX_LENGTH = 255
+private const val RO_BATCH_AI_MAX_FILES = 80
 private val RO_ASSESSMENT_UNVERIFIED_NOTE_REGEX = Regex(
     "(treba|potrebno je|potrebno|mora se|nuzno je|nužno je|nije moguce|nije moguće|ne moze se|ne može se|za rucnu|za ručnu|za dodatnu|dodatno)\\s+(provjeriti|potvrditi|utvrditi|pregledati|ispitati|provjeru|potvrdu|provjera|potvrda)|za provjeru|za potvrdu|rucna provjera|ručna provjera|rucna potvrda|ručna potvrda|nije sigurno|nema sigurnog dokaza",
     RegexOption.IGNORE_CASE,
@@ -1497,7 +1498,7 @@ class SafeNexusApi(
     ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
         runCatching {
             val payloadFiles = JSONArray()
-            files.filter { it.contentDataUrl.isNotBlank() }.take(12).forEachIndexed { index, file ->
+            files.filter { it.contentDataUrl.isNotBlank() }.take(RO_BATCH_AI_MAX_FILES).forEachIndexed { index, file ->
                 payloadFiles.put(
                     JSONObject()
                         .put("id", file.id.ifBlank { "ro-batch-image-${index + 1}" })
@@ -1547,6 +1548,7 @@ class SafeNexusApi(
                     "context",
                     JSONObject()
                         .put("mode", "batch-work-equipment")
+                        .put("maxBatchImages", RO_BATCH_AI_MAX_FILES)
                         .put("companyName", workOrder.companyName)
                         .put("locationName", workOrder.locationName)
                         .put("currentEquipments", JSONArray(currentEquipments.map { it.toJsonObject() }))
