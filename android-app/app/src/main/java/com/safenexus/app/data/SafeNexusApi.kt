@@ -35,6 +35,146 @@ class SafeNexusApi(
         const val DOCUMENT_GENERATION_POLL_ATTEMPTS = 180
     }
 
+    private fun workEquipmentRoRegisterGroupsJson(): JSONArray =
+        JSONArray()
+            .put(workEquipmentRoRegisterGroupJson("ro_mechanical_engineering_registers", "Strojarski dio", workEquipmentRoMechanicalRegisterItems(), "mechanical"))
+            .put(workEquipmentRoRegisterGroupJson("ro_electrical_registers", "Elektro dio", workEquipmentRoElectricalRegisterItems(), "electrical"))
+
+    private fun workEquipmentRoRegisterGroupJson(
+        path: String,
+        label: String,
+        items: List<Pair<String, String>>,
+        kind: String,
+    ): JSONObject =
+        JSONObject()
+            .put("path", path)
+            .put("label", label)
+            .put("items", JSONArray(items.map { (id, itemLabel) ->
+                JSONObject()
+                    .put("id", id)
+                    .put("iri", "/api/v3/$path/$id")
+                    .put("label", itemLabel)
+                    .put("aiInstruction", workEquipmentRoRegisterInstruction(kind, itemLabel))
+            }))
+
+    private fun workEquipmentRoRegisterInstruction(kind: String, label: String): JSONObject {
+        val normalized = label
+            .lowercase(Locale.ROOT)
+            .replace("č", "c")
+            .replace("ć", "c")
+            .replace("š", "s")
+            .replace("ž", "z")
+            .replace("đ", "d")
+
+        val details = when {
+            normalized.contains("stabil") || normalized.contains("postavljanja") ->
+                "Provjeri stabilnost, oslonce, podlogu, kotace, kocnice i osiguranje od pomicanja ili prevrtanja."
+            normalized.contains("pokretnih") || normalized.contains("prijenosnici") || normalized.contains("radni elementi") ->
+                "Provjeri vidljive pokretne dijelove, zastitne poklopce, prijenosnike snage, radne elemente i rizik zahvata."
+            normalized.contains("upravlj") || normalized.contains("ukljuc") || normalized.contains("iskljuc") || normalized.contains("signal") ->
+                "Provjeri tipkala, sklopke, STOP, oznake smjera, signalizaciju i dostupnost upravljanja."
+            normalized.contains("zastitnih naprava") || normalized.contains("neocekivanog") || normalized.contains("neovlastenog") ->
+                "Provjeri zastitne naprave, blokade, pokrove, ograde, brave i mjere koje sprjecavaju opasan pristup ili neocekivano pokretanje."
+            normalized.contains("dokument") || normalized.contains("uputama") || normalized.contains("znakovima") || normalized.contains("oznac") ->
+                "Provjeri vidljive sigurnosne oznake, upozorenja, upute, servisnu ili tehnicku dokumentaciju."
+            normalized.contains("tlac") || normalized.contains("hidraulic") || normalized.contains("plin") || normalized.contains("tekuc") || normalized.contains("pozar") || normalized.contains("eksploz") ->
+                "Provjeri medij, tlak, hidrauliku, plin, gorivo, curenje, ventilaciju, izvore paljenja i sigurnosne elemente."
+            normalized.contains("buke") || normalized.contains("vibracija") ->
+                "Provjeri motorne dijelove, kompresorski rad, ucvrscenje, izolaciju buke/vibracija i potrebu za mjerenjem."
+            normalized.contains("opterec") || normalized.contains("deform") || normalized.contains("statick") || normalized.contains("dinamick") ->
+                "Provjeri nosive dijelove, konstrukciju, probno opterecenje, pukotine, deformacije i sigurnost pri teretu."
+            normalized.contains("kabela") || normalized.contains("prikljuc") || normalized.contains("izolacije") ->
+                "Provjeri kabel, utikac, prikljucne naprave, uvodnice, napon s plocice i stanje izolacije."
+            normalized.contains("rcd") || normalized.contains("impedancija") || normalized.contains("otpor") || normalized.contains("napon dodira") || normalized.contains("struja") ->
+                "Koristi samo uz mjerne rezultate ili dokumentaciju; navedi izmjerenu i dopustenu vrijednost ako postoje."
+            normalized.contains("kratkog spoja") || normalized.contains("preopterecenja") || normalized.contains("povrata napona") ->
+                "Provjeri osigurace, prekidace, zastitne elemente i funkciju zastite od kratkog spoja, preopterecenja ili povrata napona."
+            normalized.contains("static") || normalized.contains("munja") || normalized.contains("zracenja") || normalized.contains("posebnih propisa") ->
+                "Predlozi samo za posebne elektricne rizike koji su vidljivi ili dokumentirani: statika, munja, zracenje, EX ili posebna oprema."
+            else ->
+                if (kind == "electrical") {
+                    "Predlozi samo kada fotografija, plocica, mjerenje ili dokument jasno pokazuju da je elektro stavka relevantna."
+                } else {
+                    "Predlozi samo kada fotografija, plocica, dokument ili vidljivo stanje opreme jasno pokazuju da je strojarska stavka relevantna."
+                }
+        }
+
+        return JSONObject()
+            .put("instruction", "$details U customContent obavezno upisi kratku napomenu/vrijednost za zapisnik; measuredValue koristi za konkretno mjerenje.")
+            .put("mustInclude", "konkretan vidljivi dokaz, stanje, zakljucak zadovoljava/ne zadovoljava")
+            .put("avoid", "Ne popunjavati automatski bez jasnog izvora i ne dodavati stavku samo zato sto postoji u sifrarniku.")
+            .put("textLength", "1 kratka recenica za napomenu/vrijednost")
+            .put("confidenceRequired", if (kind == "electrical") "high" else "medium")
+    }
+
+    private fun workEquipmentRoMechanicalRegisterItems(): List<Pair<String, String>> = listOf(
+        "1" to "Smještaj i osiguranje slobodnog prostora za neometan pristup, kretanje, rad i održavanje",
+        "2" to "Način postavljanja - osiguranje stabilnosti",
+        "3" to "Zaštita od pokretnih dijelova",
+        "4" to "Zaštita od pokretnih dijelova - prijenosnici snage i gibanja",
+        "5" to "Zaštita od pokretnih dijelova - radni elementi",
+        "6" to "Zaštita od padajućih ili izbačenih predmeta",
+        "7" to "Djelovanje uređaja za uključivanje i isključivanje",
+        "8" to "Djelovanje uređaja za isključivanje u slučaju opasnosti",
+        "9" to "Upravljačko mjesto",
+        "10" to "Djelovanje uređaja za upravljanje",
+        "11" to "Ostvarivanje gibanja i djelovanja prema oznakama i smjerovima",
+        "12" to "Raspoloživost i ispravnost zaštitnih naprava i uređaja",
+        "13" to "Raspoloživost i ispravnost mjernih/kontrolnih uređaja",
+        "14" to "Zaštita od neočekivanog pokretanja",
+        "15" to "Zaštita od neovlaštenog korištenja",
+        "16" to "Zaštita od zatvaranja u opasni prostor",
+        "17" to "Opremljenost, označavanje i ispravnost upravljačkih i signalnih elemenata",
+        "18" to "Opremljenost znakovima sigurnosti",
+        "19" to "Zaštita od propadanja, lomova, deformacija pri statičkom i dinamičkom opterećenju",
+        "20" to "Zaštita od vrućih/hladnih dijelova",
+        "21" to "Primjena mjera za zaštitu od požara i eksplozije",
+        "22" to "Zaštita od opasnih tvari - plinova, tekućina, para, aerosola, prašine",
+        "23" to "Sigurnosni elementi tlačne opreme",
+        "24" to "Zaštita od buke",
+        "25" to "Zaštita od vibracija",
+        "26" to "Primjena specifičnih propisa ovisno o primjeni",
+        "27" to "Način priključka na odgovarajuće instalacije",
+        "28" to "Promjene nastale korištenjem",
+        "29" to "Opremljenost odgovarajućim uputama",
+        "30" to "Raspoloživost tehničke dokumentacije",
+        "31" to "Radno opterećenje na karakterističnim pozicijama radnih elemenata",
+        "32" to "Raspoloživost osobne zaštitne opreme",
+        "33" to "Odvođenje produkata izgaranja je odgovarajuće",
+        "34" to "Mehanizam hidrauličkog sustava osigurava besprijekoran rad",
+        "35" to "Probno statičko ispitivanje provedeno je s poznatim pokusnim teretom",
+        "36" to "Probno dinamičko ispitivanje provedeno je s poznatim pokusnim teretom",
+    )
+
+    private fun workEquipmentRoElectricalRegisterItems(): List<Pair<String, String>> = listOf(
+        "1" to "Način priključka na električnu mrežu, nazivni napon",
+        "2" to "Vrsta kabela, presjek vodiča, stanje izolacije",
+        "3" to "Ispravnost priključnih naprava",
+        "4" to "Zaštita od izravnog dodira dijelova pod naponom",
+        "5" to "Dopuštena impedancija petlje kvara - Zsdop (Ω)",
+        "6" to "Dopušteno vrijeme isključenja - ti (s)",
+        "7" to "Nominalna struja nadstrujnog zaštitnog elementa - In (A)",
+        "8" to "Izmjerena impedancija petlje kvara - Zs (Ω)",
+        "9" to "Nominalna struja RCD - In (A)",
+        "10" to "Nominalna diferencijalna struja RCD - Idn (A)",
+        "11" to "Dopušteni neizravni napon dodira - Uidop (V)",
+        "12" to "Izmjereni napon dodira uz Idn - Ui (V)",
+        "13" to "Vrijeme isključenja RCD - ti (ms)",
+        "14" to "Izjednačenje potencijala dohvatljivih vodljivih dijelova - Rgv (Ω)",
+        "15" to "Zaštita sigurnosno malim naponom",
+        "16" to "Oprema klase II (dvostruka izolacija)",
+        "17" to "Zaštita od kratkog spoja i preopterećenja",
+        "18" to "Otpor izolacije (MΩ)",
+        "19" to "Zaštita od nekontroliranog uključenja",
+        "20" to "Zaštita od povrata napona",
+        "21" to "Zaštita od statičkog elektriciteta",
+        "22" to "Zaštita od djelovanja munja (Ω)",
+        "23" to "Zaštita od neionizirajućeg zračenja",
+        "24" to "Zaštita od ionizirajućeg zračenja",
+        "25" to "Primjena posebnih propisa i normi",
+        "26" to "Izmjerena diferencijalna struja RCD - Id (A)",
+    )
+
     init {
         if (CookieHandler.getDefault() == null) {
             CookieHandler.setDefault(CookieManager(null, CookiePolicy.ACCEPT_ALL))
@@ -1174,6 +1314,7 @@ class SafeNexusApi(
                         .put("companyName", workOrder.companyName)
                         .put("locationName", workOrder.locationName)
                         .put("currentEquipment", equipment.toJsonObject())
+                        .put("registers", workEquipmentRoRegisterGroupsJson())
                         .put(
                             "imageRule",
                             "Ovaj poziv popunjava samo trenutno otvorenu RO kolonu. Slike tretiraj kao jednu radnu opremu; ako ih ima vise, koristi najpouzdanije slike za taj jedan stroj.",
@@ -1188,7 +1329,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za RO zapisnik popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Uz svaku mehanicku/elektro stavku obavezno vrati customContent ili measuredValue kao napomenu/vrijednost. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja.",
+                            "Za RO zapisnik biraj strojarske i elektro stavke iz context.registers i postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Uz svaku mehanicku/elektro stavku obavezno vrati customContent ili measuredValue kao napomenu/vrijednost. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja.",
                         ),
                 )
                 .put(
@@ -1307,6 +1448,7 @@ class SafeNexusApi(
                         .put("companyName", workOrder.companyName)
                         .put("locationName", workOrder.locationName)
                         .put("currentEquipments", JSONArray(currentEquipments.map { it.toJsonObject() }))
+                        .put("registers", workEquipmentRoRegisterGroupsJson())
                         .put(
                             "imageRule",
                             "Ovo je batch upload iznad popisa RO opreme. U slikama moze biti vise strojeva. Grupiraj kronoloski: cijeli stroj, natpisna plocica i detalji pripadaju istoj opremi dok se ne pojavi ocito novi stroj. Vrati zaseban workEquipments zapis za svaki prepoznati stroj.",
@@ -1317,7 +1459,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za svaku RO opremu popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Uz svaku mehanicku/elektro stavku obavezno vrati customContent ili measuredValue kao napomenu/vrijednost. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
+                            "Za svaku RO opremu biraj strojarske i elektro stavke iz context.registers i postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Uz svaku mehanicku/elektro stavku obavezno vrati customContent ili measuredValue kao napomenu/vrijednost. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
                         ),
                 )
                 .put(

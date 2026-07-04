@@ -132183,6 +132183,8 @@ async function learnWorkEquipmentAiProfileVariantsFromResult(result = {}) {
 
 function getWorkEquipmentAiRegisterPromptGroups(entry = {}) {
   const groups = [];
+  const settings = getWorkEquipmentAiSettings();
+  const registryInstructions = settings.registryInstructions || {};
   const rawGroups = Array.isArray(settingsWorkEquipmentAiRegisterGroups) && settingsWorkEquipmentAiRegisterGroups.length
     ? settingsWorkEquipmentAiRegisterGroups
     : (Array.isArray(entry?.registers) ? entry.registers : []);
@@ -132190,13 +132192,18 @@ function getWorkEquipmentAiRegisterPromptGroups(entry = {}) {
   (Array.isArray(sourceGroups) ? sourceGroups : []).forEach((group) => {
     const items = (Array.isArray(group.items) ? group.items : [])
       .slice(0, 120)
-      .map((item) => ({
-        key: getWorkEquipmentAiRegisterKey(item, group),
-        id: String(item.id || item["@id"] || item.iri || "").trim(),
-        iri: String(item.iri || item["@id"] || "").trim(),
-        label: String(item.label || item.name || item.title || "").trim(),
-        code: String(item.code || "").trim(),
-      }))
+      .map((item) => {
+        const key = getWorkEquipmentAiRegisterKey(item, group);
+        const instruction = normalizeWorkEquipmentAiInstructionConfig(registryInstructions[key] || {});
+        return {
+          key,
+          id: String(item.id || item["@id"] || item.iri || "").trim(),
+          iri: String(item.iri || item["@id"] || "").trim(),
+          label: String(item.label || item.name || item.title || "").trim(),
+          code: String(item.code || "").trim(),
+          aiInstruction: hasWorkEquipmentAiInstructionConfig(instruction) ? instruction : undefined,
+        };
+      })
       .filter((item) => item.key || item.iri || item.label);
     if (items.length) {
       groups.push({
@@ -132297,7 +132304,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
-    assessmentInstruction: "RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati napomenu/vrijednost u customContent ili measuredValue. Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.",
+    assessmentInstruction: "RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati napomenu/vrijednost u customContent ili measuredValue. Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.",
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
       id: String(item.id || ""),
       recordNumber: String(item.recordNumber || ""),
@@ -163330,6 +163337,206 @@ const WORK_EQUIPMENT_AI_FIELD_DEFINITIONS = Object.freeze([
   { key: "finalGrade", group: "Pregled", label: "Zaključna ocjena", placeholder: "Zadovoljava / Ne zadovoljava prema nalazima." },
 ]);
 
+const WORK_EQUIPMENT_AI_MECHANICAL_HINT_RULES = Object.freeze([
+  {
+    match: /smjestaj|slobodnog prostora|pristup|kretanje|odrzavanje/,
+    instruction: "Gledaj ima li oprema dovoljno slobodnog prostora za pristup, rad, servis i sigurno kretanje oko stroja.",
+    mustInclude: "prostor oko opreme, pristup upravljanju, pristup odrzavanju, prepreke ili prolazi",
+    avoid: "Ne predlagati ako se iz slike ili dokumenta ne vidi prostor oko opreme.",
+    examples: "Oprema je smjestena tako da je omogucen siguran pristup i odrzavanje. / Pristup opremi je ogranicen odlozenim predmetima.",
+  },
+  {
+    match: /postavljanja|stabilnosti|stabilnost/,
+    instruction: "Provjeri je li oprema stabilno postavljena, oslonjena, ucvrscena ili zaustavljena od pomicanja i prevrtanja.",
+    mustInclude: "stabilnost, oslonci, kotaci/kocnice, podloga, sidrenje ili niveliranje",
+    avoid: "Ne dodavati za rucne alate ili opremu kod koje stabilnost nije vidljiva ni relevantna.",
+    examples: "Oprema je stabilno postavljena na ravnoj podlozi. / Nije vidljivo osiguranje od pomicanja opreme.",
+  },
+  {
+    match: /pokretnih dijelova|prijenosnici|radni elementi/,
+    instruction: "Predlozi samo ako su vidljivi pokretni dijelovi, remenje, osovine, valjci, ventilatori, stezne celjusti ili radni elementi.",
+    mustInclude: "vrsta pokretnog dijela, postojanje zastite/kućišta, rizik zahvata, stanje zastite",
+    avoid: "Ne predlagati ako oprema nema vidljivih pokretnih dijelova ili su potpuno zatvoreni bez indikacije rizika.",
+    examples: "Pokretni dijelovi su zatvoreni zastitnim poklopcem. / Nedostaje zastitni poklopac na prijenosu snage.",
+  },
+  {
+    match: /padajucih|izbacenih predmeta|izbacenih/,
+    instruction: "Koristi kada stroj moze izbaciti predmet, alat, obradak, strugotinu, iskru ili kada postoji rizik pada dijelova s opreme.",
+    mustInclude: "mogući izbaceni/padajući dio, zastitna naprava, zadrzavanje obratka ili materijala",
+    avoid: "Ne predlagati bez vidljivog procesa, otvora, radnog alata ili dokumentiranog rizika izbacivanja.",
+    examples: "Radni prostor je zatvoren zastitom od izbacivanja obratka. / Nije izvedena zastita od izbacivanja cestica.",
+  },
+  {
+    match: /ukljucivanje|iskljucivanje|upravlja|signalnih|oznaka|smjerovima/,
+    instruction: "Provjeri tipkala, sklopke, stop tipke, signalizaciju, oznake smjera i jasnoću upravljanja.",
+    mustInclude: "tipkala/sklopke, oznake, dostupnost, funkcija, signalizacija i stanje",
+    avoid: "Ne predlagati ako se upravljanje ne vidi i nema podataka u dokumentu.",
+    examples: "Upravljački elementi su oznaceni i dostupni. / Tipka za iskljucivanje nije jasno oznacena.",
+  },
+  {
+    match: /opasnosti|hitno|slucaju opasnosti/,
+    instruction: "Koristi za gljivasto STOP tipkalo, sigurnosnu sklopku, emergency stop ili drugi element za zaustavljanje u opasnosti.",
+    mustInclude: "postojanje, dostupnost i oznaka uredaja za zaustavljanje u opasnosti",
+    avoid: "Ne predlagati ako oprema ne zahtijeva posebni emergency stop ili nije vidljiv.",
+    examples: "Uredaj za zaustavljanje u opasnosti je dostupan i oznacen. / Nije vidljiv uredaj za zaustavljanje u opasnosti.",
+  },
+  {
+    match: /zastitnih naprava|zastitnih uredaja|neocekivanog|neovlastenog|opasni prostor/,
+    instruction: "Gledaj zastitne poklopce, blokade, medusklopke, brave, ograde, pokrove i mjere koje sprjecavaju opasan pristup ili neocekivano pokretanje.",
+    mustInclude: "vrsta zastite, stanje, funkcionalnost, dostupnost i je li sprijecen opasan pristup",
+    avoid: "Ne predlagati ako nema zastitnih naprava niti opasne zone vidljive na opremi.",
+    examples: "Zastitna naprava je dostupna i ispravna. / Zastitni pokrov nije ucvrscen.",
+  },
+  {
+    match: /mjernih|kontrolnih uredaja|kontrolnih/,
+    instruction: "Predlozi kada oprema ima manometre, zaslone, mjerni instrument, indikator stanja, limitatore ili kontrolne uredaje.",
+    mustInclude: "koji mjerni/kontrolni uredaj je vidljiv i njegovo stanje/ocitanje ako se vidi",
+    avoid: "Ne dodavati za opremu bez mjernih ili kontrolnih elemenata.",
+    examples: "Kontrolni zaslon i indikatori su vidljivi i neoštećeni. / Manometar je nečitljiv ili oštećen.",
+  },
+  {
+    match: /znakovima sigurnosti|oznacavanje|uputama|tehnicke dokumentacije|dokumentacije/,
+    instruction: "Provjeri postoje li sigurnosne oznake, natpisi, upute za uporabu, upozorenja, servisna dokumentacija ili tehnička dokumentacija.",
+    mustInclude: "koji dokument/oznaka/uputa postoji ili nedostaje",
+    avoid: "Ne izmisljati dokumentaciju ako nije vidljiva ili navedena u PDF-u.",
+    examples: "Na opremi su vidljive sigurnosne oznake i upute. / Tehnicka dokumentacija nije dostavljena na uvid.",
+  },
+  {
+    match: /propadanja|lomova|deformacija|opterecenju|radno opterecenje|staticko|dinamicko/,
+    instruction: "Koristi za nosive dijelove, konstrukciju, podizne ili opterećene elemente, probno opterećenje i znakove deformacije.",
+    mustInclude: "vidljivo stanje konstrukcije, teret/opterećenje, deformacije, pukotine ili probno opterećenje",
+    avoid: "Ne predlagati ako oprema nije nosiva i nema opterećenih elemenata.",
+    examples: "Nosiva konstrukcija nema vidljivih deformacija. / Na konstrukciji su vidljiva oštećenja koja zahtijevaju provjeru.",
+  },
+  {
+    match: /vrucih|hladnih|pozar|eksplozije|opasnih tvari|plinova|tekucina|para|aerosola|prasine|tlacne|hidraulickog|izgaranja/,
+    instruction: "Predlozi kada oprema ima izvore topline/hladnoće, plin, gorivo, tlak, hidrauliku, ispušne plinove, prašinu ili zapaljive/eksplozivne medije.",
+    mustInclude: "vrsta medija/opasnosti, zaštita, nepropusnost, ventilacija, odvođenje ili sigurnosni element",
+    avoid: "Ne predlagati ako nema vidljivih niti dokumentiranih medija, tlaka, topline ili izvora paljenja.",
+    examples: "Nema vidljivog curenja radnog medija, a priključci su neoštećeni. / Vidljivo je curenje ili nedostaje zaštita od vrućih dijelova.",
+  },
+  {
+    match: /buke|vibracija/,
+    instruction: "Koristi ako je oprema motorna, kompresorska, vibracijska, udarna ili dokument navodi buku/vibracije.",
+    mustInclude: "izvor buke/vibracija, zaštita, učvršćenje, izolacija ili potreba za mjerenjem",
+    avoid: "Ne predlagati za tihu uredsku opremu bez pokretnih/motornih dijelova.",
+    examples: "Oprema je stabilna i nema neuobičajenih vibracija. / Potrebno je provjeriti povećane vibracije tijekom rada.",
+  },
+  {
+    match: /posebnih propisa|odgovarajuce instalacije|promjene nastale koristenjem|osobne zastitne opreme/,
+    instruction: "Koristi kada vrsta opreme ili dokument upućuje na posebne propise, priključke na instalacije, promjene uporabom ili potrebu za OZO.",
+    mustInclude: "koji posebni uvjet je relevantan i sto je potrebno provjeriti",
+    avoid: "Ne dodavati bez jasne veze s vrstom opreme, instalacijom ili dokumentiranim uvjetom.",
+    examples: "Oprema se koristi uz propisanu osobnu zaštitnu opremu. / Potrebno je dodatno uskladiti priključak s uputama proizvođača.",
+  },
+]);
+
+const WORK_EQUIPMENT_AI_ELECTRICAL_HINT_RULES = Object.freeze([
+  {
+    match: /prikljucka|elektricnu mrezu|nazivni napon/,
+    instruction: "Predloži kada je vidljiv kabel, utikač, priključna kutija, napajanje ili natpisna pločica s naponom.",
+    mustInclude: "nazivni napon, vrsta priključka, napajanje, utikač/kabel ako su vidljivi",
+    avoid: "Ne dodavati ako oprema nije električna ili nema vidljivih podataka o priključku.",
+    examples: "Oprema je priključena na električnu mrežu 230 V. / Nije vidljiv odgovarajući električni priključak.",
+  },
+  {
+    match: /kabela|presjek|izolacije|prikljucnih naprava/,
+    instruction: "Gledaj stanje kabela, utikača, priključnica, uvodnica, izolacije i mehanička oštećenja priključnih naprava.",
+    mustInclude: "stanje kabela/utikača/izolacije i vidljiva oštećenja",
+    avoid: "Ne predlagati ako kabel i priključci nisu vidljivi.",
+    examples: "Kabel i priključne naprave su neoštećeni. / Vidljivo je oštećenje izolacije kabela.",
+  },
+  {
+    match: /izravnog dodira|neizravnog dodira|naponom|klase ii|sigurnosno malim naponom/,
+    instruction: "Predloži za zaštitu od dodira, kućišta, pokrove, dvostruku izolaciju, SELV/PELV ili dostupne vodljive dijelove.",
+    mustInclude: "zaštitni pokrov/kućište, klasa opreme, dostupni vodljivi dijelovi, stanje izolacije",
+    avoid: "Ne zaključivati o zaštiti od dodira ako se ne vidi kućište/priključak ili nema mjernih podataka.",
+    examples: "Dijelovi pod naponom su zaštićeni kućištem. / Otvoren priključni dio omogućuje dodir dijelova pod naponom.",
+  },
+  {
+    match: /impedancija|rcd|diferencijalna|iskljucenja|struja|napon dodira|potencijala|otpor izolacije/,
+    instruction: "Koristi kada postoje mjerni rezultati ili dokumentacija za impedanciju petlje, RCD, izjednačenje potencijala, otpor izolacije ili napon dodira.",
+    mustInclude: "izmjerena vrijednost, dopuštena vrijednost i zaključak zadovoljava/ne zadovoljava",
+    avoid: "Ne izmišljati mjerne vrijednosti; bez mjerenja ostaviti za ručnu provjeru ili ne predlagati.",
+    examples: "Izmjerena vrijednost je unutar dopuštene granice. / Izmjerena vrijednost prelazi dopuštenu granicu.",
+  },
+  {
+    match: /kratkog spoja|preopterecenja|nekontroliranog|povrata napona/,
+    instruction: "Predloži ako su vidljivi zaštitni elementi, osigurači, prekidači, sklopnici ili dokument navodi zaštitu od preopterećenja/povrata napona.",
+    mustInclude: "zaštitni element, stanje, oznaka ili potreba za provjerom funkcije",
+    avoid: "Ne dodavati ako nema vidljivih zaštitnih elemenata ili dokumentiranih podataka.",
+    examples: "Zaštita od kratkog spoja i preopterećenja je izvedena zaštitnim elementom. / Zaštitni element nije moguće potvrditi iz dostavljenih podataka.",
+  },
+  {
+    match: /staticnog elektriciteta|munja|neionizirajuceg|ionizirajuceg|posebnih propisa/,
+    instruction: "Koristi samo za opremu/prostore gdje su vidljivi ili dokumentirani posebni električni rizici: statika, munja, zračenje, EX, medicinska ili druga posebna oprema.",
+    mustInclude: "koji poseban rizik je relevantan i na temelju kojeg vidljivog/dokumentiranog podatka",
+    avoid: "Ne dodavati za običnu električnu opremu bez posebnog rizika.",
+    examples: "Za opremu je predviđena primjena posebnog propisa prema namjeni. / Nije dostavljen dokaz zaštite od statičkog elektriciteta.",
+  },
+]);
+
+function normalizeWorkEquipmentAiHintText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLocaleLowerCase("hr");
+}
+
+function getWorkEquipmentAiRegisterDefaultRule(kind = "mechanical", label = "") {
+  const text = normalizeWorkEquipmentAiHintText(label);
+  const rules = kind === "electrical" ? WORK_EQUIPMENT_AI_ELECTRICAL_HINT_RULES : WORK_EQUIPMENT_AI_MECHANICAL_HINT_RULES;
+  return rules.find((rule) => rule.match.test(text)) || {
+    instruction: kind === "electrical"
+      ? "Predloži ovu elektro stavku samo kada fotografija, pločica, mjerenje ili dokument jasno pokazuju da je relevantna za pregledanu radnu opremu."
+      : "Predloži ovu strojarsku stavku samo kada fotografija, pločica, dokument ili vidljivo stanje opreme jasno pokazuju da je relevantna.",
+    mustInclude: "konkretan vidljivi dokaz, stanje, zaključak zadovoljava/ne zadovoljava",
+    avoid: "Ne popunjavati automatski bez jasnog izvora; ne dodavati samo zato što stavka postoji u šifrarniku.",
+    examples: "Stavka je provjerena vizualnim pregledom i nema vidljivih nedostataka. / Potrebna je dodatna provjera zbog nedovoljno vidljivih podataka.",
+  };
+}
+
+function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", item = {}) {
+  const label = String(item.label || item.name || item.description || "").trim();
+  const rule = getWorkEquipmentAiRegisterDefaultRule(kind, label);
+  return normalizeWorkEquipmentAiInstructionConfig({
+    instruction: [
+      `Stavka: ${label}.`,
+      rule.instruction,
+      "NexAI ju smije predložiti samo ako postoji veza s vrstom opreme, fotografijom, natpisnom pločicom, starim zapisnikom ili dokumentom.",
+      "U customContent obavezno napiši kratku napomenu/vrijednost za zapisnik, a ako postoji mjerenje upiši measuredValue.",
+      "Ako je stavka relevantna i nema vidljivih nedostataka, meetsConditions je true; ako je vidljiv nedostatak, meetsConditions je false i napiši razlog.",
+    ].filter(Boolean).join(" "),
+    mustInclude: rule.mustInclude,
+    avoid: rule.avoid,
+    style: "professional",
+    confidenceRequired: kind === "electrical" ? "high" : "medium",
+    textLength: "1 kratka rečenica za napomenu/vrijednost; mjernu vrijednost izdvojiti u measuredValue.",
+    fallbackValue: "Ako nema dovoljno dokaza, ne predlaži ovu stavku ili je označi za ručnu provjeru.",
+    examples: rule.examples,
+  });
+}
+
+function createDefaultWorkEquipmentAiRegistryInstructions() {
+  const defaults = {};
+  WORK_ORDER_DOCUMENT_RO_MECHANICAL_ITEMS.forEach((item) => {
+    const id = String(item.iri || "").split("/").filter(Boolean).pop();
+    const key = id ? `ro_mechanical_engineering_registers:${id}` : "";
+    if (key) {
+      defaults[key] = buildWorkEquipmentAiRegisterDefaultInstruction("mechanical", item);
+    }
+  });
+  WORK_ORDER_DOCUMENT_RO_ELECTRICAL_ITEMS.forEach((item) => {
+    const id = String(item.iri || "").split("/").filter(Boolean).pop();
+    const key = id ? `ro_electrical_registers:${id}` : "";
+    if (key) {
+      defaults[key] = buildWorkEquipmentAiRegisterDefaultInstruction("electrical", item);
+    }
+  });
+  return defaults;
+}
+
 function normalizeWorkEquipmentAiInstructionConfig(config = {}) {
   const source = config && typeof config === "object" ? config : {};
   const style = String(source.style || "professional").trim();
@@ -163578,6 +163785,7 @@ function normalizeWorkEquipmentAiSettings(value = {}) {
     ? (value.find((entry) => String(entry?.organizationId ?? "") === String(state.activeOrganizationId ?? "")) ?? value[0] ?? {})
     : (value && typeof value === "object" ? value : {});
   const autoFillMode = String(source.autoFillMode || "").trim();
+  const defaultRegistryInstructions = createDefaultWorkEquipmentAiRegistryInstructions();
   return {
     organizationId: String(source.organizationId ?? state.activeOrganizationId ?? "").trim(),
     generalInstruction: String(source.generalInstruction || "").trim().slice(0, 8000),
@@ -163586,7 +163794,10 @@ function normalizeWorkEquipmentAiSettings(value = {}) {
     reviewInstruction: String(source.reviewInstruction || "").trim().slice(0, 4000),
     autoFillMode: ["suggest", "fill_empty", "fill_all"].includes(autoFillMode) ? autoFillMode : "fill_empty",
     fieldInstructions: normalizeWorkEquipmentAiInstructionMap(source.fieldInstructions),
-    registryInstructions: normalizeWorkEquipmentAiInstructionMap(source.registryInstructions),
+    registryInstructions: normalizeWorkEquipmentAiInstructionMap({
+      ...defaultRegistryInstructions,
+      ...(source.registryInstructions || {}),
+    }),
     registers: normalizeWorkEquipmentAiRegisterGroupsCache(source.registers || source.registryGroups || source.registerGroups),
     profiles: (Array.isArray(source.profiles) ? source.profiles : [])
       .slice(0, 60)
