@@ -10533,11 +10533,178 @@ private fun DocumentationWorkEquipmentOptionList(
     }
 }
 
+private fun localEquipmentInspectionOption(group: String, index: Int, label: String): WorkOrderDocumentationOption =
+    WorkOrderDocumentationOption(
+        id = "local-no-$group-$index",
+        label = label,
+        subtitle = "Nadzor opreme",
+        meta = mapOf("iri" to "local-no-$group-$index"),
+    )
+
+private fun defaultEquipmentInspectionMechanicalOptions(): List<WorkOrderDocumentationOption> =
+    listOf(
+        "Smještaj i osiguranje slobodnog prostora",
+        "Način postavljanja i stabilnost",
+        "Djelovanje uređaja za uključivanje i isključivanje",
+        "Opremljenost i ispravnost upravljačkih i signalnih elemenata",
+        "Ostvarivanje gibanja prema oznakama i smjerovima",
+        "Zaštita od pokretnih dijelova",
+        "Zaštita od padanja ili izbacivanja predmeta",
+        "Zaštita od propadanja, loma i deformacija",
+        "Zaštita od prskanja, istjecanja i razlijetanja tvari",
+        "Zaštita od vrućih ili hladnih površina",
+        "Zaštita od buke i vibracija",
+        "Siguran pristup mjestima rada, održavanja i čišćenja",
+        "Opremljenost propisanim oznakama i znakovima sigurnosti",
+        "Ispravnost zaštitnih naprava i blokada",
+        "Ispravnost kočnica, ograničivača i sigurnosnih sklopova",
+        "Održavanje, čišćenje i opće vizualno stanje",
+        "Raspoloživost uputa za uporabu i održavanje",
+        "Primjena osobne zaštitne opreme i posebnih mjera",
+        "Dijelovi opreme i priključci",
+    ).mapIndexed { index, label -> localEquipmentInspectionOption("mechanical", index + 1, label) }
+
+private fun defaultEquipmentInspectionElectricalOptions(): List<WorkOrderDocumentationOption> =
+    listOf(
+        "Način priključka na električnu mrežu i nazivni napon",
+        "Ispravnost priključnih naprava i kabela",
+        "Stanje izolacije vodiča i kućišta",
+        "Zaštita od izravnog dodira dijelova pod naponom",
+        "Zaštita od neizravnog dodira automatskim isklapanjem napajanja",
+        "Zaštita od kratkog spoja i preopterećenja",
+        "Ispravnost glavne sklopke i isklopa u nuždi",
+        "Zaštitno uzemljenje i zaštitni vodič",
+        "Zaštita od djelovanja munje i prenapona po potrebi",
+        "Opremljenost električnim oznakama upozorenja",
+    ).mapIndexed { index, label -> localEquipmentInspectionOption("electrical", index + 1, label) }
+
+@Composable
+private fun DocumentationEquipmentInspectionLocalList(
+    manualEquipments: List<IsznrManualWorkEquipment>,
+    enabled: Boolean = true,
+    mechanicalOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    electricalOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    hazardOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    harmfulnessOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    strainOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    onManualEquipmentsChange: (List<IsznrManualWorkEquipment>) -> Unit,
+    onRecognizeWorkEquipmentImages: (
+        IsznrManualWorkEquipment,
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
+) {
+    var activeManualEquipmentIndex by rememberSaveable { mutableStateOf(0) }
+    val resolvedMechanicalOptions = remember(mechanicalOptions) {
+        mechanicalOptions.ifEmpty { defaultEquipmentInspectionMechanicalOptions() }
+    }
+    val resolvedElectricalOptions = remember(electricalOptions) {
+        electricalOptions.ifEmpty { defaultEquipmentInspectionElectricalOptions() }
+    }
+    LaunchedEffect(manualEquipments.size) {
+        if (manualEquipments.isEmpty()) {
+            onManualEquipmentsChange(listOf(IsznrManualWorkEquipment()))
+            activeManualEquipmentIndex = 0
+        } else {
+            activeManualEquipmentIndex = activeManualEquipmentIndex.coerceIn(0, manualEquipments.lastIndex)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = Color(0xFFF0F9FF),
+            border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+            tonalElevation = 0.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(shape = CircleShape, color = Color(0xFFDBEAFE), modifier = Modifier.size(40.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Nadzor opreme", fontWeight = FontWeight.Black)
+                        Text(
+                            "Lokalni STROJEVI predložak. Unosiš opremu po stupcima, bez IS ZNR slanja i bez obaveznog NexAI troška.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = {}, enabled = false, label = { Text("${manualEquipments.size.coerceAtLeast(1)} stupac(a)") })
+                    AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedMechanicalOptions.size} strojarskih") })
+                    AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedElectricalOptions.size} elektro") })
+                }
+            }
+        }
+
+        if (manualEquipments.isNotEmpty()) {
+            val safeIndex = activeManualEquipmentIndex.coerceIn(0, manualEquipments.lastIndex)
+            ManualWorkEquipmentRowList(
+                equipments = manualEquipments,
+                activeIndex = safeIndex,
+                enabled = enabled,
+                recordLabel = "NO",
+                defaultTitle = "Oprema",
+                onSelect = { index -> activeManualEquipmentIndex = index },
+            )
+            ManualWorkEquipmentInlineEditor(
+                equipment = manualEquipments[safeIndex],
+                columnIndex = safeIndex,
+                columnCount = manualEquipments.size,
+                enabled = enabled,
+                recordTitle = "Oprema",
+                recordLabel = "NO",
+                showRecognition = false,
+                showRiskRegisters = true,
+                mechanicalOptions = resolvedMechanicalOptions,
+                electricalOptions = resolvedElectricalOptions,
+                hazardOptions = hazardOptions,
+                harmfulnessOptions = harmfulnessOptions,
+                strainOptions = strainOptions,
+                onPrevious = { activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0) },
+                onNext = { activeManualEquipmentIndex = (safeIndex + 1).coerceAtMost(manualEquipments.lastIndex) },
+                onAddColumn = {
+                    onManualEquipmentsChange(manualEquipments + IsznrManualWorkEquipment())
+                    activeManualEquipmentIndex = manualEquipments.size
+                },
+                onRemove = {
+                    val nextEquipments = manualEquipments.filterIndexed { index, _ -> index != safeIndex }
+                    onManualEquipmentsChange(nextEquipments.ifEmpty { listOf(IsznrManualWorkEquipment()) })
+                    activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0)
+                },
+                onRecognizeImages = onRecognizeWorkEquipmentImages,
+                onEquipmentChange = { updatedEquipment ->
+                    onManualEquipmentsChange(
+                        manualEquipments.mapIndexed { index, item ->
+                            if (index == safeIndex) updatedEquipment else item
+                        },
+                    )
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun ManualWorkEquipmentRowList(
     equipments: List<IsznrManualWorkEquipment>,
     activeIndex: Int,
     enabled: Boolean,
+    recordLabel: String = "RO",
+    defaultTitle: String = "Radna oprema",
     onSelect: (Int) -> Unit,
 ) {
     Surface(
@@ -10558,7 +10725,7 @@ private fun ManualWorkEquipmentRowList(
                 Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text("Popis opreme", fontWeight = FontWeight.Black)
                     Text(
-                        "Jedan red = jedan stupac RO zapisnika.",
+                        "Jedan red = jedan stupac $recordLabel zapisnika.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
@@ -10600,7 +10767,7 @@ private fun ManualWorkEquipmentRowList(
                         }
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                equipment.name.ifBlank { "Radna oprema ${index + 1}" },
+                                equipment.name.ifBlank { "$defaultTitle ${index + 1}" },
                                 fontWeight = FontWeight.Black,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -12495,6 +12662,10 @@ private fun ManualWorkEquipmentInlineEditor(
     columnIndex: Int,
     columnCount: Int,
     enabled: Boolean,
+    recordTitle: String = "Radna oprema",
+    recordLabel: String = "RO",
+    showRecognition: Boolean = true,
+    showRiskRegisters: Boolean = true,
     mechanicalOptions: List<WorkOrderDocumentationOption>,
     electricalOptions: List<WorkOrderDocumentationOption>,
     hazardOptions: List<WorkOrderDocumentationOption>,
@@ -12530,7 +12701,7 @@ private fun ManualWorkEquipmentInlineEditor(
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .joinToString(" - ")
-                .ifBlank { "RO predložak" },
+                .ifBlank { "$recordLabel predložak" },
         )
     }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
@@ -12597,7 +12768,7 @@ private fun ManualWorkEquipmentInlineEditor(
     if (saveTemplateDialogOpen) {
         AlertDialog(
             onDismissRequest = { saveTemplateDialogOpen = false },
-            title = { Text("Spremi RO predložak") },
+            title = { Text("Spremi $recordLabel predložak") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -12618,7 +12789,7 @@ private fun ManualWorkEquipmentInlineEditor(
             confirmButton = {
                 Button(
                     onClick = {
-                        val title = templateTitle.trim().ifBlank { "RO predložak" }
+                        val title = templateTitle.trim().ifBlank { "$recordLabel predložak" }
                         val nextTemplates = reportTemplates
                             .filterNot { it.title.equals(title, ignoreCase = true) }
                             .plus(
@@ -12783,7 +12954,7 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        equipment.name.ifBlank { "Radna oprema ${columnIndex + 1}" },
+                        equipment.name.ifBlank { "$recordTitle ${columnIndex + 1}" },
                         fontWeight = FontWeight.Black,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -12880,7 +13051,7 @@ private fun ManualWorkEquipmentInlineEditor(
                                             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                                 Text(template.title, fontWeight = FontWeight.Bold)
                                                 Text(
-                                                    template.equipment.subtitle().ifBlank { "Sadržaj RO zapisnika" },
+                            template.equipment.subtitle().ifBlank { "Sadržaj RO zapisnika" },
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                                                     maxLines = 1,
@@ -12937,50 +13108,52 @@ private fun ManualWorkEquipmentInlineEditor(
                 onAttachmentsChange = { nextAttachments -> onEquipmentChange(equipment.copy(attachments = nextAttachments)) },
             )
 
-            val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Button(
-                    onClick = {
-                        recognitionLoading = true
-                        recognitionMessage = "Čitam slike stroja i pločice..."
-                        onRecognizeImages(
-                            equipment,
-                            recognitionImages,
-                            { result ->
-                                recognitionLoading = false
-                                recognitionPreview = result
-                                recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
-                            },
-                            { message ->
-                                recognitionLoading = false
-                                recognitionMessage = message
-                            },
-                        )
-                    },
-                    enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            if (showRecognition) {
+                val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (recognitionLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    } else {
-                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Button(
+                        onClick = {
+                            recognitionLoading = true
+                            recognitionMessage = "Čitam slike stroja i pločice..."
+                            onRecognizeImages(
+                                equipment,
+                                recognitionImages,
+                                { result ->
+                                    recognitionLoading = false
+                                    recognitionPreview = result
+                                    recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
+                                },
+                                { message ->
+                                    recognitionLoading = false
+                                    recognitionMessage = message
+                                },
+                            )
+                        },
+                        enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        if (recognitionLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Prepoznaj iz označenih slika")
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Prepoznaj iz označenih slika")
                 }
-            }
-            if (recognitionLoading) {
-                WorkEquipmentAiStatusPanel(
-                    title = "NexAI čita otvorenu kolonu",
-                    subtitle = "Prepoznajem stroj i pločicu samo iz slika koje šalješ u zapisnik.",
-                    details = "PDF prilozi se ne koriste za vizualno prepoznavanje stroja.",
-                )
+                if (recognitionLoading) {
+                    WorkEquipmentAiStatusPanel(
+                        title = "NexAI čita otvorenu kolonu",
+                        subtitle = "Prepoznajem stroj i pločicu samo iz slika koje šalješ u zapisnik.",
+                        details = "PDF prilozi se ne koriste za vizualno prepoznavanje stroja.",
+                    )
+                }
             }
             listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
                 Text(
@@ -13029,7 +13202,7 @@ private fun ManualWorkEquipmentInlineEditor(
             OutlinedTextField(equipment.inventoryNumber, { onEquipmentChange(equipment.copy(inventoryNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.note, { onEquipmentChange(equipment.copy(note = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, enabled = enabled, shape = RoundedCornerShape(14.dp))
 
-            ManualWorkEquipmentSectionTitle("Opisna RO polja")
+            ManualWorkEquipmentSectionTitle("Opisna polja")
             OutlinedTextField(equipment.technicalData, { onEquipmentChange(equipment.copy(technicalData = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.purposeDescription, { onEquipmentChange(equipment.copy(purposeDescription = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Namjena radne opreme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.workspacePosition, { onEquipmentChange(equipment.copy(workspacePosition = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Položaj u radnom prostoru") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
@@ -13050,25 +13223,27 @@ private fun ManualWorkEquipmentInlineEditor(
                 onItemsChange = { onEquipmentChange(equipment.copy(electricalItems = it)) },
             )
 
-            ManualWorkEquipmentSectionTitle("Opasnosti, štetnosti i napori")
-            ManualWorkEquipmentRegisterChips(
-                title = "Opasnosti",
-                options = hazardOptions,
-                selectedIris = equipment.hazardRegisterIris,
-                onSelectedIrisChange = { onEquipmentChange(equipment.copy(hazardRegisterIris = it)) },
-            )
-            ManualWorkEquipmentRegisterChips(
-                title = "Štetnosti",
-                options = harmfulnessOptions,
-                selectedIris = equipment.harmfulnessRegisterIris,
-                onSelectedIrisChange = { onEquipmentChange(equipment.copy(harmfulnessRegisterIris = it)) },
-            )
-            ManualWorkEquipmentRegisterChips(
-                title = "Napori",
-                options = strainOptions,
-                selectedIris = equipment.strainRegisterIris,
-                onSelectedIrisChange = { onEquipmentChange(equipment.copy(strainRegisterIris = it)) },
-            )
+            if (showRiskRegisters) {
+                ManualWorkEquipmentSectionTitle("Opasnosti, štetnosti i napori")
+                ManualWorkEquipmentRegisterChips(
+                    title = "Opasnosti",
+                    options = hazardOptions,
+                    selectedIris = equipment.hazardRegisterIris,
+                    onSelectedIrisChange = { onEquipmentChange(equipment.copy(hazardRegisterIris = it)) },
+                )
+                ManualWorkEquipmentRegisterChips(
+                    title = "Štetnosti",
+                    options = harmfulnessOptions,
+                    selectedIris = equipment.harmfulnessRegisterIris,
+                    onSelectedIrisChange = { onEquipmentChange(equipment.copy(harmfulnessRegisterIris = it)) },
+                )
+                ManualWorkEquipmentRegisterChips(
+                    title = "Napori",
+                    options = strainOptions,
+                    selectedIris = equipment.strainRegisterIris,
+                    onSelectedIrisChange = { onEquipmentChange(equipment.copy(strainRegisterIris = it)) },
+                )
+            }
 
             ManualWorkEquipmentSectionTitle("Zaključak")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -26280,6 +26455,7 @@ private data class DocumentationFlowTab(
 
 private const val DOCUMENTATION_BASICS_FLOW_KEY = "__basics__"
 private const val DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY = "__work_equipment__"
+private const val DOCUMENTATION_EQUIPMENT_INSPECTION_FLOW_KEY = "__equipment_inspection__"
 private const val DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY = "__physical_factors__"
 private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
 private const val DOCUMENTATION_EXTRA_FLOW_PREFIX = "__extra__"
@@ -26303,6 +26479,15 @@ private fun normalizeDocumentationWorkEquipmentText(value: String): String =
 private fun isDocumentationWorkEquipmentText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
     val compact = normalized.replace(" ", "")
+    if (
+        normalized == "strojevi" ||
+        normalized.startsWith("strojevi ") ||
+        normalized == "radna oprema strojevi" ||
+        normalized.contains("nadzor opreme") ||
+        normalized.contains("nadzor strojeva")
+    ) {
+        return false
+    }
     return normalized.contains("radna oprema") ||
         normalized.contains("radne opreme") ||
         normalized.contains("ispitivanje radne opreme") ||
@@ -26317,9 +26502,30 @@ private fun isDocumentationWorkEquipmentService(item: DocumentationServiceFlowIt
         isDocumentationWorkEquipmentText(item.serviceCode) ||
         isDocumentationWorkEquipmentText(item.serviceKey)
 
+private fun isDocumentationEquipmentInspectionText(value: String): Boolean {
+    val normalized = normalizeDocumentationWorkEquipmentText(value)
+    val compact = normalized.replace(" ", "")
+    if (normalized.isBlank()) return false
+    return normalized == "no" ||
+        normalized.startsWith("no ") ||
+        compact == "no" ||
+        normalized == "strojevi" ||
+        normalized.startsWith("strojevi ") ||
+        normalized == "radnaoprema" ||
+        normalized == "radna oprema strojevi" ||
+        normalized.contains("nadzor opreme") ||
+        normalized.contains("nadzor strojeva") ||
+        normalized.contains("o nadzoru opreme")
+}
+
+private fun isDocumentationEquipmentInspectionService(item: DocumentationServiceFlowItem): Boolean =
+    isDocumentationEquipmentInspectionText(item.serviceName) ||
+        isDocumentationEquipmentInspectionText(item.serviceCode) ||
+        isDocumentationEquipmentInspectionText(item.serviceKey)
+
 private fun isDocumentationPhysicalFactorsText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
-    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value)) return false
+    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value) || isDocumentationEquipmentInspectionText(value)) return false
     return normalized == "fc" ||
         normalized.startsWith("fc ") ||
         normalized.contains("fizikalni cimbenici") ||
@@ -26335,7 +26541,7 @@ private fun isDocumentationPhysicalFactorsService(item: DocumentationServiceFlow
 
 private fun isDocumentationTrainingText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
-    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value) || isDocumentationPhysicalFactorsText(value)) return false
+    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value) || isDocumentationEquipmentInspectionText(value) || isDocumentationPhysicalFactorsText(value)) return false
     return normalized == "znr" ||
         normalized == "zos" ||
         normalized == "pgp" ||
@@ -26403,6 +26609,14 @@ private fun documentationNativeServiceCodeForText(value: String): String {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
     if (normalized.isBlank()) return ""
     return when {
+        normalized == "no" ||
+            normalized.startsWith("no ") ||
+            normalized.contains("nadzor opreme") ||
+            normalized.contains("nadzor strojeva") -> "NO"
+        normalized == "strojevi" ||
+            normalized.startsWith("strojevi ") ||
+            normalized == "radnaoprema" ||
+            normalized == "radna oprema strojevi" -> "STROJEVI"
         normalized == "spr" ||
             normalized.startsWith("spr ") ||
             normalized.contains("sigurnosna panik") ||
@@ -26482,6 +26696,7 @@ private fun buildDocumentationFlowTabs(
     flowItems: List<DocumentationServiceFlowItem>,
     additionalRecords: List<DocumentationAdditionalObjectRecord>,
     includeWorkEquipmentTab: Boolean = false,
+    includeEquipmentInspectionTab: Boolean = false,
     includePhysicalFactorsTab: Boolean = false,
 ): List<DocumentationFlowTab> {
     val tabs = mutableListOf(
@@ -26492,12 +26707,13 @@ private fun buildDocumentationFlowTabs(
     )
     flowItems.forEachIndexed { serviceIndex, item ->
         val serviceLabel = when {
+            isDocumentationEquipmentInspectionService(item) -> "NO"
             isDocumentationWorkEquipmentService(item) -> "RO"
             isDocumentationPhysicalFactorsService(item) -> "FC"
             else -> item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
         }
         val normalizedServiceLabel = serviceLabel.trim().uppercase(Locale.getDefault())
-        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "FC")) {
+        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "FC")) {
             normalizedServiceLabel
         } else {
             "${serviceIndex + 1}. $serviceLabel"
@@ -26512,7 +26728,7 @@ private fun buildDocumentationFlowTabs(
                 val sequence = tabs.count { tab -> tab.serviceItem?.serviceKey == item.serviceKey } + 1
                 val recordLabel = record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }.trim()
                 val normalizedRecordLabel = recordLabel.uppercase(Locale.getDefault())
-                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "FC")) {
+                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "FC")) {
                     "$normalizedRecordLabel $sequence"
                 } else {
                     "$sequence. $recordLabel"
@@ -26530,6 +26746,12 @@ private fun buildDocumentationFlowTabs(
         tabs += DocumentationFlowTab(
             key = DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY,
             label = "RO",
+        )
+    }
+    if (includeEquipmentInspectionTab && flowItems.none { isDocumentationEquipmentInspectionService(it) }) {
+        tabs += DocumentationFlowTab(
+            key = DOCUMENTATION_EQUIPMENT_INSPECTION_FLOW_KEY,
+            label = "NO",
         )
     }
     if (includePhysicalFactorsTab && flowItems.none { isDocumentationPhysicalFactorsService(it) }) {
@@ -26572,6 +26794,7 @@ private fun inferDocumentationSignatureAreas(
     return when {
         Regex("\\b(tzin|tipkalo)\\b").containsMatchIn(text) || text.contains("isklop napona") -> listOf("tipkalo")
         Regex("\\b(spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("elektro")
+        Regex("\\b(no|strojevi)\\b").containsMatchIn(text) || text.contains("nadzor opreme") || text.contains("nadzor strojeva") -> listOf("strojevi", "radna_oprema")
         Regex("\\bro\\b").containsMatchIn(text) || text.contains("radna oprema") || text.contains("radne opreme") -> listOf("radna_oprema")
         Regex("\\bfc\\b").containsMatchIn(text) || text.contains("radni okoli") || text.contains("fizikalni") -> listOf("radni_okolis")
         else -> listOf("elektro")
@@ -26587,6 +26810,7 @@ private fun List<WorkOrderDocumentationSignatureAreaOptions>.areaOptions(key: St
                 "tipkalo", "tzin" -> "Tipkalo za isklop napona"
                 "elektro" -> "Elektro usluga"
                 "radna_oprema", "ro" -> "Radna oprema"
+                "strojevi", "no" -> "Nadzor opreme"
                 "radni_okolis", "fc" -> "Radni okoliš"
                 else -> normalizedKey.replace('_', ' ').replaceFirstChar { it.titlecase(Locale.getDefault()) }
             },
@@ -27103,7 +27327,7 @@ private fun standardDocumentationSignatureValue(
         when (area) {
             "tipkalo", "tzin" -> standard.tipkaloAuthorizationHolderLabel.ifBlank { standard.tipkaloAuthorizationHolderUserId }
             "elektro" -> standard.electricalAuthorizationHolderLabel.ifBlank { standard.electricalAuthorizationHolderUserId }
-            "radna_oprema", "ro" -> standard.workEquipmentAuthorizationHolderLabel.ifBlank { standard.workEquipmentAuthorizationHolderUserId }
+            "radna_oprema", "ro", "strojevi", "no" -> standard.workEquipmentAuthorizationHolderLabel.ifBlank { standard.workEquipmentAuthorizationHolderUserId }
             "radni_okolis", "fc" -> standard.workEnvironmentAuthorizationHolderLabel.ifBlank { standard.workEnvironmentAuthorizationHolderUserId }
             else -> standard.authorizationHolderLabel.ifBlank { standard.authorizationHolderUserId }
         }
@@ -27112,7 +27336,7 @@ private fun standardDocumentationSignatureValue(
         when (area) {
             "tipkalo", "tzin" -> standard.tipkaloInspectorLabel.ifBlank { standard.tipkaloInspectorUserId }
             "elektro" -> standard.electricalInspectorLabel.ifBlank { standard.electricalInspectorUserId }
-            "radna_oprema", "ro" -> standard.workEquipmentInspectorLabel.ifBlank { standard.workEquipmentInspectorUserId }
+            "radna_oprema", "ro", "strojevi", "no" -> standard.workEquipmentInspectorLabel.ifBlank { standard.workEquipmentInspectorUserId }
             "radni_okolis", "fc" -> standard.workEnvironmentInspectorLabel.ifBlank { standard.workEnvironmentInspectorUserId }
             else -> standard.inspectorLabel.ifBlank { standard.inspectorUserId }
         }
@@ -27415,12 +27639,17 @@ private fun WorkOrderDocumentationWizardDialog(
         serviceFlowItems.any { isDocumentationWorkEquipmentService(it) } ||
             isDocumentationWorkEquipmentText(workOrder.displayService)
     }
+    val isEquipmentInspectionFlow = remember(serviceFlowItems, workOrder.displayService) {
+        serviceFlowItems.any { isDocumentationEquipmentInspectionService(it) } ||
+            isDocumentationEquipmentInspectionText(workOrder.displayService)
+    }
     val isPhysicalFactorsFlow = remember(serviceFlowItems, workOrder.displayService) {
         serviceFlowItems.any { isDocumentationPhysicalFactorsService(it) } ||
             isDocumentationPhysicalFactorsText(workOrder.displayService)
     }
     val workEquipmentStatusMessage = context.workEquipmentStatus["message"].orEmpty()
     val showWorkEquipmentFromIsznr = isWorkEquipmentFlow
+    val showEquipmentInspectionLocal = isEquipmentInspectionFlow
     val showPhysicalFactorsFromIsznr = isPhysicalFactorsFlow
     var selectedWorkEquipmentItemIds by remember(workOrder.id, context.workEquipmentOptions) {
         mutableStateOf(emptySet<String>())
@@ -27429,6 +27658,9 @@ private fun WorkOrderDocumentationWizardDialog(
         mutableStateOf(emptySet<String>())
     }
     var manualWorkEquipments by remember(workOrder.id, context.workEquipmentOptions) {
+        mutableStateOf(emptyList<IsznrManualWorkEquipment>())
+    }
+    var manualEquipmentInspectionEquipments by remember(workOrder.id) {
         mutableStateOf(emptyList<IsznrManualWorkEquipment>())
     }
     val selectedWorkEquipmentRecords = remember(context.workEquipmentOptions, selectedWorkEquipmentItemIds) {
@@ -27449,7 +27681,7 @@ private fun WorkOrderDocumentationWizardDialog(
     var additionalRecords by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(emptyList<DocumentationAdditionalObjectRecord>())
     }
-    val flowTabs = remember(serviceFlowItems, additionalRecords, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr, isTrainingDocumentationFlow) {
+    val flowTabs = remember(serviceFlowItems, additionalRecords, showWorkEquipmentFromIsznr, showEquipmentInspectionLocal, showPhysicalFactorsFromIsznr, isTrainingDocumentationFlow) {
         if (isTrainingDocumentationFlow) {
             listOf(
                 DocumentationFlowTab(
@@ -27462,6 +27694,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 flowItems = serviceFlowItems,
                 additionalRecords = additionalRecords,
                 includeWorkEquipmentTab = showWorkEquipmentFromIsznr,
+                includeEquipmentInspectionTab = showEquipmentInspectionLocal,
                 includePhysicalFactorsTab = showPhysicalFactorsFromIsznr,
             )
         }
@@ -27481,12 +27714,15 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val workEquipmentFlowSelected = selectedFlowService == DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY ||
         selectedFlowTab?.serviceItem?.let { isDocumentationWorkEquipmentService(it) } == true
+    val equipmentInspectionFlowSelected = selectedFlowService == DOCUMENTATION_EQUIPMENT_INSPECTION_FLOW_KEY ||
+        selectedFlowTab?.serviceItem?.let { isDocumentationEquipmentInspectionService(it) } == true
     val physicalFactorsFlowSelected = selectedFlowService == DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY ||
         selectedFlowTab?.serviceItem?.let { isDocumentationPhysicalFactorsService(it) } == true
     val selectedAdditionalRecord = selectedFlowTab?.additionalRecordIndex?.let { index -> additionalRecords.getOrNull(index) }
-    val selectedFlowItem = remember(serviceFlowItems, selectedFlowTab, selectedAdditionalRecord, workEquipmentFlowSelected, physicalFactorsFlowSelected) {
+    val selectedFlowItem = remember(serviceFlowItems, selectedFlowTab, selectedAdditionalRecord, workEquipmentFlowSelected, equipmentInspectionFlowSelected, physicalFactorsFlowSelected) {
         selectedFlowTab?.serviceItem ?: when {
             workEquipmentFlowSelected -> null
+            equipmentInspectionFlowSelected -> null
             physicalFactorsFlowSelected -> null
             summaryFlowSelected -> null
             basicsFlowSelected -> serviceFlowItems.firstOrNull()
@@ -27501,9 +27737,10 @@ private fun WorkOrderDocumentationWizardDialog(
         selectedFlowItem?.serviceIndex,
         summaryFlowSelected,
         workEquipmentFlowSelected,
+        equipmentInspectionFlowSelected,
         physicalFactorsFlowSelected,
     ) {
-        if (summaryFlowSelected || workEquipmentFlowSelected || physicalFactorsFlowSelected) {
+        if (summaryFlowSelected || workEquipmentFlowSelected || equipmentInspectionFlowSelected || physicalFactorsFlowSelected) {
             return@remember emptyList()
         }
         val flowItem = selectedFlowItem
@@ -27562,11 +27799,13 @@ private fun WorkOrderDocumentationWizardDialog(
         basicsFlowSelected,
         summaryFlowSelected,
         workEquipmentFlowSelected,
+        equipmentInspectionFlowSelected,
         physicalFactorsFlowSelected,
     ) {
         !basicsFlowSelected &&
             !summaryFlowSelected &&
             !workEquipmentFlowSelected &&
+            !equipmentInspectionFlowSelected &&
             !physicalFactorsFlowSelected &&
             !activeTemplatesHaveGridline &&
             (
@@ -27788,11 +28027,11 @@ private fun WorkOrderDocumentationWizardDialog(
             activeTemplates.filter { template -> template.fieldBlocks.isNotEmpty() }
         }
     }
-    val allPersonRules = remember(context.templates, serviceFlowItems, showWorkEquipmentFromIsznr, showPhysicalFactorsFromIsznr) {
+    val allPersonRules = remember(context.templates, serviceFlowItems, showWorkEquipmentFromIsznr, showEquipmentInspectionLocal, showPhysicalFactorsFromIsznr) {
         ensureDocumentationPersonFieldRulesForFlows(
             baseRules = buildDocumentationPersonFieldRules(context.templates),
             flowItems = serviceFlowItems,
-            includeWorkEquipment = showWorkEquipmentFromIsznr,
+            includeWorkEquipment = showWorkEquipmentFromIsznr || showEquipmentInspectionLocal,
             includePhysicalFactors = showPhysicalFactorsFromIsznr,
         )
     }
@@ -27841,7 +28080,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         electricalAuthorizationHolderUserId = defaultAuthorization
                     }
                 }
-                "radna_oprema", "ro" -> {
+                "radna_oprema", "ro", "strojevi", "no" -> {
                     if (workEquipmentInspectorUserIds.isEmpty() && defaultInspectors.isNotEmpty()) {
                         workEquipmentInspectorUserIds = defaultInspectors
                         workEquipmentInspectorUserId = defaultInspectors.firstOrNull().orEmpty()
@@ -28294,6 +28533,20 @@ private fun WorkOrderDocumentationWizardDialog(
     val formLoading = isLoading || contextLoading
     val readyManualWorkEquipments = remember(manualWorkEquipments) {
         manualWorkEquipments.filter { it.isReadyForIsznrPost() }
+    }
+    val readyManualEquipmentInspectionEquipments = remember(manualEquipmentInspectionEquipments) {
+        manualEquipmentInspectionEquipments.filter { it.isReadyForIsznrPost() }
+    }
+    val readyManualDocumentEquipments = remember(
+        readyManualWorkEquipments,
+        readyManualEquipmentInspectionEquipments,
+        showEquipmentInspectionLocal,
+    ) {
+        if (showEquipmentInspectionLocal) {
+            readyManualEquipmentInspectionEquipments
+        } else {
+            readyManualWorkEquipments
+        }
     }
     val manualPhysicalFactorsReady = remember(manualPhysicalFactorsForSubmit) {
         manualPhysicalFactorsForSubmit.isReadyForPhysicalFactorsPost()
@@ -28835,7 +29088,21 @@ private fun WorkOrderDocumentationWizardDialog(
                     }
                 }
 
-                if (workEquipmentFlowSelected) {
+                if (equipmentInspectionFlowSelected) {
+                    WizardSection(title = "Nadzor opreme", icon = Icons.Rounded.Work) {
+                        DocumentationEquipmentInspectionLocalList(
+                            manualEquipments = manualEquipmentInspectionEquipments,
+                            enabled = !formLoading,
+                            mechanicalOptions = context.workEquipmentMechanicalOptions,
+                            electricalOptions = context.workEquipmentElectricalOptions,
+                            hazardOptions = context.workEquipmentHazardOptions,
+                            harmfulnessOptions = context.workEquipmentHarmfulnessOptions,
+                            strainOptions = context.workEquipmentStrainOptions,
+                            onManualEquipmentsChange = { manualEquipmentInspectionEquipments = it },
+                            onRecognizeWorkEquipmentImages = onRecognizeWorkEquipmentImages,
+                        )
+                    }
+                } else if (workEquipmentFlowSelected) {
                     WizardSection(title = "Radna oprema", icon = Icons.Rounded.Work) {
                         DocumentationWorkEquipmentOptionList(
                             options = context.workEquipmentOptions,
@@ -29038,6 +29305,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         "tzin" to tipkaloInspectorUserIds,
                         "radna_oprema" to workEquipmentInspectorUserIds,
                         "ro" to workEquipmentInspectorUserIds,
+                        "strojevi" to workEquipmentInspectorUserIds,
+                        "no" to workEquipmentInspectorUserIds,
                         "radni_okolis" to workEnvironmentInspectorUserIds,
                         "fc" to workEnvironmentInspectorUserIds,
                         "default" to inspectorUserIds,
@@ -29048,6 +29317,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         "tzin" to tipkaloAuthorizationHolderUserId,
                         "radna_oprema" to workEquipmentAuthorizationHolderUserId,
                         "ro" to workEquipmentAuthorizationHolderUserId,
+                        "strojevi" to workEquipmentAuthorizationHolderUserId,
+                        "no" to workEquipmentAuthorizationHolderUserId,
                         "radni_okolis" to workEnvironmentAuthorizationHolderUserId,
                         "fc" to workEnvironmentAuthorizationHolderUserId,
                         "default" to authorizationHolderUserId,
@@ -29062,7 +29333,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                 electricalInspectorUserIds = ids
                                 electricalInspectorUserId = ids.firstOrNull().orEmpty()
                             }
-                            "radna_oprema", "ro" -> {
+                            "radna_oprema", "ro", "strojevi", "no" -> {
                                 workEquipmentInspectorUserIds = ids
                                 workEquipmentInspectorUserId = ids.firstOrNull().orEmpty()
                             }
@@ -29080,7 +29351,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         when (normalizeDocumentationSignatureAreaKey(area)) {
                             "tipkalo", "tzin" -> tipkaloAuthorizationHolderUserId = id
                             "elektro" -> electricalAuthorizationHolderUserId = id
-                            "radna_oprema", "ro" -> workEquipmentAuthorizationHolderUserId = id
+                            "radna_oprema", "ro", "strojevi", "no" -> workEquipmentAuthorizationHolderUserId = id
                             "radni_okolis", "fc" -> workEnvironmentAuthorizationHolderUserId = id
                             else -> authorizationHolderUserId = id
                         }
@@ -29318,7 +29589,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     }
                 }
 
-                if (!summaryFlowSelected && !workEquipmentFlowSelected && !physicalFactorsFlowSelected) {
+                if (!summaryFlowSelected && !workEquipmentFlowSelected && !equipmentInspectionFlowSelected && !physicalFactorsFlowSelected) {
                     DocumentationSprStandaloneAttachmentsSection(
                         files = documentationAttachmentFiles,
                         loading = documentationAttachmentLoading,
@@ -29344,7 +29615,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     testingLocation = testingLocation,
                     selectedEquipmentCount = selectedEquipmentIds.size,
                     selectedLegalCount = selectedLegalFrameworkIds.size,
-                    showWorkEquipmentIsznr = showWorkEquipmentFromIsznr,
+                    showWorkEquipmentIsznr = showWorkEquipmentFromIsznr && !showEquipmentInspectionLocal,
                     selectedWorkEquipmentCount = selectedWorkEquipmentTotal,
                     workEquipmentMissingLabels = workEquipmentPostMissingLabels,
                     canSubmitWorkEquipmentToIsznr = canSubmitWorkEquipmentToIsznr,
@@ -29428,7 +29699,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             selectedRulebookIds = emptyList(),
                             selectedWorkEquipmentRecords = selectedWorkEquipmentRecords,
                             selectedWorkEnvironmentRecords = selectedPhysicalFactorsRecords,
-                            manualWorkEquipments = readyManualWorkEquipments,
+                            manualWorkEquipments = readyManualDocumentEquipments,
                             workEquipmentSubmitResult = lastWorkEquipmentSubmitResult,
                             workEnvironmentSubmitResult = lastPhysicalFactorsSubmitResult,
                             signatureMode = signatureMode,
@@ -37017,28 +37288,28 @@ private fun DocumentationServicePeopleSection(
             val inspectorSelection = when (area) {
                 "tipkalo", "tzin" -> tipkaloInspectorUserIds
                 "elektro" -> electricalInspectorUserIds
-                "radna_oprema", "ro" -> workEquipmentInspectorUserIds
+                "radna_oprema", "ro", "strojevi", "no" -> workEquipmentInspectorUserIds
                 "radni_okolis", "fc" -> workEnvironmentInspectorUserIds
                 else -> inspectorUserIds
             }
             val authorizationSelection = when (area) {
                 "tipkalo", "tzin" -> tipkaloAuthorizationHolderUserId
                 "elektro" -> electricalAuthorizationHolderUserId
-                "radna_oprema", "ro" -> workEquipmentAuthorizationHolderUserId
+                "radna_oprema", "ro", "strojevi", "no" -> workEquipmentAuthorizationHolderUserId
                 "radni_okolis", "fc" -> workEnvironmentAuthorizationHolderUserId
                 else -> authorizationHolderUserId
             }
             val onInspectorChange: (Set<String>) -> Unit = when (area) {
                 "tipkalo", "tzin" -> onTipkaloInspectorUserIdsChange
                 "elektro" -> onElectricalInspectorUserIdsChange
-                "radna_oprema", "ro" -> onWorkEquipmentInspectorUserIdsChange
+                "radna_oprema", "ro", "strojevi", "no" -> onWorkEquipmentInspectorUserIdsChange
                 "radni_okolis", "fc" -> onWorkEnvironmentInspectorUserIdsChange
                 else -> onInspectorUserIdsChange
             }
             val onAuthorizationChange: (String) -> Unit = when (area) {
                 "tipkalo", "tzin" -> onTipkaloAuthorizationHolderUserIdChange
                 "elektro" -> onElectricalAuthorizationHolderUserIdChange
-                "radna_oprema", "ro" -> onWorkEquipmentAuthorizationHolderUserIdChange
+                "radna_oprema", "ro", "strojevi", "no" -> onWorkEquipmentAuthorizationHolderUserIdChange
                 "radni_okolis", "fc" -> onWorkEnvironmentAuthorizationHolderUserIdChange
                 else -> onAuthorizationHolderUserIdChange
             }

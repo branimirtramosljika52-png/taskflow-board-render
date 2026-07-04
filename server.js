@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.311.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.312.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1101,6 +1101,9 @@ const DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS = Object.freeze({
   VES: "24",
   EIZ: "12",
   SZOM: "12",
+  NO: "36",
+  STROJEVI: "36",
+  RADNAOPREMA: "36",
   VS: "36",
   EXEI: "36",
   EXSE: "6",
@@ -24831,6 +24834,10 @@ const MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS = Object.freeze([
       || text.includes("kemijski cimben")
       || (text.includes("radni okolis") && text.includes("kemij"))
     ),
+  },
+  {
+    code: "NO",
+    matches: (text) => text.includes("nadzor opreme") || text.includes("nadzor strojeva") || text === "no",
   },
   {
     code: "STROJEVI",
