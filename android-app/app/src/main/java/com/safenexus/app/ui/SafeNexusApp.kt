@@ -11310,6 +11310,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
         actions: Map<Int, WorkEquipmentImportAction>,
         matches: List<WorkEquipmentImportMatch>,
         replaceAll: Boolean = false,
+        verificationAnswers: Map<String, String> = emptyMap(),
     ) {
         val items = result.recognizedWorkEquipmentItems()
         if (items.isEmpty()) {
@@ -11334,6 +11335,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                 updated.takeIf { it > 0 }?.let { "$it ažurirano" },
                 added.takeIf { it > 0 }?.let { "$it novo" },
                 skipped.takeIf { it > 0 }?.let { "$it preskočeno" },
+                verificationAnswers.count { it.value.isNotBlank() }.takeIf { it > 0 }?.let { "$it potvrda" },
             ).filterNotNull().joinToString(" · ").ifBlank { "RO popis je provjeren bez promjena." }
         }
     }
@@ -11346,6 +11348,13 @@ private fun WorkEquipmentBatchNexAiUploadCard(
         var actionOverrides by remember(result, manualEquipments, files) {
             mutableStateOf(matches.associate { it.recognizedIndex to it.defaultAction })
         }
+        val previewQuestions = remember(result) {
+            result.verificationQuestions.distinctBy { it.trim().lowercase() }.filter { it.isNotBlank() }.take(6)
+        }
+        var verificationAnswers by remember(result) {
+            mutableStateOf(previewQuestions.associateWith { "" })
+        }
+        val questionsAnswered = previewQuestions.all { verificationAnswers[it].orEmpty().isNotBlank() }
         AlertDialog(
             onDismissRequest = { preview = null },
             title = { Text("Provjeri RO popis") },
@@ -11361,7 +11370,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
-                    if (result.verificationQuestions.isNotEmpty()) {
+                    if (previewQuestions.isNotEmpty()) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
@@ -11373,8 +11382,23 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
                                 Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
-                                result.verificationQuestions.take(6).forEach { question ->
-                                    Text("• $question", style = MaterialTheme.typography.labelSmall, color = Color(0xFF92400E))
+                                Text(
+                                    "Odgovori ili upiši napomenu. NexAI ne smije ostaviti 'treba provjeriti' kao gotov nalaz.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF92400E),
+                                )
+                                previewQuestions.forEach { question ->
+                                    OutlinedTextField(
+                                        value = verificationAnswers[question].orEmpty(),
+                                        onValueChange = { value ->
+                                            verificationAnswers = verificationAnswers + (question to value)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text(question, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                                        placeholder = { Text("Npr. Da, funkcionalno provjereno.") },
+                                        minLines = 2,
+                                        maxLines = 4,
+                                    )
                                 }
                             }
                         }
@@ -11488,8 +11512,8 @@ private fun WorkEquipmentBatchNexAiUploadCard(
             },
             confirmButton = {
                 Button(
-                    onClick = { applyPreview(result, actionOverrides, matches) },
-                    enabled = items.isNotEmpty(),
+                    onClick = { applyPreview(result, actionOverrides, matches, verificationAnswers = verificationAnswers) },
+                    enabled = items.isNotEmpty() && questionsAnswered,
                     shape = RoundedCornerShape(14.dp),
                 ) {
                     Text("Primijeni popis")
@@ -11501,8 +11525,8 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                         Text("Zatvori")
                     }
                     TextButton(
-                        onClick = { applyPreview(result, actionOverrides, matches, replaceAll = true) },
-                        enabled = items.isNotEmpty(),
+                        onClick = { applyPreview(result, actionOverrides, matches, replaceAll = true, verificationAnswers = verificationAnswers) },
+                        enabled = items.isNotEmpty() && questionsAnswered,
                     ) {
                         Text(if (manualEquipments.isEmpty()) "Postavi" else "Zamijeni sve")
                     }
@@ -12056,7 +12080,7 @@ private fun ManualWorkEquipmentInlineEditor(
         )
     }
 
-    fun applyRecognition(result: WorkEquipmentImageRecognitionResult) {
+    fun applyRecognition(result: WorkEquipmentImageRecognitionResult, verificationAnswers: Map<String, String> = emptyMap()) {
         onEquipmentChange(
             equipment.copy(
                 name = result.name.ifBlank { equipment.name },
@@ -12071,10 +12095,18 @@ private fun ManualWorkEquipmentInlineEditor(
         recognitionMessage = listOf(
             result.message.ifBlank { "Prepoznati podaci su primijenjeni." },
             result.matchedSource.takeIf { it.isNotBlank() }?.let { "Baza: $it" }.orEmpty(),
+            verificationAnswers.count { it.value.isNotBlank() }.takeIf { it > 0 }?.let { "$it potvrda uneseno" }.orEmpty(),
         ).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     recognitionPreview?.let { result ->
+        val previewQuestions = remember(result) {
+            result.verificationQuestions.distinctBy { it.trim().lowercase() }.filter { it.isNotBlank() }.take(6)
+        }
+        var verificationAnswers by remember(result) {
+            mutableStateOf(previewQuestions.associateWith { "" })
+        }
+        val questionsAnswered = previewQuestions.all { verificationAnswers[it].orEmpty().isNotBlank() }
         AlertDialog(
             onDismissRequest = { recognitionPreview = null },
             title = { Text("Provjeri prepoznavanje") },
@@ -12085,7 +12117,7 @@ private fun ManualWorkEquipmentInlineEditor(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
-                    if (result.verificationQuestions.isNotEmpty()) {
+                    if (previewQuestions.isNotEmpty()) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
@@ -12097,8 +12129,23 @@ private fun ManualWorkEquipmentInlineEditor(
                                 verticalArrangement = Arrangement.spacedBy(5.dp),
                             ) {
                                 Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
-                                result.verificationQuestions.take(6).forEach { question ->
-                                    Text("• $question", style = MaterialTheme.typography.labelSmall, color = Color(0xFF92400E))
+                                Text(
+                                    "Odgovori ili upiši napomenu. NexAI ne smije ostaviti 'treba provjeriti' kao gotov nalaz.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF92400E),
+                                )
+                                previewQuestions.forEach { question ->
+                                    OutlinedTextField(
+                                        value = verificationAnswers[question].orEmpty(),
+                                        onValueChange = { value ->
+                                            verificationAnswers = verificationAnswers + (question to value)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text(question, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                                        placeholder = { Text("Npr. Da, funkcionalno provjereno.") },
+                                        minLines = 2,
+                                        maxLines = 4,
+                                    )
                                 }
                             }
                         }
@@ -12128,8 +12175,8 @@ private fun ManualWorkEquipmentInlineEditor(
             },
             confirmButton = {
                 Button(
-                    onClick = { applyRecognition(result) },
-                    enabled = listOf(result.name, result.manufacturer, result.model, result.serialNumber, result.inventoryNumber, result.technicalData).any { it.isNotBlank() },
+                    onClick = { applyRecognition(result, verificationAnswers) },
+                    enabled = listOf(result.name, result.manufacturer, result.model, result.serialNumber, result.inventoryNumber, result.technicalData).any { it.isNotBlank() } && questionsAnswered,
                     shape = RoundedCornerShape(14.dp),
                 ) {
                     Text("Primijeni")

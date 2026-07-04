@@ -25012,19 +25012,50 @@ body.is-document-template-editor-open .chat-dock {
   letter-spacing: 0.04em;
 }
 
-.work-order-document-ro-ai-import-questions ul {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding-left: 18px;
+.work-order-document-ro-ai-import-questions > span {
+  color: #92400e;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
-.work-order-document-ro-ai-import-questions li,
+.work-order-document-ro-ai-import-question-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.work-order-document-ro-ai-import-question-item {
+  display: grid;
+  gap: 5px;
+}
+
+.work-order-document-ro-ai-import-question-item span,
 .work-order-document-ro-ai-import-row-copy .work-order-document-ro-ai-import-row-warning {
   color: #b45309;
   font-size: 0.72rem;
   font-weight: 850;
   line-height: 1.35;
+}
+
+.work-order-document-ro-ai-import-question-item textarea {
+  width: 100%;
+  min-height: 54px;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  font: inherit;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.work-order-document-ro-ai-import-question-item textarea:focus {
+  outline: 2px solid rgba(245, 158, 11, 0.34);
+  border-color: rgba(217, 119, 6, 0.58);
 }
 
 .work-order-document-ro-ai-import-list {

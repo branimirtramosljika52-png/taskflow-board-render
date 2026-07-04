@@ -132737,6 +132737,16 @@ function applyWorkOrderDocumentRoAiImportPreview(workOrder = {}) {
     renderWorkOrderDocumentWizard();
     return;
   }
+  const verificationQuestions = normalizeWorkOrderDocumentRoVerificationQuestions(preview?.verificationQuestions || []);
+  const verificationAnswers = preview?.verificationAnswers && typeof preview.verificationAnswers === "object"
+    ? preview.verificationAnswers
+    : {};
+  const unansweredQuestion = verificationQuestions.find((question) => !String(verificationAnswers[question] || "").trim());
+  if (unansweredQuestion) {
+    entry.aiMessage = "Odgovori na pitanja za potvrdu prije upisa RO popisa.";
+    renderWorkOrderDocumentWizard();
+    return;
+  }
   const selectedIds = new Set((Array.isArray(entry.selectedItemIds) ? entry.selectedItemIds : [])
     .map((value) => String(value || "").trim())
     .filter(Boolean));
@@ -132774,6 +132784,7 @@ function applyWorkOrderDocumentRoAiImportPreview(workOrder = {}) {
     updated ? `${updated} kolona ažurirano` : "",
     added ? `${added} novo dodano` : "",
     skipped ? `${skipped} preskočeno` : "",
+    verificationQuestions.length ? `${verificationQuestions.length} potvrda upisano` : "",
   ].filter(Boolean).join(" · ") || "RO popis je provjeren bez promjena.";
   void learnWorkEquipmentAiProfileVariantsFromResult(entry.aiResult || {});
   renderWorkOrderDocumentWizard();
@@ -134640,6 +134651,14 @@ function appendWorkOrderDocumentRoAiImportPreview(panel, workOrder = {}, stateEn
   applyButton.type = "button";
   applyButton.className = "primary-action-button";
   applyButton.textContent = "Primijeni popis";
+  const updateApplyButtonState = () => {
+    const questions = normalizeWorkOrderDocumentRoVerificationQuestions(preview?.verificationQuestions || []);
+    const answers = preview?.verificationAnswers && typeof preview.verificationAnswers === "object"
+      ? preview.verificationAnswers
+      : {};
+    applyButton.disabled = questions.some((question) => !String(answers[question] || "").trim());
+    applyButton.title = applyButton.disabled ? "Odgovori na pitanja za potvrdu prije upisa." : "";
+  };
   applyButton.addEventListener("click", (event) => {
     event.stopPropagation();
     applyWorkOrderDocumentRoAiImportPreview(workOrder);
@@ -134650,19 +134669,38 @@ function appendWorkOrderDocumentRoAiImportPreview(panel, workOrder = {}, stateEn
 
   const verificationQuestions = normalizeWorkOrderDocumentRoVerificationQuestions(preview?.verificationQuestions || []);
   if (verificationQuestions.length) {
+    if (!preview.verificationAnswers || typeof preview.verificationAnswers !== "object") {
+      preview.verificationAnswers = {};
+    }
     const questionBox = document.createElement("div");
     questionBox.className = "work-order-document-ro-ai-import-questions";
     const questionTitle = document.createElement("strong");
     questionTitle.textContent = "Potvrdi prije upisa";
-    const questionList = document.createElement("ul");
+    const questionHelp = document.createElement("span");
+    questionHelp.textContent = "Ovdje upiši odgovor ili napomenu. AI ne smije ostaviti tekst tipa 'treba provjeriti' kao gotov nalaz.";
+    questionBox.append(questionTitle, questionHelp);
+    const questionList = document.createElement("div");
+    questionList.className = "work-order-document-ro-ai-import-question-list";
     verificationQuestions.slice(0, 8).forEach((question) => {
-      const item = document.createElement("li");
-      item.textContent = question;
+      const item = document.createElement("label");
+      item.className = "work-order-document-ro-ai-import-question-item";
+      const text = document.createElement("span");
+      text.textContent = question;
+      const answer = document.createElement("textarea");
+      answer.rows = 2;
+      answer.placeholder = "Npr. Da, funkcionalno provjereno. / Nije provjereno - upisati napomenu.";
+      answer.value = String(preview.verificationAnswers[question] || "");
+      answer.addEventListener("input", () => {
+        preview.verificationAnswers[question] = answer.value.trim();
+        updateApplyButtonState();
+      });
+      item.append(text, answer);
       questionList.append(item);
     });
-    questionBox.append(questionTitle, questionList);
+    questionBox.append(questionList);
     wrap.append(questionBox);
   }
+  updateApplyButtonState();
 
   const list = document.createElement("div");
   list.className = "work-order-document-ro-ai-import-list";
