@@ -131902,8 +131902,9 @@ function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
         || "",
       ).trim();
       const rawMeasuredValue = String(source.measuredValue || source.measurement || source.measured || source.izmjerenaVrijednost || "").trim();
-      const customContent = normalizeWorkEquipmentRoAssessmentNote(rawCustomContent || rawMeasuredValue);
-      const measuredValue = rawMeasuredValue && rawMeasuredValue !== customContent
+      const normalizedRawNote = normalizeWorkEquipmentRoAssessmentNote(rawCustomContent || rawMeasuredValue);
+      const customContent = isWorkEquipmentRoUnverifiedAssessmentNote(normalizedRawNote) ? "" : normalizedRawNote;
+      const measuredValue = rawMeasuredValue && rawMeasuredValue !== customContent && !isWorkEquipmentRoUnverifiedAssessmentNote(rawMeasuredValue)
         ? normalizeWorkEquipmentRoAssessmentNote(rawMeasuredValue)
         : "";
       return {
@@ -131925,6 +131926,63 @@ function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
       return item.customContent || item.measuredValue;
     })
     .slice(0, 80);
+}
+
+function normalizeWorkOrderDocumentRoVerificationQuestions(values = []) {
+  const source = Array.isArray(values) ? values : [values];
+  return source
+    .map((value) => {
+      if (value && typeof value === "object") {
+        return String(value.question || value.label || value.text || value.title || value.value || "").trim();
+      }
+      return String(value || "").trim();
+    })
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index)
+    .slice(0, 80);
+}
+
+function collectWorkOrderDocumentRoVerificationQuestionsFromAssessmentItems(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const source = item && typeof item === "object" ? item : { customContent: item };
+      const note = String(
+        source.customContent
+        || source.note
+        || source.napomena
+        || source.comment
+        || source.reason
+        || source.finding
+        || source.observedCondition
+        || source.value
+        || source.vrijednost
+        || source.measuredValue
+        || source.measurement
+        || "",
+      ).trim();
+      if (!isWorkEquipmentRoUnverifiedAssessmentNote(note)) {
+        return "";
+      }
+      return buildWorkEquipmentRoVerificationQuestion(source.label || source.name || source.title || "", note);
+    })
+    .filter(Boolean);
+}
+
+function collectWorkOrderDocumentRoVerificationQuestionsFromSuggestion(suggestion = {}) {
+  const directQuestions = [
+    ...(Array.isArray(suggestion?.verificationQuestions) ? suggestion.verificationQuestions : []),
+    ...(Array.isArray(suggestion?.userQuestions) ? suggestion.userQuestions : []),
+    ...(Array.isArray(suggestion?.manualConfirmationQuestions) ? suggestion.manualConfirmationQuestions : []),
+    ...(Array.isArray(suggestion?.questionsForUser) ? suggestion.questionsForUser : []),
+  ];
+  const assessmentQuestions = [
+    ...collectWorkOrderDocumentRoVerificationQuestionsFromAssessmentItems(suggestion?.mechanicalItems),
+    ...collectWorkOrderDocumentRoVerificationQuestionsFromAssessmentItems(suggestion?.roMechanicalItems),
+    ...collectWorkOrderDocumentRoVerificationQuestionsFromAssessmentItems(suggestion?.electricalItems),
+    ...collectWorkOrderDocumentRoVerificationQuestionsFromAssessmentItems(suggestion?.roElectricalItems),
+  ];
+  return normalizeWorkOrderDocumentRoVerificationQuestions([...directQuestions, ...assessmentQuestions]);
 }
 
 function normalizeWorkOrderDocumentRoIriList(values = []) {
@@ -132260,6 +132318,8 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         groupEndIndex: 3,
         groupingReason: "zašto te slike pripadaju istoj opremi",
         assessmentRule: `Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Uz svaku stavku obavezno ide customContent kao konkretna napomena/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo za stvarno mjerenje.`,
+        verificationRule: "Ako bi u customContent napisao da nešto treba provjeriti/potvrditi/utvrditi, nemoj vratiti tu stavku kao nalaz. Umjesto toga dodaj pitanje u verificationQuestions.",
+        verificationQuestions: ["pitanje za korisnika kada nalaz treba funkcionalnu provjeru ili ručnu potvrdu"],
         mechanicalItems: [{
           registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
           label: "naziv relevantne strojarske stavke",
@@ -132279,7 +132339,8 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         strainRegisterIris: ["IRI napora iz strain_registers"],
       },
     ],
-    warnings: ["što korisnik treba provjeriti"],
+    verificationQuestions: ["pitanja koja korisnik treba potvrditi prije upisa nesigurnih nalaza"],
+    warnings: ["tehničke napomene bez gotovih nalaza"],
     summary: "kratak sažetak rezultata",
   };
 }
@@ -132314,7 +132375,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
-    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka vraćena strojarska/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo ako postoji stvarno mjerenje. Ne vraćaj stavku bez napomene. Primjeri: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
+    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka vraćena strojarska/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo ako postoji stvarno mjerenje. Ne vraćaj stavku bez napomene. U customContent ne smiješ pisati "treba provjeriti", "treba potvrditi", "potrebno je utvrditi", "za ručnu provjeru" ni slične nesigurne formulacije. Kada je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj tu stavku vratiti kao gotov nalaz. Primjeri gotovog nalaza: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
       id: String(item.id || ""),
       recordNumber: String(item.recordNumber || ""),
@@ -132608,6 +132669,7 @@ function buildWorkOrderDocumentRoAiImportPreview(entry = {}, result = {}) {
   const candidates = getWorkOrderDocumentRoExistingMatchCandidates(entry);
   const usedMatches = new Set();
   const rows = suggestions.map((suggestion, index) => {
+    const verificationQuestions = collectWorkOrderDocumentRoVerificationQuestionsFromSuggestion(suggestion);
     const manual = normalizeWorkOrderDocumentRoManualEquipment({
       ...suggestion,
       source: "ai",
@@ -132653,12 +132715,15 @@ function buildWorkOrderDocumentRoAiImportPreview(entry = {}, result = {}) {
       matchMeta: best?.candidate?.meta || "",
       score: best?.score || 0,
       reason: repeatedMatch ? "Već povezano s drugom prepoznatom stavkom" : (best?.reason || ""),
+      verificationQuestions,
     };
   });
+  const verificationQuestions = normalizeWorkOrderDocumentRoVerificationQuestions(rows.flatMap((row) => row.verificationQuestions || []));
   return {
     rows,
     summary: String(result?.summary || result?.message || "").trim(),
     warnings: Array.isArray(result?.warnings) ? result.warnings.filter(Boolean) : [],
+    verificationQuestions,
     createdAt: new Date().toISOString(),
   };
 }
@@ -132724,11 +132789,13 @@ function applyWorkOrderDocumentRoAiResult(workOrder = {}, entry = {}, result = {
   }
   const preview = buildWorkOrderDocumentRoAiImportPreview(entry, result);
   const warnings = Array.isArray(result?.warnings) ? result.warnings.filter(Boolean) : [];
+  const verificationQuestions = Array.isArray(preview?.verificationQuestions) ? preview.verificationQuestions : [];
   entry.aiResult = result;
   entry.aiImportPreview = preview;
   entry.aiMessage = [
     result?.summary || `NexAI je pripremio ${preview.rows.length} stavki radne opreme.`,
     "Provjeri popis prije upisa da ne nastanu duplikati.",
+    verificationQuestions.length ? `${verificationQuestions.length} nalaza traži tvoju potvrdu prije upisa.` : "",
     warnings.length ? `Napomena: ${warnings.slice(0, 3).join("; ")}` : "",
   ].filter(Boolean).join(" ");
   return preview.rows.length;
@@ -134581,6 +134648,22 @@ function appendWorkOrderDocumentRoAiImportPreview(panel, workOrder = {}, stateEn
   head.append(copy, actions);
   wrap.append(head);
 
+  const verificationQuestions = normalizeWorkOrderDocumentRoVerificationQuestions(preview?.verificationQuestions || []);
+  if (verificationQuestions.length) {
+    const questionBox = document.createElement("div");
+    questionBox.className = "work-order-document-ro-ai-import-questions";
+    const questionTitle = document.createElement("strong");
+    questionTitle.textContent = "Potvrdi prije upisa";
+    const questionList = document.createElement("ul");
+    verificationQuestions.slice(0, 8).forEach((question) => {
+      const item = document.createElement("li");
+      item.textContent = question;
+      questionList.append(item);
+    });
+    questionBox.append(questionTitle, questionList);
+    wrap.append(questionBox);
+  }
+
   const list = document.createElement("div");
   list.className = "work-order-document-ro-ai-import-list";
   rows.forEach((row) => {
@@ -134617,6 +134700,14 @@ function appendWorkOrderDocumentRoAiImportPreview(panel, workOrder = {}, stateEn
       ].filter(Boolean).join(" · ")
       : "Nema sigurnog poklapanja u postojećem popisu.";
     rowCopy.append(match);
+
+    const rowQuestions = normalizeWorkOrderDocumentRoVerificationQuestions(row.verificationQuestions || []);
+    if (rowQuestions.length) {
+      const questions = document.createElement("small");
+      questions.className = "work-order-document-ro-ai-import-row-warning";
+      questions.textContent = `Traži potvrdu: ${rowQuestions.slice(0, 2).join(" · ")}`;
+      rowCopy.append(questions);
+    }
 
     const actionSelect = document.createElement("select");
     actionSelect.className = "work-order-document-ro-ai-import-action";
@@ -163331,12 +163422,30 @@ const WORK_EQUIPMENT_AI_CONFIDENCE_LABELS = Object.freeze({
 });
 
 const WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH = 255;
+const WORK_EQUIPMENT_RO_UNVERIFIED_NOTE_PATTERN = /(^|\b)(treba|potrebno je|potrebno|mora se|nužno je|nije moguće|ne može se|ne moze se|nije moguce|za ručnu|za rucnu|za dodatnu|dodatno)\s+(provjeriti|potvrditi|utvrditi|pregledati|ispitati|provjeru|potvrdu|provjera|potvrda)\b|\b(za provjeru|za potvrdu|ručna provjera|rucna provjera|ručna potvrda|rucna potvrda|nije sigurno|nema sigurnog dokaza)\b/i;
 
 function normalizeWorkEquipmentRoAssessmentNote(value = "") {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH);
+}
+
+function isWorkEquipmentRoUnverifiedAssessmentNote(value = "") {
+  const normalized = normalizeWorkEquipmentAiHintText(value);
+  return WORK_EQUIPMENT_RO_UNVERIFIED_NOTE_PATTERN.test(normalized);
+}
+
+function buildWorkEquipmentRoVerificationQuestion(label = "", note = "") {
+  const normalizedLabel = String(label || "").trim();
+  const normalizedNote = normalizeWorkEquipmentRoAssessmentNote(note);
+  if (normalizedLabel && normalizedNote) {
+    return `Potvrdi stavku "${normalizedLabel}": ${normalizedNote}`;
+  }
+  if (normalizedLabel) {
+    return `Potvrdi stavku "${normalizedLabel}" prije upisa u zapisnik.`;
+  }
+  return normalizedNote ? `Potvrdi nalaz: ${normalizedNote}` : "";
 }
 
 const WORK_EQUIPMENT_AI_FIELD_DEFINITIONS = Object.freeze([
@@ -163525,6 +163634,7 @@ function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", ite
       rule.instruction,
       "NexAI ju smije predložiti samo ako postoji veza s vrstom opreme, fotografijom, natpisnom pločicom, starim zapisnikom ili dokumentom.",
       `customContent je obavezan i ne smije biti prazan; napiši jednu konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova, npr. kako je izvedeno uključivanje, upravljanje, zaštita, oznaka ili vidljivo stanje.`,
+      "U customContent ne smiješ pisati 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi' niti slične nesigurne formulacije. Ako nešto treba korisnik potvrditi, ne vraćaj tu stavku kao nalaz nego dodaj pitanje u verificationQuestions.",
       "Ako postoji stvarno mjerenje, upiši ga u measuredValue, ali customContent svejedno mora objasniti nalaz.",
       "Ako je stavka relevantna i nema vidljivih nedostataka, meetsConditions je true; ako je vidljiv nedostatak, meetsConditions je false i napiši razlog.",
     ].filter(Boolean).join(" "),
@@ -163533,7 +163643,7 @@ function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", ite
     style: "professional",
     confidenceRequired: kind === "electrical" ? "high" : "medium",
     textLength: `customContent: 1 konkretna rečenica do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue samo za stvarno mjerenje.`,
-    fallbackValue: "Ako nema dovoljno dokaza, ne predlaži ovu stavku ili je označi za ručnu provjeru.",
+    fallbackValue: "Ako nema dovoljno dokaza, ne predlaži ovu stavku kao nalaz; dodaj kratko pitanje u verificationQuestions.",
     examples: rule.examples,
   });
 }
@@ -163792,7 +163902,8 @@ function createDefaultWorkEquipmentAiProfiles() {
       },
       quickQuestions: [
         { label: "Koja je vrsta radne opreme?", type: "text", required: true, aiHint: "Koristi za varijantu opreme i prijedlog novog profila ako se ista vrsta ponavlja." },
-        { label: "Je li oprema pregledana funkcionalno?", type: "yes_no", aiHint: "Ako nije, zaključak treba tražiti ručnu potvrdu." },
+        { label: "Je li oprema pregledana funkcionalno?", type: "yes_no", aiHint: "Ako odgovor nije potvrđen, ne piši završni nalaz za funkciju nego traži potvrdu korisnika." },
+        { label: "Kako se uključuje i isključuje?", type: "text", aiHint: "Odgovor koristi kao konkretnu napomenu, npr. Uključivanje je izvedeno ključem, a isključivanje STOP tipkom." },
         { label: "Je li oprema zadovoljila pregled?", type: "condition", options: ["Zadovoljava", "Ne zadovoljava", "Za provjeru"], required: true },
         { label: "Napomena ispitivača", type: "note" },
       ],
@@ -163822,6 +163933,8 @@ function createDefaultWorkEquipmentAiProfiles() {
       quickQuestions: [
         { label: "Pogon viličara", type: "select", options: ["Električni", "Dizel", "UNP", "Ručno"], aiHint: "Koristi za elektro/strojarske stavke i radne tvari." },
         { label: "Nosivost", type: "text", unit: "kg", aiHint: "Prepiši s pločice ako je vidljivo." },
+        { label: "Jesu li kočnice i zvučna/svjetlosna signalizacija funkcionalno provjerene?", type: "yes_no", aiHint: "Ako je DA, napiši konkretnu napomenu o funkcionalnoj provjeri; ako nije, ostavi pitanje korisniku." },
+        { label: "Jesu li vilice i jarbol bez vidljivih oštećenja?", type: "yes_no", aiHint: "Koristi za strojarske stavke o nosivim elementima i radnom opterećenju." },
       ],
     },
     {
@@ -163840,6 +163953,11 @@ function createDefaultWorkEquipmentAiProfiles() {
         mechanical: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 29, 30, 31, 32].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
         electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
       },
+      quickQuestions: [
+        { label: "Kako se pokreće i zaustavlja vreteno?", type: "text", aiHint: "Koristi kao konkretnu napomenu za uključivanje/isključivanje i upravljanje." },
+        { label: "Je li zaštitni pokrov stezne glave funkcionalno provjeren?", type: "yes_no", aiHint: "Ako nije potvrđeno, nemoj pisati da je provjereno; traži korisničku potvrdu." },
+        { label: "Ima li vidljivih oštećenja na zaštitama ili radnom području?", type: "yes_no", aiHint: "DA znači nedostatak; NE znači konkretna pozitivna napomena." },
+      ],
     },
     {
       id: "ro-ai-profile-press",
@@ -163852,6 +163970,11 @@ function createDefaultWorkEquipmentAiProfiles() {
         mechanical: [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 34, 35, 36].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
         electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
       },
+      quickQuestions: [
+        { label: "Je li dvoručno upravljanje funkcionalno provjereno?", type: "yes_no", aiHint: "Ako DA, upiši sigurnu napomenu; ako NE, stavi u pitanja za korisnika." },
+        { label: "Je li STOP / hitno zaustavljanje funkcionalno provjereno?", type: "yes_no", aiHint: "Koristi za stavku zaustavljanja u opasnosti." },
+        { label: "Ima li curenja hidraulike ili pneumatike?", type: "yes_no", aiHint: "DA je nedostatak; NE je pozitivna napomena." },
+      ],
     },
     {
       id: "ro-ai-profile-compressor",
@@ -163864,6 +163987,11 @@ function createDefaultWorkEquipmentAiProfiles() {
         mechanical: [1, 2, 3, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 31, 32].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
         electrical: [1, 2, 3, 4, 17, 18, 19].map((id) => `/api/v3/ro_electrical_registers/${id}`),
       },
+      quickQuestions: [
+        { label: "Je li sigurnosni ventil funkcionalno provjeren?", type: "yes_no", aiHint: "Bez potvrde ne navodi da je ventil ispravan." },
+        { label: "Koji je radni tlak ili tlak na manometru?", type: "text", unit: "bar", aiHint: "Upiši samo ako je očitano ili korisnik potvrdi." },
+        { label: "Ima li curenja zraka ili ulja?", type: "yes_no", aiHint: "DA je nedostatak; NE je pozitivna napomena." },
+      ],
     },
     {
       id: "ro-ai-profile-analyzer",
@@ -163876,6 +164004,11 @@ function createDefaultWorkEquipmentAiProfiles() {
         mechanical: [1, 2, 7, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 22, 24, 26, 27, 28, 29, 30, 32, 33].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
         electrical: [1, 2, 3, 4, 15, 16, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
       },
+      quickQuestions: [
+        { label: "Je li aparat funkcionalno pokrenut?", type: "yes_no", aiHint: "Ako DA, upiši konkretnu napomenu o zaslonu/upravljanju; ako NE, pitaj korisnika." },
+        { label: "Jesu li sonde i priključci neoštećeni?", type: "yes_no", aiHint: "Koristi za strojarske i elektro priključne stavke." },
+        { label: "Je li napajanje pregledano?", type: "yes_no", aiHint: "Ako je potvrđeno, upiši stanje kabela i priključka." },
+      ],
     },
     {
       id: "ro-ai-profile-crane",
@@ -163888,6 +164021,11 @@ function createDefaultWorkEquipmentAiProfiles() {
         mechanical: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 23, 24, 25, 26, 29, 30, 31, 32, 34, 35, 36].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
         electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
       },
+      quickQuestions: [
+        { label: "Je li probno opterećenje potvrđeno dokumentacijom ili ispitivanjem?", type: "yes_no", aiHint: "Ako nije potvrđeno, ne upisuj nalaz nego traži potvrdu." },
+        { label: "Jesu li kuka i lanac/uže bez vidljivih deformacija?", type: "yes_no", aiHint: "Koristi za nosive elemente i zaštitu od pada tereta." },
+        { label: "Je li upravljanje i kočenje funkcionalno provjereno?", type: "yes_no", aiHint: "Koristi za upravljačke i sigurnosne stavke." },
+      ],
     },
     {
       id: "ro-ai-profile-saw-grinder",
@@ -163900,6 +164038,11 @@ function createDefaultWorkEquipmentAiProfiles() {
         mechanical: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 29, 30, 31, 32].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
         electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
       },
+      quickQuestions: [
+        { label: "Je li zaštitni pokrov radnog elementa na mjestu?", type: "yes_no", aiHint: "Koristi za zaštitu pokretnih dijelova i izbacivanja čestica." },
+        { label: "Je li STOP / isključivanje funkcionalno provjereno?", type: "yes_no", aiHint: "Ako nije potvrđeno, vrati pitanje korisniku umjesto nalaza." },
+        { label: "Postoji li odsis prašine ili zaštita od čestica?", type: "yes_no", aiHint: "Koristi za opasnosti, štetnosti i strojarski dio." },
+      ],
     },
   ].map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
 }

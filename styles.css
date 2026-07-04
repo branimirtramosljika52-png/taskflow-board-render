@@ -24994,6 +24994,39 @@ body.is-document-template-editor-open .chat-dock {
   gap: 8px;
 }
 
+.work-order-document-ro-ai-import-questions {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 14px;
+  background: rgba(255, 251, 235, 0.9);
+  color: #92400e;
+}
+
+.work-order-document-ro-ai-import-questions strong {
+  color: #78350f;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.work-order-document-ro-ai-import-questions ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.work-order-document-ro-ai-import-questions li,
+.work-order-document-ro-ai-import-row-copy .work-order-document-ro-ai-import-row-warning {
+  color: #b45309;
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
 .work-order-document-ro-ai-import-list {
   display: grid;
   gap: 8px;

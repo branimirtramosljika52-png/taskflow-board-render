@@ -11361,6 +11361,24 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
+                    if (result.verificationQuestions.isNotEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.34f)),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
+                                result.verificationQuestions.take(6).forEach { question ->
+                                    Text("• $question", style = MaterialTheme.typography.labelSmall, color = Color(0xFF92400E))
+                                }
+                            }
+                        }
+                    }
                     if (matches.isNotEmpty()) {
                         val updateCount = matches.count { (actionOverrides[it.recognizedIndex] ?: it.defaultAction) == WorkEquipmentImportAction.Update }
                         val addCount = matches.count { (actionOverrides[it.recognizedIndex] ?: it.defaultAction) == WorkEquipmentImportAction.Add }
@@ -12067,6 +12085,24 @@ private fun ManualWorkEquipmentInlineEditor(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
+                    if (result.verificationQuestions.isNotEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.34f)),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
+                                result.verificationQuestions.take(6).forEach { question ->
+                                    Text("• $question", style = MaterialTheme.typography.labelSmall, color = Color(0xFF92400E))
+                                }
+                            }
+                        }
+                    }
                     listOf(
                         "Naziv" to result.name,
                         "Proizvođač" to result.manufacturer,

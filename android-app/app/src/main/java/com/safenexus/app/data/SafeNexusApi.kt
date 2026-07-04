@@ -20,6 +20,13 @@ import java.util.Locale
 import java.util.zip.GZIPInputStream
 
 private const val RO_ASSESSMENT_NOTE_MAX_LENGTH = 255
+private val RO_ASSESSMENT_UNVERIFIED_NOTE_REGEX = Regex(
+    "(treba|potrebno je|potrebno|mora se|nuzno je|nužno je|nije moguce|nije moguće|ne moze se|ne može se|za rucnu|za ručnu|za dodatnu|dodatno)\\s+(provjeriti|potvrditi|utvrditi|pregledati|ispitati|provjeru|potvrdu|provjera|potvrda)|za provjeru|za potvrdu|rucna provjera|ručna provjera|rucna potvrda|ručna potvrda|nije sigurno|nema sigurnog dokaza",
+    RegexOption.IGNORE_CASE,
+)
+
+private fun isRoAssessmentUnverifiedNote(value: String): Boolean =
+    RO_ASSESSMENT_UNVERIFIED_NOTE_REGEX.containsMatchIn(value.trim())
 
 class SafeNexusApi(
     private val baseUrl: String = BuildConfig.SAFE_NEXUS_BASE_URL.trimEnd('/'),
@@ -50,6 +57,7 @@ class SafeNexusApi(
                 aliases = listOf("vilicar", "forklift", "linde", "jungheinrich", "still", "toyota"),
                 instruction = "Prepoznaj vilicar prema vilicama, jarbolu, kabini/zastitnom krovu, kotacima, upravljacu, bateriji ili motoru. Obavezno gledaj stabilnost, kocnice, vilice, jarbol, hidrauliku, upravljanje, signalizaciju i dokumentaciju.",
                 noteExamples = listOf("Ukljucivanje je izvedeno kljucem.", "Upravljanje je pomocu volana i rucica.", "Hidraulicni sustav nema vidljivog curenja."),
+                verificationQuestions = listOf("Jesu li kocnice i signalizacija funkcionalno provjerene?", "Jesu li vilice i jarbol bez vidljivih ostecenja?"),
             ))
             .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-lathe",
@@ -57,6 +65,7 @@ class SafeNexusApi(
                 aliases = listOf("tokarilica", "tokarski stroj", "lathe", "cnc tokarski"),
                 instruction = "Prepoznaj tokarilicu prema steznoj glavi, suportu, vodilicama, zastitnom pokrovu i upravljackoj ploci. Gledaj rotirajuce dijelove, zastitu od izbacivanja obratka, STOP, upravljanje, buku i dokumentaciju.",
                 noteExamples = listOf("Stezna glava je zasticena pokrovom.", "Upravljanje je izvedeno preko upravljacke ploce.", "Radni prostor je pregledan bez vidljivih prepreka."),
+                verificationQuestions = listOf("Je li zastitni pokrov stezne glave funkcionalno provjeren?", "Kako se pokrece i zaustavlja vreteno?"),
             ))
             .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-press",
@@ -64,6 +73,7 @@ class SafeNexusApi(
                 aliases = listOf("presa", "hidraulicna presa", "pneumatska presa", "press"),
                 instruction = "Prepoznaj presu prema radnom hodu, cilindru, radnom stolu, alatu, dvorucnom upravljanju ili zastitnoj ogradi. Gledaj ukljestenje, STOP, hidrauliku/pneumatiku, tlak i probno opterecenje.",
                 noteExamples = listOf("Upravljanje je dvorucno i dostupno rukovatelju.", "Radni prostor je zasticen od ukljestenja.", "Nema vidljivog curenja hidraulicnog medija."),
+                verificationQuestions = listOf("Je li dvorucno upravljanje funkcionalno provjereno?", "Je li STOP / hitno zaustavljanje funkcionalno provjereno?"),
             ))
             .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-compressor",
@@ -71,6 +81,7 @@ class SafeNexusApi(
                 aliases = listOf("kompresor", "compressor", "atlas copco", "kaeser", "boge"),
                 instruction = "Prepoznaj kompresor prema spremniku, manometru, sigurnosnom ventilu, motoru, kucistu i tlacnim vodovima. Gledaj tlak, curenje, buku, vibracije, ventilaciju, prikljucak i dokumentaciju.",
                 noteExamples = listOf("Manometar i sigurnosni elementi su dostupni.", "Nema vidljivog curenja zraka ili ulja.", "Kompresor je stabilno postavljen na podlozi."),
+                verificationQuestions = listOf("Je li sigurnosni ventil funkcionalno provjeren?", "Koji je radni tlak ili tlak na manometru?"),
             ))
             .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-analyzer",
@@ -78,13 +89,15 @@ class SafeNexusApi(
                 aliases = listOf("analizator", "servisni aparat", "bosch bea", "bea750", "bea 750"),
                 instruction = "Prepoznaj servisne aparate i analizatore prema kucistu, zaslonu, tipkovnici, sondama, prikljuccima, kotacima i natpisnoj plocici. Za BOSCH BEA prepisuj proizvodaca, tip, serijski broj i naponske podatke.",
                 noteExamples = listOf("Upravljanje je izvedeno putem zaslona i tipkovnice.", "Prikljucne sonde su dostupne i bez vidljivih ostecenja.", "Kabel i prikljucak napajanja su pregledani."),
+                verificationQuestions = listOf("Je li aparat funkcionalno pokrenut?", "Jesu li sonde i prikljucci neosteceni?"),
             ))
             .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-crane",
                 name = "Dizalica / podizna oprema",
                 aliases = listOf("dizalica", "kran", "vitlo", "lancana dizalica", "podizna oprema"),
                 instruction = "Prepoznaj dizalice prema kuki, lancu/uzetu, nosivosti, vitlu, nosacu i komandama. Gledaj nosivost, kocnicu, ogranicivace, STOP, deformacije i probno staticko/dinamicko ispitivanje.",
-                noteExamples = listOf("Kuka i nosivi elementi su vizualno pregledani.", "Upravljanje dizalicom je jasno oznaceno.", "Probno opterecenje treba potvrditi iz dokumentacije."),
+                noteExamples = listOf("Kuka i nosivi elementi su vizualno pregledani.", "Upravljanje dizalicom je jasno oznaceno.", "Probno opterecenje je potvrdeno dokumentacijom."),
+                verificationQuestions = listOf("Je li probno opterecenje potvrdeno dokumentacijom ili ispitivanjem?", "Je li upravljanje i kocenje funkcionalno provjereno?"),
             ))
             .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-saw-grinder",
@@ -92,6 +105,7 @@ class SafeNexusApi(
                 aliases = listOf("pila", "kruzna pila", "tracna pila", "brusilica", "rezalica", "grinder"),
                 instruction = "Prepoznaj pile i brusilice prema disku, traci, brusnom kolu, stitniku, radnom stolu i vodilici. Gledaj zastitu radnih elemenata, izbacivanje cestica, STOP, prasinu, buku i vibracije.",
                 noteExamples = listOf("Radni element je zasticen pokrovom.", "Upravljanje i STOP su dostupni rukovatelju.", "Potrebno je koristiti propisanu osobnu zastitnu opremu."),
+                verificationQuestions = listOf("Je li zastitni pokrov radnog elementa na mjestu?", "Je li STOP / iskljucivanje funkcionalno provjereno?"),
             ))
 
     private fun workEquipmentRoProfileJson(
@@ -100,14 +114,16 @@ class SafeNexusApi(
         aliases: List<String>,
         instruction: String,
         noteExamples: List<String>,
+        verificationQuestions: List<String> = emptyList(),
     ): JSONObject =
         JSONObject()
             .put("id", id)
             .put("name", name)
             .put("aliases", JSONArray(aliases))
             .put("generalInstruction", instruction)
-            .put("noteRule", "Za svaku odabranu strojarsku ili elektro stavku customContent je obavezan, konkretan i do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova.")
+            .put("noteRule", "Za svaku odabranu strojarsku ili elektro stavku customContent je obavezan, konkretan i do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. U customContent ne pisati 'treba provjeriti/potvrditi'; to ide u verificationQuestions.")
             .put("noteExamples", JSONArray(noteExamples))
+            .put("verificationQuestions", JSONArray(verificationQuestions))
 
     private fun workEquipmentRoRegisterGroupJson(
         path: String,
@@ -169,9 +185,10 @@ class SafeNexusApi(
         }
 
         return JSONObject()
-            .put("instruction", "$details customContent je obavezan i ne smije biti prazan; upisi jednu konkretnu napomenu/vrijednost do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. measuredValue koristi samo za stvarno mjerenje, ali customContent svejedno mora objasniti nalaz.")
+            .put("instruction", "$details customContent je obavezan i ne smije biti prazan; upisi jednu konkretnu napomenu/vrijednost do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. measuredValue koristi samo za stvarno mjerenje, ali customContent svejedno mora objasniti nalaz. U customContent ne pisati 'treba provjeriti/potvrditi/utvrditi'; to vrati kao verificationQuestions.")
             .put("mustInclude", "konkretan vidljivi dokaz, stanje, zakljucak zadovoljava/ne zadovoljava i customContent do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova")
             .put("avoid", "Ne popunjavati automatski bez jasnog izvora i ne dodavati stavku samo zato sto postoji u sifrarniku.")
+            .put("verificationRule", "Ako je potrebna funkcionalna provjera ili odgovor korisnika, nemoj vratiti stavku kao gotov nalaz nego dodaj pitanje u verificationQuestions.")
             .put("textLength", "customContent: 1 kratka konkretna recenica do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova")
             .put("examples", "Ukljucivanje je izvedeno kljucem. / Upravljanje je pomocu rucica i volana. / Prikljucni kabel i utikac su neosteceni.")
             .put("confidenceRequired", if (kind == "electrical") "high" else "medium")
@@ -1361,9 +1378,9 @@ class SafeNexusApi(
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
-                        .put("instructions", "Vrati samo relevantne strojarske stavke za ovaj stroj. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova."),
+                        .put("instructions", "Vrati samo relevantne strojarske stavke za ovaj stroj. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
-                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za stroj ili plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova."),
+                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za stroj ili plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
                         .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
@@ -1400,7 +1417,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za RO zapisnik biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. Primjeri: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja.",
+                            "Za RO zapisnik biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi' ni slicno. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja.",
                         ),
                 )
                 .put(
@@ -1426,6 +1443,7 @@ class SafeNexusApi(
                                     .put("finalGrade", "1 ili 0")
                                     .put("matchedSource", "izvor/baza ako je pronadeno")
                                     .put("confidence", "high/medium/low")
+                                    .put("verificationQuestions", JSONArray().put("pitanje za korisnika kada nalaz treba funkcionalnu provjeru ili rucnu potvrdu"))
                                     .put(
                                         "mechanicalItems",
                                         JSONArray().put(
@@ -1496,9 +1514,9 @@ class SafeNexusApi(
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
-                        .put("instructions", "Za svaku prepoznatu opremu vrati samo relevantne strojarske stavke. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova."),
+                        .put("instructions", "Za svaku prepoznatu opremu vrati samo relevantne strojarske stavke. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
-                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za pojedinu opremu ili natpisnu plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova."),
+                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za pojedinu opremu ili natpisnu plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
                         .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
@@ -1531,7 +1549,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za svaku RO opremu biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. Primjeri: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
+                            "Za svaku RO opremu biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi' ni slicno. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili vidljivog okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
                         ),
                 )
                 .put(
@@ -1559,6 +1577,7 @@ class SafeNexusApi(
                                     .put("confidence", "high/medium/low")
                                     .put("imageIndexes", JSONArray().put(1).put(2))
                                     .put("sourceImageNames", JSONArray().put("naziv slike"))
+                                    .put("verificationQuestions", JSONArray().put("pitanje za korisnika kada nalaz treba funkcionalnu provjeru ili rucnu potvrdu"))
                                     .put(
                                         "mechanicalItems",
                                         JSONArray().put(
@@ -2366,8 +2385,9 @@ private fun JSONArray?.toRoAssessmentItems(): List<IsznrRoAssessmentItem> {
                         "finding",
                     )
                     val rawMeasuredValue = entry.firstClean("measuredValue", "measurement", "measured", "izmjerenaVrijednost")
-                    val noteValue = customContent.ifBlank { rawMeasuredValue }.toRoAssessmentNote()
-                    val measuredValue = if (rawMeasuredValue.isNotBlank() && rawMeasuredValue != noteValue) {
+                    val rawNoteValue = customContent.ifBlank { rawMeasuredValue }.toRoAssessmentNote()
+                    val noteValue = if (isRoAssessmentUnverifiedNote(rawNoteValue)) "" else rawNoteValue
+                    val measuredValue = if (rawMeasuredValue.isNotBlank() && rawMeasuredValue != noteValue && !isRoAssessmentUnverifiedNote(rawMeasuredValue)) {
                         rawMeasuredValue.toRoAssessmentNote()
                     } else {
                         ""
@@ -2401,6 +2421,66 @@ private fun JSONArray?.toRoAssessmentItems(): List<IsznrRoAssessmentItem> {
         }
         .take(120)
 }
+
+private fun roVerificationQuestion(label: String, note: String): String {
+    val normalizedLabel = label.trim()
+    val normalizedNote = note.toRoAssessmentNote()
+    return when {
+        normalizedLabel.isNotBlank() && normalizedNote.isNotBlank() -> "Potvrdi stavku \"$normalizedLabel\": $normalizedNote"
+        normalizedLabel.isNotBlank() -> "Potvrdi stavku \"$normalizedLabel\" prije upisa u zapisnik."
+        normalizedNote.isNotBlank() -> "Potvrdi nalaz: $normalizedNote"
+        else -> ""
+    }
+}
+
+private fun JSONArray?.toRoVerificationQuestionsFromAssessmentItems(): List<String> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val entry = opt(index)
+            val question = when (entry) {
+                is JSONObject -> {
+                    val label = entry.firstClean("label", "name", "title", "item", "stavka", "description")
+                    val note = entry.firstClean(
+                        "customContent",
+                        "note",
+                        "napomena",
+                        "value",
+                        "vrijednost",
+                        "comment",
+                        "reason",
+                        "observedCondition",
+                        "finding",
+                        "measuredValue",
+                        "measurement",
+                    )
+                    if (isRoAssessmentUnverifiedNote(note)) roVerificationQuestion(label, note) else ""
+                }
+                else -> {
+                    val note = entry?.toString()?.trim().orEmpty()
+                    if (isRoAssessmentUnverifiedNote(note)) roVerificationQuestion("", note) else ""
+                }
+            }
+            if (question.isNotBlank()) add(question)
+        }
+    }.distinct()
+}
+
+private fun JSONObject.roVerificationQuestions(): List<String> =
+    (
+        optJSONArray("verificationQuestions").toStringList("question", "label", "text") +
+            optJSONArray("userQuestions").toStringList("question", "label", "text") +
+            optJSONArray("manualConfirmationQuestions").toStringList("question", "label", "text") +
+            optJSONArray("questionsForUser").toStringList("question", "label", "text") +
+            optJSONArray("mechanicalItems").toRoVerificationQuestionsFromAssessmentItems() +
+            optJSONArray("roMechanicalItems").toRoVerificationQuestionsFromAssessmentItems() +
+            optJSONArray("electricalItems").toRoVerificationQuestionsFromAssessmentItems() +
+            optJSONArray("roElectricalItems").toRoVerificationQuestionsFromAssessmentItems()
+        )
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .take(40)
 
 private fun JSONObject.roAssessmentItems(vararg keys: String): List<IsznrRoAssessmentItem> =
     firstJSONArray(*keys).toRoAssessmentItems()
@@ -3534,6 +3614,12 @@ private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentIma
         message = result.firstClean("summary", "message")
             .ifBlank { root.firstClean("nextStep", "message") }
             .ifBlank { outputObject?.firstClean("summary", "message").orEmpty() },
+        verificationQuestions = (
+            equipment.roVerificationQuestions() +
+                result.roVerificationQuestions() +
+                root.roVerificationQuestions() +
+                (outputObject?.roVerificationQuestions() ?: emptyList())
+            ).distinct().take(40),
     )
 }
 
@@ -3596,6 +3682,7 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
             matchedSource = item.field("matchedSource", "source", "databaseMatch"),
             confidence = item.field("confidence", "confidenceLevel"),
             message = item.field("summary", "message"),
+            verificationQuestions = item.roVerificationQuestions(),
             imageIndexes = item.imageIndexes(),
             sourceImageNames = item.sourceImageNames(),
         )
@@ -3662,8 +3749,15 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
         item.copy(message = item.message.ifBlank { message }, workEquipments = emptyList())
     }
     val primary = recognized.firstOrNull() ?: fallback
+    val verificationQuestions = (
+        result.roVerificationQuestions() +
+            root.roVerificationQuestions() +
+            (outputObject?.roVerificationQuestions() ?: emptyList()) +
+            recognized.flatMap { it.verificationQuestions }
+        ).distinct().take(40)
     return primary.copy(
         message = message,
+        verificationQuestions = verificationQuestions,
         workEquipments = recognized,
     )
 }
