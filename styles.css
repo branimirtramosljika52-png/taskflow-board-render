@@ -25028,7 +25028,11 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-document-ro-ai-import-question-item {
   display: grid;
-  gap: 5px;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .work-order-document-ro-ai-import-question-item span,
@@ -25039,23 +25043,30 @@ body.is-document-template-editor-open .chat-dock {
   line-height: 1.35;
 }
 
-.work-order-document-ro-ai-import-question-item textarea {
-  width: 100%;
-  min-height: 54px;
-  border: 1px solid rgba(245, 158, 11, 0.32);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #111827;
-  font: inherit;
-  font-size: 0.76rem;
-  line-height: 1.45;
-  padding: 8px 10px;
-  resize: vertical;
+.work-order-document-ro-ai-import-question-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 6px;
+  width: min(180px, 100%);
 }
 
-.work-order-document-ro-ai-import-question-item textarea:focus {
-  outline: 2px solid rgba(245, 158, 11, 0.34);
-  border-color: rgba(217, 119, 6, 0.58);
+.work-order-document-ro-ai-import-question-choice {
+  border: 1px solid rgba(29, 78, 216, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1e3a8a;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 950;
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
+.work-order-document-ro-ai-import-question-choice.is-active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
 }
 
 .work-order-document-ro-ai-import-list {

@@ -134677,24 +134677,32 @@ function appendWorkOrderDocumentRoAiImportPreview(panel, workOrder = {}, stateEn
     const questionTitle = document.createElement("strong");
     questionTitle.textContent = "Potvrdi prije upisa";
     const questionHelp = document.createElement("span");
-    questionHelp.textContent = "Ovdje upiši odgovor ili napomenu. AI ne smije ostaviti tekst tipa 'treba provjeriti' kao gotov nalaz.";
+    questionHelp.textContent = "Odaberi Da ili Ne. NexAI sam slaže kratak opis, bez teksta tipa 'treba provjeriti'.";
     questionBox.append(questionTitle, questionHelp);
     const questionList = document.createElement("div");
     questionList.className = "work-order-document-ro-ai-import-question-list";
     verificationQuestions.slice(0, 8).forEach((question) => {
-      const item = document.createElement("label");
+      const item = document.createElement("div");
       item.className = "work-order-document-ro-ai-import-question-item";
       const text = document.createElement("span");
       text.textContent = question;
-      const answer = document.createElement("textarea");
-      answer.rows = 2;
-      answer.placeholder = "Npr. Da, funkcionalno provjereno. / Nije provjereno - upisati napomenu.";
-      answer.value = String(preview.verificationAnswers[question] || "");
-      answer.addEventListener("input", () => {
-        preview.verificationAnswers[question] = answer.value.trim();
-        updateApplyButtonState();
+      const toggles = document.createElement("div");
+      toggles.className = "work-order-document-ro-ai-import-question-toggle";
+      ["Da", "Ne"].forEach((answerValue) => {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = `work-order-document-ro-ai-import-question-choice${preview.verificationAnswers[question] === answerValue ? " is-active" : ""}`;
+        toggle.textContent = answerValue;
+        toggle.addEventListener("click", (event) => {
+          event.stopPropagation();
+          preview.verificationAnswers[question] = answerValue;
+          Array.from(toggles.children).forEach((child) => child.classList.remove("is-active"));
+          toggle.classList.add("is-active");
+          updateApplyButtonState();
+        });
+        toggles.append(toggle);
       });
-      item.append(text, answer);
+      item.append(text, toggles);
       questionList.append(item);
     });
     questionBox.append(questionList);

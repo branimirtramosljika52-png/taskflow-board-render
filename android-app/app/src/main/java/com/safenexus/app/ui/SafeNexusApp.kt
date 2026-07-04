@@ -11383,22 +11383,38 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                             ) {
                                 Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
                                 Text(
-                                    "Odgovori ili upiši napomenu. NexAI ne smije ostaviti 'treba provjeriti' kao gotov nalaz.",
+                                    "Odaberi Da ili Ne. NexAI sam slaže kratak opis bez 'treba provjeriti'.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color(0xFF92400E),
                                 )
                                 previewQuestions.forEach { question ->
-                                    OutlinedTextField(
-                                        value = verificationAnswers[question].orEmpty(),
-                                        onValueChange = { value ->
-                                            verificationAnswers = verificationAnswers + (question to value)
-                                        },
+                                    Surface(
                                         modifier = Modifier.fillMaxWidth(),
-                                        label = { Text(question, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                                        placeholder = { Text("Npr. Da, funkcionalno provjereno.") },
-                                        minLines = 2,
-                                        maxLines = 4,
-                                    )
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color.White.copy(alpha = 0.72f),
+                                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.18f)),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp),
+                                        ) {
+                                            Text(
+                                                question,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF92400E),
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                listOf("Da", "Ne").forEach { answer ->
+                                                    FilterChip(
+                                                        selected = verificationAnswers[question] == answer,
+                                                        onClick = { verificationAnswers = verificationAnswers + (question to answer) },
+                                                        label = { Text(answer) },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -12130,22 +12146,38 @@ private fun ManualWorkEquipmentInlineEditor(
                             ) {
                                 Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
                                 Text(
-                                    "Odgovori ili upiši napomenu. NexAI ne smije ostaviti 'treba provjeriti' kao gotov nalaz.",
+                                    "Odaberi Da ili Ne. NexAI sam slaže kratak opis bez 'treba provjeriti'.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color(0xFF92400E),
                                 )
                                 previewQuestions.forEach { question ->
-                                    OutlinedTextField(
-                                        value = verificationAnswers[question].orEmpty(),
-                                        onValueChange = { value ->
-                                            verificationAnswers = verificationAnswers + (question to value)
-                                        },
+                                    Surface(
                                         modifier = Modifier.fillMaxWidth(),
-                                        label = { Text(question, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                                        placeholder = { Text("Npr. Da, funkcionalno provjereno.") },
-                                        minLines = 2,
-                                        maxLines = 4,
-                                    )
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color.White.copy(alpha = 0.72f),
+                                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.18f)),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp),
+                                        ) {
+                                            Text(
+                                                question,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF92400E),
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                listOf("Da", "Ne").forEach { answer ->
+                                                    FilterChip(
+                                                        selected = verificationAnswers[question] == answer,
+                                                        onClick = { verificationAnswers = verificationAnswers + (question to answer) },
+                                                        label = { Text(answer) },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
