@@ -12492,6 +12492,13 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             }
 
+            WorkEquipmentPartsEditor(
+                equipment = equipment,
+                enabled = enabled,
+                onEquipmentChange = onEquipmentChange,
+                onRecognizeImages = onRecognizeImages,
+            )
+
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -12642,13 +12649,6 @@ private fun ManualWorkEquipmentInlineEditor(
             OutlinedTextField(equipment.serialNumber, { onEquipmentChange(equipment.copy(serialNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.inventoryNumber, { onEquipmentChange(equipment.copy(inventoryNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.note, { onEquipmentChange(equipment.copy(note = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, enabled = enabled, shape = RoundedCornerShape(14.dp))
-
-            WorkEquipmentPartsEditor(
-                equipment = equipment,
-                enabled = enabled,
-                onEquipmentChange = onEquipmentChange,
-                onRecognizeImages = onRecognizeImages,
-            )
 
             ManualWorkEquipmentSectionTitle("Opisna RO polja")
             OutlinedTextField(equipment.technicalData, { onEquipmentChange(equipment.copy(technicalData = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
