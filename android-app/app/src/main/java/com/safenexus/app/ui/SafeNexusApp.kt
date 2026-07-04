@@ -308,6 +308,8 @@ import java.util.Base64
 import java.util.Locale
 import kotlin.math.abs
 
+private const val RO_ASSESSMENT_NOTE_MAX_LENGTH = 255
+
 enum class WorkOrderFilter(val label: String) {
     All("SVE"),
     Mine("MOJI RN"),
@@ -12797,6 +12799,15 @@ private fun ManualWorkEquipmentSectionTitle(title: String) {
     )
 }
 
+private fun limitRoAssessmentNoteInput(value: String): String =
+    value.take(RO_ASSESSMENT_NOTE_MAX_LENGTH)
+
+private fun normalizeRoAssessmentNote(value: String): String =
+    value.trim().take(RO_ASSESSMENT_NOTE_MAX_LENGTH)
+
+private fun IsznrRoAssessmentItem.noteValue(): String =
+    measuredValue.ifBlank { customContent }.take(RO_ASSESSMENT_NOTE_MAX_LENGTH)
+
 @Composable
 private fun ManualWorkEquipmentAssessmentEditor(
     title: String,
@@ -12817,7 +12828,7 @@ private fun ManualWorkEquipmentAssessmentEditor(
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "Sve stavke su otvorene. Označi status i po potrebi upiši napomenu ili izmjerenu vrijednost.",
+                "Sve stavke su otvorene. Svaka označena stavka mora imati napomenu / vrijednost do 255 znakova.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
@@ -12839,7 +12850,7 @@ private fun ManualWorkEquipmentAssessmentEditor(
             ManualWorkEquipmentSectionTitle("Dodatna stavka")
             OutlinedTextField(
                 value = customContent,
-                onValueChange = { customContent = it },
+                onValueChange = { customContent = limitRoAssessmentNoteInput(it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Naziv dodatne stavke") },
                 singleLine = true,
@@ -12847,9 +12858,9 @@ private fun ManualWorkEquipmentAssessmentEditor(
             )
             OutlinedTextField(
                 value = customMeasuredValue,
-                onValueChange = { customMeasuredValue = it },
+                onValueChange = { customMeasuredValue = limitRoAssessmentNoteInput(it) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Napomena / izmjerene vrijednosti") },
+                label = { Text("Obavezna napomena / vrijednost") },
                 minLines = 1,
                 maxLines = 3,
                 shape = RoundedCornerShape(14.dp),
@@ -12869,8 +12880,8 @@ private fun ManualWorkEquipmentAssessmentEditor(
                     onClick = {
                         onItemsChange(
                             items + IsznrRoAssessmentItem(
-                                customContent = customContent.trim(),
-                                measuredValue = customMeasuredValue.trim(),
+                                customContent = normalizeRoAssessmentNote(customContent),
+                                measuredValue = normalizeRoAssessmentNote(customMeasuredValue),
                                 meetsConditions = customMeetsConditions,
                             ),
                         )
@@ -12878,7 +12889,7 @@ private fun ManualWorkEquipmentAssessmentEditor(
                         customMeasuredValue = ""
                         customMeetsConditions = true
                     },
-                    enabled = customContent.isNotBlank() || customMeasuredValue.isNotBlank(),
+                    enabled = customContent.isNotBlank() && customMeasuredValue.isNotBlank(),
                     shape = RoundedCornerShape(14.dp),
                 ) {
                     Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -12913,15 +12924,19 @@ private fun ManualWorkEquipmentAssessmentRow(
     onRemove: () -> Unit,
 ) {
     val active = item != null
+    val noteValue = item?.noteValue().orEmpty()
+    val hasRequiredNote = noteValue.isNotBlank()
     var noteEditorOpen by remember(option.id, option.label, active) {
-        mutableStateOf(item?.measuredValue?.isNotBlank() == true)
+        mutableStateOf(hasRequiredNote)
     }
     val rowColor = when {
+        active && !hasRequiredNote -> Color(0xFFFFFBEB)
         item?.meetsConditions == true -> Color(0xFFECFDF5)
         item?.meetsConditions == false -> Color(0xFFFFF1F2)
         else -> MaterialTheme.colorScheme.surface
     }
     val statusColor = when {
+        active && !hasRequiredNote -> Color(0xFFD97706)
         item?.meetsConditions == true -> Color(0xFF059669)
         item?.meetsConditions == false -> Color(0xFFDC2626)
         else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
@@ -12953,22 +12968,35 @@ private fun ManualWorkEquipmentAssessmentRow(
                     )
                     if (active || noteEditorOpen) {
                         OutlinedTextField(
-                            value = item?.measuredValue.orEmpty(),
+                            value = noteValue,
                             onValueChange = { value ->
                                 onUpsert(
                                     roAssessmentItemFromOption(
                                         option = option,
-                                        measuredValue = value,
+                                        measuredValue = limitRoAssessmentNoteInput(value),
                                         meetsConditions = item?.meetsConditions ?: true,
                                     ),
                                 )
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Napomena / vrijednost") },
+                            label = { Text("Obavezna napomena / vrijednost") },
                             minLines = 1,
                             maxLines = 3,
                             shape = RoundedCornerShape(12.dp),
                         )
+                        Text(
+                            "${noteValue.length}/$RO_ASSESSMENT_NOTE_MAX_LENGTH",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
+                        )
+                        if (active && !hasRequiredNote) {
+                            Text(
+                                "Upiši kratku napomenu da stavka bude potpuna.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFD97706),
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     } else {
                         OutlinedButton(
                             onClick = { noteEditorOpen = true },
@@ -12987,7 +13015,7 @@ private fun ManualWorkEquipmentAssessmentRow(
                         onUpsert(
                             roAssessmentItemFromOption(
                                 option = option,
-                                measuredValue = item?.measuredValue.orEmpty(),
+                                measuredValue = noteValue,
                                 meetsConditions = nextMeetsConditions,
                             ),
                         )
@@ -12999,11 +13027,13 @@ private fun ManualWorkEquipmentAssessmentRow(
                 ) {
                     Icon(
                         imageVector = when {
+                            active && !hasRequiredNote -> Icons.Rounded.ErrorOutline
                             item?.meetsConditions == true -> Icons.Rounded.CheckCircle
                             item?.meetsConditions == false -> Icons.Rounded.ErrorOutline
                             else -> Icons.Rounded.Info
                         },
                         contentDescription = when {
+                            active && !hasRequiredNote -> "Nedostaje napomena"
                             item?.meetsConditions == true -> "Zadovoljava"
                             item?.meetsConditions == false -> "Ne zadovoljava"
                             else -> "Postavi status"
@@ -13035,7 +13065,8 @@ private fun roAssessmentItemFromOption(
     IsznrRoAssessmentItem(
         registerIri = option.id,
         label = option.label,
-        measuredValue = measuredValue.trim(),
+        customContent = normalizeRoAssessmentNote(measuredValue),
+        measuredValue = "",
         meetsConditions = meetsConditions,
     )
 
@@ -13077,6 +13108,7 @@ private fun ManualWorkEquipmentAssessmentChip(
     item: IsznrRoAssessmentItem,
     onRemove: () -> Unit,
 ) {
+    val noteValue = item.noteValue()
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -13096,9 +13128,9 @@ private fun ManualWorkEquipmentAssessmentChip(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (item.measuredValue.isNotBlank()) {
+                if (noteValue.isNotBlank()) {
                     Text(
-                        item.measuredValue,
+                        noteValue,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         maxLines = 2,

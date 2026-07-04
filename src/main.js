@@ -131888,7 +131888,7 @@ function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
       const source = item && typeof item === "object" ? item : { label: item };
       const registerIri = String(source.registerIri || source.iri || source["@id"] || source.register || "").trim();
       const label = String(source.label || source.name || source.title || source.customContent || "").trim();
-      const customContent = String(
+      const rawCustomContent = String(
         source.customContent
         || source.note
         || source.napomena
@@ -131901,6 +131901,11 @@ function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
         || (!registerIri ? label : "")
         || "",
       ).trim();
+      const rawMeasuredValue = String(source.measuredValue || source.measurement || source.measured || source.izmjerenaVrijednost || "").trim();
+      const customContent = normalizeWorkEquipmentRoAssessmentNote(rawCustomContent || rawMeasuredValue);
+      const measuredValue = rawMeasuredValue && rawMeasuredValue !== customContent
+        ? normalizeWorkEquipmentRoAssessmentNote(rawMeasuredValue)
+        : "";
       return {
         registerIri,
         label,
@@ -131910,10 +131915,15 @@ function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
           || String(source.meetsConditions).toLowerCase() === "false"
           ? 0
           : 1,
-        measuredValue: String(source.measuredValue || source.measurement || source.measured || source.izmjerenaVrijednost || "").trim(),
+        measuredValue,
       };
     })
-    .filter((item) => item.registerIri || item.label || item.customContent || item.measuredValue)
+    .filter((item) => {
+      if (!item.registerIri && !item.label) {
+        return item.customContent || item.measuredValue;
+      }
+      return item.customContent || item.measuredValue;
+    })
     .slice(0, 80);
 }
 
@@ -132249,19 +132259,19 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         groupStartIndex: 1,
         groupEndIndex: 3,
         groupingReason: "zašto te slike pripadaju istoj opremi",
-        assessmentRule: "Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Uz svaku stavku obavezno ide customContent ili measuredValue kao napomena/vrijednost.",
+        assessmentRule: `Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Uz svaku stavku obavezno ide customContent kao konkretna napomena/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo za stvarno mjerenje.`,
         mechanicalItems: [{
           registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
           label: "naziv relevantne strojarske stavke",
           meetsConditions: 1,
-          customContent: "napomena/vrijednost za zapisnik, npr. stanje, zaštita, vidljiv nedostatak ili zašto zadovoljava",
+          customContent: "obavezna konkretna napomena do 255 znakova, npr. Uključivanje je izvedeno ključem; upravljanje ručicama i volanom.",
           measuredValue: "izmjerena vrijednost ako postoji",
         }],
         electricalItems: [{
           registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
           label: "naziv relevantne elektro stavke",
           meetsConditions: 1,
-          customContent: "napomena/vrijednost za zapisnik",
+          customContent: "obavezna konkretna napomena do 255 znakova, npr. Priključni kabel i utikač su neoštećeni.",
           measuredValue: "izmjerena vrijednost ako postoji",
         }],
         hazardRegisterIris: ["IRI opasnosti iz hazard_registers"],
@@ -132304,7 +132314,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
-    assessmentInstruction: "RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati napomenu/vrijednost u customContent ili measuredValue. Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.",
+    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka vraćena strojarska/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo ako postoji stvarno mjerenje. Ne vraćaj stavku bez napomene. Primjeri: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo ako se vidi električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
       id: String(item.id || ""),
       recordNumber: String(item.recordNumber || ""),
@@ -163320,6 +163330,15 @@ const WORK_EQUIPMENT_AI_CONFIDENCE_LABELS = Object.freeze({
   low: "niska",
 });
 
+const WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH = 255;
+
+function normalizeWorkEquipmentRoAssessmentNote(value = "") {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH);
+}
+
 const WORK_EQUIPMENT_AI_FIELD_DEFINITIONS = Object.freeze([
   { key: "name", group: "Identifikacija", label: "Naziv opreme", placeholder: "npr. Viličar, kompresor, stroj za oštrenje..." },
   { key: "manufacturer", group: "Identifikacija", label: "Proizvođač", placeholder: "Prednost ima natpisna pločica." },
@@ -163505,14 +163524,15 @@ function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", ite
       `Stavka: ${label}.`,
       rule.instruction,
       "NexAI ju smije predložiti samo ako postoji veza s vrstom opreme, fotografijom, natpisnom pločicom, starim zapisnikom ili dokumentom.",
-      "U customContent obavezno napiši kratku napomenu/vrijednost za zapisnik, a ako postoji mjerenje upiši measuredValue.",
+      `customContent je obavezan i ne smije biti prazan; napiši jednu konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova, npr. kako je izvedeno uključivanje, upravljanje, zaštita, oznaka ili vidljivo stanje.`,
+      "Ako postoji stvarno mjerenje, upiši ga u measuredValue, ali customContent svejedno mora objasniti nalaz.",
       "Ako je stavka relevantna i nema vidljivih nedostataka, meetsConditions je true; ako je vidljiv nedostatak, meetsConditions je false i napiši razlog.",
     ].filter(Boolean).join(" "),
-    mustInclude: rule.mustInclude,
+    mustInclude: [rule.mustInclude, "konkretna napomena/vrijednost za ovu stavku"].filter(Boolean).join("; "),
     avoid: rule.avoid,
     style: "professional",
     confidenceRequired: kind === "electrical" ? "high" : "medium",
-    textLength: "1 kratka rečenica za napomenu/vrijednost; mjernu vrijednost izdvojiti u measuredValue.",
+    textLength: `customContent: 1 konkretna rečenica do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue samo za stvarno mjerenje.`,
     fallbackValue: "Ako nema dovoljno dokaza, ne predlaži ovu stavku ili je označi za ručnu provjeru.",
     examples: rule.examples,
   });
@@ -163756,7 +163776,7 @@ function hasWorkEquipmentAiProfile(profile = {}) {
 function createDefaultWorkEquipmentAiProfiles() {
   return [
     {
-      id: createClientSideId("ro-ai-profile-basic"),
+      id: "ro-ai-profile-basic",
       name: "Osnovno",
       aliases: ["osnovno", "radna oprema", "nepoznata oprema", "opći profil"],
       generalInstruction: "Koristi ovaj profil kada ne postoji specifičan profil za prepoznatu radnu opremu ili kada NexAI nije dovoljno siguran. Popuni samo podatke koji su vidljivi na slici/PDF-u ili postoje u prethodnom zapisniku.",
@@ -163777,7 +163797,132 @@ function createDefaultWorkEquipmentAiProfiles() {
         { label: "Napomena ispitivača", type: "note" },
       ],
     },
+    {
+      id: "ro-ai-profile-forklift",
+      name: "Viličar",
+      aliases: ["viličar", "forklift", "viljuskar", "viljuškar", "linde", "jungheinrich", "still", "toyota"],
+      generalInstruction: "Prepoznaj viličar prema vilicama, jarbolu, kabini/zaštitnom krovu, kotačima, upravljaču, bateriji ili motoru. Kod svake odabrane stavke upiši konkretnu napomenu do 255 znakova.",
+      breakdownInstruction: "Obavezno provjeri stabilnost, kočnice/kotače, vilice i jarbol, zaštitni krov, upravljačko mjesto, sigurnosne oznake, signalizaciju, hidrauliku, curenje ulja, radno opterećenje i dokumentaciju. Primjeri napomena: Uključivanje je izvedeno ključem. Upravljanje je pomoću volana i ručica. Hidraulički sustav nema vidljivog curenja.",
+      appliesWhen: "Koristi kada su vidljive vilice, jarbol, kabina, baterija, natpis Linde/Still/Jungheinrich/Toyota ili opis viličara.",
+      avoid: "Ne koristi za ručne paletare bez pogona ako profil nije izričito prikladan.",
+      fieldDefaults: {
+        purposeDescription: "Radna oprema se koristi za transport, podizanje i premještanje tereta.",
+        useAndMaintenance: "Provjeriti stanje vilica, kotača, kočnica, signalizacije, hidraulike i uputa proizvođača.",
+        methodsProceduresAndNorms: "Pregled prema propisima za radnu opremu i uputama proizvođača.",
+      },
+      registerDefaults: {
+        mechanical: [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 23, 24, 25, 26, 27, 29, 30, 31, 32, 34, 35, 36].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
+        electrical: [1, 2, 3, 4, 17, 18, 19].map((id) => `/api/v3/ro_electrical_registers/${id}`),
+      },
+      sentenceBank: {
+        positive: "Viličar je pregledom i funkcionalnom provjerom zadovoljio uvjete sigurnog rada.",
+        negative: "Na viličaru su utvrđeni nedostaci koje je potrebno ukloniti prije uporabe.",
+        recommendations: "Otkloniti utvrđene nedostatke na upravljačkim, kočnim, hidrauličkim ili zaštitnim elementima i ponoviti provjeru.",
+      },
+      quickQuestions: [
+        { label: "Pogon viličara", type: "select", options: ["Električni", "Dizel", "UNP", "Ručno"], aiHint: "Koristi za elektro/strojarske stavke i radne tvari." },
+        { label: "Nosivost", type: "text", unit: "kg", aiHint: "Prepiši s pločice ako je vidljivo." },
+      ],
+    },
+    {
+      id: "ro-ai-profile-lathe",
+      name: "Tokarilica",
+      aliases: ["tokarilica", "tokarski stroj", "lathe", "cnc tokarski", "cnc lathe"],
+      generalInstruction: "Prepoznaj tokarilicu prema steznoj glavi, suportu, vodilicama, zaštitnom pokrovu, upravljačkoj ploči i radnom vretenu. Svaka odabrana stavka mora imati konkretan opis nalaza.",
+      breakdownInstruction: "Posebno gledaj zaštitu od rotirajućih dijelova, stezne glave i izbacivanja obratka/strugotine, upravljačke elemente, STOP, zaštitne pokrove, radni prostor, rasvjetu, buku/vibracije, hlađenje i tehničku dokumentaciju.",
+      appliesWhen: "Koristi za klasične ili CNC tokarilice i strojeve s rotirajućim obratkom.",
+      avoid: "Ne koristi za glodalice ili brusilice ako nije jasno da je riječ o tokarilici.",
+      fieldDefaults: {
+        purposeDescription: "Radna oprema se koristi za obradu rotirajućih obradaka skidanjem strugotine.",
+        useAndMaintenance: "Provjeriti steznu glavu, zaštitne pokrove, upravljanje, zaustavljanje, vodilice, hlađenje i radno područje.",
+      },
+      registerDefaults: {
+        mechanical: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 29, 30, 31, 32].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
+        electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
+      },
+    },
+    {
+      id: "ro-ai-profile-press",
+      name: "Preša",
+      aliases: ["preša", "presa", "hidraulična preša", "pneumatska preša", "press"],
+      generalInstruction: "Prepoznaj prešu prema radnom hodu, pritisku, cilindru, alatu, radnom stolu, zaštitnoj ogradi ili dvoručnom upravljanju.",
+      breakdownInstruction: "Kod preše su ključni zaštita od uklještenja, dvoručno upravljanje, STOP, zaštitne ograde, hidraulika/pneumatika, tlak, stabilnost, deformacije, probno opterećenje i oznake. Napomena mora opisati konkretno izvedenje, npr. Upravljanje je dvoručno, a radni prostor zaštićen pokrovom.",
+      appliesWhen: "Koristi za hidraulične, pneumatske, mehaničke i ekscentar preše.",
+      registerDefaults: {
+        mechanical: [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 34, 35, 36].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
+        electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
+      },
+    },
+    {
+      id: "ro-ai-profile-compressor",
+      name: "Kompresor",
+      aliases: ["kompresor", "compressor", "atlas copco", "kaeser", "fini", "boge"],
+      generalInstruction: "Prepoznaj kompresor prema spremniku, tlačnim vodovima, manometru, sigurnosnom ventilu, motoru, kućištu ili natpisnoj pločici.",
+      breakdownInstruction: "Naglasak je na tlaku, sigurnosnom ventilu, manometru, curenju zraka/ulja, buci, vibracijama, ventilaciji, priključku na električnu mrežu i dokumentaciji. Svaka stavka mora imati kratku konkretnu napomenu.",
+      appliesWhen: "Koristi za stacionarne i mobilne kompresore te tlačnu opremu s kompresorskim sklopom.",
+      registerDefaults: {
+        mechanical: [1, 2, 3, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 31, 32].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
+        electrical: [1, 2, 3, 4, 17, 18, 19].map((id) => `/api/v3/ro_electrical_registers/${id}`),
+      },
+    },
+    {
+      id: "ro-ai-profile-analyzer",
+      name: "Analizator / servisni aparat",
+      aliases: ["analizator", "aparat", "servisni aparat", "bosch bea", "bea750", "bea 750", "ispusni plinovi"],
+      generalInstruction: "Prepoznaj servisne aparate i analizatore prema kućištu, zaslonu, tipkovnici, sondama, priključcima, kotačima i natpisnoj pločici. Za BOSCH BEA prepiši proizvođača, tip BEA750, serijski broj i naponske podatke.",
+      breakdownInstruction: "Gledaj stabilnost, kotače, upravljačko mjesto, tipkovnicu/zaslon, sonde i priključke, sigurnosne oznake, kabele, napajanje, zaštitu od opasnih tvari/ispušnih plinova, dokumentaciju i opće stanje. Primjer: Upravljanje je izvedeno putem zaslona i tipkovnice; priključne sonde su dostupne.",
+      appliesWhen: "Koristi za analizatore ispušnih plinova, dijagnostičke aparate i servisne mjerne uređaje na kolicima.",
+      registerDefaults: {
+        mechanical: [1, 2, 7, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 22, 24, 26, 27, 28, 29, 30, 32, 33].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
+        electrical: [1, 2, 3, 4, 15, 16, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
+      },
+    },
+    {
+      id: "ro-ai-profile-crane",
+      name: "Dizalica / podizna oprema",
+      aliases: ["dizalica", "podizna oprema", "kran", "lančana dizalica", "elektro dizalica", "vitlo"],
+      generalInstruction: "Prepoznaj dizalice prema kuki, lancu/užetu, nosivosti, vitlu, nosaču, komandama i elementima za podizanje tereta.",
+      breakdownInstruction: "Obavezno provjeri nosivost, kuku, lanac/uže, kočnicu, ograničivače, upravljanje, STOP, stabilnost, deformacije, probno statičko i dinamičko ispitivanje, oznake i dokumentaciju.",
+      appliesWhen: "Koristi za dizalice, vitla, podizne stolove i opremu za podizanje tereta.",
+      registerDefaults: {
+        mechanical: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 23, 24, 25, 26, 29, 30, 31, 32, 34, 35, 36].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
+        electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
+      },
+    },
+    {
+      id: "ro-ai-profile-saw-grinder",
+      name: "Pila / brusilica",
+      aliases: ["pila", "kružna pila", "tračna pila", "brusilica", "stroj za oštrenje", "rezalica", "grinder", "saw"],
+      generalInstruction: "Prepoznaj pile i brusilice prema disku, traci, brusnom kolu, štitniku, radnom stolu, vodilici, pogonu i zaštitnim pokrovima.",
+      breakdownInstruction: "Ključne su zaštita od pokretnih/radnih elemenata, izbacivanje čestica, STOP, upravljanje, zaštitni pokrovi, znakovi sigurnosti, buka, vibracije, prašina, priključak na odsis i dokumentacija.",
+      appliesWhen: "Koristi za strojeve za rezanje, piljenje, brušenje i oštrenje.",
+      registerDefaults: {
+        mechanical: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 29, 30, 31, 32].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
+        electrical: [1, 2, 3, 4, 17, 18, 19, 25].map((id) => `/api/v3/ro_electrical_registers/${id}`),
+      },
+    },
   ].map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index));
+}
+
+function mergeDefaultWorkEquipmentAiProfiles(profiles = []) {
+  const sourceProfiles = (Array.isArray(profiles) ? profiles : [])
+    .slice(0, 60)
+    .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index))
+    .filter(hasWorkEquipmentAiProfile);
+  const seen = new Set(sourceProfiles.flatMap((profile) => [
+    normalizeWorkEquipmentAiLearningKey(profile.id),
+    normalizeWorkEquipmentAiLearningKey(profile.name),
+    ...profile.aliases.map(normalizeWorkEquipmentAiLearningKey),
+  ]).filter(Boolean));
+  const defaults = createDefaultWorkEquipmentAiProfiles().filter((profile) => {
+    const keys = [
+      normalizeWorkEquipmentAiLearningKey(profile.id),
+      normalizeWorkEquipmentAiLearningKey(profile.name),
+      ...profile.aliases.map(normalizeWorkEquipmentAiLearningKey),
+    ].filter(Boolean);
+    return !keys.some((key) => seen.has(key));
+  });
+  return [...sourceProfiles, ...defaults].slice(0, 60);
 }
 
 function normalizeWorkEquipmentAiSettings(value = {}) {
@@ -163799,10 +163944,7 @@ function normalizeWorkEquipmentAiSettings(value = {}) {
       ...(source.registryInstructions || {}),
     }),
     registers: normalizeWorkEquipmentAiRegisterGroupsCache(source.registers || source.registryGroups || source.registerGroups),
-    profiles: (Array.isArray(source.profiles) ? source.profiles : [])
-      .slice(0, 60)
-      .map((profile, index) => normalizeWorkEquipmentAiProfile(profile, index))
-      .filter(hasWorkEquipmentAiProfile),
+    profiles: mergeDefaultWorkEquipmentAiProfiles(source.profiles),
   };
 }
 
