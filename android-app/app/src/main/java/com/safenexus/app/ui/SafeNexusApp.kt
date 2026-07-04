@@ -12492,11 +12492,10 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             }
 
-            WorkEquipmentPartsEditor(
+            WorkEquipmentPartsToggle(
                 equipment = equipment,
                 enabled = enabled,
                 onEquipmentChange = onEquipmentChange,
-                onRecognizeImages = onRecognizeImages,
             )
 
             Surface(
@@ -12642,7 +12641,38 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             }
 
-            ManualWorkEquipmentSectionTitle("Osnovni podaci")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Osnovni podaci",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                AssistChip(
+                    onClick = {
+                        val nextParts = equipment.parts.ifEmpty { listOf(defaultWorkEquipmentPart(1)) }
+                        onEquipmentChange(equipment.copy(hasParts = true, parts = nextParts))
+                    },
+                    enabled = enabled,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                    label = { Text(if (equipment.parts.isEmpty()) "Dio" else "${equipment.parts.size} dijelova") },
+                )
+            }
+            WorkEquipmentPartsCompactEditor(
+                equipment = equipment,
+                enabled = enabled,
+                onEquipmentChange = onEquipmentChange,
+                onRecognizeImages = onRecognizeImages,
+            )
             OutlinedTextField(equipment.name, { onEquipmentChange(equipment.copy(name = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.manufacturer, { onEquipmentChange(equipment.copy(manufacturer = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.model, { onEquipmentChange(equipment.copy(model = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
@@ -12709,16 +12739,10 @@ private fun defaultWorkEquipmentPart(index: Int): IsznrManualWorkEquipment =
     )
 
 @Composable
-private fun WorkEquipmentPartsEditor(
+private fun WorkEquipmentPartsToggle(
     equipment: IsznrManualWorkEquipment,
     enabled: Boolean,
     onEquipmentChange: (IsznrManualWorkEquipment) -> Unit,
-    onRecognizeImages: (
-        IsznrManualWorkEquipment,
-        List<IsznrRoAttachmentFile>,
-        (WorkEquipmentImageRecognitionResult) -> Unit,
-        (String) -> Unit,
-    ) -> Unit,
 ) {
     val hasParts = equipment.hasParts || equipment.parts.isNotEmpty()
     Surface(
@@ -12743,22 +12767,22 @@ private fun WorkEquipmentPartsEditor(
                 Checkbox(
                     checked = hasParts,
                     onCheckedChange = { checked ->
-                        val nextParts = if (checked) {
-                            equipment.parts.ifEmpty { listOf(defaultWorkEquipmentPart(1)) }
-                        } else {
-                            emptyList()
-                        }
-                        onEquipmentChange(equipment.copy(hasParts = checked, parts = nextParts))
+                        onEquipmentChange(
+                            equipment.copy(
+                                hasParts = checked,
+                                parts = if (checked) equipment.parts else emptyList(),
+                            ),
+                        )
                     },
                     enabled = enabled,
                 )
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Radna oprema ima dijelove", fontWeight = FontWeight.Black)
+                    Text("Dijelovi uz slike", fontWeight = FontWeight.Black)
                     Text(
                         if (hasParts) {
-                            "Dijelovi idu u isti RO zapisnik i šalju se kao zasebna IS ZNR oprema."
+                            "Slike se mogu vezati uz dijelove. Unos dijelova otvara se na + kod osnovnih podataka."
                         } else {
-                            "Uključi ako jedna radna oprema ima odvojive dijelove s vlastitim podacima."
+                            "Uključi kad jedna radna oprema ima zasebne dijelove i slike dijelova."
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
@@ -12766,65 +12790,187 @@ private fun WorkEquipmentPartsEditor(
                 }
                 AssistChip(onClick = {}, enabled = false, label = { Text("${equipment.parts.size}") })
             }
+        }
+    }
+}
 
-            AnimatedVisibility(visible = hasParts) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color.White.copy(alpha = 0.82f),
-                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
-                    ) {
-                        Text(
-                            "Za svaki dio dodaj sliku dijela i po mogućnosti pločicu. Ako pločice nema, NexAI procjenjuje o kojem se dijelu radi prema fotografiji.",
-                            modifier = Modifier.padding(10.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF166534),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+@Composable
+private fun WorkEquipmentPartsCompactEditor(
+    equipment: IsznrManualWorkEquipment,
+    enabled: Boolean,
+    onEquipmentChange: (IsznrManualWorkEquipment) -> Unit,
+    onRecognizeImages: (
+        IsznrManualWorkEquipment,
+        List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
+) {
+    val parts = equipment.parts
+    if (parts.isEmpty() && !equipment.hasParts) return
+    var activePartIndex by remember(parts.size) { mutableStateOf(0) }
+    LaunchedEffect(parts.size) {
+        activePartIndex = when {
+            parts.isEmpty() -> 0
+            activePartIndex > parts.lastIndex -> parts.lastIndex
+            else -> activePartIndex
+        }
+    }
 
-                    equipment.parts.forEachIndexed { index, part ->
-                        WorkEquipmentPartCard(
-                            index = index,
-                            part = part,
-                            enabled = enabled,
-                            onPartChange = { updatedPart ->
-                                onEquipmentChange(
-                                    equipment.copy(
-                                        hasParts = true,
-                                        parts = equipment.parts.mapIndexed { partIndex, current ->
-                                            if (partIndex == index) updatedPart else current
-                                        },
-                                    ),
-                                )
-                            },
-                            onRemove = {
-                                val nextParts = equipment.parts.filterIndexed { partIndex, _ -> partIndex != index }
-                                onEquipmentChange(equipment.copy(hasParts = nextParts.isNotEmpty(), parts = nextParts))
-                            },
-                            onRecognizeImages = onRecognizeImages,
-                        )
-                    }
+    fun addPart() {
+        activePartIndex = parts.size
+        onEquipmentChange(
+            equipment.copy(
+                hasParts = true,
+                parts = parts + defaultWorkEquipmentPart(parts.size + 1),
+            ),
+        )
+    }
 
-                    OutlinedButton(
-                        onClick = {
-                            onEquipmentChange(
-                                equipment.copy(
-                                    hasParts = true,
-                                    parts = equipment.parts + defaultWorkEquipmentPart(equipment.parts.size + 1),
-                                ),
-                            )
-                        },
-                        enabled = enabled,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(17.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Dodaj dio opreme")
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFFF0FDF4),
+        border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = CircleShape, color = Color(0xFFDCFCE7), modifier = Modifier.size(38.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Add, contentDescription = null, tint = Color(0xFF15803D), modifier = Modifier.size(20.dp))
                     }
                 }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Dijelovi opreme", fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                    Text(
+                        if (parts.isEmpty()) {
+                            "Dodaj prvi dio kad ova RO kolona ima zaseban sklop, nastavak ili priključak."
+                        } else {
+                            "Jedan dio je otvoren. Strelicama ili povlačenjem lijevo/desno prebaci dio."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF166534),
+                    )
+                }
+                Button(
+                    onClick = { addPart() },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text("Dio")
+                }
+            }
+
+            if (parts.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White.copy(alpha = 0.84f),
+                    border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                ) {
+                    Text(
+                        "Kad dodaš dio, otvara se dodatni unos s vlastitim slikama, pločicom, nazivom, tipom i napomenom.",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF166534),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                return@Column
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.84f))
+                    .pointerInput(activePartIndex, parts.size, enabled) {
+                        var totalHorizontalDrag = 0f
+                        detectDragGestures(
+                            onDragStart = { totalHorizontalDrag = 0f },
+                            onDragCancel = { totalHorizontalDrag = 0f },
+                            onDragEnd = {
+                                if (enabled && parts.size > 1) {
+                                    when {
+                                        totalHorizontalDrag > 64f && activePartIndex > 0 -> activePartIndex -= 1
+                                        totalHorizontalDrag < -64f && activePartIndex < parts.lastIndex -> activePartIndex += 1
+                                    }
+                                }
+                                totalHorizontalDrag = 0f
+                            },
+                        ) { change, dragAmount ->
+                            if (enabled && parts.size > 1 && abs(dragAmount.x) > abs(dragAmount.y) * 1.5f) {
+                                totalHorizontalDrag += dragAmount.x
+                                change.consume()
+                            }
+                        }
+                    }
+                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(
+                    onClick = { activePartIndex = (activePartIndex - 1).coerceAtLeast(0) },
+                    enabled = enabled && activePartIndex > 0,
+                    modifier = Modifier.size(38.dp),
+                ) {
+                    Icon(Icons.Rounded.ArrowBack, contentDescription = "Prethodni dio")
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        parts.getOrNull(activePartIndex)?.name?.ifBlank { "Dio opreme ${activePartIndex + 1}" }.orEmpty(),
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "Dio ${activePartIndex + 1}/${parts.size} · slike, pločica i podaci su ispod",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF166534),
+                    )
+                }
+                IconButton(
+                    onClick = { activePartIndex = (activePartIndex + 1).coerceAtMost(parts.lastIndex) },
+                    enabled = enabled && activePartIndex < parts.lastIndex,
+                    modifier = Modifier.size(38.dp),
+                ) {
+                    Icon(Icons.Rounded.ArrowForward, contentDescription = "Sljedeći dio")
+                }
+            }
+
+            parts.getOrNull(activePartIndex)?.let { part ->
+                WorkEquipmentPartCard(
+                    index = activePartIndex,
+                    part = part,
+                    enabled = enabled,
+                    onPartChange = { updatedPart ->
+                        onEquipmentChange(
+                            equipment.copy(
+                                hasParts = true,
+                                parts = parts.mapIndexed { partIndex, current ->
+                                    if (partIndex == activePartIndex) updatedPart else current
+                                },
+                            ),
+                        )
+                    },
+                    onRemove = {
+                        val nextParts = parts.filterIndexed { partIndex, _ -> partIndex != activePartIndex }
+                        activePartIndex = activePartIndex.coerceAtMost((nextParts.size - 1).coerceAtLeast(0))
+                        onEquipmentChange(equipment.copy(hasParts = nextParts.isNotEmpty(), parts = nextParts))
+                    },
+                    onRecognizeImages = onRecognizeImages,
+                )
             }
         }
     }
