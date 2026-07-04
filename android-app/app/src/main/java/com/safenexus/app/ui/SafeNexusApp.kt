@@ -11260,6 +11260,99 @@ private fun WorkEquipmentAiStatusPanel(
     }
 }
 
+private fun normalizedRoVerificationQuestions(questions: List<String>, limit: Int = 8): List<String> =
+    questions
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+        .take(limit)
+
+@Composable
+private fun WorkEquipmentVerificationQuestionsPanel(
+    title: String,
+    subtitle: String,
+    questions: List<String>,
+    verificationAnswers: Map<String, String>,
+    onAnswer: (String, String) -> Unit,
+    groupIndex: Int = 0,
+    groupCount: Int = 1,
+    onPreviousGroup: (() -> Unit)? = null,
+    onNextGroup: (() -> Unit)? = null,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFFEFF6FF),
+        border = BorderStroke(1.dp, Color(0xFF93C5FD).copy(alpha = 0.65f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = CircleShape, color = Color.White, modifier = Modifier.size(34.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(title, color = Color(0xFF0F172A), fontWeight = FontWeight.Black)
+                    Text(subtitle, style = MaterialTheme.typography.labelSmall, color = Color(0xFF475569))
+                }
+                if (groupCount > 1 && onPreviousGroup != null && onNextGroup != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onPreviousGroup, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Prethodna oprema", tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                        }
+                        Text(
+                            "${groupIndex + 1}/$groupCount",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF1D4ED8),
+                            fontWeight = FontWeight.Black,
+                        )
+                        IconButton(onClick = onNextGroup, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.ArrowForward, contentDescription = "Sljedeća oprema", tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+            questions.forEach { question ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.86f),
+                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            question,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF0F172A),
+                            fontWeight = FontWeight.Bold,
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Da", "Ne").forEach { answer ->
+                                FilterChip(
+                                    selected = verificationAnswers[question].orEmpty().ifBlank { "Da" } == answer,
+                                    onClick = { onAnswer(question, answer) },
+                                    label = { Text(answer) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun WorkEquipmentBatchNexAiUploadCard(
     enabled: Boolean,
@@ -11350,11 +11443,32 @@ private fun WorkEquipmentBatchNexAiUploadCard(
         var actionOverrides by remember(result, manualEquipments, files) {
             mutableStateOf(matches.associate { it.recognizedIndex to it.defaultAction })
         }
-        val previewQuestions = remember(result) {
-            result.verificationQuestions.distinctBy { it.trim().lowercase() }.filter { it.isNotBlank() }.take(6)
+        val questionGroups = remember(result, items) {
+            val itemGroups = items.mapIndexedNotNull { index, item ->
+                val questions = normalizedRoVerificationQuestions(item.verificationQuestions, limit = 8)
+                if (questions.isEmpty()) {
+                    null
+                } else {
+                    val name = item.name.ifBlank { item.model.ifBlank { "Oprema ${index + 1}" } }
+                    "${index + 1}. $name" to questions
+                }
+            }
+            val groupedQuestions = itemGroups
+                .flatMap { it.second }
+                .map { it.lowercase(Locale.getDefault()) }
+                .toSet()
+            val globalQuestions = normalizedRoVerificationQuestions(result.verificationQuestions, limit = 12)
+                .filter { it.lowercase(Locale.getDefault()) !in groupedQuestions }
+            itemGroups + listOfNotNull(globalQuestions.takeIf { it.isNotEmpty() }?.let { "Opće potvrde" to it })
         }
+        val previewQuestions = remember(questionGroups) {
+            questionGroups.flatMap { it.second }.distinctBy { it.lowercase(Locale.getDefault()) }
+        }
+        var questionGroupIndex by remember(result) { mutableStateOf(0) }
+        val safeQuestionGroupIndex = questionGroupIndex.coerceIn(0, questionGroups.lastIndex.coerceAtLeast(0))
+        val activeQuestionGroup = questionGroups.getOrNull(safeQuestionGroupIndex)
         var verificationAnswers by remember(result) {
-            mutableStateOf(previewQuestions.associateWith { "" })
+            mutableStateOf(previewQuestions.associateWith { "Da" })
         }
         val questionsAnswered = previewQuestions.all { verificationAnswers[it].orEmpty().isNotBlank() }
         AlertDialog(
@@ -11372,54 +11486,26 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
-                    if (previewQuestions.isNotEmpty()) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFFFFBEB),
-                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.34f)),
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(5.dp),
-                            ) {
-                                Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
-                                Text(
-                                    "Odaberi Da ili Ne. NexAI sam slaže kratak opis bez 'treba provjeriti'.",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF92400E),
-                                )
-                                previewQuestions.forEach { question ->
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Color.White.copy(alpha = 0.72f),
-                                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.18f)),
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(7.dp),
-                                        ) {
-                                            Text(
-                                                question,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF92400E),
-                                                fontWeight = FontWeight.Bold,
-                                            )
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                listOf("Da", "Ne").forEach { answer ->
-                                                    FilterChip(
-                                                        selected = verificationAnswers[question] == answer,
-                                                        onClick = { verificationAnswers = verificationAnswers + (question to answer) },
-                                                        label = { Text(answer) },
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    if (activeQuestionGroup != null) {
+                        WorkEquipmentVerificationQuestionsPanel(
+                            title = "Potvrdi prije upisa",
+                            subtitle = "${activeQuestionGroup.first} · Da je odabrano po defaultu",
+                            questions = activeQuestionGroup.second,
+                            verificationAnswers = verificationAnswers,
+                            onAnswer = { question, answer -> verificationAnswers = verificationAnswers + (question to answer) },
+                            groupIndex = safeQuestionGroupIndex,
+                            groupCount = questionGroups.size,
+                            onPreviousGroup = if (questionGroups.size > 1) {
+                                { questionGroupIndex = if (safeQuestionGroupIndex == 0) questionGroups.lastIndex else safeQuestionGroupIndex - 1 }
+                            } else {
+                                null
+                            },
+                            onNextGroup = if (questionGroups.size > 1) {
+                                { questionGroupIndex = if (safeQuestionGroupIndex >= questionGroups.lastIndex) 0 else safeQuestionGroupIndex + 1 }
+                            } else {
+                                null
+                            },
+                        )
                     }
                     if (matches.isNotEmpty()) {
                         val updateCount = matches.count { (actionOverrides[it.recognizedIndex] ?: it.defaultAction) == WorkEquipmentImportAction.Update }
@@ -12119,10 +12205,10 @@ private fun ManualWorkEquipmentInlineEditor(
 
     recognitionPreview?.let { result ->
         val previewQuestions = remember(result) {
-            result.verificationQuestions.distinctBy { it.trim().lowercase() }.filter { it.isNotBlank() }.take(6)
+            normalizedRoVerificationQuestions(result.verificationQuestions, limit = 8)
         }
         var verificationAnswers by remember(result) {
-            mutableStateOf(previewQuestions.associateWith { "" })
+            mutableStateOf(previewQuestions.associateWith { "Da" })
         }
         val questionsAnswered = previewQuestions.all { verificationAnswers[it].orEmpty().isNotBlank() }
         AlertDialog(
@@ -12136,53 +12222,13 @@ private fun ManualWorkEquipmentInlineEditor(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
                     if (previewQuestions.isNotEmpty()) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFFFFBEB),
-                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.34f)),
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(5.dp),
-                            ) {
-                                Text("Potvrdi prije upisa", color = Color(0xFF92400E), fontWeight = FontWeight.Black)
-                                Text(
-                                    "Odaberi Da ili Ne. NexAI sam slaže kratak opis bez 'treba provjeriti'.",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF92400E),
-                                )
-                                previewQuestions.forEach { question ->
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = Color.White.copy(alpha = 0.72f),
-                                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.18f)),
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(7.dp),
-                                        ) {
-                                            Text(
-                                                question,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF92400E),
-                                                fontWeight = FontWeight.Bold,
-                                            )
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                listOf("Da", "Ne").forEach { answer ->
-                                                    FilterChip(
-                                                        selected = verificationAnswers[question] == answer,
-                                                        onClick = { verificationAnswers = verificationAnswers + (question to answer) },
-                                                        label = { Text(answer) },
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        WorkEquipmentVerificationQuestionsPanel(
+                            title = "Potvrdi prije upisa",
+                            subtitle = "Da je odabrano po defaultu",
+                            questions = previewQuestions,
+                            verificationAnswers = verificationAnswers,
+                            onAnswer = { question, answer -> verificationAnswers = verificationAnswers + (question to answer) },
+                        )
                     }
                     listOf(
                         "Naziv" to result.name,
@@ -12979,7 +13025,8 @@ private fun ManualWorkEquipmentAssessmentEditor(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 104.dp),
-                label = { Text("Obavezna napomena / vrijednost") },
+                label = { Text("Vrijednost") },
+                placeholder = { Text("Upiši vrijednost ili kratku napomenu") },
                 minLines = 3,
                 maxLines = 6,
                 shape = RoundedCornerShape(14.dp),
@@ -13079,58 +13126,12 @@ private fun ManualWorkEquipmentAssessmentRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.Top,
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        option.label,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    if (active || noteEditorOpen) {
-                        OutlinedTextField(
-                            value = noteValue,
-                            onValueChange = { value ->
-                                onUpsert(
-                                    roAssessmentItemFromOption(
-                                        option = option,
-                                        measuredValue = limitRoAssessmentNoteInput(value),
-                                        meetsConditions = item?.meetsConditions ?: true,
-                                    ),
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 118.dp),
-                            label = { Text("Obavezna napomena / vrijednost") },
-                            minLines = 3,
-                            maxLines = 6,
-                            shape = RoundedCornerShape(12.dp),
-                        )
-                        Text(
-                            "${noteValue.length}/$RO_ASSESSMENT_NOTE_MAX_LENGTH",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
-                        )
-                        if (active && !hasRequiredNote) {
-                            Text(
-                                "Upiši kratku napomenu da stavka bude potpuna.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFD97706),
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    } else {
-                        OutlinedButton(
-                            onClick = { noteEditorOpen = true },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 56.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
-                        ) {
-                            Text("Napomena / vrijednost")
-                        }
-                    }
-                }
+                Text(
+                    option.label,
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 IconButton(
                     onClick = {
                         val nextMeetsConditions = item?.meetsConditions != true
@@ -13163,6 +13164,52 @@ private fun ManualWorkEquipmentAssessmentRow(
                         },
                         tint = statusColor,
                     )
+                }
+            }
+            if (active || noteEditorOpen) {
+                OutlinedTextField(
+                    value = noteValue,
+                    onValueChange = { value ->
+                        onUpsert(
+                            roAssessmentItemFromOption(
+                                option = option,
+                                measuredValue = limitRoAssessmentNoteInput(value),
+                                meetsConditions = item?.meetsConditions ?: true,
+                            ),
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 136.dp),
+                    label = { Text("Vrijednost") },
+                    placeholder = { Text("Upiši vrijednost ili kratku napomenu") },
+                    minLines = 4,
+                    maxLines = 7,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                Text(
+                    "${noteValue.length}/$RO_ASSESSMENT_NOTE_MAX_LENGTH",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
+                )
+                if (active && !hasRequiredNote) {
+                    Text(
+                        "Upiši kratku vrijednost da stavka bude potpuna.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFD97706),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { noteEditorOpen = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 58.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text("Vrijednost")
                 }
             }
             if (active) {
