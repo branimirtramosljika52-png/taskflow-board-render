@@ -12807,8 +12807,8 @@ private fun WorkEquipmentPartsCompactEditor(
     ) -> Unit,
 ) {
     val parts = equipment.parts
-    if (parts.isEmpty() && !equipment.hasParts) return
-    var activePartIndex by remember(parts.size) { mutableStateOf(0) }
+    if (parts.isEmpty()) return
+    var activePartIndex by remember { mutableStateOf(0) }
     LaunchedEffect(parts.size) {
         activePartIndex = when {
             parts.isEmpty() -> 0
