@@ -26476,6 +26476,11 @@ private fun normalizeDocumentationWorkEquipmentText(value: String): String =
         .replace(Regex("[^a-z0-9]+"), " ")
         .trim()
 
+private fun normalizeDocumentationServiceCodeToken(value: String): String =
+    normalizeDocumentationWorkEquipmentText(value)
+        .replace(" ", "")
+        .uppercase(Locale.getDefault())
+
 private fun isDocumentationWorkEquipmentText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
     val compact = normalized.replace(" ", "")
@@ -26502,6 +26507,11 @@ private fun isDocumentationWorkEquipmentService(item: DocumentationServiceFlowIt
         isDocumentationWorkEquipmentText(item.serviceCode) ||
         isDocumentationWorkEquipmentText(item.serviceKey)
 
+private fun isDocumentationEquipmentInspectionCode(value: String): Boolean {
+    val code = normalizeDocumentationServiceCodeToken(value)
+    return code == "STROJEVI" || code == "NO"
+}
+
 private fun isDocumentationEquipmentInspectionText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
     val compact = normalized.replace(" ", "")
@@ -26518,10 +26528,12 @@ private fun isDocumentationEquipmentInspectionText(value: String): Boolean {
         normalized.contains("o nadzoru opreme")
 }
 
-private fun isDocumentationEquipmentInspectionService(item: DocumentationServiceFlowItem): Boolean =
-    isDocumentationEquipmentInspectionText(item.serviceName) ||
-        isDocumentationEquipmentInspectionText(item.serviceCode) ||
-        isDocumentationEquipmentInspectionText(item.serviceKey)
+private fun isDocumentationEquipmentInspectionService(item: DocumentationServiceFlowItem): Boolean {
+    if (isDocumentationEquipmentInspectionCode(item.serviceCode) || isDocumentationEquipmentInspectionCode(item.serviceKey)) {
+        return true
+    }
+    return isDocumentationEquipmentInspectionText(item.serviceName)
+}
 
 private fun isDocumentationPhysicalFactorsText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
@@ -26607,15 +26619,18 @@ private fun WorkOrderDocumentationTemplate.isSprDocumentationTemplate(): Boolean
 
 private fun documentationNativeServiceCodeForText(value: String): String {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
+    val compact = normalized.replace(" ", "")
     if (normalized.isBlank()) return ""
     return when {
-        normalized == "no" ||
-            normalized.startsWith("no ") ||
-            normalized.contains("nadzor opreme") ||
-            normalized.contains("nadzor strojeva") -> "NO"
         normalized == "strojevi" ||
             normalized.startsWith("strojevi ") ||
-            normalized == "radnaoprema" ||
+            Regex("\\bstrojevi\\b").containsMatchIn(normalized) ||
+            normalized.contains("nadzor opreme") ||
+            normalized.contains("nadzor strojeva") -> "STROJEVI"
+        normalized == "no" ||
+            normalized.startsWith("no ") ||
+            compact == "no" -> "NO"
+        normalized == "radnaoprema" ||
             normalized == "radna oprema strojevi" -> "STROJEVI"
         normalized == "spr" ||
             normalized.startsWith("spr ") ||
@@ -26707,13 +26722,13 @@ private fun buildDocumentationFlowTabs(
     )
     flowItems.forEachIndexed { serviceIndex, item ->
         val serviceLabel = when {
-            isDocumentationEquipmentInspectionService(item) -> "NO"
+            isDocumentationEquipmentInspectionService(item) -> item.serviceCode.ifBlank { "STROJEVI" }
             isDocumentationWorkEquipmentService(item) -> "RO"
             isDocumentationPhysicalFactorsService(item) -> "FC"
             else -> item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
         }
         val normalizedServiceLabel = serviceLabel.trim().uppercase(Locale.getDefault())
-        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "FC")) {
+        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "STROJEVI", "FC")) {
             normalizedServiceLabel
         } else {
             "${serviceIndex + 1}. $serviceLabel"
@@ -26728,7 +26743,7 @@ private fun buildDocumentationFlowTabs(
                 val sequence = tabs.count { tab -> tab.serviceItem?.serviceKey == item.serviceKey } + 1
                 val recordLabel = record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }.trim()
                 val normalizedRecordLabel = recordLabel.uppercase(Locale.getDefault())
-                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "FC")) {
+                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "STROJEVI", "FC")) {
                     "$normalizedRecordLabel $sequence"
                 } else {
                     "$sequence. $recordLabel"
@@ -26751,7 +26766,7 @@ private fun buildDocumentationFlowTabs(
     if (includeEquipmentInspectionTab && flowItems.none { isDocumentationEquipmentInspectionService(it) }) {
         tabs += DocumentationFlowTab(
             key = DOCUMENTATION_EQUIPMENT_INSPECTION_FLOW_KEY,
-            label = "NO",
+            label = "STROJEVI",
         )
     }
     if (includePhysicalFactorsTab && flowItems.none { isDocumentationPhysicalFactorsService(it) }) {
