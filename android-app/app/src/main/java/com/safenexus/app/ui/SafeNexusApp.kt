@@ -5542,6 +5542,54 @@ private fun DocumentationMobileTextField(
     }
 }
 
+private fun appendDocumentationRichTextSnippet(value: String, snippet: String): String {
+    val current = value.trimEnd()
+    return if (current.isBlank()) snippet else "$current\n$snippet"
+}
+
+@Composable
+private fun DocumentationMobileRichTextField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        DocumentationMobileTextField(
+            label = label,
+            value = value,
+            onChange = onChange,
+            enabled = enabled,
+            singleLine = false,
+            minLines = 6,
+            maxLines = 14,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            OutlinedButton(
+                onClick = { onChange(appendDocumentationRichTextSnippet(value, "- nova stavka")) },
+                enabled = enabled,
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text("Bullet")
+            }
+            OutlinedButton(
+                onClick = {
+                    onChange(appendDocumentationRichTextSnippet(value, "Stavka | Opis\nDio sustava | \nNapomena | "))
+                },
+                enabled = enabled,
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text("Tablica")
+            }
+        }
+    }
+}
+
 @Composable
 private fun DocumentationSprVoiceField(
     label: String,
@@ -39053,7 +39101,13 @@ private fun TemplateFieldInput(
                     }
                 }
             }
-            "longtext", "textarea", "richtext" -> DocumentationMobileTextField(
+            "richtext" -> DocumentationMobileRichTextField(
+                label = label,
+                value = value,
+                onChange = onChange,
+                enabled = enabled,
+            )
+            "longtext", "textarea" -> DocumentationMobileTextField(
                 label = label,
                 value = value,
                 onChange = onChange,

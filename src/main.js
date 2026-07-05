@@ -4024,6 +4024,7 @@ const documentationSprTechnicalFields = document.querySelector("#documentation-s
 const documentationSprEquipmentSection = document.querySelector("#documentation-spr-equipment-section");
 const documentationSprRegulationsSection = document.querySelector("#documentation-spr-regulations-section");
 const documentationSprProjectSection = document.querySelector("#documentation-spr-project-section");
+const documentationSprSystemSection = document.querySelector("#documentation-spr-system-section");
 const documentationSprResultsSection = document.querySelector("#documentation-spr-results-section");
 const documentationSprChecklistsSection = document.querySelector("#documentation-spr-checklists-section");
 const documentationSprChecklistsEditor = document.querySelector("#documentation-spr-checklists-editor");
@@ -4066,6 +4067,10 @@ const documentationSprPeopleApplyButton = document.querySelector("#documentation
 const documentationSprPeopleClearButton = document.querySelector("#documentation-spr-people-clear");
 const documentationSprConclusionSection = document.querySelector("#documentation-spr-conclusion-section");
 const documentationSprResultHelper = document.querySelector("#documentation-spr-result-helper");
+const documentationSprSystemDescriptionInput = document.querySelector("#documentation-spr-system-description");
+const documentationSprSystemRichHost = document.querySelector("#documentation-spr-system-rich-host");
+const documentationSprSystemImageUploadButton = document.querySelector("#documentation-spr-system-image-upload");
+const documentationSprSystemImageFileInput = document.querySelector("#documentation-spr-system-image-file");
 const documentationSprResultsTextInput = document.querySelector("#documentation-spr-results-text");
 const documentationSprResultsRichHost = document.querySelector("#documentation-spr-results-rich-host");
 const documentationSprResultsImageUploadButton = document.querySelector("#documentation-spr-results-image-upload");
@@ -58395,7 +58400,8 @@ const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   recordNumber: "Broj zapisnika",
   inspectionType: "Vrsta ispitivanja",
   projectDocumentation: "Korištena tehničko-projektna dokumentacija",
-  resultsText: "Opis sustava i ispitivanja",
+  systemDescription: "Opis sustava",
+  resultsText: "Rezultati ispitivanja",
   measurementEquipmentIds: "Mjerna oprema",
   legalFrameworkIds: "Propisi",
   inspectorUserIds: "Ispitivači",
@@ -58409,6 +58415,7 @@ let documentationSprTemplateLibrary = { version: 1, activeTemplateId: "", templa
 let documentationSprGlobalHeader = { dataUrl: "", name: "", updatedAt: "" };
 let documentationSprGridlineApi = null;
 let documentationSprNativeMeasurementGridlineApis = new Map();
+let documentationSprSystemRichControl = null;
 let documentationSprResultsRichControl = null;
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
@@ -58537,6 +58544,7 @@ function createDefaultDocumentationSprModel() {
     ].join("\n"),
     projectDocumentation: "Zapisnik od prethodnog ispitivanja od strane Abeceda zaštite d.o.o.",
     technicalData: "",
+    systemDescription: reportDefaults.systemDescription || "",
     resultsText: reportDefaults.resultsText,
     eiNote: reportDefaults.eiNote,
     eiminNote: reportDefaults.eiminNote,
@@ -58606,6 +58614,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     regulations: "",
     projectDocumentation: "",
     technicalData: "",
+    systemDescription: "",
     resultsText: "",
     eiNote: "",
     eiminNote: "",
@@ -58967,7 +58976,8 @@ function normalizeDocumentationSprModel(value) {
     reportTitle: source.reportTitle || serviceDefaults.reportTitle || fallback.reportTitle,
     coverSubtitle: source.coverSubtitle || serviceDefaults.coverSubtitle || fallback.coverSubtitle,
     measurementTableTitle: source.measurementTableTitle || serviceDefaults.measurementTableTitle || fallback.measurementTableTitle,
-    resultsText: source.resultsText || serviceDefaults.resultsText || fallback.resultsText,
+    systemDescription: source.systemDescription || source.SYSTEM_DESCRIPTION || source.OPIS_SUSTAVA || serviceDefaults.systemDescription || fallback.systemDescription || "",
+    resultsText: source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || serviceDefaults.resultsText || fallback.resultsText,
     assessmentLabel: source.assessmentLabel || serviceDefaults.assessmentLabel || fallback.assessmentLabel,
     conclusionLead: source.conclusionLead || serviceDefaults.conclusionLead || fallback.conclusionLead,
     validitySentence: source.validitySentence || serviceDefaults.validitySentence || fallback.validitySentence,
@@ -59430,6 +59440,7 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     reportTitle: preset.reportTitle || reportDefaults.reportTitle,
     coverSubtitle: preset.coverSubtitle || reportDefaults.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle || reportDefaults.measurementTableTitle,
+    systemDescription: preset.systemDescription || reportDefaults.systemDescription || "",
     resultsText: preset.resultsText || reportDefaults.resultsText,
     technicalData: formatDocumentationTechnicalDataFields(preset.technicalDataFields || reportDefaults.technicalDataFields),
     projectDocumentation: preset.projectDocumentation || reportDefaults.projectDocumentation || base.projectDocumentation,
@@ -59505,6 +59516,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       reportTitle: currentModel.reportTitle || nativeModel.reportTitle,
       coverSubtitle: currentModel.coverSubtitle || nativeModel.coverSubtitle,
       measurementTableTitle: currentModel.measurementTableTitle || nativeModel.measurementTableTitle,
+      systemDescription: currentModel.systemDescription || nativeModel.systemDescription,
       resultsText: currentModel.resultsText || nativeModel.resultsText,
       technicalData: currentModel.technicalData || nativeModel.technicalData,
       eiNote: currentModel.eiNote || nativeModel.eiNote,
@@ -61008,15 +61020,20 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
     || `Prethodni zapisnik ${previousLabel}`;
   next.technicalData = fieldText(["TECHNICAL_DATA", "TEHNICKI_PODACI", "TEHNICKI_PODACI_SUSTAVA", "DOCUMENTATION_TECHNICAL_DATA"])
     || next.technicalData;
+  next.systemDescription = fieldText([
+    "DOCUMENTATION_SPR_SYSTEM_DESCRIPTION",
+    "SYSTEM_DESCRIPTION",
+    "OPIS_SUSTAVA",
+    "OPIS_SUSTAVA_HTML",
+  ])
+    || next.systemDescription;
   next.resultsText = fieldText([
     "DOCUMENTATION_SPR_RESULTS_TEXT",
     "SPR_RESULTS_TEXT",
     "RESULTS_TEXT",
     "MEASUREMENT_RESULTS",
-    "OPIS_SUSTAVA",
     "OPIS_ISPITIVANJA",
     "REZULTATI_ISPITIVANJA",
-    "SYSTEM_DESCRIPTION",
   ])
     || next.resultsText;
   next.resultStatus = fieldText(["DOCUMENTATION_SPR_RESULT_STATUS", "SPR_RESULT_STATUS", "RESULT_STATUS", "ZAKLJUCNA_OCJENA", "OCJENA", "ZADOVOLJAVA"])
@@ -63290,6 +63307,9 @@ function syncDocumentationSprSectionTags() {
     documentationSprModel.technicalData,
     getDocumentationSprTechnicalFieldDefinitions(documentationSprModel),
   ).filter((entry) => String(entry.value || "").trim());
+  const systemHtml = String(documentationSprModel.systemDescription || "");
+  const systemText = richTextHtmlToPlainText(systemHtml);
+  const systemImageCount = (systemHtml.match(/<img\b/gi) || []).length;
   const resultHtml = String(documentationSprModel.resultsText || "");
   const resultText = richTextHtmlToPlainText(resultHtml);
   const resultImageCount = (resultHtml.match(/<img\b/gi) || []).length;
@@ -63314,6 +63334,10 @@ function syncDocumentationSprSectionTags() {
   ]);
   setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector("#documentation-spr-project-section"), [
     { label: "Dok.", value: documentationSprModel.projectDocumentation, tone: "slate", maxLength: 42 },
+  ]);
+  setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector("#documentation-spr-system-section"), [
+    { label: "Opis", value: systemText ? "unesen" : "", tone: "blue" },
+    { label: "Slike", value: systemImageCount ? String(systemImageCount) : "", tone: "green" },
   ]);
   setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector("#documentation-spr-results-section"), [
     { label: "Opis", value: resultText ? "unesen" : "", tone: "blue" },
@@ -63819,6 +63843,7 @@ function updateDocumentationSprSectionNumbers() {
     ["equipment", documentationSprEquipmentSection],
     ["regulations", documentationSprRegulationsSection],
     ["project", documentationSprProjectSection],
+    ["system", documentationSprSystemSection],
     ["results", documentationSprResultsSection],
     ["checklists", documentationSprChecklistsSection],
     ["nativeMeasurements", documentationSprNativeMeasurementsSection],
@@ -64018,6 +64043,143 @@ function handleDocumentationSprDatePickerChange(event) {
   return true;
 }
 
+function mountDocumentationSprSystemRichEditor() {
+  if (!(documentationSprSystemRichHost instanceof HTMLElement) || documentationSprSystemRichControl) {
+    return;
+  }
+  documentationSprSystemRichControl = createDocumentTemplateRuntimeRichTextControl({
+    value: documentationSprModel?.systemDescription || "",
+    minHeight: 240,
+    placeholder: "Upiši opis sustava, zalijepi iz Worda ili dodaj naslov, listu i tablicu...",
+    onChange: (html) => {
+      const normalizedHtml = normalizeRichTextHtml(html);
+      if (documentationSprSystemDescriptionInput instanceof HTMLTextAreaElement) {
+        documentationSprSystemDescriptionInput.value = normalizedHtml;
+      }
+      if (documentationSprModel) {
+        documentationSprModel.systemDescription = normalizedHtml;
+      }
+      renderDocumentationSprPreview();
+      scheduleDocumentationSprSave();
+    },
+  });
+  documentationSprSystemRichHost.replaceChildren(documentationSprSystemRichControl);
+  bindDocumentationSprSystemRichImagePaste();
+}
+
+function getDocumentationSprSystemRichEditor() {
+  return documentationSprSystemRichHost?.querySelector?.(".document-template-runtime-rich-editor") || null;
+}
+
+function persistDocumentationSprSystemRichEditorValue({ cleanDom = false } = {}) {
+  const editor = getDocumentationSprSystemRichEditor();
+  if (!(editor instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const html = sanitizeRichTextHtml(editor.innerHTML);
+  const text = richTextHtmlToPlainText(html);
+  if (cleanDom) {
+    editor.innerHTML = html;
+  }
+  documentationSprModel.systemDescription = (text || /<img\b/i.test(html)) ? html : "";
+  if (documentationSprSystemDescriptionInput instanceof HTMLTextAreaElement) {
+    documentationSprSystemDescriptionInput.value = documentationSprModel.systemDescription;
+  }
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+}
+
+function insertDocumentationSprSystemImageDataUrl(dataUrl = "", alt = "Slika opisa sustava") {
+  const source = String(dataUrl || "").trim();
+  if (!/^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,/i.test(source)) {
+    setDocumentationSprStatus("Slika mora biti PNG, JPG, GIF ili WebP", "saving");
+    return;
+  }
+  mountDocumentationSprSystemRichEditor();
+  const editor = getDocumentationSprSystemRichEditor();
+  if (!(editor instanceof HTMLElement)) {
+    return;
+  }
+  const safeAlt = escapeHtml(String(alt || "Slika opisa sustava").trim() || "Slika opisa sustava");
+  insertDocumentTemplateRuntimeRichHtml(
+    editor,
+    `<p><img src="${escapeHtml(source)}" alt="${safeAlt}" style="max-width:100%;height:auto;border:1px solid #dbe7f4;border-radius:6px;margin:6px 0;"></p><p><br></p>`,
+  );
+  persistDocumentationSprSystemRichEditorValue({ cleanDom: true });
+  setDocumentationSprStatus("Slika dodana u opis sustava", "saved");
+}
+
+async function insertDocumentationSprSystemImageFile(file) {
+  if (!file) {
+    return;
+  }
+  if (!/^image\/(?:png|jpe?g|gif|webp|bmp)$/i.test(file.type || "")) {
+    setDocumentationSprStatus("Za opis sustava možeš dodati PNG, JPG, GIF ili WebP sliku", "saving");
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    setDocumentationSprStatus("Slika je veća od 8 MB", "saving");
+    return;
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati sliku ${file.name || ""}`.trim());
+    insertDocumentationSprSystemImageDataUrl(dataUrl, file.name || "Slika opisa sustava");
+  } catch {
+    setDocumentationSprStatus("Slika nije učitana", "saving");
+  }
+}
+
+function bindDocumentationSprSystemRichImagePaste() {
+  const editor = getDocumentationSprSystemRichEditor();
+  if (!(editor instanceof HTMLElement) || editor.dataset.documentationSprImagePasteBound === "true") {
+    return;
+  }
+  editor.dataset.documentationSprImagePasteBound = "true";
+  editor.addEventListener("paste", (event) => {
+    const items = Array.from(event.clipboardData?.items || []);
+    const imageItem = items.find((item) => /^image\//i.test(item.type || ""));
+    const file = imageItem?.getAsFile?.();
+    if (!file) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void insertDocumentationSprSystemImageFile(file);
+  }, true);
+}
+
+function setDocumentationSprSystemRichValue(value = "") {
+  mountDocumentationSprSystemRichEditor();
+  const html = normalizeRichTextHtml(value);
+  if (documentationSprSystemDescriptionInput instanceof HTMLTextAreaElement) {
+    documentationSprSystemDescriptionInput.value = html;
+  }
+  const editor = getDocumentationSprSystemRichEditor();
+  if (editor instanceof HTMLElement && editor.innerHTML !== html) {
+    editor.innerHTML = html;
+  }
+  bindDocumentationSprSystemRichImagePaste();
+}
+
+function syncDocumentationSprSystemRichValueIntoModel() {
+  if (!documentationSprModel) {
+    return;
+  }
+  const editor = getDocumentationSprSystemRichEditor();
+  if (editor instanceof HTMLElement) {
+    const html = normalizeRichTextHtml(editor.innerHTML);
+    const text = richTextHtmlToPlainText(html);
+    documentationSprModel.systemDescription = (text || /<img\b/i.test(html)) ? html : "";
+    if (documentationSprSystemDescriptionInput instanceof HTMLTextAreaElement) {
+      documentationSprSystemDescriptionInput.value = documentationSprModel.systemDescription;
+    }
+    return;
+  }
+  if (documentationSprSystemDescriptionInput instanceof HTMLTextAreaElement) {
+    documentationSprModel.systemDescription = normalizeRichTextHtml(documentationSprSystemDescriptionInput.value);
+  }
+}
+
 function mountDocumentationSprResultsRichEditor() {
   if (!(documentationSprResultsRichHost instanceof HTMLElement) || documentationSprResultsRichControl) {
     return;
@@ -64159,6 +64321,7 @@ function readDocumentationSprFormIntoModel() {
   if (!documentationSprModel || !documentationWorkbenchModule) {
     return;
   }
+  syncDocumentationSprSystemRichValueIntoModel();
   syncDocumentationSprResultsRichValueIntoModel();
   documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
     if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
@@ -64173,6 +64336,7 @@ function writeDocumentationSprModelToForm() {
   if (!documentationSprModel || !documentationWorkbenchModule) {
     return;
   }
+  mountDocumentationSprSystemRichEditor();
   mountDocumentationSprResultsRichEditor();
   documentationWorkbenchModule.querySelectorAll("[data-documentation-spr-field]").forEach((control) => {
     if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
@@ -64180,6 +64344,7 @@ function writeDocumentationSprModelToForm() {
       writeDocumentationSprControlValue(control, fieldName, documentationSprModel[fieldName] ?? "");
     }
   });
+  setDocumentationSprSystemRichValue(documentationSprModel.systemDescription || "");
   setDocumentationSprResultsRichValue(documentationSprModel.resultsText || "");
   renderDocumentationSprObjectSelect();
   renderDocumentationSprNativeEditors();
@@ -64534,12 +64699,14 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
 
 function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
   const sectionOffset = getDocumentationSprSectionOffset(model);
+  const systemDescription = String(model.systemDescription || "").trim();
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model)}
       ${renderDocumentationSprSectionTitle(4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
-      ${renderDocumentationSprSectionTitle(5 + sectionOffset, "REZULTATI ISPITIVANJA")}
+      ${systemDescription ? `${renderDocumentationSprSectionTitle(5 + sectionOffset, "OPIS SUSTAVA")}<div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(systemDescription)}</div>` : ""}
+      ${renderDocumentationSprSectionTitle(5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA")}
       <div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(model.resultsText)}</div>
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
@@ -66216,9 +66383,13 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     MEASUREMENT_EQUIPMENT_GROUP: normalized.measurementEquipmentGroup || "",
     MEASUREMENT_EQUIPMENT_IDS: normalizeDocumentationSprIdList(normalized.measurementEquipmentIds),
     LEGAL_FRAMEWORK_IDS: normalizeDocumentationSprIdList(normalized.legalFrameworkIds),
+    DOCUMENTATION_SPR_SYSTEM_DESCRIPTION: normalized.systemDescription || "",
+    SYSTEM_DESCRIPTION: normalized.systemDescription || "",
+    OPIS_SUSTAVA: normalized.systemDescription || "",
     DOCUMENTATION_SPR_RESULTS_TEXT: normalized.resultsText || "",
     SPR_RESULTS_TEXT: normalized.resultsText || "",
-    OPIS_SUSTAVA: normalized.resultsText || "",
+    OPIS_ISPITIVANJA: normalized.resultsText || "",
+    REZULTATI_ISPITIVANJA: normalized.resultsText || "",
     TECHNICAL_DATA: normalized.technicalData || "",
     TEHNICKI_PODACI: normalized.technicalData || "",
     DOCUMENTATION_TECHNICAL_DATA: normalized.technicalData || "",
@@ -66597,7 +66768,9 @@ function initDocumentationSprWorkbench() {
     documentationSprModel = loadDocumentationSprModel();
     writeDocumentationSprModelToForm();
   }
+  mountDocumentationSprSystemRichEditor();
   mountDocumentationSprResultsRichEditor();
+  setDocumentationSprSystemRichValue(documentationSprModel.systemDescription || "");
   setDocumentationSprResultsRichValue(documentationSprModel.resultsText || "");
   seedDocumentationSprGlobalHeaderFromLegacySources(documentationSprModel);
   renderDocumentationSprSourceControls();
@@ -66715,6 +66888,18 @@ function initDocumentationSprWorkbench() {
         return;
       }
       removeDocumentationSprAiSource(button.getAttribute("data-documentation-spr-ai-source-remove") || "");
+    });
+    documentationSprSystemImageUploadButton?.addEventListener("click", () => {
+      documentationSprSystemImageFileInput?.click();
+    });
+    documentationSprSystemImageFileInput?.addEventListener("change", () => {
+      const file = Array.from(documentationSprSystemImageFileInput.files || [])[0] || null;
+      if (documentationSprSystemImageFileInput instanceof HTMLInputElement) {
+        documentationSprSystemImageFileInput.value = "";
+      }
+      if (file) {
+        void insertDocumentationSprSystemImageFile(file);
+      }
     });
     documentationSprResultsImageUploadButton?.addEventListener("click", () => {
       documentationSprResultsImageFileInput?.click();

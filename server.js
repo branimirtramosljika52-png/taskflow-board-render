@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.332.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.333.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25261,6 +25261,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     ? reportDefaults.measurementAssessments
     : [];
   const includeProjectDocumentation = preset.serviceCode === "EIZ" || normalizeInputValue(reportDefaults.projectDocumentation).length > 0;
+  const includeSystemDescription = normalizeInputValue(reportDefaults.systemDescription).length > 0;
+  const includeResultsText = normalizeInputValue(reportDefaults.resultsText).length > 0;
   const serviceWithCode = {
     ...service,
     serviceCode: preset.serviceCode,
@@ -25379,6 +25381,14 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         defaultValue: reportDefaults.projectDocumentation || "",
         helpText: "Bullet popis projekata, prethodnih zapisnika, jednopolnih shema i druge tehničke dokumentacije.",
       }),
+    ] : []),
+    ...(includeSystemDescription ? [
+      buildMobileNativeDocumentationField("systemDescription", "Opis sustava", "richtext", {
+        defaultValue: reportDefaults.systemDescription || "",
+        helpText: "Slobodan opis sustava prije rezultata ispitivanja.",
+      }),
+    ] : []),
+    ...(includeResultsText ? [
       buildMobileNativeDocumentationField("resultsText", "Rezultati ispitivanja", "longtext", {
         defaultValue: reportDefaults.resultsText || "",
         helpText: "Tekstualni opis postupka ispitivanja prije ispitnih listova.",
@@ -25561,6 +25571,20 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         summary: reportDefaults.projectDocumentation || "Dodaj dokumentaciju korištenu pri izradi zapisnika.",
         helpText: "Textbox s bulletima. NexAI može prepisati nazive projekata, prethodnih zapisnika, jednopolnih shema i slika elektroormara.",
       }),
+    ] : []),
+    ...(includeSystemDescription ? [
+      buildMobileNativeDocumentationBlock("chapter-system-description", "Opis sustava", "chapter", {
+        typeLabel: "Poglavlje",
+        summary: "Slobodan opis izvedenog stanja i dijelova sustava.",
+      }),
+      buildMobileNativeDocumentationBlock("systemDescription", "Opis sustava", "richtext", {
+        group: "Opis sustava",
+        editable: true,
+        summary: "Dodaj opis sustava, napomene, popise ili tablične podatke.",
+        helpText: "Ovo poglavlje se ispisuje prije rezultata ispitivanja.",
+      }),
+    ] : []),
+    ...(includeResultsText ? [
       buildMobileNativeDocumentationBlock("chapter-results-text", "Rezultati ispitivanja", "chapter", {
         typeLabel: "Poglavlje",
         summary: "Tekstualni opis postupka ispitivanja prije ispitnih listova.",
@@ -25640,6 +25664,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle,
+    systemDescription: preset.systemDescription || "",
     resultsText: preset.resultsText || "",
     eiNote: preset.eiNote || "",
     eiminNote: preset.eiminNote || "",
@@ -27522,8 +27547,11 @@ function buildMobileDocumentationSprModel({
     technicalData: normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI"
       ? (buildMobileStrojeviTechnicalDataText(common) || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders))
       : buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders),
-    resultsText: getMobileDocumentationTemplateFieldValues(common, template, ["resultsText", "REZULTATI_TEKST", "RESULTS_TEXT"])
-      || getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"])
+    systemDescription: getMobileDocumentationTemplateFieldValues(common, template, ["systemDescription", "DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA"])
+      || getMobileSprFirstValue(placeholders, ["DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA", "OPIS_SUSTAVA_HTML"])
+      || normalizeInputValue(template.systemDescription || reportDefaults.systemDescription),
+    resultsText: getMobileDocumentationTemplateFieldValues(common, template, ["resultsText", "REZULTATI_TEKST", "RESULTS_TEXT", "OPIS_ISPITIVANJA", "REZULTATI_ISPITIVANJA"])
+      || getMobileSprFirstValue(placeholders, ["OPIS_ISPITIVANJA", "REZULTATI_TEKST", "RESULTS_TEXT", "REZULTATI_ISPITIVANJA"])
       || normalizeInputValue(template.resultsText || reportDefaults.resultsText),
     eiNote: normalizeInputValue(template.eiNote || reportDefaults.eiNote),
     eiminNote: normalizeInputValue(template.eiminNote || reportDefaults.eiminNote),

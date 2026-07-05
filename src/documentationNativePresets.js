@@ -3008,6 +3008,7 @@ function createNativeReportPreset({
   reportTitle = "",
   coverSubtitle = "",
   measurementTableTitle = "",
+  systemDescription = "",
   resultsText = "",
   notes = [],
   assessmentLabel = "",
@@ -3029,6 +3030,7 @@ function createNativeReportPreset({
     reportTitle,
     coverSubtitle,
     measurementTableTitle,
+    systemDescription: systemDescription || makeSimpleSystemDescription(serviceName),
     resultsText,
     notes,
     assessmentLabel,
@@ -3048,6 +3050,13 @@ function makeSimpleResultText(subject = "predmetni sustav", detail = "") {
     `Pregledom i ispitivanjem utvrdjuje se stanje za ${subject}.`,
     detail || "Rezultati pregleda i ispitivanja prikazuju se u pripadajucim tablicama i ocjenama zapisnika.",
   ].join("\n\n");
+}
+
+function makeSimpleSystemDescription(subject = "predmetni sustav") {
+  return [
+    `<p>Predmetni sustav za ${subject} opisan je prema dostupnoj tehničkoj dokumentaciji, izvedenom stanju i obuhvatu ispitivanja.</p>`,
+    "<ul><li>osnovni dijelovi sustava</li><li>lokacija i obuhvat pregleda</li><li>bitne napomene za ispitivanje</li></ul>",
+  ].join("");
 }
 
 export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
@@ -4185,6 +4194,7 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle,
+    systemDescription: preset.systemDescription || "",
     resultsText: preset.resultsText,
     eiNote: preset.notes[0] || "",
     eiminNote: preset.notes[1] || "",
@@ -4211,6 +4221,7 @@ export function getDocumentationNativeTemplateSeedPresets() {
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle,
+    systemDescription: preset.systemDescription || "",
     resultsText: preset.resultsText,
     eiNote: preset.notes[0] || "",
     eiminNote: preset.notes[1] || "",

@@ -795,6 +795,10 @@ function parseRichTextBlocks(value = "") {
     Array.from(element.children).forEach(visit);
   };
   Array.from(container.children).forEach(visit);
+  if (!blocks.length) {
+    return splitTextLines(container.textContent || source)
+      .map((text) => ({ type: "paragraph", text }));
+  }
   return blocks;
 }
 
@@ -929,11 +933,25 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
 function drawPageTwo(pdfDoc, model, fonts) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const sectionOffset = splitTextLines(model.technicalData).length > 0 ? 1 : 0;
+  const systemDescription = cleanMultiline(model.systemDescription);
   let y = drawSimpleHeader(page, model, fonts);
   y = drawSectionTitle(page, 4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
   y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 3, fontSize: 9, lineHeight: 12 });
   y -= 8;
-  y = drawSectionTitle(page, 5 + sectionOffset, "REZULTATI ISPITIVANJA", y, fonts);
+  if (systemDescription) {
+    y = drawSectionTitle(page, 5 + sectionOffset, "OPIS SUSTAVA", y, fonts);
+    y = drawTextBlock(page, systemDescription, {
+      x: MARGIN_X + 2,
+      y,
+      width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
+      font: fonts.regular,
+      size: 8.7,
+      lineHeight: 11.6,
+      maxLines: 16,
+    });
+    y -= 8;
+  }
+  y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
   y = drawTextBlock(page, cleanMultiline(model.resultsText), {
     x: MARGIN_X + 2,
     y,
@@ -982,6 +1000,7 @@ function drawPageTwo(pdfDoc, model, fonts) {
 
 async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
   let { page, y, sectionOffset } = drawPageOne(pdfDoc, model, rows, fonts, headerImage);
+  const systemDescription = String(model.systemDescription || "").trim();
   const ensureSpace = (neededHeight = 72) => {
     if (y - neededHeight >= BOTTOM_Y) {
       return;
@@ -996,8 +1015,16 @@ async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
   y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 4, fontSize: 8.6, lineHeight: 11.2 });
   y -= 8;
 
+  if (systemDescription) {
+    ensureSpace(96);
+    y = drawSectionTitle(page, 5 + sectionOffset, "OPIS SUSTAVA", y, fonts);
+    const richSystem = await drawRichTextBlocks(pdfDoc, page, model, systemDescription, y, fonts);
+    page = richSystem.page;
+    y = richSystem.y - 6;
+  }
+
   ensureSpace(96);
-  y = drawSectionTitle(page, 5 + sectionOffset, "REZULTATI ISPITIVANJA", y, fonts);
+  y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
   const richResult = await drawRichTextBlocks(pdfDoc, page, model, model.resultsText, y, fonts);
   page = richResult.page;
   y = richResult.y - 6;
