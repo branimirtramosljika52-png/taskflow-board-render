@@ -26978,6 +26978,20 @@ private fun WorkOrderDocumentationTemplate.nativeDocumentationServiceCode(): Str
             .joinToString(" "),
     )
 
+private fun DocumentationServiceFlowItem.nativeDocumentationServiceCode(): String =
+    documentationNativeServiceCodeForText(
+        listOf(serviceCode, serviceName, serviceKey)
+            .filter { it.isNotBlank() }
+            .joinToString(" "),
+    )
+
+private fun WorkOrderDocumentationTemplate.matchesSelectedNativeService(item: DocumentationServiceFlowItem): Boolean {
+    val itemNativeCode = item.nativeDocumentationServiceCode()
+    if (itemNativeCode.isBlank()) return true
+    val templateNativeCode = nativeDocumentationServiceCode()
+    return templateNativeCode.isBlank() || templateNativeCode == itemNativeCode
+}
+
 private fun WorkOrderDocumentationTemplate.previousDataSourceMatchesService(): Boolean {
     if (!dataSourceType.trim().equals("previous_inspection", ignoreCase = true)) return true
     val templateCode = nativeDocumentationServiceCode()
@@ -28084,18 +28098,15 @@ private fun WorkOrderDocumentationWizardDialog(
                     .ifEmpty { templates }
 
             val matchedTemplates = context.templates.filter { template ->
-                template.matchesDocumentationServiceFlowItem(flowItem)
+                template.matchesDocumentationServiceFlowItem(flowItem) &&
+                    template.matchesSelectedNativeService(flowItem)
             }
             val directMatches = usableTemplates(matchedTemplates)
             if (directMatches.isNotEmpty()) {
                 return@remember directMatches
             }
 
-            val flowNativeCode = documentationNativeServiceCodeForText(
-                listOf(flowItem.serviceCode, flowItem.serviceName, flowItem.serviceKey)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" "),
-            )
+            val flowNativeCode = flowItem.nativeDocumentationServiceCode()
             val nativeMatches = if (flowNativeCode.isNotBlank()) {
                 context.templates.filter { template ->
                     val templateNativeCode = documentationNativeServiceCodeForText(

@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.323.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.324.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -24903,16 +24903,26 @@ function getMobileNativeDocumentationPresetByCode(serviceCode = "") {
 
 function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0, scopedSnapshot = {}) {
   const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
-  const serviceText = normalizeMobileSprLookupText([
+  const explicitCodePreset = [
     service?.serviceCode,
     service?.code,
     service?.shortLabel,
-    service?.name,
-    service?.serviceName,
-    service?.title,
+  ].map(getMobileNativeDocumentationPresetByCode).find(Boolean);
+  if (explicitCodePreset) {
+    return explicitCodePreset;
+  }
+  const catalogCodePreset = [
     catalogItem?.serviceCode,
     catalogItem?.code,
     catalogItem?.shortLabel,
+  ].map(getMobileNativeDocumentationPresetByCode).find(Boolean);
+  if (catalogCodePreset) {
+    return catalogCodePreset;
+  }
+  const serviceText = normalizeMobileSprLookupText([
+    service?.name,
+    service?.serviceName,
+    service?.title,
     catalogItem?.name,
     catalogItem?.serviceName,
     catalogItem?.title,
