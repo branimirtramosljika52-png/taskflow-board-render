@@ -13130,81 +13130,79 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             }
 
-            WorkEquipmentPartsToggle(
-                equipment = equipment,
-                enabled = enabled,
-                onEquipmentChange = onEquipmentChange,
-            )
+            if (!isStrojeviTemplate) {
+                WorkEquipmentPartsToggle(
+                    equipment = equipment,
+                    enabled = enabled,
+                    onEquipmentChange = onEquipmentChange,
+                )
 
-            WorkEquipmentAttachmentGallery(
-                title = "Slike i PDF prilozi",
-                subtitle = if (isStrojeviTemplate) {
-                    "Slika stroja, pločica i PDF prilozi idu u lokalni STROJEVI zapisnik."
-                } else {
-                    "Prve slike označi kao cijeli stroj i pločicu. PDF prilozi idu odvojeno na kraj zapisnika."
-                },
-                attachments = equipment.attachments,
-                enabled = enabled,
-                loadingImages = attachmentsLoading,
-                loadingDocuments = documentsLoading,
-                onAddImages = { imagePicker.launch("image/*") },
-                onAddDocuments = { pdfPicker.launch("application/pdf") },
-                onAttachmentsChange = { nextAttachments -> onEquipmentChange(equipment.copy(attachments = nextAttachments)) },
-            )
+                WorkEquipmentAttachmentGallery(
+                    title = "Slike i PDF prilozi",
+                    subtitle = "Prve slike označi kao cijeli stroj i pločicu. PDF prilozi idu odvojeno na kraj zapisnika.",
+                    attachments = equipment.attachments,
+                    enabled = enabled,
+                    loadingImages = attachmentsLoading,
+                    loadingDocuments = documentsLoading,
+                    onAddImages = { imagePicker.launch("image/*") },
+                    onAddDocuments = { pdfPicker.launch("application/pdf") },
+                    onAttachmentsChange = { nextAttachments -> onEquipmentChange(equipment.copy(attachments = nextAttachments)) },
+                )
 
-            if (showRecognition) {
-                val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Button(
-                        onClick = {
-                            recognitionLoading = true
-                            recognitionMessage = "Čitam slike stroja i pločice..."
-                            onRecognizeImages(
-                                equipment,
-                                recognitionImages,
-                                { result ->
-                                    recognitionLoading = false
-                                    recognitionPreview = result
-                                    recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
-                                },
-                                { message ->
-                                    recognitionLoading = false
-                                    recognitionMessage = message
-                                },
-                            )
-                        },
-                        enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                if (showRecognition) {
+                    val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (recognitionLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                        } else {
-                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Button(
+                            onClick = {
+                                recognitionLoading = true
+                                recognitionMessage = "Čitam slike stroja i pločice..."
+                                onRecognizeImages(
+                                    equipment,
+                                    recognitionImages,
+                                    { result ->
+                                        recognitionLoading = false
+                                        recognitionPreview = result
+                                        recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
+                                    },
+                                    { message ->
+                                        recognitionLoading = false
+                                        recognitionMessage = message
+                                    },
+                                )
+                            },
+                            enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            if (recognitionLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            } else {
+                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Prepoznaj iz označenih slika")
                         }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Prepoznaj iz označenih slika")
+                    }
+                    if (recognitionLoading) {
+                        WorkEquipmentAiStatusPanel(
+                            title = "NexAI čita otvorenu kolonu",
+                            subtitle = "Prepoznajem stroj i pločicu samo iz slika koje šalješ u zapisnik.",
+                            details = "PDF prilozi se ne koriste za vizualno prepoznavanje stroja.",
+                        )
                     }
                 }
-                if (recognitionLoading) {
-                    WorkEquipmentAiStatusPanel(
-                        title = "NexAI čita otvorenu kolonu",
-                        subtitle = "Prepoznajem stroj i pločicu samo iz slika koje šalješ u zapisnik.",
-                        details = "PDF prilozi se ne koriste za vizualno prepoznavanje stroja.",
+                listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
                     )
                 }
-            }
-            listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
-                Text(
-                    message,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
-                )
             }
 
             Row(
@@ -13327,6 +13325,76 @@ private fun ManualWorkEquipmentInlineEditor(
             }
             OutlinedTextField(equipment.deficiencies, { onEquipmentChange(equipment.copy(deficiencies = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Nedostaci") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.measuresToEliminateDeficiencies, { onEquipmentChange(equipment.copy(measuresToEliminateDeficiencies = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Mjere za otklanjanje nedostataka") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+
+            if (isStrojeviTemplate) {
+                ManualWorkEquipmentSectionTitle("Slike i prilozi")
+                WorkEquipmentAttachmentGallery(
+                    title = "Slike i PDF prilozi",
+                    subtitle = "Ako dodaš slike, idu u zapisnik. PDF prilozi se nastavljaju na kraj zapisnika.",
+                    attachments = equipment.attachments,
+                    enabled = enabled,
+                    loadingImages = attachmentsLoading,
+                    loadingDocuments = documentsLoading,
+                    onAddImages = { imagePicker.launch("image/*") },
+                    onAddDocuments = { pdfPicker.launch("application/pdf") },
+                    onAttachmentsChange = { nextAttachments -> onEquipmentChange(equipment.copy(attachments = nextAttachments)) },
+                )
+
+                if (showRecognition) {
+                    val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            onClick = {
+                                recognitionLoading = true
+                                recognitionMessage = "Čitam slike stroja i pločice..."
+                                onRecognizeImages(
+                                    equipment,
+                                    recognitionImages,
+                                    { result ->
+                                        recognitionLoading = false
+                                        recognitionPreview = result
+                                        recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
+                                    },
+                                    { message ->
+                                        recognitionLoading = false
+                                        recognitionMessage = message
+                                    },
+                                )
+                            },
+                            enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            if (recognitionLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            } else {
+                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Prepoznaj iz označenih slika")
+                        }
+                    }
+                    if (recognitionLoading) {
+                        WorkEquipmentAiStatusPanel(
+                            title = "NexAI čita otvorenu kolonu",
+                            subtitle = "Prepoznajem stroj i pločicu samo iz slika koje šalješ u zapisnik.",
+                            details = "PDF prilozi se ne koriste za vizualno prepoznavanje stroja.",
+                        )
+                    }
+                }
+                listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
+                    )
+                }
+            }
         }
     }
 }
@@ -14142,6 +14210,27 @@ private fun ManualStrojeviSequentialInspectionEditor(
         onItemsChange(baseItems.mapIndexed { itemIndex, current -> if (itemIndex == index) item else current })
     }
 
+    LaunchedEffect(items) {
+        val migratedItems = items.map { item ->
+            if (item.label.isBlank()) {
+                item
+            } else {
+                val currentValue = item.noteValue()
+                item.copy(
+                    label = "",
+                    customContent = if (currentValue.isBlank() && item.measuredValue.isBlank()) {
+                        limitRoAssessmentNoteInput(item.label)
+                    } else {
+                        item.customContent
+                    },
+                )
+            }
+        }
+        if (migratedItems != items) {
+            onItemsChange(migratedItems)
+        }
+    }
+
     val visibleItems = if (items.isEmpty()) listOf(IsznrRoAssessmentItem()) else items
 
     ManualWorkEquipmentSectionTitle(title)
@@ -14152,7 +14241,7 @@ private fun ManualStrojeviSequentialInspectionEditor(
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                "STROJEVI nema fiksne stavke. Upisuješ ih redom dolje, a predložak puni Stavka 1, Zaključak 1, Stavka 2, Zaključak 2...",
+                "STROJEVI nema fiksne stavke. Upisuješ ih redom dolje, a predložak puni Stavka 1, Stavka 2, Stavka 3...",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
@@ -14183,13 +14272,7 @@ private fun ManualStrojeviSequentialInspectionEditor(
                                     )
                                 }
                             }
-                            Text(
-                                "Stavka ${index + 1}",
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
-                            )
+                            Spacer(modifier = Modifier.weight(1f))
                             StrojeviStatusIconButton(
                                 selected = item.meetsConditions,
                                 icon = Icons.Rounded.CheckCircle,
@@ -14215,24 +14298,12 @@ private fun ManualStrojeviSequentialInspectionEditor(
                             }
                         }
                         OutlinedTextField(
-                            value = item.label,
-                            onValueChange = { value ->
-                                updateItem(index, item.copy(label = value.take(RO_ASSESSMENT_NOTE_MAX_LENGTH)))
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Naziv") },
-                            placeholder = { Text("Npr. Zaštita od pokretnih dijelova") },
-                            minLines = 1,
-                            maxLines = 3,
-                            enabled = enabled,
-                            shape = RoundedCornerShape(14.dp),
-                        )
-                        OutlinedTextField(
                             value = noteValue,
                             onValueChange = { value ->
                                 updateItem(
                                     index,
                                     item.copy(
+                                        label = "",
                                         customContent = limitRoAssessmentNoteInput(value),
                                         measuredValue = "",
                                     ),
@@ -14241,8 +14312,8 @@ private fun ManualStrojeviSequentialInspectionEditor(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 116.dp),
-                            label = { Text("Zaključak / vrijednost") },
-                            placeholder = { Text("Upiši zaključak koji ide u predložak") },
+                            label = { Text("Stavka ${index + 1}") },
+                            placeholder = { Text("Upiši tekst stavke za predložak") },
                             minLines = 3,
                             maxLines = 6,
                             enabled = enabled,
