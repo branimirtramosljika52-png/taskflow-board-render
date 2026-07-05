@@ -379,6 +379,44 @@ const RISK_ASSESSMENT_TEMPLATE_STORAGE_PREFIX = "safenexus.risk-assessment-templ
 const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
 const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.dotx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
 const LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL = ".pdf,application/pdf";
+const WORK_ORDER_DOCUMENTATION_INSPECTION_SERVICE_CODES = new Set([
+  "spr",
+  "szomv",
+  "szom",
+  "tzin",
+  "ves",
+  "eiz",
+  "emm",
+  "vs",
+  "ppcaffe",
+  "pzp",
+  "exei",
+  "exse",
+  "exov",
+  "svz",
+  "sp",
+  "hm",
+  "hmu",
+  "hmv",
+  "hmuv",
+  "sgp",
+  "ss",
+  "pjena",
+  "so",
+  "pz",
+  "ppv",
+  "ppz",
+  "ds",
+  "plinskakotlovnica",
+  "npi",
+  "unp",
+  "rof",
+  "rok",
+  "no",
+  "strojevi",
+  "radnaoprema",
+  "pe",
+]);
 const RULEBOOK_PRESETS = Object.freeze([
   Object.freeze({
     type: "znr",
@@ -18879,6 +18917,7 @@ function summarizeWorkOrderServiceProgress(items = []) {
 }
 
 function buildWorkOrderServiceItemSnapshot(service, current = null) {
+  const resolvedServiceType = resolveWorkOrderServiceType(service, current);
   const linkedTemplateTitles = Array.isArray(service?.linkedTemplateTitles) && service.linkedTemplateTitles.length > 0
     ? service.linkedTemplateTitles
     : (service?.linkedTemplateIds ?? [])
@@ -18894,7 +18933,7 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
     serviceId: String(service?.id ?? current?.serviceId ?? ""),
     name: String(service?.name ?? current?.name ?? "").trim(),
     serviceCode: String(service?.serviceCode ?? current?.serviceCode ?? "").trim(),
-    serviceType: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() || "inspection",
+    serviceType: resolvedServiceType,
     validityMonths: normalizeValidityMonthsValue(service?.validityMonths ?? current?.validityMonths ?? ""),
     linkedTemplateIds: Array.isArray(service?.linkedTemplateIds)
       ? service.linkedTemplateIds.map((value) => String(value ?? "").trim()).filter(Boolean)
@@ -18912,7 +18951,7 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
       ? getServiceCatalogQualificationKeys(service)
       : normalizeQualificationExamKeyList(current?.linkedQualificationKeys ?? current?.linkedQualificationExamKeys ?? []),
     quantity: String(service?.quantity ?? current?.quantity ?? current?.measurementQuantity ?? 1).trim() || "1",
-    isTraining: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() === "znr",
+    isTraining: resolvedServiceType === "znr",
     serviceStatus: normalizeWorkOrderServiceProgressStatus(
       current?.serviceStatus ?? current?.progressStatus ?? current?.workStatus,
       current?.isCompleted ? "completed" : "pending",
@@ -18937,7 +18976,7 @@ function getServiceCatalogTypeLabel(value = "") {
 }
 
 function getWorkOrderServiceType(item = null) {
-  return normalizeServiceCatalogTypeUi(item?.serviceType, item?.isTraining ? "znr" : "inspection");
+  return resolveWorkOrderServiceType(item);
 }
 
 function normalizeValidityMonthsValue(value = "") {
@@ -19012,6 +19051,39 @@ function getWorkOrderServiceValidityLabel(service = {}) {
     return `${serviceCode} - ${serviceName}`;
   }
   return serviceName || serviceCode || "Ispitna usluga";
+}
+
+function getWorkOrderDocumentationInspectionServiceCode(...sources) {
+  return sources
+    .filter((source) => source && typeof source === "object")
+    .flatMap((source) => [
+      source.serviceCode,
+      source.code,
+      source.shortCode,
+    ])
+    .map((value) => normalizeLooseName(value))
+    .find((code) => WORK_ORDER_DOCUMENTATION_INSPECTION_SERVICE_CODES.has(code))
+    || "";
+}
+
+function isWorkOrderDocumentationInspectionService(...sources) {
+  const candidates = sources.filter((source) => source && typeof source === "object");
+  if (!candidates.length) {
+    return false;
+  }
+  return Boolean(getWorkOrderDocumentationInspectionServiceCode(...candidates))
+    || candidates.some((source) => isWorkOrderDocumentIsznrNativeService(source));
+}
+
+function resolveWorkOrderServiceType(item = null, current = null) {
+  const catalogItem = getServiceCatalogItemForWorkOrderService(item || current || {});
+  if (isWorkOrderDocumentationInspectionService(item, current, catalogItem)) {
+    return "inspection";
+  }
+  return normalizeServiceCatalogTypeUi(
+    item?.serviceType ?? current?.serviceType,
+    item?.isTraining ?? current?.isTraining ? "znr" : "inspection",
+  );
 }
 
 function createWorkOrderServiceValidityDefinition(service = {}) {
@@ -59420,7 +59492,7 @@ function renderDocumentationSprTemplateServiceOptions(activeTemplate = null) {
     || documentationSprDraftServiceBinding;
   const activeValue = getDocumentationSprTemplateServiceSelectValue(activeBinding);
   const serviceOptions = sortServiceCatalogItems(state.serviceCatalog ?? [])
-    .filter((service) => normalizeServiceCatalogTypeUi(service.serviceType, service.isTraining ? "znr" : "inspection") === "inspection")
+    .filter((service) => getWorkOrderServiceType(service) === "inspection")
     .map((service) => {
       const binding = normalizeDocumentationSprServiceBinding({
         serviceId: service.id,
@@ -59605,6 +59677,9 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   const currentTables = !refreshNativeBlocks && Array.isArray(currentModel.measurementTables) && currentModel.measurementTables.length
     ? currentModel.measurementTables
     : nativeModel.measurementTables;
+  const currentFormulaSheets = !refreshNativeBlocks && Array.isArray(currentModel.formulaSheets) && currentModel.formulaSheets.length
+    ? currentModel.formulaSheets
+    : nativeModel.formulaSheets;
   return {
     ...entry,
     name: entry.name || preset.name,
@@ -59632,6 +59707,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       checklists: currentChecklists,
       measurementAssessments: currentAssessments,
       measurementTables: currentTables,
+      formulaSheets: currentFormulaSheets,
       gridlineModel: currentModel.gridlineModel || nativeModel.gridlineModel,
     }),
   };
@@ -60753,7 +60829,7 @@ function getDocumentationSprLinkedItemIdsForService(items = [], service = {}) {
 
 function getDocumentationSprInspectionServiceItems(workOrder = {}) {
   return getWorkOrderDocumentWizardResolvedServiceItems(workOrder)
-    .filter((service) => normalizeServiceCatalogTypeUi(service?.serviceType, service?.isTraining ? "znr" : "inspection") === "inspection");
+    .filter((service) => getWorkOrderServiceType(service) === "inspection");
 }
 
 function getDocumentationSprBatchEntriesForWorkOrders(workOrders = []) {
