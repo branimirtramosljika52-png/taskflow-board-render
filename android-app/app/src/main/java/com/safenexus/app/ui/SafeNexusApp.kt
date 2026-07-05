@@ -28239,7 +28239,6 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val sprBrowserFlowSelected = remember(
         activeTemplates,
-        activeTemplatesHaveGridline,
         selectedFlowItem,
         workOrder.displayService,
         basicsFlowSelected,
@@ -28253,7 +28252,7 @@ private fun WorkOrderDocumentationWizardDialog(
             !workEquipmentFlowSelected &&
             !equipmentInspectionFlowSelected &&
             !physicalFactorsFlowSelected &&
-            !activeTemplatesHaveGridline &&
+            activeTemplates.isNotEmpty() &&
             (
                 selectedFlowItem?.let { isDocumentationSprService(it) } == true ||
                     activeTemplates.any { it.isSprDocumentationTemplate() } ||
